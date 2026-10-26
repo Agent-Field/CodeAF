@@ -495,8 +495,17 @@ type appSideAsker interface {
 // One ask runs per agent at a time: a second press while the first is out is
 // answered by the first's card.
 func (b *appBackend) CrewPropose(agent string) error {
-	a, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return err
 	}
 	asker, ok := live.conn.Conv.(appSideAsker)
@@ -770,6 +779,16 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 		b.dropProposal(p.ID, appwire.ProposalCreate)
 		return b.CrewGet(id)
 	}
+	a, err := b.find(p.Agent)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	a.gate.Lock()
+	admissionErr := b.workAllowed(a)
+	a.gate.Unlock()
+	if admissionErr != nil {
+		return appwire.Crew{}, admissionErr
+	}
 	if e := ask.Edits; e != nil && id == "" {
 		if strings.TrimSpace(e.Name) != "" {
 			p.Name = strings.TrimSpace(e.Name)
@@ -1042,6 +1061,15 @@ func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (app
 	m, ok := b.crewMemberOf(t, agent)
 	if !ok {
 		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", agent, t.Name)
+	}
+	a, err := b.find(agent)
+	if err != nil {
+		return appwire.MemberBrief{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return appwire.MemberBrief{}, err
 	}
 	if m.Key == t.Manager {
 		return appwire.MemberBrief{}, appwire.Errorf(appwire.CodeBadParams, "%s manages %s; a manager has no brief to change here", m.Handle, t.Name)

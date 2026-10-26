@@ -158,6 +158,11 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if err != nil {
 		return err
 	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return err
+	}
 	if _, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
 		return err
 	}
@@ -309,13 +314,18 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if err != nil {
 		return nil, err
 	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return nil, err
+	}
 	live := b.liveOf(a)
 	busy := false
 	if live != nil {
 		b.locked(func() { busy = live.running || live.adopting > 0 })
 	}
 	if !busy {
-		if _, err := b.send(agent, text, clientID, shown); err != nil {
+		if _, err := b.sendLocked(a, text, clientID, shown); err != nil {
 			return nil, err
 		}
 		return b.queued(a), nil
@@ -327,11 +337,18 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
 	}
 	var queued []appwire.Queued
+	var refused error
 	b.locked(func() {
+		if refused = appLocationRefusal(a.view.Location); refused != nil {
+			return
+		}
 		a.queueN++
 		a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID, shown: shown})
 		queued = appQueuedOf(a.queue)
 	})
+	if refused != nil {
+		return nil, refused
+	}
 	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
 	return queued, nil
 }
@@ -363,6 +380,8 @@ func (b *appBackend) changeQueue(agent, id string, change func(a *appAgent, at i
 	if err != nil {
 		return nil, err
 	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
 	var queued []appwire.Queued
 	found := false
 	b.locked(func() {
@@ -446,6 +465,11 @@ func (b *appBackend) MoveQueued(agent, id string, to int) ([]appwire.Queued, err
 // sendQueued sends the first queued message once a turn has ended and
 // nothing else is about to start.
 func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return
+	}
 	var next appQueued
 	var queued []appwire.Queued
 	var agent string
@@ -471,7 +495,16 @@ func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
 	if shown != nil {
 		shown.queued = true
 	}
-	if _, err := b.send(agent, next.text, next.clientID, shown); err != nil {
+	if _, err := b.sendLocked(a, next.text, next.clientID, shown); err != nil {
+		var refusal *appwire.Error
+		if errors.As(err, &refusal) && refusal.Code == appwire.CodeConflict {
+			b.locked(func() {
+				a.queue = append([]appQueued{next}, a.queue...)
+				queued = appQueuedOf(a.queue)
+			})
+			b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
+			return
+		}
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: "qx" + next.id, Agent: agent, Kind: appwire.EntryError, At: b.now(), Text: "the queued message was not sent: " + err.Error(),
 		}})
@@ -641,6 +674,11 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	}
 	text := strings.TrimSpace(strings.TrimSpace(answer.Text) + "\n" + strings.TrimSpace(answer.Why))
 	if answer.YouDecide {
+		a.gate.Lock()
+		defer a.gate.Unlock()
+		if err := b.workAllowed(a); err != nil {
+			return err
+		}
 		if !open {
 			return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
 		}
@@ -1455,8 +1493,17 @@ func (b *appBackend) RetryTask(id string) error {
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return err
 	}
 	n, err := strconv.ParseUint(local, 10, 64)
@@ -1484,8 +1531,17 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return appwire.Entry{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.Entry{}, err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return appwire.Entry{}, err
 	}
 	// The same key the engine will keep, so the receipt, the event and the page

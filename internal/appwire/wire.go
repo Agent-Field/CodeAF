@@ -156,6 +156,7 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
+	Location      *Location              `json:"location,omitempty"`
 	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
 	// Retryable means this backend retained the failed message for agents.retry.
 	Retryable    bool   `json:"retryable"`
@@ -436,15 +437,15 @@ type Entry struct {
 	// Ref is what a notice points at, and Quiet marks a notice the terminal
 	// shows as one dim line; ErrorKind and Status sort an error.
 	Ref       string `json:"ref,omitempty"`
-	Quiet     bool   `json:"quiet,omitempty"`
+	Quiet     bool   `json:"quiet"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	Status    int    `json:"status,omitempty"`
 	// NoticeKind, Skills and Unrecorded are typed facts the engine attached to a
 	// notice at its producer: "skills" (the skills a turn carried, named in
-	// Skills) or "memory" (a memory line, Unrecorded because no transcript
-	// record redraws it). They are absent on every other notice, which is an
-	// ordinary one; a consumer never derives them from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status"`
+	// Skills), "memory" (a memory line), "factory_status", or a local "sync",
+	// "moved" or "interrupted" sentence. Unrecorded says no transcript record
+	// redraws it. A consumer never derives these facts from Text.
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sync,moved,interrupted"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a

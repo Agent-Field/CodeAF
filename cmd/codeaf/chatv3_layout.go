@@ -836,7 +836,7 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
 	watch.OnTail = func() { sealTail(seat, drive) }
-	return executor.Gated(seat, driveGate(drive)), machine, watch
+	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch
 }
 
 // sealTail seals what the chat wrote after the turn-end seal (titles, summaries,
@@ -904,6 +904,13 @@ func v3Interrupted(cfg session.Config, notice string) string {
 	if cfg.Interrupted == nil {
 		return notice
 	}
-	lines := append([]string{notice}, cfg.Interrupted.Lines()...)
+	lines := append([]string{notice}, v3InterruptedLines(cfg)...)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func v3InterruptedLines(cfg session.Config) []string {
+	if cfg.Interrupted == nil {
+		return nil
+	}
+	return cfg.Interrupted.Lines()
 }

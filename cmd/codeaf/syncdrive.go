@@ -29,6 +29,16 @@ var syncDrives = &driveBook{}
 type driveBook struct {
 	mu    sync.Mutex
 	drive map[string]*liveDrive
+	// notices is installed by an app assembly before any drive starts. Nil
+	// retains the terminal's desk and its marking first-run behaviour.
+	notices *driveNotices
+}
+
+type driveNotices struct {
+	firstRun func(*syncsetup.Sync)
+	say      func(cell.Cell, string)
+	viewer   func(cell.Cell, syncsetup.Viewer)
+	driving  func(cell.Cell)
 }
 
 // driveOf is the drive side of c, made on first use. It answers nil, and the
@@ -53,7 +63,7 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	// back here) never drives again: the chat opened here needs a drive side of its own, or every
 	// tool call in it would be refused as superseded.
 	delete(b.drive, c.ID)
-	d := newLiveDrive(func() (*syncsetup.Drive, error) { return startDrive(c, engine, report) })
+	d := newLiveDrive(func() (*syncsetup.Drive, error) { return startDriveWith(c, engine, report, b.notices) })
 	if d != nil {
 		if b.drive == nil {
 			b.drive = map[string]*liveDrive{}
@@ -67,6 +77,10 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 // reported; it is returned so a caller can tell a computer that has no identity
 // yet (which /pair will change) from one that cannot sync at all.
 func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*syncsetup.Drive, error) {
+	return startDriveWith(c, engine, report, nil)
+}
+
+func startDriveWith(c cell.Cell, engine cellstore.Engine, report func(error), notices *driveNotices) (*syncsetup.Drive, error) {
 	s, ok, err := syncsetup.Open(home.Dir())
 	if errors.Is(err, syncsetup.ErrNoIdentity) {
 		// Waiting for an identity is not a seal failing: the live drive starts by itself once one
@@ -82,8 +96,17 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*sync
 	if syncsetup.Quiet(home.Dir()) {
 		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
 	}
-	if line, first := s.FirstRun(); first {
-		surfaceNotices.Say(line)
+	say, refuse := surfaceNotices.Say, surfaceNotices.SayHomeOnce
+	var viewer func(syncsetup.Viewer)
+	var driving func()
+	if notices != nil {
+		say = func(line string) { notices.say(c, line) }
+		refuse = say
+		viewer = func(v syncsetup.Viewer) { notices.viewer(c, v) }
+		driving = func() { notices.driving(c) }
+		notices.firstRun(s)
+	} else if line, first := s.FirstRun(); first {
+		say(line)
 	}
 	d, err := s.Drive(context.Background(), engine, c, syncsetup.DriveOptions{
 		DeviceName: deviceName(),
@@ -91,9 +114,11 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*sync
 		// list names the chat by it.
 		Title: func() string { return chatTitle(c) },
 		// A line is said by the surface the moment it happens (tui3/notices.go).
-		OnNotice: surfaceNotices.Say,
+		OnNotice:  say,
+		OnViewer:  viewer,
+		OnDriving: driving,
 	})
-	if sayRefusal(err) {
+	if sayRefusalTo(refuse, err) {
 		return nil, err
 	}
 	report(err)
@@ -151,6 +176,20 @@ func driveGate(d *liveDrive) func() error {
 		return nil
 	}
 	return d.Gate
+}
+
+// driveWorkGate reads the same viewer fact without waiting for captures,
+// startup or relay work. The terminal's ordinary input path stays local.
+func driveWorkGate(d *liveDrive) func() error {
+	if d == nil {
+		return nil
+	}
+	return func() error {
+		if started := d.started(); started != nil {
+			return started.Gate()
+		}
+		return nil
+	}
 }
 
 // driveStore is how the seat's seals reach the drive side; nil seals on the

@@ -146,7 +146,15 @@ func (b *appBackend) heldLive(agent string) (*appAgent, *appLive, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	view, opened, err := b.ensure(a)
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	return b.heldLiveLocked(a)
+}
+
+// heldLiveLocked opens the conversation while its admission and release gate
+// remains held by the caller, including through a work-producing action.
+func (b *appBackend) heldLiveLocked(a *appAgent) (*appAgent, *appLive, error) {
+	view, opened, err := b.ensureLocked(a)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -857,9 +865,22 @@ func (b *appBackend) actOnTask(id, action, verdict, text, clientID string) error
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
 		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case "cancel", "stop", "hold", "typing", "dismiss", "restore":
+	default:
+		if err := b.workAllowed(a); err != nil {
+			return err
+		}
 	}
 	intent := session.AppTaskIntent{ID: local, Action: action, Text: strings.TrimSpace(text), Verb: verdict, ClientID: clientID}
 	switch action {
@@ -1107,8 +1128,17 @@ func (b *appBackend) PromoteQuick(id string) (appwire.Task, error) {
 	if !ok {
 		return appwire.Task{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a quick task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return appwire.Task{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.Task{}, err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return appwire.Task{}, err
 	}
 	before := map[string]bool{}
@@ -1510,6 +1540,11 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, 
 	if err != nil {
 		return appwire.MoveResult{}, err
 	}
+	a.gate.Lock()
+	if err := b.workAllowed(a); err != nil {
+		a.gate.Unlock()
+		return appwire.MoveResult{}, err
+	}
 	live := b.liveOf(a)
 	// A TASK THE REPLY ALREADY PROPOSED IS THE TASK IT MOVES TO. While its card
 	// waits, the reply is parked on the person's answer and reaches no step at
@@ -1527,12 +1562,15 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, 
 		}
 	})
 	if proposed != nil {
+		// ActOnTask takes this same gate for its own admission.
+		a.gate.Unlock()
 		if err := b.ActOnTask(proposed.ID, "start", "", ""); err != nil {
 			return appwire.MoveResult{}, err
 		}
 		proposed.Proposed = false
 		return appwire.MoveResult{Task: proposed}, nil
 	}
+	defer a.gate.Unlock()
 	known := map[string]bool{}
 	running := false
 	b.locked(func() {
