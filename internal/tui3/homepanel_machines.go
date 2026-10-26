@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── CHATS ON OTHER MACHINES, IN THE SESSIONS PANEL ──────────────────────────
@@ -54,9 +56,11 @@ type machineReading struct {
 
 // homeMachinesMsg is one listing, coming BACK from the source.
 type homeMachinesMsg struct {
-	rows    []chatlist.Row
-	version uint64
-	err     error
+	rows      []chatlist.Row
+	version   uint64
+	err       error
+	holdCell  string
+	holdFence uint64
 }
 
 // machinesAskTimeout bounds one ask, so a silent relay is unreachable rather
@@ -76,12 +80,17 @@ func (a *app) askChats() tea.Cmd {
 		return nil
 	}
 	a.machinesAsking = true
-	src := a.machines
+	src, file := a.machines, a.file
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
 		rows, version, err := chatlist.RowsAt(ctx, src)
-		return homeMachinesMsg{rows: rows, version: version, err: err}
+		msg := homeMachinesMsg{rows: rows, version: version, err: err}
+		if local, ok := src.(sendLeaseSource); ok && file != "" {
+			msg.holdCell = filepath.Base(session.DirOf(file))
+			_, msg.holdFence, _ = local.SendLease(msg.holdCell)
+		}
+		return msg
 	}
 }
 
@@ -109,7 +118,7 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 		}
 	}
 	if msg.err == nil {
-		a.rememberSendHolds(msg.rows)
+		a.rememberSendHolds(msg)
 	}
 	before, wasElsewhere := a.heldElsewhere()
 	a.fileMachines(msg)

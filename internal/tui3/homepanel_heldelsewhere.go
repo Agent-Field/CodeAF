@@ -34,7 +34,7 @@ func (a *app) heldElsewhere() (chatlist.Row, bool) {
 	}
 	cell := filepath.Base(session.DirOf(a.file))
 	for _, row := range a.machineRead.rows {
-		if row.Cell == cell && (row.Status != chatlist.Here || a.machineRead.sendHolds[cell].blocked || a.machineRead.sendHolds[cell].fence != row.Fence) {
+		if row.Cell == cell && heldElsewhere(row) {
 			return row, true
 		}
 	}
@@ -100,6 +100,7 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		if local, ok := src.(sendLeaseSource); ok {
 			msg.proof = true
 			msg.leaseCell, msg.fence, _ = local.SendLease(id)
+			msg.reading.holdCell, msg.reading.holdFence = id, msg.fence
 		}
 		remote := id
 		if msg.leaseCell != "" {
@@ -252,12 +253,18 @@ func nonemptyDevice(device string) string {
 	return device
 }
 
-func (a *app) rememberSendHolds(rows []chatlist.Row) {
+func (a *app) rememberSendHolds(msg homeMachinesMsg) {
 	if a.machineRead.sendHolds == nil {
 		a.machineRead.sendHolds = map[string]sendHold{}
 	}
-	for _, row := range rows {
-		if _, known := a.machineRead.sendHolds[row.Cell]; !known && row.Status == chatlist.Here {
+	for _, row := range msg.rows {
+		held, known := a.machineRead.sendHolds[row.Cell]
+		if row.Status != chatlist.Here || held.blocked || held.failed {
+			continue
+		}
+		// The directory can show another local window's fence. Only the
+		// publishing receipt lets this window follow its own drive's new hold.
+		if !known || (msg.holdCell == row.Cell && msg.holdFence != 0 && msg.holdFence == row.Fence) {
 			a.machineRead.sendHolds[row.Cell] = sendHold{fence: row.Fence}
 		}
 	}
