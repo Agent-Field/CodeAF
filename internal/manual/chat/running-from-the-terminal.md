@@ -2004,5 +2004,7 @@ Accepting a proposal keeps this conversation as manager and creates one flat
 crew. All helpers are seated under their approved handles before creation returns.
 Duplicate helper handles are refused before a crew is made. An automatic manager
 handle that clashes with a helper gets a free handle; the manager remains the same
-conversation. Proposed reporting handles are recorded on members. Team groups do not
+conversation. If setup fails after the crew is made, accepting the same proposal
+continues seating its missing helpers and reuses their original starts. Repeating
+a completed acceptance returns the same crew. Proposed reporting handles are recorded on members. Team groups do not
 create nested crews yet.

@@ -94,6 +94,7 @@ type appCrewRun struct {
 	// ready publishes the initial subscription and check to concurrent callers.
 	ready chan struct{}
 
+	formation  sync.Mutex
 	tick       sync.Mutex
 	watcher    *fsnotify.Watcher
 	since      time.Time
@@ -872,7 +873,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		return err
 	}
 	if pending.Role != "" || pending.ReportsTo != "" {
-		_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+		return b.crewLayer().write(func(f *appCrewLayerFile) error {
 			f.member(t.ID, agent.ID).Role = pending.Role
 			delete(f.Pending, appPendingKey(t.ID, handle))
 			b.roleCopyLocked(f, pending.Role)

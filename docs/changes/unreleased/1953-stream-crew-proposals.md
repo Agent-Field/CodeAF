@@ -35,3 +35,9 @@ handles take priority over automatically derived manager or existing-member
 handles. Invalid or duplicate edited helpers are refused before creation. A
 membership handle failure is returned rather than silently accepting a renamed
 helper. This fixes the partial setup and conflicting names reported in Q03.
+
+Acceptance now remembers the approved proposal on its crew. Retrying an interrupted
+setup keeps the same crew and seated members, re-drives claimed starts that never
+seated, and returns the same crew after completion. Reserved manager titles are
+checked before handle assignment. Complete final JSON lines survive stream errors
+even without a trailing newline.

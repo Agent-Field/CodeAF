@@ -115,3 +115,122 @@ func TestAppCrewProposalRejectsDuplicateHelpersBeforeCreating(t *testing.T) {
 		t.Fatalf("crews after rejected proposal = %+v, %v", crews, err)
 	}
 }
+
+func TestAppCrewProposalResumesFailedHelper(t *testing.T) {
+	helperRoot := t.TempDir()
+	backend, rec, manager := proposingBackend(t, &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal})
+	if err := backend.CrewPropose(manager.ID); err != nil {
+		t.Fatal(err)
+	}
+	at := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.mu.Lock()
+	proposal := rec.data[at].(appwire.AskOpened).Ask.Proposal.ID
+	rec.mu.Unlock()
+	var minted atomic.Int64
+	backend.mint = func(string) (string, error) {
+		return filepath.Join(helperRoot, fmt.Sprint(minted.Add(1)), "transcript.jsonl"), nil
+	}
+	var fail atomic.Bool
+	fail.Store(true)
+	backend.open = func(ask appOpenAsk) (*appConn, error) {
+		if fail.Load() && strings.Contains(ask.Transcript, string(filepath.Separator)+"2"+string(filepath.Separator)) {
+			return nil, fmt.Errorf("scripted engine open failure")
+		}
+		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	request := appwire.CrewCreate{From: "proposal", Proposal: proposal, Edits: &appwire.Proposal{Helpers: []appwire.ProposalHelper{{Handle: "scout", Role: "Scout", Brief: "Find the facts"}, {Handle: "scribe", Brief: "Write the report"}}}}
+	if _, err := backend.CrewCreate(request); err == nil {
+		t.Fatal("expected second helper to fail")
+	}
+	crews, err := backend.CrewList(false)
+	if err != nil || len(crews) != 1 {
+		t.Fatalf("partial crews = %+v, %v", crews, err)
+	}
+	partial, err := backend.CrewGet(crews[0].ID)
+	if err != nil || len(partial.Members) != 2 {
+		t.Fatalf("partial crew = %+v, %v", partial, err)
+	}
+	if err := backend.crewLayer().write(func(f *appCrewLayerFile) error {
+		for _, member := range partial.Members {
+			if member.Agent != manager.ID {
+				f.member(partial.ID, member.Agent).Role = ""
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	persisted := &appCrewLayer{path: backend.crewLayer().path}
+	if err := persisted.read(func(f *appCrewLayerFile) {
+		extra := f.Crews[partial.ID]
+		if extra == nil || extra.Proposal == nil || extra.Proposal.ID != proposal {
+			t.Error("proposal binding was not persisted")
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fail.Store(false)
+	crew, err := backend.CrewCreate(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crew.ID != partial.ID || len(crew.Members) != 3 {
+		t.Fatalf("resumed crew = %+v", crew)
+	}
+	for _, member := range crew.Members {
+		if member.Handle == "scout" && member.Role == "" {
+			t.Fatal("retry lost seated helper role")
+		}
+	}
+	again, err := backend.CrewCreate(request)
+	if err != nil || again.ID != crew.ID || len(again.Members) != 3 {
+		t.Fatalf("repeated acceptance = %+v, %v", again, err)
+	}
+	entries, err := teamstore.ReadTraffic(backend.profileDir, crew.ID, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	for _, entry := range entries {
+		if entry.Kind == teamstore.KindStart {
+			starts++
+		}
+	}
+	if starts != 2 {
+		t.Fatalf("starts=%d; want 2", starts)
+	}
+	for _, member := range partial.Members {
+		found := false
+		for _, resumed := range crew.Members {
+			if resumed.Agent == member.Agent {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("retry lost seated member %s", member.Agent)
+		}
+	}
+}
+
+func TestAppCrewProposalCanCorrectNameBeforeCrewExists(t *testing.T) {
+	backend, rec, manager := proposingBackend(t, &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal})
+	if err := backend.newTeamAs(teamstore.NewID(), "Taken", "", nil, "", nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.CrewPropose(manager.ID); err != nil {
+		t.Fatal(err)
+	}
+	at := rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskOpened))
+	rec.mu.Lock()
+	proposal := rec.data[at].(appwire.AskOpened).Ask.Proposal.ID
+	rec.mu.Unlock()
+	request := appwire.CrewCreate{From: "proposal", Proposal: proposal, Edits: &appwire.Proposal{Name: "Taken", Helpers: []appwire.ProposalHelper{}}}
+	if _, err := backend.CrewCreate(request); err == nil {
+		t.Fatal("expected crew name conflict")
+	}
+	request.Edits.Name = "Available"
+	crew, err := backend.CrewCreate(request)
+	if err != nil || crew.Name != "Available" {
+		t.Fatalf("corrected proposal = %+v, %v", crew, err)
+	}
+}

@@ -745,9 +745,20 @@ const appKeptOneAgent = "Kept as one agent"
 // createFromProposal makes the proposed crew: the agent its manager, the
 // agents it named as members, and each helper the manager's start.
 func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, error) {
+	run := b.crews()
+	run.formation.Lock()
+	defer run.formation.Unlock()
+	var id string
+	var completed bool
 	var p appwire.Proposal
 	found := false
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		for crewID, extra := range f.Crews {
+			if extra != nil && extra.Proposal != nil && extra.Proposal.ID == ask.Proposal {
+				p, found, id, completed = *extra.Proposal, true, crewID, extra.ProposalDone
+				return
+			}
+		}
 		if got := f.Proposals[ask.Proposal]; got != nil {
 			p, found = *got, true
 		}
@@ -755,7 +766,11 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	if !found {
 		return appwire.Crew{}, appwire.Errorf(appwire.CodeNotFound, "there is no proposal %s", ask.Proposal)
 	}
-	if e := ask.Edits; e != nil {
+	if completed {
+		b.dropProposal(p.ID, appwire.ProposalCreate)
+		return b.CrewGet(id)
+	}
+	if e := ask.Edits; e != nil && id == "" {
 		if strings.TrimSpace(e.Name) != "" {
 			p.Name = strings.TrimSpace(e.Name)
 		}
@@ -823,11 +838,27 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	if err != nil {
 		return appwire.Crew{}, err
 	}
-	id, err := b.newTeam(p.Name, "", members, manager.Key, hue, nil, p.CapUSDDay)
-	if err != nil {
-		return appwire.Crew{}, err
+	if id == "" {
+		id = teamstore.NewID()
+		if err := b.crewLayer().write(func(f *appCrewLayerFile) error { f.crew(id).Proposal = &p; return nil }); err != nil {
+			return appwire.Crew{}, appEngineError(err)
+		}
 	}
-	b.crewExtraOnCreate(id, p.Agent, p.Goal, p.EndsAt)
+	if team, _, lookupErr := b.crewTeam(id); lookupErr == nil {
+		for _, member := range team.Members {
+			if member.Key == team.Manager {
+				manager = member
+			}
+		}
+	} else {
+		if err := b.newTeamAs(id, p.Name, "", members, manager.Key, hue, nil, p.CapUSDDay); err != nil {
+			if clearErr := b.crewLayer().write(func(f *appCrewLayerFile) error { delete(f.Crews, id); return nil }); clearErr != nil {
+				return appwire.Crew{}, appEngineError(clearErr)
+			}
+			return appwire.Crew{}, err
+		}
+		b.crewExtraOnCreate(id, p.Agent, p.Goal, p.EndsAt)
+	}
 	err = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		for _, h := range p.Helpers {
 			if h.Role == "" && h.Model == "" && h.ReportsTo == "" {
@@ -860,22 +891,56 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	if err != nil {
 		return appwire.Crew{}, appEngineError(err)
 	}
-	run := b.crews()
 	run.locked(func() { run.cursors[id] = appTrafficStart })
+	entries, err := teamstore.ReadTraffic(b.crewProfile(), id, "", 0)
+	if err != nil {
+		return appwire.Crew{}, appEngineError(err)
+	}
 	for _, helper := range p.Helpers {
-		entry := teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: manager.Key, To: helper.Handle, Text: redact.Secrets(helper.Brief), At: b.now()}
-		start, err := teamstore.AppendClaimedStart(b.crewProfile(), id, entry)
-		if err != nil {
-			return appwire.Crew{}, appEngineError(err)
+		var entry teamstore.Entry
+		for _, previous := range entries {
+			if previous.Kind == teamstore.KindStart && previous.FromKey == manager.Key && previous.To == helper.Handle {
+				entry = previous
+				break
+			}
 		}
-		entry.ID = start
+		if entry.ID == "" {
+			entry = teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: manager.Key, To: helper.Handle, Text: redact.Secrets(helper.Brief), At: b.now()}
+			start, err := teamstore.AppendClaimedStart(b.crewProfile(), id, entry)
+			if err != nil {
+				return appwire.Crew{}, appEngineError(err)
+			}
+			entry.ID = start
+		}
 		team, _, err := b.crewTeam(id)
 		if err != nil {
 			return appwire.Crew{}, err
 		}
-		if err := b.crewStart(team, manager, entry); err != nil {
-			return appwire.Crew{}, appEngineError(err)
+		seated := ""
+		for _, member := range team.Members {
+			if member.StartEntry == entry.ID {
+				seated = appMemberAgent(member)
+				break
+			}
 		}
+		if seated != "" {
+			if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+				pending := f.Pending[appPendingKey(id, helper.Handle)]
+				f.member(id, seated).Role = pending.Role
+				b.roleCopyLocked(f, pending.Role)
+				delete(f.Pending, appPendingKey(id, helper.Handle))
+				return nil
+			}); err != nil {
+				return appwire.Crew{}, appEngineError(err)
+			}
+		} else {
+			if err := b.crewStart(team, manager, entry); err != nil {
+				return appwire.Crew{}, appEngineError(err)
+			}
+		}
+	}
+	if err := b.crewLayer().write(func(f *appCrewLayerFile) error { f.crew(id).ProposalDone = true; return nil }); err != nil {
+		return appwire.Crew{}, appEngineError(err)
 	}
 
 	b.crewReceipt(p.Agent, id, p.Name)
