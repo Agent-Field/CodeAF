@@ -38,6 +38,10 @@ func (c *countedVault) Deleted(id string) (bool, error) {
 	c.calls++
 	return c.VaultFile.Deleted(id)
 }
+func (c *countedVault) Removed(prefix string) ([]string, error) {
+	c.calls++
+	return c.VaultFile.Removed(prefix)
+}
 
 // heldKeys is a Keyset that holds its keys in memory.
 type heldKeys map[string]string
