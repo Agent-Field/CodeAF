@@ -12,7 +12,7 @@ package main
 // starts by itself stopped until the person resumes it (appwakes.go).
 //
 // A PROPOSAL is the agent's own: the app asks its model, beside its chat and
-// never in it, for one JSON block naming the crew and the helpers it would
+// never in it, for complete JSON lines naming the crew and the helpers it would
 // start, and the answer becomes an ask — the crew proposal, which is all the
 // person sees of it. Accepting it makes the team with the agent as
 // manager and writes each helper's start on the crew's log as the manager's
@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -448,10 +449,18 @@ func asWire(err error, wire **appwire.Error) bool {
 // appProposalAsk is what the app asks an agent's model for when the person
 // asks for a crew (crews.propose). It is the app's instruction and never the person's
 // words, so it is asked as a side ask ([appSideAsker]) and is never shown.
-const appProposalAsk = "Propose a crew for the work in this conversation: the helpers you would start and manage. " +
-	"Reply with one JSON object and nothing else, shaped " +
-	`{"name": "the crew's name", "goal": "one line", "helpers": [{"handle": "2 to 12 lowercase letters or digits", "role": "a short role name", "brief": "the helper's whole assignment"}]}. ` +
-	"Do not start anyone yet; the person decides."
+var appProposalAsk = fmt.Sprintf("Propose a crew for the work in this conversation: the helpers you would start and manage. "+
+	"Choose the smallest crew that covers the work, with 1–3 helpers by default. "+
+	"Use teams (an org) only when the work splits into separate streams that each need more than one person. "+
+	"Use at most two levels below the manager: manager → team leads → members. "+
+	"Handles are unique short role words, %d–%d characters using only a–z, 0–9 and hyphens, starting with a letter or digit. Never exceed %d characters. Reserve manager, you, system, everyone and room. "+
+	"Reply only with NDJSON, one complete JSON object per line, in this order:\n"+
+	`{"t":"shape","size":3,"teams":1,"why":"why this shape"}`+" (size counts helpers).\n"+
+	`{"t":"name","name":"the crew's name","goal":"one line"}`+"\n"+
+	`{"t":"team","id":"stream-id","name":"team name","lead":"lead-handle"}`+" (only for an org with 2+ teams).\n"+
+	`{"t":"member","handle":"role-word","role":"short role name","brief":"whole assignment","team":"stream-id","reports_to":"manager"}`+"\n"+
+	"Write members top-down, breadth first. reports_to is manager or an earlier team lead's handle; omit team for a single crew. "+
+	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleMax, teamstore.HandleMax)
 
 // appNoProposal is the quiet line a conversation carries when what came back
 // could not be read as a proposal, and appNoAnswer leads the line when nothing
@@ -462,9 +471,11 @@ const (
 	appNoProposalID = "crewprop-none-"
 )
 
-// appSideAsker is the conversation's side ask: one question about the
-// conversation, answered by its own model outside it (internal/session's
-// sideask.go, carried across the wire by internal/remote's sideask.go).
+type appStreamingSideAsker interface {
+	SideAskStream(context.Context, string, func(string)) (string, error)
+}
+
+// appSideAsker asks the conversation's own model without starting a turn.
 type appSideAsker interface {
 	SideAsk(ctx context.Context, question string) (string, error)
 }
@@ -537,11 +548,39 @@ func (b *appBackend) CrewPropose(agent string) error {
 		defer answered()
 		ctx, cancel := context.WithTimeout(context.Background(), session.SideAskPatience)
 		defer cancel()
-		answer, err := asker.SideAsk(ctx, appProposalAsk)
+		var answer string
+		var err error
+		var stream *appProposalStream
+		if streaming, ok := live.conn.Conv.(appStreamingSideAsker); ok {
+			stream = &appProposalStream{emit: func(seq int, line json.RawMessage) {
+				b.emit.Emit(appwire.EventCrewProposalDelta, appwire.CrewProposalDelta{Agent: agent, Seq: seq, Line: line})
+			}}
+			answer, err = streaming.SideAskStream(ctx, appProposalAsk, stream.write)
+			if stream.received == 0 {
+				stream.write(answer)
+			}
+			stream.finish(err == nil)
+		} else {
+			answer, err = asker.SideAsk(ctx, appProposalAsk)
+		}
 		answered()
 		// The conversation was in use for as long as its model was being asked,
 		// so the idle sweep counts from the answer and not from the press.
 		b.locked(func() { live.lastUse = b.now() })
+		if stream != nil && len(stream.proposal.Helpers) > 0 {
+			if err != nil || stream.incomplete {
+				word := "helpers"
+				if len(stream.proposal.Helpers) == 1 {
+					word = "helper"
+				}
+				stream.proposal.Note = fmt.Sprintf("Stopped after %d %s", len(stream.proposal.Helpers), word)
+			}
+			if stream.proposal.Name == "" {
+				stream.proposal.Name = "Proposed crew"
+			}
+			b.openProposal(agent, stream.proposal)
+			return
+		}
 		if err != nil {
 			b.noProposal(agent, appNoAnswer+" · "+appDetail(redact.Secrets(err.Error())))
 			return
@@ -568,6 +607,10 @@ func (b *appBackend) proposalAnswered(agent, answer string) {
 		b.noProposal(agent, appNoProposal)
 		return
 	}
+	b.openProposal(agent, p)
+}
+
+func (b *appBackend) openProposal(agent string, p appwire.Proposal) {
 	p.Agent, p.At = agent, b.now()
 	if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
 		p.ID = f.next("prop")
@@ -599,6 +642,9 @@ func appProposalAskOf(p appwire.Proposal) appwire.Ask {
 		}
 		detail = append(detail, line)
 	}
+	if p.Note != "" {
+		detail = append(detail, p.Note)
+	}
 	return appwire.Ask{
 		ID: appProposalAskPrefix + p.ID, Agent: p.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewProposal,
 		Title: "Bring in helpers: " + p.Name, Detail: strings.Join(detail, "\n"), Reason: p.Goal,
@@ -612,8 +658,17 @@ func appProposalAskOf(p appwire.Proposal) appwire.Ask {
 	}
 }
 
-// appParseProposal reads the one JSON object in an answer.
+// appParseProposal reads NDJSON or an older one-object proposal.
 func appParseProposal(answer string) (appwire.Proposal, bool) {
+	stream := &appProposalStream{}
+	stream.write(answer)
+	stream.finish(true)
+	if len(stream.proposal.Helpers) > 0 {
+		if stream.proposal.Name == "" {
+			stream.proposal.Name = "Proposed crew"
+		}
+		return stream.proposal, true
+	}
 	start, end := strings.Index(answer, "{"), strings.LastIndex(answer, "}")
 	if start < 0 || end <= start {
 		return appwire.Proposal{}, false
@@ -690,9 +745,20 @@ const appKeptOneAgent = "Kept as one agent"
 // createFromProposal makes the proposed crew: the agent its manager, the
 // agents it named as members, and each helper the manager's start.
 func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, error) {
+	run := b.crews()
+	run.formation.Lock()
+	defer run.formation.Unlock()
+	var id string
+	var completed bool
 	var p appwire.Proposal
 	found := false
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		for crewID, extra := range f.Crews {
+			if extra != nil && extra.Proposal != nil && extra.Proposal.ID == ask.Proposal {
+				p, found, id, completed = *extra.Proposal, true, crewID, extra.ProposalDone
+				return
+			}
+		}
 		if got := f.Proposals[ask.Proposal]; got != nil {
 			p, found = *got, true
 		}
@@ -700,7 +766,11 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	if !found {
 		return appwire.Crew{}, appwire.Errorf(appwire.CodeNotFound, "there is no proposal %s", ask.Proposal)
 	}
-	if e := ask.Edits; e != nil {
+	if completed {
+		b.dropProposal(p.ID, appwire.ProposalCreate)
+		return b.CrewGet(id)
+	}
+	if e := ask.Edits; e != nil && id == "" {
 		if strings.TrimSpace(e.Name) != "" {
 			p.Name = strings.TrimSpace(e.Name)
 		}
@@ -723,6 +793,19 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 			p.EndsAt = e.EndsAt
 		}
 	}
+	reserved := map[string]bool{}
+	for _, helper := range p.Helpers {
+		if err := teamstore.ValidHandle(helper.Handle); err != nil {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "invalid helper handle %q: %s", helper.Handle, err)
+		}
+		if reserved[helper.Handle] {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "helper @%s is proposed more than once", helper.Handle)
+		}
+		if strings.TrimSpace(helper.Brief) == "" {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "helper @%s needs an assignment", helper.Handle)
+		}
+		reserved[helper.Handle] = true
+	}
 	manager, err := b.agentMember(p.Agent)
 	if err != nil {
 		return appwire.Crew{}, err
@@ -735,18 +818,50 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 		}
 		members = append(members, m)
 	}
+	reservedTeam := teamstore.Team{}
+	for _, helper := range p.Helpers {
+		reservedTeam.Members = append(reservedTeam.Members, teamstore.Member{Key: "proposal:" + helper.Handle, Handle: helper.Handle})
+	}
+	for i := range members {
+		member := &members[i]
+		member.Handle = teamstore.DeriveHandle(member.Word)
+		if teamstore.ValidHandle(member.Handle) != nil || reserved[member.Handle] {
+			reservedTeam.Name = member.Word
+			member.Handle = teamstore.FallbackHandle(reservedTeam, member.Key)
+		}
+		member.HandleBy = teamstore.HandleByWords
+		reserved[member.Handle] = true
+		reservedTeam.Members = append(reservedTeam.Members, *member)
+	}
+	manager = members[0]
 	hue, err := b.askedHue(p.Hue, "")
 	if err != nil {
 		return appwire.Crew{}, err
 	}
-	id, err := b.newTeam(p.Name, "", members, manager.Key, hue, nil, p.CapUSDDay)
-	if err != nil {
-		return appwire.Crew{}, err
+	if id == "" {
+		id = teamstore.NewID()
+		if err := b.crewLayer().write(func(f *appCrewLayerFile) error { f.crew(id).Proposal = &p; return nil }); err != nil {
+			return appwire.Crew{}, appEngineError(err)
+		}
 	}
-	b.crewExtraOnCreate(id, p.Agent, p.Goal, p.EndsAt)
+	if team, _, lookupErr := b.crewTeam(id); lookupErr == nil {
+		for _, member := range team.Members {
+			if member.Key == team.Manager {
+				manager = member
+			}
+		}
+	} else {
+		if err := b.newTeamAs(id, p.Name, "", members, manager.Key, hue, nil, p.CapUSDDay); err != nil {
+			if clearErr := b.crewLayer().write(func(f *appCrewLayerFile) error { delete(f.Crews, id); return nil }); clearErr != nil {
+				return appwire.Crew{}, appEngineError(clearErr)
+			}
+			return appwire.Crew{}, err
+		}
+		b.crewExtraOnCreate(id, p.Agent, p.Goal, p.EndsAt)
+	}
 	err = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		for _, h := range p.Helpers {
-			if h.Role == "" && h.Model == "" {
+			if h.Role == "" && h.Model == "" && h.ReportsTo == "" {
 				continue
 			}
 			role := ""
@@ -769,24 +884,65 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 			if f.Pending == nil {
 				f.Pending = map[string]appPendingStart{}
 			}
-			f.Pending[appPendingKey(id, h.Handle)] = appPendingStart{Role: role, Model: h.Model}
+			f.Pending[appPendingKey(id, h.Handle)] = appPendingStart{Role: role, Model: h.Model, ReportsTo: h.ReportsTo}
 		}
 		return nil
 	})
 	if err != nil {
 		return appwire.Crew{}, appEngineError(err)
 	}
-	// The watch performs these starts as it performs any manager's: it is told
-	// to read this new crew's log from its first line.
-	run := b.crews()
 	run.locked(func() { run.cursors[id] = appTrafficStart })
-	for _, h := range p.Helpers {
-		if err := teamstore.AppendTraffic(b.crewProfile(), id, teamstore.Entry{
-			Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: manager.Key, To: h.Handle, Text: redact.Secrets(h.Brief),
-		}); err != nil {
-			return appwire.Crew{}, appEngineError(err)
+	entries, err := teamstore.ReadTraffic(b.crewProfile(), id, "", 0)
+	if err != nil {
+		return appwire.Crew{}, appEngineError(err)
+	}
+	for _, helper := range p.Helpers {
+		var entry teamstore.Entry
+		for _, previous := range entries {
+			if previous.Kind == teamstore.KindStart && previous.FromKey == manager.Key && previous.To == helper.Handle {
+				entry = previous
+				break
+			}
+		}
+		if entry.ID == "" {
+			entry = teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: manager.Key, To: helper.Handle, Text: redact.Secrets(helper.Brief), At: b.now()}
+			start, err := teamstore.AppendClaimedStart(b.crewProfile(), id, entry)
+			if err != nil {
+				return appwire.Crew{}, appEngineError(err)
+			}
+			entry.ID = start
+		}
+		team, _, err := b.crewTeam(id)
+		if err != nil {
+			return appwire.Crew{}, err
+		}
+		seated := ""
+		for _, member := range team.Members {
+			if member.StartEntry == entry.ID {
+				seated = appMemberAgent(member)
+				break
+			}
+		}
+		if seated != "" {
+			if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+				pending := f.Pending[appPendingKey(id, helper.Handle)]
+				f.member(id, seated).Role = pending.Role
+				b.roleCopyLocked(f, pending.Role)
+				delete(f.Pending, appPendingKey(id, helper.Handle))
+				return nil
+			}); err != nil {
+				return appwire.Crew{}, appEngineError(err)
+			}
+		} else {
+			if err := b.crewStart(team, manager, entry); err != nil {
+				return appwire.Crew{}, appEngineError(err)
+			}
 		}
 	}
+	if err := b.crewLayer().write(func(f *appCrewLayerFile) error { f.crew(id).ProposalDone = true; return nil }); err != nil {
+		return appwire.Crew{}, appEngineError(err)
+	}
+
 	b.crewReceipt(p.Agent, id, p.Name)
 	b.dropProposal(p.ID, appwire.ProposalCreate)
 	b.crewTick(run, false)

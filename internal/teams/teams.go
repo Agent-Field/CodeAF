@@ -18,10 +18,12 @@ const Version = 2
 // Member is one conversation a team holds, with enough to reopen it when no
 // window has it open.
 type Member struct {
-	Key   string `json:"key"`
-	File  string `json:"file"`
-	Where string `json:"where"`
-	Word  string `json:"word"`
+	// ReportsTo records the proposed reporting handle while the crew stays flat.
+	ReportsTo string `json:"reports_to,omitempty"`
+	Key       string `json:"key"`
+	File      string `json:"file"`
+	Where     string `json:"where"`
+	Word      string `json:"word"`
 	// Handle is the member's short name inside this team (handle.go). It is
 	// empty only while the member has no title to derive one from.
 	Handle string `json:"handle,omitempty"`

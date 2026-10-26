@@ -44,6 +44,9 @@ type appCrewExtra struct {
 	// Start is the request that made this crew with its own manager
 	// (appteamstart.go): what a repeated request is answered from.
 	Start *appStartRecord `json:"start,omitempty"`
+	// Proposal freezes the accepted edits so interrupted setup can resume.
+	Proposal     *appwire.Proposal `json:"proposal,omitempty"`
+	ProposalDone bool              `json:"proposal_done,omitempty"`
 }
 
 // appMemberExtra is what the layer keeps for one member of one crew.
@@ -56,8 +59,9 @@ type appMemberExtra struct {
 // appPendingStart is what a member started from a proposal is to be given
 // once it joins: its role and model.
 type appPendingStart struct {
-	Role  string `json:"role,omitempty"`
-	Model string `json:"model,omitempty"`
+	ReportsTo string `json:"reports_to,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Model     string `json:"model,omitempty"`
 }
 
 // appCrewLayerFile is the whole layer.

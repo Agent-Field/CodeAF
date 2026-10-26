@@ -1,5 +1,7 @@
 package teams
 
+import "errors"
+
 // startclaim.go is who carries out a manager's start line.
 //
 // A START IS CARRIED OUT ONCE, by whichever window claims it first. Every
@@ -35,4 +37,33 @@ func (f *File) ClaimStart(team, entry string) bool {
 		return true
 	}
 	return false
+}
+
+// AppendClaimedStart records a manager's start for the caller to carry out.
+// Holding the lifecycle lock through the claim keeps other windows from
+// carrying out the line before the caller records its member. On error, the
+// traffic line may already have been written.
+func AppendClaimedStart(profileDir, teamID string, e Entry) (string, error) {
+	if e.Kind != KindStart || e.From != FromManager {
+		return "", errors.New("teams: a claimed start must be a manager's start")
+	}
+	if err := ValidHandle(e.To); err != nil {
+		return "", err
+	}
+	var id string
+	err := withLock(profileDir, lockWait, func() error {
+		var err error
+		id, err = appendTrafficIDLocked(profileDir, teamID, e)
+		if err != nil {
+			return err
+		}
+		_, err = updateLocked(profileDir, func(f *File) error {
+			if !f.ClaimStart(teamID, id) {
+				return errors.New("teams: start could not be claimed")
+			}
+			return nil
+		})
+		return err
+	})
+	return id, err
 }

@@ -65,6 +65,7 @@ func liveFactoryProfileDir() string {
 
 // liveRecorder is an HTTP forwarding recorder for /chat/completions.
 type liveRecorder struct {
+	client   *http.Client
 	server   *httptest.Server
 	mu       sync.Mutex
 	calls    int
@@ -77,7 +78,7 @@ type liveRecorder struct {
 
 func newLiveRecorder(t *testing.T, upstream string) *liveRecorder {
 	t.Helper()
-	r := &liveRecorder{requests: map[string]int{}, replies: map[string]int{}, statuses: map[int]int{}}
+	r := &liveRecorder{client: &http.Client{}, requests: map[string]int{}, replies: map[string]int{}, statuses: map[int]int{}}
 	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, "/chat/completions") {
 			http.Error(w, "the live lane forwards chat completions only", http.StatusServiceUnavailable)
@@ -126,7 +127,7 @@ func newLiveRecorder(t *testing.T, upstream string) *liveRecorder {
 			}
 		}
 		out.Header.Set("Accept-Encoding", "identity")
-		resp, err := (&http.Client{}).Do(out)
+		resp, err := r.client.Do(out)
 		if err != nil {
 			r.note("upstream unreachable")
 			http.Error(w, "upstream unreachable", http.StatusBadGateway)

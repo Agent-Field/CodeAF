@@ -94,6 +94,7 @@ type appCrewRun struct {
 	// ready publishes the initial subscription and check to concurrent callers.
 	ready chan struct{}
 
+	formation  sync.Mutex
 	tick       sync.Mutex
 	watcher    *fsnotify.Watcher
 	since      time.Time
@@ -557,6 +558,22 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 		}
 		view.ReportsTo = &appwire.CrewReportsTo{Crew: home.Team, Manager: manager, Distance: home.Distance}
 	}
+	if m.ReportsTo != "" {
+		manager := ""
+		for _, candidate := range t.Members {
+			if (m.ReportsTo == "manager" && candidate.Key == t.Manager) || candidate.Handle == m.ReportsTo {
+				manager = appMemberAgent(candidate)
+				break
+			}
+		}
+		if manager != "" {
+			distance := 1
+			if m.ReportsTo != "manager" {
+				distance = 2
+			}
+			view.ReportsTo = &appwire.CrewReportsTo{Crew: t.ID, Manager: manager, Distance: distance}
+		}
+	}
 	for _, other := range read.file.Teams {
 		if other.ID != t.ID && !other.Closed() && other.Holds(m.Key) {
 			view.AlsoIn = append(view.AlsoIn, other.ID)
@@ -780,7 +797,7 @@ type appPostureDoor interface {
 // crewStart is a manager's start: a new conversation in the crew's folder,
 // added under the manager's handle for it; the conversation reads its brief
 // off the start line itself and takes its first turn.
-func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry) {
+func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry) error {
 	handle := strings.TrimSpace(e.To)
 	var pending appPendingStart
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) { pending = f.Pending[appPendingKey(t.ID, handle)] })
@@ -792,12 +809,12 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model})
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
-		return
+		return err
 	}
 	a, live, err := b.heldLive(agent.ID)
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
-		return
+		return err
 	}
 	// A STARTED MEMBER IS NAMED BY ITS BRIEF, the way a conversation a person
 	// opens is named by its first message: the brief is its first message. The
@@ -830,13 +847,14 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	member, err := b.agentMember(agent.ID)
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
-		return
+		return err
 	}
 	// A MEMBER A MANAGER STARTED HAS NO JOINING MOMENT: its brief is the start
 	// line written before it existed, and a joining moment after that line
 	// would hide the brief from it (the session reads nothing older than a
 	// member's joining). The terminal's start writes none either.
 	member.Handle, member.JoinedAt, member.Started = handle, time.Time{}, true
+	member.ReportsTo = pending.ReportsTo
 	// THE MEMBERSHIP KEEPS THE ID OF THE LINE THAT MADE IT, so its brief is
 	// that line by identity and survives a rename or a handle reused later.
 	// Only a manager's start of this crew is recorded; the terminal's start
@@ -848,25 +866,21 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		if err := f.AddMember(t.ID, member); err != nil {
 			return err
 		}
-		if team, ok := f.Team(t.ID); ok {
-			if got, _ := team.Member(member.Key); got.Handle != handle && teamstore.ValidHandle(handle) == nil {
-				_ = f.SetHandle(t.ID, member.Key, handle)
-			}
-		}
-		return nil
+		return f.SetHandle(t.ID, member.Key, handle)
 	})
 	if err != nil {
 		b.crewNote(manager, "@"+handle+" opened but did not join "+t.Name+": "+err.Error())
-		return
+		return err
 	}
-	if pending.Role != "" {
-		_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+	if pending.Role != "" || pending.ReportsTo != "" {
+		return b.crewLayer().write(func(f *appCrewLayerFile) error {
 			f.member(t.ID, agent.ID).Role = pending.Role
 			delete(f.Pending, appPendingKey(t.ID, handle))
 			b.roleCopyLocked(f, pending.Role)
 			return nil
 		})
 	}
+	return nil
 }
 
 // roleCopyLocked is nothing to do: a role's copies are read from the members

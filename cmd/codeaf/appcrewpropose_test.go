@@ -26,9 +26,11 @@ const helpersProposal = `{"name": "flaky", "goal": "keep CI green", "helpers": [
 // app's proposal question with helpersProposal, and every other request with
 // "done", keeping every request it was sent.
 type helpersModel struct {
-	server   *httptest.Server
-	mu       sync.Mutex
-	requests []recordedRequest
+	server          *httptest.Server
+	mu              sync.Mutex
+	requests        []recordedRequest
+	proposal        string
+	proposalRelease <-chan struct{}
 }
 
 func newHelpersModel(t *testing.T) *helpersModel {
@@ -49,12 +51,35 @@ func newHelpersModel(t *testing.T) *helpersModel {
 		model.mu.Unlock()
 		answer := "done"
 		if envelope.messageContaining("Propose a crew") != "" {
-			answer = helpersProposal
+			model.mu.Lock()
+			answer = model.proposal
+			if answer == "" {
+				answer = helpersProposal
+			}
+			model.mu.Unlock()
 		}
 		content, _ := json.Marshal(answer)
 		if envelope.Stream {
 			writer.Header().Set("Content-Type", "text/event-stream")
-			_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{"role":"assistant","content":` + string(content) + `},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
+			model.mu.Lock()
+			release := model.proposalRelease
+			model.mu.Unlock()
+			waited := false
+			for start := 0; start < len(answer); start += 7 {
+				end := min(start+7, len(answer))
+				chunk, _ := json.Marshal(answer[start:end])
+				_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{"content":` + string(chunk) + `}}]}` + "\n\n"))
+				writer.(http.Flusher).Flush()
+				if !waited && release != nil && envelope.messageContaining("Propose a crew") != "" && strings.Contains(answer[:end], "\n") {
+					select {
+					case <-release:
+					case <-request.Context().Done():
+						return
+					}
+					waited = true
+				}
+			}
+			_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
 			return
 		}
 		_, _ = writer.Write([]byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":` + string(content) + `},"finish_reason":"stop"}]}`))
