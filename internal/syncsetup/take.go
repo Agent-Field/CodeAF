@@ -367,10 +367,12 @@ func workspaceOf(root string) string {
 }
 
 // projectOf is the project folder the chat at root works in, when it works in
-// one of the person's folders and that folder is here.
+// one of the person's folders and that folder is here. A chat that carries
+// only its own folder has no project in a folder that is somebody's elsewhere
+// (cellstore.ForeignFolder): it is never taken in place there.
 func projectOf(root string) (string, bool) {
 	m, err := session.LoadMeta(root)
-	return m.Workspace, err == nil && !m.Owned && dirExists(m.Workspace)
+	return m.Workspace, err == nil && !m.Owned && dirExists(m.Workspace) && !cellstore.ForeignFolder(root, m.Workspace)
 }
 
 func borrowsProject(root string) bool {
