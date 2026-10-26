@@ -30,6 +30,13 @@ func (s *Sync) isRemoved() bool {
 	return err == nil
 }
 
+// Removed follows the current pairing so an open Home can offer moves again
+// after this computer has been added back.
+func (s *Sync) Removed() bool {
+	current, err := s.currentDisplaySync()
+	return err != nil || current.isRemoved()
+}
+
 // rememberRemoved stops this handle immediately and shares that knowledge
 // with other windows and later launches. Failure to save the marker cannot
 // make a live handle resume sending requests.

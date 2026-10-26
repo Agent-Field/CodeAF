@@ -120,7 +120,7 @@ func (s resumeState) away(row chatlist.Row) bool {
 func (a *app) considerResume() {
 	r := &a.leftOff
 	var row *chatlist.Row
-	if a.taker != nil {
+	if a.taker != nil && !a.machineRead.computerRemoved {
 		row = a.resumeState().pick()
 	}
 	if !sameOffer(r.row, row) {
@@ -149,6 +149,9 @@ func sameOffer(x, y *chatlist.Row) bool {
 
 // resumeKeyHandler claims the card's two chords where the card stands.
 func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
+	if a.machineRead.computerRemoved {
+		return nil, false
+	}
 	row := a.leftOff.row
 	if row == nil {
 		return nil, false
@@ -170,6 +173,9 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 }
 
 func drawResumeBand(a *app, ctx bandContext) []string {
+	if a.machineRead.computerRemoved {
+		return nil
+	}
 	row := a.leftOff.row
 	if row == nil {
 		return nil
@@ -240,6 +246,9 @@ func (a *app) continueAfterQuit(err error) tea.Cmd {
 }
 
 func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		return nil
+	}
 	if msg.automatic && msg.generation != a.continueGeneration {
 		return nil
 	}
