@@ -32,6 +32,7 @@ specific action rather than reading either large package from beginning to end.
 | Turns, tools and task execution | [session/session.go](../internal/session/session.go), [session/task_run.go](../internal/session/task_run.go), [exec](../internal/exec/) | [Subharness contract](SUBHARNESS-CONTRACT.md) |
 | Provider calls and model configuration | [provider](../internal/provider/), [config](../internal/config/) | [Usage accounting](model-usage-accounting.md), [limits](LIMITS.md) |
 | Remote sessions and movable chats | [remote](../internal/remote/), [enginehost](../internal/enginehost/), [cell](../internal/cell/) | [Remote architecture](REMOTE.md), [remote testing](testing-anywhere.md) |
+| Relay coordination across computers and workers | [relay server](../internal/relayserve/), [committed directory](../internal/raftdirectory/), [consensus core](../internal/raftcore/), [hosted relay](../relay/hosted/), [cluster command](../cmd/codeaf/cluster.go) | [Run a relay](relay.md), [coordination and workers](../internal/manual/chat/coordination-and-workers.md) |
 
 ## Find the right storage and knowledge owner
 
