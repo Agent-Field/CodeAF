@@ -28,6 +28,7 @@ const (
 // Row is one chat as the list shows it.
 type Row struct {
 	Cell, Title, Device, DeviceID, Parent string
+	Head                                  string
 	Status                                Status
 	DurableAgo                            time.Duration // Listing.Now - DurableAt, directory clock only
 	DurableAt                             int64         // directory ms of the last durable turn: the fact DurableAgo is read from
@@ -115,6 +116,7 @@ func newer(a, b Row) bool {
 func rowOf(id string, c directory.Cell, l directory.Listing, self string, open Opener) Row {
 	return Row{
 		Cell:        id,
+		Head:        c.Head,
 		Title:       nameOr(open, c.Title, untitled),
 		Device:      deviceName(l.Devices, c.Lease.Device, open),
 		DeviceID:    c.Lease.Device,

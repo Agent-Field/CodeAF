@@ -10,5 +10,8 @@ invalidates:
   - "Taking a chat back into a displaced window could report already shared turns as kept edits and add a branch row. Only real local work is kept now, and an empty new chat on another computer no longer shows as an untitled row on Home."
   - "A removed computer kept polling and heartbeating while its window stayed open. Once removal is known, sync now stays stopped across windows and restarts until that computer pairs again; local chats remain usable."
   - "codeaf --version, help and manual requests adopted the former state folder and removed old timers before doing anything else. Those informational requests now change nothing on the machine."
+  - "A failed move could leave a free chat sending on an older copy and lose the captured draft. Sending now requires this window's current hold, every failed move restores the whole draft, and an idle computer can return silently only from the current saved turn."
+  - "Background repository reads could refresh the index and interrupt a move into the project folder. Every automatic Git reading now disables optional index locks."
+  - "A removed computer could keep offering to continue a chat. Home now withdraws the offer, chord and row action while keeping the removal explanation visible."
 ---
 After continue here from a send, the held words are left in the arrived chat's box for the person to send.

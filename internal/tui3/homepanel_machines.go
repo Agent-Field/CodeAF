@@ -2,12 +2,14 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
 // ── CHATS ON OTHER MACHINES, IN THE SESSIONS PANEL ──────────────────────────
@@ -30,7 +32,9 @@ import (
 // last ask failed. A failed ask keeps the rows: the list stays on screen, dim,
 // under `other machines unreachable`.
 type machineReading struct {
-	rows []chatlist.Row
+	sendHolds       map[string]sendHold
+	computerRemoved bool
+	rows            []chatlist.Row
 	// at is when the listing was read. Each row's age is counted from it, so a
 	// row keeps ageing on the clock between two asks instead of standing still.
 	at   time.Time
@@ -95,12 +99,24 @@ func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 // recordMachines also accepts a send's independent read without ending an
 // outstanding listing request that still owes its own answer.
 func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
+	if errors.Is(msg.err, directory.ErrRevoked) {
+		a.removedComputer()
+	}
+	if msg.err == nil && a.machineRead.computerRemoved {
+		if source, ok := a.machines.(interface{ Removed() bool }); ok && !source.Removed() {
+			a.machineRead.computerRemoved = false
+			a.homeAccountNotice = ""
+		}
+	}
+	if msg.err == nil {
+		a.rememberSendHolds(msg.rows)
+	}
 	before, wasElsewhere := a.heldElsewhere()
 	a.fileMachines(msg)
 	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
-		a.note(chatlist.Superseded(row.Device))
+		a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
 	}
-	a.machineRead.down = msg.err != nil
+	a.machineRead.down = msg.err != nil && !a.machineRead.computerRemoved
 	a.machineRead.merge = a.branches.Merge != nil
 	a.machineRead.separate = a.branches.Open != nil
 	a.considerResume()

@@ -42,8 +42,10 @@ type Batcher struct {
 	Info         func() PublishInfo
 	OnFlush      func(Flush)      // telemetry hook
 	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
-	OnError      func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
-	Now          func() time.Time // default time.Now; tests inject a fake clock
+	// OnLost refuses new work before keeping pending work can fail.
+	OnLost  func()
+	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
+	Now     func() time.Time // default time.Now; tests inject a fake clock
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
 	// the heartbeat is sent only while it cannot. Nil beats every tick.
 	Liveness Liveness
@@ -447,6 +449,9 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
 	if errors.Is(err, ErrSuperseded) {
 		b.setStale()
+		if b.OnLost != nil {
+			b.OnLost()
+		}
 		return b.resolve(ctx)
 	}
 	if err != nil {
@@ -489,6 +494,9 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 		return
 	}
 	b.setStale()
+	if b.OnLost != nil {
+		b.OnLost()
+	}
 	_ = b.resolve(ctx)
 }
 

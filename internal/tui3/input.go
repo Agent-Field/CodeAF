@@ -1546,11 +1546,6 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 		if !ownershipRead && a.watchesConversation() {
 			return a.checkBeforeSend()
 		}
-		if ownershipRead {
-			if door, shown := a.heldElsewhereDoor(); shown {
-				return door
-			}
-		}
 	}
 	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
 	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a

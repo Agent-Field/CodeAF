@@ -38,6 +38,8 @@ import (
 // holds edits made here which the takeover set aside before it fetched, with
 // how many turns it holds and the name of this machine.
 type Taken struct {
+	Fence uint64
+	Head  string
 	// AlreadyHere preserves the attached session when this device already holds it.
 	AlreadyHere bool
 	Kept        string
@@ -152,6 +154,10 @@ var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offe
 
 // homeMachineEnter is enter on a chat from another machine.
 func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.Removed, "")
+		return nil
+	}
 	row := *line.remote
 	offer := chatlist.OfferFor(row)
 	run, ok := remoteOffers[offer.Kind]
@@ -196,6 +202,10 @@ func (a *app) askContinue(row chatlist.Row) tea.Cmd {
 }
 
 func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.Removed, "")
+		return nil
+	}
 	if a.sayCellsUnavailable() {
 		return nil
 	}
@@ -251,11 +261,16 @@ type homeTakenMsg struct {
 	taken Taken
 	err   error
 	draft *composerState
+	send  func() tea.Cmd
 }
 
 // takeRemote asks the taker, off the update loop: a takeover fetches and waits
 // on the directory, and a keystroke may not wait on a network.
 func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.Removed, "")
+		return nil
+	}
 	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
 	var draft *composerState
@@ -266,7 +281,7 @@ func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 		draft = &composer
 	}
 	return func() tea.Msg {
-		if conditional, ok := taker.(conditionalTaker); ok && row.DeviceID != "" {
+		if conditional, ok := taker.(conditionalTaker); ok {
 			taken, err := conditional.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
 			return homeTakenMsg{row: row, taken: taken, err: err, draft: draft}
 		}
@@ -278,6 +293,12 @@ func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
 // tookTakeover files the answer. A takeover that failed leaves the row where it
 // was, and one line says why; one that worked opens the chat.
 func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
+	var failure string
+	if msg.err != nil {
+		failure = a.failedTake(msg)
+		a.restoreTakeDraft(msg)
+		a.note(failure)
+	}
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return a.lostRace(msg.row)
@@ -287,8 +308,7 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		a.home.say(directory.ErrConditionalTake.Error(), "")
 	case msg.err != nil:
-		// Say why: the bare sentence left a failing takeover undiagnosable.
-		a.home.say(continueFails+" · "+firstLine(msg.err.Error()), "")
+		a.home.say(failure, "")
 	default:
 		return a.openTaken(msg)
 	}
@@ -334,11 +354,20 @@ func (a *app) rebuildMachines() {
 // the one they are arriving in. A shared window opens in place, and the ride
 // is spent here rather than at the landing.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
+	if a.machineRead.sendHolds == nil {
+		a.machineRead.sendHolds = map[string]sendHold{}
+	}
+	previous := a.machineRead.sendHolds[msg.row.Cell]
+	if previous.failed || (previous.fence != 0 && previous.fence != msg.taken.Fence) {
+		msg.taken.AlreadyHere = false
+	}
+	a.machineRead.sendHolds[msg.row.Cell] = sendHold{fence: msg.taken.Fence}
 	rows := append([]chatlist.Row(nil), a.machineRead.rows...)
 	for i := range rows {
 		if rows[i].Cell == msg.row.Cell {
 			rows[i].Mine, rows[i].Status, rows[i].Released = true, chatlist.Here, false
-			rows[i].Device, rows[i].DeviceID, rows[i].Fence = msg.taken.Device, "", 0
+			rows[i].Device, rows[i].DeviceID, rows[i].Fence = msg.taken.Device, "", msg.taken.Fence
+			rows[i].Head = msg.taken.Head
 		}
 	}
 	a.machineRead.rows = rows
@@ -352,6 +381,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	}
 	line, ok := a.takenLine(msg)
 	if !ok {
+		a.restoreTakeDraft(msg)
 		a.home.say(joinSaid(moved, kept), "")
 		return a.askMachines()
 	}
@@ -373,6 +403,9 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		if a.file == line.row.Transcript {
 			a.offerSetup(msg.taken.Resume)
 		}
+		if msg.send != nil {
+			return msg.send()
+		}
 		return nil
 	}
 	var cmd tea.Cmd
@@ -383,8 +416,12 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	} else {
 		cmd = a.homeOpenLine(line)
 	}
+	if a.conversationOpening {
+		return tea.Batch(cmd, a.askMachines())
+	}
 	switch {
 	case cmd == nil && a.at(pageHome):
+		a.restoreTakeDraft(msg)
 		// THE OPEN REFUSED and home still stands: the sentence has no
 		// conversation to arrive in, so home itself says the takeover
 		// happened, the way it says every row's refusal.
@@ -400,6 +437,17 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		return tea.Batch(cmd, said(), a.askMachines())
 	}
 	return tea.Batch(cmd, a.askMachines())
+}
+
+func (a *app) restoreTakeDraft(msg homeTakenMsg) {
+	if msg.draft == nil {
+		return
+	}
+	if a.composerOwner == mainRecipient {
+		a.putComposer(*msg.draft)
+	} else {
+		a.keepComposer(mainRecipient, *msg.draft)
+	}
 }
 
 // takenLine is the line of the chat a takeover just materialized: the one home

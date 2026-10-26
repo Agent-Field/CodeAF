@@ -132,7 +132,11 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	lease := view.Cell.Lease
 	// Kept turns may name this device before their separate copy exists here.
-	if !branchOnly && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now {
+	known, err := cellstore.KnowsHead(cell.Cell{ID: id, Root: root}, view.Cell.Head)
+	if err != nil {
+		return Continued{}, err
+	}
+	if !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now {
 		opened, err := cell.OpenAt(root, id)
 		if err != nil {
 			return Continued{}, err
@@ -175,10 +179,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, err
 	}
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
-		return Continued{}, err
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
-		return Continued{}, err
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	var filed func()
 	defer func() {
@@ -190,6 +194,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
+	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
+		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+	}
 	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: c.restoreCopies(taken.Cell), Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
@@ -581,7 +588,7 @@ func (s *Sync) Driving(ctx context.Context, c cell.Cell) (*cellsync.Driving, err
 	if err != nil {
 		return nil, err
 	}
-	if v.Cell.Lease.Device == s.Device.ID() {
+	if v.Cell.Lease.Expires > v.Now && v.Cell.Lease.Device == s.Device.ID() {
 		d.Fence, d.Head = v.Cell.Lease.Fence, v.Cell.Head
 	}
 	return d, nil
