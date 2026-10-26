@@ -308,6 +308,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
+		if replayed.intentName != nil {
+			agent.intentName = replayed.intentName
+			agent.titleTried = true
+			agent.titleLiteral = replayed.intentName.Literal
+			if agent.intentName.Pending && agent.intentName.Checked < intentExchangeLimit && agent.intentName.Claim != "" && agent.intentName.Claim == agent.title {
+				agent.titleProvisional = agent.intentName.Claim
+			} else {
+				agent.intentName.Pending = false
+			}
+		}
 		// And it keeps its cache lineage for the same reason, which matters
 		// more: a session resumed tomorrow re-sends the transcript it built
 		// today, and a key that changed with the process would ask the router
@@ -1999,7 +2009,6 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// request somebody is waiting on from one that was already lying on the disk
 	// before this turn existed (takeover.go).
 	a.turnBegan = time.Now()
-	var intentReply chan string
 	if recording {
 		a.recordUserLocked(user)
 		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
@@ -2013,7 +2022,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// A DESKTOP CONVERSATION IS NAMED FROM WHAT THE PERSON OPENED WITH, and
 		// the shell opening is one of the things that decides it too
 		// (intentname.go).
-		intentReply = a.startIntentNameLocked(user)
+		a.startIntentNameLocked(user)
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
@@ -2083,9 +2092,6 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// `done` channel that is already closed, which is a panic. The number
 			// is the whole test (abandon.go).
 			if a.turnSeq != seq {
-				if intentReply != nil {
-					intentReply <- ""
-				}
 				a.mu.Unlock()
 				return
 			}
@@ -2123,19 +2129,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// anything, so a leftover is inert either way; stopping it here is
 			// what keeps the timer's life the turn's life (steer_grace.go).
 			a.stopSteerGraceLocked()
-			if intentReply != nil {
-				opening := ""
-				if completed {
-					for n := len(a.messages) - 1; n >= 0; n-- {
-						message := a.messages[n]
-						if message.Role == "assistant" && len(message.ToolCalls) == 0 {
-							opening = clipRunes(messageContentText(message), intentReplyClip)
-							break
-						}
-					}
-				}
-				intentReply <- opening
-			}
+			a.finishIntentExchangeLocked(user, completed)
 			a.running = false
 			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
 			// as they always have; an interrupted turn that never received

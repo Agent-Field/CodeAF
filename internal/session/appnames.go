@@ -55,11 +55,15 @@ func (a *Agent) RenameByPerson(title string) error {
 		return errors.New("this conversation has closed")
 	}
 	a.title, a.titleProvisional, a.titleLiteral = title, "", true
+	if a.intentName != nil {
+		a.intentName.Pending = false
+		a.intentExchanges = nil
+	}
 	// THE LINE IS WRITTEN UNDER THE LOCK, so a name a model earned in the same
 	// moment cannot follow this one into the file: an answer reaches the journal
 	// only while it still holds the claim this cleared (intentname.go).
 	if a.file != nil {
-		a.file.appendNamedTitle(title, true)
+		a.file.appendNamedTitleWithIntent(title, true, a.intentNameSnapshotLocked())
 	}
 	// Queue under the mutation lock: every standing/turn subscriber sees a
 	// manual rename after any generated event already queued.

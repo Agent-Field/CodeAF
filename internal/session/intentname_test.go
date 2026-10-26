@@ -890,14 +890,14 @@ func TestGenericIntentWaitsForFirstReplyBeforeSecondName(t *testing.T) {
 			if strings.Contains(c.ask(1).request(), strings.Repeat("x", 400)) {
 				t.Fatal("reply context was not clipped to 400 characters")
 			}
-			if !strings.Contains(strings.Join(readLines(t, path), "\n"), `"intentNameAttempts":2`) {
+			if !strings.Contains(strings.Join(readLines(t, path), "\n"), `"checked":1`) {
 				t.Fatal("second naming attempt was not persisted")
 			}
 		})
 	}
 }
 
-func TestAbandonedOpeningDoesNotNameFromALaterReply(t *testing.T) {
+func TestAbandonedOpeningDoesNotSupplyItsUnfinishedReply(t *testing.T) {
 	c := intentSays(2, "Opening conversation")
 	entered, release := make(chan struct{}), make(chan struct{})
 	c.steps[0] = func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -920,8 +920,8 @@ func TestAbandonedOpeningDoesNotNameFromALaterReply(t *testing.T) {
 	close(release)
 	collect(t, events)
 	settleNaming(a)
-	if c.asks() != 1 {
-		t.Fatalf("later reply bought an opening rename: %d calls", c.asks())
+	if c.asks() != 2 || strings.Contains(c.ask(1).request(), "abandoned reply") || !strings.Contains(c.ask(1).request(), "Review Maya's release instead") {
+		t.Fatalf("unfinished reply was named or later exchange was lost: %d calls", c.asks())
 	}
 }
 
@@ -980,7 +980,7 @@ func TestIntentFailedShorterRepairKeepsPlaceholder(t *testing.T) {
 func TestVagueGreetingKeepsPlaceholderAfterOneSecondChance(t *testing.T) {
 	for _, second := range []string{"KEEP_NAME", "General chat"} {
 		t.Run(second, func(t *testing.T) {
-			c := intentFixture(2, func(n int) intentAnswer {
+			c := intentFixture(4, func(n int) intentAnswer {
 				if n == 0 {
 					return intentAnswer{title: "General chat"}
 				}
@@ -1000,9 +1000,11 @@ func TestVagueGreetingKeepsPlaceholderAfterOneSecondChance(t *testing.T) {
 					t.Fatal("namer lacks grounded-name instruction")
 				}
 			}
-			submitMessage(t, a, Submission{Text: "continue"})
-			settleNaming(a)
-			if c.asks() != 2 || a.Title() != "hi" {
+			for n := 0; n < 3; n++ {
+				submitMessage(t, a, Submission{Text: "continue"})
+				settleNaming(a)
+			}
+			if c.asks() != 4 || a.Title() != "hi" {
 				t.Fatalf("later turn renamed greeting: calls=%d, Title()=%q", c.asks(), a.Title())
 			}
 
@@ -1048,5 +1050,192 @@ func TestVagueIntentCanRepairEachNamingOpportunityOnlyOnce(t *testing.T) {
 	settleNaming(a)
 	if c.asks() != 4 {
 		t.Fatalf("third opportunity made calls = %d", c.asks())
+	}
+}
+
+func TestPendingIntentNamesFromLaterConcreteExchange(t *testing.T) {
+	c := intentFixture(2, func(n int) intentAnswer {
+		if n < 2 {
+			return intentAnswer{title: "KEEP_NAME"}
+		}
+		return intentAnswer{title: "Sourdough apple smell"}
+	})
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	if c.asks() != 2 || a.Title() != "hi" {
+		t.Fatalf("first exchange calls=%d title=%q", c.asks(), a.Title())
+	}
+	submitMessage(t, a, Submission{Text: "my sourdough smells like apples"})
+	settleNaming(a)
+	if c.asks() != 3 || a.Title() != "Sourdough apple smell" {
+		t.Fatalf("concrete exchange calls=%d title=%q", c.asks(), a.Title())
+	}
+	body := c.ask(2).request()
+	if !strings.Contains(body, "hi") || !strings.Contains(body, "my sourdough smells like apples") || !strings.Contains(body, "the assistant's own answer") {
+		t.Fatalf("missing opening or current exchange: %s", body)
+	}
+}
+
+func TestPendingIntentBudgetSurvivesRelaunch(t *testing.T) {
+	c := intentFixture(4, func(n int) intentAnswer { return intentAnswer{title: "KEEP_NAME"} })
+	a, path := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true, OneModel: true}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	for _, message := range []string{"hello", "still here", "fourth exchange"} {
+		submitMessage(t, reopened, Submission{Text: message})
+		settleNaming(reopened)
+	}
+	if c.asks() != 4 || reopened.Title() != "hi" {
+		t.Fatalf("bounded resumed calls=%d title=%q, want initial+3 checks", c.asks(), reopened.Title())
+	}
+}
+
+func TestPendingIntentRelaunchCanUseNextConcreteExchange(t *testing.T) {
+	c := intentFixture(2, func(n int) intentAnswer {
+		if n < 2 {
+			return intentAnswer{title: "KEEP_NAME"}
+		}
+		return intentAnswer{title: "Sourdough apple smell"}
+	})
+	a, path := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true, OneModel: true}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	submitMessage(t, reopened, Submission{Text: "my sourdough smells like apples"})
+	settleNaming(reopened)
+	if c.asks() != 3 || reopened.Title() != "Sourdough apple smell" {
+		t.Fatalf("resumed calls=%d title=%q", c.asks(), reopened.Title())
+	}
+}
+
+func TestPersonsSameNameCancelsPendingAcrossRelaunch(t *testing.T) {
+	c := intentSays(2, "KEEP_NAME")
+	a, path := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	if err := a.RenameByPerson("hi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true, OneModel: true}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	submitMessage(t, reopened, Submission{Text: "my sourdough smells like apples"})
+	settleNaming(reopened)
+	if c.asks() != 2 || reopened.Title() != "hi" {
+		t.Fatalf("person's ownership lost on replay: calls=%d title=%q", c.asks(), reopened.Title())
+	}
+}
+
+func TestPendingIntentQueuesExchangesBehindInitialName(t *testing.T) {
+	c := intentFixture(3, func(n int) intentAnswer {
+		if n < 2 {
+			return intentAnswer{title: "KEEP_NAME"}
+		}
+		return intentAnswer{title: "Sourdough apple smell"}
+	})
+	c.gate = make(chan struct{})
+	a, _ := intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	<-c.arrived
+	submitMessage(t, a, Submission{Text: "my sourdough smells like apples"})
+	submitMessage(t, a, Submission{Text: "what should I check first"})
+	close(c.gate)
+	settleNaming(a)
+	if c.asks() != 3 || a.Title() != "Sourdough apple smell" {
+		t.Fatalf("queued calls=%d title=%q", c.asks(), a.Title())
+	}
+	if body := c.ask(2).request(); !strings.Contains(body, "my sourdough smells like apples") || strings.Contains(body, "what should I check first") {
+		t.Fatalf("exchanges named out of order: %s", body)
+	}
+}
+
+func TestPendingDesktopNameStaysInertThroughOtherNamingPolicies(t *testing.T) {
+	for _, deterministic := range []bool{false, true} {
+		t.Run(fmt.Sprint(deterministic), func(t *testing.T) {
+			c := intentSays(2, "KEEP_NAME")
+			a, path := intentAgent(t, c, nil)
+			submitMessage(t, a, Submission{Text: "hi"})
+			settleNaming(a)
+			if err := a.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: deterministic, DeterministicNames: deterministic, OneModel: true}, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			submitMessage(t, reopened, Submission{Text: "my sourdough smells like apples"})
+			settleNaming(reopened)
+			if c.asks() != 2 {
+				t.Fatalf("other naming policy resumed desktop naming: %d calls", c.asks())
+			}
+		})
+	}
+}
+
+func TestExhaustedIntentBudgetStaysClosedAfterRelaunch(t *testing.T) {
+	c := intentSays(4, "KEEP_NAME")
+	a, path := intentAgent(t, c, nil)
+	for _, message := range []string{"hi", "hello", "still here"} {
+		submitMessage(t, a, Submission{Text: message})
+		settleNaming(a)
+	}
+	if c.asks() != 4 {
+		t.Fatalf("calls after three vague exchanges=%d", c.asks())
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, IntentNames: true, OneModel: true}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	submitMessage(t, reopened, Submission{Text: "my sourdough smells like apples"})
+	settleNaming(reopened)
+	if c.asks() != 4 || reopened.Title() != "hi" {
+		t.Fatalf("exhaustion lost on replay: calls=%d title=%q", c.asks(), reopened.Title())
+	}
+}
+
+func TestPersonsRenameDuringConcreteCheckWins(t *testing.T) {
+	var a *Agent
+	c := intentFixture(2, func(n int) intentAnswer {
+		if n == 0 {
+			return intentAnswer{title: "KEEP_NAME"}
+		}
+		if err := a.RenameByPerson("hi"); err != nil {
+			return intentAnswer{err: err}
+		}
+		return intentAnswer{title: "Sourdough apple smell"}
+	})
+	a, _ = intentAgent(t, c, nil)
+	submitMessage(t, a, Submission{Text: "hi"})
+	settleNaming(a)
+	submitMessage(t, a, Submission{Text: "my sourdough smells like apples"})
+	settleNaming(a)
+	if c.asks() != 2 || a.Title() != "hi" {
+		t.Fatalf("person's in-flight rename lost: calls=%d title=%q", c.asks(), a.Title())
 	}
 }

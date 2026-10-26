@@ -237,16 +237,19 @@ Your first message, or attached file names when you type nothing, supplies the
 placeholder while naming runs. The placeholder can use up to 40 characters.
 
 If your first message has fewer than four words, or the model gives a generic
-name, the engine asks once more after the first reply finishes. This second ask
-uses your first message and the opening 400 characters of the reply. It never
-starts another naming opportunity, including after reopening the conversation.
-If the opening and reply give no concrete topic, it keeps the first-message
-placeholder. It never invents a topic or tries on a later turn.
+name, the engine looks for a concrete topic in the first three finished
+exchanges. Each check uses your opening message, that exchange's message and
+the opening 400 characters of its reply. A vague exchange keeps the current
+name. The first concrete topic earns one final model name. If all three stay
+vague, the opening name stays and later messages do not restart naming.
+
+The remaining exchange budget and the final naming decision survive reopening
+the conversation. A name you choose yourself stops this process, even while a
+model answer is on its way.
 
 A model name longer than 24 characters ends at the last whole word that fits,
 without an ellipsis. If no word fits, the model gets one request to answer
-shorter. An unusable shorter answer leaves the current name in place. A name
-you choose yourself always wins, even while a model answer is on its way.
+shorter. An unusable shorter answer leaves the current name in place.
 
 ## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 

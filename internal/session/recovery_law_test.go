@@ -39,6 +39,7 @@ import (
 // drafts, and a deadline in its place would buy the same full-price call over
 // and over for an answer that is not going to parse.
 var countsTries = map[string]string{
+	"nameIntent":                 "one naming draft and one shorter repair carrying the rejected draft, the person's explicit naming limit",
 	"judgeDecomposable":          "one ask and one repair round — the second request carries the first answer",
 	"shapeBrief":                 "one ask and one repair round — the second request carries the first answer",
 	"claimJobLog":                "candidate job ids in an O_EXCL create race — a count of names, not of tries",

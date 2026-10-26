@@ -49,7 +49,7 @@ func (r *liveIntentRecorder) CompleteWithMessages(ctx context.Context, messages 
 	return response, err
 }
 
-func TestLiveIntentNamesEightConversations(t *testing.T) {
+func TestLiveIntentNamesNineConversations(t *testing.T) {
 	if os.Getenv("CODEAF_LIVE_INTENT_NAMES") != "1" {
 		t.Skip("set CODEAF_LIVE_INTENT_NAMES=1 to use the real naming model")
 	}
@@ -59,16 +59,18 @@ func TestLiveIntentNamesEightConversations(t *testing.T) {
 	}
 	const model = "deepseek/deepseek-v4.1-flash"
 	var names []string
-	for _, words := range []string{
-		"Help me plan Mira's retirement party for twenty people at the lake",
-		"Compare train and ferry options for a weekend in Victoria",
-		"Review the wording of our community garden volunteer invitation",
-		"Explain why my sourdough starter smells like apples",
-		"hi",
-		"look at this",
-		"can you help",
-		"continue",
+	for _, exchange := range [][]string{
+		{"Help me plan Mira's retirement party for twenty people at the lake"},
+		{"Compare train and ferry options for a weekend in Victoria"},
+		{"Review the wording of our community garden volunteer invitation"},
+		{"Explain why my sourdough starter smells like apples"},
+		{"hi"},
+		{"look at this"},
+		{"can you help"},
+		{"continue"},
+		{"hi", "my sourdough smells like apples"},
 	} {
+		words := exchange[0]
 		dir := t.TempDir()
 		client, err := provider.NewClient(provider.Config{APIKey: key, BaseURL: "https://openrouter.ai/api/v1", Model: model})
 		if err != nil {
@@ -88,23 +90,25 @@ func TestLiveIntentNamesEightConversations(t *testing.T) {
 		}
 		began := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		events, err := agent.SubmitMessage(ctx, Submission{Text: words})
-		if err != nil {
-			cancel()
-			_ = agent.Close()
-			t.Fatal(err)
-		}
 		var heard []string
 		var reply strings.Builder
-		for event := range events {
-			if event.Kind == EventTitleChanged {
-				heard = append(heard, event.Text)
+		for _, message := range exchange {
+			events, err := agent.SubmitMessage(ctx, Submission{Text: message})
+			if err != nil {
+				cancel()
+				_ = agent.Close()
+				t.Fatal(err)
 			}
-			if event.Kind == EventTextDelta {
-				reply.WriteString(event.Text)
+			for event := range events {
+				if event.Kind == EventTitleChanged {
+					heard = append(heard, event.Text)
+				}
+				if event.Kind == EventTextDelta {
+					reply.WriteString(event.Text)
+				}
 			}
+			agent.waitForTitle()
 		}
-		agent.waitForTitle()
 		elapsed := time.Since(began).Round(time.Millisecond)
 		title := agent.Title()
 		cancel()
@@ -113,6 +117,9 @@ func TestLiveIntentNamesEightConversations(t *testing.T) {
 		}
 		if title == "" || utf8.RuneCountInString(title) > 40 || (title != OpeningName(words, nil) && (utf8.RuneCountInString(title) > 24 || strings.HasSuffix(title, "…"))) {
 			t.Fatalf("model name = %q", title)
+		}
+		if len(exchange) > 1 && title == OpeningName(words, nil) {
+			t.Fatalf("concrete follow-up kept placeholder %q", title)
 		}
 		for _, previous := range names {
 			if title == previous {
@@ -137,7 +144,7 @@ func TestLiveIntentNamesEightConversations(t *testing.T) {
 			Name    string           `json:"name"`
 			Latency string           `json:"latency"`
 			Calls   []liveIntentCall `json:"calls"`
-		}{words, title, elapsed.String(), calls}, "", "  ")
+		}{strings.Join(exchange, " → "), title, elapsed.String(), calls}, "", "  ")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,6 +157,6 @@ func TestLiveIntentNamesEightConversations(t *testing.T) {
 			}
 		}
 		t.Logf("evidence=%s", evidence)
-		t.Logf("opener=%q name=%q elapsed=%s title_events=%q reply_chars=%d", words, title, elapsed, heard, utf8.RuneCountInString(reply.String()))
+		t.Logf("opener=%q name=%q elapsed=%s title_events=%q reply_chars=%d", strings.Join(exchange, " → "), title, elapsed, heard, utf8.RuneCountInString(reply.String()))
 	}
 }

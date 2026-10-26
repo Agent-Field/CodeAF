@@ -1416,7 +1416,8 @@ type Config struct {
 	// IntentNames is the desktop app's naming: the conversation is named from
 	// what the person opened it with — their own words and the names of the
 	// files they attached — by the model they configured for titles, with
-	// one second chance after the reply for vague openers (intentname.go).
+	// one concrete second name within the first three exchanges for vague
+	// openers (intentname.go).
 	// It replaces the rule that named a conversation from its first words.
 	IntentNames bool
 
@@ -4002,6 +4003,9 @@ type Agent struct {
 	// in every one whose name has been claimed by the person.
 	titleProvisional string
 	titleLiteral     bool
+	intentName       *intentNameState
+	intentNaming     bool
+	intentExchanges  []titleIntent
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 
