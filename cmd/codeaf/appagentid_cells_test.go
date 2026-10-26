@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -59,6 +60,20 @@ func TestAppCreateGivesEachCellConversationItsFolderName(t *testing.T) {
 		}
 		if filepath.Base(filepath.Dir(a.transcript)) != cell.StateDir || filepath.Base(session.DirOf(a.transcript)) != id {
 			t.Fatalf("%s is not its own cell folder: %s", id, a.transcript)
+		}
+		// Its media are its own folder's: listed under its id, kept in its folder, never in ".cell".
+		scope, roots, err := backend.mediaScope(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		folder := session.DirOf(a.transcript)
+		if scope != id {
+			t.Fatalf("%s's media are listed under %q", id, scope)
+		}
+		for _, root := range roots[1:] {
+			if !strings.HasPrefix(root, folder+string(filepath.Separator)) || strings.Contains(root, string(filepath.Separator)+cell.StateDir+string(filepath.Separator)+cell.StateDir) {
+				t.Fatalf("%s's media root %s is not under its folder %s", id, root, folder)
+			}
 		}
 	}
 }

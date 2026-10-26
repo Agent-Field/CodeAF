@@ -99,8 +99,12 @@ func appLeaveNow() {
 	os.Exit(1)
 }
 
-// ignoreBrokenPipes makes a write to a pipe whose reader has gone fail with
+// surviveBrokenPipes makes a write to a pipe whose reader has gone fail with
 // EPIPE instead of ending the process. Go ends a program that writes to a
-// broken stdout or stderr unless SIGPIPE is ignored; the app's pipes are both,
-// and the engine outlives the app on every quit (appleave.go).
-func ignoreBrokenPipes() { signal.Ignore(syscall.SIGPIPE) }
+// broken stdout or stderr unless it asked for SIGPIPE; the app's pipes are
+// both, and the engine may outlive the app (a crash, or a quit's wrap-up).
+// It asks with Notify, never Ignore: an ignored SIGPIPE is inherited across
+// exec, so every shell, tool and server this engine starts would lose it
+// (`producer | head` would never end). The channel is never read; Notify
+// drops a signal its channel has no room for.
+func surviveBrokenPipes() { signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE) }

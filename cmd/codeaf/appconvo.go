@@ -1916,7 +1916,7 @@ func appTrimmedStart(path string) int {
 func (b *appBackend) recordAttachedMedia(a *appAgent, attachments []appwire.Attachment) {
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
-	id := filepath.Base(filepath.Dir(a.transcript))
+	id := appAgentID(a.transcript)
 	for _, attach := range attachments {
 		if attach.Kind == appwire.AttachFile {
 			if source := session.RecordAttachment(appMediaIndex(), id, appAttachFull(workspace, attach.Path)); source != "" {

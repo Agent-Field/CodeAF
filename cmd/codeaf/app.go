@@ -120,7 +120,7 @@ func runApp(args []string) error {
 	// wrap-up below, and a crash cannot: either way the pipes to the app close
 	// while the engine still writes things down. A write to a closed stdout or
 	// stderr must fail, not end the process mid-wrap-up (appleave.go).
-	ignoreBrokenPipes()
+	surviveBrokenPipes()
 
 	// THE ONE ROAD OUT (internal/leave): a first SIGTERM, SIGINT or SIGHUP
 	// starts the quit's careful wrap-up, and a second ends the process at once.

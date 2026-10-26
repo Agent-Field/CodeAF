@@ -141,7 +141,7 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 			if a.listening.IsZero() {
 				a.listening = run.since
 			}
-			candidates[id] = session.SessionRow{ID: id, Dir: filepath.Dir(a.transcript), Transcript: a.transcript}
+			candidates[id] = session.SessionRow{ID: id, Dir: session.DirOf(a.transcript), Transcript: a.transcript}
 		}
 	})
 	return candidates
