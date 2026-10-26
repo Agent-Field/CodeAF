@@ -92,9 +92,23 @@ func runOlderChats(ctx context.Context) {
 }
 
 // olderChats is the background copier's view of the older chats: which one is
-// due for a copy, and the copy itself.
+// due for a copy, the copy itself, and the copies that failed this launch.
+//
+// A FAILED COPY WAITS FOR ITS CHAT TO CHANGE. Every round visits every older
+// chat, and a copy seals the chat's whole folder, so an attempt costs as much as
+// the folder is big. A copy that failed was tried again on the next pass for as
+// long as the terminal stayed open. The same chat over the same folder fails the
+// same way; one whose journal has moved on, or a new launch, is tried again, and
+// opening the chat still copies it on demand (movablePlace).
 type olderChats struct {
-	copy func(context.Context, string) (cell.Cell, error)
+	copy   func(context.Context, string) (cell.Cell, error)
+	failed map[string]olderChatStamp
+}
+
+// olderChatStamp is what an original's journal looked like when its copy failed.
+type olderChatStamp struct {
+	size int64
+	mod  time.Time
 }
 
 // visit copies the chat in dir when it is a recent older chat that nothing is
@@ -109,7 +123,12 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 			return cell.Cell{}, session.Meta{}, false
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {
+	journal, err := os.Stat(filepath.Join(dir, "transcript.jsonl"))
+	if err != nil {
+		return cell.Cell{}, session.Meta{}, false
+	}
+	stamp := olderChatStamp{size: journal.Size(), mod: journal.ModTime()}
+	if o.failed[dir] == stamp {
 		return cell.Cell{}, session.Meta{}, false
 	}
 	meta, _ := session.LoadMeta(dir)
@@ -118,8 +137,16 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 	}
 	c, err := o.copy(ctx, dir)
 	if err != nil {
+		// A copy cut short by the terminal closing did not fail.
+		if ctx.Err() == nil {
+			if o.failed == nil {
+				o.failed = map[string]olderChatStamp{}
+			}
+			o.failed[dir] = stamp
+		}
 		return cell.Cell{}, session.Meta{}, false
 	}
+	delete(o.failed, dir)
 	return c, meta, true
 }
 
