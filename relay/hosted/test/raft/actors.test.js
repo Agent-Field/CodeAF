@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import WebSocket from 'ws';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,9 +18,15 @@ const report = { calls: [], requirements: ['R3','R4','R6','R7','R8','R10','R12',
 async function sample() {
   const ids = [process.pid, ...(await readFile(`/proc/${process.pid}/task/${process.pid}/children`, 'utf8')).trim().split(/\s+/).filter(Boolean).map(Number)];
   const processes = [];
-  for (const pid of ids) { try { const s = await readFile(`/proc/${pid}/status`, 'utf8'), stat = (await readFile(`/proc/${pid}/stat`, 'utf8')).split(') ').slice(1).join(') ').split(' '); processes.push({ pid, cpuSeconds: (Number(stat[11]) + Number(stat[12])) / clockTicks, rss: Number(s.match(/^VmRSS:\s+(\d+)/m)?.[1] ?? 0) * 1024 }); } catch {} }
-  const value = { processes, combinedRSS: processes.reduce((n, p) => n + p.rss, 0) }; report.samples.push(value); return value;
+  const coordinator = process.memoryUsage();
+  for (const pid of ids) { try {
+    const s = await readFile(`/proc/${pid}/status`, 'utf8'), stat = (await readFile(`/proc/${pid}/stat`, 'utf8')).split(') ').slice(1).join(') ').split(' ');
+    const kb = field => Number(s.match(new RegExp(`^${field}:\\s+(\\d+)`, 'm'))?.[1] ?? 0) * 1024;
+    processes.push({ pid, command: s.match(/^Name:\s+(\S+)/m)?.[1], cpuSeconds: (Number(stat[11]) + Number(stat[12])) / clockTicks, rss: kb('VmRSS'), anonymous: kb('RssAnon'), file: kb('RssFile') });
+  } catch {} }
+  const value = { coordinator, callCount: report.calls.length, processes, combinedRSS: processes.reduce((n, p) => n + p.rss, 0) }; report.samples.push(value); return value;
 }
+
 class Native {
   constructor(dir) {
     this.child = spawn(join(out, 'native-peer'), ['actors', dir], { stdio: ['pipe','pipe','inherit'], env: { ...process.env, GOMEMLIMIT: '32MiB' } });
@@ -29,9 +36,10 @@ class Native {
   }
   pump() { if (!this.waiter || this.buffer.length < 4) return; const n = this.buffer.readUInt32LE(0); assert(n < 2 * 1024 * 1024); if (this.buffer.length < n + 4) return; const value = JSON.parse(this.buffer.subarray(4, n + 4)); this.buffer = this.buffer.subarray(n + 4); const p = this.waiter; this.waiter = null; clearTimeout(p.timer); p.resolve(value); }
   call(value) {
+    assert(this.child.exitCode === null && this.child.signalCode === null, 'native actor is closed');
     assert(!this.waiter); return new Promise((resolve, reject) => { this.waiter = { resolve, reject, timer: setTimeout(() => reject(new Error('native actor timeout')), 5000) }; const b = Buffer.from(JSON.stringify(value)), h = Buffer.alloc(4); h.writeUInt32LE(b.length); this.child.stdin.write(h); this.child.stdin.write(b); this.pump(); });
   }
-  async close() { this.child.stdin.end(); if (this.child.exitCode === null) await new Promise(resolve => this.child.once('exit', resolve)); }
+  async close() { if (this.child.exitCode !== null || this.child.signalCode !== null) return; this.child.stdin.end(); await new Promise(resolve => this.child.once('exit', resolve)); }
 }
 // This parser only identifies snapshot transport in the test scheduler. Both
 // production receivers use Go's strict protobuf admission, never this parser.
@@ -50,7 +58,8 @@ class Group {
     if(op==='leadership-plan')value={...value,value:JSON.parse(encodeCanonical(value.value))};
     let r; const start = performance.now();
     if (this.wasm.includes(id)) {
-      const res = await this.worker.dispatchFetch(`http://proof/actor/${this.cluster}-${id}/${op}`, { method: 'POST', body: JSON.stringify(value), signal: AbortSignal.timeout(5000) }); assert.equal(res.status, 200, await res.clone().text()); r = await res.json();
+      const res = await this.worker.dispatchFetch(`http://proof/actor/${this.cluster}-${id}/${op}`, { method: 'POST', body: JSON.stringify(value), signal: AbortSignal.timeout(5000) });
+      const body = await res.text(); assert.equal(res.status, 200, body); r = JSON.parse(body);
     } else r = await this.native.call({ op, ...value, id: String(id) });
     report.calls.push({ op, wasm: this.wasm.includes(id), ms: performance.now() - start });
     if (r?.error) throw new Error(`node ${id} ${op}: ${r.error}`);
@@ -191,6 +200,9 @@ test('R3 R4 R6 R7 R8 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and 
     assert.equal((await k.call(4,'leadership-receipt',{header:b64(Buffer.from(encodeCanonical(kh)))})).node,'4');
     report.phases.push('R6 WASI P promoted + elected + current-term read');
     report.phases.push('two wasm + native peers; full joint checkpoint/restart/leave');
+    // Native peers have completed every operation. Reap their host before
+    // expanding the hosted group, while keeping every Wasm member resident.
+    await native.close(); report.nativeClosedAt = report.calls.length;
     // All three anchors plus two other identities share exactly one runtime.
     const h = new Group(worker, native, 'co-resident', [1,2,3]); await h.init(); await h.create(); assert(await h.read(h.leader(), 'all-hosted')); await h.sameRows();
     assert.equal(await g.call(1, 'row'), latest); assert.notEqual(row, latest);
@@ -205,6 +217,7 @@ test('R3 R4 R6 R7 R8 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and 
     report.metrics = metrics; report.heapSamples = heaps;
     report.isolateBytes = Math.max(...heaps.map(h => h.totalSize + (h.embedderHeapUsedSize ?? 0) + (h.backingStorageSize ?? 0))) + metrics.peakMemory;
     assert(report.isolateBytes <= 96 * 1024 * 1024); assert(metrics.peakMemory <= 64 * 1024 * 1024); assert.equal(metrics.active, 6);
+    assert(report.calls.slice(report.nativeClosedAt).every(call => call.wasm));
     report.phases.push('three hosted anchors plus mixed identity in same isolate');
   } finally {
     clearInterval(timer); await closeInspector(); await sample(); if (worker) await worker.dispose(); await native.close();
@@ -219,7 +232,7 @@ test('R3 R4 R6 R7 R8 R10 R13 R14 R27 hosted actors commit, ReadIndex, crash and 
   assert(report.combinedRSS <= 256 * 1024 * 1024, `R27 combined RSS ${report.combinedRSS}`);
 });
 async function inspect(worker) {
-  const base = await worker.getInspectorURL(), listing = await (await fetch(new URL('/json/list', base))).json();
+  const listing = await worker.getInspectorTargets();
   const target = listing.find(x => x.title?.includes('raft-proof')) ?? listing[0];
   const ws = new WebSocket(target.webSocketDebuggerUrl); await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let serial = 0; const waiting = new Map();
