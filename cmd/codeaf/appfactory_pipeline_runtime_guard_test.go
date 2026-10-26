@@ -154,9 +154,12 @@ func TestRuntimeAttestationIsRecordedOnlyForAnAcceptedAttestedFile(t *testing.T)
 		"invalid file":      {attested(editSourceFor(prRepo, "pipeline: [")), nil, false},
 		"lying steps":       {attested(editSourceFor(prRepo, runtimeSourceFile)), oldShape2, false},
 		"runtime, no claim": {editSourceFor(prRepo, runtimeSourceFile), oldShape, false},
-		"missing file": {func() api.PipelineEditSource {
-			v := attested(editSourceFor(prRepo, ""))
-			v.State, v.Problems = api.PipelineEditMissing, nil
+		// No file at all is edited from the shipped defaults, so the claim is
+		// remembered for it too, as the text "".
+		"missing file": {missingAttested(), nil, true},
+		"missing, no claim": {func() api.PipelineEditSource {
+			v := missingAttested()
+			v.RuntimeFields = false
 			return v
 		}(), nil, false},
 	} {
@@ -169,6 +172,46 @@ func TestRuntimeAttestationIsRecordedOnlyForAnAcceptedAttestedFile(t *testing.T)
 				t.Fatalf("recorded %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func missingAttested() api.PipelineEditSource {
+	v := attested(editSourceFor(prRepo, ""))
+	v.State, v.Problems = api.PipelineEditMissing, nil
+	return v
+}
+
+// A RUNTIME FILE CREATED WHERE THERE WAS NONE takes the same seal as an edited
+// one: the factory attested the missing read at this commit, and still serves
+// no file there when the pull request is asked for.
+func TestARuntimeFileCreatedFromNoFileIsSealedByTheMissingRead(t *testing.T) {
+	w := newGuardWire(t)
+	when := appwire.FactoryPipelineEdit{Op: "set_step", Name: "review", When: str("thin")}
+	// Before any read, neither door takes it.
+	_, err := w.previewAt(prBaseSHA, "", when)
+	wantRefusal(t, err, rereadWords)
+	w.remote.serve(t, missingAttested(), nil)
+	if got, err := w.source(); err != nil || !got.Editable || got.State != "missing" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	got, err := w.previewAt(prBaseSHA, "", when)
+	if err != nil || !got.Changed {
+		t.Fatalf("%+v %v", got, err)
+	}
+	w.remote.reset()
+	if _, err := w.open(got.Text, prBaseSHA); err != nil {
+		t.Fatal(err)
+	}
+	if w.remote.count("POST") != 1 || w.remote.count("GET /v1/repos") != 1 {
+		t.Fatalf("the seal must read the source again before the one write: %v", w.remote.log)
+	}
+	// A file appeared at that commit since: the missing read no longer matches.
+	w.remote.serve(t, attested(editSourceFor(prRepo, editTestFile)), nil)
+	w.remote.reset()
+	_, err = w.open(got.Text, prBaseSHA)
+	wantRefusal(t, err, "changed since it was read")
+	if w.remote.count("POST") != 0 {
+		t.Fatalf("%v", w.remote.log)
 	}
 }
 

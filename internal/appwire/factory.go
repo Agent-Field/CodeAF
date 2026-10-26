@@ -130,8 +130,13 @@ type FactoryCapabilities struct {
 	// move_step (feature factory.pipeline_edit_structure). True only for an
 	// engine that implements [FactoryPipelineStructureEditor].
 	PipelineEditStructure bool `json:"pipeline_edit_structure"`
-	MaxConnections        int  `json:"max_connections"`
-	MaxFlows              int  `json:"max_flows"`
+	// PipelineEditRules: this engine carries the file's own rules, ask_first
+	// and never on the source, previews set_list, and edits a missing file
+	// from the shipped defaults (feature factory.pipeline_edit_rules). True
+	// only for an engine that implements [FactoryPipelineRulesEditor].
+	PipelineEditRules bool `json:"pipeline_edit_rules"`
+	MaxConnections    int  `json:"max_connections"`
+	MaxFlows          int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,
