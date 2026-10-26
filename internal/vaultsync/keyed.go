@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/keys"
@@ -195,7 +196,9 @@ func (r *keyedRun) liveKeys() (map[string]string, error) {
 }
 
 // changes is what to apply here: live keys that differ, and keys the vault
-// deleted that this machine still holds and once shared.
+// deleted that this machine still holds and once shared. The tombstones are read
+// once for the whole scope: a restore follows every pull, and asking the vault
+// per known key opened it a thousand times a round for a thousand memories.
 func (r *keyedRun) changes(live map[string]string) (map[string]string, error) {
 	changes := map[string]string{}
 	for name, value := range live {
@@ -203,12 +206,13 @@ func (r *keyedRun) changes(live map[string]string) (map[string]string, error) {
 			changes[name] = value
 		}
 	}
-	for name := range r.digests {
-		gone, err := r.v.Deleted(r.id(name))
-		if err != nil {
-			return nil, err
-		}
-		if gone && r.held[name] != "" {
+	removed, err := r.v.Removed(r.id(""))
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range removed {
+		name := strings.TrimPrefix(id, r.id(""))
+		if _, known := r.digests[name]; known && r.held[name] != "" {
 			changes[name] = ""
 		}
 	}

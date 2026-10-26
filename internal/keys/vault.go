@@ -198,6 +198,24 @@ func (v *Vault) IDs(prefix string) ([]string, error) {
 	return out, nil
 }
 
+// Removed lists the ids that start with prefix and hold a tombstone, in order.
+// It opens the vault once, so a caller asking about many slots does not pay for
+// a whole vault per slot the way a loop over Deleted would.
+func (v *Vault) Removed(prefix string) ([]string, error) {
+	d, err := v.read()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for id, r := range d.Secrets {
+		if r.Deleted && strings.HasPrefix(id, prefix) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // Env returns NAME=value pairs for the project, sorted by name, ready to
 // append to an exec environment.
 func (v *Vault) Env(project string) ([]string, error) {
