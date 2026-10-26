@@ -197,7 +197,10 @@ func TestWatchedFolderVerbsReachTheModel(t *testing.T) {
 	agent := furrowSession(t, t.TempDir())
 	g.started(t)
 	g.release(t)
-	waitForVerbs(t, agent, len(furrow.Names()))
+	answered(t, agent)
+	if got := len(workspaceVerbs(carried(agent))); got != len(furrow.Names()) {
+		t.Fatalf("the belt carries %d workspace verbs; want %d", got, len(furrow.Names()))
+	}
 	for _, tool := range agent.beltTools() {
 		if strings.HasPrefix(tool.Name, "workspace_") && (tool.Description == "" || len(tool.Schema) == 0 || tool.Execute == nil) {
 			t.Errorf("%s reached the belt without a description, schema or hand", tool.Name)
@@ -209,15 +212,14 @@ func TestWatchedFolderVerbsReachTheModel(t *testing.T) {
 	}
 }
 
-// waitForVerbs waits for the background answer to land on the belt.
-func waitForVerbs(t *testing.T, a *Agent, want int) {
+// answered waits for the background question to end, which is also the moment
+// the verbs are armed.
+func answered(t *testing.T, a *Agent) {
 	t.Helper()
-	deadline := time.Now().Add(furrowTestSafety)
-	for len(workspaceVerbs(carried(a))) < want {
-		if time.Now().After(deadline) {
-			t.Fatalf("the belt never carried the workspace verbs; has %v", workspaceVerbs(carried(a)))
-		}
-		time.Sleep(5 * time.Millisecond)
+	select {
+	case <-a.furrow.idle():
+	case <-time.After(furrowTestSafety):
+		t.Fatal("furrow's question never ended")
 	}
 }
 
@@ -228,7 +230,7 @@ func TestFurrowIsAskedOncePerSession(t *testing.T) {
 	agent := furrowSession(t, t.TempDir())
 	g.started(t)
 	g.release(t)
-	waitForVerbs(t, agent, len(furrow.Names()))
+	answered(t, agent)
 	for i := 0; i < 5; i++ {
 		_ = agent.belt()
 	}
@@ -273,5 +275,46 @@ func TestClosingOneSessionDoesNotWaitBehindAnothersFurrow(t *testing.T) {
 		t.Fatal("the first session's furrow was cut by the second session closing")
 	}
 	g.release(t)
-	waitForVerbs(t, first, len(furrow.Names()))
+	answered(t, first)
+}
+
+// The first request of a session waits for a question that is already running,
+// and gets the verbs because of it; with a cap too short to matter it goes out
+// without them and the arming that follows is still correct.
+func TestTheFirstRequestSettlesAQuestionAlreadyRunning(t *testing.T) {
+	g := installGatedFurrow(t)
+	agent := furrowSession(t, t.TempDir())
+	g.started(t)
+	settled := make(chan struct{})
+	go func() {
+		agent.furrow.settle(furrowTestSafety)
+		close(settled)
+	}()
+	g.release(t)
+	select {
+	case <-settled:
+	case <-time.After(furrowTestSafety):
+		t.Fatal("the first request was not released by furrow's answer")
+	}
+	if got := len(workspaceVerbs(carried(agent))); got != len(furrow.Names()) {
+		t.Fatalf("the request that waited carries %d workspace verbs; want %d", got, len(furrow.Names()))
+	}
+}
+
+// The wait is a cap: with furrow parked the request goes out without the verbs,
+// and it only ever waits the first time.
+func TestTheFirstRequestDoesNotWaitForAParkedFurrow(t *testing.T) {
+	g := installGatedFurrow(t)
+	agent := furrowSession(t, t.TempDir())
+	pid := g.started(t)
+	agent.furrow.settle(time.Nanosecond)
+	if !processAlive(pid) {
+		t.Fatal("settling cut furrow")
+	}
+	if verbs := workspaceVerbs(carried(agent)); len(verbs) != 0 {
+		t.Fatalf("the request carried %v with furrow still parked", verbs)
+	}
+	// Spent: a second look returns at once even with a long cap.
+	agent.furrow.settle(furrowTestSafety)
+	g.release(t)
 }

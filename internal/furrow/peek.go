@@ -6,16 +6,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
-// Peek is the last answer about one folder, read from memory and NEVER from a
-// subprocess. It is the door for a caller that must not wait on furrow — the
-// engine building a session for the first frame — and it is the other half of
-// [Detect], which is the door that asks.
+// peek is the last answer about one folder, read from memory and NEVER from a
+// subprocess. It is the other half of [Detect], which is the door that asks.
 //
 // known is false when nobody has asked about this folder yet. fresh is false
 // when the answer is older than [detectTTL]; the stale answer is still returned
-// because it is the best one there is, and a caller that wants a newer one asks
-// [Detect] from somewhere it is allowed to wait.
-func Peek(root string) (presence Presence, fresh, known bool) {
+// because it is the best one there is.
+func peek(root string) (presence Presence, fresh, known bool) {
 	root = absoluteRoot(root)
 	presenceMu.Lock()
 	defer presenceMu.Unlock()
@@ -27,14 +24,15 @@ func Peek(root string) (presence Presence, fresh, known bool) {
 }
 
 // PeekTools is [Tools] for a caller that may not wait: the four verbs when the
-// remembered answer says this folder is attached, and nothing when it says it
-// is not or when there is no answer yet. The absence law holds either way — a
-// verb is only ever handed over on the strength of an answer furrow gave.
-func PeekTools(root string) (tools []bare.Tool, fresh, known bool) {
-	presence, fresh, known := Peek(root)
+// remembered answer says this folder is attached, and nothing when it says it is
+// not or when there is no answer yet. The absence law holds either way — a verb
+// is only ever handed over on the strength of an answer furrow gave. fresh says
+// whether that answer is young enough to rely on; a caller that wants a newer one
+// asks [Detect] from somewhere it is allowed to wait.
+func PeekTools(root string) (tools []bare.Tool, fresh bool) {
+	presence, fresh, known := peek(root)
 	if !known || !presence.Available() {
-		return nil, fresh, known
+		return nil, fresh
 	}
-	workspace := &Workspace{root: absoluteRoot(root), binary: presence.Path}
-	return workspace.Tools(), fresh, known
+	return presence.workspace(root).Tools(), fresh
 }

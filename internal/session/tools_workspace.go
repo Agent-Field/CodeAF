@@ -27,6 +27,8 @@ package session
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/furrow"
@@ -41,66 +43,144 @@ import (
 // `furrow status` — two to three seconds on a folder furrow was never pointed
 // at, because even that answer opens furrow's global store. Nothing the first
 // frame draws depends on these four verbs, so this reads the remembered answer
-// ([furrow.PeekTools]) and, when there is none or it has gone stale, asks
-// furrow from a goroutine this session owns ([Agent.askFurrow]) and hands over
-// whatever it already knew.
+// ([furrow.PeekTools]) and nothing more.
 //
-// THE COST OF THAT IS ONE BELT, AND IT IS BOUNDED. A session that is asked for
-// its belt before the first answer lands has no workspace verbs on it; the
-// belt is rebuilt per turn, so the next one has them if the folder is
-// attached. The refresh starts when the session is built (see [newAgent]), a
-// person has to read the screen and type before the first turn, and an
-// unattached folder — the common case — never changes at all. The model is
-// never told about a verb on a guess: the absence law holds with a cold cache
-// exactly as it does with a missing binary.
+// THE BELT IS BUILT ONCE, so a verb that is not on it now has to come later by
+// the road every other late capability takes: [Agent.armFamily], which appends
+// at the tail. [Agent.askFurrow] asks from the background when the session is
+// built and arms the verbs when furrow says the folder is attached
+// ([Agent.armFurrowVerbs]). An unattached folder — the common case — never
+// changes at all, and the model is never told about a verb on a guess: the
+// absence law holds with a cold cache exactly as it does with a missing binary.
 func (a *Agent) workspaceTools() []bare.Tool {
-	tools, fresh, _ := furrow.PeekTools(a.config.Workspace)
-	if !fresh {
-		a.askFurrow()
-	}
+	tools, _ := furrow.PeekTools(a.config.Workspace)
 	return tools
 }
 
-// askFurrow refreshes the remembered answer about this session's folder from a
-// goroutine, once at a time, and returns at once.
-//
-// THE GOROUTINE IS THE SESSION'S AND CLOSE JOINS IT ([Agent.stopFurrow]).
-// Cancelling the context kills a `furrow status` that is still running, and the
-// join is what keeps a half-finished exec from outliving the state directory a
-// caller is about to remove. A session already closing starts nothing: the
-// flag and the group are touched under one lock, so the join cannot miss a
-// refresh that begins after it.
+// firstBeltWait is how long the first request of a session waits for a furrow
+// question that is already running. It is a courtesy to the doors that send a
+// message the instant the session exists (`--once`, a resumed conversation with a
+// pending prompt, a spawned worker): without it their only request would go out
+// before the answer and carry no workspace verbs, and the arming that follows
+// would cost a second prompt-cache write. It is a cap and not a promise — the
+// request goes out without the verbs when it passes — and it is paid only where a
+// request is made, never while the session is built.
+const firstBeltWait = 200 * time.Millisecond
+
+// askFurrow starts the background question about this session's folder unless
+// the remembered answer is already fresh.
 func (a *Agent) askFurrow() {
-	a.furrowMu.Lock()
-	defer a.furrowMu.Unlock()
-	if a.furrowStopped || a.furrowAsking {
+	if _, fresh := furrow.PeekTools(a.config.Workspace); fresh {
 		return
 	}
-	if a.furrowCtx == nil {
-		a.furrowCtx, a.furrowStop = context.WithCancel(context.Background())
+	a.furrow.ask(a.config.Workspace, a.armFurrowVerbs)
+}
+
+// armFurrowVerbs puts the verbs on the belt once furrow has said the folder is
+// attached. The belt of a model with no tools stays empty, as it was built.
+func (a *Agent) armFurrowVerbs() {
+	if a.config.promptProfile().chat() {
+		return
 	}
-	a.furrowAsking = true
-	a.furrowJobs.Add(1)
-	ctx, root := a.furrowCtx, a.config.Workspace
+	if tools := a.workspaceTools(); len(tools) > 0 {
+		_, _ = a.armFamily(tools)
+	}
+}
+
+// settleFurrow is the first request's one look at the question: if furrow is
+// being asked right now, wait for it for at most [firstBeltWait], and only the
+// first time. Every later request reads the belt as it stands.
+func (a *Agent) settleFurrow() { a.furrow.settle(firstBeltWait) }
+
+// furrowRefresher owns the one background question a session asks furrow, on the
+// terms of [Agent.startLaneBeat]: the goroutine is the session's, Close cancels
+// it and joins it, and a session that has begun closing starts nothing.
+//
+// Its mutex guards the flags and the group together, and IS held across
+// guard.Go and the group's Add — both are non-blocking — so that the join in
+// [furrowRefresher.close] cannot miss a refresh that begins after it. It is taken
+// by nothing else and no caller holds another lock into it, so it is safe to
+// reach from the belt or the request path under any other lock.
+type furrowRefresher struct {
+	mu      sync.Mutex
+	ctx     context.Context
+	cancel  context.CancelFunc
+	jobs    sync.WaitGroup
+	running chan struct{}
+	stopped bool
+	settled bool
+}
+
+func (r *furrowRefresher) ask(root string, landed func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped || r.running != nil {
+		return
+	}
+	if r.ctx == nil {
+		r.ctx, r.cancel = context.WithCancel(context.Background())
+	}
+	running := make(chan struct{})
+	r.running = running
+	r.jobs.Add(1)
+	ctx := r.ctx
 	guard.Go("session/furrow-detect", func() {
-		defer a.furrowJobs.Done()
+		defer r.jobs.Done()
 		defer func() {
-			a.furrowMu.Lock()
-			a.furrowAsking = false
-			a.furrowMu.Unlock()
+			r.mu.Lock()
+			r.running = nil
+			r.mu.Unlock()
+			close(running)
 		}()
 		furrow.Detect(ctx, root)
+		// The verbs are armed BEFORE the question is reported finished, so a
+		// caller released by it sees them on the belt. A cancelled question
+		// answered nothing and arms nothing.
+		if ctx.Err() == nil {
+			landed()
+		}
 	})
 }
 
-// stopFurrow ends the refresh and waits for it, on [Agent.stopLaneBeat]'s terms.
-func (a *Agent) stopFurrow() {
-	a.furrowMu.Lock()
-	a.furrowStopped = true
-	stop := a.furrowStop
-	a.furrowMu.Unlock()
-	if stop != nil {
-		stop()
+// idle is closed when no question is running: the channel of the one in flight,
+// or an already-closed one.
+func (r *furrowRefresher) idle() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.running == nil {
+		done := make(chan struct{})
+		close(done)
+		return done
 	}
-	a.furrowJobs.Wait()
+	return r.running
+}
+
+// settle waits up to max for the question in flight, once per session.
+func (r *furrowRefresher) settle(max time.Duration) {
+	r.mu.Lock()
+	if r.settled || r.running == nil {
+		r.mu.Unlock()
+		return
+	}
+	r.settled = true
+	running := r.running
+	r.mu.Unlock()
+	timer := time.NewTimer(max)
+	defer timer.Stop()
+	select {
+	case <-running:
+	case <-timer.C:
+	}
+}
+
+// close cancels the question and waits for it.
+func (r *furrowRefresher) close() {
+	r.mu.Lock()
+	r.stopped = true
+	cancel := r.cancel
+	r.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	r.jobs.Wait()
 }

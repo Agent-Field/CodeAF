@@ -5,12 +5,21 @@ pr: 1954
 surface: [chat, engine, docs]
 invalidates:
   - Building a session ran furrow to find out whether the folder is watched; it now starts that question in the background and the session never waits for it.
-  - The workspace snapshot, restore, fork and merge tools were decided when the belt was built; they now appear on the first belt built after furrow answers, so a session asked for its belt before then goes without them for that one belt.
+  - The workspace snapshot, restore, fork and merge tools were decided when the belt was built; on a watched folder they now join the end of the belt when furrow answers.
+  - A session closing while another session on the same folder was still waiting for furrow used to wait for it too; it now leaves at once.
 ---
 
 A cold launch used to block the engine hello behind `furrow --version` and
 `furrow status`, two to three seconds on a folder furrow was never pointed at.
-Each session now asks furrow from a goroutine it owns and joins at close, and the
-belt reads the remembered answer. A cold engine on a real profile draws its first
-frame in about 0.45 s instead of 3.87 s. An unwatched folder still gets none of
-the four tools, and a cancelled question is never remembered as an answer.
+Each session now asks furrow from a goroutine it owns and joins at close. A cold
+engine on a real profile draws its first frame in about 0.5 s instead of 3.9 s.
+
+An unwatched folder still gets none of the four tools. On a watched folder they
+are appended to the end of the tool list when furrow answers, like any other
+late capability, so the prompt cache is invalidated once at the tail and never
+moves anything ahead of it. The first request of a session waits up to 200 ms for
+a question that is already running, so a message sent the instant the session
+exists usually carries the tools and pays no invalidation. Tools never leave the
+list mid-conversation: a folder that stops being watched later keeps them, and
+they answer with furrow's own refusal. A furrow that fails or hangs is
+remembered as not attached for thirty seconds rather than asked again.

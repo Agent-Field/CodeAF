@@ -2513,7 +2513,7 @@ func (a *Agent) Close() error {
 	// its fetch and join any cache write before the state directory can be
 	// handed back to the caller.
 	a.stopLaneBeat()
-	a.stopFurrow()
+	a.furrow.close()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
 	// the only thing that can reach it. A RUN'S LIFE IS THE CONVERSATION'S. Until

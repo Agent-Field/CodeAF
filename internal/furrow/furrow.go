@@ -65,7 +65,11 @@ const (
 // mount must cost a session a bounded pause rather than a hang; a detection
 // that times out reads as "not attached", which is the answer that leaves the
 // belt honest.
-const detectTimeout = 5 * time.Second
+//
+// It is a variable for the reason [embedded] is: a test has to be able to say
+// "a furrow that hangs" without waiting out the real bound. Nothing in the
+// product reassigns it.
+var detectTimeout = 5 * time.Second
 
 // readTimeout bounds the read-only questions — the timeline, the fork list, a
 // restore preview. They touch the store and nothing else, so they are quick,
@@ -165,24 +169,13 @@ func lockAttach(root string) func() {
 	return lock.Unlock
 }
 
-// detectLocks is attachLocks for the question instead of the act: one lock per
-// root, never removed, for the reason attachLocks gives.
+// detecting holds the questions that are being asked right now, one per root.
+// A caller that finds its root here waits for that question instead of asking
+// its own, and can leave the wait when its own context ends ([Detect]).
 var (
-	detectMu    sync.Mutex
-	detectLocks = map[string]*sync.Mutex{}
+	detectingMu sync.Mutex
+	detecting   = map[string]chan struct{}{}
 )
-
-func lockDetect(root string) func() {
-	detectMu.Lock()
-	lock, ok := detectLocks[root]
-	if !ok {
-		lock = &sync.Mutex{}
-		detectLocks[root] = lock
-	}
-	detectMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
-}
 
 // Forget drops the cached answer for every workspace. It exists for tests,
 // which change what is on PATH between cases and would otherwise read a
@@ -210,42 +203,67 @@ func Forget() {
 // CAN act on are carried in the fields instead.
 func Detect(ctx context.Context, root string) Presence {
 	root = absoluteRoot(root)
+	for {
+		if presence, ok := fresh(root); ok {
+			return presence
+		}
+		// ONE ASKER PER FOLDER AT A TIME, AND A WAITER CAN LEAVE. Every session on
+		// a workspace starts its own background question, so a window that opens
+		// several chats at once would otherwise run the same two execs once per
+		// chat. The later callers wait for the first one's answer, but on their
+		// OWN context: a session closing, or a ground-ladder rung whose deadline
+		// passed, stops waiting at once and leaves the first caller's furrow
+		// running for whoever still wants it. (A plain mutex here made a Close
+		// wait out another session's five-second bound.)
+		detectingMu.Lock()
+		if running, ok := detecting[root]; ok {
+			detectingMu.Unlock()
+			select {
+			case <-running:
+				// The asker finished. Its answer is in the cache, or it was
+				// cut short and wrote nothing, in which case this caller asks.
+				continue
+			case <-ctx.Done():
+				return Presence{}
+			}
+		}
+		running := make(chan struct{})
+		detecting[root] = running
+		detectingMu.Unlock()
+		defer func() {
+			detectingMu.Lock()
+			delete(detecting, root)
+			detectingMu.Unlock()
+			close(running)
+		}()
 
-	presenceMu.Lock()
-	if cached, ok := presenceCache[root]; ok && time.Since(cached.asked) < detectTTL {
-		presenceMu.Unlock()
-		return cached.presence
-	}
-	presenceMu.Unlock()
+		presence := detect(ctx, root)
 
-	// ONE ASKER PER FOLDER AT A TIME. Every session on a workspace starts its
-	// own background refresh ([Peek] is the door that reads without asking), so
-	// a window that opens several chats at once would otherwise run the same two
-	// execs once per chat. The second caller waits behind the first and reads
-	// the answer the first left in the cache.
-	release := lockDetect(root)
-	defer release()
-	presenceMu.Lock()
-	if cached, ok := presenceCache[root]; ok && time.Since(cached.asked) < detectTTL {
-		presenceMu.Unlock()
-		return cached.presence
-	}
-	presenceMu.Unlock()
-
-	presence := detect(ctx, root)
-
-	// AN ANSWER A CANCELLATION WROTE IS NOT FURROW'S. A caller that was cut
-	// mid-question (a session closing while its background refresh was still
-	// in `furrow status`) got "not attached" because the exec was killed, not
-	// because the folder is unwatched, and leaving that in the cache would tell
-	// every other session on the folder the same untruth for half a minute.
-	if ctx.Err() != nil {
+		// AN ANSWER A CANCELLATION WROTE IS NOT FURROW'S. A caller that was cut
+		// mid-question (a session closing while its background refresh was
+		// still in `furrow status`) got "not attached" because the exec was
+		// killed, not because the folder is unwatched, and leaving that in the
+		// cache would tell every other session on the folder the same untruth.
+		// A furrow that FAILED or TIMED OUT on its own is different: that is an
+		// answer, it is cached like any other, and it is what keeps a hanging
+		// furrow to two launches per [detectTTL] however many belts are built.
+		if ctx.Err() == nil {
+			presenceMu.Lock()
+			presenceCache[root] = cachedPresence{presence: presence, asked: time.Now()}
+			presenceMu.Unlock()
+		}
 		return presence
 	}
+}
+
+// fresh is the cached answer for a root when it is still inside [detectTTL].
+func fresh(root string) (Presence, bool) {
 	presenceMu.Lock()
-	presenceCache[root] = cachedPresence{presence: presence, asked: time.Now()}
-	presenceMu.Unlock()
-	return presence
+	defer presenceMu.Unlock()
+	if cached, ok := presenceCache[root]; ok && time.Since(cached.asked) < detectTTL {
+		return cached.presence, true
+	}
+	return Presence{}, false
 }
 
 func detect(ctx context.Context, root string) Presence {
@@ -370,7 +388,14 @@ func Open(ctx context.Context, root string) *Workspace {
 	if !presence.Available() {
 		return nil
 	}
-	return &Workspace{root: absoluteRoot(root), binary: presence.Path}
+	return presence.workspace(root)
+}
+
+// workspace is the one place a Workspace is made from an answer, shared by
+// [Open] and [PeekTools] so the two cannot disagree about what holding one
+// claims.
+func (p Presence) workspace(root string) *Workspace {
+	return &Workspace{root: absoluteRoot(root), binary: p.Path}
 }
 
 // wholeWorkspaceTimeout bounds the two calls whose cost is the person's project

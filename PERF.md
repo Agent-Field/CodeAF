@@ -83,12 +83,13 @@ migration flag skips that check. `BenchmarkOpenSettledSessions` measures the
 whole public open/close operation. `TestSettledStoreTerminalStartup` separates
 fixture construction from the first interactive frame of the running terminal.
 
-Furrow detection stays off the hello path. The belt reads the remembered
-answer (`furrow.PeekTools`) and the session refreshes it from a goroutine joined
-at close. Measured on Spark linux-arm64 with a cold engine per workspace and the
-owner profile, first frame fell from 3.87 s to about 0.45 s. The gate is
+Furrow detection stays off the hello path. The belt reads the remembered answer
+(`furrow.PeekTools`); the session asks furrow from a goroutine joined at close
+and appends the four workspace tools through `armFamily` if the folder is
+watched. Measured on Spark linux-arm64 with a cold engine per workspace and the
+owner profile, first frame fell from 3.87 s to about 0.5 s. The gate is
 `TestBuildingASessionDoesNotWaitForFurrow`, which holds `furrow status` open and
-counts launches instead of timing them.
+asserts the build came back while that process was still alive; no clock decides it.
 
 ## What the gates check
 
