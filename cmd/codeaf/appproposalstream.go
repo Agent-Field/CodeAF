@@ -32,12 +32,10 @@ func (s *appProposalStream) write(chunk string) {
 }
 
 func (s *appProposalStream) finish(clean bool) {
-	if clean {
-		before := s.seq
-		s.line(s.pending)
-		s.incomplete = strings.HasPrefix(strings.TrimSpace(s.pending), "{") && s.seq == before
-	}
-	s.incomplete = s.incomplete || (!clean && strings.TrimSpace(s.pending) != "") || (s.size > 0 && len(s.proposal.Helpers) < s.size)
+	before := s.seq
+	s.line(s.pending)
+	s.incomplete = strings.HasPrefix(strings.TrimSpace(s.pending), "{") && s.seq == before
+	s.incomplete = s.incomplete || !clean || (s.size > 0 && len(s.proposal.Helpers) < s.size)
 	s.pending = ""
 }
 
