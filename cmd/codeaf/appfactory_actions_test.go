@@ -79,6 +79,7 @@ func startActionFactory(t *testing.T) *actionFactory {
 			return factory.Snapshot{Items: items}, err
 		},
 		Launch: func(id int) error { f.launched.Add(1); return doors.Launch(id) },
+		Hold:   doors.Hold,
 		Stop:   doors.Stop, Answer: doors.Answer, SignOff: doors.SignOff,
 		SendBack: func(id int, words string) error { f.sentBack.Store(words); return nil },
 		New: func(repo, words string) (int, error) {
@@ -399,6 +400,24 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		alice.act(t, "factory.job_stop", n, nil)
 		f.clock.advance(factory.ApprovalUndo)
 		alice.w.mustFail("factory.job_undo", alice.params(t, n, nil), appwire.CodeConflict)
+	})
+
+	t.Run("hold, resume and start now", func(t *testing.T) {
+		queued := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "alice"})
+		bob.refused(t, "factory.job_hold", bob.params(t, queued.ID, nil), appwire.CodeForbidden)
+		held := alice.act(t, "factory.job_hold", queued.ID, nil)
+		if held.Action != appwire.JobActHold || held.Current == nil || !held.Current.Held || !held.Current.Can.Resume {
+			t.Fatalf("hold: %+v", held)
+		}
+		resumed := alice.act(t, "factory.job_resume", queued.ID, nil)
+		if resumed.Current == nil || resumed.Current.Held || !resumed.Current.Can.Hold || !resumed.Current.Can.StartNow {
+			t.Fatalf("resume: %+v", resumed.Current)
+		}
+		launched := f.launched.Load()
+		now := alice.act(t, "factory.job_start", queued.ID, nil)
+		if f.launched.Load() != launched || now.Current == nil || !now.Current.OverLimit || now.Current.Can.StartNow {
+			t.Fatalf("start now on a queued job: launched %d more, %+v", f.launched.Load()-launched, now.Current)
+		}
 	})
 
 	t.Run("approval waits its Undo window and then acts once", func(t *testing.T) {

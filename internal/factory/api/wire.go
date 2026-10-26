@@ -302,6 +302,11 @@ type Job struct {
 	Effort         string              `json:"effort,omitempty"`
 	FollowUp       *factory.PRFollowUp `json:"follow_up,omitempty"`
 	SetupHeld      bool                `json:"setup_held,omitempty"`
+	// Held is a queued job its person keeps from starting: no worker takes it
+	// until it is resumed. OverLimit is a queued job its person said to start
+	// now, which may take one slot above its computer's Jobs at once.
+	Held      bool `json:"held,omitempty"`
+	OverLimit bool `json:"over_limit,omitempty"`
 	// RepoOff says the job's repository is switched off: the factory does not
 	// work on it, so the job is not on the queue, and its run, start, rerun,
 	// publish and merge are absent from can and controls. Only the job's own
@@ -506,6 +511,12 @@ type Can struct {
 	// the job was dropped and the caller may act on it. A factory from before
 	// the route never sends it, which reads as false.
 	Restore bool `json:"restore"`
+	// Hold is POST /v1/jobs/{id}/pause on a queued job for this caller now:
+	// the job waits in the queue and its person may keep it from starting.
+	// Resume is POST /v1/jobs/{id}/resume on a job held that way. A factory
+	// from before Hold never sends either, which reads as false.
+	Hold   bool `json:"hold"`
+	Resume bool `json:"resume"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.

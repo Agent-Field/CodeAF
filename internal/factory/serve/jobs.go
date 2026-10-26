@@ -76,8 +76,13 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 // launchJob is the start's one write and its launch, for a job startRefused
 // has passed. also is what else the start changes on the job in that same
 // write (run_again's clearing of the run before it), nil for nothing.
+//
+// START NOW ON A JOB ALREADY IN THE QUEUE IS NOT A SECOND LAUNCH: it lets the
+// job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),
+// lifts a hold in the same write, and launches nothing. A start from Backlog
+// queues the job at the top and waits for a slot like any other.
 func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) {
-	mark := false
+	mark, queued := false, false
 	if st := h.config.Store; st != nil {
 		cur, err := st.Get(it.ID)
 		if h.failed(w, err) {
@@ -87,15 +92,26 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return
 		}
-		mark = strings.HasSuffix(r.URL.Path, "/start_now") && !cur.Marked
+		now := strings.HasSuffix(r.URL.Path, "/start_now")
+		mark = now && !cur.Marked
+		queued = now && cur.State == factory.StateQueued
 		budget, err := h.startBudget(r, cur)
 		if h.failed(w, err) {
 			return
 		}
-		if mark || budget > 0 || also != nil || (cur.Starter == "" && who != "") {
+		if mark || queued || budget > 0 || also != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
+				}
+				if queued {
+					if cur.State != factory.StateQueued {
+						return fmt.Errorf("%s is no longer queued", cur.Ref())
+					}
+					cur.OverLimit = true
+					if cur.Stream != nil {
+						cur.Stream.Paused = false
+					}
 				}
 				cur.Marked = cur.Marked || mark
 				if cur.Starter == "" {
@@ -111,6 +127,10 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			}
 		}
 	}
+	if queued {
+		h.finish(w, h.recordAction(r, it, record.Started, startedOverLimit, func() error { return nil }))
+		return
+	}
 	h.finish(w, h.recordAction(r, it, record.Started, "", func() error {
 		err := h.seam.Launch(it.ID)
 		if err != nil && mark {
@@ -119,6 +139,10 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		return err
 	}))
 }
+
+// startedOverLimit is the detail of a Start now that let a queued job take a
+// slot above Jobs at once.
+const startedOverLimit = "above Jobs at once"
 
 // needsCheckout answers 409 needs_checkout and true when repo has no
 // checkout on this factory's machine and cannot be cloned there

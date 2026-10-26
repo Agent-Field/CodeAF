@@ -79,7 +79,7 @@ func onlyOn(s factory.Snapshot, sw factory.RepoSwitch) factory.Snapshot {
 // capability that cannot work is absent, not broken.
 func offJob(j *api.Job) {
 	j.RepoOff = true
-	j.Can.Run, j.Can.StartNow, j.Can.RunAgain = false, false, false
+	j.Can.Run, j.Can.StartNow, j.Can.RunAgain, j.Can.Resume = false, false, false, false
 	j.Can.Approve, j.Can.RetryPublish, j.Can.Merge = false, false, false
 	j.Controls.RerunStep, j.Controls.Sync = false, false
 }

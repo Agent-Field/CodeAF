@@ -18,21 +18,34 @@ A machine with no factory set up has none of this: the chat's factory tools are 
 
 ### Jobs at once and queued work
 
-A newly attached computer defaults to **15 jobs at once**. Set a different limit
-in **Settings → Factory concurrency → Jobs at once**, then press **Set slots**.
-The same owner-only control remains in Settings → Factory → Your machines.
-The current supported range is 1–100. An existing saved limit is kept on restart
-and upgrade, including a previously chosen limit of two; change it in Settings
-to admit more jobs. A change applies within about five seconds without restarting.
+**Jobs at once** is the one number that limits how many jobs a computer runs
+together. A newly attached computer defaults to **15 jobs at once**. Change it
+in **Settings → Factory → Your computers**, with the stepper beside each of
+your computers; it is owner-only. The supported range is 1–100. An existing
+saved limit is kept on restart and upgrade, including a previously chosen limit
+of two. A change applies within about five seconds without restarting.
 Lowering the limit lets admitted jobs finish and withholds new jobs until there
-is room. Raising it admits queued work up to the new limit.
+is room. Raising it admits queued work up to the new limit. There are no CPU or
+memory limits per job: the computer's own system shares them.
 
-When the owner's eligible computers are full, queued jobs say **Waiting for
-capacity** and show the number of occupied execution slots and the configured
-limit. The notice points to Settings → Factory concurrency and offers
-**Configure concurrency**. An offline or unknown runner is reported as waiting
-for a runner, without inventing a full-capacity count. The manager calls these
-execution slots, never benches, and gives the same Settings location.
+Jobs over the limit wait in the queue, oldest first. When the owner's eligible
+computers are full, queued jobs say **Waiting for capacity** and show the
+number of occupied execution slots and the configured limit. The notice points
+to Settings → Factory → Your computers and offers **Change jobs at once**. An
+offline or unknown runner is reported as waiting for a runner, without
+inventing a full-capacity count. The manager calls these execution slots, never
+benches, and gives the same Settings location.
+
+Two overrides act on one queued job, and only its person may use them:
+
+- **Start now** lets that job take one slot above Jobs at once, this one time,
+  so it starts without waiting for another job to finish. It reads **Starting
+  now** until a computer takes it. A job that goes back to the queue later
+  waits like any other. Start on a Backlog job only queues it at the top.
+- **Hold** keeps a queued job from starting; it reads **Held**. **Resume** puts
+  it back in the queue, and Start now on a held job lifts the hold and starts it.
+
+Both are recorded in the factory's activity with who made them.
 
 Idle Follow PR monitoring uses the factory's background GitHub poll, with no
 execution slot or model turn. New actionable review feedback, failing CI or a

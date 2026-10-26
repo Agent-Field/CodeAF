@@ -217,12 +217,22 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 // named "self" can ever collide with PUT /v1/runners/{runner}) a runner's own credential with the capacity its owner
 // saved. The worker polls it to follow a raise or a lowering without a
 // restart. Person tokens never reach it (workerPath), and the body names
-// nothing but this machine's own number.
+// nothing but this machine's own number and how many jobs started now may
+// run above it.
 func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	h.write(w, http.StatusOK, api.RunnerSelf{Slots: requestWorker(r).Slots})
+	self := requestWorker(r)
+	over := 0
+	if h.workers != nil && h.workers.desk != nil {
+		n, err := h.workers.desk.OverLimit(self)
+		if h.failed(w, err) {
+			return
+		}
+		over = n
+	}
+	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over})
 }
 
 // saveRegistry persists only credential hashes and public runner facts under the service lock.

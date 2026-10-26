@@ -192,7 +192,9 @@ func (d *Desk) Release(id int, handle string) error {
 }
 
 // Pull takes the oldest eligible queued item. One worker holds one job; an
-// opt-in applies only to unassigned work in that exact repository.
+// opt-in applies only to unassigned work in that exact repository. A computer
+// already running its Jobs at once takes only a job a person said to start now
+// ([factory.Item.OverLimit]), and never any other.
 func (d *Desk) Pull(worker Worker) (Lease, error) {
 	worker.Handle = factory.NormalizeHandle(worker.Handle)
 	worker.Machine = strings.TrimSpace(worker.Machine)
@@ -210,9 +212,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 				return false, ErrWorkerBusy
 			}
 		}
-		if worker.Slots > 0 && occupied >= worker.Slots {
-			return false, ErrWorkerBusy
-		}
+		full := worker.Slots > 0 && occupied >= worker.Slots
 		items, err := d.store.List()
 		if err != nil {
 			return false, err
@@ -229,7 +229,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			return items[i].Created.Before(items[j].Created)
 		})
 		for _, it := range items {
-			if !eligible(it, worker) || find(doc, it.ID) != nil {
+			if !eligible(it, worker) || find(doc, it.ID) != nil || full && !overLimit(it) {
 				continue
 			}
 			var token [16]byte
@@ -238,6 +238,9 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			}
 			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: it.State != factory.StateQueued || paused(it)}
 			return false, d.reserve(doc, worker, taken)
+		}
+		if full {
+			return false, ErrWorkerBusy
 		}
 		return false, ErrNoJob
 	})
@@ -272,9 +275,38 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 				it.Recovery = &cp
 			}
 			it.State = factory.StateRunning
+			it.OverLimit = false
 		}
 		return nil
 	})
+}
+
+// overLimit is a queued job a person said to start now, which may take a
+// slot above its computer's Jobs at once. A thread-only hold is not a start.
+func overLimit(it factory.Item) bool {
+	return it.OverLimit && it.State == factory.StateQueued && !paused(it)
+}
+
+// OverLimit counts the jobs worker may take above its Jobs at once: queued,
+// started now by a person, and not yet held. The worker runs that many slots
+// beyond its owner's number until they are taken.
+func (d *Desk) OverLimit(worker Worker) (int, error) {
+	worker.Handle = factory.NormalizeHandle(worker.Handle)
+	worker.Machine = strings.TrimSpace(worker.Machine)
+	n := 0
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		items, err := d.store.List()
+		if err != nil {
+			return false, err
+		}
+		for _, it := range items {
+			if overLimit(it) && eligible(it, worker) && find(doc, it.ID) == nil {
+				n++
+			}
+		}
+		return false, nil
+	})
+	return n, err
 }
 
 // Heartbeat renews only the live holder's lease. At the expiry instant the

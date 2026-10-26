@@ -535,9 +535,14 @@ type Item struct {
 	Proof        []Claim
 	Policy       []Claim
 	Marked       bool
-	Labels       []string
-	Checks       string
-	Diff         string
+	// OverLimit is a person's Start now on a job that waits in the queue: the
+	// job may take ONE slot above its computer's Jobs at once, so it starts
+	// without waiting for another job to finish. It is spent when a worker
+	// takes the job, so a job that goes back to the queue waits like any other.
+	OverLimit bool `json:",omitempty"`
+	Labels    []string
+	Checks    string
+	Diff      string
 	// Asking is the question a step of the run put to the manager and that
 	// is not answered yet (the inbox, internal/factory/run's inbox.go): with
 	// the manager while it reads it, with the person once the manager sent it

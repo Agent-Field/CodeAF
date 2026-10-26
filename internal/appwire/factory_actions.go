@@ -313,6 +313,9 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryJobControl)
 			hello = withFeature(hello, FeatureFactoryJobAutonomy)
 		}
+		if _, ok := e.(FactoryJobHolder); ok {
+			hello = withFeature(hello, FeatureFactoryJobHold)
+		}
 	}
 	return hello
 }

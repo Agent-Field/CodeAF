@@ -48,6 +48,8 @@ var _ appwire.FactoryActor = (*appBackend)(nil)
 const (
 	factoryVerbStart         = "start_now"
 	factoryVerbStop          = "stop"
+	factoryVerbHold          = "pause"
+	factoryVerbResume        = "resume"
 	factoryVerbDismiss       = "dismiss"
 	factoryVerbDrop          = "drop"
 	factoryVerbRestore       = "restore"
@@ -260,6 +262,17 @@ func (b *appBackend) FactoryJobStart(ctx context.Context, p appwire.FactoryJobAc
 
 func (b *appBackend) FactoryJobStop(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStop, p.Job, factoryVerbStop, guardBody{p.Expect})
+}
+
+// FactoryJobHold keeps a queued job from starting. The factory refuses a job
+// that is not queued, and only the job's person may hold it.
+func (b *appBackend) FactoryJobHold(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActHold, p.Job, factoryVerbHold, guardBody{p.Expect})
+}
+
+// FactoryJobResume lets a held job go on: it waits in the queue again.
+func (b *appBackend) FactoryJobResume(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActResume, p.Job, factoryVerbResume, guardBody{p.Expect})
 }
 
 func (b *appBackend) FactoryJobDismiss(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {

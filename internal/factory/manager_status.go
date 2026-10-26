@@ -76,7 +76,7 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 	case it.Stream != nil && it.Stream.Paused:
 		out.Text += step + " is paused. Resume pipeline to continue."
 	case it.State == StateQueued:
-		out.Text += step + " is queued; waiting for an available execution slot. Configure Jobs at once in Settings → Factory concurrency. Idle PR monitoring does not use an execution slot."
+		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers. Idle PR monitoring does not use an execution slot."
 	case it.State == StateRunning && held:
 		out.Text += step + " is running on its worker."
 	case it.State == StateRunning:
