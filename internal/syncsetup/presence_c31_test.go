@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -30,6 +31,9 @@ func TestC31HolderProcessHelper(t *testing.T) {
 	if home == "" {
 		return
 	}
+	// The holder's home is prepared like every other test home, so the proof
+	// does not depend on an engine binary being installed on this computer.
+	celltest.Available(t)
 	s, ok, err := Open(home)
 	mustNil(t, err)
 	if !ok {
