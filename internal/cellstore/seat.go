@@ -35,6 +35,9 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	for _, opt := range opts {
 		opt(&engine)
 	}
+	if workspace != "" && engine.workspace(c) == "" {
+		engine.Guard.notify(homeFolderWord)
+	}
 	var store Store = engine
 	if over != nil {
 		store = over(engine)
@@ -48,6 +51,10 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	}
 	return executor.Watching(sealed{Stance: base, rec: rec}, obs), nil
 }
+
+// homeFolderWord is said once when a chat opens in a folder that holds the home
+// folder: the conversation is saved, the folder's files are not.
+const homeFolderWord = "this folder holds your home folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
 
 // SeatOption adjusts the engine a seat seals through.
 type SeatOption func(*Engine)
