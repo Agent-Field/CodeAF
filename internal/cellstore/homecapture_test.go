@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
@@ -130,6 +131,9 @@ func TestAFolderHoldingHomeIsNeverPlanned(t *testing.T) {
 
 // The seat says once, in plain words, that a home folder's files are not kept.
 func TestAHomeSeatSaysOnceThatItsFilesAreNotSaved(t *testing.T) {
+	// The seat is built over a fake transport, so no engine binary is needed;
+	// without this a build with no engine inside gets a plain seat and no notice.
+	t.Cleanup(cell.UseAvailabilityInTests(true))
 	house := t.TempDir()
 	useHome(t, house)
 	for _, tc := range []struct {
