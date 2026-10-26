@@ -24,3 +24,8 @@ Local archive recovery requires the separately reviewed native dependency.
 Uncertain writers and multi-root reclamation remain excluded. Existing
 conversations require compatibility safeguards; this change does not silently
 rewrite legacy task histories or promise long-term storage savings.
+
+Document the agent contract for declaring tool roots, checking admitted worker
+routes, mapping received roots, reviewing results and cleaning owned fixtures.
+Current acceptance evidence is maintained in the pull request rather than as a
+pending status in the architecture reference.

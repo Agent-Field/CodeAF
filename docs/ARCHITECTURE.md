@@ -33,8 +33,9 @@ specific action rather than reading either large package from beginning to end.
 | Provider calls and model configuration | [provider](../internal/provider/), [config](../internal/config/) | [Usage accounting](model-usage-accounting.md), [limits](LIMITS.md) |
 | Remote sessions and movable chats | [remote](../internal/remote/), [enginehost](../internal/enginehost/), [cell](../internal/cell/) | [Remote architecture](REMOTE.md), [remote testing](testing-anywhere.md) |
 
-For owned task folders, cooperation, root mapping, and reviewed result application,
-see [workspace storage and relay](architecture/workspaces-storage-relay.md).
+Before delegating across folders, cooperating on private copies, receiving a chat,
+applying results or cleaning task storage, read the
+[task workspace and relay agent contract](architecture/workspaces-storage-relay.md).
 
 ## Find the right storage and knowledge owner
 
