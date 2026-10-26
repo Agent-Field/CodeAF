@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Desktop chats show sync moves and acknowledge the hosted sync disclosure
-pr: 0
+pr: 1971
 surface: [engine, chat, docs]
 invalidates:
   - "App sync notices used to wait on a terminal-only desk; they now reach the affected desktop chat as visible local notices without writing to its synced journal."
