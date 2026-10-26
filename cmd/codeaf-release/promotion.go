@@ -86,7 +86,7 @@ func runPromotionDecision(args []string, out io.Writer) error {
 
 // gitAt runs read-only git queries in the selected repository fixture or checkout.
 func gitAt(repo string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	cmd := exec.Command("git", append([]string{"--no-optional-locks", "-C", repo}, args...)...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
@@ -96,7 +96,7 @@ func gitAt(repo string, args ...string) (string, error) {
 
 // ancestor uses git's ancestry relation because a timestamp cannot prove a safe fast-forward.
 func ancestor(repo, older, newer string) bool {
-	cmd := exec.Command("git", "-C", repo, "merge-base", "--is-ancestor", older, newer)
+	cmd := exec.Command("git", "--no-optional-locks", "-C", repo, "merge-base", "--is-ancestor", older, newer)
 	return cmd.Run() == nil
 }
 

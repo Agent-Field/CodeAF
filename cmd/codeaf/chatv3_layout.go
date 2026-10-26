@@ -182,7 +182,7 @@ func v3GitRoot(dir string) (string, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), v3GitRootTimeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	command := exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-parse", "--show-toplevel")
 	command.Dir = dir
 	out, err := command.Output()
 	if err != nil {

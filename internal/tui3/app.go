@@ -10550,7 +10550,7 @@ func gitHead(dir string) (string, bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	run := func(args ...string) (string, bool) {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 		cmd.Dir = dir
 		out, err := cmd.Output()
 		if err != nil {
@@ -10564,7 +10564,7 @@ func gitHead(dir string) (string, bool, bool) {
 	}
 	// An unreadable status is reported as CLEAN rather than dirty: the star is a
 	// claim, and a claim this surface could not check is one it should not make.
-	status, _ := run("--no-optional-locks", "status", "--porcelain", "--untracked-files=no")
+	status, _ := run("status", "--porcelain", "--untracked-files=no")
 	return branch, status != "", true
 }
 
