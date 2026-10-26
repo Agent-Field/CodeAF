@@ -202,12 +202,17 @@ type Pipeline struct {
 	Adapt         map[string]string    `json:"adapt,omitempty"`
 	// Text is the repository file as it was read. PersonalText is
 	// ~/.codeaf/factory.yaml when that file tightened the read.
-	Text         string      `json:"text,omitempty"`
-	PersonalText string      `json:"personal_text,omitempty"`
-	Personal     bool        `json:"personal,omitempty"`
-	Origin       string      `json:"origin,omitempty"` // main, working tree, defaults
-	Start        *StartBlock `json:"start,omitempty"`
-	Size         *SizeBlock  `json:"size,omitempty"`
+	Text         string `json:"text,omitempty"`
+	PersonalText string `json:"personal_text,omitempty"`
+	Personal     bool   `json:"personal,omitempty"`
+	// HouseRules are the factory's own rules this read added to the
+	// repository's (factory.HouseRules); absent when it keeps none. Its lines
+	// are also in Policy and Start, so a client can tell which are the
+	// factory's.
+	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
+	Origin     string              `json:"origin,omitempty"` // main, working tree, defaults
+	Start      *StartBlock         `json:"start,omitempty"`
+	Size       *SizeBlock          `json:"size,omitempty"`
 	// Merge is the file's `merge:` settings; absent is auto-merge off and the
 	// repository's own choice of method.
 	Merge *MergeBlock `json:"merge,omitempty"`
