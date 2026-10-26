@@ -176,8 +176,31 @@ func TestTabAndEngineAttachmentLatency(t *testing.T) {
 	}
 	elapsed = efficiencyWait(t, r, typed, "audit_filter_pending")
 	t.Logf("delayed_engine_resume_filter_ms=%.3f engine_resumed=%t", float64(elapsed)/float64(time.Millisecond), resumed.Load())
-	r.keys("Escape")
+	if resumed.Load() {
+		t.Error("resume filtering waited for the engine to resume")
+	}
+	escaped := time.Now()
+	if out, err := exec.Command("tmux", "send-keys", "-t", r.name, "Escape").CombinedOutput(); err != nil {
+		t.Fatalf("cancel picker: %v %s", err, out)
+	}
+	efficiencyWait(t, r, escaped, "space space home")
+	if resumed.Load() || strings.Contains(r.capture(), "audit_filter_pending") {
+		t.Error("resume cancellation did not restore the composer while the engine was paused")
+	}
+	t.Logf("delayed_engine_resume_cancel_ms=%.3f engine_resumed=%t", float64(time.Since(escaped))/float64(time.Millisecond), resumed.Load())
 	release()
+	// A completed engine round trip ensures the earlier history read can answer.
+	// Its late result must not put the cancelled picker back on screen.
+	conn, err = net.Dial("unix", sockets[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	_, err = remote.AskHost(conn, remote.WhoIs{})
+	conn.Close()
+	if err != nil || strings.Contains(r.capture(), "filter ·") {
+		t.Fatalf("cancelled picker returned after the engine resumed: %v", err)
+	}
 	if calls.Load() != 0 {
 		t.Fatalf("navigation made %d model calls", calls.Load())
 	}

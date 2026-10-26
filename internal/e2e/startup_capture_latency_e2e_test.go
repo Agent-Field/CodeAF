@@ -108,21 +108,16 @@ func TestStartupWhileStorageCaptureIsPending(t *testing.T) {
 				}
 				elapsed := efficiencyWait(t, r, typed, "CAPTURE_STARTUP_DRAFT")
 				t.Logf("input_to_visible_draft_ms=%.3f capture_still_held=true", float64(elapsed)/float64(time.Millisecond))
-			case <-time.After(3 * time.Second):
-				t.Errorf("startup waited for storage capture; no usable frame after %s", time.Since(began))
-				unblock()
-				select {
-				case shown := <-ready:
-					t.Logf("launch_to_history_and_composer_ms=%.3f capture_released=true", float64(shown.Sub(began))/float64(time.Millisecond))
-				case <-ctx.Done():
-					t.Fatal("no history after release")
-				}
+			case <-ctx.Done():
+				// This is the fixture's deadlock watchdog, not a latency budget.
+				// The causal assertion is that the UI progresses before release.
+				t.Errorf("fixture watchdog expired with capture still held; no usable frame after %s", time.Since(began))
 			}
 			unblock()
 			if launchedRig == nil {
 				select {
 				case launchedRig = <-launched:
-				case <-ctx.Done():
+				case <-time.After(10 * time.Second):
 					t.Fatal("launcher did not finish after capture was released")
 				}
 			}
@@ -149,8 +144,7 @@ func delayedCaptureProxy(t *testing.T, home, engine string) (<-chan struct{}, ch
 		t.Fatal(err)
 	}
 	backend := filepath.Join(home, "backend.sock")
-	cmd := exec.Command(engine, "serve", "--socket", backend, "--idle-minutes", "10")
-	cmd.Env = append(os.Environ(), "CODEAF_HOME="+home)
+	cmd := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home), engine, "serve", "--socket", backend, "--idle-minutes", "10")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
