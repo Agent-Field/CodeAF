@@ -407,13 +407,21 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 func (c chatsKind) explain(err error) error {
 	switch {
 	case errors.Is(err, directory.ErrRevoked):
-		return toldLine{line: "this device was removed by another of your devices, so it can no longer reach your chats — run `codeaf pair` to bring it back", err: err}
+		return explainRemovedDevice(err)
 	case errors.Is(err, wireauth.ErrSkew):
 		return errors.New(chatlist.ClockOff)
 	case errors.Is(err, directory.ErrUnreachable):
 		return fmt.Errorf("the sync service at %s cannot be reached from here — check this computer's network", c.relay)
 	case errors.Is(err, directory.ErrNotFound):
 		return errors.New("that device is not in your list any more — `codeaf devices` shows the ones there are")
+	}
+	return err
+}
+
+// explainRemovedDevice gives every command the same removal and recovery words.
+func explainRemovedDevice(err error) error {
+	if errors.Is(err, directory.ErrRevoked) {
+		return toldLine{line: "this device was removed by another of your devices, so it can no longer reach your chats — run `codeaf pair` to bring it back", err: err}
 	}
 	return err
 }

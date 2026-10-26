@@ -5,8 +5,10 @@ package clusterctl
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"net/http"
@@ -155,6 +157,14 @@ func (c Client) request(ctx context.Context, method string, body []byte, out any
 		}
 	}
 	if res.StatusCode != 200 {
+		if res.StatusCode == http.StatusUnauthorized {
+			var refusal struct {
+				Err string `json:"err"`
+			}
+			if json.Unmarshal(b, &refusal) == nil && refusal.Err == "revoked" {
+				return directory.ErrRevoked
+			}
+		}
 		if res.StatusCode == 404 {
 			return ErrUnsupported
 		}

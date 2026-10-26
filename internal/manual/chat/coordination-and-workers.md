@@ -173,3 +173,7 @@ Watch sockets show presence; older clients still send their normal heartbeats.
 The relay's selected-worker API accepts an original signed command or a signed request for one chat or assignment. A delegated worker receives only its selected sealed grant. Each read commits current time, waits for a fresh majority response and checks its current scope and process number. A retained claim alone cannot authorize execution after another computer takes the chat. A worker cannot use this API to pair computers, rotate the identity or promote itself.
 
 Native and hosted watch connections carry committed receipts to clients that ask for them. Each receipt names the exact chat and ownership number, durable position and hold-until time. Older clients receive their original version and presence frames and keep ordinary heartbeats. A ping without a receipt cannot suppress those heartbeats. A released chat cannot be revived by a delayed ping. Idle presence pings do not start a recurring directory request loop.
+
+## Cluster status or lead after this device was removed
+
+On a removed computer, `codeaf cluster status` and `codeaf cluster lead` fail with the same removal and pairing guidance as `codeaf devices`. Pair that computer again with `codeaf pair` to restore access. A removed device is different from a cluster temporarily unable to coordinate.
