@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Clarify Memory controls and knowledge build progress
-pr: 1973
+pr: 1975
 surface: [chat, docs]
 invalidates:
   - "Knowledge build progress showed imported chats and queued sources without stage percentages. It now distinguishes chat import from source processing and keeps page organization visible after sources finish."
