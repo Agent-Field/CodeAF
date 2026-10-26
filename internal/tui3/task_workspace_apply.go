@@ -22,6 +22,10 @@ func (a *app) runTaskWorkspaceCommand(arg string) (tea.Cmd, bool) {
 	if len(words) == 0 || words[0] != "review" && words[0] != "apply" {
 		return nil, false
 	}
+	if !session.WorkspaceOwnershipEnabled(session.Place{Dir: session.DirOf(a.file)}) {
+		a.note(session.TaskWorkspaceUnavailable)
+		return nil, true
+	}
 	if len(words) != 3 {
 		a.note("usage: /task " + words[0] + " <task number> <root slot>")
 		return nil, true

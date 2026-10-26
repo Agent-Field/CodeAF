@@ -3,7 +3,7 @@ package session
 import "fmt"
 
 // WorkspacePolicy records a conversation's task placement contract. Its absence
-// preserves legacy placement; new conversation creation explicitly selects v1.
+// preserves legacy placement; experimental conversations explicitly select v1.
 type WorkspacePolicy struct {
 	Version int    `json:"version"`
 	Mode    string `json:"mode"`
@@ -24,12 +24,19 @@ func validateWorkspacePolicy(policy *WorkspacePolicy) error {
 
 // WorkspaceOwnershipEnabled reports this conversation's task placement policy.
 func WorkspaceOwnershipEnabled(place Place) bool {
+	return workspaceOwnershipEnabled(place, workspaceApplicationSupported)
+}
+
+func workspaceOwnershipEnabled(place Place, supportsApply bool) bool {
+	if !supportsApply {
+		return false
+	}
 	if place.Dir != "" {
 		meta, err := LoadMeta(place.Dir)
 		if err != nil || validateWorkspacePolicy(meta.WorkspacePolicy) != nil {
 			return false
 		}
-		if meta.WorkspacePolicy != nil || meta.ChatURI != "" {
+		if meta.WorkspacePolicy != nil {
 			return true
 		}
 	}

@@ -14,6 +14,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const workspaceApplicationSupported = true
+
 // Resolve every directory through held descriptors with O_NOFOLLOW. No mutation
 // follows an ancestor swapped for a symlink between admission and publication.
 func workspaceApplicationParent(root, relative string) (int, string, error) {

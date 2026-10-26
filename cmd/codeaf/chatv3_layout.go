@@ -487,6 +487,10 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 		return session.Place{}, err
 	}
 	place := v3PlaceFor(dir, workspace, owned)
+	var policy *session.WorkspacePolicy
+	if session.WorkspaceOwnershipPrototypeEnabled() {
+		policy = session.DefaultWorkspacePolicy()
+	}
 	// Placement policy is durable conversation truth, so a failed creation
 	// write must not silently open the conversation with legacy task placement.
 	if err := session.SaveMeta(dir, session.Meta{
@@ -495,7 +499,7 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 		LaunchDir:       launchDir,
 		Owned:           owned,
 		Created:         time.Now(),
-		WorkspacePolicy: session.DefaultWorkspacePolicy(),
+		WorkspacePolicy: policy,
 	}); err != nil {
 		return session.Place{}, fmt.Errorf("save new conversation policy: %w", err)
 	}

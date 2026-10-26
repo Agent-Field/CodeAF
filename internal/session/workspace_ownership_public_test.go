@@ -11,9 +11,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
-func TestOwnershipStartTaskUsesPrivateWorkspaceSetWithoutPrototypeFlag(t *testing.T) {
+func TestOwnershipExperimentKeepsOrdinaryAndExplicitRootsPrivate(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	project := t.TempDir()
 	if err := os.WriteFile(filepath.Join(project, "input.txt"), []byte("input\n"), 0600); err != nil {

@@ -79,7 +79,7 @@ func TestOwnershipPrototypeChatReopensWithoutProcessFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveMeta(place.Dir, Meta{ID: place.ID(), ChatURI: chat.URI, Workspace: project}); err != nil {
+	if err := SaveMeta(place.Dir, Meta{ID: place.ID(), ChatURI: chat.URI, Workspace: project, WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
 		t.Fatal(err)
 	}
 	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace, c.Place = project, place })

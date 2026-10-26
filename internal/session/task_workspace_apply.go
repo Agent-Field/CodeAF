@@ -27,9 +27,15 @@ type TaskWorkspaceReview struct {
 	Changed                       []string
 }
 
+// TaskWorkspaceUnavailable explains the scope of the private result commands.
+const TaskWorkspaceUnavailable = "review and apply are for private task copies; this chat doesn't have them"
+
 // ReviewTaskWorkspaceRoot reads actual committed and uncommitted changes. This
 // person-facing door is intentionally absent from model tools.
 func (a *Agent) ReviewTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (TaskWorkspaceReview, error) {
+	if !WorkspaceOwnershipEnabled(a.config.Place) {
+		return TaskWorkspaceReview{}, errors.New(TaskWorkspaceUnavailable)
+	}
 	if err := taskWorkspaceOperationEnvironment(ctx); err != nil {
 		return TaskWorkspaceReview{}, err
 	}
@@ -169,7 +175,7 @@ func reviewTaskWorkspaceRoot(ctx context.Context, use WorkspaceRootUse, tree tas
 		if err := ctx.Err(); err != nil {
 			return review, err
 		}
-		//codeaf:plumbing git compares one local untracked path without external diff helpers.
+		//codeaf:plumbing compares one local untracked path without external diff helpers.
 		cmd := exec.CommandContext(ctx, "git", "diff", "--no-ext-diff", "--no-textconv", "--no-index", "--", "/dev/null", path)
 		cmd.Dir = tree.dir
 		out, err := cmd.Output()
@@ -193,6 +199,9 @@ func reviewTaskWorkspaceRoot(ctx context.Context, use WorkspaceRootUse, tree tas
 // ApplyTaskWorkspaceRoot grants permission only for this selected operation.
 // It never records Landing, starts a worker, or broadens another root's access.
 func (a *Agent) ApplyTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (string, error) {
+	if !WorkspaceOwnershipEnabled(a.config.Place) {
+		return "", errors.New(TaskWorkspaceUnavailable)
+	}
 	if err := taskWorkspaceOperationEnvironment(ctx); err != nil {
 		return "", err
 	}
@@ -460,7 +469,7 @@ func cleanupTaskWorkspaceReview(ticket taskWorkspaceReviewTicket) {
 
 func taskWorkspaceSnapshotMessage(copyURI, destination, base, baselineDigest, portableDigest, creationDigest string) string {
 	sum := sha256.Sum256([]byte(copyURI + "\x00" + destination + "\x00" + base + "\x00" + baselineDigest + "\x00" + portableDigest + "\x00" + creationDigest))
-	return "CodeAF reviewed workspace snapshot\n\nReview-binding: " + hex.EncodeToString(sum[:])
+	return "codeaf reviewed workspace snapshot\n\nReview-binding: " + hex.EncodeToString(sum[:])
 }
 
 func adoptTaskWorkspaceRoot(use WorkspaceRootUse, place Place) (taskTree, error) {
@@ -823,7 +832,7 @@ func taskWorkspaceOperationEnvironment(ctx context.Context) error {
 		name, _, _ := strings.Cut(entry, "=")
 		upper := strings.ToUpper(name)
 		if taskWorkspaceGitRoutingVariable(upper) {
-			return fmt.Errorf("unset %s and relaunch CodeAF before reviewing or applying a task root", name)
+			return fmt.Errorf("unset %s and relaunch codeaf before reviewing or applying a task root", name)
 		}
 	}
 	return nil

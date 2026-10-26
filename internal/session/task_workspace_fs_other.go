@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+const workspaceApplicationSupported = false
+
 func workspaceApplicationMoveOut(root, relative, staging, held string) error {
 	return errors.New("transactional portable apply requires Linux or Darwin")
 }

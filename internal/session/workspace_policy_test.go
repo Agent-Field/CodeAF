@@ -51,7 +51,7 @@ func TestWorkspacePolicyActivatesOnlyRecordedConversations(t *testing.T) {
 	}{
 		{"new conversation", session.DefaultWorkspacePolicy(), "", true},
 		{"legacy conversation", nil, "", false},
-		{"prototype identity", nil, "codeaf-workspace://test/chat", true},
+		{"identity without policy", nil, "codeaf-workspace://test/chat", false},
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			place := session.Place{Dir: t.TempDir()}

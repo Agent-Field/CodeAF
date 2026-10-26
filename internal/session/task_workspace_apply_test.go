@@ -157,7 +157,7 @@ func completedWorkspaceApplyFixture(t *testing.T, repository bool) (*Agent, uint
 func completedWorkspaceApplyFixtureWithInput(t *testing.T, repository bool, setup func(string)) (*Agent, uint64, Place, string, string) {
 	t.Helper()
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_FURROW", filepath.Join(t.TempDir(), "unavailable-native-engine"))
 	source := t.TempDir()

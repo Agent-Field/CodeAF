@@ -10,13 +10,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// WorkspaceOwnershipPrototypeEnabled retains the explicit legacy experiment
-// switch. Production placement reads each conversation's persisted policy.
+// WorkspaceOwnershipPrototypeEnabled requires an explicit experiment switch,
+// an absolute profile, and support for applying the retained output.
 func WorkspaceOwnershipPrototypeEnabled() bool {
-	return env.Get("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP") == "1" && filepath.IsAbs(strings.TrimSpace(env.Get(home.EnvVar)))
+	return workspaceApplicationSupported && env.Get("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP") == "1" && filepath.IsAbs(strings.TrimSpace(env.Get(home.EnvVar)))
 }
 
-// ownedRunPlacement puts ordinary Bash tasks on the same durable layout road
+// ownedRunPlacement puts delegated tasks on the same durable layout road
 // as explicitly selected roots. A placement names input, never landing consent.
 // Reference tasks retain their empty scratch and borrowed context; in particular
 // opening a conversation at home must not copy the person's home directory.
@@ -63,7 +63,7 @@ func (a *Agent) ownershipPlacement(spec taskSpec, workspace string) (taskStand, 
 		dir, mode = root, TaskModeWorktree
 	}
 	return taskStand{dir: dir, mode: mode, rung: taskGroundNamed,
-		redirect: "The task works in its own copy of " + dir + "; its results come back through the task's normal landing."}, true
+		redirect: "The task works in its own private copy of " + dir + "; review and apply its results with /task review and /task apply."}, true
 }
 
 // Home is a reference, not a project snapshot. A general task must not copy a
