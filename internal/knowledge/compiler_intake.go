@@ -5,9 +5,31 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
+
+// ErrCompilerBusy means optional intake must be retried after compilation finishes.
+var ErrCompilerBusy = errors.New("knowledge compiler is busy; retry after compilation finishes")
+
+func (v *Vault) lockIntakeCompiler() (func(), error) {
+	lock, err := os.OpenFile(filepath.Join(v.root, ".compiler.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err = filelock.Lock(lock, true, true); err != nil {
+		lock.Close()
+		if filelock.IsBusy(err) {
+			return nil, ErrCompilerBusy
+		}
+		return nil, err
+	}
+	return func() { _ = filelock.Unlock(lock); _ = lock.Close() }, nil
+}
 
 type SourceWindow struct{ Start, Length int }
 type ProposalReceipt struct{ New, Duplicates, Rejected int }
@@ -26,6 +48,11 @@ func (v *Vault) Revisit(ids []string, windows map[string]SourceWindow) error {
 			return errors.New("window source must be explicitly revisited")
 		}
 	}
+	unlock, err := v.lockIntakeCompiler()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	db, err := v.database()
 	if err != nil {
 		return err
@@ -37,11 +64,14 @@ func (v *Vault) Revisit(ids []string, windows map[string]SourceWindow) error {
 	}
 	defer tx.Rollback()
 	for _, id := range ids {
-		var payload string
-		if err = tx.QueryRow("SELECT payload FROM events WHERE partition='profile' AND id=?", id).Scan(&payload); err == sql.ErrNoRows {
+		var payload, status string
+		if err = tx.QueryRow("SELECT payload,status FROM events WHERE partition='profile' AND id=?", id).Scan(&payload, &status); err == sql.ErrNoRows {
 			return errors.New("cannot revisit a source outside this host profile")
 		} else if err != nil {
 			return err
+		}
+		if status != "done" {
+			return fmt.Errorf("%w: source %q must finish its pending extraction before revisit", ErrCompilerBusy, id)
 		}
 		var source document
 		if err = json.Unmarshal([]byte(payload), &source); err != nil {
@@ -79,6 +109,11 @@ func (v *Vault) StageProposals(committedID string, partition map[string]string, 
 	if err := json.Unmarshal(envelope, &input); err != nil {
 		return receipt, errors.New("proposal envelope must be a JSON object")
 	}
+	unlock, err := v.lockIntakeCompiler()
+	if err != nil {
+		return receipt, err
+	}
+	defer unlock()
 	db, err := v.database()
 	if err != nil {
 		return receipt, err
