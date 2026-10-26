@@ -55,6 +55,25 @@ test('R25 interrupted workerd staging stays atomic and bounded after restart',{t
  }finally{await h.close();}
 });
 
+// R25/R27 keep an abandoned staging slot inert: its raw body pages are not
+// coordination records, so every maintenance turn that scans past them must
+// still complete while they wait for the next request to replace them.
+test('R25 abandoned workerd staging does not break hosted maintenance',{timeout:90000},async()=>{
+ const h=await hostedFixture({fixture:true,rootLabel:'root',now:fixture.now}),c=fixture.cases[1];
+ try{
+  const cut={needle:'result=await this.commit(command);requireOK(result.value.code);',after:"if(Array.isArray(raw)&&command===raw[16])throw new Error('interrupted body staging');"};
+  await h.start(cut);
+  const failed=await send(h,c);assert(failed.status>=500,`interruption returned ${failed.status}`);await failed.text();
+  await h.start();
+  const absent=await send(h,c,true);assert.equal(absent.status,404);await absent.text();
+  const cluster=JSON.parse((await h.control({op:'source'})).gate).config.cluster;
+  const staged=await h.control({op:'staging',cluster,node:'1'});assert(staged.rows.n>0,'the interruption left no staged pages');
+  const turns=await h.control({op:'leadership-ticks',ticks:8});
+  assert.deepEqual(turns.errors,[],'maintenance failed while staged pages remained');
+  await exact(h,c);
+ }finally{await h.close();}
+});
+
 
 // R25 preserves the old body limit even when legal JSON needs six-byte HTML
 // escaping in the committed logical row and the returned original view.

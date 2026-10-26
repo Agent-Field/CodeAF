@@ -438,7 +438,10 @@ export class HostedIdentity {
       let scan=this.outboxScan??'';
       const app=await member.hostView(this.states.get(replica).applied,'outbox','',scan);
       this.outboxScan=app.rows.at(-1)?.key??'';
-      if(app.rows.some(row=>{const value=decodeCanonical(dec.decode(row.data));return value.decision&&!value.outcome;}))await this.effects.replay(code=>this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),scan,now);
+      // Only join requests are delivery records. The same namespace also keeps
+      // upload receipts and the raw body pages of a large request that was cut
+      // short, and those are not canonical records to decode.
+      if(app.rows.some(row=>{if(!row.key.startsWith('join/'))return false;const value=decodeCanonical(dec.decode(row.data));return value.decision&&!value.outcome;}))await this.effects.replay(code=>this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),scan,now);
       let remoteAck,remoteStatus;
       const schedule=async(acks=[])=>{
         if(remote){
