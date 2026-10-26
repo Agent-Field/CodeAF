@@ -295,3 +295,16 @@ Older builds can still list, save, publish and release chats through a compatibl
 ## Can an older build save a chat with large encrypted metadata?
 
 Yes. Directory requests from older builds keep the existing 1 MiB request limit, including large encrypted metadata and frame hints. The service receives the complete signed request before making the change visible. A failed or interrupted save never exposes only part of that metadata. Reconnect and check the latest save before retrying. Encrypted names, key wraps and frame hints are preserved. The identity's storage capacity still applies.
+
+
+## Why did Enter show Continue here instead of sending my message
+
+Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Choose **continue here** to bring the saved chat here, then press Enter to send.
+
+A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. That safe return happens without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
+
+## A move that failed partway — are my typed words safe, can the old copy still send
+
+If something changes the chat's files while a move is putting them in place, codeaf stops the move and lets go of the chat. It says the move could not finish and that your words are still in the box. The window keeps showing the chat or returns to Home, and it cannot send on the old copy. Try **continue here** again.
+
+Every failed move keeps the captured draft, including its whitespace, caret, pasted text and attachments, even if the old session closed during the move. Losing a race, a connection failure or a refused move does the same. A failed move never sends those words by itself.
