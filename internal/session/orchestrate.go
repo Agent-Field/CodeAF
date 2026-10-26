@@ -370,9 +370,6 @@ func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
 	if answer == orchestrate.GateStop {
 		return a.Cancel(CancelRun + ":" + strings.TrimSpace(id))
 	}
-	if err := a.CheckWork(); err != nil {
-		return "", err
-	}
 	live, known := a.orchestration(id)
 	if !known {
 		return "", fmt.Errorf("there is no run %q in this session", id)

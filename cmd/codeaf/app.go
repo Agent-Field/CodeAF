@@ -2896,17 +2896,11 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 	if err != nil {
 		return err
 	}
-	if err := b.knownWorkRefusal(a); err != nil {
-		return err
-	}
 	if handled, err := b.answerMoney(a, askID, option, text); handled {
 		return err
 	}
 	a.gate.Lock()
 	defer a.gate.Unlock()
-	if err := b.workAllowed(a); err != nil {
-		return err
-	}
 	var live *appLive
 	var q session.Question
 	var key string

@@ -266,7 +266,6 @@ func TestC1C2AppViewerRefusesWorkBeforeSubmission(t *testing.T) {
 		"task note":       func() error { _, err := b.NoteTask(agent.ID+":1", "refused task note", "viewer-note"); return err },
 		"task action":     func() error { return b.ActOnTask(agent.ID+":1", "start", "", "") },
 		"crew proposal":   func() error { return b.CrewPropose(agent.ID) },
-		"ask answer":      func() error { return b.AnswerAsk(agent.ID, "ask:1", "", "refused answer") },
 	} {
 		var refusal *appwire.Error
 		if err := work(); !errors.As(err, &refusal) || refusal.Code != appwire.CodeConflict || refusal.Message != line {
@@ -298,9 +297,6 @@ func TestC1C2AppViewerRefusesWorkBeforeSubmission(t *testing.T) {
 			return err
 		},
 		"move": client.MoveTurnToTask,
-		"answer": func() error {
-			return client.ResolveQuestion(session.Answer{Kind: session.QuestionAsk, ID: 1, Change: "refused remote answer"})
-		},
 	} {
 		if err := send(); err == nil || err.Error() != line {
 			t.Fatalf("remote %s refusal = %v", name, err)
@@ -527,20 +523,14 @@ func TestC3AppHostedDisclosureWaitsForAcknowledgement(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			a := b.agent(agent.ID)
-			a.gate.Lock()
-			err = b.workAllowed(a)
-			a.gate.Unlock()
-			if err != nil {
-				t.Fatalf("real hosted drive did not start through the local relay: %v", err)
-			}
 			dir, _ := session.FolderOf(appTranscriptOf(b, agent.ID))
 			b.drives.mu.Lock()
 			drive := b.drives.drive[filepath.Base(dir)]
 			b.drives.mu.Unlock()
-			if drive == nil || drive.started() == nil {
-				t.Fatal("hosted startup did not install a real drive")
+			if drive == nil {
+				t.Fatal("hosted startup has no background drive")
 			}
+			appSyncWait(t, "hosted background startup", func() bool { return drive.started() != nil })
 			i := rec.waitFor(t, 30*time.Second, func(event string, data any) bool {
 				changed, ok := data.(appwire.SyncChanged)
 				return event == appwire.EventSyncChanged && ok && changed.Sync.Disclosure != nil

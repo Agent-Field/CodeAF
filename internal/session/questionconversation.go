@@ -29,9 +29,6 @@ type questionDiscussion struct {
 // ReplaceQuestion stops the pending turn before submitting the revised request.
 // No answer is recorded and no permission is granted by this operation.
 func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Event, error) {
-	if err := a.CheckWork(); err != nil {
-		return nil, err
-	}
 	owner, original := a, answer
 	if child, given, nested := a.discussionAnswer(answer); nested {
 		owner, original = child, given
@@ -83,7 +80,7 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 	case QuestionItem:
 		owner.ResolveItem(q.Ref, ItemAnswer{})
 	}
-	return a.Submit(ctx, words)
+	return a.submitTextAnswer(ctx, words, nil, true)
 }
 
 // clarifyQuestion starts an independent conversation with a snapshot
@@ -150,7 +147,7 @@ func (a *Agent) clarifyQuestion(answer Answer) error {
 	a.discussions[id] = d
 	a.mu.Unlock()
 	a.HoldQuestion(q.Kind, q.Token())
-	events, err := child.Submit(discussionCtx, prompt)
+	events, err := child.submitTextAnswer(discussionCtx, prompt, nil, true)
 	if err != nil {
 		child.Close()
 		close(d.done)

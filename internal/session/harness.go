@@ -57,9 +57,6 @@ import (
 // same matcher the offer's own word went through, so the two cannot disagree
 // about what "opus" means.
 func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
-	if a.CheckWork() != nil {
-		return
-	}
 	a.mu.Lock()
 	ask, waiting := a.harnessAsks[id]
 	if waiting {

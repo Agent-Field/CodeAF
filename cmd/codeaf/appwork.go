@@ -875,11 +875,32 @@ func (b *appBackend) actOnTask(id, action, verdict, text, clientID string) error
 	if err != nil {
 		return err
 	}
+	answer := false
+	if action == "start" {
+		b.locked(func() {
+			if task, ok := live.tasks[id]; ok && task.Proposed {
+				answer = true
+			}
+			for _, q := range live.questions {
+				if q.Kind == session.QuestionTask && strconv.FormatUint(q.ID, 10) == local {
+					answer = true
+				}
+			}
+		})
+	}
 	switch action {
-	case "cancel", "stop", "hold", "typing", "dismiss", "restore":
+	case "cancel", "stop", "hold", "typing", "decline", "dismiss", "restore":
+	case "decide":
+		if verdict == appwire.VerdictNotRight || verdict == "not_right" || verdict == "tell" {
+			if err := b.workAllowed(a); err != nil {
+				return err
+			}
+		}
 	default:
-		if err := b.workAllowed(a); err != nil {
-			return err
+		if !answer {
+			if err := b.workAllowed(a); err != nil {
+				return err
+			}
 		}
 	}
 	intent := session.AppTaskIntent{ID: local, Action: action, Text: strings.TrimSpace(text), Verb: verdict, ClientID: clientID}

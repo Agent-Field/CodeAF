@@ -402,7 +402,9 @@ func (a *Agent) answerAsk(answer Answer) error {
 		// They asked back about a question that is already standing on its own,
 		// so there is no call to come back. The words go to the model as words;
 		// the question is untouched.
-		a.enqueueSteering(askBackNote(open.q, answer))
+		note := wakeNote(askBackNote(open.q, answer))
+		note.answer = true
+		a.enqueueNote(note)
 		return nil
 	}
 	// THE SETTLE AND THE HANDOVER ARE ONE LOCKED STEP (askwait.go's

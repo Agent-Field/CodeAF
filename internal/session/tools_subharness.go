@@ -424,9 +424,6 @@ func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (sub
 // — is ignored rather than reported, exactly as [Agent.ResolveConsent] ignores a
 // late answer.
 func (a *Agent) ResolveSubharness(id uint64, run bool, input json.RawMessage) {
-	if a.CheckWork() != nil {
-		return
-	}
 	a.mu.Lock()
 	offer := a.subharnessOffers[id]
 	delete(a.subharnessOffers, id)

@@ -2213,18 +2213,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	if out, handled, err := invokeConversation(sess.engine, agent, call.Method, call.Payload); handled {
 		return out, err
 	}
-	// These older answer doors return no error from the producer. Ask the same
-	// session gate before an answer can release a model or admit a task.
-	switch call.Method {
-	case MethodConsent, MethodConsentRemember, MethodHarness, MethodConnect, MethodConnectKey,
-		MethodSubharnessResolve, MethodTaskResolve:
-		if door, ok := agent.(interface{ CheckWork() error }); ok {
-			if err := door.CheckWork(); err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	switch call.Method {
 	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord,
 		MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:

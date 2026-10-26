@@ -463,7 +463,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			} else if completed && drained.owed {
 				// Vision reads only the image message. News recorded at its end
 				// still needs an ordinary turn, even if its wake clock fired.
-				a.wakeAnsweringLocked(drained.heard, drained.only)
+				a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer)
 			}
 			a.mu.Unlock()
 		}()

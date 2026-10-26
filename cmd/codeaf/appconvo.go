@@ -676,9 +676,6 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	if answer.YouDecide {
 		a.gate.Lock()
 		defer a.gate.Unlock()
-		if err := b.workAllowed(a); err != nil {
-			return err
-		}
 		if !open {
 			return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
 		}

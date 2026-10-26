@@ -6,7 +6,7 @@ When another computer continues a chat, the desktop shows the engine's sentence:
 `<name> continued this chat; this window now only shows it`. This computer stops
 accepting new messages, corrections, queued messages and retries for that chat.
 Task and program starts, quick-task promotion, moving a reply to a task, task
-directions, crew proposals and answers that resume work also refuse the move.
+directions and asking for a new crew proposal also refuse the move.
 The same check protects remote submissions and queued follow-ups; a follow-up
 accepted before the move is refused before its turn can start. Existing action
 receipts remain readable and replaying one does not start its work again.
@@ -20,6 +20,19 @@ too many new identities and trouble recording which turns reached other devices.
 These notices are local to the open app. Reopening the history need not repeat
 them; the chat's current location remains on its agent record while the engine
 runs and is learned again when its sync drive starts after a restart.
+
+## Can I answer a question after another computer continued the chat
+
+Yes. Answers to questions already asked remain accepted in the desktop and
+terminal: permissions, choices, proposals, intake forms, clarifications,
+replacement answers and `You decide`. The turn can continue on your answer;
+its tools still refuse to act here after the chat moved. A new message or retry
+still refuses. Changing a crew member's brief updates crew state without
+opening its chat; any resulting wake meets the session's ownership check.
+
+Admission reads the location and viewer facts already known here. It does not
+start or wait for sync startup, saving files or a relay read, and does not open
+an unopened chat. A joined session host is asked for its cached fact remotely.
 
 ## When is the hosted sync disclosure counted as shown in the desktop
 

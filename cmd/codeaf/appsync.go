@@ -239,13 +239,13 @@ func (b *appBackend) knownWorkRefusal(a *appAgent) error {
 	return refusal
 }
 
-// workAllowed asks the same live drive the tool gate does, before handing any
-// user work to the conversation. Callers hold a.gate, never b.mu across I/O.
+// workAllowed reads cached ownership before handing new work to an open
+// conversation. A joined host also checks its session's cached fact remotely.
+// Callers hold a.gate, never b.mu across I/O.
 func (b *appBackend) workAllowed(a *appAgent) error {
 	if err := b.knownWorkRefusal(a); err != nil {
 		return err
 	}
-	var location *appwire.Location
 	var transcript string
 	var drives *driveBook
 	b.locked(func() { transcript, drives = a.transcript, b.drives })
@@ -254,13 +254,8 @@ func (b *appBackend) workAllowed(a *appAgent) error {
 		drives.mu.Lock()
 		d := drives.drive[filepath.Base(dir)]
 		drives.mu.Unlock()
-		if d != nil {
-			err := d.Gate()
-			b.locked(func() { location = a.view.Location })
-			if refusal := appLocationRefusal(location); refusal != nil {
-				return refusal
-			}
-			if err != nil {
+		if gate := driveWorkGate(d); gate != nil {
+			if err := gate(); err != nil {
 				return appEngineError(err)
 			}
 		}
@@ -274,7 +269,7 @@ func (b *appBackend) workAllowed(a *appAgent) error {
 			}
 		}
 	}
-	return nil
+	return b.knownWorkRefusal(a)
 }
 
 // openingNotices retains the engine welcome, including one line per command
