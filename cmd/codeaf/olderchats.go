@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -135,6 +136,9 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 	if meta.LastUserAt.IsZero() || time.Since(meta.LastUserAt) > olderChatRecent || session.InUse(filepath.Join(dir, "transcript.jsonl")) {
 		return cell.Cell{}, session.Meta{}, false
 	}
+	if !meta.Owned && holdsHome(meta.Workspace) {
+		return cell.Cell{}, session.Meta{}, false
+	}
 	c, err := o.copy(ctx, dir)
 	if err != nil {
 		// A copy cut short by the terminal closing did not fail.
@@ -148,6 +152,29 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 	}
 	delete(o.failed, dir)
 	return c, meta, true
+}
+
+// holdsHome reports whether workspace contains codeaf's own home, as a chat
+// started in a home directory does. Codeaf writes its state there for as long as
+// it runs, so the whole-folder seal a copy begins with never settles: in a live
+// terminal every such copy planned the folder eight times, about a minute each
+// on a small home and far longer on a real one, and then failed with "files kept
+// changing". The background copier leaves these chats to be copied when opened.
+func holdsHome(workspace string) bool {
+	if workspace == "" {
+		return false
+	}
+	rel, err := filepath.Rel(resolvedPath(workspace), resolvedPath(home.Dir()))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolvedPath is path with its links resolved when it exists, so a folder named
+// through a link still compares as itself.
+func resolvedPath(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+	return filepath.Clean(path)
 }
 
 // movablePlace resolves a completed copy or prepares one when the person opens
