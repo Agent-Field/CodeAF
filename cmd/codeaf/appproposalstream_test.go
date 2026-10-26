@@ -30,7 +30,7 @@ func (p *streamingProposalConversation) SideAskStream(ctx context.Context, quest
 
 func TestAppCrewProposalStreamsCompleteLines(t *testing.T) {
 	lines := []string{
-		`{"t":"shape","size":2,"teams":1,"why":"two checks"}`,
+		`{"t":"shape","size":2,"teams":0,"why":"two checks"}`,
 		`{"t":"name","name":"Launch checks","goal":"Check the launch"}`,
 		`{"t":"member","handle":"review","role":"Reviewer","brief":"Review the plan","reports_to":"manager"}`,
 		`{"t":"member","handle":"verify","brief":"Check the claims","reports_to":"review"}`,

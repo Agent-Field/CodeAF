@@ -20,3 +20,10 @@ nor the next turn's context. The existing nonstreaming side ask remains availabl
 
 Accepting records reporting handles on members of one flat crew. Nested crews
 are not created. Engines without streaming support retain the final-card path.
+
+Streaming proposals explicitly disable reasoning for this side ask alone, with the
+provider's lowest supported effort used when reasoning is mandatory. The previous
+optional low-effort hint could be omitted when the catalog did not recognize the
+model, leaving it to deliberate at its own default. Chat and ordinary side-ask
+reasoning settings are unchanged. A flat shape with zero explicit team groups is
+accepted and emitted immediately, rather than dropped before the name line.

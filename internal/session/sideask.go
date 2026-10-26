@@ -138,9 +138,10 @@ func (a *Agent) sideAsk(ctx context.Context, question string, onText func(string
 			}
 		})
 	}
-	// LOW EFFORT, because somebody is watching a button: the question is about
-	// work that is already written down, not new work to think through.
 	ctx = provider.WithReasoningEffort(ctx, provider.EffortLow)
+	if onText != nil {
+		ctx = provider.WithRequiredReasoningEffort(ctx, provider.EffortOff)
+	}
 	response, answered, err := a.completeWithNamedModel(ctx, purposeSideAsk,
 		[]ai.Message{textMessage("system", sideAskSystem), textMessage("user", ask)}, model)
 	if response != nil {

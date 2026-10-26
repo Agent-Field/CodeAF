@@ -61,19 +61,22 @@ func newHelpersModel(t *testing.T) *helpersModel {
 		content, _ := json.Marshal(answer)
 		if envelope.Stream {
 			writer.Header().Set("Content-Type", "text/event-stream")
-			for start := 0; start < len(answer); start += 7 {
-				chunk, _ := json.Marshal(answer[start:min(start+7, len(answer))])
-				_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{"content":` + string(chunk) + `}}]}` + "\n\n"))
-				writer.(http.Flusher).Flush()
-			}
 			model.mu.Lock()
 			release := model.proposalRelease
 			model.mu.Unlock()
-			if envelope.messageContaining("Propose a crew") != "" && release != nil {
-				select {
-				case <-release:
-				case <-request.Context().Done():
-					return
+			waited := false
+			for start := 0; start < len(answer); start += 7 {
+				end := min(start+7, len(answer))
+				chunk, _ := json.Marshal(answer[start:end])
+				_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{"content":` + string(chunk) + `}}]}` + "\n\n"))
+				writer.(http.Flusher).Flush()
+				if !waited && release != nil && envelope.messageContaining("Propose a crew") != "" && strings.Contains(answer[:end], "\n") {
+					select {
+					case <-release:
+					case <-request.Context().Done():
+						return
+					}
+					waited = true
 				}
 			}
 			_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))

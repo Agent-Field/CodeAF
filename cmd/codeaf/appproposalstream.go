@@ -56,7 +56,7 @@ func (s *appProposalStream) line(line string) {
 			Teams int    `json:"teams"`
 			Why   string `json:"why"`
 		}
-		if json.Unmarshal([]byte(line), &shape) != nil || shape.Size < 1 || shape.Teams < 1 || strings.TrimSpace(shape.Why) == "" {
+		if json.Unmarshal([]byte(line), &shape) != nil || shape.Size < 1 || shape.Teams < 0 || strings.TrimSpace(shape.Why) == "" {
 			return
 		}
 		s.size = shape.Size

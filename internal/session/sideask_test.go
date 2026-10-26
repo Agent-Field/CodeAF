@@ -199,11 +199,13 @@ func TestASideAskIsBoundedAndSaysWhatItLeftOut(t *testing.T) {
 
 type streamingSideAskProbe struct {
 	*scriptedCompleter
+	effort  provider.Effort
 	fail    bool
 	replace bool
 }
 
 func (p *streamingSideAskProbe) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	p.effort = provider.ReasoningEffortFrom(ctx)
 	for _, chunk := range []string{`{"type":"mem`, `ber","handle":"sam"}`, "\n"} {
 		provider.Emit(ctx, provider.StreamDelta, chunk)
 	}
@@ -246,5 +248,26 @@ func TestSideAskStreamKeepsDeliveredTextWhenProviderReplacesAnswer(t *testing.T)
 	answer, err := agent.SideAskStream(context.Background(), "what people?", func(chunk string) { text.WriteString(chunk) })
 	if err == nil || answer != "{\"type\":\"member\",\"handle\":\"sam\"}" || text.String() != answer+"\n" {
 		t.Fatalf("answer %q, chunks %q, error %v", answer, text.String(), err)
+	}
+}
+
+func TestSideAskStreamDisablesReasoningOnlyForItsOwnCall(t *testing.T) {
+	probe := &streamingSideAskProbe{scriptedCompleter: &scriptedCompleter{}}
+	agent, _ := newTestAgent(t, probe, nil)
+	ctx := provider.WithConfiguredReasoningEffort(context.Background(), provider.EffortHigh)
+	if _, err := agent.SideAskStream(ctx, "what people?", func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if probe.effort != provider.EffortOff {
+		t.Fatalf("streaming side ask effort = %q, want off", probe.effort)
+	}
+	if provider.ReasoningEffortFrom(ctx) != provider.EffortHigh {
+		t.Fatal("side ask changed the caller's reasoning setting")
+	}
+	if _, err := agent.SideAsk(ctx, "what people?"); err != nil {
+		t.Fatal(err)
+	}
+	if probe.effort != provider.EffortLow {
+		t.Fatalf("ordinary side ask effort = %q, want existing low default", probe.effort)
 	}
 }

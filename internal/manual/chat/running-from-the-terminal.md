@@ -1989,7 +1989,9 @@ processes; finished logs remain available on demand without an ended count.
 
 **Bring in helpers** asks the conversation's own model about the work without
 starting a turn or changing the chat's history or model context. The proposal
-arrives in complete lines, with its size and name before its helpers. The default
+arrives in complete lines, with its size and name before its helpers. Proposal
+generation asks for reasoning to be off, or the lowest level the provider supports.
+Your chat's reasoning setting stays the same. The default
 is the smallest useful crew, usually one to three helpers. Separate teams are
 proposed only for separate streams of work that each need multiple people.
 
