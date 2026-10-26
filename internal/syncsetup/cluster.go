@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -19,11 +20,11 @@ func (s *Sync) clusterClient() clusterctl.Client {
 }
 func (s *Sync) ClusterStatus(ctx context.Context) (clusterctl.Status, error) {
 	if !s.memberAllowed() {
-		return clusterctl.Status{}, ErrQuiet
+		return clusterctl.Status{}, s.clusterRefusal(ctx, ErrQuiet)
 	}
 	status, err := s.clusterClient().Status(ctx)
 	if err != nil {
-		return status, err
+		return status, s.clusterRefusal(ctx, err)
 	}
 	s.memberMu.Lock()
 	defer s.memberMu.Unlock()
@@ -35,10 +36,24 @@ func (s *Sync) ClusterStatus(ctx context.Context) (clusterctl.Status, error) {
 		return status, nil
 	}
 	if e != nil {
-		return status, e
+		return status, s.clusterRefusal(ctx, e)
 	}
 	m.close()
-	return s.clusterClient().Status(ctx)
+	status, err = s.clusterClient().Status(ctx)
+	return status, s.clusterRefusal(ctx, err)
+}
+
+// clusterRefusal verifies removal through the directory's authenticated door.
+// Both relays can return an untyped coordination refusal, including a plain
+// forbidden response. That response alone does not establish device removal.
+func (s *Sync) clusterRefusal(ctx context.Context, err error) error {
+	if err == nil || errors.Is(err, directory.ErrRevoked) {
+		return err
+	}
+	if _, refusal := s.Dir.List(ctx); errors.Is(refusal, directory.ErrRevoked) {
+		return refusal
+	}
+	return err
 }
 
 type leadershipSession struct {
@@ -49,8 +64,8 @@ type leadershipSession struct {
 // LeadCluster saves the exact signed request before transmission. A lost reply
 // retries that same operation after restart, including its observed revision;
 // it cannot silently promote a newer target or allocate a second request.
-func (s *Sync) LeadCluster(ctx context.Context, node uint64) (cs.LeadershipReceipt, error) {
-	var receipt cs.LeadershipReceipt
+func (s *Sync) LeadCluster(ctx context.Context, node uint64) (receipt cs.LeadershipReceipt, err error) {
+	defer func() { err = s.clusterRefusal(ctx, err) }()
 	if Quiet(s.Home) {
 		return receipt, ErrQuiet
 	}

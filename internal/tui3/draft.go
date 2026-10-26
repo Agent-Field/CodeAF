@@ -300,10 +300,7 @@ func draftFirstHere(own, workspace string) bool {
 // record — an older build's leftovers, or an orphan adopted from a dead window on
 // this directory — and [app.legacyDraftText] is where it is read.
 func (a *app) restoreDraft() {
-	if a.draftFile == "" {
-		return
-	}
-	a.layKeptDrafts()
+	a.layKeptDrafts(true)
 }
 
 // adoptDraft takes over the newest draft on this directory whose window is gone,

@@ -886,6 +886,7 @@ type (
 )
 
 type app struct {
+	waitForRelease      func() bool
 	chatStarts          map[string]bool
 	conversationRequest uint64
 	conversationOpening bool
@@ -2314,7 +2315,10 @@ type app struct {
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
-	machinePoll    machinePoll
+	// machinesRetaken replaces a listing begun before a completed take, so
+	// its late answer cannot put the previous holder back on screen.
+	machinesRetaken bool
+	machinePoll     machinePoll
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
@@ -3044,6 +3048,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a := &app{
 		knowledgeProfile:    opts.Knowledge,
+		waitForRelease:      opts.WaitForRelease,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
@@ -10546,7 +10551,7 @@ func gitHead(dir string) (string, bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	run := func(args ...string) (string, bool) {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 		cmd.Dir = dir
 		out, err := cmd.Output()
 		if err != nil {
@@ -10560,7 +10565,7 @@ func gitHead(dir string) (string, bool, bool) {
 	}
 	// An unreadable status is reported as CLEAN rather than dirty: the star is a
 	// claim, and a claim this surface could not check is one it should not make.
-	status, _ := run("--no-optional-locks", "status", "--porcelain", "--untracked-files=no")
+	status, _ := run("status", "--porcelain", "--untracked-files=no")
 	return branch, status != "", true
 }
 

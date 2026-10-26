@@ -167,11 +167,13 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 200, 70
 	drain(t, a, a.openHome())
-	a.machines = continueRows
+	src := &continuationListing{row: continueRows[0]}
+	a.machines = src
 	a.taker = &fakeTaker{
 		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk", Elapsed: 3200 * time.Millisecond},
 		on: func(cell string) {
 			lab.session("project", cell, "Port the picker", workspace, time.Now())
+			src.change(func(row *chatlist.Row) { row.Mine, row.Status = true, chatlist.Here })
 		},
 	}
 	drain(t, a, a.askMachines())

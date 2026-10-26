@@ -12,7 +12,7 @@ import (
 // cannot be put back.
 func git(dir string, args ...string) (string, error) {
 	var stderr strings.Builder
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.Dir = dir
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

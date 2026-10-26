@@ -212,3 +212,9 @@ been saved. If the reply is interrupted, retrying the same approval keeps the
 same decision. A different answer cannot replace a decision already made. If
 the link has run out, ask the new computer for a fresh one. Removing a device
 blocks its later requests; it cannot take back bytes the device already received.
+
+## After removal — does this machine keep syncing while its window is open
+
+Once codeaf learns that this machine was removed, it stops asking for chats and stops sending updates. That refusal is remembered across windows and restarts. Your window stays usable for local chats. Home removes its offer to continue a chat from your other devices, its continue chord and the continue action on chat rows. The removal explanation stays visible.
+
+Run `codeaf pair` to pair it again. Pairing can still reach the service and gives this machine a new device key. An already open Home then shows your other devices again.

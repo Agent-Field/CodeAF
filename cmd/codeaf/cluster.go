@@ -51,14 +51,14 @@ func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writ
 	if verb == "lead" {
 		r, err := c.LeadCluster(ctx, 0)
 		if err != nil {
-			return err
+			return explainRemovedDevice(err)
 		}
 		_, err = fmt.Fprintf(out, "computer %d is coordinating · term %d · revision %d · read barrier %d\n", r.Node, r.Term, r.Revision, r.Barrier)
 		return err
 	}
 	s, err := c.ClusterStatus(ctx)
 	if err != nil {
-		return err
+		return explainRemovedDevice(err)
 	}
 	if s.Leader != 0 {
 		fmt.Fprintf(out, "coordinator %d\n", s.Leader)

@@ -34,8 +34,10 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 	if err := os.WriteFile(transcript, []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	a.machines = continueRows
+	src := &continuationListing{row: continueRows[4]}
+	a.machines = src
 	a.taker = &fakeTaker{taken: Taken{Transcript: transcript, Elapsed: 3 * time.Second, Resume: machine.Resume{From: "host-a", Now: work, Uncommitted: []string{"README.md"}}}, on: func(id string) {
+		src.change(func(row *chatlist.Row) { row.Mine, row.Status = true, chatlist.Here })
 		// This is the stale derived row read immediately after the handoff. It has
 		// the right transcript and an old or unavailable project path.
 		if err := session.SaveMeta(at, session.Meta{ID: id, Title: "Arrived", Workspace: filepath.Join(lab.root, "gone"), Created: time.Now(), LastUserAt: time.Now()}); err != nil {

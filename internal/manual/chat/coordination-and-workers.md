@@ -45,9 +45,13 @@ Older clients may send an empty frame plan as an omitted field, `null` or `[]`. 
 
 A lost reply or restarted home keeps the original signed leadership request. Retry `codeaf cluster lead` to resume it; a pending request cannot choose a different computer. A completed refusal says `the leadership request could not complete; refresh cluster status and try again` and is acknowledged before another request is saved. Only one configuration change can run at a time. A different personal coordinator cannot directly replace an active personal coordinator; let the anchors resume, then request leadership again.
 
+## Clean quit on the leader — quitting the coordinating laptop, do the anchors take over at once
+
+On the hosted relay and a self-hosted relay with storage, a clean terminal quit finishes releasing its idle chats, then hands coordination to an anchor before stopping. Another paired computer can continue those chats immediately, without waiting for an election or a lease to expire. Work that is still running keeps going and releases its chat when it finishes. Returning coordination adds at most 5 seconds to quit; a computer that is not coordinating adds no requests or wait. If the anchors cannot take over within that bound, ordinary fallback applies.
+
 ## What happens if my leader goes away — my leading laptop went to sleep or the leader computer was turned off
 
-On the hosted relay and a self-hosted relay with storage, when a personal coordinator sleeps, exits or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership: request `codeaf cluster lead` again. Losing a majority pauses coordination and keeps saved chats. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+When a personal coordinator sleeps, crashes, loses its connection or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership, including after a clean quit: request `codeaf cluster lead` again. Losing a majority pauses coordination and keeps saved chats. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 
 Coordination ticks every 5 seconds. The provisioned anchors’ ranked election windows are 6–7 ticks (30–35 seconds), 8–9 ticks (40–45 seconds) and 10–11 ticks (50–55 seconds); other computers use 12–13 ticks (60–65 seconds). Healthy fallback targets about 65 seconds. Scheduling delays or a partition can take longer. Fully idle groups stop periodic ticks only after every voter has applied the same idle barrier; a new operation or a leading computer’s disconnection wakes coordination and needs a fresh majority response.
 
@@ -169,3 +173,7 @@ Watch sockets show presence; older clients still send their normal heartbeats.
 The relay's selected-worker API accepts an original signed command or a signed request for one chat or assignment. A delegated worker receives only its selected sealed grant. Each read commits current time, waits for a fresh majority response and checks its current scope and process number. A retained claim alone cannot authorize execution after another computer takes the chat. A worker cannot use this API to pair computers, rotate the identity or promote itself.
 
 Native and hosted watch connections carry committed receipts to clients that ask for them. Each receipt names the exact chat and ownership number, durable position and hold-until time. Older clients receive their original version and presence frames and keep ordinary heartbeats. A ping without a receipt cannot suppress those heartbeats. A released chat cannot be revived by a delayed ping. Idle presence pings do not start a recurring directory request loop.
+
+## Cluster status or lead after this device was removed
+
+On a removed computer, `codeaf cluster status` and `codeaf cluster lead` fail with the same removal and pairing guidance as `codeaf devices`. This applies to the default relay and to your own relay. Pair that computer again with `codeaf pair` to restore access. A removed device is different from a cluster temporarily unable to coordinate.

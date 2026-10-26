@@ -9477,7 +9477,7 @@ func gitContext(ctx context.Context, dir string, environment []string, args ...s
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.CommandContext(ctx, "git", args...)
+	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.

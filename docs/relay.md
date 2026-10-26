@@ -57,7 +57,10 @@ term, revision and read barrier. A pending request is not success; retrying lead
 the saved signed request. Keep codeaf open: without an open terminal the member runs
 only for that command. Leadership does not transfer chat ownership or fetch content.
 
-When that personal leader sleeps, exits or turns sync off, the two remaining anchors
+On a clean terminal quit, that personal leader releases its idle chats and returns
+coordination to an anchor before stopping. Returning coordination adds at most five
+seconds (`syncsetup.LeaderQuitWithin`); unavailable anchors retain ordinary fallback.
+When that personal leader sleeps, crashes, loses its connection or turns sync off, the two remaining anchors
 can elect a leader and restore the third anchor. Healthy fallback targets about
 65 seconds; delays and partitions can take longer. Returning computers remain learners
 until explicitly asked to lead again. Losing the personal leader and either voting

@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
@@ -45,7 +46,8 @@ type Drive struct {
 	scope   *Scope // what this chat's publishes are counted under
 	// Ownership stays on the record this window opened. Preserving displaced
 	// work in a branch does not transfer this window's permission to run tools.
-	directoryID string
+	directoryID   string
+	recordedFence uint64
 
 	cancel   context.CancelFunc
 	done     chan struct{}
@@ -54,8 +56,9 @@ type Drive struct {
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
-	mu   sync.Mutex
-	line string // the superseded line, empty while this device drives
+	mu     sync.Mutex
+	line   string // the superseded line, empty while this device drives
+	spoken bool
 }
 
 // Drive starts the drive side of c. The lease is acquired when the chat has a
@@ -88,6 +91,9 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if d.batcher, err = s.batcher(eng, c, drv, d); err != nil {
 		return nil, err
 	}
+	if err := d.recordSendLease(); err != nil {
+		return nil, errors.Join(err, s.Dir.Release(ctx, drv.ID(), drv.Fence))
+	}
 	d.catchUp(drv)
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
@@ -113,7 +119,7 @@ func (d *Drive) catchUp(drv cellsync.Driving) {
 	if err != nil || head.Turn.ID == drv.Head || !known {
 		return
 	}
-	d.batcher.Note(head.Turn)
+	d.note(*head)
 }
 
 // CatchUp notes the newest startup seal once an asynchronous drive is ready.
@@ -123,7 +129,22 @@ func (d *Drive) CatchUp() {
 		return
 	}
 	if head, err := cellstore.Head(d.cell); err == nil && head != nil {
-		d.batcher.Note(head.Turn)
+		d.note(*head)
+	}
+}
+
+// note publishes only chats that have conversation work. A window's startup
+// head still saves its bookkeeping locally without creating an untitled chat
+// on every other computer. Once used, the chat keeps its ordinary save path.
+func (d *Drive) note(sealed cellstore.Sealed) {
+	d.mu.Lock()
+	if !d.spoken {
+		d.spoken, _ = session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), sealed.Receipt.Transcript.End)
+	}
+	spoken := d.spoken
+	d.mu.Unlock()
+	if spoken {
+		d.batcher.Note(sealed.Turn)
 	}
 }
 
@@ -161,6 +182,9 @@ func (d *Drive) pushChanged(ctx context.Context, v vaultsync.Syncer) error {
 // flushed is what runs after each publish: the telemetry, then the vault.
 func (d *Drive) flushed() func(cellsync.Flush) {
 	return func(f cellsync.Flush) {
+		if err := d.recordSendLease(); err != nil {
+			d.becomeViewer(cellsync.Superseded{})
+		}
 		if err := cellstore.NotePublished(d.cell, f.Head); err != nil {
 			d.notice("could not record which turns reached your other devices: " + err.Error())
 		}
@@ -222,9 +246,23 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	// The ordinary continuation restores the newer head and keeps local work;
 	// until the person takes that door this window only shows its local copy.
 	if !known {
-		return drv, view.Cell.Lease.Device, nil
+		return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 	}
-	v, err := s.Dir.Acquire(ctx, drv.ID(), directory.AcquireOpts{Expect: &directory.LeaseExpectation{
+	var localHead string
+	wasFree := view.Cell.Lease.Expires <= view.Now
+	if wasFree {
+		head, err := cellstore.Head(c)
+		if err != nil {
+			return drv, "", err
+		}
+		if head != nil {
+			localHead = head.Turn.ID
+		}
+		if localHead != view.Cell.Head {
+			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
+		}
+	}
+	v, err := s.Dir.Acquire(ctx, drv.ID(), directory.AcquireOpts{RequireConditional: wasFree, Expect: &directory.LeaseExpectation{
 		Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence,
 	}})
 	switch {
@@ -236,9 +274,9 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		return drv, "", err
 	}
 	known, err = cellstore.KnowsHead(c, v.Cell.Head)
-	if err != nil || !known {
+	if err != nil || !known || (wasFree && localHead != v.Cell.Head) {
 		_ = s.Dir.Release(ctx, drv.ID(), v.Cell.Lease.Fence)
-		return drv, view.Cell.Lease.Device, err
+		return drv, nonemptyHolder(view.Cell.Lease.Device), err
 	}
 	drv.Fence, drv.Head = v.Cell.Lease.Fence, v.Cell.Head
 	// The plan comes with the record: the frames the last publisher named for
@@ -277,6 +315,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		Info:         d.info,
 		OnFlush:      d.flushed(),
 		OnSuperseded: d.becomeViewer,
+		OnLost:       func() { d.refusal(directory.ErrFenceStale) },
 		OnError:      d.refusal,
 		Sleep:        d.opt.Sleep,
 		Liveness:     s.Liveness(),
@@ -295,7 +334,11 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
-	line := chatlist.Superseded(d.sync.deviceName(s.By))
+	device := unknownDevice
+	if s.By != "" && s.By != unknownDevice {
+		device = d.sync.deviceName(s.By)
+	}
+	line := chatlist.Superseded(device)
 	d.mu.Lock()
 	d.line = line
 	d.mu.Unlock()
@@ -315,6 +358,10 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 // refusal shows the person-facing line of a refused request, which the
 // refusal table in cellsync holds beside how the request is retried.
 func (d *Drive) refusal(err error) {
+	if errors.Is(err, directory.ErrFenceStale) || errors.Is(err, cellsync.ErrSuperseded) {
+		d.becomeViewer(cellsync.Superseded{})
+		return
+	}
 	if r, ok := cellsync.RefusalOf(err); ok {
 		d.notice(r.Say(err))
 	}
@@ -366,7 +413,7 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 	}
 	lease := v.Cell.Lease
 	// The first publish may establish the fence while the read is in flight.
-	return lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
+	return lease.Expires > v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
 }
 
 // CheckLease closes the stale-window gap before a tool runs, even when no
@@ -379,10 +426,17 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
-	if err == nil && (v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
+	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
 	}
 	return nil
+}
+
+func nonemptyHolder(id string) string {
+	if id == "" {
+		return unknownDevice
+	}
+	return id
 }
 
 // Gate refuses with the superseded line once the chat is a viewer, and answers
@@ -417,8 +471,7 @@ func (d *Drive) Store(e cellstore.Engine) cellstore.Store {
 	if d.batcher == nil {
 		return e
 	}
-	stamped := stamping{engine: e, device: d.sync.Device.Cert.Device, fence: d.batcher.Fence}
-	return &cellsync.Publishing{Inner: stamped, Batcher: d.batcher}
+	return stamping{engine: e, device: d.sync.Device.Cert.Device, fence: d.batcher.Fence, note: d.note}
 }
 
 // stamping writes the device key and the current fence into each turn it seals.
@@ -426,6 +479,7 @@ type stamping struct {
 	engine cellstore.Engine
 	device string
 	fence  func() uint64
+	note   func(cellstore.Sealed)
 }
 
 var _ cellstore.Store = stamping{}
@@ -434,7 +488,11 @@ var _ cellstore.Store = stamping{}
 func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
 	e := s.engine
 	e.Identity = cellstore.Identity{Device: s.device, Fence: s.fence()}
-	return e.Seal(ctx, c, info)
+	sealed, err := e.Seal(ctx, c, info)
+	if err == nil {
+		s.note(sealed)
+	}
+	return sealed, err
 }
 
 // Close ends the drive side: what is sealed is published, and the lease is
