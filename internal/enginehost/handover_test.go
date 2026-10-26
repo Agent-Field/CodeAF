@@ -43,9 +43,10 @@ func TestARetiringHostLetsGoOfTheWorkspaceBeforeItsSaveFinishes(t *testing.T) {
 	shortHome(t)
 	workspace := "/home/somebody/api"
 	agent := newSavingAgent()
-	stopped := make(chan error, 1)
+	stopped := make(chan struct{})
 	go func() {
-		stopped <- Run(workspace, Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+		defer close(stopped)
+		_ = Run(workspace, Options{Boot: func(remote.Hello) (*remote.Engine, error) {
 			return &remote.Engine{Agent: agent, Workspace: workspace, SessionFile: workspace + "/j.jsonl"}, nil
 		}})
 	}()
@@ -192,4 +193,3 @@ func TestALaunchStartsTheHostOnceAHolderOnItsWayOutLetsGo(t *testing.T) {
 		t.Fatalf("hosts started = %d, want exactly one", spawns)
 	}
 }
-EOF'

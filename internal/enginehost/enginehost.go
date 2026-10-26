@@ -214,10 +214,46 @@ func Attach(workspace string, spawn func() error) (net.Conn, error) {
 		if err := spawn(); err != nil {
 			return nil, err
 		}
-	} else if attachWaiting != nil {
+		return waitForHost(workspace, spawnWait)
+	}
+	if attachWaiting != nil {
 		attachWaiting()
 	}
-	return waitForHost(workspace, spawnWait)
+	return waitForHolder(workspace, dir, spawn, spawnWait)
+}
+
+// waitForHolder is the wait when the lock was busy: a host being born, which
+// listens within moments, or a host on its way out, which may hold the lock
+// through its last save with nothing listening. Hosts of this build give the
+// lock up before they save ([Host.shutdown]); older builds do not.
+//
+// SO THE LOCK IS ASKED AGAIN ON EVERY TURN, NOT ONLY THE SOCKET. The moment the
+// holder lets go with no socket behind it, nobody is coming, and this launch
+// starts the host itself rather than waiting out the rest of [spawnWait] and
+// then falling back to its own process. It starts at most one: the host it
+// starts takes the lock, and a second spawn would only be a process that finds
+// the lock taken and exits.
+func waitForHolder(workspace, dir string, spawn func() error, within time.Duration) (net.Conn, error) {
+	deadline := time.Now().Add(within)
+	spawned := false
+	for {
+		if conn, err := Dial(workspace); err == nil {
+			return conn, nil
+		}
+		if !spawned {
+			if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
+				_ = releaseLock(held)
+				if err := spawn(); err != nil {
+					return nil, err
+				}
+				spawned = true
+			}
+		}
+		if time.Now().After(deadline) {
+			return nil, ErrNoHostAnswered
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // attachWaiting is told when [Attach] found the lock busy and is about to wait
