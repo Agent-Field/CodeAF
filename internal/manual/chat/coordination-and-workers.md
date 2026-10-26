@@ -176,4 +176,4 @@ Native and hosted watch connections carry committed receipts to clients that ask
 
 ## Cluster status or lead after this device was removed
 
-On a removed computer, `codeaf cluster status` and `codeaf cluster lead` fail with the same removal and pairing guidance as `codeaf devices`. Pair that computer again with `codeaf pair` to restore access. A removed device is different from a cluster temporarily unable to coordinate.
+On a removed computer, `codeaf cluster status` and `codeaf cluster lead` fail with the same removal and pairing guidance as `codeaf devices`. This applies to the default relay and to your own relay. Pair that computer again with `codeaf pair` to restore access. A removed device is different from a cluster temporarily unable to coordinate.
