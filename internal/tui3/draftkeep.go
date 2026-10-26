@@ -1124,8 +1124,9 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 // THE BOX IS EMPTY; falling through to the plain file there is how a sentence
 // that was sent came back, because the export is written after the record and a
 // crash between the two leaves it holding the words the record has just spent.
-// Taking a named chat restores only its own saved composers; an unowned plain
-// draft can be adopted only during an ordinary window opening.
+// Taking a named chat restores only its own saved composers; an orphaned plain
+// draft from a window that is gone is adopted only by an ordinary opening in
+// its directory, never by a chat arriving through a take.
 func (a *app) layKeptDrafts(allowUnowned bool) {
 	if a.draftFile == "" {
 		return
@@ -1139,9 +1140,11 @@ func (a *app) layKeptDrafts(allowUnowned bool) {
 	if keep, how := readDraftKeep(draftKeepPath(a.draftFile)); how == draftKeepFound {
 		a.keptElsewhere, _ = a.takeKeptSlots(keep, states)
 		settled = a.speaksFor(keep)
-		// The plain export belongs to the record's named chat. A new chat
-		// cannot adopt it just because the draft store or project matches.
-		if namedConversation(keep.Owner) {
+		// A shared connection reuses this window's store across selections,
+		// and a chat arriving through a take brings only its own words. In
+		// both, the plain export belongs to the record's owner; falling back
+		// to it would put another chat's unsent text into the incoming chat.
+		if (a.shared || !allowUnowned) && namedConversation(keep.Owner) {
 			settled = true
 		}
 	}

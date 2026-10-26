@@ -349,11 +349,6 @@ func adoptDraft(own, workspace string) string {
 		if path == own || draftWindowAlive(path) {
 			continue
 		}
-		// A saved record names the chat these words belong to. Its plain
-		// export must stay with that chat until its own composer is restored.
-		if keep, how := readDraftKeep(draftKeepPath(path)); how == draftKeepFound && namedConversation(keep.Owner) {
-			continue
-		}
 		info, err := os.Stat(path)
 		if err != nil || info.ModTime().Before(latest) {
 			continue
