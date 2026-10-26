@@ -2,12 +2,50 @@ package tui3
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+func TestResumeListReadDoesNotBlockInput(t *testing.T) {
+	a, _ := rosterApp(t, &fakeAgent{model: "m"}, rosterSessions())
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	a.recentSessions = func() []Session { close(entered); <-release; return rosterSessions() }
+	t.Cleanup(unblock)
+	a.input.setText("/resume")
+	returned := make(chan tea.Cmd, 1)
+	go func() { _, cmd := a.Update(key("enter")); returned <- cmd }()
+	var cmd tea.Cmd
+	select {
+	case cmd = <-returned:
+	case <-time.After(time.Second):
+		unblock()
+		<-returned
+		t.Fatal("opening /resume blocked the input loop on its history read")
+	}
+	if !a.roster.open || !strings.Contains(plain(mustFrame(a)), "reading saved conversations") {
+		t.Fatal("resume offered no immediate loading state")
+	}
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	<-entered
+	a.Update(key("b"))
+	if a.roster.filter.String() != "b" {
+		t.Fatal("filter could not be edited while history was loading")
+	}
+	a.Update(key("esc"))
+	unblock()
+	msg := <-done
+	a.Update(msg)
+	if a.roster.open {
+		t.Fatal("a late history read reopened the cancelled picker")
+	}
+}
 
 func TestFirstMessageHasItsOwnScreenBeforeTheConversationOpens(t *testing.T) {
 	for _, fromHome := range []bool{true, false} {

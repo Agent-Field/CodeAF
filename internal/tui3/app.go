@@ -2955,7 +2955,8 @@ type app struct {
 	startGen  int
 	// roster is the resume picker: the same conversations the box lists, opened
 	// on purpose and filterable (resume.go).
-	roster roster
+	roster         roster
+	resumeAtLaunch tea.Cmd
 	// shelf is the deliverables picker /files opens over the global index of
 	// what has been made (deliverables.go). It reads the same index /export
 	// writes: the artifacts field above, resolved by [app.artifactsIndex].
@@ -3378,7 +3379,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// machine with no conversations yet gets the empty state as a notice rather
 	// than a list with nothing in it (resume.go).
 	if opts.PickSession {
-		a.openResume()
+		a.resumeAtLaunch = a.openResume()
 	}
 	// AND HOME IS DECIDED AFTER BOTH, for the picker's own reason and one more.
 	// It reads the surface it opens over — which conversation this window is in,
@@ -3554,7 +3555,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -8508,8 +8509,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// wrote and lives in a file named after a timestamp; neither is a thing
 		// anybody types, so the only honest way to ask for one is to be shown
 		// them (resume.go).
-		a.openResume()
-		return nil
+		return a.openResume()
 
 	case "debug":
 		// The third door onto one switch — the other two are --debug and

@@ -1265,6 +1265,10 @@ machine, whose list of names the picker shows.
 surface `codeaf resume` opens on. The list is resolved at that keystroke, so a
 conversation you had in another terminal since is in it.
 
+While the list loads, it says `reading saved conversations… · esc cancels`.
+You can type a filter immediately or press esc to leave. A late result never
+reopens a picker you cancelled, and enter waits until the list is available.
+
 A filter box takes the input line's place. Type to filter, ↑↓ to move, pgup/pgdown by 10.
 The filter ranks over the name and the description together, every token matching, prefix
 beating substring beating subsequence — which is why typing `migration` finds the session
