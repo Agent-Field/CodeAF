@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Desktop engines can list, rename and remove paired computers
-pr: 0
+pr: 1977
 surface: [engine]
 invalidates:
   - "The app engine had no device-management methods. Engines that advertise devices.manage now serve devices.list, devices.rename and devices.remove."
