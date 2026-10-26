@@ -3985,6 +3985,9 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	}
 	width, height := a.size()
 	lines, hits, _, _ := a.homeFrame(width, height)
+	if a.addMachineAt(x, y, lines) {
+		return a.toggleAddMachine()
+	}
 	if y < 0 || y >= len(hits) {
 		return nil
 	}

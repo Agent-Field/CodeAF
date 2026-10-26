@@ -29,6 +29,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Fleet counts the devices this person has paired. Nil in [Options] is a
@@ -46,7 +47,7 @@ const (
 	fleetAskTimeout = 5 * time.Second
 
 	addMachineHeading = "+ Add another device"
-	addMachinePitch   = "Add another device — pick up your work anywhere, exactly where you left it."
+	addMachinePitch   = "Pick up your work anywhere, exactly where you left it."
 	addMachineStepRun = "1. On the new device, install and run: codeaf pair"
 	addMachineStepPut = "2. It shows a link. Paste it here:"
 	addMachineField   = "> "
@@ -68,7 +69,8 @@ type addMachine struct {
 	known  bool
 	asking bool
 	// open says the steps are showing.
-	open bool
+	open    bool
+	hovered bool
 }
 
 // wanted says the card is on: a door that can approve, and a fleet known to be one.
@@ -143,11 +145,16 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 		return nil
 	}
 	m := a.addMachine
-	rows := []string{ctx.pal.muted(fit(addMachineHeading, ctx.width))}
+	heading := ctx.pal.ink(fit(addMachineHeading, ctx.width))
+	if m.hovered {
+		heading = ctx.pal.cursor(ctx.pal.accent(fit(addMachineHeading, ctx.width)), ansi.StringWidth(fit(addMachineHeading, ctx.width)))
+	}
+	rows := []string{heading}
 	for _, line := range wrap(addMachinePitch, ctx.width) {
-		rows = append(rows, ctx.pal.dim(fit(line, ctx.width)))
+		rows = append(rows, ctx.pal.muted(fit(line, ctx.width)))
 	}
 	if m.open {
+		rows = append(rows, "")
 		rows = append(rows, a.addMachineHow(ctx)...)
 	}
 	key := addMachineShow
@@ -163,8 +170,33 @@ func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
 	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
 		for _, wrapped := range wrap(line, ctx.width) {
-			rows = append(rows, ctx.pal.ink(fit(wrapped, ctx.width)))
+			text := ctx.pal.muted(fit(wrapped, ctx.width))
+			text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.ink("codeaf pair")))
+			rows = append(rows, text)
 		}
 	}
 	return append(rows, ctx.pal.accent(fit(addMachineField, ctx.width)))
+}
+
+// addMachineAt resolves only the heading's painted cells, so description text
+// and blank space never promise to open the instructions.
+func (a *app) addMachineAt(x, y int, lines []string) bool {
+	if !a.at(pageHome) || !a.addMachineWanted() || y < 0 || y >= len(lines) {
+		return false
+	}
+	line := ansi.Strip(lines[y])
+	at := strings.Index(line, addMachineHeading)
+	if at < 0 {
+		return false
+	}
+	from := ansi.StringWidth(line[:at])
+	return x >= from && x < from+ansi.StringWidth(addMachineHeading)
+}
+
+func (a *app) hoverAddMachine(x, y int) {
+	next := a.addMachineAt(x, y, a.home.painted.lines)
+	if next != a.addMachine.hovered {
+		a.addMachine.hovered = next
+		a.touch()
+	}
 }
