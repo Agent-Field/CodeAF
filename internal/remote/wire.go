@@ -416,7 +416,7 @@ const Version = 22
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
 	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
-	// "turn", "driver", "moved", "fatal".
+	// "turn", "driver", "moved", "fatal", "sideAskDelta".
 	//
 	// "facts", "task", "design", "question", "phase" and "lane" are the KINDS
 	// THAT ANSWER NOTHING. The third and fourth are version 11's harness lane
@@ -1473,6 +1473,8 @@ type Welcome struct {
 	// refused at this end before anything is written — never answered by
 	// sending the question as a turn instead.
 	SideAsk bool `json:"sideAsk,omitempty"`
+	// SideAskStream adds ephemeral text deltas to the side ask.
+	SideAskStream bool `json:"sideAskStream,omitempty"`
 	// Setup says this engine's conversation answers [MethodSetupPlan] and
 	// [MethodSubmitSetup] (setup.go), for [Welcome.Folders]'s reason: a
 	// *remote.Agent always has the methods. ABSENCE IS false, and the surface

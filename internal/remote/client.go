@@ -159,6 +159,7 @@ type Client struct {
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.
+	sideAsks     map[uint64]func(string)
 	calls        map[uint64]chan result
 	streams      map[uint64]*stream
 	observers    map[uint64]*stream
@@ -828,6 +829,8 @@ func (c *Client) read() {
 		switch frame.Kind {
 		case "observed", "observerClosed":
 			c.observerFrame(frame)
+		case "sideAskDelta":
+			c.sideAskDelta(frame)
 		case "result":
 			c.deliver(frame)
 		case "event":

@@ -96,6 +96,16 @@ var errSideAskQuestion = errors.New("session: a side ask needs a question")
 // as the model wrote it, trimmed; an empty one is an error. ctx bounds the
 // call as well as [sideAskWindow] does.
 func (a *Agent) SideAsk(ctx context.Context, question string) (string, error) {
+	return a.sideAsk(ctx, question, nil)
+}
+
+// SideAskStream answers a side ask while yielding answer text in arrival order.
+// On failure it returns the text received so far alongside the error.
+func (a *Agent) SideAskStream(ctx context.Context, question string, onText func(string)) (string, error) {
+	return a.sideAsk(ctx, question, onText)
+}
+
+func (a *Agent) sideAsk(ctx context.Context, question string, onText func(string)) (string, error) {
 	question = strings.TrimSpace(question)
 	if question == "" {
 		return "", errSideAskQuestion
@@ -112,20 +122,39 @@ func (a *Agent) SideAsk(ctx context.Context, question string) (string, error) {
 	}
 	ask := sideAskPrompt(messages, question)
 	ctx = provider.WithRole(provider.WithoutStream(withDetachedUsage(ctx)), lane.RoleAuxiliary)
+	ctx, cancel := context.WithTimeout(ctx, sideAskWindow)
+	defer cancel()
+	var streamed strings.Builder
+	var replaced bool
+	if onText != nil {
+		ctx = provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
+			if event.Kind == provider.StreamReplaced && streamed.Len() > 0 {
+				replaced = true
+				cancel()
+			}
+			if !replaced && event.Kind == provider.StreamDelta && event.Delta != "" {
+				streamed.WriteString(event.Delta)
+				onText(event.Delta)
+			}
+		})
+	}
 	// LOW EFFORT, because somebody is watching a button: the question is about
 	// work that is already written down, not new work to think through.
 	ctx = provider.WithReasoningEffort(ctx, provider.EffortLow)
-	ctx, cancel := context.WithTimeout(ctx, sideAskWindow)
-	defer cancel()
 	response, answered, err := a.completeWithNamedModel(ctx, purposeSideAsk,
 		[]ai.Message{textMessage("system", sideAskSystem), textMessage("user", ask)}, model)
+	if response != nil {
+		a.addDetachedUsageAs(response, answered, 1, auxRoleSideAsk)
+	}
+	if replaced {
+		return strings.TrimSpace(streamed.String()), errors.New("the side ask stream was interrupted before completion")
+	}
 	if err != nil {
-		return "", err
+		return strings.TrimSpace(streamed.String()), err
 	}
 	if response == nil {
-		return "", errEmptyAnswer
+		return strings.TrimSpace(streamed.String()), errEmptyAnswer
 	}
-	a.addDetachedUsageAs(response, answered, 1, auxRoleSideAsk)
 	text := strings.TrimSpace(response.Text())
 	if text == "" {
 		return "", errEmptyAnswer

@@ -2,6 +2,8 @@ package remote
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -87,5 +89,49 @@ func TestAnExpiredSideAskNeverCallsTheModel(t *testing.T) {
 	loop := askLoop(t, far)
 	if _, err := loop.Client.call(nil, MethodSideAsk, SideAskArgs{Question: "what crew?", Budget: -time.Nanosecond}); err == nil || far.calls != 0 {
 		t.Fatalf("an expired side ask called the model %d times and returned %v", far.calls, err)
+	}
+}
+
+type streamingSideAskAgent struct {
+	*sideAskAgent
+	fail bool
+}
+
+func (a *streamingSideAskAgent) SideAskStream(ctx context.Context, question string, onText func(string)) (string, error) {
+	for _, chunk := range []string{`{"type":"mem`, `ber","handle":"sam"}`, "\n"} {
+		onText(chunk)
+	}
+	if a.fail {
+		return `{"type":"member","handle":"sam"}`, errors.New("stream stopped")
+	}
+	return `{"type":"member","handle":"sam"}`, nil
+}
+func TestSideAskStreamCrossesTheWireInOrder(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			far := &streamingSideAskAgent{sideAskAgent: &sideAskAgent{fakeAgent: &fakeAgent{model: "m"}}, fail: fail}
+			loop := askLoop(t, far)
+			var chunks []string
+			answer, err := loop.Client.Agent().SideAskStream(context.Background(), "what people?", func(text string) { chunks = append(chunks, text) })
+			if (err != nil) != fail {
+				t.Fatalf("error = %v", err)
+			}
+			if answer != `{"type":"member","handle":"sam"}` || strings.Join(chunks, "") != answer+"\n" || len(chunks) != 3 {
+				t.Fatalf("answer %q, chunks %q", answer, chunks)
+			}
+			if len(far.sent) != 0 {
+				t.Fatal("side ask became a turn")
+			}
+		})
+	}
+}
+
+func TestSideAskStreamFallsBackToSideAskForOlderEngine(t *testing.T) {
+	far := &sideAskAgent{fakeAgent: &fakeAgent{model: "m"}}
+	loop := askLoop(t, far)
+	var chunks []string
+	answer, err := loop.Client.Agent().SideAskStream(context.Background(), "what people?", func(text string) { chunks = append(chunks, text) })
+	if err != nil || answer != `{"name": "flaky"}` || len(chunks) != 1 || chunks[0] != answer {
+		t.Fatalf("answer %q, chunks %q, error %v", answer, chunks, err)
 	}
 }

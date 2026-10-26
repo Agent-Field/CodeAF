@@ -1368,8 +1368,9 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Automations:     sess.engine.Automations.on(),
 		AutomationsZone: sess.engine.Automations.zone(),
 		// The side ask is the agent's, so it is asked of it (sideask.go).
-		SideAsk: sideAskKnown(sess.agent),
-		Setup:   setupKnown(sess.agent),
+		SideAsk:       sideAskKnown(sess.agent),
+		SideAskStream: sideAskStreamKnown(sess.agent),
+		Setup:         setupKnown(sess.agent),
 	}
 }
 
@@ -3466,7 +3467,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return payload, err
 	}
 	// And the side ask, additive in the same way (sideask.go).
-	if payload, handled, err := sideAskCall(agent, call); handled {
+	if payload, handled, err := sideAskCall(agent, call, s.send); handled {
 		return payload, err
 	}
 	// And the automations doors, which answer about this MACHINE's store and

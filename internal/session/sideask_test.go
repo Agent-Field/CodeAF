@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // sideAskProbe is the scripted completer with a hand on the side ask: it
@@ -20,6 +23,7 @@ type sideAskProbe struct {
 	*scriptedCompleter
 	mu     sync.Mutex
 	answer string
+	chunks []string
 	asked  [][]ai.Message
 	tools  []int
 }
@@ -35,6 +39,9 @@ func (p *sideAskProbe) CompleteWithMessages(ctx context.Context, messages []ai.M
 		p.tools = append(p.tools, len(request.Tools))
 		answer := p.answer
 		p.mu.Unlock()
+		for _, chunk := range p.chunks {
+			provider.Emit(ctx, provider.StreamDelta, chunk)
+		}
 		return textResponse(answer), nil
 	}
 	return p.scriptedCompleter.CompleteWithMessages(ctx, messages, options...)
@@ -46,6 +53,12 @@ func (p *sideAskProbe) CompleteWithMessages(ctx context.Context, messages []ai.M
 // the same journal, no line of the question or the answer in either — so the
 // next turn the person starts is sent without them.
 func TestASideAskLeavesTheConversationAsItWas(t *testing.T) {
+	for _, streaming := range []bool{false, true} {
+		t.Run(fmt.Sprint(streaming), func(t *testing.T) { sideAskLeavesConversation(t, streaming) })
+	}
+}
+
+func sideAskLeavesConversation(t *testing.T, streaming bool) {
 	const proposal = `{"name": "flaky", "goal": "fix the flaky tests", "helpers": [{"handle": "ci", "role": "ci watcher", "brief": "watch the runs"}]}`
 	const question = "Propose a crew for the work in this conversation. Reply with one JSON object."
 	probe := &sideAskProbe{
@@ -58,6 +71,7 @@ func TestASideAskLeavesTheConversationAsItWas(t *testing.T) {
 			},
 		}},
 		answer: proposal,
+		chunks: []string{proposal[:12], proposal[12:]},
 	}
 	journal := filepath.Join(t.TempDir(), "transcript.jsonl")
 	agent, _ := newTestAgent(t, probe, func(c *Config) { c.SessionFile = journal })
@@ -76,7 +90,16 @@ func TestASideAskLeavesTheConversationAsItWas(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	answer, err := agent.SideAsk(context.Background(), question)
+	var answer string
+	if streaming {
+		var chunks []string
+		answer, err = agent.SideAskStream(context.Background(), question, func(text string) { chunks = append(chunks, text) })
+		if !reflect.DeepEqual(chunks, probe.chunks) {
+			t.Fatalf("stream chunks = %q", chunks)
+		}
+	} else {
+		answer, err = agent.SideAsk(context.Background(), question)
+	}
 	if err != nil || answer != proposal {
 		t.Fatalf("the side ask answered %q, %v", answer, err)
 	}
@@ -171,5 +194,57 @@ func TestASideAskIsBoundedAndSaysWhatItLeftOut(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	if _, err := agent.SideAsk(context.Background(), "  "); err == nil {
 		t.Fatal("a side ask with no question was asked")
+	}
+}
+
+type streamingSideAskProbe struct {
+	*scriptedCompleter
+	fail    bool
+	replace bool
+}
+
+func (p *streamingSideAskProbe) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	for _, chunk := range []string{`{"type":"mem`, `ber","handle":"sam"}`, "\n"} {
+		provider.Emit(ctx, provider.StreamDelta, chunk)
+	}
+	provider.Emit(ctx, provider.StreamThinking, "private thought")
+	if p.replace {
+		provider.Emit(ctx, provider.StreamReplaced, "retrying")
+		provider.Emit(ctx, provider.StreamDelta, "replacement answer")
+	}
+	if p.fail {
+		return nil, errors.New("stream stopped")
+	}
+	return textResponse("{\"type\":\"member\",\"handle\":\"sam\"}\n"), nil
+}
+func TestSideAskStreamReturnsChunksWithoutChangingConversation(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			probe := &streamingSideAskProbe{scriptedCompleter: &scriptedCompleter{}, fail: fail}
+			agent, _ := newTestAgent(t, probe, nil)
+			before := agent.Transcript()
+			var chunks []string
+			answer, err := agent.SideAskStream(context.Background(), "what people?", func(text string) { chunks = append(chunks, text) })
+			if (err != nil) != fail {
+				t.Fatalf("error = %v", err)
+			}
+			want := "{\"type\":\"member\",\"handle\":\"sam\"}"
+			if answer != want || strings.Join(chunks, "") != want+"\n" || len(chunks) != 3 {
+				t.Fatalf("answer %q, chunks %q", answer, chunks)
+			}
+			if !reflect.DeepEqual(before, agent.Transcript()) {
+				t.Fatal("side ask changed transcript")
+			}
+		})
+	}
+}
+
+func TestSideAskStreamKeepsDeliveredTextWhenProviderReplacesAnswer(t *testing.T) {
+	probe := &streamingSideAskProbe{scriptedCompleter: &scriptedCompleter{}, replace: true}
+	agent, _ := newTestAgent(t, probe, nil)
+	var text strings.Builder
+	answer, err := agent.SideAskStream(context.Background(), "what people?", func(chunk string) { text.WriteString(chunk) })
+	if err == nil || answer != "{\"type\":\"member\",\"handle\":\"sam\"}" || text.String() != answer+"\n" {
+		t.Fatalf("answer %q, chunks %q, error %v", answer, text.String(), err)
 	}
 }
