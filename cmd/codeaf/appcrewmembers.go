@@ -495,8 +495,17 @@ type appSideAsker interface {
 // One ask runs per agent at a time: a second press while the first is out is
 // answered by the first's card.
 func (b *appBackend) CrewPropose(agent string) error {
-	a, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return err
 	}
 	asker, ok := live.conn.Conv.(appSideAsker)

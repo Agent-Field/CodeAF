@@ -570,6 +570,9 @@ func refuse(code, format string, args ...any) error {
 // checked, then the task's scope — waiting, not started, or a recorded run —
 // applies it, and the answer is the task as it stands after.
 func (a *Agent) TaskRoutingAct(ctx context.Context, id string, act TaskRoutingAction) (TaskRoutingResult, error) {
+	if err := a.CheckWork(); err != nil {
+		return TaskRoutingResult{}, err
+	}
 	n, err := strconv.ParseUint(strings.TrimSpace(id), 10, 64)
 	if err != nil || n == 0 {
 		return TaskRoutingResult{}, refuse(TaskRoutingNotFound, "no such task")
@@ -1565,6 +1568,9 @@ func (a *Agent) actOnParked(ctx context.Context, n uint64, act TaskRoutingAction
 // RetryParkedTask starts a waiting task from where it stood. Still no model
 // keeps it waiting, with the new reason.
 func (a *Agent) RetryParkedTask(n uint64) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	a.loadParked(n)
 	parked := a.taskRouting.take(n)
 	if parked == nil {

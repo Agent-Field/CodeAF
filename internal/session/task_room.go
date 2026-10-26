@@ -176,6 +176,9 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // (assignment.go, task_ledger.go). [SteerReceipt.Held] is how a surface tells
 // that apart from delivery, in the engine's own words.
 func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
+	if err := a.CheckWork(); err != nil {
+		return SteerReceipt{}, err
+	}
 	return a.sayToTask(id, text, fromPerson, spokenSource{})
 }
 
@@ -281,6 +284,9 @@ func (s SteerSource) spoken() spokenSource {
 // made worse off — it simply cannot ask again safely, and the surface that
 // cannot is the one that must keep the words and ask the person.
 func (a *Agent) SteerTaskFrom(id uint64, text string, from SteerSource) (SteerReceipt, error) {
+	if err := a.CheckWork(); err != nil {
+		return SteerReceipt{}, err
+	}
 	// THE CONVERSATION IS CHECKED FIRST, because the id below is only meaningful
 	// inside the one the caller meant ([SteerSource.Conversation]).
 	if err := a.thisConversation(from.Conversation); err != nil {

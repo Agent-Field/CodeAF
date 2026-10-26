@@ -1054,6 +1054,10 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	return a.submitText(ctx, text, nil)
 }
 
+// CheckWork reuses the seat's ownership gate for every user-work door. It is
+// checked before journaling and again when a queued message starts its turn.
+func (a *Agent) CheckWork() error { return procexec.CheckWork(a.config.Seat) }
+
 // submitText is Submit's body with the PERSON'S MARK beside the words: what a
 // door that knows more than the words said about the message
 // ([Agent.SubmitMessage]), nil for every other door. The mark rides the message
@@ -1062,6 +1066,12 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // A plain Submit carries no mark and so no creation context: an automation made
 // in its turn records its team as UNKNOWN, never as "no team".
 func (a *Agent) submitText(ctx context.Context, text string, person *messagePresentation) (<-chan Event, error) {
+	return a.submitTextAnswer(ctx, text, person, false)
+}
+
+// submitTextAnswer keeps a replacement or clarification on the pending
+// question's path. Its tools still meet the seat's ownership gate.
+func (a *Agent) submitTextAnswer(ctx context.Context, text string, person *messagePresentation, answer bool) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -1091,6 +1101,7 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 		user := planDigested(digest, text)
 		user.said = said
 		user.person = person
+		user.answer = answer
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
@@ -1098,6 +1109,7 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 		user.said = said
 	}
 	user.person = person
+	user.answer = answer
 	return a.submitUser(ctx, user)
 }
 
@@ -1111,6 +1123,11 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 // steering rules and the rail are laws about a turn starting, and two functions
 // applying them separately is two chances for one of them to stop.
 func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
+	if !user.answer {
+		if err := a.CheckWork(); err != nil {
+			return nil, err
+		}
+	}
 	a.owedResumeNews(user)
 	a.mu.Lock()
 	if a.closed {
@@ -1302,6 +1319,9 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// answer continues an existing question, including a replacement or
+	// clarification, so ownership is checked at its tools rather than admission.
+	answer bool
 
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
@@ -1920,6 +1940,17 @@ func (u userMessage) journaled() ai.Message {
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	if !user.answer {
+		if err := a.CheckWork(); err != nil {
+			for _, stream := range extra {
+				refuseOn(stream, err)
+			}
+			if watcher != nil {
+				return refuseOn(watcher, err)
+			}
+			return refusedStream(err)
+		}
+	}
 	// A new turn depends on the shortened conversation and ends its undo.
 	a.rewindUndo = nil
 	if a.debugRun == "" {
@@ -2158,7 +2189,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only) {
+			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -2259,6 +2290,9 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -2308,6 +2342,13 @@ func (a *Agent) nextFollowUpLocked(completed bool) (followUp, bool) {
 	}
 	if !completed || a.closed {
 		a.dropFollowUpsLocked()
+		return followUp{}, false
+	}
+	if err := a.CheckWork(); err != nil {
+		for _, queued := range a.followups {
+			refuseOn(queued.stream, err)
+		}
+		a.followups = nil
 		return followUp{}, false
 	}
 	if err := a.railBlockLocked(); err != nil {
@@ -3666,6 +3707,7 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 type queueDrain struct {
 	landed      int
 	owed, heard bool
+	answer      bool
 	// only is the durable id of the person's message when it is the whole of
 	// what landed, and "" otherwise ([userMessage.answersMessage]).
 	only string
@@ -3697,9 +3739,10 @@ func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain 
 	}
 	sourceCount := len(queued)
 	queued = coalesceSessionNotes(queued)
-	owed, heard := false, false
+	owed, heard, answer := false, false, false
 	only := ""
 	for _, message := range queued {
+		answer = answer || message.answer
 		// The id is read off the copy that is recorded: recording takes the
 		// message by value, so the id it mints would otherwise be lost here.
 		message = ensureUserIdentity(message)
@@ -3742,7 +3785,7 @@ func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain 
 	if sourceCount != 1 || !heard {
 		only = ""
 	}
-	return queueDrain{landed: sourceCount, owed: owed, heard: heard, only: only}
+	return queueDrain{landed: sourceCount, owed: owed, heard: heard, answer: answer, only: only}
 }
 
 // boundaryNoteHeld reports whether the next step is already owed external news.
@@ -3942,6 +3985,9 @@ func (a *Agent) enqueueSteering(text string) {
 // exactly what `task.settle = auto` does at a landing, so the bound is the same.
 func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 	note := wakeNote(text)
+	note.answer = true
+	// Keep the answer mark through the turn's final drain.
+	note.batch = false
 	note.settle, note.settleCeiling = true, ceiling
 	a.enqueueNote(note)
 }
@@ -4050,6 +4096,11 @@ func (a *Agent) steeringHeld() bool {
 // enqueueNote is the queue itself, and it reports whether the note was taken:
 // false is a closed agent, whose queue nothing will ever drain again.
 func (a *Agent) enqueueNote(note userMessage) bool {
+	if !note.answer {
+		if err := a.CheckWork(); err != nil {
+			return false
+		}
+	}
 	text := strings.TrimSpace(note.text())
 	if text == "" {
 		return false
@@ -4090,7 +4141,7 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		if note.deferJobWake && !a.running {
 			a.deferJobWakeLocked()
 		} else {
-			a.wakeLocked()
+			a.wakeAnsweringLocked(false, "", note.answer)
 		}
 	}
 	return true
@@ -4414,12 +4465,17 @@ func (a *Agent) settleWindow() time.Duration {
 // note on the queue; the turn's end has just drained one INTO the transcript, so
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
-func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "") }
+func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", false) }
 
 // wakeAnsweringLocked is [Agent.wakeLocked] for the turn's end, which knows
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
-func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) bool {
+func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
+	if !answer {
+		if err := a.CheckWork(); err != nil {
+			return false
+		}
+	}
 	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
 	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
 	// different decision in [Steward.Decide], while the wall's budget ending is
@@ -4477,7 +4533,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) b
 	if wake, settle := a.settleWakeLocked(); settle {
 		ctx = withSettleWake(ctx, wake)
 	}
-	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage}, sink, watchers...)
+	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage, answer: answer}, sink, watchers...)
 	return true
 }
 

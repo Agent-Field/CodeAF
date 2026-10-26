@@ -374,6 +374,7 @@ func (b *appBackend) dress(view *appwire.Agent) {
 		if a == nil {
 			return
 		}
+		view.Location = a.view.Location
 		live := a.live
 		if live != nil && live.running && view.State == appwire.StateIdle && !live.needsYou() {
 			view.State = appwire.StateWorking

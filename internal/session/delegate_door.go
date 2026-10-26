@@ -436,6 +436,9 @@ func programWords(brief string, program delegate.Delegate) string {
 // carries no program for, an empty brief, and a build whose run road is not
 // linked.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
+	if err := a.CheckWork(); err != nil {
+		return 0, "", "", err
+	}
 	brief = strings.TrimSpace(brief)
 	program, err := a.delegateFor(name)
 	if brief == "" && err == nil {

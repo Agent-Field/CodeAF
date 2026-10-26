@@ -274,6 +274,9 @@ func (a *Agent) rerun(h processHold) (JobNotice, error) {
 }
 
 func (a *Agent) rerunUnder(ctx context.Context, h processHold) (JobNotice, error) {
+	if err := a.CheckWork(); err != nil {
+		return JobNotice{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return JobNotice{}, err
 	}

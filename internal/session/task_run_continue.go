@@ -40,6 +40,9 @@ import (
 // door that spends money says what it did in the words the person will read
 // about it afterwards.
 func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
+	if err := a.CheckWork(); err != nil {
+		return "", err
+	}
 	epoch, err := a.beltAdmissionEpoch()
 	if err != nil {
 		return "", err
