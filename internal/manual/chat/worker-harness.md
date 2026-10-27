@@ -1153,3 +1153,11 @@ Workspace captures and checkpoint writes take a private conversation lock in
 every profile, including legacy profiles, so policy activation cannot bypass
 the checkpoint fence. This creates local control files during capture and
 checkpoint writes; it does not change legacy task placement or rewrite history.
+
+## Open a task that finished on another computer
+
+A task that finished on another computer is still available in Tasks after you
+continue its chat here. Open it to read its title, saved description when present,
+recorded steps and worker transcript. The historical page is read-only: finished
+work cannot be restarted, retried or resumed from that page. The original
+computer keeps its existing task page.

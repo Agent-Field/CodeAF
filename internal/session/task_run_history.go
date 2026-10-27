@@ -108,3 +108,78 @@ func (a *Agent) restoreWorkerHistoryModels(document *taskDocument) {
 		}
 	}
 }
+
+// Historical rows fill only gaps in the plan stores. A sender with its store
+// still reads the original page; a receiver can read settled work immediately.
+func (a *Agent) historicalPlanRows(rows []PlanTaskRow) []PlanTaskRow {
+	known := map[string]bool{}
+	for _, row := range rows {
+		known[planTaskID(row.ID)] = true
+	}
+	for _, notice := range a.historicalPlanNotices() {
+		if !known[planTaskID(notice.PlanTask)] {
+			rows = append(rows, historicalPlanRow(notice))
+			known[planTaskID(notice.PlanTask)] = true
+		}
+	}
+	return rows
+}
+
+func (a *Agent) historicalPlanNotices() []TaskNotice {
+	g := a.tasker()
+	if g == nil {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var notices []TaskNotice
+	for _, notice := range g.runRowsLocked() {
+		if notice.PlanTask != "" && (notice.State == TaskDone || notice.State == TaskFailed || notice.State == TaskUnverified) {
+			notices = append(notices, notice)
+		}
+	}
+	return notices
+}
+
+func historicalPlanRow(notice TaskNotice) PlanTaskRow {
+	return PlanTaskRow{ID: notice.PlanTask, Title: notice.Title, Status: string(notice.State),
+		Stopped: notice.Stopped, Archived: true, Started: notice.StartedAt, Ended: notice.EndedAt,
+		Model: notice.Model, USD: notice.CostUSD, Note: notice.Report}
+}
+
+func (a *Agent) historicalPlanPage(id string) (PlanTaskPage, bool) {
+	for _, notice := range a.historicalPlanNotices() {
+		if planTaskID(notice.PlanTask) != planTaskID(id) {
+			continue
+		}
+		page := PlanTaskPage{Row: historicalPlanRow(notice), Historical: true, Result: notice.Result}
+		if notice.PendingRun != nil {
+			page.Description = notice.PendingRun.Brief
+		}
+		a.mu.Lock()
+		base := taskJournalDir(a.familyPlace(nil), a.sessionID())
+		a.mu.Unlock()
+		relative := filepath.Join(strconv.FormatUint(notice.ID, 10), planTrajectoryFile)
+		page.Steps = planStepDisplayFactsForPage(decodePlanTrajectory(readHistoricalFile(base, relative)), a.planDisplayRunCopy())
+		page.Row.Steps = len(page.Steps)
+		history := findWorkerHistory(base, notice.ID)
+		if history.journal != "" {
+			relative, err := filepath.Rel(base, history.journal)
+			if err == nil {
+				page.Worker = ReadTranscriptBytes(readHistoricalFile(base, relative)).Entries
+			}
+		}
+		return page, true
+	}
+	return PlanTaskPage{}, false
+}
+
+func readHistoricalFile(base, relative string) []byte {
+	file, err := openTaskHistoryPath(base, relative, false)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	data, _ := io.ReadAll(file)
+	return data
+}

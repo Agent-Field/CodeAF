@@ -210,6 +210,9 @@ func (a *app) planRoomEntries(page session.PlanTaskPage) ([]entry, int) {
 			call(live.Step, command, "", false)
 		}
 	}
+	for _, entry := range page.Worker {
+		add(entry)
+	}
 	for _, note := range page.Notes {
 		body := strings.TrimSpace(note.Body)
 		if body == "" {
@@ -462,6 +465,10 @@ func (a *app) planRoomAncestors() []*taskNode {
 // while the tab is the one on screen. `now` asks for it even when a read has
 // already come back, which is what switching to the tab does.
 func (a *app) planRoomWorkRead(now bool) tea.Cmd {
+	if plan := a.roomPlan(); plan != nil && plan.page.Historical {
+		plan.workRead = true
+		return nil
+	}
 	plan := a.roomPlan()
 	if plan == nil || a.room.tab != roomTabWork || plan.working {
 		return nil
