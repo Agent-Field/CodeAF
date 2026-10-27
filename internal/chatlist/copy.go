@@ -179,6 +179,9 @@ func TakeoverLine(r Row) string {
 	if r.Pending > 0 {
 		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
 	}
+	if r.Status == Off && r.Device != "" {
+		return fmt.Sprintf("%s offline; %s", r.Device, line)
+	}
 	return holderLead(r) + line
 }
 

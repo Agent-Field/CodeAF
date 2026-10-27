@@ -160,6 +160,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err != nil {
 		return Continued{}, err
 	}
+	if err := c.sync.reconcileSendLease(id, id, view); err != nil {
+		return Continued{}, err
+	}
 	if branchOnly && (view.Cell.ParentCell == "" || view.Cell.Archived) {
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}

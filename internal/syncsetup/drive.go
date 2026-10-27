@@ -245,6 +245,9 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	if err != nil {
 		return drv, "", err
 	}
+	if err := s.reconcileSendLease(c.ID, drv.ID(), view); err != nil {
+		return drv, "", err
+	}
 	known, err := cellstore.KnowsHead(c, view.Cell.Head)
 	if err != nil {
 		return drv, "", err

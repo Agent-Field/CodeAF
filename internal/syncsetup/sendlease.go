@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
@@ -46,13 +47,30 @@ func (d *Drive) recordSendLease() error {
 	fence := d.batcher.Fence()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if fence == 0 || fence == d.recordedFence {
+	if d.line != "" || fence == 0 || fence == d.recordedFence {
 		return nil
 	}
 	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
 		return err
 	}
 	d.recordedFence = fence
+	return nil
+}
+
+// reconcileSendLease removes a dead writer's receipt only after a fresh relay reading.
+// Conditional removal preserves a newer writer that recorded its hold meanwhile.
+func (s *Sync) reconcileSendLease(id, remoteID string, view directory.CellView) error {
+	remote, fence, err := s.SendLease(id)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	lease := view.Cell.Lease
+	if remote == remoteID && (lease.Device != s.Device.ID() || lease.Fence != fence || lease.Expires <= view.Now) {
+		return s.forgetSendLease(id, sendLease{Cell: remote, Fence: fence})
+	}
 	return nil
 }
 

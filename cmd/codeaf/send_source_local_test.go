@@ -34,6 +34,11 @@ func (sendSurfaceSource) RowsAt(context.Context) ([]chatlist.Row, uint64, error)
 type recordingSendAgent struct {
 	quietAgent
 	sent chan string
+	held bool
+}
+
+func (a *recordingSendAgent) RenewalStatus() (time.Time, time.Duration, bool) {
+	return time.Time{}, time.Second, a.held
 }
 
 func (a *recordingSendAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -92,7 +97,7 @@ func TestConcreteSendSourceKeepsHeldAndUnpublishedChatsOffTheNetwork(t *testing.
 			read := func(offline bool) ([]chatlist.Row, error) {
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 				defer cancel()
-				rows, _, _, err := source.RowsForChatSend(ctx, filepath.Join(c.Root, cell.TranscriptPath), offline)
+				rows, _, _, err := source.RowsForChatSend(ctx, filepath.Join(c.Root, cell.TranscriptPath), offline, kind == "held")
 				return rows, err
 			}
 			rows, err := read(false)
@@ -115,7 +120,7 @@ func TestConcreteSendSourceKeepsHeldAndUnpublishedChatsOffTheNetwork(t *testing.
 				input, typed := io.Pipe()
 				defer input.Close()
 				defer typed.Close()
-				agent := &recordingSendAgent{sent: make(chan string, 2)}
+				agent := &recordingSendAgent{sent: make(chan string, 2), held: kind == "held"}
 				screen := &firstFrameSink{painted: make(chan struct{}, 1)}
 				ctx, cancel := context.WithCancel(t.Context())
 				done := make(chan error, 1)
