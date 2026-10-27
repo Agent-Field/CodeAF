@@ -490,13 +490,28 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 
 func paused(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused }
 
+// AsleepCeiling bounds how long a lease is kept for a computer that went to
+// sleep holding it. Sleep keeps the job on its computer through a night; a
+// computer that never wakes (lost, wiped, put away) does not hold the job
+// forever, and after this the job is queued again like any silent hold.
+const AsleepCeiling = 24 * time.Hour
+
+// live says a hold still counts at now: renewed within its silence deadline,
+// or asleep and within AsleepCeiling of going to sleep.
+func (l Lease) live(now time.Time) bool {
+	if l.Asleep {
+		return now.Before(l.HeartbeatAt.Add(AsleepCeiling))
+	}
+	return now.Before(l.ExpiresAt)
+}
+
 func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 	var expired, kept []Lease
 	for _, held := range append([]Lease(nil), doc.Leases...) {
 		if !held.HeartbeatAt.IsZero() {
 			held.ExpiresAt = held.HeartbeatAt.Add(d.TTL())
 		}
-		if held.Asleep || now.Before(held.ExpiresAt) {
+		if held.live(now) {
 			kept = append(kept, held)
 			continue
 		}
@@ -544,7 +559,7 @@ func (d *Desk) HasLiveHold(id int) (bool, error) {
 	held := false
 	err := d.locked(func(doc *document, now time.Time) error {
 		if h := find(doc, id); h != nil {
-			held = h.Asleep || now.Before(h.ExpiresAt)
+			held = h.live(now)
 		}
 		return nil
 	})
