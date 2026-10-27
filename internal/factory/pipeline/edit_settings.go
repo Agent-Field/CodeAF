@@ -24,6 +24,9 @@ import (
 //     start.max_cost (dollars, zero or more), the limits a job must be within
 //     to start on its own.
 //
+//   - set_approver names who one person step waits on: approve (or a gate)
+//     waits on the job's person ("") unless it names "@handle" or operator.
+//
 // start.labels, the labels that let an issue start on its own, is a list like
 // the rules, and is replaced whole by set_list with the list labels.
 //
@@ -32,10 +35,11 @@ import (
 
 // The settings verbs, and the list of start labels.
 const (
-	OpSetAdapt = "set_adapt"
-	OpSetFixed = "set_fixed"
-	OpSetStart = "set_start"
-	ListLabels = "labels"
+	OpSetAdapt    = "set_adapt"
+	OpSetFixed    = "set_fixed"
+	OpSetStart    = "set_start"
+	OpSetApprover = "set_approver"
+	ListLabels    = "labels"
 )
 
 // The settings a preview reports, in order.
@@ -44,9 +48,12 @@ const (
 	SettingFixed   = "fixed"
 	SettingMaxSize = "max_size"
 	SettingMaxCost = "max_cost"
+	// SettingApprovers is every person step that names who it waits on, as
+	// "approve: @sam", joined ", ".
+	SettingApprovers = "approvers"
 )
 
-var settingNames = []string{SettingAdapt, SettingFixed, SettingMaxSize, SettingMaxCost}
+var settingNames = []string{SettingAdapt, SettingFixed, SettingMaxSize, SettingMaxCost, SettingApprovers}
 
 // SettingChange is one setting an edit changed, before and after, in the words
 // the file reads: adapt's word, the required steps joined ", ", the size letter
@@ -59,13 +66,13 @@ type SettingChange struct {
 
 // settingsOp says whether verb is one of the three settings edits.
 func settingsOp(verb string) bool {
-	return verb == OpSetAdapt || verb == OpSetFixed || verb == OpSetStart
+	return verb == OpSetAdapt || verb == OpSetFixed || verb == OpSetStart || verb == OpSetApprover
 }
 
 // settingFieldsNamed says whether an edit names a field only a settings edit
 // takes.
 func settingFieldsNamed(op EditOp) bool {
-	return op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil
+	return op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || op.Who != nil
 }
 
 // checkSettings bounds a settings edit without the file.
@@ -75,7 +82,7 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 	}
 	switch op.Op {
 	case OpSetAdapt:
-		if op.Name != "" || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil {
+		if op.Name != "" || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || op.Who != nil {
 			return op, refuseEdit(EditBadOp, i, "set_adapt takes only adapt")
 		}
 		if op.Adapt == nil {
@@ -92,7 +99,7 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 		}
 		op.Adapt = &word
 	case OpSetFixed:
-		if op.Adapt != nil || op.MaxSize != nil || op.MaxCost != nil {
+		if op.Adapt != nil || op.MaxSize != nil || op.MaxCost != nil || op.Who != nil {
 			return op, refuseEdit(EditBadOp, i, "set_fixed takes only a step name and fixed")
 		}
 		if op.Fixed == nil {
@@ -104,8 +111,23 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 		if op.Name == "proof" && !*op.Fixed {
 			return op, refuseEdit(EditLocked, i, "proof is always required")
 		}
+	case OpSetApprover:
+		if op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil {
+			return op, refuseEdit(EditBadOp, i, "set_approver takes only a step name and who")
+		}
+		if !stepNamed(op.Name) {
+			return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
+		}
+		if op.Who == nil {
+			return op, refuseEdit(EditBadValue, i, "set_approver needs who: @handle, operator, or \"\" for the job's person")
+		}
+		w, ok := factory.ApproverWord(*op.Who)
+		if !ok {
+			return op, refuseEdit(EditBadValue, i, "who is @handle, operator, or \"\" for the job's person")
+		}
+		op.Who = &w
 	case OpSetStart:
-		if op.Name != "" || op.Adapt != nil || op.Fixed != nil {
+		if op.Name != "" || op.Adapt != nil || op.Fixed != nil || op.Who != nil {
 			return op, refuseEdit(EditBadOp, i, "set_start takes only max_size and max_cost")
 		}
 		if op.MaxSize == nil && op.MaxCost == nil {
@@ -135,7 +157,7 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 // set once per preview.
 func (st *editState) settings(i int, op EditOp) *EditError {
 	key := op.Op
-	if op.Op == OpSetFixed {
+	if op.Op == OpSetFixed || op.Op == OpSetApprover {
 		key += "\x00" + op.Name
 	}
 	if st.settingSeen[key] {
@@ -155,6 +177,18 @@ func (st *editState) settings(i int, op EditOp) *EditError {
 			fixed = append(fixed, op.Name)
 		}
 		st.out.Fixed = fixed
+	case OpSetApprover:
+		// ONLY A PERSON WAITS ON SOMEONE: approve, or a step of kind gate,
+		// that a pipeline runs.
+		step := st.out.Steps[op.Name]
+		if !factory.ApproveWord(op.Name) && step.Kind != string(factory.StageGate) {
+			return refuseEdit(EditBadValue, i, "%s is not a person; only approve or a gate waits on someone", op.Name)
+		}
+		if !st.inPipeline[op.Name] {
+			return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
+		}
+		step.Who = *op.Who
+		st.out.Steps[op.Name] = step
 	case OpSetStart:
 		if op.MaxSize != nil {
 			st.out.Start.MaxSize = *op.MaxSize
@@ -178,6 +212,8 @@ func settingOf(f File, name string) string {
 		return strings.Join(f.Fixed, ", ")
 	case SettingMaxSize:
 		return normOr(f.Start.MaxSize, DefaultMaxSize)
+	case SettingApprovers:
+		return approversOf(f)
 	}
 	return strconv.FormatFloat(f.Start.MaxCost, 'f', -1, 64)
 }
@@ -203,4 +239,26 @@ func settingsDiffer(back, want File) string {
 		}
 	}
 	return ""
+}
+
+// approversOf is every person step a pipeline runs that names who it waits
+// on, in name order, as "approve: @sam", joined ", ".
+func approversOf(f File) string {
+	var out []string
+	for _, name := range sortedStepNames(f) {
+		if who := f.Steps[name].Who; who != "" {
+			out = append(out, name+": "+who)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// sortedStepNames is every step the file defines, in name order.
+func sortedStepNames(f File) []string {
+	names := make([]string, 0, len(f.Steps))
+	for name := range f.Steps {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
 }

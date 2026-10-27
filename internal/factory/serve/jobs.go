@@ -751,7 +751,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		return
 	}
 	var body api.Approve
-	if !h.decode(w, r, &body, true) || !h.commitFresh(w, it, body.Commit) || !h.fresh(w, r, it, "approve", body.Expect) || !h.owns(w, r, it) {
+	if !h.decode(w, r, &body, true) || !h.commitFresh(w, it, body.Commit) || !h.fresh(w, r, it, "approve", body.Expect) || !h.approves(w, r, it) {
 		return
 	}
 	a := factory.JobApproval(it)

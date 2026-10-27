@@ -41,3 +41,29 @@ func TestAKindOnAddStepNeedsTheChecksFeature(t *testing.T) {
 		t.Fatalf("%d previews", len(eng.previews))
 	}
 }
+
+// approversEditEngine is a settings editor with the approvers marker.
+type approversEditEngine struct{ settingsEditEngine }
+
+func (*approversEditEngine) PipelineApproverEdits() {}
+
+func TestSetApproverNeedsTheApproversFeature(t *testing.T) {
+	if got := withFactoryPipelineEditFeature(Hello{}, &approversEditEngine{}); !strings.Contains(strings.Join(got.Features, ","), FeatureFactoryPipelineEditApprovers) {
+		t.Fatalf("%v", got.Features)
+	}
+	const edit = `[{"op":"set_approver","name":"approve","who":"@rel"}]`
+	old := &settingsEditEngine{}
+	if _, err := methods["factory.pipeline_preview"].call(old, json.RawMessage(editPreviewOf(`"pipeline: {}\n"`, edit))); wireCode(t, err) != CodeBadParams || len(old.previews) != 0 {
+		t.Fatalf("set_approver reached an engine without the feature: %v", err)
+	}
+	eng := &approversEditEngine{}
+	if _, err := methods["factory.pipeline_preview"].call(eng, json.RawMessage(editPreviewOf(`"pipeline: {}\n"`, edit))); err != nil {
+		t.Fatal(err)
+	}
+	if e := PipelineEditOps(eng.previews[0].Edits)[0]; e.Who == nil || *e.Who != "@rel" {
+		t.Fatalf("%+v", e)
+	}
+	if _, err := methods["factory.pipeline_preview"].call(eng, json.RawMessage(editPreviewOf(`"pipeline: {}\n"`, `[{"op":"set_approver","name":"approve","who":"everyone"}]`))); wireCode(t, err) != CodeBadParams {
+		t.Fatalf("%v", err)
+	}
+}

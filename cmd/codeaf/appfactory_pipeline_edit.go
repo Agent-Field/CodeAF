@@ -407,7 +407,7 @@ func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
 // edit too, and so does an add_step that spells one for the step it adds.
 func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 	for i, e := range edits {
-		if e.When != nil || e.Effort != nil || e.Fanout != nil || (e.Kind != nil && *e.Kind != "" && *e.Kind != "chat") {
+		if e.When != nil || e.Effort != nil || e.Fanout != nil || (e.Kind != nil && *e.Kind != "" && *e.Kind != "chat") || (e.Who != nil && *e.Who != "") {
 			return i
 		}
 	}

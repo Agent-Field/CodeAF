@@ -109,6 +109,10 @@ type Stage struct {
 	Fanout string    // one · per-file · per-finding · per-claim
 	Until  string    // done · clean · green · proven
 	Max    int       // rounds before it stops and asks; 0 means one
+	// Who is who an approve step waits on ([ApproverWord]): "" the job's
+	// person, "@handle" a named person, operator any of the factory's
+	// operators. Only an approve step carries one.
+	Who string `json:",omitempty"`
 	// OldGate and OldGateWhen are a stage's gate as a file or a document
 	// written before approve steps said it (`gate plan when large`). They are
 	// read, turned into approve steps ([ExpandGates]) and never written.

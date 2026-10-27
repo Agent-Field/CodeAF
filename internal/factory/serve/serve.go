@@ -435,8 +435,13 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	s.Items = items
 	q := api.FromSnapshot(s, handle, h.clock())
 	retention := h.retention()
+	operator := h.mode() != api.FactorySolo && h.isOperator(r)
+	issues := factory.IssueJobs(s.Items)
 	for i := range q.Jobs {
 		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention)
+		if operator && i < len(issues) {
+			api.AsOperator(&q.Jobs[i].Can, issues[i], handle)
+		}
 	}
 	q.Factory = h.factory
 	q.Mode = h.mode()
@@ -502,6 +507,9 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jobs[0].Can = api.CanFor(it, handle, h.clock())
+	if h.mode() != api.FactorySolo && h.isOperator(r) {
+		api.AsOperator(&jobs[0].Can, it, handle)
+	}
 	api.ForViewer(&jobs[0], it, handle)
 	if h.mode() == api.FactorySolo {
 		h.soloJob(&jobs[0], it, handle)

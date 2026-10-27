@@ -100,6 +100,13 @@ const FeatureFactoryPipelineEditSettings = "factory.pipeline_edit_settings"
 // only for a file its factory attested, as it does when, effort and fanout.
 const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
 
+// FeatureFactoryPipelineEditApprovers is announced beside FeatureFactoryPipelineEditSettings
+// when this engine previews set_approver: who an approve step (or a gate)
+// waits on, "@handle", operator, or "" for the job's person. A step that
+// names one spells `who`, a runtime key, so the preview takes it only for a
+// file its factory attested. The source's steps then carry their who.
+const FeatureFactoryPipelineEditApprovers = "factory.pipeline_edit_approvers"
+
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
 	// whose own limit is sixty seconds.
@@ -119,15 +126,16 @@ const (
 	PipelineSourceInvalid  = api.PipelineEditInvalid
 	PipelineSourceTooLarge = api.PipelineEditTooLarge
 
-	PipelineEditSetStep    = pipeline.OpSetStep
-	PipelineEditSetBudget  = pipeline.OpSetBudget
-	PipelineEditAddStep    = pipeline.OpAddStep
-	PipelineEditRemoveStep = pipeline.OpRemoveStep
-	PipelineEditMoveStep   = pipeline.OpMoveStep
-	PipelineEditSetList    = pipeline.OpSetList
-	PipelineEditSetAdapt   = pipeline.OpSetAdapt
-	PipelineEditSetFixed   = pipeline.OpSetFixed
-	PipelineEditSetStart   = pipeline.OpSetStart
+	PipelineEditSetStep     = pipeline.OpSetStep
+	PipelineEditSetBudget   = pipeline.OpSetBudget
+	PipelineEditAddStep     = pipeline.OpAddStep
+	PipelineEditRemoveStep  = pipeline.OpRemoveStep
+	PipelineEditMoveStep    = pipeline.OpMoveStep
+	PipelineEditSetList     = pipeline.OpSetList
+	PipelineEditSetAdapt    = pipeline.OpSetAdapt
+	PipelineEditSetFixed    = pipeline.OpSetFixed
+	PipelineEditSetStart    = pipeline.OpSetStart
+	PipelineEditSetApprover = pipeline.OpSetApprover
 
 	PipelineListRules    = pipeline.ListRules
 	PipelineListAskFirst = pipeline.ListAskFirst
@@ -213,7 +221,7 @@ type FactoryPipelineSource struct {
 // is in the list once (ignoring case for rules and ask_first, exactly for
 // never); a list holds at most 40 lines and is set once per preview.
 type FactoryPipelineEdit struct {
-	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start"`
+	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver"`
 	Name     string   `json:"name,omitempty"`
 	Pipeline string   `json:"pipeline,omitempty"`
 	After    *string  `json:"after,omitempty"`
@@ -235,6 +243,9 @@ type FactoryPipelineEdit struct {
 	Fixed   *bool    `json:"fixed,omitempty"`
 	MaxSize *string  `json:"max_size,omitempty"`
 	MaxCost *float64 `json:"max_cost,omitempty"`
+	// Who belongs to set_approver, with Name (feature
+	// factory.pipeline_edit_approvers): "@handle", operator, or "".
+	Who *string `json:"who,omitempty"`
 }
 
 // FactoryPipelinePreviewParams is the file as factory.pipeline_source gave it
@@ -364,7 +375,7 @@ type FactoryPipelinePreview struct {
 // file reads: adapt's word, the required steps joined ", ", the size letter,
 // the dollars.
 type FactoryPipelineSettingChange struct {
-	Setting string `json:"setting" enum:"adapt,fixed,max_size,max_cost"`
+	Setting string `json:"setting" enum:"adapt,fixed,max_size,max_cost,approvers"`
 	Before  string `json:"before"`
 	After   string `json:"after"`
 }
@@ -430,6 +441,13 @@ type FactoryPipelineChecksEditor interface {
 	PipelineCheckEdits()
 }
 
+// FactoryPipelineApproversEditor is implemented ONLY by a settings editor whose
+// preview applies set_approver. Without it set_approver is refused before the
+// engine is asked, and the feature is not announced.
+type FactoryPipelineApproversEditor interface {
+	PipelineApproverEdits()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
@@ -449,6 +467,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryPipelineEditRules)
 			if _, settings := e.(FactoryPipelineSettingsEditor); settings {
 				hello = withFeature(hello, FeatureFactoryPipelineEditSettings)
+				if _, approvers := e.(FactoryPipelineApproversEditor); approvers {
+					hello = withFeature(hello, FeatureFactoryPipelineEditApprovers)
+				}
 			}
 		}
 	}
@@ -468,7 +489,7 @@ func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 		}
 		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
 			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
-			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost}
+			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who}
 	}
 	return ops
 }
@@ -607,6 +628,9 @@ func pipelinePreviewMethod(name string) method {
 		if err := checkSettingsServed(e, p.Edits); err != nil {
 			return nil, err
 		}
+		if err := checkApproversServed(e, p.Edits); err != nil {
+			return nil, err
+		}
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := ed.FactoryPipelinePreview(ctx, p)
@@ -699,8 +723,22 @@ func checkSettingsServed(e Engine, edits []FactoryPipelineEdit) error {
 	return nil
 }
 
+// checkApproversServed refuses set_approver to an editor that has not said it
+// previews one.
+func checkApproversServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelineApproversEditor); ok {
+		return nil
+	}
+	for i, edit := range edits {
+		if edit.Op == PipelineEditSetApprover {
+			return Errorf(CodeBadParams, "edit %d: this engine does not name who an approval waits on", i)
+		}
+	}
+	return nil
+}
+
 func settingOp(op string) bool {
-	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart
+	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart || op == PipelineEditSetApprover
 }
 
 func anySetting(edits []FactoryPipelineEdit) bool {

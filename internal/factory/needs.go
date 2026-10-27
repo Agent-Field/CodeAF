@@ -25,18 +25,20 @@ const (
 	NeedsConflict         = "conflict"
 	WhoAnyoneWithRepo     = "anyone_with_repo"
 	WhoJobPerson          = "job_person"
-	QuestionText          = "text"
-	AskYesNo              = "yes_no"
-	AskOptions            = "options"
-	ChoiceContinue        = "continue"
-	ChoiceTryOnceMore     = "try_once_more"
-	ChoiceSendBack        = "send_back"
-	ChoiceCancel          = "cancel_job"
-	CodeToolError         = "tool_error"
-	CodeProviderError     = "provider_error"
-	CodeCrash             = "crash"
-	CodeMachineLost       = "machine_lost"
-	CodeTransportError    = "transport_error"
+	// WhoApprover is an approval that names who it waits on (Stage.Who).
+	WhoApprover        = "approver"
+	QuestionText       = "text"
+	AskYesNo           = "yes_no"
+	AskOptions         = "options"
+	ChoiceContinue     = "continue"
+	ChoiceTryOnceMore  = "try_once_more"
+	ChoiceSendBack     = "send_back"
+	ChoiceCancel       = "cancel_job"
+	CodeToolError      = "tool_error"
+	CodeProviderError  = "provider_error"
+	CodeCrash          = "crash"
+	CodeMachineLost    = "machine_lost"
+	CodeTransportError = "transport_error"
 	// CodeStopped is a person's stop that cut a step, by the step's own Stop
 	// or the whole job's: the job and that step both say it was stopped.
 	CodeStopped     = "stopped"
@@ -50,9 +52,11 @@ const (
 	LinkRevoked        = "revoked"
 	LinkUnknown        = "unknown"
 	ReasonNotJobPerson = "not_job_person"
-	AskApp             = "app"
-	AskTUI             = "tui"
-	CurrencyUSD        = "USD"
+	// ReasonNotApprover refuses an approval to anyone but whom it names.
+	ReasonNotApprover = "not_approver"
+	AskApp            = "app"
+	AskTUI            = "tui"
+	CurrencyUSD       = "USD"
 )
 
 // NeedsYouKinds is the whole enum, in the order the queue groups by.

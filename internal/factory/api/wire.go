@@ -258,6 +258,10 @@ type StepDef struct {
 	Proof         []string `json:"proof,omitempty"`  // desk
 	Why           string   `json:"why,omitempty"`    // desk
 	By            string   `json:"by,omitempty"`     // desk
+	// Who is who an approve step waits on: absent for the job's person,
+	// "@handle" for a named person, operator for any of the factory's
+	// operators (factory.ApproverWord).
+	Who string `json:"who,omitempty"`
 }
 
 // Job states, as the API says them (ARCHITECTURE §2).
@@ -424,10 +428,14 @@ type Job struct {
 // NeedsYou is why a job is waiting, and since when. question is set for a
 // free question and for out of attempts. The other kinds carry no question.
 type NeedsYou struct {
-	Kind         string         `json:"kind"`
-	Since        time.Time      `json:"since"`
-	WhoCanAnswer string         `json:"who_can_answer,omitempty"`
-	Question     *NeedsQuestion `json:"question,omitempty"`
+	Kind         string    `json:"kind"`
+	Since        time.Time `json:"since"`
+	WhoCanAnswer string    `json:"who_can_answer,omitempty"`
+	// Approver is, on an approval that names who it waits on, that person
+	// ("@handle") or operator; who_can_answer is then approver. Absent when
+	// the approval is the job's person's.
+	Approver string         `json:"approver,omitempty"`
+	Question *NeedsQuestion `json:"question,omitempty"`
 	// BackTo is, on an approve_plan wait, the finished step a plan sent back
 	// runs again (factory.PlanSendsBack). It is left out when there is none,
 	// and also when an old document's step carries no name; can.reject_plan,

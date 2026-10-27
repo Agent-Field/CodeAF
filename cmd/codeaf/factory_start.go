@@ -41,6 +41,7 @@ const (
 	sayStartRunning   = "%s is already running"
 	sayStartQueued    = "%s is queued · waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers."
 	sayStartRuleHold  = "%s waits on the person · a rule asks first: %s. Only they can approve it, on the job"
+	sayStartApprover  = "%s waits on %s, whom the pipeline names to approve it. Only they can, on the job"
 )
 
 // startItem starts, resumes or continues the run of item it on st. ITS LAUNCH
@@ -65,6 +66,10 @@ func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (
 		// they said to be asked, so the manager's word is not theirs.
 		if it.RuleHold != "" {
 			return "", fmt.Errorf(sayStartRuleHold, ref, it.RuleHold)
+		}
+		// AN APPROVAL THAT NAMES SOMEONE ELSE IS THEIRS ([factory.NamesOtherApprover]).
+		if factory.NamesOtherApprover(it) {
+			return "", fmt.Errorf(sayStartApprover, ref, factory.WaitingApprover(it))
 		}
 		if seam.Answer == nil {
 			return "", errors.New("this window cannot reach the factory's runner")
