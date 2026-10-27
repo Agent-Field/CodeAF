@@ -10,7 +10,7 @@ import (
 )
 
 func TestKnowledgeNewQuestionEvidenceDoesNotRepurchaseUnchangedGroups(t *testing.T) {
-	for _, size := range []int{6, 30} {
+	for _, size := range []int{6, 30, 128} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) { checkQuestionGroupReuse(t, size, false) })
 	}
 	t.Run("same-text questions", func(t *testing.T) { checkQuestionGroupReuse(t, 6, true) })
@@ -31,6 +31,9 @@ func checkQuestionGroupReuse(t *testing.T, size int, duplicateText bool) {
 				claims = append(claims, map[string]any{"local_id": s["id"], "text": s["text"], "scope": strings.Fields(s["text"].(string))[0], "topic": "Operations", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}})
 			}
 			return map[string]any{"claims": claims}
+		}
+		if p["reuse_only"] == true {
+			return map[string]any{"subjects": []any{}}
 		}
 		if catalog, ok := p["catalog"].([]any); ok {
 			subjects := []any{}
@@ -127,8 +130,10 @@ func checkQuestionGroupReuse(t *testing.T, size int, duplicateText bool) {
 	for i := 1; i < size; i++ {
 		capture(fmt.Sprintf("Scope%03d", i), "shared durable operations.")
 	}
-	if err := v.Flush(context.Background(), "fixture", true); err != nil {
-		t.Fatal(err)
+	for pass := 0; pass < (size+63)/64; pass++ {
+		if err := v.Flush(context.Background(), "fixture", true); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if resolverCalls != ((size-1)*5+15)/16 || inspected != (size-1)*5 {
 		t.Fatalf("baseline question coverage: calls=%d questions=%d", resolverCalls, inspected)
