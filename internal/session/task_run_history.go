@@ -126,7 +126,7 @@ func (a *Agent) historicalPlanRows(rows []PlanTaskRow) []PlanTaskRow {
 	}
 	for _, notice := range a.historicalPlanNotices() {
 		if !known[planTaskID(notice.PlanTask)] {
-			rows = append(rows, historicalPlanRow(notice))
+			rows = append(rows, a.historicalPlanRow(notice))
 			known[planTaskID(notice.PlanTask)] = true
 		}
 	}
@@ -149,8 +149,12 @@ func (a *Agent) historicalPlanNotices() []TaskNotice {
 	return notices
 }
 
-func historicalPlanRow(notice TaskNotice) PlanTaskRow {
+func (a *Agent) historicalPlanRow(notice TaskNotice) PlanTaskRow {
+	a.mu.Lock()
+	owner := a.sessionID()
+	a.mu.Unlock()
 	return PlanTaskRow{ID: notice.PlanTask, Title: notice.Title, Status: string(notice.State),
+		HistoricalRun: notice.ID, HistoricalSession: owner,
 		Stopped: notice.Stopped, Archived: true, Started: notice.StartedAt, Ended: notice.EndedAt,
 		Model: notice.Model, USD: notice.CostUSD, Note: notice.Report}
 }
@@ -160,7 +164,7 @@ func (a *Agent) historicalPlanPage(id string) (PlanTaskPage, bool) {
 		if planTaskID(notice.PlanTask) != planTaskID(id) {
 			continue
 		}
-		page := PlanTaskPage{Row: historicalPlanRow(notice), Historical: true, Result: notice.Result}
+		page := PlanTaskPage{Row: a.historicalPlanRow(notice), Historical: true, Result: notice.Result}
 		if notice.PendingRun != nil {
 			page.Description = notice.PendingRun.Brief
 		}

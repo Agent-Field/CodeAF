@@ -1161,3 +1161,7 @@ continue its chat here. Open it to read its title, saved description when presen
 recorded steps and worker transcript. The historical page is read-only: finished
 work cannot be restarted, retried or resumed from that page. The original
 computer keeps its existing task page.
+
+The transcript tab opens with the saved steps and worker conversation expanded.
+`ctrl+e` folds or opens that work. `Tab` switches between transcript and work;
+the saved history remains readable even when the run's working copy is gone.

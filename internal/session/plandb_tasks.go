@@ -34,6 +34,10 @@ import (
 // the span it covered, the last thing anybody said on it, and where its record
 // lives.
 type PlanTaskRow struct {
+	// HistoricalRun and HistoricalSession identify the retained run receipt
+	// before its roster notice arrives, without guessing from its title.
+	HistoricalRun     uint64 `json:",omitempty"`
+	HistoricalSession string `json:",omitempty"`
 	// Done, Running, Queued, Failed and Total summarize every task below a run root.
 	// They stay zero on ordinary task rows. Claimed work is running; pending and
 	// ready work is queued. Total includes every descendant store row.
