@@ -78,6 +78,12 @@ const appSweepEvery = 30 * time.Second
 // the app has asked for the crews at all. It is one stat when nothing moved.
 const appCrewPoll = 2 * time.Second
 
+// appLazyColdSweep bounds work-file discovery without watching saved chats.
+const appLazyColdSweep = time.Minute
+
+// appLazyHotWindow keeps recently viewed conversations on the prompt beat.
+const appLazyHotWindow = 10 * time.Minute
+
 // appReleaseWait bounds how long closing one conversation waits for its turn's
 // last events to be written before the outbox is shut regardless.
 const appReleaseWait = 5 * time.Second
