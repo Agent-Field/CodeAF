@@ -144,6 +144,13 @@ func chatsMarks(one ChatsDevice) string {
 // chats has been removed. It says what removing cannot do, because the person
 // who has just removed a stolen computer is the one who most needs to know.
 func ChatsRevokedLine(name string) string {
-	return name + " was removed — it can no longer sync your chats.\n" +
-		"It cannot undo what that device already holds: your chats and keys. If it was lost or stolen, treat your chats as exposed and run `codeaf identity rotate` to lock it out for good."
+	return name + " was removed — it can no longer sync your chats.\n" + revokeLimit
 }
+
+// ChatsRemoveLine is what a person reads before removing that computer: what
+// removing will do, and the same limit, said while they can still choose.
+func ChatsRemoveLine(name string) string {
+	return name + " will no longer sync your chats.\n" + revokeLimit
+}
+
+const revokeLimit = "It cannot undo what that device already holds: your chats and keys. If it was lost or stolen, treat your chats as exposed and run `codeaf identity rotate` to lock it out for good."

@@ -91,7 +91,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	for deviceID, rec := range known.Devices {
 		row := appwire.Device{ID: deviceID, Name: chatlist.DeviceName(known.Devices, deviceID, open), Platform: rec.Platform, Self: deviceID == self.ID(), Removed: rec.Revoked}
 		if view.Mode == appwire.DevicesOn && !row.Self && !row.Removed {
-			row.RemoveLine = pair.ChatsRevokedLine(row.Name)
+			row.RemoveLine = pair.ChatsRemoveLine(row.Name)
 		}
 		if rec.LastSeen > 0 {
 			row.LastSeen = time.UnixMilli(rec.LastSeen).UTC()
