@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Default start rules start what they pick up, and a held start is decided again on new labels
-pr: 0
+pr: 2003
 surface: [engine, docs]
 invalidates:
   - "Was true: with no `start.max_cost` the limit was $2 while a job's default budget is $5, and an issue with no size label was held, so every issue picked up under the defaults waited with \"Approval needed: start · no size label; job budget $5 is over $2\". Is true now: the default `start.max_cost` is the default job budget ($5), and an issue with no size label is M (the default `max_size`) unless the file sets `size.issue`. A file that sets `size.issue` still holds an unlabelled issue with \"no size label\", and a pull request is still measured, never sized by default."
