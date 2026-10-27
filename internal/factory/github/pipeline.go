@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -24,19 +25,35 @@ type pipelineRead struct {
 	path  string
 	tag   string
 	local bool
+	// at is when the forge was last asked, so a read older than
+	// [PipelineFresh] is asked again.
+	at time.Time
 }
 
+// PipelineFresh is how long a repository's read answers without asking the
+// forge again. A factory whose intake is off never refreshes its reads, and a
+// pipeline change merged on GitHub must reach the next start: past this, a
+// read asks again, by its ETag, so an unchanged file costs one 304.
+const PipelineFresh = 15 * time.Second
+
 // PipelineLoader keeps parsed files by blob SHA and repository reads until the
-// next intake tick. Local checkouts are only used when the forge is offline.
+// next intake tick, or [PipelineFresh] when nothing ticks. Local checkouts are only used when the forge is offline.
 type PipelineLoader struct {
 	mu    sync.Mutex
 	api   func(context.Context) PipelineAPI
 	repos map[string]pipelineRead
 	blobs map[string]pipelineRead
+	now   func() time.Time
 }
 
 func NewPipelineLoader(api func(context.Context) PipelineAPI) *PipelineLoader {
-	return &PipelineLoader{api: api, repos: map[string]pipelineRead{}, blobs: map[string]pipelineRead{}}
+	return &PipelineLoader{api: api, repos: map[string]pipelineRead{}, blobs: map[string]pipelineRead{}, now: time.Now}
+}
+
+// WithClock is the loader telling time by now, for a test of [PipelineFresh].
+func (l *PipelineLoader) WithClock(now func() time.Time) *PipelineLoader {
+	l.now = now
+	return l
 }
 
 // Refresh replaces the repository read on each intake tick, including failures
@@ -44,7 +61,9 @@ func NewPipelineLoader(api func(context.Context) PipelineAPI) *PipelineLoader {
 func (l *PipelineLoader) Refresh(ctx context.Context, repo, dir string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.repos[repo] = l.read(ctx, repo, dir)
+	seen := l.read(ctx, repo, dir)
+	seen.at = l.now()
+	l.repos[repo] = seen
 }
 
 // Load returns independent file data so personal limits cannot alter the cache.
@@ -57,8 +76,9 @@ func (l *PipelineLoader) Load(ctx context.Context, repo, dir, personal string) (
 		seen = l.local(dir, nil)
 		l.repos[repo] = seen
 	}
-	if !ok {
+	if !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh) {
 		seen = l.read(ctx, repo, dir)
+		seen.at = l.now()
 		l.repos[repo] = seen
 	}
 	l.mu.Unlock()

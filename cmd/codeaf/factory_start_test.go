@@ -139,3 +139,31 @@ func TestFactoryStartAndTheHeaderStartTakeTheSamePath(t *testing.T) {
 		t.Fatalf("the start did not queue the job: %s", got.State)
 	}
 }
+
+// A PLAN A RULE HOLDS IS THE PERSON'S: `factory_start` will not take the
+// manager past it, and the job stays where it waits.
+func TestFactoryStartLeavesARuleHeldPlanToThePerson(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.Add(context.Background(), factory.Item{Title: "touch the keys", Repo: "acme/api", Tier: factory.TierOwner,
+		Stages: []factory.Stage{{Name: "plan", Ask: "plan", On: true}, {Name: factory.ApproveName, Kind: factory.StageGate, On: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(id, func(it *factory.Item) error {
+		it.State, it.QKind, it.RuleHold = factory.StateNeedsYou, factory.QKindApprove, "ask first · touch auth/ · auth/keys.go"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := st.Get(id)
+	_, err = startItem(st, "", t.TempDir(), it)
+	if err == nil || !strings.Contains(err.Error(), "a rule asks first: ask first · touch auth/ · auth/keys.go") {
+		t.Fatalf("the manager approved a rule-held plan: %v", err)
+	}
+	if got, _ := st.Get(id); got.State != factory.StateNeedsYou || got.QKind != factory.QKindApprove {
+		t.Fatalf("the held job moved to %s %q", got.State, got.QKind)
+	}
+}

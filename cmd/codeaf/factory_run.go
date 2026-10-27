@@ -15,11 +15,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -78,7 +80,10 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 	if err != nil {
 		return nil
 	}
-	return factory.WithRunner(lease.NewDoors(desk))
+	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, repo string) (pipeline.File, error) {
+		f, err := factoryRules().Load(ctx, repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
+		return withFactoryHouseRules(st, f, err)
+	}))
 }
 
 // startFactoryWorker builds this process's shaping door and, unless

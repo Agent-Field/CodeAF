@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // JobRules are the sentences a job's steps must follow: the repository's own
@@ -34,24 +35,54 @@ func JobRules(recipe func(repo string) factory.Recipe, it factory.Item) []string
 	return out
 }
 
-// rulesBrief is the brief's paragraph of rules:
+// rulesBrief is the brief's paragraph of rules, the job's [Job.Rules] and
+// then the ask-first and never lines it started under ([factory.StartRules]),
+// so a step knows the paths it must ask about before it touches them, not
+// only the approval after the plan:
 //
 //	rules for this work (follow every one; if the work would break one, stop and ask through ask instead):
 //	- don't touch auth without checking with me
 //	- no new dependencies without asking
+//	- ask before touching: auth/, billing/
+//	- ask before you: change the public API
+//	- never touch: infra/
 //
 // "" when there are none (the emptiness law).
 func rulesBrief(job Job) string {
-	if len(job.Rules) == 0 {
-		return ""
-	}
-	lines := []string{"rules for this work (follow every one; if the work would break one, stop and ask through ask instead):"}
+	var lines []string
 	for _, r := range job.Rules {
 		if r = oneLine(r); r != "" {
 			lines = append(lines, "- "+r)
 		}
 	}
-	return strings.Join(lines, "\n")
+	if sr := job.Item.StartRules; sr != nil {
+		var paths, sentences, never []string
+		for _, rule := range sr.AskFirst {
+			if p := oneLine(pipeline.AskFirstPath(rule)); p != "" {
+				paths = append(paths, p)
+			} else if r := oneLine(rule); r != "" {
+				sentences = append(sentences, r)
+			}
+		}
+		for _, p := range sr.Never {
+			if p = oneLine(p); p != "" {
+				never = append(never, p)
+			}
+		}
+		if len(paths) > 0 {
+			lines = append(lines, "- ask before touching: "+strings.Join(paths, ", "))
+		}
+		if len(sentences) > 0 {
+			lines = append(lines, "- ask before you: "+strings.Join(sentences, "; "))
+		}
+		if len(never) > 0 {
+			lines = append(lines, "- never touch: "+strings.Join(never, ", "))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(append([]string{"rules for this work (follow every one; if the work would break one, stop and ask through ask instead):"}, lines...), "\n")
 }
 
 // withHouse is a repository's policy lines followed by the job's house rules,

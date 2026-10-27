@@ -47,7 +47,10 @@ const (
 	// DefaultMaxSize is the largest job that starts on its own.
 	DefaultMaxSize = "M"
 	// DefaultMaxCost is the dollars per job, over which the job asks first.
-	DefaultMaxCost = 2
+	// It is the default job budget, so a job no file sizes up starts by itself:
+	// what a start compares is the budget, the most a job may spend, never an
+	// estimate, and a lower default would hold every job a factory picks up.
+	DefaultMaxCost = factory.DefaultJobBudget
 	// DefaultIssueMode is how an issue's size is read: the model's rubric.
 	DefaultIssueMode = "model"
 	// IssueModeLabel reads size/S, size/M and size/L off the issue's labels.
