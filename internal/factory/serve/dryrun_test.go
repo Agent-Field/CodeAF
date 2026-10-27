@@ -160,7 +160,7 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 	}
 	items := []factory.Item{
 		ready(1, 1, "size:S"),           // starts
-		ready(2, 1),                     // no label: the S guess must not start it
+		ready(2, 1),                     // no label: M, whatever the S guess says
 		ready(3, 3, "size:S"),           // over the $2 ceiling despite a $0.10 estimate
 		ready(4, 1, "size:XL"),          // explicit oversize
 		ready(5, 1, "size:S", "size/L"), // several: the largest wins
@@ -208,10 +208,10 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 		t.Fatalf("wait = %+v, want %v", body.WouldWait, wait)
 	}
 	// The anchors, so parity cannot pass by both sides being wrong together.
-	if !reflect.DeepEqual(start, []int{1, 6}) {
+	if !reflect.DeepEqual(start, []int{1, 2, 6}) {
 		t.Fatalf("DecideJob starts %v", start)
 	}
-	for id, want := range map[int]string{2: "no size label", 3: "job budget $3 is over $2", 4: "this one is XL", 5: "this one is L", 7: "job budget"} {
+	for id, want := range map[int]string{3: "job budget $3 is over $2", 4: "this one is XL", 5: "this one is L", 7: "job budget"} {
 		found := false
 		for _, a := range body.WouldAsk {
 			found = found || (a.Job == id && strings.Contains(a.Reason, want))

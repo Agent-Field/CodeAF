@@ -334,6 +334,21 @@ func JobApproval(it Item) *Approval {
 	return &Approval{Kind: kind, State: "waiting", Matched: it.AskedFirstReason}
 }
 
+// ReaskStart puts a job its start rules held back into the backlog, so intake
+// decides it again: its labels changed, and the hold judged the old ones. Only
+// a hold nobody has answered goes back; a job a person declined, approved or
+// ran stays where they put it. It reports whether it changed the job.
+func ReaskStart(it *Item) bool {
+	if it.State != StateNeedsYou || it.QKind != QKindAskFirst || it.AskedFirstReason == "" || it.Stream != nil {
+		return false
+	}
+	if it.Approval != nil && it.Approval.State != "waiting" {
+		return false
+	}
+	it.State, it.QKind, it.Question, it.AskedFirstReason = StateNew, "", "", ""
+	return true
+}
+
 // Overlaps is derived from actual branch changes, never from planned paths.
 func Overlaps(a, b Item) bool {
 	if a.ID == b.ID || a.Repo != b.Repo || a.Product != b.Product || JobState(a) != "running" || JobState(b) != "running" {

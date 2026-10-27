@@ -16,7 +16,9 @@ import (
 
 // THE READ NEVER GRANTS A START, whatever size it names and from wherever.
 func TestTheShownSizeNeverGrantsAStart(t *testing.T) {
-	f, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [agent-ready]\n  max_size: M\n")
+	// An issue with no size label reads as M ([pipeline.File.DecideJob]), so
+	// the limit is S: a small read must not pass what the label alone would hold.
+	f, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [agent-ready]\n  max_size: S\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,9 +30,9 @@ func TestTheShownSizeNeverGrantsAStart(t *testing.T) {
 		start  bool
 		reason string
 	}{
-		{"a small read and no label asks", []string{"agent-ready"}, read, false, "no size label"},
-		{"a small diff and no label asks", []string{"agent-ready"}, factory.Triage{Size: "S", SizeFrom: factory.SizeFromDiff, StartJudged: true, StartMatched: []string{}}, false, "no size label"},
-		{"a legacy size and no label asks", []string{"agent-ready"}, factory.Triage{Size: "S", TriagedAt: time.Unix(100, 0), StartJudged: true, StartMatched: []string{}}, false, "no size label"},
+		{"a small read and no label asks", []string{"agent-ready"}, read, false, "this one is M"},
+		{"a small diff and no label asks", []string{"agent-ready"}, factory.Triage{Size: "S", SizeFrom: factory.SizeFromDiff, StartJudged: true, StartMatched: []string{}}, false, "this one is M"},
+		{"a legacy size and no label asks", []string{"agent-ready"}, factory.Triage{Size: "S", TriagedAt: time.Unix(100, 0), StartJudged: true, StartMatched: []string{}}, false, "this one is M"},
 		{"a large read does not hold a small label", []string{"agent-ready", "size:s"}, factory.Triage{Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: time.Unix(100, 0), StartJudged: true, StartMatched: []string{}}, true, ""},
 		{"a small read does not rescue a large label", []string{"agent-ready", "size:l"}, read, false, "this one is L"},
 	} {
@@ -83,7 +85,8 @@ func TestAReadSizeStartsNothingAndReordersNothing(t *testing.T) {
 	if after := order(); !reflect.DeepEqual(before, after) {
 		t.Fatalf("a read size reordered the queue: %v then %v", before, after)
 	}
-	f, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [agent-ready]\n")
+	// Sizes are labels here, so only a label could start one: a read cannot.
+	f, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [agent-ready]\nsize:\n  issue: label\n")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,8 @@ func TestDryRunIgnoresEveryNonLabelSize(t *testing.T) {
 		return getDryRun(t, seam, "/v1/repos/acme/web/dryrun").DryRun
 	}
 	base := run(factory.Triage{})
-	if !reflect.DeepEqual(base.WouldStart, []int{1}) || len(base.WouldAsk) != 2 {
+	// The unlabelled job is M, so it starts: from its missing label, never a read.
+	if !reflect.DeepEqual(base.WouldStart, []int{1, 3}) || len(base.WouldAsk) != 1 {
 		t.Fatalf("baseline dry run = %+v", base)
 	}
 	for _, tr := range []factory.Triage{

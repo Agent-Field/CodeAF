@@ -262,6 +262,12 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if words || labels {
 					it.Note(at, factory.EventChanged)
 				}
+				// A START HELD FOR ITS LABELS IS ASKED AGAIN when they change
+				// (a size label added, a start label put on), so the rules
+				// decide the new labels rather than the ones they held.
+				if labels {
+					factory.ReaskStart(it)
+				}
 				it.Title, it.Body = in.Title, in.Body
 				it.Labels = append([]string(nil), in.Labels...)
 				it.Checks = in.Checks

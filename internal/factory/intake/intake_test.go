@@ -43,7 +43,9 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 		{"path rule", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix auth/keys.go", "S", "touches auth/**", false},
 		{"unknown rule asks", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "fix docs", "S", "changes secrets", false},
 		{"unmatched path", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix docs/readme.md", "S", "", true},
-		{"missing size", "start:\n  labels: [agent-ready]\n", "fix docs", "", "no size label", false},
+		{"missing size reads as M", "start:\n  labels: [agent-ready]\n", "fix docs", "", "", true},
+		{"missing size over the limit", "start:\n  labels: [agent-ready]\n  max_size: S\n", "fix docs", "", "this one is M", false},
+		{"missing size label when sizes are labels", "start:\n  labels: [agent-ready]\nsize:\n  issue: label\n", "fix docs", "", "no size label", false},
 		{"no start block", "rules: [keep changes small]\n", "fix docs", "S", "", false},
 	}
 	for _, tc := range cases {

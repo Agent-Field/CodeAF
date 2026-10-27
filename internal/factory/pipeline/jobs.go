@@ -19,7 +19,15 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 		return Decision{}
 	}
 	var reasons []string
-	if size := factory.JobSize(it); size == "" {
+	size := factory.JobSize(it)
+	// AN ISSUE WITH NO SIZE LABEL IS M while the file says nothing of how
+	// sizes are read: the default limit is M, so labelling nothing holds
+	// nothing. A file that names a size mode asks for its labels, and a pull
+	// request is measured, never guessed.
+	if size == "" && it.Kind != factory.KindPR && !f.set.issue {
+		size = "M"
+	}
+	if size == "" {
 		reasons = append(reasons, "no size label")
 	} else if overSize(size, f.Start.MaxSize) {
 		reasons = append(reasons, "over size "+normOr(f.Start.MaxSize, DefaultMaxSize)+" · this one is "+size)
