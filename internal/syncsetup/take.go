@@ -194,6 +194,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
 	}
 	from := c.sync.deviceName(lease.Device)
+	if lease.Device == c.sync.Device.ID() {
+		from = ""
+	}
 	retired := handoff.Trace(c.opt.OnPhase, "retirement")
 	c.retireHolder(ctx, id)
 	retired()
@@ -410,6 +413,11 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 	return func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error) {
 		opened, err := cell.OpenAt(from.Cell.Root, from.Cell.ID)
 		if err != nil {
+			return "", err
+		}
+		// A final save can finish the same exchange as the earlier tool saves.
+		// Count the complete kept conversation once after that save.
+		if _, turns, err = cellstore.Unpublished(opened, from.Head); err != nil {
 			return "", err
 		}
 		return b.Branch(ctx, from, head, turns, c.sync.publishInfo(opened, titleOf(opened.Root)))

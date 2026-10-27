@@ -71,14 +71,19 @@ type surfaceMachines struct{ *syncsetup.Sync }
 // RowsForChatSend uses a live writer's receipt or a never-shared chat before asking the relay.
 // A known outage keeps unknown copies unsent without repeating the network wait.
 func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offline, holding bool) ([]chatlist.Row, uint64, bool, error) {
+	root := session.DirOf(file)
+	id := filepath.Base(root)
 	if s.Removed() {
+		if c, err := cell.OpenAt(root, id); err == nil {
+			if shared, err := cellstore.Shared(c); err == nil && !shared {
+				return nil, 0, true, directory.ErrRevoked
+			}
+		}
 		return nil, 0, false, directory.ErrRevoked
 	}
 	if syncsetup.Quiet(s.Home) {
 		return nil, 0, true, nil
 	}
-	root := session.DirOf(file)
-	id := filepath.Base(root)
 	remote, fence, leaseErr := s.SendLease(id)
 	if holding && leaseErr == nil && fence != 0 {
 		return []chatlist.Row{{Cell: remote, Status: chatlist.Here, Mine: true, Fence: fence}}, 0, true, nil

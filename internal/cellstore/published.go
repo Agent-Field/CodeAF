@@ -98,18 +98,23 @@ func Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	var n uint32
+	span := head.Receipt.Transcript
 	for i := len(turns) - 1; i >= 0; i-- {
 		turn := turns[i]
 		if turn.ID == base {
 			break
 		}
-		n++
+		receipt, err := readReceipt(c, turn.Receipt)
+		if err != nil {
+			return "", 0, err
+		}
+		span.Start = min(span.Start, receipt.Transcript.Start)
 		// An adopted head has no line in this log. Its first local child
 		// still names that boundary, so earlier history is already uploaded.
 		if turn.Parent == base {
 			break
 		}
 	}
-	return head.Turn.ID, max(1, n), nil
+	n, err := unpublishedConversationTurns(c, span)
+	return head.Turn.ID, max(1, n), err
 }

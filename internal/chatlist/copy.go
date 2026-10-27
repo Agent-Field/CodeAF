@@ -37,6 +37,7 @@ const (
 	branchKeep     = "%s from %s: discard"
 	branchShort    = "%s · %s"
 	takeoverLine   = "last saved turn %s ago"
+	lastHeldHere   = "this chat was last held here"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	supersededLine = "%s continued this chat; this window now only shows it"
@@ -176,6 +177,9 @@ func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanT
 // says where first, because continuing it here stops it there.
 func TakeoverLine(r Row) string {
 	line := fmt.Sprintf(takeoverLine, agoWord(r.DurableAgo))
+	if r.Mine {
+		return lastHeldHere + "; " + line
+	}
 	if r.Pending > 0 {
 		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
 	}

@@ -170,7 +170,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		next := a.liveComposer()
 		a.putComposer(*msg.first)
 		var reading tea.Cmd
-		if !msg.local {
+		if !msg.local || msg.reading.err != nil {
 			reading = a.recordMachines(msg.reading)
 		}
 		cmd := a.resumeOwnedSend(msg)
@@ -190,7 +190,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		return nil
 	}
 	var reading tea.Cmd
-	if !msg.local {
+	if !msg.local || msg.reading.err != nil {
 		reading = a.recordMachines(msg.reading)
 	}
 	return tea.Batch(reading, a.resumeOwnedSend(msg))
@@ -240,13 +240,9 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			return msg.resume()
 		}
 		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
-			if taker, ok := a.taker.(conditionalTaker); ok {
+			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
-				ctx := a.ctx
-				return func() tea.Msg {
-					taken, err := taker.TakeSeen(ctx, row.Cell, &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence})
-					return homeTakenMsg{row: row, taken: taken, err: err, draft: &draft, send: msg.resume}
-				}
+				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})
 			}
 		}
 		if a.taker == nil {
@@ -268,7 +264,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 // could not be made: the chat is this window's own at the fence it recorded, or
 // it was never shared and nobody is known to hold it.
 func (a *app) offlineSendHeld(id, remote string, msg ownershipReadMsg) bool {
-	if msg.notHeld && msg.proof && !msg.local {
+	if msg.notHeld && msg.proof && !msg.local && !a.machineRead.computerRemoved {
 		return false
 	}
 	held := a.machineRead.sendHolds[id]
@@ -276,7 +272,7 @@ func (a *app) offlineSendHeld(id, remote string, msg ownershipReadMsg) bool {
 		return false
 	}
 	fence := held.fence
-	if msg.proof {
+	if msg.proof && (!a.machineRead.computerRemoved || msg.fence != 0) {
 		fence = msg.fence
 	}
 	for _, row := range a.machineRead.rows {
@@ -284,7 +280,7 @@ func (a *app) offlineSendHeld(id, remote string, msg ownershipReadMsg) bool {
 			return fence != 0 && row.Status == chatlist.Here && row.Fence == fence
 		}
 	}
-	return fence == 0
+	return fence == 0 && (!a.machineRead.computerRemoved || !msg.proof || msg.local)
 }
 
 func nonemptyDevice(device string) string {

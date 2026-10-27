@@ -1483,6 +1483,10 @@ type app struct {
 	// LEAVING. The open's landing spends it; a shared window opens in place
 	// and spends it at once.
 	homeTakenSaid func() tea.Cmd
+	// homeTaking keeps a retiring session on its own continuation until arrival.
+	homeTaking string
+	// homeTakeDraft moves the source composer only after the arriving door opens.
+	homeTakeDraft *homeTakenMsg
 	// teamsDisk is where the teams are kept and the edits not yet written
 	// there (teamseam.go).
 	teamsDisk teamsDisk

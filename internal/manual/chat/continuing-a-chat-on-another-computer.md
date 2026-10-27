@@ -37,13 +37,25 @@ while the reading is in progress.
 
 After `continue here` succeeds, those same words, pasted text and attachments are in the arrived chat's box. Press enter again when you want to send them. Choosing `leave it there` or a move that fails also keeps the whole draft.
 
+The move opens one conversation for that chat. Once you send those words, they are cleared from its saved drafts, including matching copies left by an earlier window. Taking the chat back, reopening it or restarting codeaf then shows an empty box unless you typed a new draft.
+
 Taking a chat from Home restores that chat's own saved draft, or leaves its box empty. Words typed for a different chat stay with that chat, even when both work in one place on disk. A draft held behind a send's continuation card stays with the chat that raised it.
+
+## Read a finished task's worker conversation after moving its chat
+
+Open `/task` and choose the finished task. Its saved worker conversation and steps remain readable with its outcome after moving the chat, even when the original working copy is no longer available. A finished task offers no restart action; typing `r` or `R` writes those letters in the box.
 
 ## What does leave it there do
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 On `Continue this chat here?`, `leave it there` closes the question without moving the chat. Your typed words stay in the box and nothing is sent. If the question opened because you tried to send from an older window, this answer is already selected. Choose `1 continue here` to bring the chat here before sending.
+
+## Why does continue here say this chat was last held here
+
+When this computer was the chat's last holder and its hold expired, the card says `this chat was last held here; last saved turn 2h ago`, with the age of its saved turn. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
+
+If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
 ## What does running on tower mean — a row on home and the verb it offers
 

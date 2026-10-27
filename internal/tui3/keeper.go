@@ -1185,6 +1185,7 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 // takeBeside is the two lines both doors above end in: the conversation on
 // screen steps aside and goes on running, and the new one takes the surface.
 func (a *app) takeBeside(conv Conversation) tea.Cmd {
+	a.moveTakeDraft(conv)
 	// The name of what is being left, read while it is still in front, and said
 	// afterwards on a door that could not keep it (below). Notes are cleared by
 	// the detach, so this is remembered rather than written now.
