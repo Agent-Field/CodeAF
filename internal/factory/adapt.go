@@ -181,7 +181,7 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 // In a run ([EditInRun]) the recipe's adapt word holds for everyone but you:
 // under `fixed` every change is refused, and under `ask` an approve step
 // stands after plan, so the person ratifies the change before anything after
-// plan runs.
+// plan runs. Before a run `fixed` holds for everyone but you too.
 //
 // The lines start with who (`manager`, `plan`, `you`) and say `set <name>:
 // <ask>`, `set <name> thinking <word>`, `added <name>` (`added <name> after
@@ -218,12 +218,17 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		kind = KindIssue
 	}
 	adapt := AdaptFree
-	if mode == EditInRun && who != ByYou {
-		adapt = recipe.AdaptFor(kind)
+	if who != ByYou {
+		word := recipe.AdaptFor(kind)
 		// THE FACTORY'S OWN WORD TRAVELS WITH THE JOB ([Item.House]) and can
 		// only tighten the repository's, whichever machine runs the edit.
 		if it.House != nil {
-			adapt, _ = StricterAdapt(adapt, it.House.Adapt)
+			word, _ = StricterAdapt(word, it.House.Adapt)
+		}
+		// BEFORE A RUN ONLY `fixed` BINDS: steps that may never change are
+		// not the manager's to change ahead of the run either.
+		if mode == EditInRun || word == AdaptFixed {
+			adapt = word
 		}
 	}
 	if adapt == AdaptFixed {
