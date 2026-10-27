@@ -995,8 +995,11 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		Model:       bare,
 		Direct:      !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID),
 		KeyOptional: service.Source.KeyOptional,
+		KeyHeader:   service.Source.KeyHeader,
 		BillingDoor: service.Door.Name,
 		Effort:      effort,
+
+		OpenAIDialect: service.Source.OpenAIDialect,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel

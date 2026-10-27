@@ -48,6 +48,10 @@ import (
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
+	// The machine's Azure OpenAI variables add a service to every resolved
+	// set by being set (config's azureFromEnv), so they are cleared too.
+	os.Unsetenv(config.AzureBaseEnv)
+	os.Unsetenv("AZURE_API_KEY")
 	startCmdProfile()
 	surfaceTick = harnessTick
 	code := runTests(m)

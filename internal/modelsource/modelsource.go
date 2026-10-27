@@ -159,6 +159,12 @@ type Source struct {
 	// here and written only into the call row (internal/session's
 	// [Agent.attributedEndpoint]), never put on the answer (#1391).
 	ServedAs string
+	// KeyHeader names the header the key travels in when the service refuses
+	// a bearer token; empty is `Authorization: Bearer`.
+	KeyHeader string
+	// OpenAIDialect says the service reads OpenAI's own request fields
+	// (`reasoning_effort`, `max_completion_tokens`) and refuses the router's.
+	OpenAIDialect bool
 }
 
 // Connected is one service with the two facts only a caller that may read the
@@ -282,6 +288,23 @@ func DefaultSource(address string) Source {
 		KeyShape: LooksLikeAPIKey,
 		Listing:  ListingModels,
 		Probe:    listingProbe(),
+	}
+}
+
+// AzureID is the identity of the Azure OpenAI service. It is not a vendored
+// row: it has no address of its own to ship, so internal/config adds it only
+// when the person's environment names one.
+const AzureID = "azure"
+
+// AzureSource is the Azure OpenAI service at an address the caller read from
+// the environment: the v1 surface, where the body's model is the deployment
+// name. Azure answers a bearer with 401 and has no model list on that
+// surface, so the key travels as `api-key` and nothing is listed.
+func AzureSource(address, preferred string) Source {
+	return Source{
+		ID: AzureID, Written: AzureID, Name: "Azure OpenAI", Address: address,
+		KeyEnv: "AZURE_API_KEY", KeyHeader: "api-key", OpenAIDialect: true,
+		Listing: ListingNone, Preferred: preferred,
 	}
 }
 

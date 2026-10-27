@@ -50,6 +50,17 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
+	// KeyHeader names the header that carries the key when the service does
+	// not take a bearer token. Empty is `Authorization: Bearer`, which is every
+	// service except an Azure OpenAI gateway, whose `api-key` header is the
+	// only one it reads and which answers a bearer with 401.
+	KeyHeader string
+	// OpenAIDialect says the service speaks OpenAI's own request fields rather
+	// than the router's: `reasoning_effort` instead of the `reasoning` object,
+	// and `max_completion_tokens` for the model families that refuse
+	// `max_tokens`. It is configuration, never inferred from the address,
+	// because a gateway in front of Azure carries its owner's hostname.
+	OpenAIDialect bool
 	// BillingDoor is the person-facing name of a bound road. Empty is a service
 	// with one road and preserves every older status line.
 	BillingDoor string
@@ -2486,7 +2497,7 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 	httpRequest.Header.Set("Content-Type", "application/json")
 	c.applyRequestIdentity(httpRequest)
 	if apiKey != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+		setKeyHeader(httpRequest.Header, c.config.KeyHeader, apiKey)
 	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")

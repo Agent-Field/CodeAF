@@ -42,6 +42,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -79,6 +80,10 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "session tests: could not clear %s: %v\n", home.EnvVar, err)
 		return 1
 	}
+	// AND NOT THE MACHINE'S AZURE OPENAI SERVICE, which the two variables add
+	// to every resolved set by being set (config's azureFromEnv).
+	os.Unsetenv(config.AzureBaseEnv)
+	os.Unsetenv("AZURE_API_KEY")
 	// AND THE TESTS DO NOT REACH THE MACHINE'S OWN FURROW EITHER.
 	//
 	// The ground ladder's top rung attaches a folder to furrow and forks it

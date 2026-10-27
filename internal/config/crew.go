@@ -779,14 +779,16 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 			p.Serves = []string{source.Preferred}
 		case strings.EqualFold(source.ID, "ollama"):
 			p.Kind = crewroute.Local
-		case modelsource.IsCustomID(source.ID):
+		case modelsource.IsCustomID(source.ID), strings.EqualFold(source.ID, modelsource.AzureID):
 			// A custom endpoint serves models the catalog does not describe;
-			// it is reachable by a pin that names it and by nothing else.
+			// it is reachable by a pin that names it and by nothing else. An
+			// Azure service is the same: its models are deployment names the
+			// person chose, never a catalog slug.
 		case service.Door.ID != "" && !service.Door.Metered:
 			p.Kind = crewroute.Plan
 			p.Serves = append([]string(nil), service.Door.Models...)
 		}
-		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") {
+		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") && !strings.EqualFold(source.ID, modelsource.AzureID) {
 			p.vendors = append([]string{strings.ToLower(source.Written)}, crewVendors[strings.ToLower(source.ID)]...)
 		}
 		out = append(out, p)

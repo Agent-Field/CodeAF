@@ -195,6 +195,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"turn off telemetry", "running-from-the-terminal"},
 		{"can I click on the setup screen", "getting-started"},
 		{"can I use my own deepseek key", "services"},
+		{"how do I use azure openai", "services"},
+		{"use my azure deployment", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
 		{"why can't it make pictures any more", "services"},

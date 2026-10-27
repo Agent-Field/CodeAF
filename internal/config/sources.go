@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -245,7 +246,41 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 			Door: door, Overflow: overflow, PlanPaused: resolvedPlanPaused(row),
 		})
 	}
+	// A connection the person already named azure keeps the name; the
+	// environment's service steps aside rather than shadow it.
+	if azure, ok := azureFromEnv(keyAt); ok && !slices.ContainsFunc(modelsource.NewSet(connected...).Written(), func(written string) bool {
+		return strings.EqualFold(written, azure.Source.Written)
+	}) {
+		connected = append(connected, azure)
+	}
 	return modelsource.NewSet(connected...)
+}
+
+// AzureBaseEnv and AzureDeploymentEnv are the Azure OpenAI variables the
+// LiteLLM convention made common; codeaf reads the same names rather than
+// asking a person to export the address twice. AZURE_API_VERSION is not read:
+// the v1 surface this service talks to takes no version.
+const (
+	AzureBaseEnv       = "AZURE_API_BASE"
+	AzureDeploymentEnv = "AZURE_API_DEPLOYMENT"
+)
+
+// azureFromEnv is the Azure OpenAI service when the environment names both its
+// address and its key. IT IS NEVER PERSISTED: the variables are the
+// connection, so unsetting them disconnects it, and a key never lands in the
+// profile. AZURE_API_BASE is the resource or gateway root, as LiteLLM reads
+// it; the v1 path is appended unless the address already carries it.
+func azureFromEnv(keyAt func(PersistedSource, modelsource.Source) string) (modelsource.Connected, bool) {
+	base := strings.TrimSuffix(strings.TrimSpace(env.Value(AzureBaseEnv)), "/")
+	if base == "" || strings.TrimSpace(env.Value(modelsource.AzureSource("", "").KeyEnv)) == "" {
+		return modelsource.Connected{}, false
+	}
+	if !strings.HasSuffix(base, "/openai/v1") {
+		base += "/openai/v1"
+	}
+	source := modelsource.AzureSource(base, strings.TrimSpace(env.Value(AzureDeploymentEnv)))
+	row := PersistedSource{ID: source.ID, Written: source.Written}
+	return modelsource.Connected{Source: source, Key: keyAt(row, source), Address: base}, true
 }
 
 func resolvedSourceAddress(row PersistedSource, source modelsource.Source) string {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -298,6 +299,10 @@ type wireRequest struct {
 	// the caller marked it required. An unsupported knob is a 400, and a 400 on
 	// every optional economy is a worse failure than a model thinking too hard.
 	Reasoning *reasoningKnob `json:"reasoning,omitempty"`
+	// ReasoningEffort is the same knob in OpenAI's own dialect, sent INSTEAD
+	// of Reasoning to a service configured with [Config.OpenAIDialect], which
+	// refuses the object as an unknown parameter.
+	ReasoningEffort Effort `json:"reasoning_effort,omitempty"`
 
 	// Provider is the routing preference object: how to choose among the
 	// endpoints serving this model, and which of them this process has already
@@ -355,6 +360,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// lever on a long run's bill is invisible, so it is never optional here.
 	if scrubbed.Usage == nil {
 		scrubbed.Usage = &ai.RequestUsage{Include: true}
+	}
+	// AN OPENAI-DIALECT SERVICE REFUSES THE ROUTER'S OPT-IN as an unknown
+	// parameter (an Azure gateway, observed 2026-10-27). It reports usage on
+	// every plain answer and, streamed, through stream_options below, so
+	// nothing is lost by leaving it off.
+	if c.config.OpenAIDialect {
+		scrubbed.Usage = nil
 	}
 
 	model := c.modelFor(&scrubbed)
@@ -444,10 +456,14 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		return nil, err
 	}
 	if !knobs.relaxed.has(relaxReasoning) {
-		wire.Reasoning = reasoningFor(sentEffort, thinking)
+		if c.config.OpenAIDialect {
+			wire.ReasoningEffort = openAIEffort(sentEffort, thinking)
+		} else {
+			wire.Reasoning = reasoningFor(sentEffort, thinking)
+		}
 	}
 	if hasCeiling {
-		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
+		if needsMaxCompletionTokens(model) && (c.config.OpenAIDialect || isVouchedRewriteEndpoint(c.config.BaseURL)) {
 			wire.MaxCompletionTokens = &ceiling
 		} else {
 			wire.MaxTokens = &ceiling
@@ -687,6 +703,23 @@ func dropEmptyTextParts(role string, content []ai.ContentPart, hasToolCalls bool
 	return kept, true
 }
 
+// openAIEffort is [reasoningFor] spelled as OpenAI's single `reasoning_effort`
+// word. Off is `none`, and a thinking budget — which only the rungs above high
+// carry — is `xhigh`, because this dialect has no budget field. A word a model
+// refuses is a 400 the relaxation ladder already answers by dropping the knob.
+func openAIEffort(level Effort, budget int) Effort {
+	switch {
+	case level == EffortNone:
+		return EffortNone
+	case level == EffortOff:
+		return "none"
+	case budget > 0:
+		return "xhigh"
+	default:
+		return level
+	}
+}
+
 // needsMaxCompletionTokens mirrors the SDK's rewrite rule so owning the wire
 // body does not silently drop an output cap for newer OpenAI-family models.
 // The legacy families that still take max_tokens are a closed set; everything
@@ -706,6 +739,16 @@ func needsMaxCompletionTokens(model string) bool {
 }
 
 var vouchedRewriteDomains = []string{"openai.com", "openai.azure.com", "openrouter.ai"}
+
+// setKeyHeader puts the key where the service reads it: the named header when
+// one is configured, the bearer token otherwise.
+func setKeyHeader(header http.Header, name, key string) {
+	if name = strings.TrimSpace(name); name != "" {
+		header.Set(name, key)
+		return
+	}
+	header.Set("Authorization", "Bearer "+key)
+}
 
 func isVouchedRewriteEndpoint(baseURL string) bool {
 	return hostIn(baseURL, vouchedRewriteDomains)
