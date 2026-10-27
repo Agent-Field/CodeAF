@@ -51,6 +51,9 @@ func AutonomyBlockReason(it Item) string {
 	if it.QKind == QKindApprove && it.RuleHold != "" {
 		return "A rule asks first: " + it.RuleHold + ". Review the plan, then press Approve."
 	}
+	if it.State == StateLanded && it.RuleHold != "" {
+		return "A rule asks first: " + it.RuleHold + ". Review the changes, then press Approve."
+	}
 	if it.Approval != nil && it.Approval.Error != "" {
 		return "Automatic approval failed: " + it.Approval.Error + ". Review the problem before trying again."
 	}
