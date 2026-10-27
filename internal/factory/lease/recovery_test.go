@@ -117,7 +117,7 @@ func TestRecoveryWaitingForRunnerExpiresAndModeBudgetChangesStopAdmission(t *tes
 			f.now = waiting.Recovery.NextAt
 			_, _ = doors.RecoverAutomatic(it.ID)
 			if change == "deadline" {
-				f.now = f.now.Add(factory.RecoveryWindow)
+				f.now = f.now.Add(factory.RunnerReturnWindow)
 			} else {
 				if e := f.store.Update(it.ID, func(cur *factory.Item) error {
 					if change == "manual" {
@@ -183,7 +183,9 @@ func TestRecoveryDoesNotReplaceAHeldWorkerAndStillEndsItsWait(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 4; i++ {
+	// The wait for a held worker is bounded by the runner-return window, not by
+	// attempts it never made.
+	for i := 0; i <= int(factory.RunnerReturnWindow/(30*time.Second)); i++ {
 		f.now = f.now.Add(30 * time.Second)
 		if _, e = f.desk.Heartbeat(it.ID, w.ID); e != nil {
 			t.Fatal(e)

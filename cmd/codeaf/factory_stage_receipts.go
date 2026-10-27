@@ -321,6 +321,7 @@ type receiptStageDoor struct {
 	mu              sync.Mutex
 	last            string
 	repeats         int
+	refused         int
 	reason          string
 	stopped         bool
 	closed          bool
@@ -422,10 +423,15 @@ func (d *receiptStageDoor) Ask(ctx context.Context, q factory.Asked) (string, er
 }
 
 // These limits apply after a repair claims completion, not while its initial
-// tests run. Unchanged evidence gets two opportunities to be corrected. A turn
-// that investigates forever after a refusal is bounded by the recovery window.
+// tests run, and they are COUNTED IN REPORTS, NOT MINUTES: unchanged evidence
+// gets two opportunities to be corrected, and any evidence gets
+// stageVerificationReportLimit refused reports in all. A slow but productive
+// repair is never stopped by the clock; its stage's own time and money bounds
+// remain. stageVerificationRecheck is how often a stop that found owned work
+// still running looks again.
 const stageVerificationRejectLimit = 3
-const stageVerificationRecoveryWindow = 5 * time.Minute
+const stageVerificationReportLimit = 6
+const stageVerificationRecheck = 30 * time.Second
 
 func (d *receiptStageDoor) stoppedVerification() <-chan string {
 	d.mu.Lock()
@@ -465,14 +471,15 @@ func (d *receiptStageDoor) rejectVerification(notes []string, reason string) err
 		d.last, d.repeats = key, 0
 	}
 	d.repeats++
+	d.refused++
 	d.reason = reason
-	if d.timer == nil && !d.closed {
-		d.timer = time.AfterFunc(stageVerificationRecoveryWindow, func() { d.stopVerification("the completion recovery time limit was reached") })
-	}
-	exhausted := d.repeats >= stageVerificationRejectLimit
+	repeated, refused := d.repeats >= stageVerificationRejectLimit, d.refused >= stageVerificationReportLimit
 	d.mu.Unlock()
-	if exhausted {
+	switch {
+	case repeated:
 		d.stopVerification(fmt.Sprintf("%d completion reports repeated the same unresolved evidence", stageVerificationRejectLimit))
+	case refused:
+		d.stopVerification(fmt.Sprintf("%d completion reports were refused", stageVerificationReportLimit))
 	}
 	return fmt.Errorf("repair is incomplete: %s. The completion guard only reads saved results; it does not run tests. Reuse current passing evidence. Correct only the unresolved check or report done:false with the remaining blocker (PR repairs use repair.decision needs_repair); do not repeat the whole suite without a coverage reason", reason)
 }
@@ -483,7 +490,7 @@ func (d *receiptStageDoor) stopVerification(why string) {
 	if d.workRunning != nil && d.workRunning() {
 		d.mu.Lock()
 		if !d.closed && !d.stopped {
-			d.timer = time.AfterFunc(stageVerificationRecoveryWindow, func() { d.stopVerification(why) })
+			d.timer = time.AfterFunc(stageVerificationRecheck, func() { d.stopVerification(why) })
 		}
 		d.mu.Unlock()
 		return
