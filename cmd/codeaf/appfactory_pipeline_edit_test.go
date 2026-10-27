@@ -153,6 +153,8 @@ func TestPipelineEditIsAnnouncedAndDistinct(t *testing.T) {
 
 // ── source: the yes path ───────────────────────────────────────────────────
 
+// E5: the held-caller read contract uses the issue-only factory introduced by
+// a71691760d (0-factory-issues-only.md); PR and CI pipelines are no longer defaults.
 func TestPipelineSourceReadsOnceAsTheHeldCaller(t *testing.T) {
 	stub := newEditStub(t, api.Me{Mode: api.FactoryTeam, Profile: api.Profile{Handle: "alice"}}) // a member, not the operator
 	r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
@@ -164,7 +166,7 @@ func TestPipelineSourceReadsOnceAsTheHeldCaller(t *testing.T) {
 		got.State != "file" || !got.Editable || got.Text != editTestFile || !got.CanPush || got.DefaultBudget != 4 || !got.BudgetInFile {
 		t.Fatalf("%+v", got)
 	}
-	if len(got.Steps) == 0 || len(got.Pipelines) != 3 || got.Pipelines[0].Kind != "issue" {
+	if len(got.Steps) == 0 || len(got.Pipelines) != 1 || got.Pipelines[0].Kind != "issue" {
 		t.Fatalf("%+v", got)
 	}
 	if log := strings.Join(stub.requests(), "|"); log != "GET /v1/me|GET /v1/repos/octo/Hello.x_y/pipeline/edit-source" {

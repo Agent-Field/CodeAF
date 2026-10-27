@@ -135,13 +135,18 @@ func TestCrewsOrganizeDiscoversInitiallyUnheldHostBeforeLocalNaming(t *testing.T
 			if err != nil {
 				return nil, err
 			}
-			launch, err := openV3Launch(proc, v3Options{Workspace: workspace, Model: "test/model", Session: file})
+			launch, err := openV3Launch(proc, v3Options{Workspace: workspace, Model: "test/model", Session: file, OneModel: true})
 			if err != nil {
 				return nil, err
 			}
-			launch.Config.OneModel = true
 			agent, err := session.New(launch.Config)
 			if err != nil {
+				return nil, err
+			}
+			// E5: #1899 restores a saved Main before launch defaults. Choose
+			// the host's model through its door before testing discovery.
+			if _, err := agent.SetConversationModels(session.ConversationModels{Main: "test/model"}); err != nil {
+				agent.Close()
 				return nil, err
 			}
 			proc.track(agent)

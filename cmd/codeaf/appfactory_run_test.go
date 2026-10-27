@@ -367,8 +367,9 @@ func TestLocalConnectWritesNoProfileAndFillsTheCredentialMemory(t *testing.T) {
 	// What the credential store's own bookkeeping may add to config.json: the
 	// day's budget defaults it writes whenever ANY key is handed to it (the app's
 	// OpenRouter key does the same). Every earlier row stays as it was, and no
-	// field about GitHub is among them.
-	allowed := map[string]bool{"daily_budget_authority": true, "daily_budget_usd": true}
+	// field about GitHub is among them. E5: d05770111c (Wormhole) also stamps
+	// that budget preference in the same profile transaction.
+	allowed := map[string]bool{"daily_budget_authority": true, "daily_budget_usd": true, "sync.preference_times": true}
 	path := filepath.Join(decoy, "config.json")
 	var was, now map[string]any
 	if json.Unmarshal([]byte(before[path]), &was) != nil || json.Unmarshal([]byte(after[path]), &now) != nil {
@@ -383,6 +384,11 @@ func TestLocalConnectWritesNoProfileAndFillsTheCredentialMemory(t *testing.T) {
 		if _, old := was[key]; !old && !allowed[key] {
 			t.Fatalf("the ambient profile gained %q", key)
 		}
+	}
+	stamps, ok := now["sync.preference_times"].(map[string]any)
+	stamp, numeric := stamps["daily_budget_usd"].(float64)
+	if !ok || len(stamps) != 1 || !numeric || stamp <= 0 {
+		t.Fatalf("only the budget's preference clock may be added: %+v", now["sync.preference_times"])
 	}
 	for _, dir := range []string{appHome, userHome, decoy} {
 		for path, data := range snapshotTree(t, dir) {
