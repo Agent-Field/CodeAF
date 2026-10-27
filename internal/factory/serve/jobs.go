@@ -74,6 +74,9 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 	if strings.HasSuffix(r.URL.Path, "/start_now") && h.pinnedStartRefused(w, r, it) {
 		return true
 	}
+	if h.startModelRefused(w, it) {
+		return true
+	}
 	return h.endedOnGitHub(w, r, it) || h.needsCheckout(w, r, it.Repo, factory.JobState(it))
 }
 
