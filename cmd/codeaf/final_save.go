@@ -108,13 +108,27 @@ func awaitFinalCloses(ctx context.Context) {
 				surfaceForceExit(130)
 				return
 			case <-ctx.Done():
-				finalSaving.Lock()
-				finalSaving.finishing = true
-				finalSaving.Unlock()
+				markFinalSavingFinishing()
 				return
 			}
 		}
 	}
+}
+
+// markFinalSavingFinishing records that the wait ended while a save was still
+// under way, so the quit reports it as finishing rather than as failed.
+func markFinalSavingFinishing() {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	finalSaving.finishing = true
+}
+
+// finalSavingFinishing reports whether a save was left finishing in the
+// background, in which case no second, competing flush is started.
+func finalSavingFinishing() bool {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	return finalSaving.finishing
 }
 
 // Close can fail while the alternate screen still owns the terminal. Retain
@@ -145,10 +159,7 @@ func unsavedTranscript(err error) string {
 
 // finishFinalSaving reports one plain sentence after the screen is restored.
 func finishFinalSaving(ctx context.Context) bool {
-	finalSaving.Lock()
-	waiting := finalSaving.finishing
-	finalSaving.Unlock()
-	if !waiting {
+	if !finalSavingFinishing() {
 		recordFinalSaveFailure(flushFinalSaves(ctx))
 	}
 	err, surface, finishing := takeFinalSaveFailure()
