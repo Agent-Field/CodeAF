@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 
@@ -116,7 +117,10 @@ func (e Engine) stageIncoming(ctx context.Context, c cell.Cell, head string, pat
 		return err
 	}
 	target := e.target(c)
-	target.Tree, target.CellDir, target.Timeline = c.Root, "", "incoming-admission-"+c.ID
+	target.Tree, target.CellDir = canonicalTree(c.Root), ""
+	// Filing a copy changes its next staging folder. Detached timelines retain
+	// their folder binding, so admission identity belongs to the scratch path.
+	target.Timeline = fmt.Sprintf("incoming-admission-%x", sha256.Sum256([]byte(target.Tree)))
 	transport := Spawn{Binary: e.Binary, Run: e.Run}
 	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
 		return err
