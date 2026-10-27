@@ -79,6 +79,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -990,7 +991,7 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(temporary, s.path); err != nil {
+	if err := fsreplace.Rename(temporary, s.path); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}

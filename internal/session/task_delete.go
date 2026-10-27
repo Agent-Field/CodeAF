@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
@@ -543,7 +544,7 @@ func commitTaskDeletions(file string, deleted, ids map[string]bool) error {
 	if err = os.WriteFile(marker+".tmp", raw, 0600); err != nil {
 		return err
 	}
-	if err = os.Rename(marker+".tmp", marker); err != nil {
+	if err = fsreplace.Rename(marker+".tmp", marker); err != nil {
 		return err
 	}
 	return nil
@@ -585,7 +586,7 @@ func purgeTaskIndex(file, sessionID string, ids map[string]bool, blocked map[str
 		if err != nil {
 			return err
 		}
-		return os.Rename(name, path)
+		return fsreplace.Rename(name, path)
 	})
 	if err != nil {
 		return err
@@ -634,7 +635,7 @@ func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool)
 		if err = os.WriteFile(checkpoint+".delete-tmp", raw, 0600); err != nil {
 			return nil, err
 		}
-		if err = os.Rename(checkpoint+".delete-tmp", checkpoint); err != nil {
+		if err = fsreplace.Rename(checkpoint+".delete-tmp", checkpoint); err != nil {
 			return nil, err
 		}
 	}

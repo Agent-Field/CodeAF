@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -366,7 +367,7 @@ func appWriteWhole(path string, overwrite bool, fill func(io.Writer) error) (int
 		return 0, err
 	}
 	if overwrite {
-		if err := os.Rename(tempPath, path); err != nil {
+		if err := fsreplace.Rename(tempPath, path); err != nil {
 			return 0, fmt.Errorf("the export could not be put in place: %w", err)
 		}
 		renamed = true

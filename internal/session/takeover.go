@@ -55,6 +55,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // takeoverName is the request, inside one session's folder, beside presence.json.
@@ -133,7 +135,7 @@ func AskTakeover(sessionDir string) error {
 		os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, TakeoverPath(dir)); err != nil {
+	if err := fsreplace.Rename(name, TakeoverPath(dir)); err != nil {
 		os.Remove(name)
 		return err
 	}

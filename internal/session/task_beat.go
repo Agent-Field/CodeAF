@@ -68,6 +68,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // The phases a running node can be in, in the plain words every other file here
@@ -248,7 +250,7 @@ func (b *taskBeat) write() {
 	if err := os.WriteFile(temporary, append(encoded, '\n'), 0o644); err != nil {
 		return
 	}
-	if err := os.Rename(temporary, b.path); err != nil {
+	if err := fsreplace.Rename(temporary, b.path); err != nil {
 		_ = os.Remove(temporary)
 	}
 }

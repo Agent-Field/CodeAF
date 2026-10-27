@@ -44,6 +44,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -391,7 +392,7 @@ func (h *appFactoryHub) save() error {
 		err = closeErr
 	}
 	if err == nil {
-		err = os.Rename(tmp.Name(), h.path())
+		err = fsreplace.Rename(tmp.Name(), h.path())
 	}
 	if err != nil {
 		return appwire.Errorf(appwire.CodeEngine, "the factory connections could not be saved")

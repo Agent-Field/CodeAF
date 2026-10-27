@@ -27,6 +27,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const (
@@ -189,7 +191,7 @@ func writeResultWhole(journal, said string) string {
 		os.Remove(temporary.Name())
 		return ""
 	}
-	if err := os.Rename(temporary.Name(), path); err != nil {
+	if err := fsreplace.Rename(temporary.Name(), path); err != nil {
 		os.Remove(temporary.Name())
 		return ""
 	}

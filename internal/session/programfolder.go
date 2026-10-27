@@ -66,6 +66,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -1102,7 +1103,7 @@ func (f *ProgramFolder) write() {
 	if err := os.WriteFile(temporary, body, 0o600); err != nil {
 		return
 	}
-	_ = os.Rename(temporary, path)
+	_ = fsreplace.Rename(temporary, path)
 }
 
 // readProgramFolder is the record of the last run in one folder.

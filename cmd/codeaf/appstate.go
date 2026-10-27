@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -182,7 +183,7 @@ func (s *appState) write(fn func(*appStateFile) error) error {
 	if err := os.WriteFile(temp, raw, appStateFileMode); err != nil {
 		return err
 	}
-	if err := os.Rename(temp, s.path); err != nil {
+	if err := fsreplace.Rename(temp, s.path); err != nil {
 		return err
 	}
 	s.file = next

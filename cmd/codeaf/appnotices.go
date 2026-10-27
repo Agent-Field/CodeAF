@@ -57,6 +57,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const (
@@ -504,7 +505,7 @@ func (l *appNoticeLog) writeIndex(path string, ix *appNoticeIndex) {
 	}
 	_, writeErr := temp.Write(raw)
 	closeErr := temp.Close()
-	if errors.Join(writeErr, closeErr) != nil || os.Rename(temp.Name(), path) != nil {
+	if errors.Join(writeErr, closeErr) != nil || fsreplace.Rename(temp.Name(), path) != nil {
 		_ = os.Remove(temp.Name())
 	}
 }

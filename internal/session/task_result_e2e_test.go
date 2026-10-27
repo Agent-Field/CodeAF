@@ -54,6 +54,7 @@ func resultAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph, string)
 	// completer is scripted, and these two are what a leaked key or a leaked home
 	// would come in through.
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Cleanup(CloseUsage)
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("CODEAF_RESPONSE_ATTEMPTS", "2")
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
