@@ -107,6 +107,10 @@ func PlanHold(rules *factory.StartRules, files []string) string {
 	return ""
 }
 
+// AskFirstPath is the path an ask-first rule names (`touch auth/` names
+// auth/), or "" for a sentence: the reading every start and plan check makes.
+func AskFirstPath(rule string) string { return askFirstPath(rule) }
+
 // askFirstPath is the path an ask-first rule names, or "" for a sentence. Only
 // the prefix is read without case: the path keeps the case it was written in,
 // because a path is matched as written (`touch src/Auth/` guards src/Auth/).

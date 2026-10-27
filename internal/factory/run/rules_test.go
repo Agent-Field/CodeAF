@@ -36,6 +36,38 @@ func TestEveryStepsBriefCarriesTheRepositorysAndTheFactorysRules(t *testing.T) {
 	}
 }
 
+// EVERY STEP IS TOLD WHAT TO ASK ABOUT AND WHAT NEVER TO TOUCH: the ask-first
+// and never lines the job started under, the repository's with the factory's,
+// are in its brief beside the rules, so "don't touch auth/ without asking"
+// reaches the step that would touch it, not only the approval after the plan.
+func TestEveryStepsBriefSaysWhatToAskAboutAndWhatNeverToTouch(t *testing.T) {
+	it := factory.Item{ID: 1, Num: 4, Repo: "acme/api", StartRules: &factory.StartRules{
+		AskFirst: []string{"touch auth/", "Touches billing/**", "change the public API"},
+		Never:    []string{"infra/", "secrets/**"},
+	}}
+	brief := stageBrief(Job{Item: it, Stage: factory.Stage{Name: "write", Ask: "make the change"}, Round: 1, Rules: []string{"keep the diff small"}})
+	for _, want := range []string{
+		"rules for this work",
+		"- keep the diff small",
+		"- ask before touching: auth/, billing/**",
+		"- ask before you: change the public API",
+		"- never touch: infra/, secrets/**",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("the brief does not say %q:\n%s", want, brief)
+		}
+	}
+	// The lines alone, with no rule sentences, are still a paragraph.
+	alone := stageBrief(Job{Item: factory.Item{ID: 1, Num: 4, StartRules: &factory.StartRules{Never: []string{"infra/"}}}, Stage: factory.Stage{Name: "plan", Ask: "x"}, Round: 1})
+	if !strings.Contains(alone, "rules for this work") || !strings.Contains(alone, "- never touch: infra/") {
+		t.Errorf("a job with only a never line was not told it:\n%s", alone)
+	}
+	// Empty lists say nothing.
+	if bare := stageBrief(Job{Item: factory.Item{ID: 1, Num: 4, StartRules: &factory.StartRules{AskFirst: []string{}, Never: []string{}}}, Stage: factory.Stage{Name: "plan", Ask: "x"}, Round: 1}); strings.Contains(bare, "rules for this work") {
+		t.Errorf("a job with no lines was told about rules:\n%s", bare)
+	}
+}
+
 // A HOUSE RULE CODE RECOGNISES IS APPLIED LIKE THE REPOSITORY'S OWN: a factory
 // that says "never close an issue" stops a close a repository allowed.
 func TestAHouseRuleCodeKnowsIsAppliedToPosts(t *testing.T) {
