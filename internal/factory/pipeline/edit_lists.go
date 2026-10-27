@@ -50,8 +50,9 @@ const (
 )
 
 // listNames is every list set_list replaces, in the order a preview reports
-// them.
-var listNames = []string{ListRules, ListAskFirst, ListNever}
+// them. labels is start.labels (edit_settings.go): read as names, a repeat by
+// case, as GitHub reads a label.
+var listNames = []string{ListRules, ListAskFirst, ListNever, ListLabels}
 
 // ListChange is one list whose lines an edit changed, every line before and
 // every line after, in order.
@@ -64,11 +65,11 @@ type ListChange struct {
 // checkSetList bounds a set_list without the file. It names a list and its
 // lines and nothing else; each line is trimmed as it will be written.
 func checkSetList(i int, op EditOp) (EditOp, *EditError) {
-	if op.Name != "" || op.Pipeline != "" || op.After != nil || op.Kind != nil || op.Value != nil || stepFieldsNamed(op) {
+	if op.Name != "" || op.Pipeline != "" || op.After != nil || op.Kind != nil || op.Value != nil || stepFieldsNamed(op) || settingFieldsNamed(op) {
 		return op, refuseEdit(EditBadOp, i, "set_list takes only a list and its lines")
 	}
 	if !slices.Contains(listNames, op.List) {
-		return op, refuseEdit(EditBadValue, i, "the list is rules, ask_first or never")
+		return op, refuseEdit(EditBadValue, i, "the list is rules, ask_first, never or labels")
 	}
 	if op.Lines == nil {
 		return op, refuseEdit(EditBadValue, i, "set_list needs its lines; send an empty list to clear it")
@@ -125,6 +126,8 @@ func listOf(f File, name string) []string {
 		return f.Rules
 	case ListAskFirst:
 		return f.Start.AskFirst
+	case ListLabels:
+		return f.Start.Labels
 	}
 	return f.Start.Never
 }
@@ -143,6 +146,8 @@ func (st *editState) setList(i int, op EditOp) *EditError {
 		st.out.Rules = lines
 	case ListAskFirst:
 		st.out.Start.AskFirst = lines
+	case ListLabels:
+		st.out.Start.Labels = lines
 	default:
 		st.out.Start.Never = lines
 	}
@@ -150,7 +155,7 @@ func (st *editState) setList(i int, op EditOp) *EditError {
 }
 
 // listFacts fills the list half of a preview: every list whose lines changed,
-// in the order rules, ask_first, never.
+// in the order rules, ask_first, never, labels.
 func (st *editState) listFacts(res *Edited) {
 	res.Listed = true
 	res.Lists = []ListChange{}

@@ -184,6 +184,7 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 			out.DefaultBudget, out.BudgetInFile = local.DefaultBudget, local.BudgetInFile
 			out.Pipelines, out.Steps, out.Fixed = local.Pipelines, local.Steps, local.Fixed
 			out.Rules, out.AskFirst, out.Never = &src.Rules, &src.AskFirst, &src.Never
+			pipelineSettings(&out, src)
 		}
 	case api.PipelineEditInvalid, api.PipelineEditFile:
 		if len(got.Text) > pipeline.EditTextMax || !utf8.ValidString(got.Text) {
@@ -221,6 +222,7 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 		// The file's own lines, read by this engine's parser from Text alone:
 		// the factory's house rules are never in the file.
 		out.Rules, out.AskFirst, out.Never = &src.Rules, &src.AskFirst, &src.Never
+		pipelineSettings(&out, src)
 	default:
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
@@ -336,7 +338,29 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 	}
 	out.Structure = pipelineStructure(ed)
 	out.Lists = pipelineLists(ed)
+	out.Settings = pipelineSettingChanges(ed)
 	return out, nil
+}
+
+// pipelineSettings puts the file's own settings, read by this engine's parser
+// from Text alone, on a source.
+func pipelineSettings(out *appwire.FactoryPipelineSource, src pipeline.Source) {
+	adapt, size, cost := src.Adapt, src.MaxSize, src.MaxCost
+	labels := append([]string{}, src.Labels...)
+	out.Adapt, out.Labels, out.MaxSize, out.MaxCost = &adapt, &labels, &size, &cost
+}
+
+// pipelineSettingChanges is the settings half of a preview on the wire, nil for
+// a preview with no settings edit.
+func pipelineSettingChanges(ed pipeline.Edited) *[]appwire.FactoryPipelineSettingChange {
+	if !ed.SettingsEdited {
+		return nil
+	}
+	out := []appwire.FactoryPipelineSettingChange{}
+	for _, c := range ed.Settings {
+		out = append(out, appwire.FactoryPipelineSettingChange{Setting: c.Setting, Before: c.Before, After: c.After})
+	}
+	return &out
 }
 
 // pipelineLists is the list half of a preview on the wire, every list an array

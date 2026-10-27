@@ -753,6 +753,12 @@ func (b *appBackend) PipelineStructureEdits() {}
 // is what lets hello announce factory.pipeline_edit_rules.
 func (b *appBackend) PipelineRulesEdits() {}
 
+// PipelineSettingsEdits marks this backend as one whose source carries the
+// file's adapt word, start labels and start limits, and whose preview applies
+// set_adapt, set_fixed, set_start and the labels list, which is what lets hello
+// announce factory.pipeline_edit_settings.
+func (b *appBackend) PipelineSettingsEdits() {}
+
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,

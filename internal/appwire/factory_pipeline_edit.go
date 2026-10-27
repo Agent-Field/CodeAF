@@ -86,6 +86,13 @@ const FeatureFactoryPipelineEditStructure = "factory.pipeline_edit_structure"
 // file the default branch does not have.
 const FeatureFactoryPipelineEditRules = "factory.pipeline_edit_rules"
 
+// FeatureFactoryPipelineEditSettings is announced beside FeatureFactoryPipelineEditRules
+// when this engine carries the file's adapt word, start labels and start limits
+// on the source, and previews set_adapt, set_fixed, set_start and a set_list of
+// the labels list. It says nothing about any remote: adapt, fixed and start are
+// keys every YAML-reading factory parsed before this.
+const FeatureFactoryPipelineEditSettings = "factory.pipeline_edit_settings"
+
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
 	// whose own limit is sixty seconds.
@@ -111,10 +118,14 @@ const (
 	PipelineEditRemoveStep = pipeline.OpRemoveStep
 	PipelineEditMoveStep   = pipeline.OpMoveStep
 	PipelineEditSetList    = pipeline.OpSetList
+	PipelineEditSetAdapt   = pipeline.OpSetAdapt
+	PipelineEditSetFixed   = pipeline.OpSetFixed
+	PipelineEditSetStart   = pipeline.OpSetStart
 
 	PipelineListRules    = pipeline.ListRules
 	PipelineListAskFirst = pipeline.ListAskFirst
 	PipelineListNever    = pipeline.ListNever
+	PipelineListLabels   = pipeline.ListLabels
 )
 
 // FactoryPipelineSourceParams names the repository whose file is read.
@@ -162,6 +173,15 @@ type FactoryPipelineSource struct {
 	Rules         *[]string              `json:"rules,omitempty"`
 	AskFirst      *[]string              `json:"ask_first,omitempty"`
 	Never         *[]string              `json:"never,omitempty"`
+	// Behind feature factory.pipeline_edit_settings, for the states file and
+	// missing, always present: Adapt is the file's adapt word ("" when it says
+	// none, which is adapt), Labels its start labels (`[]` when none), and
+	// MaxSize and MaxCost its start limits as the parser reads them, the
+	// defaults when it says none.
+	Adapt   *string   `json:"adapt,omitempty"`
+	Labels  *[]string `json:"labels,omitempty"`
+	MaxSize *string   `json:"max_size,omitempty"`
+	MaxCost *float64  `json:"max_cost,omitempty"`
 }
 
 // FactoryPipelineEdit is one structured edit. set_step names a step and at
@@ -185,7 +205,7 @@ type FactoryPipelineSource struct {
 // is in the list once (ignoring case for rules and ask_first, exactly for
 // never); a list holds at most 40 lines and is set once per preview.
 type FactoryPipelineEdit struct {
-	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list"`
+	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start"`
 	Name     string   `json:"name,omitempty"`
 	Pipeline string   `json:"pipeline,omitempty"`
 	After    *string  `json:"after,omitempty"`
@@ -196,8 +216,16 @@ type FactoryPipelineEdit struct {
 	Effort   *string  `json:"effort,omitempty"`
 	Fanout   *string  `json:"fanout,omitempty"`
 	Value    *float64 `json:"value,omitempty"`
-	List     string   `json:"list,omitempty" enum:"rules,ask_first,never"`
+	List     string   `json:"list,omitempty" enum:"rules,ask_first,never,labels"`
 	Lines    []string `json:"lines,omitempty"`
+	// Behind feature factory.pipeline_edit_settings: Adapt belongs to set_adapt
+	// (adapt, ask or fixed); Fixed, with Name, to set_fixed (true marks the step
+	// required); MaxSize and MaxCost to set_start, which names one or both. The
+	// list labels (start.labels) is set_list's under the same feature.
+	Adapt   *string  `json:"adapt,omitempty"`
+	Fixed   *bool    `json:"fixed,omitempty"`
+	MaxSize *string  `json:"max_size,omitempty"`
+	MaxCost *float64 `json:"max_cost,omitempty"`
 }
 
 // FactoryPipelinePreviewParams is the file as factory.pipeline_source gave it
@@ -317,6 +345,19 @@ type FactoryPipelinePreview struct {
 	Budget          *FactoryPipelineBudgetChange `json:"budget,omitempty"`
 	Structure       *FactoryPipelineStructure    `json:"structure,omitempty"`
 	Lists           *[]FactoryPipelineListChange `json:"lists,omitempty"`
+	// Settings is present whenever an edit was set_adapt, set_fixed or
+	// set_start, and absent otherwise: every setting whose words changed, in
+	// the order adapt, fixed, max_size, max_cost, `[]` when none did.
+	Settings *[]FactoryPipelineSettingChange `json:"settings,omitempty"`
+}
+
+// FactoryPipelineSettingChange is one setting an edit changed, in the words the
+// file reads: adapt's word, the required steps joined ", ", the size letter,
+// the dollars.
+type FactoryPipelineSettingChange struct {
+	Setting string `json:"setting" enum:"adapt,fixed,max_size,max_cost"`
+	Before  string `json:"before"`
+	After   string `json:"after"`
 }
 
 // FactoryPipelineEditRefusal is the Detail of a preview refused as bad_params.
@@ -364,6 +405,15 @@ type FactoryPipelineRulesEditor interface {
 	PipelineRulesEdits()
 }
 
+// FactoryPipelineSettingsEditor is implemented ONLY by a rules editor whose
+// source carries adapt, labels, max_size and max_cost and whose preview
+// applies set_adapt, set_fixed, set_start and the labels list. Without it those
+// are refused before the engine is asked, the settings are not on a source,
+// and the feature is not announced.
+type FactoryPipelineSettingsEditor interface {
+	PipelineSettingsEdits()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
@@ -378,6 +428,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 		}
 		if _, rules := e.(FactoryPipelineRulesEditor); rules {
 			hello = withFeature(hello, FeatureFactoryPipelineEditRules)
+			if _, settings := e.(FactoryPipelineSettingsEditor); settings {
+				hello = withFeature(hello, FeatureFactoryPipelineEditSettings)
+			}
 		}
 	}
 	return hello
@@ -390,7 +443,8 @@ func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 	ops := make([]pipeline.EditOp, len(edits))
 	for i, e := range edits {
 		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
-			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines}
+			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
+			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost}
 	}
 	return ops
 }
@@ -490,6 +544,7 @@ func pipelineSourceMethod(name string) method {
 			return nil, err
 		}
 		out = shapeRulesSource(e, out)
+		out = shapeSettingsSource(e, out)
 		return &out, nil
 	})
 }
@@ -522,6 +577,9 @@ func pipelinePreviewMethod(name string) method {
 		if err := checkRulesServed(e, p); err != nil {
 			return nil, err
 		}
+		if err := checkSettingsServed(e, p.Edits); err != nil {
+			return nil, err
+		}
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := ed.FactoryPipelinePreview(ctx, p)
@@ -538,6 +596,12 @@ func pipelinePreviewMethod(name string) method {
 			out.Lists = nil
 		case out.Lists == nil || *out.Lists == nil:
 			out.Lists = &[]FactoryPipelineListChange{}
+		}
+		switch {
+		case !anySetting(p.Edits):
+			out.Settings = nil
+		case out.Settings == nil || *out.Settings == nil:
+			out.Settings = &[]FactoryPipelineSettingChange{}
 		}
 		return &out, nil
 	})
@@ -574,6 +638,62 @@ func checkRulesServed(e Engine, p FactoryPipelinePreviewParams) error {
 		}
 	}
 	return nil
+}
+
+// checkSettingsServed refuses a settings edit, or a set_list of the labels, to
+// an editor that has not said it previews one.
+func checkSettingsServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelineSettingsEditor); ok {
+		if _, rules := e.(FactoryPipelineRulesEditor); rules {
+			return nil
+		}
+	}
+	for i, edit := range edits {
+		if settingOp(edit.Op) || (edit.Op == PipelineEditSetList && edit.List == PipelineListLabels) {
+			return Errorf(CodeBadParams, "edit %d: this engine does not set adapt, required steps or start limits", i)
+		}
+	}
+	return nil
+}
+
+func settingOp(op string) bool {
+	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart
+}
+
+func anySetting(edits []FactoryPipelineEdit) bool {
+	for _, edit := range edits {
+		if settingOp(edit.Op) {
+			return true
+		}
+	}
+	return false
+}
+
+// shapeSettingsSource holds a source to its feature: with it, a file or a
+// missing source always carries the four settings; without it, or in any other
+// state, none.
+func shapeSettingsSource(e Engine, out FactoryPipelineSource) FactoryPipelineSource {
+	_, settings := e.(FactoryPipelineSettingsEditor)
+	_, rules := e.(FactoryPipelineRulesEditor)
+	if !settings || !rules || (out.State != PipelineSourceFile && out.State != PipelineSourceMissing) || !out.Editable {
+		out.Adapt, out.Labels, out.MaxSize, out.MaxCost = nil, nil, nil, nil
+		return out
+	}
+	if out.Adapt == nil {
+		out.Adapt = new(string)
+	}
+	if out.Labels == nil || *out.Labels == nil {
+		out.Labels = &[]string{}
+	}
+	if out.MaxSize == nil {
+		size := pipeline.DefaultMaxSize
+		out.MaxSize = &size
+	}
+	if out.MaxCost == nil {
+		cost := pipeline.DefaultMaxCost
+		out.MaxCost = &cost
+	}
+	return out
 }
 
 func anySetList(edits []FactoryPipelineEdit) bool {
