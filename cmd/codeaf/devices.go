@@ -437,7 +437,7 @@ func explainSyncUnreachable(err error, relay string) error {
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) || network != nil && network.Timeout() {
-		return toldLine{line: fmt.Sprintf("the sync service at %s did not answer in time — try again", relay), err: err}
+		return pair.ServiceTimeout(err, relay)
 	}
 	var dns *net.DNSError
 	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) || errors.As(err, &dns) {

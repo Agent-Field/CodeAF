@@ -352,7 +352,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Other things the relay can say while you pair:
 
-The relay does not answer. The name is the host you used:
+The relay cannot be reached. The name is the host you used:
 
 ```
 cannot reach relay.example.com — check your internet connection and try again
@@ -369,6 +369,17 @@ The relay is an old one that does not know pairing:
 ```
 that sync service is too old for pairing
 ```
+
+## Pairing timed out — the sync service did not answer in time
+
+A request that runs out of time does not diagnose a network fault. It says:
+
+```
+the sync service at https://relay.example.com did not answer in time — try again
+```
+
+The address is the service you used. Try pairing again; a busy service or disk
+can also delay its answer.
 
 ## I lost my laptop — what to do
 
