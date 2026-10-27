@@ -207,6 +207,7 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		h.workers.mu.RUnlock()
 	}
 	for i := range jobs {
+		presentPinnedComputer(&jobs[i], roster, h.clock())
 		presentQueuedCapacity(&jobs[i], capacity)
 		if p := jobs[i].Publishing; p != nil && p.State == "queued" && jobs[i].Desk != nil && jobs[i].Desk.WorktreeMachine != "" {
 			online := false

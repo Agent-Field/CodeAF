@@ -71,6 +71,9 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 		h.refuse(w, 409, "Approval needed: start", "conflict", "", nil, factory.JobState(it))
 		return true
 	}
+	if strings.HasSuffix(r.URL.Path, "/start_now") && h.pinnedStartRefused(w, r, it) {
+		return true
+	}
 	return h.endedOnGitHub(w, r, it) || h.needsCheckout(w, r, it.Repo, factory.JobState(it))
 }
 
