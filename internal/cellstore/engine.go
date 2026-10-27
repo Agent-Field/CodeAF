@@ -113,6 +113,12 @@ func (e Engine) Root() string {
 	return e.DataRoot
 }
 
+// Prepare screens the initial folder without adding an empty turn to its history.
+// The first actual seal still obtains its own fresh capture scope.
+func (e Engine) Prepare(ctx context.Context, c cell.Cell) error {
+	return e.screenCapture(ctx, c)
+}
+
 // Seal implements Store: compose the harness-owned files, snapshot the folder,
 // record the turn.
 func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, error) {

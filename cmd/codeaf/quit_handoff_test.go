@@ -98,7 +98,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 	}
 	first := `{"type":"session","version":3,"id":"quit"}` + "\n" + `{"type":"message","role":"user","content":"first turn"}` + "\n"
 	write(first)
-	drive, err := a.Drive(t.Context(), engine, c, syncsetup.DriveOptions{DeviceName: "sender"})
+	drive, err := a.Drive(t.Context(), engine, c, syncsetup.DriveOptions{DeviceName: "sender", OnNotice: func(line string) { t.Log(line) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,14 +107,18 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 		t.Fatal(err)
 	}
 	drive.Idle()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(cellstore.SealWithin)
 	for {
 		_, fence, e := a.SendLease(c.ID)
 		if e == nil && fence != 0 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("first turn did not publish")
+			view, relayErr := a.Dir.Cell(t.Context(), c.ID)
+			closing, stop := context.WithTimeout(t.Context(), time.Second)
+			closeErr := drive.Close(closing)
+			stop()
+			t.Fatalf("first turn did not publish: relay=%+v relay error=%v close error=%v", view, relayErr, closeErr)
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -144,6 +148,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 		}})
 	}()
 	var conn net.Conn
+	deadline = time.Now().Add(cellstore.SealWithin)
 	for time.Now().Before(deadline) {
 		conn, err = enginehost.Dial(cfg.Place.Workspace)
 		if err == nil {
@@ -184,7 +189,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 		close(restored)
 		return err
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), cellstore.SealWithin)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {

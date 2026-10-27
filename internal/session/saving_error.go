@@ -5,6 +5,9 @@ import (
 	"fmt"
 )
 
+// ErrSavingUnanswered means a closing request has no reply yet; its save may still finish.
+var ErrSavingUnanswered = errors.New("the final saving reply has not arrived")
+
 // UnsavedChatError keeps the local recovery location beside a saving failure.
 type UnsavedChatError struct {
 	Transcript string

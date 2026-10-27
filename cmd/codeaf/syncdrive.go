@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -17,7 +16,7 @@ import (
 
 // driveCloseWithin bounds the quit path's last publish and lease release, so a
 // silent relay cannot hold the terminal.
-const driveCloseWithin = 10 * time.Second
+const driveCloseWithin = cellstore.SealWithin
 
 // syncDrives is the drive side of every conversation the chat door opened in
 // this process. It exists at all only for a chat: a headless run never syncs.

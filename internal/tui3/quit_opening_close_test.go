@@ -3,6 +3,7 @@ package tui3
 import (
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -92,5 +93,38 @@ func TestSlowCloseSaysItsEventualFailureInTheActiveChat(t *testing.T) {
 	a.Update(noticesMsg{})
 	if len(a.entries) != before {
 		t.Fatal("late failure repeated")
+	}
+}
+
+type unansweredCloseAgent struct{ *blockedCloseAgent }
+
+func (a *unansweredCloseAgent) Close() error {
+	_ = a.blockedCloseAgent.Close()
+	return session.ErrSavingUnanswered
+}
+
+// Contract 1b keeps an unanswered background close distinct from a confirmed failure.
+func TestSlowCloseKeepsUnansweredSaveFinishing(t *testing.T) {
+	agent := &unansweredCloseAgent{&blockedCloseAgent{fakeAgent: &fakeAgent{model: "m"}, release: make(chan struct{})}}
+	a := newTestApp(agent)
+	t.Cleanup(a.leaveEverything)
+	a.file, a.title = "/tmp/closing/transcript.jsonl", "pricing research"
+	keepThree(t, a)
+	finished := make(chan struct{})
+	a.closingStarted = func(done <-chan struct{}) { go func() { <-done; close(finished) }() }
+	cmd, more := a.closeFront()
+	if !more {
+		t.Fatal("fixture has no next chat")
+	}
+	spend(t, a, cmd)
+	close(agent.release)
+	<-finished
+	a.Update(noticesMsg{})
+	var shown string
+	for _, entry := range a.entries {
+		shown += entry.text + "\n"
+	}
+	if !strings.Contains(shown, closeStillFinishingWord) || strings.Contains(shown, closeSaveFailedWord) {
+		t.Fatalf("unanswered saving reply was mislabeled: %s", shown)
 	}
 }

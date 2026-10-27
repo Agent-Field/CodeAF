@@ -59,6 +59,7 @@ type Batcher struct {
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
+	closing   bool       // The closing caller owns subsequent publishes and release.
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once
@@ -369,12 +370,20 @@ func realSleep(ctx context.Context, d time.Duration) error {
 
 // Close is the quit and lid-close path: flush, publish, release.
 func (b *Batcher) Close(ctx context.Context) error {
+	b.mu.Lock()
+	b.closing = true
+	b.mu.Unlock()
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
 	// A release is the cross-computer clean-quit signal. Publishing must finish
 	// first; otherwise another home could automatically open an older head.
-	if err := b.drain(ctx); err != nil {
-		return err
+	for b.Pending() > 0 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := b.drain(ctx); err != nil {
+			return err
+		}
 	}
 	return b.release(ctx)
 }
@@ -414,7 +423,16 @@ func (b *Batcher) release(ctx context.Context) error {
 func (b *Batcher) flush(ctx context.Context) time.Duration {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
+	if b.isClosing() {
+		return b.interval()
+	}
 	return b.after(b.drain(ctx))
+}
+
+func (b *Batcher) isClosing() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.closing
 }
 
 // after turns a flush's outcome into the next wait. A success needs none: the
@@ -478,6 +496,9 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 
 // beat renews the lease and reports how many turns are not durable yet.
 func (b *Batcher) beat(ctx context.Context) {
+	if b.isClosing() {
+		return
+	}
 	d, pending, stale := b.view()
 	if d.Fence == 0 || stale {
 		return
@@ -501,6 +522,9 @@ func (b *Batcher) beat(ctx context.Context) {
 func (b *Batcher) lost(ctx context.Context, seen Driving) {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
+	if b.isClosing() {
+		return
+	}
 	if now, _, _ := b.view(); now.ID() != seen.ID() || now.Fence != seen.Fence {
 		return
 	}

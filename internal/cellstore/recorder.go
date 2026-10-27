@@ -1,9 +1,12 @@
 package cellstore
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -246,7 +249,30 @@ func (r *Recorder) transcriptGrew() bool {
 	if err != nil {
 		return true
 	}
-	return transcriptRange(r.cell, head).End != lastEnd(head)
+	if transcriptRange(r.cell, head).End == lastEnd(head) {
+		return false
+	}
+	if head != nil {
+		return true
+	}
+	file, err := os.Open(rel(r.cell, cell.TranscriptPath))
+	if err != nil {
+		return true
+	}
+	defer file.Close()
+	scan := bufio.NewScanner(file)
+	for scan.Scan() {
+		if strings.TrimSpace(scan.Text()) == "" {
+			continue
+		}
+		var entry struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(scan.Bytes(), &entry) != nil || entry.Type != "session" {
+			return true
+		}
+	}
+	return scan.Err() != nil
 }
 
 func lastEnd(head *Sealed) int64 {
@@ -264,7 +290,9 @@ func (r *Recorder) seal(ctx context.Context) {
 	}
 	batch := r.pending
 	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Models: r.models, Changed: changedOf(batch)}); err != nil {
-		r.report(err)
+		if !errors.Is(err, ErrReadOnly) {
+			r.report(err)
+		}
 		return
 	}
 	// Ordered turn and receipt writes survive process death. Group commit and

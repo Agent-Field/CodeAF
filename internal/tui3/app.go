@@ -3816,7 +3816,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case conversationClosedMsg:
 		a.conversationClosing = false
-		if msg.err != nil {
+		if errors.Is(msg.err, session.ErrSavingUnanswered) {
+			a.note(closeStillFinishingWord)
+		} else if msg.err != nil {
 			a.note(closeSaveFailedWord)
 		} else if msg.finishing {
 			a.note(closeStillFinishingWord)
