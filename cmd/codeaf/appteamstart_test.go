@@ -561,11 +561,22 @@ func TestStartCommitFailureAnswersNotSentAndSendsNothing(t *testing.T) {
 		got.Start.Goal.ClientID != "c-n" || got.Crew.Manager != got.Start.Manager || got.Start.Manager == "" {
 		t.Fatalf("%+v", got)
 	}
-	// The manager is held as an ordinary idle conversation, opened with no words.
-	h.rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
-		d, ok := data.(appwire.AgentChanged)
-		return ok && d.Agent.ID == got.Start.Manager && d.Agent.State == appwire.StateIdle && h.conv(got.Start.Manager) != nil
-	})
+	// E5: #1843 (0-app-blank-conversations.md) stopped announcing blank
+	// agents. Read the idle manager through its door and observe its opener.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		manager, err := h.b.OpenAgent(got.Start.Manager)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if manager.State == appwire.StateIdle && h.conv(got.Start.Manager) != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the idle manager never opened: %+v", manager)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if n := reviewGoalSends(h, "never twice"); n != 0 {
 		t.Fatalf("the goal was sent %d times", n)
 	}
