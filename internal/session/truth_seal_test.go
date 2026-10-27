@@ -55,7 +55,17 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 	here := newSealMachine(t)
 	there := newSealMachine(t)
 	dir := sessionInCell(t, here)
+	// RunLandedTasks opens its own default-config agent here, and closing it
+	// stamps that agent's effort and approval over the seeded truth: put the
+	// seed back, so the round trip below is checked against what was seeded.
+	seed, err := LoadMeta(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	RunLandedTasks(t, dir, "map the parser") // tasks.json holds journal paths the law must see
+	if err := SaveMeta(dir, seed); err != nil {
+		t.Fatal(err)
+	}
 	c, err := cell.OpenAt(dir, filepath.Base(dir))
 	if err != nil {
 		t.Fatal(err)

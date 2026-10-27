@@ -286,12 +286,6 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 
 	reportCtx := ctx
 	var reportDone <-chan struct{}
-	var reportCancel context.CancelFunc
-	defer func() {
-		if reportCancel != nil {
-			reportCancel()
-		}
-	}()
 	reportExpired := false
 	var waitErr error
 	asker := stageAsker{job: job}
@@ -399,7 +393,10 @@ loop:
 				break loop
 			}
 			if reportDone == nil && strings.EqualFold(stageLabel(job.Stage), planStep) {
+				// Set once (reportDone guards it), so this defer runs once, at return.
+				var reportCancel context.CancelFunc
 				reportCtx, reportCancel = context.WithTimeout(ctx, planReportWindow)
+				defer reportCancel()
 				reportDone = reportCtx.Done()
 			}
 			line, ok := asker.next(reportCtx, conv, waitErr)
