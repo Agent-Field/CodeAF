@@ -86,18 +86,75 @@ func PlanHold(rules *factory.StartRules, files []string) string {
 		}
 		return ""
 	}
-	for _, rule := range rules.AskFirst {
-		globs := underDirs([]string{askFirstPath(rule)})
-		for _, path := range files {
-			if touchesAny(globs, path) {
-				return "ask first · " + strings.TrimSpace(rule) + " · " + path
-			}
-		}
+	if why := askFirstWhy(rules, files); why != "" {
+		return why
 	}
 	if why := neverWhy(underDirs(rules.Never), files); why != "" {
 		return "never starts on its own · " + why
 	}
 	return ""
+}
+
+// ChangeHold is why a job's finished change must be approved by a person
+// before anything is published: the first ask-first path rule or never path
+// that a file the change really touches matches, `ask first · touch auth/ ·
+// auth/login.go` or `never · infra/ · infra/main.tf`, or "". It is [PlanHold]
+// read against the diff instead of the plan, so a write that went past what
+// its plan declared still waits. An empty change touches nothing, and a job
+// that started with its repository's rules unread was held at its plan; what
+// the factory knows of its rules is still checked.
+func ChangeHold(rules *factory.StartRules, files []string) string {
+	if rules == nil || len(files) == 0 {
+		return ""
+	}
+	if why := askFirstWhy(rules, files); why != "" {
+		return why
+	}
+	for _, rule := range rules.Never {
+		globs := underDirs([]string{rule})
+		for _, path := range files {
+			if touchesAny(globs, path) {
+				return "never · " + strings.TrimSpace(rule) + " · " + path
+			}
+		}
+	}
+	return ""
+}
+
+// askFirstWhy is the first ask-first path rule one of files matches, with the
+// file, or "".
+func askFirstWhy(rules *factory.StartRules, files []string) string {
+	for _, rule := range rules.AskFirst {
+		path := askFirstPath(rule)
+		if path == "" {
+			continue
+		}
+		globs := underDirs([]string{path})
+		for _, file := range files {
+			if touchesAny(globs, file) {
+				return "ask first · " + strings.TrimSpace(rule) + " · " + file
+			}
+		}
+	}
+	return ""
+}
+
+// GuardsPaths says whether rules can hold a plan by its files ([PlanHold]): an
+// ask-first path rule, a never path, or a repository whose rules were unread.
+// Under such rules the plan's approve step runs even when it is turned off.
+func GuardsPaths(rules *factory.StartRules) bool {
+	if rules == nil {
+		return false
+	}
+	if rules.Unread || len(rules.Never) > 0 {
+		return true
+	}
+	for _, rule := range rules.AskFirst {
+		if askFirstPath(rule) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // AskFirstPath is the path an ask-first rule names (`touch auth/` names

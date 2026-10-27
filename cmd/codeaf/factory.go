@@ -69,7 +69,7 @@ func recipeDoor(st *store.Store, workspace string) session.RecipeDoor {
 	if st == nil {
 		return nil
 	}
-	return fileRecipeDoor{dirs: factoryRepoDirs(st, workspace)}
+	return roadRecipeDoor{fileRecipeDoor: fileRecipeDoor{dirs: factoryRepoDirs(st, workspace)}, factory: appLocalID, repos: st.Repos, road: appRoad}
 }
 
 // fileRecipeDoor writes one line into a repository's `.codeaf/factory.yaml`.
@@ -145,7 +145,13 @@ func bankStageAt(dir string, kind factory.Kind, line string) error {
 	if i := factory.StageIndex(stages, add[0].Name); i >= 0 {
 		stages[i] = add[0]
 	} else {
-		stages = append(stages, add[0])
+		// A NEW STAGE GOES BEFORE PROOF, as the pipeline editor adds one: a
+		// stage after proof would change work nobody proves.
+		at := len(stages)
+		if p := factory.StageIndex(stages, "proof"); p >= 0 {
+			at = p
+		}
+		stages = append(stages[:at], append([]factory.Stage{add[0]}, stages[at:]...)...)
 	}
 	return (pipeline.Files{}).BankStages(dir, kind, stages)
 }

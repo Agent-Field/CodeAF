@@ -300,12 +300,31 @@ func launchable(it factory.Item) error {
 func loopPhases(it factory.Item) []factory.Phase {
 	var out []factory.Phase
 	for _, s := range it.Stages {
-		if !s.On || !factory.Fits(s, it) {
+		if !runsIn(it, s) {
 			continue
 		}
 		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
 	}
 	return out
+}
+
+// runsIn says whether stage s is a phase of it's run: on and fitting it, or
+// the plan's approve step turned off while the rules the job started under
+// guard paths ([forcedGate]).
+func runsIn(it factory.Item, s factory.Stage) bool {
+	return (s.On || forcedGate(it, s)) && factory.Fits(s, it)
+}
+
+// forcedGate says whether s is the plan's approve step ([factory.PlanGateStage])
+// turned off under rules that guard paths ([pipeline.GuardsPaths]). TURNING
+// THE APPROVAL OFF DOES NOT TURN A RULE OFF: the step runs anyway, and passes
+// on its own unless the plan touches what a rule guards ([floorLoop.approve]).
+func forcedGate(it factory.Item, s factory.Stage) bool {
+	if s.On || !factory.IsApprove(s) || !pipeline.GuardsPaths(it.StartRules) {
+		return false
+	}
+	g := factory.PlanGateStage(it.Stages)
+	return g >= 0 && it.Stages[g].Name == s.Name
 }
 
 func kindOf(s factory.Stage) factory.StageKind {
@@ -653,9 +672,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	// THE PLAN IS CHECKED AGAINST THE RULES THE JOB STARTED UNDER: a planned
 	// file that an ask-first path or a never path names makes this approval a
-	// person's, even in Auto ([factory.AutonomyBlockReason]).
+	// person's, even in Auto ([factory.AutonomyBlockReason]). The plan's
+	// approval is the one after the plan, whatever the step before it is
+	// called ([factory.PlanGate]).
 	hold := ""
-	if strings.EqualFold(prevName, "plan") {
+	if factory.PlanGate(ph) == i {
 		hold = pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
 	}
 	if hold != it.RuleHold {
@@ -664,9 +685,14 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 		}
 		it.RuleHold = hold
 	}
+	st, index := lp.stageAt(it, i)
+	// AN APPROVAL TURNED OFF RUNS ONLY FOR THE RULES ([forcedGate]): with
+	// nothing they guard in the plan it passes as if it were not there.
+	if index >= 0 && !st.On && hold == "" {
+		return lp.finish(c, i, name, "")
+	}
 	said := ""
 	if factory.Automatic(it) && hold == "" {
-		st, _ := lp.stageAt(it, i)
 		if !st.Fixed {
 			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
@@ -1584,7 +1610,7 @@ func retail(it factory.Item, phases []factory.Phase, i int) []factory.Phase {
 		return append(out, phases[i+1:]...)
 	}
 	for _, s := range it.Stages[from+1:] {
-		if !s.On || !factory.Fits(s, it) {
+		if !runsIn(it, s) {
 			continue
 		}
 		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
