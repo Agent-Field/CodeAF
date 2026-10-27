@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -300,7 +302,11 @@ func TestRealRememberErrorIsUncertainAndNeverRetried(t *testing.T) {
 	// E5: 0d82108605 (1892-contextual-memory.md) removed storage capacity
 	// refusals. Fail the real SQLite write instead, then repair it before replay.
 	line := "the deploy notes say ship small and often"
-	raw, err := sql.Open("sqlite", defaultChatDB())
+	// The engine holds this database open: wait out its write lock the way the
+	// store does, rather than failing with SQLITE_BUSY on a loaded machine.
+	busy := make(url.Values)
+	busy.Add("_pragma", "busy_timeout(10000)")
+	raw, err := sql.Open("sqlite", sqlitefile.URI(defaultChatDB(), busy.Encode()))
 	if err != nil {
 		t.Fatal(err)
 	}
