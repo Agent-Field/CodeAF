@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Quiet desktop chats use a bounded one-minute recovery sweep
-pr: 0
+pr: 2007
 surface: [engine, docs]
 invalidates:
   - "The desktop backend checked every closed chat's work files every two seconds. It now checks hot chats every two seconds and sweeps other closed chats in bounded batches within a minute, without adding per-chat file watches."
