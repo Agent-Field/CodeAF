@@ -379,8 +379,11 @@ type Job struct {
 	// (factory.HouseRules); absent before it was first queued.
 	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
 	// StartRules are the ask-first and never lines the job was started under
-	// (factory.StartRules); RuleHold is the rule its plan matched, which makes
-	// the approval after the plan a person's (factory.Item.RuleHold).
+	// (factory.StartRules); RuleHold is the rule and file that make its
+	// approval a person's (factory.Item.RuleHold): the plan's, by a planned
+	// file, or a landed job's publication, by a file its change touches. A
+	// client shows it on the approval whatever the job's mode, since in Auto
+	// it also reaches AutonomyWhy but in Manual nothing else names it.
 	StartRules *factory.StartRules `json:"start_rules,omitempty"`
 	RuleHold   string              `json:"rule_hold,omitempty"`
 	AssignedTo string              `json:"assigned_to,omitempty"`
