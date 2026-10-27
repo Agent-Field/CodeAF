@@ -728,6 +728,9 @@ func TestC6AppSyncQuietOffAndUnavailableStayLocal(t *testing.T) {
 	t.Cleanup(srv.Close)
 	b, _, _, _ := appSyncBackend(t)
 	t.Setenv(syncsetup.URLVar, srv.URL)
+	// Warm here, not behind the hello: the test swaps the engine answer below,
+	// and the server's background warm would read it at the same time.
+	b.Warm()
 	wire := newActionWire(t, b)
 	read := func(want, reason string) {
 		t.Helper()
