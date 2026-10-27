@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
@@ -77,6 +78,54 @@ func TestPipelineReadsDefaultBranchWithoutCheckoutAndRefreshesByBlob(t *testing.
 	loader.Refresh(ctx, "owner/repo", "")
 	if strings.Join(load().Start.Labels, ",") != "different" || reads != 4 {
 		t.Fatal("conditional read lost the cached file")
+	}
+}
+
+// A PIPELINE MERGED ON GITHUB REACHES THE NEXT START with no intake tick: a
+// read older than PipelineFresh asks the forge again.
+func TestAPipelineReadIsAskedAgainOnceItIsStale(t *testing.T) {
+	text, sha := "start:\n  labels: [one]\n", "blob-one"
+	reads := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/contents/"+pipeline.RepoFile {
+			http.NotFound(w, r)
+			return
+		}
+		reads++
+		w.Header().Set("ETag", sha)
+		if r.Header.Get("If-None-Match") == sha {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(text)), "sha": sha})
+	}))
+	defer srv.Close()
+	now := time.Unix(1000, 0)
+	loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) }).WithClock(func() time.Time { return now })
+	labels := func() string {
+		t.Helper()
+		f, err := loader.Load(context.Background(), "owner/repo", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(f.Start.Labels, ",")
+	}
+	if got := labels(); got != "one" || reads != 1 {
+		t.Fatalf("first read %q after %d reads", got, reads)
+	}
+	text, sha = "start:\n  labels: [two]\n", "blob-two"
+	now = now.Add(factorygithub.PipelineFresh - time.Second)
+	if got := labels(); got != "one" || reads != 1 {
+		t.Fatalf("a fresh read asked again: %q after %d reads", got, reads)
+	}
+	now = now.Add(2 * time.Second)
+	if got := labels(); got != "two" || reads != 2 {
+		t.Fatalf("a stale read was not asked again: %q after %d reads", got, reads)
+	}
+	// Unchanged since: one conditional request, the same file.
+	now = now.Add(factorygithub.PipelineFresh + time.Second)
+	if got := labels(); got != "two" || reads != 3 {
+		t.Fatalf("a 304 lost the file: %q after %d reads", got, reads)
 	}
 }
 
