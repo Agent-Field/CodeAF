@@ -62,7 +62,7 @@ func TestQuitSaveFailureUsesTheRestoredSurfaceOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "codeaf could not save this chat; unsaved turns are kept in /temporary/chat/transcript.jsonl and return on the next start."
+	want := "codeaf could not save this chat; unsaved turns are kept in /temporary/chat/transcript.jsonl and return on the next start if this computer still holds the chat."
 	if strings.Count(string(printed), want) != 1 || !strings.HasSuffix(string(printed), want+"\n") || !strings.HasPrefix(string(printed), "screen restored\n") {
 		t.Fatalf("restored terminal: %q", printed)
 	}
@@ -100,7 +100,7 @@ func TestQuitSaveFailureIsOnePlainSentence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start.\n"
+	want := "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start if this computer still holds the chat.\n"
 	if code == 0 || string(printed) != want {
 		t.Fatalf("exit=%d terminal=%q", code, printed)
 	}
@@ -165,7 +165,7 @@ func TestQuitKeepsALateSaveFailureAfterTheScreenIsRestored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "codeaf could not save this chat; unsaved turns are kept in /temporary/chat/transcript.jsonl and return on the next start.\n"
+	want := "codeaf could not save this chat; unsaved turns are kept in /temporary/chat/transcript.jsonl and return on the next start if this computer still holds the chat.\n"
 	if !strings.HasPrefix(string(printed), "screen restored\n") || !strings.HasSuffix(string(printed), want) || strings.Count(string(printed), want) != 1 {
 		t.Fatalf("late saving report = %q", printed)
 	}

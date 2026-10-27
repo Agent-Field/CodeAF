@@ -60,9 +60,11 @@ type Drive struct {
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
-	mu     sync.Mutex
-	line   string // the superseded line, empty while this device drives
-	spoken bool
+	mu      sync.Mutex
+	line    string // the superseded line, empty while this device drives
+	spoken  bool
+	sealMu  sync.Mutex
+	stopped bool
 }
 
 // Drive starts the drive side of c. The lease is acquired when the chat has a
@@ -148,6 +150,9 @@ func (d *Drive) CatchUp() {
 // head still saves its bookkeeping locally without creating an untitled chat
 // on every other computer. Once used, the chat keeps its ordinary save path.
 func (d *Drive) note(sealed cellstore.Sealed) {
+	if d.sync.isRemoved() {
+		return
+	}
 	d.mu.Lock()
 	if !d.spoken {
 		d.spoken, _ = session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), sealed.Receipt.Transcript.End)
@@ -370,10 +375,12 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	d.mu.Unlock()
 	// Refuse new work immediately, then preserve the pending save before
 	// announcing displacement. A routine ownership check does no fsync (C28).
-	ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
-	defer cancel()
-	if err := cellstore.Await(ctx, d.cell); err != nil {
-		d.notice(err.Error())
+	if d.batcher != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := cellstore.Await(ctx, d.cell); err != nil {
+			d.notice(err.Error())
+		}
 	}
 	if s.Branch != "" {
 		d.notice(chatlist.KeptEdits(s.Turns, d.opt.DeviceName))
@@ -476,8 +483,13 @@ func nonemptyHolder(id string) string {
 // Gate refuses with the superseded line once the chat is a viewer, and answers
 // nil while this device drives it. It is what a viewer's tool calls meet.
 func (d *Drive) Gate() error {
-	if line, viewer := d.Viewer(); viewer {
-		return errors.New(line)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stopped {
+		return cellstore.ErrReadOnly
+	}
+	if d.line != "" {
+		return errors.New(d.line)
 	}
 	return nil
 }
@@ -500,33 +512,51 @@ func (d *Drive) Idle() {
 
 // Store is the store a seal goes through: the engine stamped with this device
 // and the fence it holds, then noted for the Batcher. A chat that started as a
-// viewer seals on the engine alone.
+// viewer leaves the existing history alone.
 func (d *Drive) Store(e cellstore.Engine) cellstore.Store {
-	if d.batcher == nil {
-		return e
-	}
-	return stamping{engine: e, device: d.sync.Device.Cert.Device, fence: d.batcher.Fence, note: d.note}
+	return stamping{engine: e, drive: d}
 }
 
 // stamping writes the device key and the current fence into each turn it seals.
 type stamping struct {
 	engine cellstore.Engine
-	device string
-	fence  func() uint64
-	note   func(cellstore.Sealed)
+	drive  *Drive
 }
 
 var _ cellstore.Store = stamping{}
 
 // Seal implements cellstore.Store.
 func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
+	d := s.drive
+	d.sealMu.Lock()
+	defer d.sealMu.Unlock()
+	if d.Gate() != nil {
+		return cellstore.Sealed{}, cellstore.ErrReadOnly
+	}
+	if d.sync.isRemoved() {
+		return s.engine.Seal(ctx, c, info)
+	}
+	if d.batcher == nil {
+		return cellstore.Sealed{}, cellstore.ErrReadOnly
+	}
 	e := s.engine
-	e.Identity = cellstore.Identity{Device: s.device, Fence: s.fence()}
+	e.Identity = cellstore.Identity{Device: d.sync.Device.Cert.Device, Fence: d.batcher.Fence()}
 	sealed, err := e.Seal(ctx, c, info)
 	if err == nil {
-		s.note(sealed)
+		d.note(sealed)
 	}
 	return sealed, err
+}
+
+// Prepare screens only the current writer's files before its first call.
+func (s stamping) Prepare(ctx context.Context, c cell.Cell) error {
+	d := s.drive
+	d.sealMu.Lock()
+	defer d.sealMu.Unlock()
+	if d.Gate() != nil || d.batcher == nil && !d.sync.isRemoved() {
+		return nil
+	}
+	return s.engine.Prepare(ctx, c)
 }
 
 // Close ends the drive side: what is sealed is published, and the lease is
@@ -534,23 +564,43 @@ func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo
 // on every exit path, and more than once. A failed closing boundary stays
 // failed for every caller, so reopening cannot mistake it for a clean release.
 func (d *Drive) Close(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, cellstore.SealWithin)
+	defer cancel()
 	d.once.Do(func() {
 		pending := cellstore.Await(ctx, d.cell)
+		// A completed capture may race the first wait. Stop new seals under
+		// the writer's lock, then keep every seal that crossed before it closed.
+		d.sealMu.Lock()
+		d.mu.Lock()
+		d.stopped = true
+		d.mu.Unlock()
+		d.sealMu.Unlock()
+		if pending == nil {
+			pending = cellstore.Await(ctx, d.cell)
+		}
 		if d.batcher == nil {
 			d.closeErr = pending
 			return
 		}
+		stop := context.AfterFunc(ctx, d.cancel)
+		if pending == nil && !d.sync.isRemoved() {
+			// Join the publish before stopping its request. Canceling a committed
+			// request can lose its reply and leave the next publish using an old head.
+			d.closeErr = d.batcher.Close(ctx)
+		} else {
+			d.closeErr = pending
+		}
 		d.cancel()
 		<-d.done
-		// A failed drain must still stop heartbeats. Its local head remains
-		// available for recovery; it is never uploaded as a successful close.
-		if pending != nil {
-			d.scope.Settle()
+		stop()
+		removed := d.sync.isRemoved()
+		if removed {
+			// Removal keeps this chat local. Only its local durability can fail.
 			d.closeErr = pending
-			return
 		}
-		d.syncVault(ctx)
-		d.closeErr = d.batcher.Close(ctx)
+		if pending == nil && !removed {
+			d.syncVault(ctx)
+		}
 		d.scope.Settle() // a publish that failed after the last flush line still counts
 		if d.closeErr == nil {
 			d.mu.Lock()

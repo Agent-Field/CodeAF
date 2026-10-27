@@ -63,8 +63,8 @@ type SeatOption func(*Engine)
 // call and close still drains the same recorder, with a bounded wait (D3).
 func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 
-// WithWarmCapture starts the first screened capture as soon as the seat opens,
-// rather than leaving a cold attachment for the second command (E2).
+// WithWarmCapture screens the folder as soon as the seat opens without adding
+// an empty turn. The first command waits for this screen before changing files.
 func WithWarmCapture() SeatOption { return func(e *Engine) { e.warm = true } }
 
 // WithNotices sends the guard's one-line notices (a file kept out of the saved

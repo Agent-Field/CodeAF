@@ -465,12 +465,8 @@ func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32
 }
 
 func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
-	dirty, err := l.eng.Dirty(ctx, c)
-	if err != nil || !dirty {
-		return dirty, err
-	}
-	// A displaced session can append accounting as it retires. The same
-	// shared-work check applies whether that tail has been sealed yet or not.
+	// Both appended accounting and edits inside an older message must be checked
+	// against the shared snapshot, even when the current journal has the same size.
 	return l.eng.LocalWork(ctx, c)
 }
 

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -1943,7 +1944,15 @@ func (a *Agent) Compact(ctx context.Context) error {
 // conversation impossible. The connection is the DOOR; the session is what is
 // behind it, and only cmd/codeaf shuts the door.
 func (a *Agent) Close() error {
-	_, err := a.c.call(nil, MethodClose, nil)
+	return a.finishSaving(MethodClose, nil)
+}
+
+// finishSaving gives departures their saving budget and distinguishes a missing reply from a refusal.
+func (a *Agent) finishSaving(method string, args any) error {
+	_, answered, err := a.c.callAnswered(nil, method, args, executor.DrainWithin)
+	if err != nil && !answered {
+		err = errors.Join(session.ErrSavingUnanswered, err)
+	}
 	return session.SavingError(a.c.Welcome().SessionFile, err)
 }
 
@@ -1965,8 +1974,7 @@ func (a *Agent) WorkOutlivesExit() bool { return a.c.Welcome().Persistent }
 // Every request is bounded, and the surface restores while slow saving finishes.
 func (a *Agent) Detach() error {
 	if a.WorkOutlivesExit() {
-		_, err := a.c.call(nil, MethodDetach, nil)
-		return session.SavingError(a.c.Welcome().SessionFile, err)
+		return a.finishSaving(MethodDetach, nil)
 	}
 	a.Interrupt()
 	return a.Close()
@@ -1978,8 +1986,7 @@ func (a *Agent) DetachAndWait() error {
 	if !a.WorkOutlivesExit() {
 		return a.Detach()
 	}
-	_, err := a.c.call(nil, MethodDetach, DetachArgs{WaitRelease: true})
-	return session.SavingError(a.c.Welcome().SessionFile, err)
+	return a.finishSaving(MethodDetach, DetachArgs{WaitRelease: true})
 }
 
 // Model is the model the next request will use.

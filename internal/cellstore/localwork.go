@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -57,7 +59,12 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return e.workInPlan(ctx, c, base, out)
+	work, err := e.workInPlan(ctx, c, base, out)
+	if err != nil || work {
+		return work, err
+	}
+	same, err := e.sameTranscriptPrefix(ctx, c, base)
+	return !same, err
 }
 
 // workInPlan asks Git about semantic index entries only when the engine found
@@ -106,7 +113,7 @@ func unsharedCalls(c cell.Cell, base string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if len(receipt.Calls) > 0 || len(receipt.ModelCalls) > 0 {
+		if len(receipt.Calls) > 0 {
 			return true, nil
 		}
 		if work, err := transcriptWork(c, receipt.Transcript.Start, receipt.Transcript.End); err != nil || work {
@@ -139,25 +146,31 @@ func transcriptWork(c cell.Cell, start, end int64) (bool, error) {
 	for scan.Scan() {
 		var record struct {
 			Type  string `json:"type"`
-			Usage struct {
-				Aux bool `json:"aux"`
-			} `json:"usage"`
-			Call struct {
+			Error struct {
 				Role string `json:"role"`
-			} `json:"call"`
+			} `json:"error"`
+			Failure struct {
+				Role string `json:"role"`
+			} `json:"failure"`
 		}
 		if json.Unmarshal(scan.Bytes(), &record) != nil {
 			return true, nil
 		}
 		switch {
 		case record.Type == "pace":
-		case record.Type == "usage" && record.Usage.Aux:
-		case record.Type == "call" && record.Call.Role != "":
+		case record.Type == "usage":
+		case record.Type == "call", record.Type == "title":
+		case record.Type == "error" && auxiliaryRole(record.Error.Role):
+		case record.Type == "failure" && auxiliaryRole(record.Failure.Role):
 		default:
 			return true, nil
 		}
 	}
 	return false, scan.Err()
+}
+
+func auxiliaryRole(role string) bool {
+	return role == "title" || role == "memory" || role == "reflex"
 }
 
 // localPlanWork ignores only reproducible capture bookkeeping. Conversation
@@ -180,6 +193,11 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 		switch name {
 		case TurnsPath, publishedPath, adoptedPath, cell.CopyOfferedPath, cell.StateDir + "/copy-ready":
 			continue
+		case cell.TranscriptPath:
+			// The shared prefix is checked before a changed journal is discarded.
+			continue
+		case cell.StateDir + "/memories.jsonl":
+			continue
 		}
 		if name == ".git" || name == ".git/index" {
 			indexOnly = true
@@ -189,4 +207,40 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 		return true, false, nil
 	}
 	return indexOnly, indexOnly, nil
+}
+
+// sameTranscriptPrefix reads the shared journal into private scratch. Only an
+// unchanged prefix followed by accounting can be discarded as bookkeeping.
+func (e Engine) sameTranscriptPrefix(ctx context.Context, c cell.Cell, base string) (bool, error) {
+	scratch, err := os.MkdirTemp("", "codeaf-journal-")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(scratch)
+	target := e.target(c)
+	target.Tree, target.CellDir, target.Timeline = scratch, "", filepath.Base(scratch)
+	transport := Spawn{Binary: e.Binary}
+	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
+		return false, err
+	}
+	defer func() { _, _ = transport.Do(ctx, target, indexScratchOp{forget: true}) }()
+	if _, err := transport.Do(ctx, target, restoreOp{Snapshot: base, Paths: []string{cell.TranscriptPath}}); err != nil {
+		return false, err
+	}
+	saved, err := os.ReadFile(filepath.Join(scratch, cell.TranscriptPath))
+	if err != nil {
+		return false, err
+	}
+	file, err := os.Open(rel(c, cell.TranscriptPath))
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	current := make([]byte, len(saved))
+	if _, err := io.ReadFull(file, current); errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return bytes.Equal(saved, current), nil
 }

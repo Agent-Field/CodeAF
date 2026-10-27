@@ -27,26 +27,35 @@ If closing fails, it says
 
 A close still running after that second says
 `this chat is still finishing in the background`.
-A slow close alone does not mean saving failed.
+A slow close alone does not mean saving failed. An unanswered final saving
+reply also keeps the finishing notice.
 If that background close later fails, the active chat shows the closed chat's
 name followed by the same saving-failure sentence, once.
 
 ## Could not save on quit — where are the unsaved turns kept
 
 If the final save fails and the transcript location is known, the restored terminal says
-`codeaf could not save this chat; unsaved turns are kept in <transcript path> and return on the next start.`
+`codeaf could not save this chat; unsaved turns are kept in <transcript path> and return on the next start if this computer still holds the chat.`
 The path names the transcript on the computer running the chat, including over
 `--host`. When the location is unknown, it says
-`codeaf could not save this chat; unsaved turns stay on this computer and return on the next start.`
+`codeaf could not save this chat; unsaved turns stay on this computer and return on the next start if this computer still holds the chat.`
 The command exits with a failure status. One sentence stays visible after
-the full-screen chat closes, including when error output goes to a log.
+the full-screen chat closes, including when error output goes to a log. On the
+next start, retained turns are published if this computer still holds the chat.
+If another computer has continued it, take the chat back to see its newest history;
+local accounting alone does not create a separate chat.
+
+A computer removed from your paired devices keeps saving this chat locally.
+Quitting stays quiet and does not try a final relay save; the removal notice
+already explains that the chat stays on this computer until you pair it again.
 
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
-When the wait after restoring the screen lasts more than about a second, it says
-`saving this chat before quitting… (up to 30s)`.
-This wait is bounded by the saving ceiling. If the ceiling expires, the final
-saving-failure sentence stays visible and unsaved turns remain on this computer. A
+A successful quit stays quiet, including while late usage, task cost, naming or
+memory records finish saving. The launcher waits up to 30 seconds for the final
+saving reply. If that reply is still outstanding at the ceiling, it says
+`codeaf is still saving this chat in the background; unsaved turns stay on this computer.`
+A save still running is not reported as a failure. A
 second ctrl+c while quitting restores the terminal and exits immediately;
 unfinished turns stay on the computer running the chat for the next start.
 

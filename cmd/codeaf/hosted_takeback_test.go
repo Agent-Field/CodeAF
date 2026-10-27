@@ -62,7 +62,7 @@ func (m moveRenewals) RenewalStatus() (time.Time, time.Duration, bool) {
 }
 func (m moveRenewals) RenewalChanges() <-chan struct{} { return m.changes }
 
-func newHostedMoveRig(t *testing.T) *hostedMoveRig {
+func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *hostedMoveRig {
 	t.Helper()
 	cfg, c := doorChat(t)
 	short, err := os.MkdirTemp("", "cf-move-")
@@ -78,6 +78,9 @@ func newHostedMoveRig(t *testing.T) *hostedMoveRig {
 	}
 	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: t.TempDir(), changes: make(chan struct{}, 1)}
 	service := relayserveForMove(t)
+	for _, decorate := range wrap {
+		service = decorate(service)
+	}
 	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		h.requests = append(h.requests, r.Method+" "+r.URL.Path)
@@ -128,7 +131,7 @@ func relayserveForMove(t *testing.T) http.Handler {
 
 func (h *hostedMoveRig) wait(what string, ready func() bool) {
 	h.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(cellstore.SealWithin)
 	for !ready() {
 		if time.Now().After(deadline) {
 			h.t.Fatal("waiting for " + what)

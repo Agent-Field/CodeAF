@@ -168,6 +168,35 @@ func openSync(t *testing.T, home string) *Sync {
 	return s
 }
 
+// spokenFixture records a person's command before a publication fixture seals its work.
+// An unused chat intentionally does not appear on other computers.
+func (r *driveRig) spokenFixture() {
+	r.t.Helper()
+	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil,
+		func(cellstore.Engine) cellstore.Store { return r.engine })
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	agent, err := session.New(session.Config{Workspace: r.work, Place: session.Place{Dir: r.cell.Root, Workspace: r.work}, SessionFile: session.Place{Dir: r.cell.Root}.Transcript(), Seat: seat, Model: "stub/chat", APIKey: "stub", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	events, err := agent.SubmitBash(r.t.Context(), "! true")
+	if err != nil {
+		agent.Close()
+		r.t.Fatal(err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			agent.Close()
+			r.t.Fatal(event.Text)
+		}
+	}
+	if err := agent.Close(); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
 // chat is A's conversation: a seat whose every tool call seals through the
 // drive side, gated the way the door gates it, and a scripted model that writes
 // one file per call.
@@ -247,6 +276,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 // D1 keeps the engine's published ledger beside its shared objects.
 func TestDriveSidePublishesTurns(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	var notices noticeLog
 	c := r.startChat(&notices)
 	c.mustSay()
@@ -377,6 +407,7 @@ func assertBranch(t *testing.T, r *driveRig, turns uint32) {
 // published, then the lease is given back so another machine takes over at once.
 func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	ctx := context.Background()
 	var notices noticeLog
 	c := r.startChat(&notices)
@@ -438,6 +469,7 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 // that machine, and nothing of it runs here: no batcher, no lease taken.
 func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	var notices noticeLog
 	c := r.startChat(&notices)
 	c.mustSay()
@@ -525,6 +557,7 @@ func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
 // was killed before its last upload left behind.
 func TestDriveSideUploadsTurnsASealedRunNeverSent(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil, func(cellstore.Engine) cellstore.Store { return r.engine })
 	if err != nil {
 		t.Fatal(err)

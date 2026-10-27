@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -54,7 +55,7 @@ func closeConversationLater(agent Agent, door session.StopDoor, report func(erro
 		}
 		mu.Lock()
 		done <- err
-		notify := late && err != nil && lateFailure != nil
+		notify := late && err != nil && !errors.Is(err, session.ErrSavingUnanswered) && lateFailure != nil
 		mu.Unlock()
 		if notify {
 			lateFailure()
