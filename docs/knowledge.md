@@ -11,6 +11,7 @@ module. Product behavior belongs in the [Memory manual](../internal/manual/chat/
 | Discover and read saved history | `internal/session/knowledge_history.go` |
 | Admit immutable sources and publish readable pages | `internal/knowledge/store.go` |
 | Compile evidence into maintained concept guides | `internal/knowledge/compiler.go` |
+| Reuse validated evidence checks across updates | `internal/knowledge/compiler_questions.go`, `internal/knowledge/compiler_provider.go` |
 | Preserve edits and deletion intent | `internal/knowledge/edit.go` |
 | Agent knowledge tools and local recall | `internal/session/knowledge_tools.go`, `internal/knowledge/compiler_recall.go` |
 | Memory rendering, navigation, and editor | `internal/tui3/knowledge*.go` |
@@ -77,6 +78,12 @@ Interrupted work retains admitted sources and completed checkpoints. Invalid
 provider output cannot become a valid cached result or a partial visible
 publication. Every role uses the selected knowledge model; a fallback is refused.
 Keep credentials and source content out of visible errors.
+
+Incremental checks reuse validated results only for a matching complete request.
+Changed evidence still reaches the compiler. Background provider requests retain
+cache affinity within a profile, model, and compiler role. These optimizations
+remain inside the vault; callers do not manage cache identity or invalidate
+compiler checkpoints themselves.
 
 ## Reader responsiveness
 

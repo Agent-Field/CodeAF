@@ -195,3 +195,63 @@ func TestKnowledgeCompilationKeepsExplicitGenerationControls(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestKnowledgeCompilationKeepsRoleAffinityAcrossReopen(t *testing.T) {
+	withKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if messages, ok := p["messages"].([]any); ok {
+			s := messages[0].(map[string]any)
+			return map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": s["text"], "scope": "Cedar", "topic": s["id"], "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}}}}
+		}
+		return map[string]any{"subjects": []any{}}
+	})
+	transport := http.DefaultTransport
+	keys := map[string]string{}
+	profiles := []string{t.TempDir(), t.TempDir()}
+	profileIndex := 0
+	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var body struct{ Messages []struct{ Content string } }
+		if err := json.Unmarshal(raw, &body); err != nil {
+			return nil, err
+		}
+		key := r.Header.Get("X-Session-Id")
+		if key == "" {
+			t.Error("background compilation did not establish provider cache affinity")
+		}
+		role := body.Messages[0].Content
+		group := profiles[profileIndex] + role
+		if prior := keys[group]; prior != "" && prior != key {
+			t.Error("role affinity changed across compilation/reopen")
+		}
+		for other, prior := range keys {
+			if other != group && prior == key {
+				t.Error("different profiles or roles share provider affinity")
+			}
+		}
+		keys[group] = key
+		return transport.RoundTrip(r)
+	})
+	for i, profile := range profiles {
+		profileIndex = i
+		v := knowledge.Open(profile)
+		if err := v.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"baseline", "added"} {
+			v = knowledge.Open(profile)
+			if err := v.Capture(knowledge.Source{ID: id, Session: "chat", Role: "user", TS: "2026-10-26T12:00:00Z", Text: "Cedar " + id + " operations."}); err != nil {
+				t.Fatal(err)
+			}
+			if err := v.Flush(context.Background(), "fixture", true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(keys) != 4 {
+		t.Fatalf("expected two roles in each of two profiles: got %d", len(keys))
+	}
+}
