@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Save task progress and desktop settings while Windows readers have them open
-pr: 0
+pr: 1999
 surface: [engine]
 invalidates:
   - "A brief Windows reader could prevent a task checkpoint or desktop state update from being saved. Replacements now wait a bounded time for that reader to close."
