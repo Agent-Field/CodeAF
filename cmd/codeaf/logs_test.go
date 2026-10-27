@@ -61,6 +61,10 @@ func TestMain(m *testing.M) {
 		os.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 	}
 	restore := isolateTestEnvironment()
+	// AND NOT THE MACHINE'S AZURE OPENAI SERVICE, which the two variables add
+	// to every resolved set by being set (config's azureFromEnv).
+	os.Unsetenv(config.AzureBaseEnv)
+	os.Unsetenv("AZURE_API_KEY")
 	// AND THE CREW ROUTER READS ONE FIXED CATALOG. The process's catalog is
 	// seated once, by whichever test first builds it, from whatever server that
 	// test stood up — so every later door would route its unpinned seats against

@@ -682,6 +682,10 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        OPENAI_API_KEY (any shape), then your profile key.
                        A connected machine needs no variable at all;
                        ` + "`codeaf doctor`" + ` names the one that answered.
+  AZURE_API_BASE       with AZURE_API_KEY, connects the azure provider at
+  AZURE_API_KEY        <base>/openai/v1 and sends the key as api-key. Models
+                       are deployment names: azure/<deployment>.
+  AZURE_API_DEPLOYMENT the azure provider's preferred model.
   CODEAF_CODEX_ISSUER  ` + codexauth.DefaultIssuer + ` by default; the sign-in issuer
                        used by ` + "`codeaf connect codex`" + `.
   CODEAF_CODEX_BACKEND the backend used to list models and run codex turns.

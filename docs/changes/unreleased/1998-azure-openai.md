@@ -12,4 +12,7 @@ invalidates:
 A gateway in front of Azure carries its owner's hostname, so the key header and
 the dialect are data on the service (`KeyHeader`, `OpenAIDialect`) and never
 read off the address. The crew reaches the service only by a pin, because its
-models are deployment names no catalog carries.
+models are deployment names no catalog carries. The folder engine counts
+`AZURE_API_BASE` and `AZURE_API_DEPLOYMENT` as part of its environment, so an idle
+engine restarts when either changes, and `codeaf help env` lists all three
+variables.
