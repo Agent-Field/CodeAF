@@ -94,17 +94,25 @@ func (a *Agent) planWorkerRecordedModel(taskID string) string {
 	return findWorkerHistory(taskJournalDir(place, session), id).model
 }
 
-// Resolve missing recorded models once before graph recovery takes its lock.
+// Resolve retained worker identities before graph recovery takes its lock.
 // Roster watchers then replay ordinary notices without filesystem reads.
-func (a *Agent) restoreWorkerHistoryModels(document *taskDocument) {
+func (a *Agent) restoreWorkerHistory(document *taskDocument) {
 	a.mu.Lock()
 	place, session := a.familyPlace(nil), a.sessionID()
 	a.mu.Unlock()
 	base := taskJournalDir(place, session)
 	for i := range document.Runs {
 		record := &document.Runs[i]
-		if record.Model == "" && record.Kind == "" && record.ID != 0 {
-			record.Model = findWorkerHistory(base, record.ID).model
+		if record.Kind != "" || record.ID == 0 || record.Model != "" && record.PlanTask != "" {
+			continue
+		}
+		history := findWorkerHistory(base, record.ID)
+		if record.Model == "" {
+			record.Model = history.model
+		}
+		if record.State == TaskDone && record.PlanTask == "" && history.journal != "" {
+			// A saved worker without a plan still has a stable, read-only task page.
+			record.PlanTask = planStoreID("history-" + strconv.FormatUint(record.ID, 10))
 		}
 	}
 }
