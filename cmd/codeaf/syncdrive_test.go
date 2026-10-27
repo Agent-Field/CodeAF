@@ -386,6 +386,10 @@ func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
 // and opens the chat once the takeover is over.
 func TestAChatBeingTakenIsNotOpened(t *testing.T) {
 	cfg, _ := doorChat(t)
+	// The door is what is under test, not the cell: with real cells on, the
+	// fake opener's refusal leaves a warm capture writing into the chat while
+	// TempDir cleanup removes it.
+	t.Cleanup(cell.UseAvailabilityInTests(false))
 	opened := 0
 	open := func(session.Config) (*session.Agent, error) { opened++; return nil, errors.New("stop here") }
 	release := handoff.Arrive(cfg.Place.Dir)
