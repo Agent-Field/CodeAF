@@ -766,7 +766,11 @@ topic can receive a new section.
 
 When additions would make a guide too large, overlapping explanations are merged
 concisely. Separate checks require support for the new prose and preservation of
-the useful meaning of every input. If an update fails these checks, the previous
+the useful meaning of every input, including still-supported existing guidance.
+Unchanged sections remain intact where possible. The reading word limit is a
+target: preserving reviewed useful meaning takes priority over trimming to fit.
+Oversized review inputs stop safely before editorial model work.
+If an update fails these checks, the previous
 published guide stays visible. Original source records and citations remain
 available. Human edits and deleted pages keep their existing protection.
 

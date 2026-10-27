@@ -60,6 +60,44 @@ func validateIntegrationReview(payload, response document) error {
 // input must remain represented, and a separate call checks support and meaning
 // coverage before the host transfers its original citations to the new prose.
 func mergeIntegratedGuide(note document, sections []document, vault document, model compilerModel) ([]document, error) {
+	changed, unchanged := []document{}, []document{}
+	for _, section := range sections {
+		if hasGuideAnswers([]document{section}) {
+			changed = append(changed, section)
+		} else {
+			unchanged = append(unchanged, section)
+		}
+	}
+	words, paragraphs := 0, 0
+	for _, section := range unchanged {
+		words += len(strings.Fields(textValue(section["heading"])))
+		for _, p := range items(section["paragraphs"]) {
+			words += len(strings.Fields(textValue(p["text"])))
+			paragraphs++
+		}
+	}
+	if len(changed) > 0 && len(unchanged) > 0 && words < guideMaxWords-100 && paragraphs < guideMaxParagraphs && len(unchanged) < guideMaxSections {
+		merged, err := mergeGuideWithinBudget(note, changed, vault, model, guideMaxWords-words, guideMaxParagraphs-paragraphs, guideMaxSections-len(unchanged))
+		if err != nil {
+			return nil, err
+		}
+		result, inserted := []document{}, false
+		for _, section := range sections {
+			if hasGuideAnswers([]document{section}) {
+				if !inserted {
+					result = append(result, merged...)
+					inserted = true
+				}
+			} else {
+				result = append(result, section)
+			}
+		}
+		return result, nil
+	}
+	return mergeGuideWithinBudget(note, sections, vault, model, guideMaxWords, guideMaxParagraphs, guideMaxSections)
+}
+
+func mergeGuideWithinBudget(note document, sections []document, vault document, model compilerModel, maxWords, maxParagraphs, maxSections int) ([]document, error) {
 	inputs := []document{}
 	originals := map[string]document{}
 	for _, section := range sections {
@@ -69,7 +107,14 @@ func mergeIntegratedGuide(note document, sections []document, vault document, mo
 			originals[id] = p
 		}
 	}
-	payload := document{"merge_policy": "integration-merge-1", "subject": choose(note, "id", "title", "scope"), "paragraphs": inputs, "max_sections": guideMaxSections, "max_paragraphs": guideMaxParagraphs, "max_words": guideMaxWords, "target_words": guideMaxWords * 4 / 5}
+	payload := document{"merge_policy": "integration-merge-1", "subject": choose(note, "id", "title", "scope"), "paragraphs": inputs, "max_sections": maxSections, "max_paragraphs": maxParagraphs, "max_words": maxWords, "target_words": maxWords * 4 / 5}
+	inputWords := 0
+	for _, p := range inputs {
+		inputWords += len(strings.Fields(textValue(p["text"])))
+	}
+	for _, section := range sections {
+		inputWords += len(strings.Fields(textValue(section["heading"])))
+	}
 	var proposal document
 	accepted := false
 	failure := "knowledge integration merge did not preserve supported meaning; prior publication retained"
@@ -79,7 +124,11 @@ func mergeIntegratedGuide(note document, sections []document, vault document, mo
 		if err != nil {
 			return nil, err
 		}
-		if !guideWithinLimits(items(proposal["sections"])) {
+		withinTarget := integrationWithinBudget(items(proposal["sections"]), maxWords, maxParagraphs, maxSections)
+		// After one repair, prefer reviewed meaning over an arbitrary word target.
+		// Never expand the input, or relax structural limits.
+		withinPreservationBudget := attempt > 0 && integrationWithinBudget(items(proposal["sections"]), max(maxWords, inputWords), maxParagraphs, maxSections)
+		if !withinTarget && !withinPreservationBudget {
 			failure = "knowledge integration merge exceeded the guide budget; prior publication retained"
 			words, paragraphs := 0, 0
 			for _, section := range items(proposal["sections"]) {
@@ -153,4 +202,16 @@ func mergeIntegratedGuide(note document, sections []document, vault document, mo
 		result = append(result, document{"heading": section["heading"], "paragraphs": paragraphs})
 	}
 	return result, nil
+}
+
+func integrationWithinBudget(sections []document, maxWords, maxParagraphs, maxSections int) bool {
+	words, paragraphs := 0, 0
+	for _, section := range sections {
+		words += len(strings.Fields(textValue(section["heading"])))
+		for _, p := range items(section["paragraphs"]) {
+			words += len(strings.Fields(textValue(p["text"])))
+			paragraphs++
+		}
+	}
+	return words <= maxWords && paragraphs <= maxParagraphs && len(sections) <= maxSections
 }

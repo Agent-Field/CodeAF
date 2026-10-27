@@ -56,7 +56,7 @@ func validateAnswerIntegration(payload, response document) error {
 
 // Placement keeps reviewed prose and support intact. Overflow uses a separate
 // meaning-preserving merge and review instead of selecting away useful inputs.
-func integrateGuideAnswers(note, vault document, model compilerModel) ([]document, error) {
+func integrateGuideAnswers(note, previous, vault document, model compilerModel) ([]document, error) {
 	base := []document{}
 	answers := []document{}
 	for _, section := range items(note["sections"]) {
@@ -75,27 +75,35 @@ func integrateGuideAnswers(note, vault document, model compilerModel) ([]documen
 	if len(answers) == 0 {
 		return base, nil
 	}
-	// Reuse the established full-guide selection before separating its core
-	// from proposed answers. Selecting the core alone would change that input
-	// and could discard previously retained guidance on a projection-only repair.
+
 	if !guideWithinLimits(base) {
 		compact, err := curateGuideSections(note, items(note["sections"]), model)
 		if err != nil {
 			return nil, err
 		}
-		base = []document{}
-		for _, section := range compact {
-			kept := []document{}
-			for _, p := range items(section["paragraphs"]) {
-				if textValue(p["derivation"]) != "gap_answer" {
-					kept = append(kept, p)
-				}
-			}
-			if len(kept) > 0 {
-				base = append(base, merge(section, document{"paragraphs": kept}))
+		base = coreGuideSections(compact)
+	}
+	// Selection may summarize raw detail, but it cannot silently discard a
+	// still-supported paragraph the reader already had. Include those paragraphs
+	// in the merge coverage inputs after checking current claim/source validity.
+	active, sources := activeClaims(vault), object(vault["sources"])
+	preserved := []document{}
+	for _, section := range coreGuideSections(items(previous["sections"])) {
+		paragraphs := []document{}
+		for _, p := range items(section["paragraphs"]) {
+			refs := append(append([]string{}, stringsValue(p["claims"])...), stringsValue(p["depends_on"])...)
+			evidence := items(p["evidence"])
+			supported := len(stringsValue(p["claims"])) > 0 || (textValue(p["derivation"]) == "subject_guide" && p["review"] != nil && len(evidence) > 0)
+			if supported && subset(refs, active) && validSourceEvidence(evidence, sources, true) {
+				paragraphs = append(paragraphs, p)
 			}
 		}
+		if len(paragraphs) > 0 {
+			preserved = append(preserved, merge(section, document{"paragraphs": paragraphs}))
+		}
 	}
+	base = mergeSubjectSections(append(base, preserved...))
+	refreshGuideEvidence(base, items(note["conflicts"]), active, sources)
 	for len(answers) > 0 {
 		count := 1
 		for count < len(answers) && count < guideCandidateLimit {
@@ -132,6 +140,13 @@ func answerIntegrationPayload(note document, base, answers []document) document 
 
 func placeGuideAnswers(note document, base, answers []document, vault document, model compilerModel) ([]document, error) {
 	payload := answerIntegrationPayload(note, base, answers)
+	paragraphs := len(answers)
+	for _, section := range base {
+		paragraphs += len(items(section["paragraphs"]))
+	}
+	if paragraphs > guideCandidateLimit || jsonCharacterLength(payload) > guideCandidateCharacters {
+		return nil, errors.New("knowledge integration input exceeds safe review bounds; prior publication retained")
+	}
 	proposed := items(payload["answers"])
 	response, err := model.call("integrate_answers", payload)
 	if err != nil {
@@ -173,4 +188,20 @@ func placeGuideAnswers(note document, base, answers []document, vault document, 
 		return mergeIntegratedGuide(note, base, vault, model)
 	}
 	return base, nil
+}
+
+func coreGuideSections(sections []document) []document {
+	result := []document{}
+	for _, section := range sections {
+		paragraphs := []document{}
+		for _, p := range items(section["paragraphs"]) {
+			if textValue(p["derivation"]) != "gap_answer" {
+				paragraphs = append(paragraphs, p)
+			}
+		}
+		if len(paragraphs) > 0 {
+			result = append(result, merge(clone(section), document{"paragraphs": paragraphs}))
+		}
+	}
+	return result
 }

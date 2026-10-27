@@ -14,6 +14,11 @@ const settingsGuideText = "Resetting settings preserves saved conversation histo
 
 func answerIntegrationFixture(t *testing.T, answer string, edit func(map[string]any) map[string]any, core ...[]string) (*knowledge.Vault, func()) {
 	t.Helper()
+	return answerIntegrationFixtureWithUnderstanding(t, answer, edit, nil, core...)
+}
+
+func answerIntegrationFixtureWithUnderstanding(t *testing.T, answer string, edit, understanding func(map[string]any) map[string]any, core ...[]string) (*knowledge.Vault, func()) {
+	t.Helper()
 	v := knowledge.Open(t.TempDir())
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
@@ -26,9 +31,14 @@ func answerIntegrationFixture(t *testing.T, answer string, edit func(map[string]
 			claims := []any{}
 			for _, raw := range messages {
 				s := raw.(map[string]any)
-				claims = append(claims, map[string]any{"local_id": s["id"], "text": s["text"], "scope": "Cedar", "topic": "Settings", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}})
+				text := string([]rune(s["text"].(string))[:min(900, len([]rune(s["text"].(string))))])
+				claims = append(claims, map[string]any{"local_id": s["id"], "text": text, "scope": "Cedar", "topic": "Settings", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": text}}})
 			}
-			return map[string]any{"claims": claims}
+			response := map[string]any{"claims": claims}
+			if understanding != nil {
+				return understanding(response)
+			}
+			return response
 		}
 		if catalog, ok := p["catalog"].([]any); ok {
 			notes := []any{}
@@ -42,11 +52,19 @@ func answerIntegrationFixture(t *testing.T, answer string, edit func(map[string]
 			return map[string]any{"subjects": []any{s}}
 		}
 		if paragraphs, ok := p["paragraphs"].([]any); ok {
+			if len(paragraphs) > 0 && paragraphs[0].(map[string]any)["heading"] != nil {
+				return edit(p)
+			}
 			checks := []any{}
 			for _, raw := range paragraphs {
 				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "supported": true, "useful": true})
 			}
-			return map[string]any{"checks": checks, "questions": []any{map[string]any{"id": "Q0", "grounded": true}}}
+			conflicts := []any{}
+			rawConflicts, _ := p["conflicts"].([]any)
+			for _, raw := range rawConflicts {
+				conflicts = append(conflicts, map[string]any{"id": raw.(map[string]any)["id"], "supported": true})
+			}
+			return map[string]any{"checks": checks, "questions": []any{map[string]any{"id": "Q0", "grounded": true}}, "conflicts": conflicts}
 		}
 		if answers, ok := p["answers"].([]any); ok {
 			checks := []any{}
@@ -91,7 +109,11 @@ func answerIntegrationFixture(t *testing.T, answer string, edit func(map[string]
 				sections = append(sections, map[string]any{"heading": heading, "paragraphs": paragraphs[start:min(len(paragraphs), start+3)]})
 			}
 		}
-		return map[string]any{"action": "write", "sections": sections, "questions": []any{map[string]any{"question": "How does Cedar preserve history during a settings reset?", "claims": refs, "search_terms": []any{"Cedar", "settings", "history"}}}}
+		response := map[string]any{"action": "write", "sections": sections, "questions": []any{map[string]any{"question": "How does Cedar preserve history during a settings reset?", "claims": refs, "search_terms": []any{"Cedar", "settings", "history"}}}}
+		if understanding != nil {
+			return understanding(response)
+		}
+		return response
 	})
 	source := "Cedar settings reset preserves saved history."
 	if len(core) > 0 {
@@ -100,8 +122,17 @@ func answerIntegrationFixture(t *testing.T, answer string, edit func(map[string]
 	if err := v.Capture(knowledge.Source{ID: "baseline", Session: "chat", Role: "user", TS: "2026-10-26T12:00:00Z", Text: source}); err != nil {
 		t.Fatal(err)
 	}
-	if err := v.Flush(context.Background(), "fixture", true); err != nil {
-		t.Fatal(err)
+	for pass := 0; pass < 10; pass++ {
+		if err := v.Flush(context.Background(), "fixture", true); err != nil {
+			t.Fatal(err)
+		}
+		status, err := v.Status()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status.Pending == 0 && !status.NeedsUpdate {
+			break
+		}
 	}
 	added := 0
 	return v, func() {
@@ -119,7 +150,6 @@ func TestKnowledgeMergesAdditionsWithoutDroppingExistingKnowledge(t *testing.T) 
 		core = append(core, fmt.Sprintf("Preserve history partition %d during a settings reset.", i))
 	}
 	detail := "Reconnect provider credentials after resetting settings."
-	merged := strings.Join(core, " ") + " " + detail
 	reviews := 0
 	v, add := answerIntegrationFixture(t, detail, func(p map[string]any) map[string]any {
 		if p["merge_policy"] != nil {
@@ -127,7 +157,11 @@ func TestKnowledgeMergesAdditionsWithoutDroppingExistingKnowledge(t *testing.T) 
 			for _, raw := range p["paragraphs"].([]any) {
 				refs = append(refs, raw.(map[string]any)["id"])
 			}
-			text := merged
+			texts := []string{}
+			for _, raw := range p["paragraphs"].([]any) {
+				texts = append(texts, raw.(map[string]any)["text"].(string))
+			}
+			text := strings.Join(texts, " ")
 			if p["previous_draft"] == nil {
 				text += strings.Repeat(" repeated", 901)
 			}
@@ -148,8 +182,87 @@ func TestKnowledgeMergesAdditionsWithoutDroppingExistingKnowledge(t *testing.T) 
 		t.Fatal(err)
 	}
 	p := settingsGuide(t, v)
-	if len(p.Sections) != 1 || len(p.Sections[0].Paragraphs) != 1 || p.Sections[0].Paragraphs[0].Text != merged || reviews != 1 {
+	if len(p.Sections) != 4 || len(p.Sections[0].Paragraphs) != 1 || reviews != 1 {
 		t.Fatalf("additions were trimmed instead of merged with coverage review: %+v reviews=%d", p.Sections, reviews)
+	}
+	texts := []string{}
+	for _, section := range p.Sections {
+		for _, paragraph := range section.Paragraphs {
+			texts = append(texts, paragraph.Text)
+		}
+	}
+	for _, fact := range append(core, detail) {
+		if !strings.Contains(strings.Join(texts, " "), fact) {
+			t.Fatalf("existing fact lost: %s", fact)
+		}
+	}
+	if len(p.Sections[0].Paragraphs[0].Evidence) != 2 || len(p.Sections[0].Paragraphs[0].Claims) != 2 {
+		t.Fatalf("merged paragraph lost original or new support: %+v", p.Sections[0].Paragraphs[0])
+	}
+}
+
+func TestKnowledgePreservesOversizedCoreBeforeIntegratingAdditions(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 13; i++ {
+		core = append(core, fmt.Sprintf("Preserve history partition %d during a settings reset.", i))
+	}
+	detail := "Reconnect provider credentials after resetting settings."
+	reviews, selections := 0, 0
+	v, add := answerIntegrationFixture(t, detail, func(p map[string]any) map[string]any {
+		if p["merge_policy"] == nil && p["coverage_policy"] == nil && p["integration_policy"] == nil {
+			selections++
+			ids := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				id := raw.(map[string]any)["id"]
+				if (selections == 1 && id != "P12") || (selections > 1 && id != "P0") {
+					ids = append(ids, id)
+				}
+			}
+			return map[string]any{"sections": []any{map[string]any{"heading": "Reset settings", "paragraphs": ids}}}
+		}
+		if p["merge_policy"] != nil {
+			refs := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				refs = append(refs, raw.(map[string]any)["id"])
+			}
+			texts := []string{}
+			for _, raw := range p["paragraphs"].([]any) {
+				texts = append(texts, raw.(map[string]any)["text"].(string))
+			}
+			text := strings.Join(texts, " ")
+			if p["previous_draft"] == nil {
+				text += strings.Repeat(" repeated", 901)
+			}
+			return map[string]any{"sections": []any{map[string]any{"heading": "Reset settings", "paragraphs": []any{map[string]any{"text": text, "inputs": refs}}}}}
+		}
+		if p["coverage_policy"] != nil {
+			reviews++
+			coverage := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				coverage = append(coverage, map[string]any{"id": raw.(map[string]any)["id"], "preserved": true})
+			}
+			return map[string]any{"checks": []any{map[string]any{"id": "R0", "supported": true, "useful": true}}, "coverage": coverage}
+		}
+		return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+	}, core)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	p := settingsGuide(t, v)
+	if len(p.Sections) != 1 || len(p.Sections[0].Paragraphs) != 1 || reviews != 1 {
+		t.Fatalf("additions were trimmed instead of merged with coverage review: %+v reviews=%d", p.Sections, reviews)
+	}
+	texts := []string{}
+	for _, section := range p.Sections {
+		for _, paragraph := range section.Paragraphs {
+			texts = append(texts, paragraph.Text)
+		}
+	}
+	for _, fact := range append(core, detail) {
+		if !strings.Contains(strings.Join(texts, " "), fact) {
+			t.Fatalf("existing fact lost: %s", fact)
+		}
 	}
 	if len(p.Sections[0].Paragraphs[0].Evidence) != 2 || len(p.Sections[0].Paragraphs[0].Claims) != 2 {
 		t.Fatalf("merged paragraph lost original or new support: %+v", p.Sections[0].Paragraphs[0])
@@ -191,6 +304,114 @@ func TestKnowledgeRejectsUnsupportedMergesAndReusesFailedReviewProgress(t *testi
 	}
 	if err := v.Flush(context.Background(), "fixture", true); err == nil || reviews != 1 {
 		t.Fatalf("retry repeated paid rejected work: err=%v reviews=%d", err, reviews)
+	}
+}
+
+func TestKnowledgeWordTargetNeverTrimsReviewedUsefulMeaning(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 12; i++ {
+		core = append(core, fmt.Sprintf("Partition %d retains %s", i, strings.Repeat("supported history ", 31)))
+	}
+	detail := "Reconnect credentials and retain " + strings.Repeat("useful provider history ", 60)
+	reviews := 0
+	v, add := answerIntegrationFixture(t, detail, func(p map[string]any) map[string]any {
+		if p["merge_policy"] != nil {
+			refs, texts := []any{}, []string{}
+			for _, raw := range p["paragraphs"].([]any) {
+				v := raw.(map[string]any)
+				refs = append(refs, v["id"])
+				texts = append(texts, v["text"].(string))
+			}
+			return map[string]any{"sections": []any{map[string]any{"heading": "Reset settings", "paragraphs": []any{map[string]any{"text": strings.Join(texts, " "), "inputs": refs}}}}}
+		}
+		if p["coverage_policy"] != nil {
+			reviews++
+			coverage := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				coverage = append(coverage, map[string]any{"id": raw.(map[string]any)["id"], "preserved": true})
+			}
+			return map[string]any{"checks": []any{map[string]any{"id": "R0", "supported": true, "useful": true}}, "coverage": coverage}
+		}
+		return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+	}, core)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	page := settingsGuide(t, v)
+	texts := []string{}
+	for _, section := range page.Sections {
+		for _, p := range section.Paragraphs {
+			texts = append(texts, p.Text)
+		}
+	}
+	text := strings.Join(texts, " ")
+	for _, fact := range append(core, detail) {
+		if !strings.Contains(text, fact) {
+			t.Fatalf("word target discarded useful meaning: %s", fact)
+		}
+	}
+	if reviews != 1 || len(strings.Fields(text)) <= 900 {
+		t.Fatalf("preservation review was bypassed: reviews=%d words=%d", reviews, len(strings.Fields(text)))
+	}
+}
+
+func TestKnowledgeOversizedIntegrationRetainsPublicationWithoutPaidReview(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 13; i++ {
+		core = append(core, fmt.Sprintf("Partition %d: %s", i, strings.Repeat("a", 2500)))
+	}
+	edits := 0
+	v, add := answerIntegrationFixture(t, "Reconnect provider credentials after resetting settings.", func(p map[string]any) map[string]any {
+		if p["integration_policy"] != nil || p["merge_policy"] != nil || p["coverage_policy"] != nil {
+			edits++
+			return map[string]any{}
+		}
+		ids := []any{}
+		for _, raw := range p["paragraphs"].([]any) {
+			ids = append(ids, raw.(map[string]any)["id"])
+		}
+		return map[string]any{"sections": []any{map[string]any{"heading": "Reset settings", "paragraphs": ids[:min(12, len(ids))]}}}
+	}, core)
+	before := settingsGuide(t, v)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err == nil || !strings.Contains(err.Error(), "safe review bounds") {
+		t.Fatalf("oversized input was not stopped before review: %v", err)
+	}
+	after := settingsGuide(t, v)
+	if edits != 0 || after.Revision != before.Revision || knowledge.PageMarkdown(after) != knowledge.PageMarkdown(before) {
+		t.Fatal("oversized maintenance purchased review or replaced publication")
+	}
+}
+
+func TestKnowledgePreservedCoreUsesCurrentConflictMetadata(t *testing.T) {
+	updated, inspected := false, false
+	oldClaim := ""
+	v, add := answerIntegrationFixtureWithUnderstanding(t, "Resetting settings removes saved conversation history.", func(p map[string]any) map[string]any {
+		paragraph := p["existing_sections"].([]any)[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)
+		basis := paragraph["evidence_basis"].(map[string]any)
+		inspected = true
+		if basis["unresolved_conflict"] != true {
+			t.Error("current contradiction was hidden by previous published metadata")
+		}
+		return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+	}, func(response map[string]any) map[string]any {
+		if claims, ok := response["claims"].([]any); ok {
+			if updated {
+				response["relations"] = []any{map[string]any{"from": "new:" + claims[0].(map[string]any)["local_id"].(string), "to": oldClaim, "kind": "contradicts", "reason": "Opposing settings preservation rules"}}
+			}
+		} else if !updated {
+			oldClaim = response["sections"].([]any)[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)["claims"].([]any)[0].(string)
+		}
+		return response
+	})
+	updated = true
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	if !inspected {
+		t.Fatal("updated guide was not inspected")
 	}
 }
 

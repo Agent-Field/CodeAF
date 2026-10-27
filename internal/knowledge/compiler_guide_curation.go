@@ -13,6 +13,11 @@ func curatePublishedGuides(draft document, model compilerModel) (document, error
 	if err != nil {
 		return nil, err
 	}
+	previous, err := stateDocument(model.db, "published")
+	if err != nil {
+		return nil, err
+	}
+	priorNotes := index(items(previous["notes"]))
 	notes := append([]document{}, items(draft["notes"])...)
 	indices := []int{}
 	for i, note := range notes {
@@ -47,8 +52,8 @@ func curatePublishedGuides(draft document, model compilerModel) (document, error
 					return
 				}
 				note := clone(notes[indices[i]])
-				sections, err := integrateGuideAnswers(note, draft, workerModel)
-				if err == nil {
+				sections, err := integrateGuideAnswers(note, priorNotes[textValue(note["id"])], draft, workerModel)
+				if err == nil && !hasGuideAnswers(items(note["sections"])) {
 					sections, err = curateGuideSections(note, sections, workerModel)
 				}
 				if err != nil {
