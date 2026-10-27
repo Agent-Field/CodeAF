@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Pick up issues — a factory on your own machine can start labelled issues by itself, when you turn it on
+title: Pick up issues — a factory on your own machine can start labelled issues by itself, if turned on
 pr: 1997
 surface: [engine]
 invalidates:
