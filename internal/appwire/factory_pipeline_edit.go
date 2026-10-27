@@ -93,6 +93,13 @@ const FeatureFactoryPipelineEditRules = "factory.pipeline_edit_rules"
 // keys every YAML-reading factory parsed before this.
 const FeatureFactoryPipelineEditSettings = "factory.pipeline_edit_settings"
 
+// FeatureFactoryPipelineEditChecks is announced beside FeatureFactoryPipelineEditStructure
+// when this engine previews an add_step of kind check (a step whose prompt is a
+// shell command and whose exit code is the evidence) and a set_step of a
+// check's command. A check spells `kind`, a runtime key, so the preview takes it
+// only for a file its factory attested, as it does when, effort and fanout.
+const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
+
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
 	// whose own limit is sixty seconds.
@@ -186,8 +193,9 @@ type FactoryPipelineSource struct {
 
 // FactoryPipelineEdit is one structured edit. set_step names a step and at
 // least one of prompt, until, max, when, effort and fanout; set_budget names
-// only value. A field the verb does not take is bad_params, and there is no kind
-// field at all: it is rejected as unknown. An omitted field is not sent: until ""
+// only value. A field the verb does not take is bad_params. Kind belongs to
+// add_step alone (feature factory.pipeline_edit_checks): chat, the default, or
+// check, whose prompt is the command it runs; no edit changes a step's kind. An omitted field is not sent: until ""
 // is a request to clear it, which the file format may refuse, and when, effort or
 // fanout "" clears that word back to the default.
 //
@@ -209,6 +217,7 @@ type FactoryPipelineEdit struct {
 	Name     string   `json:"name,omitempty"`
 	Pipeline string   `json:"pipeline,omitempty"`
 	After    *string  `json:"after,omitempty"`
+	Kind     *string  `json:"kind,omitempty" enum:"chat,check"`
 	Prompt   *string  `json:"prompt,omitempty"`
 	Until    *string  `json:"until,omitempty"`
 	Max      *int     `json:"max,omitempty"`
@@ -414,6 +423,13 @@ type FactoryPipelineSettingsEditor interface {
 	PipelineSettingsEdits()
 }
 
+// FactoryPipelineChecksEditor is implemented ONLY by a structure editor whose
+// preview applies an add_step of kind check. Without it a kind is refused
+// before the engine is asked, and the feature is not announced.
+type FactoryPipelineChecksEditor interface {
+	PipelineCheckEdits()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
@@ -425,6 +441,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 		}
 		if _, structural := e.(FactoryPipelineStructureEditor); structural {
 			hello = withFeature(hello, FeatureFactoryPipelineEditStructure)
+			if _, checks := e.(FactoryPipelineChecksEditor); checks {
+				hello = withFeature(hello, FeatureFactoryPipelineEditChecks)
+			}
 		}
 		if _, rules := e.(FactoryPipelineRulesEditor); rules {
 			hello = withFeature(hello, FeatureFactoryPipelineEditRules)
@@ -437,12 +456,17 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 }
 
 // PipelineEditOps converts wire edits to the pipeline package's, unchanged.
-// Kind is left nil on purpose: a step's kind is a permission change that no
-// preview shows, so the wire has no way to send one.
+// Kind is carried for add_step alone: a set_step that names one is refused
+// here, since changing an existing step's kind is a permission change no
+// preview shows.
 func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 	ops := make([]pipeline.EditOp, len(edits))
 	for i, e := range edits {
-		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
+		var kind *string
+		if e.Op == PipelineEditAddStep || e.Kind != nil {
+			kind = e.Kind
+		}
+		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
 			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
 			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost}
 	}
@@ -574,6 +598,9 @@ func pipelinePreviewMethod(name string) method {
 		if err := checkStructureServed(e, p.Edits); err != nil {
 			return nil, err
 		}
+		if err := checkChecksServed(e, p.Edits); err != nil {
+			return nil, err
+		}
 		if err := checkRulesServed(e, p); err != nil {
 			return nil, err
 		}
@@ -617,6 +644,22 @@ func checkStructureServed(e Engine, edits []FactoryPipelineEdit) error {
 		switch edit.Op {
 		case PipelineEditAddStep, PipelineEditRemoveStep, PipelineEditMoveStep:
 			return Errorf(CodeBadParams, "edit %d: this engine does not add, remove or move a step", i)
+		}
+	}
+	return nil
+}
+
+// checkChecksServed refuses a kind to an editor that has not said it previews
+// a check, and a kind on any verb but add_step to every editor.
+func checkChecksServed(e Engine, edits []FactoryPipelineEdit) error {
+	_, checks := e.(FactoryPipelineChecksEditor)
+	for i, edit := range edits {
+		switch {
+		case edit.Kind == nil:
+		case edit.Op != PipelineEditAddStep:
+			return Errorf(CodeBadParams, "edit %d: only add_step names a kind", i)
+		case !checks:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add a check", i)
 		}
 	}
 	return nil

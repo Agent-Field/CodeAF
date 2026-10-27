@@ -166,7 +166,8 @@ func TestAGateNeedsNoPromptAndNeverVanishes(t *testing.T) {
 }
 
 // B2: set_step never turns a step into a shell command, a forge action or a
-// gate, never removes a gate, and never edits a step that is not a chat.
+// gate, never removes a gate, and never changes a step's kind; of the steps
+// that are not chats it edits only a check's command.
 func TestSetStepNeverChangesWhatRunsBeyondAChat(t *testing.T) {
 	const base = "pipeline:\n  issue: [plan, signoff, lint, ship, write]\nsteps:\n  signoff:\n    prompt: read it\n    kind: gate\n  lint:\n    prompt: go vet ./...\n    kind: check\n  ship:\n    prompt: pr draft\n    kind: post\n"
 	str := func(s string) *string { return &s }
@@ -179,8 +180,8 @@ func TestSetStepNeverChangesWhatRunsBeyondAChat(t *testing.T) {
 		{EditOp{Op: OpSetStep, Name: "plan", Kind: str("gate")}, EditBadValue},
 		{EditOp{Op: OpSetStep, Name: "signoff", Kind: str("chat")}, EditLocked},
 		{EditOp{Op: OpSetStep, Name: "signoff", Kind: str("")}, EditLocked},
-		{EditOp{Op: OpSetStep, Name: "lint", Prompt: str("rm -rf .")}, EditLocked},
-		{EditOp{Op: OpSetStep, Name: "lint", Until: str("it is quiet")}, EditLocked},
+		{EditOp{Op: OpSetStep, Name: "lint", Kind: str("chat")}, EditLocked},
+		{EditOp{Op: OpSetStep, Name: "lint", Until: str("it is quiet")}, EditBadValue},
 		{EditOp{Op: OpSetStep, Name: "ship", Prompt: str("pr")}, EditLocked},
 		{EditOp{Op: OpSetStep, Name: "ship", Max: new(int)}, EditBadValue},
 	}
@@ -195,7 +196,10 @@ func TestSetStepNeverChangesWhatRunsBeyondAChat(t *testing.T) {
 	if !ok {
 		t.Fatal(probs)
 	}
-	locked := map[string]bool{"plan": false, "write": false, "signoff": true, "lint": true, "ship": true}
+	// A check's command is edited through the reviewed pull request like a
+	// prompt (TestACheckStepIsAddedEditedAndMovedFromTheEditor); it never
+	// becomes another kind here.
+	locked := map[string]bool{"plan": false, "write": false, "signoff": true, "lint": false, "ship": true}
 	for _, s := range src.Steps {
 		if want, ok := locked[s.Name]; ok && s.Locked != want {
 			t.Errorf("%s locked = %v, want %v", s.Name, s.Locked, want)

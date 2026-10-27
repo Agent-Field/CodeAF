@@ -353,7 +353,8 @@ func runtimeDrops(f File) []string {
 // readable and are written back as they were; until a preview carries the
 // kind, they are changed in the file itself.
 func lockedStep(f File, name string) bool {
-	return factory.ApproveWord(name) || listed(f.Fixed, name) || f.Steps[name].Kind != ""
+	k := f.Steps[name].Kind
+	return factory.ApproveWord(name) || listed(f.Fixed, name) || (k != "" && k != string(factory.StageCheck))
 }
 
 func stepView(f File, name string) StepView {
@@ -544,8 +545,20 @@ func (st *editState) setStep(i int, op EditOp) *EditError {
 	if !st.inPipeline[op.Name] {
 		return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
 	}
-	if k := st.base.Steps[op.Name].Kind; k != "" && !factory.ApproveWord(op.Name) {
+	k := st.base.Steps[op.Name].Kind
+	if k != "" && k != string(factory.StageCheck) && !factory.ApproveWord(op.Name) {
 		return refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
+	}
+	// A CHECK'S PROMPT IS ITS COMMAND, edited like any prompt; it keeps its kind.
+	if k == string(factory.StageCheck) {
+		if op.Kind != nil && *op.Kind != k {
+			return refuseEdit(EditLocked, i, "%s is a check; a step's kind is changed only in the file itself", op.Name)
+		}
+		check := op
+		check.Kind = &k
+		if bad := checkCheckWords(i, check); bad != nil {
+			return bad
+		}
 	}
 	if lockedStep(st.base, op.Name) {
 		return refuseEdit(EditLocked, i, "%s is locked and cannot be edited", op.Name)

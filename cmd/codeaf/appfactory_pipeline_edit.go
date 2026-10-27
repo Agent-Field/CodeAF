@@ -403,11 +403,11 @@ func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
 }
 
 // firstRuntimeEdit is the position of the first edit that names when, effort or
-// fanout, or -1. An explicit empty value counts: clearing a word is a runtime
+// fanout, or adds a step of a kind other than chat (it writes `kind`), or -1. An explicit empty value counts: clearing a word is a runtime
 // edit too, and so does an add_step that spells one for the step it adds.
 func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 	for i, e := range edits {
-		if e.When != nil || e.Effort != nil || e.Fanout != nil {
+		if e.When != nil || e.Effort != nil || e.Fanout != nil || (e.Kind != nil && *e.Kind != "" && *e.Kind != "chat") {
 			return i
 		}
 	}
