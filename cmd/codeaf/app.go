@@ -137,6 +137,10 @@ func runApp(args []string) error {
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.useSyncDrives(syncDrives)
+	// A chat's banked pipeline line takes the editor's road while the app
+	// holds the factory (factory_recipe_road.go).
+	appPipelineRoad.Store(backend)
+	defer appPipelineRoad.CompareAndSwap(backend, nil)
 	// Deferred here, before the cleanups below are, so it closes only after
 	// they have run: the bound still covers every one of them, and stands down
 	// once the door has returned (appleave.go).

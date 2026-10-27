@@ -224,7 +224,7 @@ func TestFactoryItemDoorOfANilStoreIsNil(t *testing.T) {
 // bank's own words.
 func TestFactoryRecipeDoorSaysTheStagesAKindRuns(t *testing.T) {
 	st, web, _ := talkLab(t)
-	door := recipeDoor(st, web).(fileRecipeDoor)
+	door := recipeDoor(st, web).(roadRecipeDoor).fileRecipeDoor
 	names, err := door.Stages(context.Background(), "web", factory.KindIssue)
 	if err != nil || strings.Join(names, " ") != strings.Join(pipeline.Defaults().Pipeline[factory.KindIssue], " ") {
 		t.Fatalf("stages = %v, %v", names, err)
