@@ -29,13 +29,14 @@ func resolveLearningQuestions(learning, previous document, subjects []document, 
 	}
 	pending := map[string]candidate{}
 	order := []string{}
+	occurrences := map[string]int{}
 	for _, s := range subjects {
 		owned := map[string]bool{}
 		for _, id := range stringsValue(s["claims"]) {
 			owned[id] = true
 		}
 		for _, q := range items(s["questions"]) {
-			id := questionID(s, q)
+			id := resolutionQuestionID(s, q, occurrences)
 			if textValue(object(q["search"])["corpus_hash"]) == digest {
 				if refs := stringsValue(object(q["search"])["candidate_claims"]); len(refs) > 0 {
 					pending[id] = candidate{q, refs, false}
@@ -168,16 +169,25 @@ func resolveLearningQuestions(learning, previous document, subjects []document, 
 
 const questionBatchLimit = 16
 
+func resolutionQuestionID(subject, question document, occurrences map[string]int) string {
+	id := questionID(subject, question)
+	ordinal := occurrences[id]
+	occurrences[id]++
+	return fmt.Sprintf("%s:%d", id, ordinal)
+}
+
 // Keep the complete context of an unchanged request stable when other questions
 // become searchable. The existing receipt cache still validates the whole input.
 func stableQuestionBatches(previous document, order []string) []document {
 	prior := items(previous["resolution_batches"])
 	if previous["resolution_batches"] == nil {
 		legacy := []string{}
+		occurrences := map[string]int{}
 		for _, subject := range items(previous["subjects"]) {
 			for _, q := range items(subject["questions"]) {
+				id := resolutionQuestionID(subject, q, occurrences)
 				if len(stringsValue(object(q["search"])["candidate_claims"])) > 0 {
-					legacy = append(legacy, questionID(subject, q))
+					legacy = append(legacy, id)
 				}
 			}
 		}

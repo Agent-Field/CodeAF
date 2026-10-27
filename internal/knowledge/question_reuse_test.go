@@ -11,11 +11,12 @@ import (
 
 func TestKnowledgeNewQuestionEvidenceDoesNotRepurchaseUnchangedGroups(t *testing.T) {
 	for _, size := range []int{6, 30} {
-		t.Run(fmt.Sprint(size), func(t *testing.T) { checkQuestionGroupReuse(t, size) })
+		t.Run(fmt.Sprint(size), func(t *testing.T) { checkQuestionGroupReuse(t, size, false) })
 	}
+	t.Run("same-text questions", func(t *testing.T) { checkQuestionGroupReuse(t, 6, true) })
 }
 
-func checkQuestionGroupReuse(t *testing.T, size int) {
+func checkQuestionGroupReuse(t *testing.T, size int, duplicateText bool) {
 	profile := t.TempDir()
 	v := knowledge.Open(profile)
 	if err := v.StartBuild(); err != nil {
@@ -105,7 +106,13 @@ func checkQuestionGroupReuse(t *testing.T, size int) {
 		}
 		if s["scope"] != "Reference" && s["scope"] != "Crosscut" {
 			for i := 0; i < 5; i++ {
-				qs = append(qs, map[string]any{"question": fmt.Sprintf("%s operating question %d?", s["scope"], i), "claims": s["claims"], "search_terms": terms})
+				ordinal := i
+				search := terms
+				if duplicateText {
+					ordinal = 0
+					search = append(append([]any{}, terms...), fmt.Sprintf("detail%d", i))
+				}
+				qs = append(qs, map[string]any{"question": fmt.Sprintf("%s operating question %d?", s["scope"], ordinal), "claims": s["claims"], "search_terms": search})
 			}
 		}
 		return map[string]any{"sections": []any{map[string]any{"heading": "Operations", "paragraphs": []any{map[string]any{"text": s["scope"].(string) + " operating guidance.", "claims": s["claims"]}}}}, "questions": qs}
