@@ -8,11 +8,29 @@ import (
 	"sync"
 )
 
-func curatePublishedGuides(draft document, model compilerModel) (document, error) {
+func curatePublishedGuides(draft document, model compilerModel, unchangedLearning bool) (document, error) {
+	overrides, err := readOverrides(model.db)
+	if err != nil {
+		return nil, err
+	}
+	previous, err := stateDocument(model.db, "published")
+	if err != nil {
+		return nil, err
+	}
+	priorNotes := index(items(previous["notes"]))
 	notes := append([]document{}, items(draft["notes"])...)
 	indices := []int{}
 	for i, note := range notes {
-		if textValue(note["kind"]) == "subject" && !guideWithinLimits(items(note["sections"])) {
+		id := textValue(note["id"])
+		if prior := priorNotes[id]; unchangedLearning && prior != nil && prior["editorial_core_hash"] == nil {
+			prior = clone(prior)
+			prior["editorial_core_hash"] = guideCoreFingerprint(items(note["sections"]))
+			priorNotes[id] = prior
+		}
+		if _, overridden := overrides[textValue(note["id"])]; overridden {
+			continue
+		}
+		if textValue(note["kind"]) == "subject" && (priorNotes[textValue(note["id"])] != nil || !guideWithinLimits(items(note["sections"])) || hasGuideAnswers(items(note["sections"]))) {
 			indices = append(indices, i)
 		}
 	}
@@ -40,12 +58,13 @@ func curatePublishedGuides(draft document, model compilerModel) (document, error
 					return
 				}
 				note := clone(notes[indices[i]])
-				sections, err := curateGuideSections(note, items(note["sections"]), workerModel)
+				sections, err := integrateGuideAnswers(note, priorNotes[textValue(note["id"])], draft, workerModel)
 				if err != nil {
 					results[i].err = err
 					cancel()
 					return
 				}
+				note["editorial_core_hash"] = guideCoreFingerprint(items(note["sections"]))
 				note["sections"] = sections
 				if len(sections) == 0 {
 					note["learning_state"] = "needs_evidence"

@@ -757,6 +757,30 @@ seconds. Stable source IDs prevent duplicate records during retry or journal
 recovery. A failed or interrupted provider request can still incur charges;
 retry safety does not mean every network request is billed only once.
 
+## Updating existing knowledge pages and sections
+
+Reviewed additions and new core drafts are checked for relevance to the specific
+concept, then compared with the existing guide. A shared project is not enough
+to make a paragraph fit. This also applies to updates without answered questions. Missing details belong
+in the section that already explains the topic. Repeated explanations and
+one-off run, issue, or machine reports remain linked evidence. A distinct lasting
+topic can receive a new section.
+
+Useful additions to existing sections are woven into the section prose,
+consolidating overlapping explanations instead of appending another summary. Separate checks require support for the new prose and preservation of
+the useful meaning of every input, including still-supported existing guidance.
+Unchanged sections remain intact where possible. The reading word limit is a
+target: preserving reviewed useful meaning takes priority over trimming to fit.
+Oversized integration inputs stop before the integration request; earlier
+bounded selection may already have incurred charges.
+If an update fails these checks, the previous
+published guide stays visible. Original source records and citations remain
+available. Human edits and deleted pages keep their existing protection.
+
+Existing built libraries receive the same cleanup in the background after an
+upgrade; their saved history is not imported again for that cleanup. Editorial
+model work can incur charges, while unchanged validated work can be reused.
+
 ## memories — what is held true, and the Memories tab (it was called Memory)
 
 The lines codeaf keeps in front of every conversation — what you told it, what the model

@@ -323,7 +323,13 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		if pending == 0 && !flag(status["needs_update"]) {
-			break
+			projection, err := stateDocument(db, "projection")
+			if err != nil {
+				return err
+			}
+			if total == 0 || projection["version"] == knowledgeProjectionVersion {
+				break
+			}
 		}
 		job["phase"] = string(BuildRunning)
 		if err = saveState(db, "job", job); err != nil {

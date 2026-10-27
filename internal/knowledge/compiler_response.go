@@ -86,6 +86,37 @@ func validateCompilerResponse(role string, result document) error {
 			}
 		}{}
 		required = "sections"
+	case "review_additions":
+		target = &struct{ Checks []modelCheck }{}
+		required = "checks"
+	case "integrate_answers":
+		target = &struct {
+			Decisions []struct{ ID, Action, Section, Heading, Reason string }
+		}{}
+		required = "decisions"
+	case "merge_integration":
+		target = &struct {
+			Sections []struct {
+				Heading    string
+				Paragraphs []struct {
+					Text   string
+					Inputs []string
+				}
+			}
+		}{}
+		required = "sections"
+	case "review_integration":
+		target = &struct {
+			Checks []struct {
+				ID, Reason        string
+				Supported, Useful bool
+			}
+			Coverage []struct {
+				ID, Reason string
+				Preserved  bool
+			}
+		}{}
+		required = "checks"
 	case "understand":
 		target = &struct {
 			Sections  []modelSection
@@ -187,6 +218,18 @@ func validateCompilerResponse(role string, result document) error {
 }
 
 func validateCompilerReferences(role string, payload, response document) error {
+	if role == "review_additions" {
+		return validateAdditionReview(payload, response)
+	}
+	if role == "merge_integration" {
+		return validateIntegrationMerge(payload, response)
+	}
+	if role == "review_integration" {
+		return validateIntegrationReview(payload, response)
+	}
+	if role == "integrate_answers" {
+		return validateAnswerIntegration(payload, response)
+	}
 	if role == "curate_guide" {
 		return validateGuideSelection(payload, response)
 	}

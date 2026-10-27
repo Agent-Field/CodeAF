@@ -163,6 +163,20 @@ func TestKnowledgeRepeatedConceptAssignmentsRetainAllNewEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	withConcurrentKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			checks := []any{}
+			for _, raw := range p["answers"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "useful": true})
+			}
+			return map[string]any{"checks": checks}
+		}
+		if p["integration_policy"] != nil {
+			return fixtureIntegrateAll(p)
+		}
+		if r := fixtureMergedAnswer(p); r != nil {
+			return r
+		}
+
 		if messages, ok := p["messages"].([]any); ok {
 			claims := []any{}
 			for _, raw := range messages {

@@ -11,6 +11,8 @@ module. Product behavior belongs in the [Memory manual](../internal/manual/chat/
 | Discover and read saved history | `internal/session/knowledge_history.go` |
 | Admit immutable sources and publish readable pages | `internal/knowledge/store.go` |
 | Compile evidence into maintained concept guides | `internal/knowledge/compiler.go` |
+| Reuse validated evidence checks across updates | `internal/knowledge/compiler_questions.go`, `internal/knowledge/compiler_provider.go` |
+| Integrate reviewed additions into maintained guides | `internal/knowledge/compiler_candidate_review.go`, `internal/knowledge/compiler_answer_integration.go`, `internal/knowledge/compiler_integration_merge.go` |
 | Preserve edits and deletion intent | `internal/knowledge/edit.go` |
 | Agent knowledge tools and local recall | `internal/session/knowledge_tools.go`, `internal/knowledge/compiler_recall.go` |
 | Memory rendering, navigation, and editor | `internal/tui3/knowledge*.go` |
@@ -77,6 +79,32 @@ Interrupted work retains admitted sources and completed checkpoints. Invalid
 provider output cannot become a valid cached result or a partial visible
 publication. Every role uses the selected knowledge model; a fallback is refused.
 Keep credentials and source content out of visible errors.
+
+Incremental checks reuse validated results only for a matching complete request.
+Changed evidence still reaches the compiler. Background provider requests retain
+cache affinity within a profile, model, and compiler role. These optimizations
+remain inside the vault; callers do not manage cache identity or invalidate
+compiler checkpoints themselves.
+
+Reviewed additions and changed core drafts are screened against the specific
+concept guide before placement. Sharing a project does not establish relevance.
+This maintenance also runs when no question has an accepted answer.
+A size-limited update merges overlapping explanations with separate support and
+meaning-coverage checks. Still-supported paragraphs from the previous publication
+remain mandatory coverage inputs; refreshed evidence metadata preserves current
+conflicts. Unchanged core context reuses maintained prose only while all original
+support remains valid. Changed context is reviewed again. Useful additions are woven into their existing sections with support and meaning
+review, including when they already fit the reading target. Only affected
+sections are rewritten when the remaining guide fits. A budget failure can widen
+the rewrite to the whole guide, with two attempts per scope. Semantic rejection
+cannot trigger that fallback. Formatting consolidation is reviewed as part of
+the actual proposed prose.
+The word limit is a target for maintenance: after a bounded repair, a reviewed
+merge may retain up to its input word count to preserve useful meaning. Section
+and paragraph limits still apply. Oversized integration inputs stop before integration requests; bounded selection
+may already have incurred model charges. Failed updates keep the previous publication visible.
+Projection policy upgrades can repair existing guides without importing history
+again; the background worker owns that work through the normal vault lifecycle.
 
 ## Reader responsiveness
 

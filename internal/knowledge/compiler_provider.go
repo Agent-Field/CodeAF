@@ -40,38 +40,11 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown knowledge role %q", role)
 	}
+	if result, found, err := m.cached(role, payload); found || err != nil {
+		return result, err
+	}
+	requestID := compilerRequestID(m.model, role, payload)
 	reasoning := document{"effort": "none"}
-	requestVersion := "knowledge-3"
-	if role == "discover" || role == "organize_subjects" || role == "consolidate_subjects" {
-		requestVersion = "knowledge-5"
-	}
-	if role == "discover" || role == "organize_subjects" {
-		requestVersion = "knowledge-6"
-	}
-	requestID := identity([]any{m.model, requestVersion, prompt, payload})
-	requestID = identity([]any{requestID, reasoning})
-	requestID = identity([]any{requestID, document{"max_tokens": 8000}})
-	var cached string
-	cacheErr := m.db.QueryRow("SELECT payload FROM receipts WHERE id=?", requestID).Scan(&cached)
-	if cacheErr == nil {
-		var prior document
-		if err := json.Unmarshal([]byte(cached), &prior); err != nil {
-			return nil, err
-		}
-		if textValue(prior["model"]) != m.model {
-			return nil, errors.New("knowledge cached model does not match selected model")
-		}
-		result := object(prior["result"])
-		if err := validateCompilerResponse(role, result); err != nil {
-			return nil, err
-		}
-		if err := validateCompilerReferences(role, payload, result); err != nil {
-			return nil, err
-		}
-		return result, nil
-	} else if cacheErr != sql.ErrNoRows {
-		return nil, cacheErr
-	}
 	if m.key == "" {
 		return nil, errors.New("knowledge compilation requires an OpenRouter API key")
 	}
@@ -95,6 +68,7 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	}
 	served := &provider.ServedEndpoint{}
 	ctx := provider.WithRole(m.ctx, lanes.RoleMemory)
+	ctx = provider.WithCacheKey(ctx, "knowledge:"+identity([]any{m.root, m.model, role}))
 	ctx = provider.WithServedEndpoint(ctx, served)
 	ctx = provider.WithCallTag(ctx, "memory")
 	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
@@ -153,3 +127,43 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	return result, nil
 }
 func mustJSON(value any) string { b, _ := json.Marshal(value); return string(b) }
+
+func compilerRequestID(model, role string, payload document) string {
+	prompt := compilerPrompts[role]
+	requestVersion := "knowledge-3"
+	if role == "discover" || role == "organize_subjects" || role == "consolidate_subjects" {
+		requestVersion = "knowledge-5"
+	}
+	if role == "discover" || role == "organize_subjects" {
+		requestVersion = "knowledge-6"
+	}
+	requestID := identity([]any{model, requestVersion, prompt, payload})
+	requestID = identity([]any{requestID, document{"effort": "none"}})
+	requestID = identity([]any{requestID, document{"max_tokens": 8000}})
+	return requestID
+}
+
+func (m compilerModel) cached(role string, payload document) (document, bool, error) {
+	var cached string
+	cacheErr := m.db.QueryRow("SELECT payload FROM receipts WHERE id=?", compilerRequestID(m.model, role, payload)).Scan(&cached)
+	if cacheErr == nil {
+		var prior document
+		if err := json.Unmarshal([]byte(cached), &prior); err != nil {
+			return nil, false, err
+		}
+		if textValue(prior["model"]) != m.model {
+			return nil, false, errors.New("knowledge cached model does not match selected model")
+		}
+		result := object(prior["result"])
+		if err := validateCompilerResponse(role, result); err != nil {
+			return nil, false, err
+		}
+		if err := validateCompilerReferences(role, payload, result); err != nil {
+			return nil, false, err
+		}
+		return result, true, nil
+	} else if cacheErr != sql.ErrNoRows {
+		return nil, false, cacheErr
+	}
+	return nil, false, nil
+}

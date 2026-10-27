@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
-func TestKnowledgeSelectsCompactInitialAndRefreshedGuidesWithoutChangingEvidence(t *testing.T) {
+func TestKnowledgeKeepsCompactGuideWhenLaterDraftsAreRejected(t *testing.T) {
 	v := knowledge.Open(t.TempDir())
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
@@ -18,9 +18,30 @@ func TestKnowledgeSelectsCompactInitialAndRefreshedGuidesWithoutChangingEvidence
 	var mu sync.Mutex
 	reviewed := map[string][]string{}
 	selections := 0
-	selectionSizes := []int{}
-	emptyChoice := false
+	admissions := 0
+	admissionSizes := []int{}
 	withConcurrentKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			mu.Lock()
+			admissions++
+			mu.Unlock()
+			count := len(p["answers"].([]any))
+			for _, raw := range p["existing_sections"].([]any) {
+				count += len(raw.(map[string]any)["paragraphs"].([]any))
+			}
+			mu.Lock()
+			admissionSizes = append(admissionSizes, count)
+			mu.Unlock()
+			if count > 48 {
+				t.Errorf("candidate review exceeded its context window: %d", count)
+			}
+			checks := []any{}
+			for _, raw := range p["answers"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "useful": false})
+			}
+			return map[string]any{"checks": checks}
+		}
+
 		if messages, ok := p["messages"].([]any); ok {
 			claims := []any{}
 			for _, raw := range messages {
@@ -34,15 +55,11 @@ func TestKnowledgeSelectsCompactInitialAndRefreshedGuidesWithoutChangingEvidence
 		}
 		if paragraphs, ok := p["paragraphs"].([]any); ok {
 			if _, curation := paragraphs[0].(map[string]any)["heading"]; curation {
-				if emptyChoice {
-					return map[string]any{"sections": []any{}}
-				}
 				if len(paragraphs) > 48 {
 					t.Errorf("curation request contains %d candidates", len(paragraphs))
 				}
 				mu.Lock()
 				selections++
-				selectionSizes = append(selectionSizes, len(paragraphs))
 				mu.Unlock()
 				ids := []any{}
 				for _, raw := range paragraphs[:min(8, len(paragraphs))] {
@@ -124,7 +141,22 @@ func TestKnowledgeSelectsCompactInitialAndRefreshedGuidesWithoutChangingEvidence
 			t.Fatal(err)
 		}
 	}
+	content := func(id string) string {
+		page, err := v.Read(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := []string{}
+		for _, section := range page.Sections {
+			parts = append(parts, section.Heading)
+			for _, p := range section.Paragraphs {
+				parts = append(parts, p.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
 	original := check(161)
+	originalContent := content(original)
 	beforeRefresh := selections
 	if err := v.Capture(knowledge.Source{ID: "new-policy", Session: "chat", Role: "user", TS: "2026-10-26T12:00:00Z", Text: "Cedar queues now show a policy review reminder."}); err != nil {
 		t.Fatal(err)
@@ -132,38 +164,27 @@ func TestKnowledgeSelectsCompactInitialAndRefreshedGuidesWithoutChangingEvidence
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
 	}
-	if check(162) != original || selections <= beforeRefresh || beforeRefresh == 0 {
-		t.Fatal("initial and refreshed guides were not both curated under their stable identity")
+	if check(162) != original || content(original) != originalContent || selections != beforeRefresh || beforeRefresh == 0 || admissions == 0 {
+		t.Fatal("later rejected drafts replaced the compact guide or bypassed review")
 	}
 	sawFullBatch := false
-	for _, size := range selectionSizes {
+	for _, size := range admissionSizes {
 		if size == 48 {
 			sawFullBatch = true
 		}
 	}
-	if !sawFullBatch || selections-beforeRefresh < 3 {
-		t.Fatalf("refresh did not exercise hierarchical selection over72 candidates: sizes=%v", selectionSizes)
+	if !sawFullBatch || beforeRefresh == 0 {
+		t.Fatalf("refresh did not exercise bounded candidate review over raw history: sizes=%v", admissionSizes)
 	}
-	emptyChoice = true
 	if err := v.Capture(knowledge.Source{ID: "final-policy", Session: "chat", Role: "user", TS: "2026-10-26T13:00:00Z", Text: "Cedar queues require a final policy check."}); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
 	}
-	state, err := v.Snapshot()
-	if err != nil {
-		t.Fatal(err)
+	if check(163) != original || content(original) != originalContent {
+		t.Fatal("rejected draft changed canonical guide identity")
 	}
-	for _, page := range state.Pages {
-		if page.Kind == "subject" && page.ID == original {
-			if len(page.Sections) != 0 || page.LearningState != "needs_evidence" || len(page.Evidence) != 163 {
-				t.Fatalf("valid empty final selection retained old prose or lost evidence: sections=%d state=%s sources=%d", len(page.Sections), page.LearningState, len(page.Evidence))
-			}
-			return
-		}
-	}
-	t.Fatal("empty final selection lost canonical guide identity")
 }
 
 func TestKnowledgeRejectsUnsafeGuideSelectionAndRetainsRetryProgress(t *testing.T) {
@@ -273,7 +294,7 @@ func TestKnowledgeRejectsUnsafeGuideSelectionAndRetainsRetryProgress(t *testing.
 	}
 }
 
-func TestKnowledgeGuideSelectionBoundsNonreducingContextAndCachedRetry(t *testing.T) {
+func TestKnowledgeGuideSelectionBoundsFirstNonemptyGuideAndCachedRetry(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		characters int
@@ -336,8 +357,6 @@ func TestKnowledgeGuideSelectionBoundsNonreducingContextAndCachedRetry(t *testin
 						}
 						sections = append(sections, map[string]any{"heading": fmt.Sprintf("Procedure %d", i), "paragraphs": paragraphs})
 					}
-				} else {
-					sections = append(sections, map[string]any{"heading": "Queues", "paragraphs": []any{map[string]any{"text": "Cedar queues jobs.", "claims": refs}}})
 				}
 				return map[string]any{"action": "write", "sections": sections}
 			})
@@ -399,6 +418,36 @@ func TestKnowledgeFinalGuideBudgetIncludesReviewedQuestionAnswers(t *testing.T) 
 	answerSelected := false
 	answer := "Cedar queues retry failed jobs."
 	withConcurrentKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			checks := []any{}
+			for _, raw := range p["answers"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "useful": true})
+			}
+			return map[string]any{"checks": checks}
+		}
+
+		if p["merge_policy"] != nil {
+			paragraphs := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				candidate := raw.(map[string]any)
+				answerSelected = answerSelected || candidate["text"] == answer
+				paragraphs = append(paragraphs, map[string]any{"text": candidate["text"], "inputs": []any{candidate["id"]}})
+			}
+			return map[string]any{"sections": []any{map[string]any{"heading": "Queue practice 0", "paragraphs": paragraphs}}}
+		}
+		if p["coverage_policy"] != nil {
+			coverage, checks := []any{}, []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				coverage = append(coverage, map[string]any{"id": raw.(map[string]any)["id"], "preserved": true})
+			}
+			for _, raw := range p["proposed"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "supported": true, "useful": true})
+			}
+			return map[string]any{"checks": checks, "coverage": coverage}
+		}
+		if p["integration_policy"] != nil {
+			return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "new_section", "heading": "Retry behavior"}}}
+		}
 		if messages, ok := p["messages"].([]any); ok {
 			s := messages[0].(map[string]any)
 			return map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": s["text"], "scope": "Cedar", "topic": "Queues", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}}}}

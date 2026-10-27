@@ -15,6 +15,9 @@ import (
 )
 
 func knowledgeModel(profile string) string { return config.KnowledgeModelAt(profile) }
+
+const knowledgeProjectionVersion = "knowledge-projection-4"
+
 func (v *Vault) compile(ctx context.Context, key string, force bool) (err error) {
 	if !v.Enabled() {
 		return ErrDisabled
@@ -107,18 +110,21 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	if textValue(projection["input_hash"]) == digest && !hasPendingRefinement(learning) {
+	needsLearning := textValue(projection["input_hash"]) != digest || hasPendingRefinement(learning)
+	if !needsLearning && projection["version"] == knowledgeProjectionVersion {
 		_, err = db.Exec("DELETE FROM state WHERE key='organization_boundary'")
 		return err
 	}
-	previousLearning := clone(learning)
-	learning, err = extendLearning(vault, learning, model)
-	if err != nil {
-		return err
-	}
-	learning, err = refineLearning(vault, learning, previousLearning, model)
-	if err != nil {
-		return err
+	if needsLearning {
+		previousLearning := clone(learning)
+		learning, err = extendLearning(vault, learning, model)
+		if err != nil {
+			return err
+		}
+		learning, err = refineLearning(vault, learning, previousLearning, model)
+		if err != nil {
+			return err
+		}
 	}
 	registry, err := stateDocument(db, "topics")
 	if err != nil {
@@ -132,7 +138,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	published, err = curatePublishedGuides(published, model)
+	published, err = curatePublishedGuides(published, model, !needsLearning)
 	if err != nil {
 		return err
 	}

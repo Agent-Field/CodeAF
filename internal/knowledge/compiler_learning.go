@@ -226,7 +226,7 @@ func extendLearning(vault, previous document, model compilerModel) (document, er
 	if err := synthesizeSubjects(vault, subjects, pending, model); err != nil {
 		return nil, err
 	}
-	if err := resolveLearningQuestions(subjects, active, model); err != nil {
+	if err := resolveLearningQuestions(result, previous, subjects, active, model); err != nil {
 		return nil, err
 	}
 	result["discovery_inputs"] = discoveryInputs
@@ -653,102 +653,6 @@ func synthesizeSubjects(vault document, subjects []document, pending []int, mode
 	}
 	for i, result := range results {
 		subjects[pending[i]] = result.subject
-	}
-	return nil
-}
-
-func resolveLearningQuestions(subjects []document, claims map[string]document, model compilerModel) error {
-	claimIDs := []string{}
-	for id := range claims {
-		claimIDs = append(claimIDs, id)
-	}
-	sort.Strings(claimIDs)
-	corpus := []any{}
-	for _, id := range claimIDs {
-		c := claims[id]
-		corpus = append(corpus, []any{id, c["text"], c["kind"], c["scope"]})
-	}
-	digest := identity(corpus)
-	type candidate struct {
-		question document
-		refs     []string
-	}
-	pending := []candidate{}
-	for _, s := range subjects {
-		for _, q := range items(s["questions"]) {
-			if textValue(object(q["search"])["corpus_hash"]) == digest {
-				continue
-			}
-			terms := words(strings.Join(stringsValue(q["search_terms"]), " "))
-			for _, stop := range strings.Fields("the and how are what does for with this that from can") {
-				delete(terms, stop)
-			}
-			type scored struct {
-				id    string
-				score int
-			}
-			ranked := []scored{}
-			for _, id := range claimIDs {
-				if contains(stringsValue(s["claims"]), id) {
-					continue
-				}
-				score := 0
-				for term := range words(textValue(claims[id]["text"])) {
-					if terms[term] {
-						score++
-					}
-				}
-				if score >= 2 {
-					ranked = append(ranked, scored{id, score})
-				}
-			}
-			sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
-			refs := []string{}
-			for _, r := range ranked[:min(6, len(ranked))] {
-				refs = append(refs, r.id)
-			}
-			q["search"] = document{"corpus_hash": digest, "candidate_claims": refs, "method": "bounded lexical search of active extracted claims; raw sources not exhaustively searched"}
-			q["state"] = "unresolved_in_inspected_evidence"
-			delete(q, "related_claims")
-			if len(refs) > 0 {
-				pending = append(pending, candidate{q, refs})
-			}
-		}
-	}
-	for start := 0; start < len(pending); start += 16 {
-		batch := pending[start:min(len(pending), start+16)]
-		questions := []document{}
-		ids := []string{}
-		for i, c := range batch {
-			questions = append(questions, document{"id": fmt.Sprintf("Q%d", i), "question": c.question["question"], "candidates": c.refs})
-			ids = append(ids, c.refs...)
-		}
-		selected := []document{}
-		for _, id := range unique(ids) {
-			selected = append(selected, choose(claims[id], "id", "text", "scope", "kind"))
-		}
-		response, err := model.call("resolve_questions", document{"questions": questions, "claims": selected})
-		if err != nil {
-			return err
-		}
-		for _, match := range items(response["matches"]) {
-			for i, c := range batch {
-				if textValue(match["id"]) != fmt.Sprintf("Q%d", i) || textValue(match["relation"]) != "answers" {
-					continue
-				}
-				refs := stringsValue(match["claims"])
-				valid := len(refs) > 0
-				for _, id := range refs {
-					if !contains(c.refs, id) {
-						valid = false
-					}
-				}
-				if valid {
-					c.question["state"] = "answer_candidate_found"
-					c.question["related_claims"] = unique(refs)
-				}
-			}
-		}
 	}
 	return nil
 }

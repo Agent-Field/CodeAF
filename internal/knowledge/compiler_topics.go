@@ -428,29 +428,7 @@ func projectSubjects(vault, learning document) (document, error) {
 				pending = append(pending, id)
 			}
 		}
-		conflictIDs := map[string]bool{}
-		for _, c := range items(subject["conflicts"]) {
-			if textValue(c["state"]) == "unresolved" && subset(stringsValue(c["claims"]), active) {
-				for _, id := range stringsValue(c["claims"]) {
-					conflictIDs[id] = true
-				}
-			}
-		}
-		for _, s := range sections {
-			for _, p := range items(s["paragraphs"]) {
-				evidence := append([]document{}, items(p["evidence"])...)
-				kinds := []string{}
-				conflict := false
-				for _, id := range stringsValue(p["claims"]) {
-					if c := active[id]; c != nil {
-						kinds = append(kinds, textValue(c["kind"]))
-						evidence = append(evidence, items(c["evidence"])...)
-					}
-					conflict = conflict || conflictIDs[id]
-				}
-				p["evidence_basis"] = merge(evidenceBasis(sources, evidence), document{"claim_kinds": sortedUnique(kinds), "unresolved_conflict": conflict})
-			}
-		}
+		refreshGuideEvidence(sections, items(subject["conflicts"]), active, sources)
 		roots := map[string]int{}
 		links := []document{}
 		related := map[string]bool{}
@@ -498,4 +476,30 @@ func subjectFolder(subject document, fallback string) []string {
 		return folder
 	}
 	return []string{fallback}
+}
+
+func refreshGuideEvidence(sections, conflicts []document, active map[string]document, sources document) {
+	conflictIDs := map[string]bool{}
+	for _, c := range conflicts {
+		if textValue(c["state"]) == "unresolved" && subset(stringsValue(c["claims"]), active) {
+			for _, id := range stringsValue(c["claims"]) {
+				conflictIDs[id] = true
+			}
+		}
+	}
+	for _, s := range sections {
+		for _, p := range items(s["paragraphs"]) {
+			evidence := append([]document{}, items(p["evidence"])...)
+			kinds := []string{}
+			conflict := false
+			for _, id := range stringsValue(p["claims"]) {
+				if c := active[id]; c != nil {
+					kinds = append(kinds, textValue(c["kind"]))
+					evidence = append(evidence, items(c["evidence"])...)
+				}
+				conflict = conflict || conflictIDs[id]
+			}
+			p["evidence_basis"] = merge(evidenceBasis(sources, evidence), document{"claim_kinds": sortedUnique(kinds), "unresolved_conflict": conflict})
+		}
+	}
 }
