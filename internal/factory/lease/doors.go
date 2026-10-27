@@ -94,8 +94,9 @@ func (d *Doors) Launch(id int) error {
 	}
 	// THE REPOSITORY IS READ AS A PERSON'S START READS IT: with the factory's
 	// rules unread nothing starts; with only the repository's file unread the
-	// job keeps the steps it has.
+	// job keeps the steps it has and is marked so its plan waits for a person.
 	var file *pipeline.File
+	unread := false
 	if d.read != nil {
 		f, err := d.read(context.Background(), factory.RepoOf(it))
 		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
@@ -104,6 +105,7 @@ func (d *Doors) Launch(id int) error {
 		if err == nil {
 			file = &f
 		}
+		unread = err != nil
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held != nil {
@@ -122,6 +124,21 @@ func (d *Doors) Launch(id int) error {
 		// these steps just below.
 		if file != nil {
 			pipeline.StampSteps(it, *file)
+		}
+		// EVERY START CARRIES ITS START RULES ([factory.Item.StartRules]), so
+		// the approval after the plan is checked whichever door started it.
+		// One a door already stamped keeps them.
+		if it.StartRules == nil {
+			switch {
+			case file != nil:
+				it.StartRules = pipeline.StartRulesOf(*file)
+			case unread:
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true}
+				it.Note(now, "Started with the repository's rules unread; its plan will wait for you")
+			default:
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
+			}
+			it.RuleHold = ""
 		}
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
