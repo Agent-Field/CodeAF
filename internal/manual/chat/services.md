@@ -1,4 +1,4 @@
-# Providers — the places models come from
+# Providers and services — the places models come from
 
 Older builds called these **services** (or connections, or model services); this page and
 the surfaces it describes now say **provider**. The word `codeaf services` in a shell is
