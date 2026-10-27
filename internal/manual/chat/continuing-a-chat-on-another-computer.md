@@ -330,9 +330,11 @@ Once the chat arrives, you can send your next message immediately. The window ke
 
 A running chat on the other computer never moves automatically. Neither does a named chat, `--host`, `--at` or `--session`, a chat with unsaved local edits, or a launch while another local window already has a chat open. If the service cannot be reached or another device got there first, Home says `other machines unreachable` or `another device continued this chat first` and keeps the local chat as it was.
 
-## Why an older chat could not be copied
+## Why an older chat could not be copied — symbolic links, home folder
 
 An older chat whose folder is a symbolic link, or whose saved conversation state contains symbolic links, is left untouched. codeaf refuses to copy those links because writing through one could change the original. The original still opens with an older codeaf.
+
+An older chat that worked in your home folder, or in a folder that holds it, is not copied either. A copy saves the whole folder as it stands, and your home folder is not one project: saving all of it takes minutes and holds up every open chat's tools meanwhile. That chat keeps opening where it is, on this computer only, and it does not move to your other devices. Chats with their own folder are copied as usual.
 
 ## A save has not reached the other computer yet — upload failed or another device continued first
 

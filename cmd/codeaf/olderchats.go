@@ -132,7 +132,7 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 		return cell.Cell{}, session.Meta{}, false
 	}
 	meta, _ := session.LoadMeta(dir)
-	if meta.LastUserAt.IsZero() || time.Since(meta.LastUserAt) > olderChatRecent || session.InUse(filepath.Join(dir, "transcript.jsonl")) {
+	if meta.LastUserAt.IsZero() || time.Since(meta.LastUserAt) > olderChatRecent || session.InUse(filepath.Join(dir, "transcript.jsonl")) || !olderChatCopyable(meta) {
 		return cell.Cell{}, session.Meta{}, false
 	}
 	c, err := o.copy(ctx, dir)
@@ -150,6 +150,18 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 	return c, meta, true
 }
 
+// olderChatCopyable says a copy of the chat may seal its folder.
+//
+// A CHAT IN THE HOME FOLDER IS NOT COPIED. A copy's first seal has no record of
+// what changed, so it walks the chat's whole folder, and the engine holds its
+// one writer for the shared store while it does. Over the home folder that walk
+// takes minutes, and every open chat's tools wait behind it until they time out.
+// The home folder is not a project (session.HoldsHomeFolder); such a chat keeps
+// opening where it is. A chat with its own folder is always copyable.
+func olderChatCopyable(meta session.Meta) bool {
+	return meta.Owned || !session.HoldsHomeFolder(meta.Workspace)
+}
+
 // movablePlace resolves a completed copy or prepares one when the person opens
 // an older chat. Selection runs on the existing asynchronous opening door.
 func movablePlace(ctx context.Context, place session.Place) (session.Place, error) {
@@ -163,6 +175,9 @@ func movablePlace(ctx context.Context, place session.Place) (session.Place, erro
 	copied := cell.Copied(original)
 	if copied == original {
 		if _, err := os.Stat(filepath.Join(original, "transcript.jsonl")); os.IsNotExist(err) {
+			return place, nil
+		}
+		if meta, err := session.LoadMeta(original); err == nil && !olderChatCopyable(meta) {
 			return place, nil
 		}
 		c, err := copyOlderChat(ctx, original)

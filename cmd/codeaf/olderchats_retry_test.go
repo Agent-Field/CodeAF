@@ -59,3 +59,34 @@ func TestAFailedOlderChatCopyWaitsForTheChatToChange(t *testing.T) {
 		t.Fatalf("a chat that changed after its copy failed made %d copy attempts in total, want 2", attempts)
 	}
 }
+
+// TestAnOlderChatInTheHomeFolderIsNotCopied keeps the copier off a chat whose
+// folder is the home folder. A copy seals the chat's folder, and sealing the home
+// folder walks every file under it while holding the engine's one writer, so
+// every open chat's tools waited behind it until they timed out.
+func TestAnOlderChatInTheHomeFolderIsNotCopied(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	person := t.TempDir()
+	t.Setenv("HOME", person)
+	original := filepath.Join(home.Dir(), "v3", "projects", "home", "home-session")
+	if err := os.MkdirAll(original, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(original, "transcript.jsonl"), []byte(`{"type":"session","version":1,"id":"home-session"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(original, session.Meta{ID: "home-session", LastUserAt: time.Now(), Workspace: person}); err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	chats := olderChats{copy: func(context.Context, string) (cell.Cell, error) {
+		attempts++
+		return cell.Cell{}, nil
+	}}
+	if _, _, ok := chats.visit(t.Context(), original); ok {
+		t.Fatal("a chat in the home folder was reported as copied")
+	}
+	if attempts != 0 {
+		t.Fatalf("a chat in the home folder made %d copy attempts, want 0", attempts)
+	}
+}
