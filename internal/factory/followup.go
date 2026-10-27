@@ -275,6 +275,10 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	// questions, Manual control and exhausted attempts retain their own doors.
 	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobSpent(*it) && f.Attempt < f.Limit {
 		f.State, f.BlockedBy = "watching", ""
+		f.Reason = "Budget raised. Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
+		if it.Stream != nil {
+			it.Stream.Phases[EnsureFollowPR(it)].Note = f.Reason
+		}
 		releasedBudget = true
 	}
 	if f.State == "needs_you" || f.State == "queued" || f.State == "running" || f.State == "waiting_approval" {
@@ -428,7 +432,15 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 // grants another repair attempt or authorizes publication.
 func parkFollowBudget(it *Item) bool {
 	f := it.FollowUp
-	changed := f.State != "needs_you" || f.BlockedBy != FollowBlockedBudget
-	f.State, f.BlockedBy, f.Reason = "needs_you", FollowBlockedBudget, "Job budget reached. Raise Budget to continue following this PR. GitHub observations continue."
+	const why = "Job budget reached. Raise Budget to continue following this PR. GitHub observations continue."
+	changed := f.State != "needs_you" || f.BlockedBy != FollowBlockedBudget || f.Reason != why
+	f.State, f.BlockedBy, f.Reason = "needs_you", FollowBlockedBudget, why
+	// The Follow PR step says the same, so its note never still reads
+	// "watching" while the job waits on the budget.
+	if it.Stream != nil {
+		i := EnsureFollowPR(it)
+		changed = changed || it.Stream.Phases[i].Note != why
+		it.Stream.Phases[i].Note = why
+	}
 	return changed
 }
