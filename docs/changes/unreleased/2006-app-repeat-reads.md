@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The desktop's order list and process output read less on every refresh
-pr: 0
+pr: 2006
 surface: [engine]
 invalidates:
   - "A warm orders list ran one identical Asking query per automation (2 + A queries). It now reads the asking runs once and shares that snapshot across list, ask and watch projections: 3 queries for any number of orders."
