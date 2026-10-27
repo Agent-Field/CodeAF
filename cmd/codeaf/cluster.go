@@ -45,20 +45,20 @@ func runCluster(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), clusterctl.ForwardTimeout)
 	defer cancel()
-	return clusterCommand(ctx, s, args[0], os.Stdout)
+	return explainSyncUnreachable(clusterCommand(ctx, s, args[0], os.Stdout), s.Relay)
 }
 func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writer) error {
 	if verb == "lead" {
 		r, err := c.LeadCluster(ctx, 0)
 		if err != nil {
-			return explainRemovedDevice(err)
+			return explainSyncUnreachable(explainRemovedDevice(err), "")
 		}
 		_, err = fmt.Fprintf(out, "computer %d is coordinating · term %d · revision %d · read barrier %d\n", r.Node, r.Term, r.Revision, r.Barrier)
 		return err
 	}
 	s, err := c.ClusterStatus(ctx)
 	if err != nil {
-		return explainRemovedDevice(err)
+		return explainSyncUnreachable(explainRemovedDevice(err), "")
 	}
 	if s.Leader != 0 {
 		fmt.Fprintf(out, "coordinator %d\n", s.Leader)

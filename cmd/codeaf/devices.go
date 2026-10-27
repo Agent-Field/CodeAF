@@ -18,6 +18,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -411,11 +413,30 @@ func (c chatsKind) explain(err error) error {
 	case errors.Is(err, wireauth.ErrSkew):
 		return errors.New(chatlist.ClockOff)
 	case errors.Is(err, directory.ErrUnreachable):
-		return fmt.Errorf("the sync service at %s cannot be reached from here — check this computer's network", c.relay)
+		return explainSyncUnreachable(err, c.relay)
 	case errors.Is(err, directory.ErrNotFound):
 		return errors.New("that device is not in your list any more — `codeaf devices` shows the ones there are")
 	}
 	return err
+}
+
+// explainSyncUnreachable keeps network failures in the same words at every
+// command door while preserving the cause for exit handling.
+func explainSyncUnreachable(err error, relay string) error {
+	if errors.Is(err, directory.ErrRevoked) {
+		return err
+	}
+	var request *url.Error
+	var network net.Error
+	if !errors.Is(err, directory.ErrUnreachable) && !errors.As(err, &request) && !errors.As(err, &network) {
+		return err
+	}
+	if relay == "" && request != nil {
+		if address, parseErr := url.Parse(request.URL); parseErr == nil {
+			relay = address.Scheme + "://" + address.Host
+		}
+	}
+	return toldLine{line: fmt.Sprintf("the sync service at %s cannot be reached from here — check this computer's network", relay), err: err}
 }
 
 // explainRemovedDevice gives every command the same removal and recovery words.
