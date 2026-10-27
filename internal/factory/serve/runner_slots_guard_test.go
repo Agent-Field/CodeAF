@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,7 +118,7 @@ func TestRunnerSettingsMarkEveryRefusalMadeBeforeTheFirstChange(t *testing.T) {
 		"no credential":   {"", "box", `{"slots":3}`, 401},
 		"bad credential":  {"no-such-token", "box", `{"slots":3}`, 401},
 		"slots too low":   {c.priya, "box", `{"slots":0,"require_live_capacity":true}`, 422},
-		"slots too high":  {c.priya, "box", `{"slots":9,"require_live_capacity":true}`, 422},
+		"slots too high":  {c.priya, "box", fmt.Sprintf(`{"slots":%d,"require_live_capacity":true}`, api.MaxRunnerSlots+1), 422},
 		"unknown field":   {c.priya, "box", `{"slots":3,"path":"/x"}`, 422},
 		"not an object":   {c.priya, "box", `3`, 422},
 		"unknown runner":  {c.priya, "ghost", `{"slots":3,"require_live_capacity":true}`, 404},

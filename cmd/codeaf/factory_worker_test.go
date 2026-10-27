@@ -402,7 +402,7 @@ func TestDesiredSlotsReadsWithTheWorkersOwnCredential(t *testing.T) {
 	if n, ok := dial.desiredSlots(context.Background()); !ok || n != 5 || auth != "Bearer worker-credential" {
 		t.Fatalf("saved credential: %d %v, asked with %q", n, ok, auth)
 	}
-	slots = 99
+	slots = api.MaxRunnerSlots + 50
 	if n, _ := dial.desiredSlots(context.Background()); n != api.MaxRunnerSlots {
 		t.Fatalf("an over-ceiling answer gave %d", n)
 	}

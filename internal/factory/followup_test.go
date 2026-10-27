@@ -65,8 +65,12 @@ func TestCIFollowUpNeverRunsAgainstUnknownOrChangingWork(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			it := followItem()
 			tc.change(&it)
-			if QueueCIFollowUp(&it, time.Now()) {
-				t.Fatal("unexpected follow-up")
+			state, phases := it.State, len(it.Stream.Phases)
+			// The follow-up may say what it waits for (its reason is
+			// monitoring, saved as a change); it never queues work.
+			QueueCIFollowUp(&it, time.Now())
+			if it.State != state || len(it.Stream.Phases) != phases || (it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running")) {
+				t.Fatalf("unexpected follow-up: state=%s phases=%d follow=%+v", it.State, len(it.Stream.Phases), it.FollowUp)
 			}
 		})
 	}

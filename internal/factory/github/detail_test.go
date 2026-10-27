@@ -47,7 +47,8 @@ func TestReadCarriesThePageCommentsFilesAndChecks(t *testing.T) {
 	if !reflect.DeepEqual(pr.Files, wantFiles) {
 		t.Fatalf("files %+v, want %+v", pr.Files, wantFiles)
 	}
-	wantRuns := []factory.CheckRun{{Name: "legacy CI", State: "success"}, {Name: "build", State: "in_progress", URL: "https://github.com/acme/api/runs/1"}}
+	// Each run says where GitHub reported it: a commit status or a check run.
+	wantRuns := []factory.CheckRun{{Source: "status", Name: "legacy CI", State: "success"}, {Source: "check_run", Name: "build", State: "in_progress", URL: "https://github.com/acme/api/runs/1"}}
 	if !reflect.DeepEqual(pr.CheckRuns, wantRuns) || pr.Checks != "ci running" {
 		t.Fatalf("check runs %+v (%q), want %+v", pr.CheckRuns, pr.Checks, wantRuns)
 	}

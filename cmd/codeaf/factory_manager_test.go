@@ -16,7 +16,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -105,7 +104,8 @@ func TestTheTalkDoorAndTheRunMakeOneManager(t *testing.T) {
 
 func TestARunReportsIntoTheManagersJournalAndReadsItsBrief(t *testing.T) {
 	st, web, profile := talkLab(t)
-	id, err := st.Add(context.Background(), factory.Item{Repo: "web", Title: "fix the ledger double count",
+	// Manual: the run lands for the person's approval (Auto would go on to publish).
+	id, err := st.Add(context.Background(), factory.Item{Repo: "web", Title: "fix the ledger double count", Autonomy: factory.AutonomyManual,
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, Ask: "plan it", Until: factory.UntilDone, On: true}}})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,8 @@ func TestARunReportsIntoTheManagersJournalAndReadsItsBrief(t *testing.T) {
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if got := session.LastSaid(chat); got == "landed · proof sheet ready · your approval" {
+		// The landing, as the run now words it: the work is done and waits for the person's approval.
+		if data, _ := os.ReadFile(chat); strings.Contains(string(data), "Implementation, tests, review and proof are complete.") && strings.Contains(string(data), "Approval needed: push the branch") {
 			break
 		}
 		if time.Now().After(deadline) {
