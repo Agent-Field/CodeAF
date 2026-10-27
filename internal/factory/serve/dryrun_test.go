@@ -77,7 +77,7 @@ func TestDryRunAppliesStartToTheBacklog(t *testing.T) {
 	want := api.DryRun{
 		WouldStart: []int{2088, 2090, 2104},
 		WouldAsk: []api.Ask{
-			{Job: 2077, Reason: "touches auth/keys.go (auth/**)"},
+			{Job: 2077, Reason: "protected · auth/** · auth/keys.go"},
 			{Job: 70, Reason: "job budget $3 is over $2"},
 		},
 		WouldWait: []api.Ask{{Job: 60, Reason: "no agent-ready label"}},

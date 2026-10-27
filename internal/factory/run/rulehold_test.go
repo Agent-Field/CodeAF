@@ -47,16 +47,16 @@ func TestAPlanTouchingAGuardedPathHoldsItsApproval(t *testing.T) {
 	if err := ApplyReport(&served, report, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if served.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
+	if served.RuleHold != "protected · auth/ · internal/auth/login.go" {
 		t.Fatalf("the server's copy holds %q", served.RuleHold)
 	}
-	if why := factory.AutonomyBlockReason(served); !strings.Contains(why, "touch auth/") {
+	if why := factory.AutonomyBlockReason(served); !strings.Contains(why, "A protected path: auth/") {
 		t.Fatalf("the server's Auto would pass it: %q", why)
 	}
-	if it.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
+	if it.RuleHold != "protected · auth/ · internal/auth/login.go" {
 		t.Fatalf("hold %q", it.RuleHold)
 	}
-	if why := factory.AutonomyBlockReason(it); !strings.Contains(why, "touch auth/") {
+	if why := factory.AutonomyBlockReason(it); !strings.Contains(why, "A protected path: auth/") {
 		t.Fatalf("Auto would pass it: %q", why)
 	}
 	if logHas(it, "Auto requested routine approval to continue after plan.") {
@@ -109,7 +109,7 @@ func TestAnApprovalTurnedOffStillHoldsAPlanARuleGuards(t *testing.T) {
 	t.Run("touches auth", func(t *testing.T) {
 		g, id := planRig(t, "- internal/auth/login.go\n", off, chat("write"))
 		it := g.asked(id, "plan is ready · continue, or send it back?")
-		if it.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
+		if it.RuleHold != "protected · auth/ · internal/auth/login.go" {
 			t.Fatalf("hold %q", it.RuleHold)
 		}
 	})
@@ -129,7 +129,7 @@ func TestAPlanReviewedBeforeItsApprovalIsStillHeldByItsFiles(t *testing.T) {
 	it := g.wait(id, "a held approval", func(it factory.Item) bool {
 		return it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove
 	})
-	if it.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
+	if it.RuleHold != "protected · auth/ · internal/auth/login.go" {
 		t.Fatalf("hold %q", it.RuleHold)
 	}
 	if PlanRuleHold(it) != it.RuleHold {
@@ -152,10 +152,10 @@ func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 		return it
 	}
 	rules := &factory.StartRules{AskFirst: []string{"touch auth/"}, Never: []string{"infra/"}}
-	if it := landed(rules, "docs/readme.md", "internal/auth/login.go"); it.State != factory.StateLanded || it.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
+	if it := landed(rules, "docs/readme.md", "internal/auth/login.go"); it.State != factory.StateLanded || it.RuleHold != "protected · auth/ · internal/auth/login.go" {
 		t.Fatalf("a change into auth/: %s %q", it.State, it.RuleHold)
 	}
-	if it := landed(rules, "infra/main.tf"); it.State != factory.StateLanded || it.RuleHold != "never · infra/ · infra/main.tf" {
+	if it := landed(rules, "infra/main.tf"); it.State != factory.StateLanded || it.RuleHold != "protected · infra/ · infra/main.tf" {
 		t.Fatalf("a change into infra/: %s %q", it.State, it.RuleHold)
 	}
 	if it := landed(rules, "docs/readme.md"); it.State != factory.StateShipped || it.RuleHold != "" {
@@ -164,7 +164,7 @@ func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 	// AUTO STOPS THERE TOO, naming the rule and the file.
 	it := landed(rules, "internal/auth/login.go")
 	it.Autonomy = factory.AutonomyAuto
-	if why := factory.AutonomyBlockReason(it); why != "A rule asks first: ask first · touch auth/ · internal/auth/login.go. Review the changes, then press Approve." {
+	if why := factory.AutonomyBlockReason(it); why != "A protected path: auth/ · internal/auth/login.go. Review the changes, then press Approve." {
 		t.Fatalf("Auto would publish it: %q", why)
 	}
 }

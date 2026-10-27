@@ -46,20 +46,24 @@ func TestEveryStepsBriefSaysWhatToAskAboutAndWhatNeverToTouch(t *testing.T) {
 		Never:    []string{"infra/", "secrets/**"},
 	}}
 	brief := stageBrief(Job{Item: it, Stage: factory.Stage{Name: "write", Ask: "make the change"}, Round: 1, Rules: []string{"keep the diff small"}})
+	// EVERY PROTECTED PATH IS ONE LINE: ask-first paths and never paths hold a
+	// job the same way, so the steps are told one thing about both.
 	for _, want := range []string{
 		"rules for this work",
 		"- keep the diff small",
-		"- ask before touching: auth/, billing/**",
+		"- ask before touching: auth/, billing/**, infra/, secrets/**",
 		"- ask before you: change the public API",
-		"- never touch: infra/, secrets/**",
 	} {
 		if !strings.Contains(brief, want) {
 			t.Errorf("the brief does not say %q:\n%s", want, brief)
 		}
 	}
-	// The lines alone, with no rule sentences, are still a paragraph.
+	if strings.Contains(brief, "never touch") || strings.Count(brief, "ask before touching") != 1 {
+		t.Errorf("the brief has more than one protected line:\n%s", brief)
+	}
+	// A never path alone is still told, on the same line.
 	alone := stageBrief(Job{Item: factory.Item{ID: 1, Num: 4, StartRules: &factory.StartRules{Never: []string{"infra/"}}}, Stage: factory.Stage{Name: "plan", Ask: "x"}, Round: 1})
-	if !strings.Contains(alone, "rules for this work") || !strings.Contains(alone, "- never touch: infra/") {
+	if !strings.Contains(alone, "rules for this work") || !strings.Contains(alone, "- ask before touching: infra/") {
 		t.Errorf("a job with only a never line was not told it:\n%s", alone)
 	}
 	// Empty lists say nothing.

@@ -59,13 +59,52 @@ func StartRulesOf(f File) *factory.StartRules {
 	}
 }
 
+// Protected is the head of every hold a protected path makes: `protected ·
+// auth/ · auth/login.go`, the path as written and the file that matched it.
+// An ask-first path line (`touch auth/`, `touches auth/`, `path: auth/`) and a
+// never path are the same kind of rule: both hold a job at its start, after
+// its plan and before its change is published, and a match waits for a person.
+const Protected = "protected"
+
+// ProtectedPaths are the paths rules protect: the ask-first path lines'
+// paths, then the never paths, each as written. A never path is read as a
+// protected path so files that still write it keep working.
+func ProtectedPaths(askFirst, never []string) []string {
+	var out []string
+	for _, rule := range askFirst {
+		if path := askFirstPath(rule); path != "" {
+			out = append(out, path)
+		}
+	}
+	for _, path := range never {
+		if path = strings.TrimSpace(path); path != "" {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// protectedWhy is the first protected path one of files matches, with the
+// file (`protected · auth/ · auth/login.go`), or "". A path that ends in a
+// slash covers everything under it.
+func protectedWhy(paths, files []string) string {
+	for _, path := range paths {
+		globs := append([]string{path}, underDirs([]string{path})...)
+		for _, file := range files {
+			if touchesAny(globs, file) {
+				return Protected + " · " + path + " · " + file
+			}
+		}
+	}
+	return ""
+}
+
 // PlanHold is why a finished plan must be approved by a person: the first
-// ask-first path rule (`touch auth/`, `touches auth/`, `path: auth/`) or never
-// path a planned file matches, by the same matcher a start uses, or "" when
-// none does. A sentence rule that names no path is judged before a start, not
-// here: a plan's files can only answer a question about paths. A plan that
-// names no files, under a path rule, is held too, and so is every plan of a
-// job that started with its repository's rules unread.
+// protected path a planned file matches, by the same matcher a start uses, or
+// "" when none does. A sentence rule that names no path is judged before a
+// start, not here: a plan's files can only answer a question about paths. A
+// plan that names no files, under a path rule, is held too, and so is every
+// plan of a job that started with its repository's rules unread.
 func PlanHold(rules *factory.StartRules, files []string) string {
 	if rules == nil {
 		return ""
@@ -73,70 +112,30 @@ func PlanHold(rules *factory.StartRules, files []string) string {
 	if rules.Unread {
 		return factory.StartRulesUnreadHold
 	}
+	paths := ProtectedPaths(rules.AskFirst, rules.Never)
 	// A PLAN WHOSE FILES ARE UNKNOWN CANNOT CLEAR A PATH RULE: with one in
 	// force, a plan that declared no list (or an ambiguous one) is a person's.
 	if len(files) == 0 {
-		if len(rules.Never) > 0 {
-			return "ask first · the plan names no files"
-		}
-		for _, rule := range rules.AskFirst {
-			if askFirstPath(rule) != "" {
-				return "ask first · the plan names no files"
-			}
+		if len(paths) > 0 {
+			return Protected + " · the plan names no files"
 		}
 		return ""
 	}
-	if why := askFirstWhy(rules, files); why != "" {
-		return why
-	}
-	if why := neverWhy(underDirs(rules.Never), files); why != "" {
-		return "never starts on its own · " + why
-	}
-	return ""
+	return protectedWhy(paths, files)
 }
 
 // ChangeHold is why a job's finished change must be approved by a person
-// before anything is published: the first ask-first path rule or never path
-// that a file the change really touches matches, `ask first · touch auth/ ·
-// auth/login.go` or `never · infra/ · infra/main.tf`, or "". It is [PlanHold]
-// read against the diff instead of the plan, so a write that went past what
-// its plan declared still waits. An empty change touches nothing, and a job
-// that started with its repository's rules unread was held at its plan; what
-// the factory knows of its rules is still checked.
+// before anything is published: the first protected path a file the change
+// really touches matches, `protected · auth/ · auth/login.go`, or "". It is
+// [PlanHold] read against the diff instead of the plan, so a write that went
+// past what its plan declared still waits. An empty change touches nothing,
+// and a job that started with its repository's rules unread was held at its
+// plan; what the factory knows of its rules is still checked.
 func ChangeHold(rules *factory.StartRules, files []string) string {
 	if rules == nil || len(files) == 0 {
 		return ""
 	}
-	if why := askFirstWhy(rules, files); why != "" {
-		return why
-	}
-	for _, rule := range rules.Never {
-		globs := underDirs([]string{rule})
-		for _, path := range files {
-			if touchesAny(globs, path) {
-				return "never · " + strings.TrimSpace(rule) + " · " + path
-			}
-		}
-	}
-	return ""
-}
-
-// askFirstWhy is the first ask-first path rule one of files matches, with the
-// file, or "".
-func askFirstWhy(rules *factory.StartRules, files []string) string {
-	for _, rule := range rules.AskFirst {
-		path := askFirstPath(rule)
-		if path == "" {
-			continue
-		}
-		globs := underDirs([]string{path})
-		for _, file := range files {
-			if touchesAny(globs, file) {
-				return "ask first · " + strings.TrimSpace(rule) + " · " + file
-			}
-		}
-	}
-	return ""
+	return protectedWhy(ProtectedPaths(rules.AskFirst, rules.Never), files)
 }
 
 // GuardsPaths says whether rules can hold a plan by its files ([PlanHold]): an
