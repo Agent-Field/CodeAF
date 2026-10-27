@@ -134,7 +134,9 @@ func (b *appBackend) checkPipelineRuntimeText(ctx context.Context, who adminWho,
 	if err != nil {
 		return err
 	}
-	if !fresh.RuntimeFields || fresh.State != api.PipelineEditFile || !fresh.Editable ||
+	// A file read as missing was attested as text "", so a later file at the
+	// same commit can never match it, nor a missing read a file's record.
+	if !fresh.RuntimeFields || (fresh.State != api.PipelineEditFile && fresh.State != api.PipelineEditMissing) || !fresh.Editable ||
 		fresh.BaseSHA != p.ExpectedBaseSHA || sha256.Sum256([]byte(fresh.Text)) != rec.raw {
 		return appwire.Errorf(appwire.CodeConflict, "The file or the factory changed since it was read. Read the file again and redo the edit. Nothing was sent.")
 	}

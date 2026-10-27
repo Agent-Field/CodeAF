@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
@@ -650,8 +651,21 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	if prev >= 0 {
 		prevName = ph[prev].Name
 	}
+	// THE PLAN IS CHECKED AGAINST THE RULES THE JOB STARTED UNDER: a planned
+	// file that an ask-first path or a never path names makes this approval a
+	// person's, even in Auto ([factory.AutonomyBlockReason]).
+	hold := ""
+	if strings.EqualFold(prevName, "plan") {
+		hold = pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
+	}
+	if hold != it.RuleHold {
+		if lp.write(c, func(saved *factory.Item) error { saved.RuleHold = hold; return nil }) != nil {
+			return false
+		}
+		it.RuleHold = hold
+	}
 	said := ""
-	if factory.Automatic(it) {
+	if factory.Automatic(it) && hold == "" {
 		st, _ := lp.stageAt(it, i)
 		if !st.Fixed {
 			said = "Auto requested routine approval to continue after " + prevName + "."
@@ -663,6 +677,9 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	switch {
 	case a.yes:
+		if hold != "" {
+			_ = lp.write(c, func(saved *factory.Item) error { saved.RuleHold = ""; return nil })
+		}
 		lp.addNote(c.id, a.words)
 		return lp.finish(c, i, name, "")
 	case prev < 0:
@@ -1405,6 +1422,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		PriorNames:      priorNames,
 		Last:            last,
 		Dir:             dir,
+		Rules:           JobRules(lp.r.opts.Recipe, it),
 		dirErr:          dirErr,
 		Steer:           c.steer,
 		ModelSelections: c.modelSelections,

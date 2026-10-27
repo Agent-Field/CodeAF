@@ -746,12 +746,18 @@ func (b *appBackend) PipelineRuntimeGuarded() {}
 // factory.pipeline_edit_structure.
 func (b *appBackend) PipelineStructureEdits() {}
 
+// PipelineRulesEdits marks this backend as one whose source carries the file's
+// own rules, ask_first and never and describes a missing file from the shipped
+// defaults, and whose preview applies set_list and takes an empty base, which
+// is what lets hello announce factory.pipeline_edit_rules.
+func (b *appBackend) PipelineRulesEdits() {}
+
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, PipelinePR: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelineEdit: true, PipelineEditRuntime: true,
+		PipelineEditStructure: true, PipelineEditRules: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 

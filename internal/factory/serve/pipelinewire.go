@@ -61,6 +61,10 @@ func wirePipeline(f pipeline.File) api.Pipeline {
 	p.Text = f.Text
 	p.PersonalText = f.PersonalText
 	p.Personal = f.Personal
+	if !f.House.Empty() {
+		house := f.House
+		p.HouseRules = &house
+	}
 	p.Origin = pipelineOrigin(f.From)
 	p.Start = &api.StartBlock{
 		Labels:   copyStrings(f.Start.Labels),

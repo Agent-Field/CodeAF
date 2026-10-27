@@ -29,6 +29,15 @@ package main
 // caller was given by SOURCE. There is no route to call, so there is nothing to
 // send, and the base a caller brings is never trusted beyond what the parser
 // reads of it.
+//
+// A MISSING FILE IS DESCRIBED HERE, NOT BY THE FACTORY. The route says only
+// that the default branch has no file, and that stays the only shape believed
+// of it. The engine then describes the shipped defaults itself
+// ([pipeline.InspectDefaults]), the same File its preview applies a base of ""
+// to, so the source and the preview of a missing file can never disagree. The
+// file the pull request then creates is this engine's defaults plus the edit;
+// it is reviewed like any other, and the factory's own runner reads it as a
+// file from then on.
 
 import (
 	"bytes"
@@ -74,9 +83,10 @@ func (b *appBackend) FactoryPipelineSource(ctx context.Context, p appwire.Factor
 		return appwire.FactoryPipelineSource{}, err
 	}
 	// THE FACTORY'S CLAIM IS REMEMBERED, per caller, repository, commit and exact
-	// text, and only for a file this engine accepted whole. The preview and the
-	// pull request look it up; the app's own booleans are never consulted.
-	if out.RuntimeFields && out.State == appwire.PipelineSourceFile && out.Editable {
+	// text, and only for a file this engine accepted whole, or for no file at
+	// all (text ""). The preview and the pull request look it up; the app's own
+	// booleans are never consulted.
+	if out.RuntimeFields && (out.State == appwire.PipelineSourceFile || out.State == appwire.PipelineSourceMissing) && out.Editable {
 		h.recordRuntime(p.Factory, who.row.URL, who.token, p.Repo, out.BaseSHA, out.Text)
 	}
 	h.touch(p.Factory)
@@ -164,6 +174,17 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 		if got.Editable || got.Text != "" || len(got.Problems) > 0 || !bytes.Equal(parsed(got), parsed(bare)) {
 			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 		}
+		if got.State == api.PipelineEditMissing {
+			// No file: the shipped defaults are what the repository runs, and
+			// what an edit starts from (a preview of base_text "").
+			src := pipeline.InspectDefaults()
+			var local api.PipelineEditSource
+			local.SetParsed(src)
+			out.Editable = true
+			out.DefaultBudget, out.BudgetInFile = local.DefaultBudget, local.BudgetInFile
+			out.Pipelines, out.Steps, out.Fixed = local.Pipelines, local.Steps, local.Fixed
+			out.Rules, out.AskFirst, out.Never = &src.Rules, &src.AskFirst, &src.Never
+		}
 	case api.PipelineEditInvalid, api.PipelineEditFile:
 		if len(got.Text) > pipeline.EditTextMax || !utf8.ValidString(got.Text) {
 			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
@@ -197,6 +218,9 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 		out.Editable = true
 		out.DefaultBudget, out.BudgetInFile = local.DefaultBudget, local.BudgetInFile
 		out.Pipelines, out.Steps, out.Fixed = local.Pipelines, local.Steps, local.Fixed
+		// The file's own lines, read by this engine's parser from Text alone:
+		// the factory's house rules are never in the file.
+		out.Rules, out.AskFirst, out.Never = &src.Rules, &src.AskFirst, &src.Never
 	default:
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
@@ -311,7 +335,22 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 		out.Budget = &appwire.FactoryPipelineBudgetChange{Before: ed.Budget.Before, After: ed.Budget.After}
 	}
 	out.Structure = pipelineStructure(ed)
+	out.Lists = pipelineLists(ed)
 	return out, nil
+}
+
+// pipelineLists is the list half of a preview on the wire, every list an array
+// however empty, and nil for a preview with no set_list: such an answer is byte
+// for byte what it always was.
+func pipelineLists(ed pipeline.Edited) *[]appwire.FactoryPipelineListChange {
+	if !ed.Listed {
+		return nil
+	}
+	out := []appwire.FactoryPipelineListChange{}
+	for _, l := range ed.Lists {
+		out = append(out, appwire.FactoryPipelineListChange{List: l.List, Before: append([]string{}, l.Before...), After: append([]string{}, l.After...)})
+	}
+	return &out
 }
 
 // pipelineStructure is the structural half of a preview on the wire, every

@@ -133,6 +133,9 @@ func FromItem(it factory.Item) Job {
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
+		HouseRules:       cloneHouse(it.House),
+		StartRules:       cloneStartRules(it.StartRules),
+		RuleHold:         it.RuleHold,
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
 		PlannedFiles:     factory.PlanFilesOf(it),
@@ -428,6 +431,9 @@ func ToItem(j Job) factory.Item {
 		it.Draft = *j.Draft
 	}
 	it.AskedFirstReason = j.AskedFirstReason
+	it.House = cloneHouse(j.HouseRules)
+	it.StartRules = cloneStartRules(j.StartRules)
+	it.RuleHold = j.RuleHold
 	it.PublishError = j.PublishError
 	if a := j.Ask; a != nil && a.Issue == nil {
 		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
@@ -1024,4 +1030,29 @@ func strip(jobs []Job) []Cell {
 		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateProof
 	}
 	return out
+}
+
+// cloneHouse copies a job's house rules so the wire and the store never share
+// a slice. Nil stays nil: a job not yet queued carries none.
+func cloneHouse(h *factory.HouseRules) *factory.HouseRules {
+	if h == nil {
+		return nil
+	}
+	return &factory.HouseRules{
+		Rules:    append([]string{}, h.Rules...),
+		AskFirst: append([]string{}, h.AskFirst...),
+		Never:    append([]string{}, h.Never...),
+		Adapt:    h.Adapt,
+
+		StartOnItsOwn: h.StartOnItsOwn,
+		StartLabels:   append([]string(nil), h.StartLabels...),
+	}
+}
+
+// cloneStartRules copies a job's start rules; nil stays nil.
+func cloneStartRules(r *factory.StartRules) *factory.StartRules {
+	if r == nil {
+		return nil
+	}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread}
 }

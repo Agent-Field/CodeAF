@@ -103,6 +103,36 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 
 A step that falls short goes round again until its rounds run out, and only then asks you what to do. New jobs default to Auto, which passes routine optional approvals and publishes passing proof as a draft PR within the job budget. Manual asks before enabled approval gates and publication; the job header switch saves that choice. Fixed gates and critical unresolved decisions still ask. Merge remains your decision. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
 
+## the factory's own rules — rules for every repository, instructions, ask first, never, "don't touch auth without checking with me"
+
+A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, Repos → the repository → Settings edits them with its pipeline, as one pull request, and a repository with no file yet gets one. The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the factory's **Rules** tab: one row per rule, with Edit, Copy and Remove, and an Add field per list.
+
+They hold three lists:
+
+- **rules**: sentences every step of every job is told, below the repository's own, in a "rules for this work" paragraph. A step that would break one stops and asks instead. A sentence codeaf recognises, such as "never close an issue" or "tests pass before anything posts", is also applied by code, exactly like the repository's.
+- **ask first**: things a job asks about before it starts on its own, like `start.ask_first` (`touch auth/` matches a path).
+- **never**: paths a job never starts on by itself, like `start.never`.
+
+The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
+
+## a rule asks first — Auto paused at the plan, a plan that touches auth, why a job waits on a rule
+
+When a job starts, the ask-first paths and never paths it starts under (the repository's and the factory's) go with it. When its plan names a file one of them covers (`touch auth/` covers everything under `auth/`), the approval after the plan is never routine, even in Auto: the job waits and says "A rule asks first:" with the rule and the file. Answering it clears the hold.
+
+## pick up issues — labelled work starts by itself, its labels, who owns those jobs
+
+**Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, a factory on your own machine starts nothing a person did not start; a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next start at once.
+
+## let the plan reshape the steps — adapt, ask, fixed, a pipeline tailored to each job
+
+A job's plan step may change the steps the rest of the job runs, within bounds codeaf holds in code: it may add a step, switch one on or skip one, but never skip proof, a fixed step or a step a rule names, and never touch a step that already ran. How much freedom it has is one word:
+
+- **adapt** (the default): the plan reshapes the steps for this issue, and the run goes on.
+- **ask**: the plan may reshape them, and a person approves before anything after the plan runs.
+- **fixed**: the steps run as the pipeline wrote them; only you can change them.
+
+A repository says it with `adapt:` in its `.codeaf/factory.yaml` (one word for every pipeline in the file). The factory can say it for every repository (Settings → Factory → How jobs run, "Plans may reshape a job's steps"), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
+
 ## issues only — pull requests are outcomes, old PR jobs removed
 
 Issues are the factory's only work items, including briefs handed over from chat. GitHub imports issues only; pull requests never become queue rows or review jobs. New jobs cannot select a PR or standalone CI pipeline.

@@ -19,10 +19,19 @@ import (
 // that was really read plus that edit into the exact bytes the pull request
 // route will commit. The edits are the ones the file format can hold today: a
 // step's prompt, kind, when, effort, fanout, until and max, the default budget,
-// and a chat step added to, removed from or moved within one pipeline's list
-// (edit_structure.go). Everything else in the file (start, size, fixed, rules,
-// every other pipeline and every other step) rides through the same parser and
-// the same encoder the route uses, so what is previewed is what is committed.
+// a chat step added to, removed from or moved within one pipeline's list
+// (edit_structure.go), and the file's own rules, ask_first and never lines
+// replaced whole (edit_lists.go). Everything else in the file (the rest of
+// start, size, fixed, every other pipeline and every other step) rides through
+// the same parser and the same encoder the route uses, so what is previewed is
+// what is committed.
+//
+// A REPOSITORY WITH NO FILE IS EDITED FROM THE SHIPPED DEFAULTS. An empty base
+// is not a blank file (that is still base_invalid): it is "there is no file
+// yet", and the edits apply to [Defaults], the same File [Load] runs when the
+// default branch has none. The answer is then the whole canonical file the pull
+// request creates, every shipped step written out, so the repository runs what
+// it ran before plus the edit and nothing else.
 //
 // THE COMMITTED FILE IS THE CANONICAL ENCODING, AND ITS COMMENTS ARE GONE. The
 // preview encodes the edited file with [Encode], and the pull request route
@@ -44,6 +53,7 @@ const (
 	OpAddStep    = "add_step"
 	OpRemoveStep = "remove_step"
 	OpMoveStep   = "move_step"
+	OpSetList    = "set_list"
 )
 
 // The bounds of an edit. They are this preview's own: the file format has no
@@ -91,7 +101,9 @@ func refuseEdit(code string, op int, format string, args ...any) *EditError {
 // only a chat step is edited at all ([lockedStep]); set_budget names only Value.
 // Pipeline and After belong to the three structural verbs alone: Pipeline is the
 // kind whose list changes, and After is the step the named one goes after, ""
-// for first ([checkStructure]).
+// for first ([checkStructure]). List and Lines belong to set_list alone: List is
+// rules, ask_first or never, and Lines is that list's every line, never nil (an
+// empty list clears it) ([checkSetList]).
 type EditOp struct {
 	Op       string
 	Name     string
@@ -105,6 +117,8 @@ type EditOp struct {
 	Until    *string
 	Max      *int
 	Value    *float64
+	List     string
+	Lines    []string
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -135,12 +149,18 @@ type KindView struct {
 
 // Source is a parsed pipeline file, for a person to edit. BudgetInFile is false
 // when the file does not state a default budget and Budget is the shipped one.
+// Rules, AskFirst and Never are the file's OWN lines under rules,
+// start.ask_first and start.never, never nil: this is the repository's file,
+// and the factory's house rules ([WithHouseRules]) are never in it.
 type Source struct {
 	Budget       float64
 	BudgetInFile bool
 	Kinds        []KindView
 	Steps        []StepView
 	Fixed        []string
+	Rules        []string
+	AskFirst     []string
+	Never        []string
 }
 
 // StepChange is one step an edit really changed. Fields names what changed, in
@@ -174,6 +194,10 @@ type BudgetChange struct {
 // Order is every pipeline whose list changed, Added every step definition the
 // edits wrote that the file did not hold, Counts every pipeline's length after
 // the edit, and Gates every person whose unattended run-up changed.
+//
+// Listed is true when any edit was set_list, and only then is Lists set
+// (non-nil, empty when no line changed): every list whose lines changed, in the
+// order rules, ask_first, never.
 type Edited struct {
 	Text            string
 	Changed         bool
@@ -187,6 +211,9 @@ type Edited struct {
 	Added      []string
 	Counts     []KindCount
 	Gates      []GateChange
+
+	Listed bool
+	Lists  []ListChange
 }
 
 // Inspect reads a repository file for editing. ok is false, with the reasons,
@@ -200,7 +227,29 @@ func Inspect(text string) (src Source, problems []string, ok bool) {
 	return describe(f), nil, true
 }
 
+// InspectDefaults is the shipped default pipeline described the way [Inspect]
+// describes a file: the File a repository with no file runs ([Defaults]), for
+// a person to edit into the file that repository does not have yet. Nothing in
+// it is the repository's own, so the budget, every pipeline and every step say
+// they are not in the file, and the three lists are empty.
+func InspectDefaults() Source {
+	src := describe(Defaults())
+	for i := range src.Steps {
+		src.Steps[i].InFile = false
+	}
+	return src
+}
+
 type baseError struct{ problems []string }
+
+// baseFile is the File an edit starts from: the shipped defaults for "", which
+// is no file at all, and the parse of the text for anything else.
+func baseFile(text string) (File, *baseError) {
+	if text == "" {
+		return Defaults(), nil
+	}
+	return parseBase(text)
+}
 
 func parseBase(text string) (File, *baseError) {
 	switch {
@@ -317,6 +366,9 @@ func describe(f File) Source {
 	if src.Steps == nil {
 		src.Steps = []StepView{}
 	}
+	src.Rules = append([]string{}, f.Rules...)
+	src.AskFirst = append([]string{}, f.Start.AskFirst...)
+	src.Never = append([]string{}, f.Start.Never...)
 	return src
 }
 
@@ -351,8 +403,12 @@ func sortedKinds(f File) []string {
 // not be locked. The result is parsed again and encoded again: if that does not
 // reproduce the same bytes and the same values, the format cannot hold the edit
 // and it is refused as not_representable rather than committed as something else.
+//
+// A base of "" is a repository with no file: the edits apply to [Defaults], and
+// a changed answer is the whole file the pull request creates. Only "" means
+// that; a base of blanks is a blank file, and is refused as it always was.
 func ApplyEdits(base string, ops []EditOp) (Edited, error) {
-	f, bad := parseBase(base)
+	f, bad := baseFile(base)
 	if bad != nil {
 		return Edited{}, refuseEdit(EditBaseInvalid, -1, "%s", bad.problems[0])
 	}
@@ -409,11 +465,14 @@ type editState struct {
 	newSteps   []string
 	budgetSeen bool
 	structural bool
+	// listSeen is every list a set_list replaced, and listed says one did.
+	listSeen map[string]bool
+	listed   bool
 }
 
 func newEditState(f File) *editState {
 	st := &editState{base: f, out: f, inPipeline: map[string]bool{}, named: map[string]bool{}, added: map[string]bool{}, placed: map[string]bool{},
-		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}}
+		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}, listSeen: map[string]bool{}}
 	st.out.Steps = make(map[string]Step, len(f.Steps))
 	for name, s := range f.Steps {
 		st.out.Steps[name] = s
@@ -439,6 +498,8 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return nil
 	case OpSetStep:
 		return st.setStep(i, op)
+	case OpSetList:
+		return st.setList(i, op)
 	}
 	return st.structure(i, op)
 }
@@ -507,6 +568,9 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 	if st.structural {
 		st.structureFacts(&res)
 	}
+	if st.listed {
+		st.listFacts(&res)
+	}
 	if bytes.Equal(text, canonical) {
 		return res, nil
 	}
@@ -519,7 +583,9 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 		return Edited{}, refuseEdit(EditNotRepresentable, -1, "%s", drops[0])
 	}
 	res.Text, res.Changed = string(text), true
-	res.FormatRewritten = base != string(canonical)
+	// No file has no layout to rewrite and no comment to drop: the whole file
+	// is new, and nothing of the repository's own is lost on the way.
+	res.FormatRewritten = base != "" && base != string(canonical)
 	res.CommentsDropped = hasComments(base)
 	res.Steps = stepChanges(describe(st.base), out)
 	if before, after := st.base.DefaultBudget, out.DefaultBudget; before != after {
@@ -559,7 +625,12 @@ func stepChanges(before Source, out File) []StepChange {
 // written. Whether the step exists, or is locked, depends on the file and is
 // [ApplyEdits]'s to say. i is the edit's position, for the refusal.
 func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
+	if op.Op != OpSetList && (op.List != "" || op.Lines != nil) {
+		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
+	}
 	switch op.Op {
+	case OpSetList:
+		return checkSetList(i, op)
 	case OpAddStep, OpRemoveStep, OpMoveStep:
 		return checkStructure(i, op)
 	case OpSetBudget, OpSetStep:
@@ -567,7 +638,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step and move_step")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step and set_list")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)
@@ -678,6 +749,9 @@ func notRoundTrip(text []byte, want File) string {
 		return "the budget does not survive the file format"
 	}
 	if why := pipelinesDiffer(back, want); why != "" {
+		return why
+	}
+	if why := listsDiffer(back, want); why != "" {
 		return why
 	}
 	return stepsDiffer(back, want)

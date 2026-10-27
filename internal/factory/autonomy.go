@@ -46,6 +46,11 @@ func AutonomyBlockReason(it Item) string {
 	if it.QKind != "" && it.QKind != QKindApprove && it.QKind != "cap" {
 		return it.Question
 	}
+	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
+	// to be asked, so Auto asks.
+	if it.QKind == QKindApprove && it.RuleHold != "" {
+		return "A rule asks first: " + it.RuleHold + ". Review the plan, then press Approve."
+	}
 	if it.Approval != nil && it.Approval.Error != "" {
 		return "Automatic approval failed: " + it.Approval.Error + ". Review the problem before trying again."
 	}

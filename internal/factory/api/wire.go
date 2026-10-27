@@ -202,12 +202,17 @@ type Pipeline struct {
 	Adapt         map[string]string    `json:"adapt,omitempty"`
 	// Text is the repository file as it was read. PersonalText is
 	// ~/.codeaf/factory.yaml when that file tightened the read.
-	Text         string      `json:"text,omitempty"`
-	PersonalText string      `json:"personal_text,omitempty"`
-	Personal     bool        `json:"personal,omitempty"`
-	Origin       string      `json:"origin,omitempty"` // main, working tree, defaults
-	Start        *StartBlock `json:"start,omitempty"`
-	Size         *SizeBlock  `json:"size,omitempty"`
+	Text         string `json:"text,omitempty"`
+	PersonalText string `json:"personal_text,omitempty"`
+	Personal     bool   `json:"personal,omitempty"`
+	// HouseRules are the factory's own rules this read added to the
+	// repository's (factory.HouseRules); absent when it keeps none. Its lines
+	// are also in Policy and Start, so a client can tell which are the
+	// factory's.
+	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
+	Origin     string              `json:"origin,omitempty"` // main, working tree, defaults
+	Start      *StartBlock         `json:"start,omitempty"`
+	Size       *SizeBlock          `json:"size,omitempty"`
 	// Merge is the file's `merge:` settings; absent is auto-merge off and the
 	// repository's own choice of method.
 	Merge *MergeBlock `json:"merge,omitempty"`
@@ -370,10 +375,18 @@ type Job struct {
 	Gate             string     `json:"gate"`
 	WaitingSince     *time.Time `json:"waiting_since,omitempty"`
 	AskedFirstReason string     `json:"asked_first_reason,omitempty"`
-	AssignedTo       string     `json:"assigned_to,omitempty"`
-	Step             *StepAt    `json:"step,omitempty"`
-	Steps            []Step     `json:"steps"`
-	Claims           []Claim    `json:"claims,omitempty"`
+	// HouseRules are the factory's own rules the job was queued under
+	// (factory.HouseRules); absent before it was first queued.
+	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
+	// StartRules are the ask-first and never lines the job was started under
+	// (factory.StartRules); RuleHold is the rule its plan matched, which makes
+	// the approval after the plan a person's (factory.Item.RuleHold).
+	StartRules *factory.StartRules `json:"start_rules,omitempty"`
+	RuleHold   string              `json:"rule_hold,omitempty"`
+	AssignedTo string              `json:"assigned_to,omitempty"`
+	Step       *StepAt             `json:"step,omitempty"`
+	Steps      []Step              `json:"steps"`
+	Claims     []Claim             `json:"claims,omitempty"`
 	// PlannedFiles are the paths the current plan's explicit Files declaration
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or

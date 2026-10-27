@@ -110,6 +110,11 @@ type FactoryCapabilities struct {
 	// [FactoryRunnerAdmin]; whether THIS factory and THIS computer can take the
 	// change is read from factory.runners (slots_policy, live_capacity).
 	RunnerManage bool `json:"runner_manage"`
+	// Rules: factory.rules and factory.rules_set are served (feature
+	// factory.rules). True only for an engine that implements
+	// [FactoryRulesKeeper]; whether THIS caller may change them is the
+	// operator's answer, read from factory.me.
+	Rules bool `json:"rules"`
 	// PipelinePR: factory.pipeline_pr is served (feature factory.pipeline_pr).
 	// True only for an engine that implements [FactoryPipelineOpener]; whether
 	// THIS caller holds a sign-in and GitHub access is answered by the call.
@@ -125,8 +130,13 @@ type FactoryCapabilities struct {
 	// move_step (feature factory.pipeline_edit_structure). True only for an
 	// engine that implements [FactoryPipelineStructureEditor].
 	PipelineEditStructure bool `json:"pipeline_edit_structure"`
-	MaxConnections        int  `json:"max_connections"`
-	MaxFlows              int  `json:"max_flows"`
+	// PipelineEditRules: this engine carries the file's own rules, ask_first
+	// and never on the source, previews set_list, and edits a missing file
+	// from the shipped defaults (feature factory.pipeline_edit_rules). True
+	// only for an engine that implements [FactoryPipelineRulesEditor].
+	PipelineEditRules bool `json:"pipeline_edit_rules"`
+	MaxConnections    int  `json:"max_connections"`
+	MaxFlows          int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,

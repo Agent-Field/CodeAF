@@ -909,6 +909,30 @@ func TestSoloUnassignedPlanApprovalKeepsUndoAndNoAssignment(t *testing.T) {
 	}
 }
 
+// A HELD START A PERSON APPROVES IS THEIRS: on a solo factory the job a rule
+// held (nobody on it) launches with the approver as its starter, so Auto has
+// an owner at the plan.
+func TestSoloApprovedHeldStartBelongsToTheApprover(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.cfg.Mode = api.FactorySolo
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "Approval needed: start · ask first · touch auth/", QKind: factory.QKindAskFirst, AskedFirstReason: "ask first · touch auth/", Autonomy: factory.AutonomyAuto, Cap: 3})
+	f.post(t, it, "approve", "{}", 200)
+	f.clock.Add(int64(factory.ApprovalUndo))
+	if j := f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
+		t.Fatalf("approval did not settle: %+v", j.Approval)
+	}
+	stored, err := f.st.Get(it.ID)
+	if err != nil || stored.Person() != "sam" {
+		t.Fatalf("an approved held start has person %q: %v", stored.Person(), err)
+	}
+	stored.State, stored.QKind = factory.StateNeedsYou, factory.QKindApprove
+	if why := factory.AutonomyBlockReason(stored); strings.Contains(why, "owner is required") {
+		t.Fatalf("Auto still wants an owner: %q", why)
+	}
+}
+
 func TestTeamUnassignedPlanCannotBeApproved(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "plan ready?", QKind: factory.QKindApprove})

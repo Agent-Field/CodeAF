@@ -322,8 +322,9 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		done := make(chan struct{})
 		l.runner, l.runnerDone = true, done
 		// THE HOST SERVES THIS FACTORY (checked above), so its GitHub poll may
-		// start; the host starts it once. No intake rides on it and no triage
-		// runs beside it: nothing here starts a job or asks a model.
+		// start; the host starts it once. No triage runs beside it, and its
+		// start rules run only while the person's "Start on its own" is on
+		// (appFactoryHost.startOnItsOwn): off, nothing here starts a job.
 		host.pollLoop()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
 	}

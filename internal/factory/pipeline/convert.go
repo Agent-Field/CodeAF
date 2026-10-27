@@ -80,8 +80,9 @@ func Encode(f File) ([]byte, error) {
 		Steps         any       `yaml:"steps"`
 		Fixed         []string  `yaml:"fixed"`
 		Rules         []string  `yaml:"rules"`
+		Adapt         string    `yaml:"adapt,omitempty"`
 		Merge         *mergeKey `yaml:"merge,omitempty"`
-	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, merge})
+	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, string(f.Adapt), merge})
 }
 
 // Convert renders a Markdown recipe as YAML without writing either file.

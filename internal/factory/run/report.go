@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
@@ -182,6 +183,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if err := reportQuestion(it, report.Question, report.QuestionKind, now); err != nil {
 		return err
 	}
+	// THE HOLD IS THE SERVER'S OWN READING: a worker's runner records it on
+	// its mirror, which a report does not carry, so the copy that decides Auto
+	// works it out again from the plan and the rules it holds.
+	it.RuleHold = PlanRuleHold(*it)
 	if talk := strings.TrimSpace(report.Talk); talk != "" && strings.TrimSpace(it.Talk) == "" {
 		it.Talk = talk
 	}
@@ -653,4 +658,18 @@ func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 		}
 	}
 	return nil
+}
+
+// PlanRuleHold is why the approval it waits on is a person's by the rules the
+// job started under ([pipeline.PlanHold]), or "": only an approve question
+// right after the plan step can be held, and only by that plan's files.
+func PlanRuleHold(it factory.Item) string {
+	if it.QKind != factory.QKindApprove {
+		return ""
+	}
+	gate, prev := factory.ApproveBackTarget(it.Stream)
+	if gate < 0 || prev < 0 || !strings.EqualFold(strings.TrimSpace(it.Stream.Phases[prev].Name), "plan") {
+		return ""
+	}
+	return pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
 }

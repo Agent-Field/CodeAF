@@ -67,6 +67,15 @@ func (d *Doors) Launch(id int) error {
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}
+	// THE FACTORY'S OWN RULES GO WITH THE JOB ([factory.Item.House]), read
+	// here, on the factory that queues it, because a runner on another machine
+	// cannot read this store. A rules file that cannot be read refuses the
+	// start: rules that silently vanished would let work begin that a person
+	// said must not.
+	house, err := d.desk.store.HouseRules()
+	if err != nil {
+		return err
+	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held != nil {
 			return false, run.AlreadyRunning(it.Ref())
@@ -82,6 +91,7 @@ func (d *Doors) Launch(id int) error {
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
 		}
+		it.House = &house
 		_, stale := doc.Signals[id]
 		delete(doc.Signals, id)
 		return stale, nil

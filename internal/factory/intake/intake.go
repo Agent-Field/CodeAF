@@ -22,6 +22,12 @@ type Options struct {
 	Load    func(string) (pipeline.File, error)
 	Launch  func(int) error
 	Record  *record.Record
+	// Owner is the factory owner's forge handle (its operator), "" when it
+	// cannot be told. A JOB A START RULE STARTS IS THE OWNER'S: it becomes the
+	// job's person when it has none, so its approvals have someone to answer
+	// them and Auto can pass the routine ones. Nil leaves such a job with no
+	// person, as before.
+	Owner func(context.Context) string
 }
 
 type Intake struct {
@@ -95,6 +101,18 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 	if !decision.Start && !decision.Ask {
 		return nil
 	}
+	// ONLY A JOB THE RULES START IS THE OWNER'S. One they hold waits for
+	// whoever approves it: owning it would shut out a teammate who could
+	// approve it before.
+	owner := ""
+	if decision.Start && it.Person() == "" && in.opts.Owner != nil {
+		owner = factory.NormalizeHandle(in.opts.Owner(ctx))
+	}
+	own := func(cur *factory.Item) {
+		if cur.Person() == "" && owner != "" {
+			cur.Starter = owner
+		}
+	}
 	kind, reason := record.AutoStarted, "inside start rules"
 	if decision.Ask {
 		kind, reason = record.AskedFirst, strings.Join(decision.Reasons, "; ")
@@ -103,6 +121,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
@@ -119,6 +138,8 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
+			own(cur)
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
@@ -134,7 +155,11 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 	if err != nil {
 		return err
 	}
-	_, err = in.opts.Record.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: it.Person(), Detail: reason})
+	handle := it.Person()
+	if handle == "" {
+		handle = owner
+	}
+	_, err = in.opts.Record.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: reason})
 	return err
 }
 

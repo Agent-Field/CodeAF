@@ -207,6 +207,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryLinksFeature(hello, engine)
 	hello = withFactoryReposManageFeature(hello, engine)
 	hello = withFactoryRunnerManageFeature(hello, engine)
+	hello = withFactoryRulesFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
 	hello = withFactoryPipelineEditFeature(hello, engine)
 	s.Emit(EventHello, hello)

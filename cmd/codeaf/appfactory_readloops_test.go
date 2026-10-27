@@ -296,9 +296,10 @@ func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	}
 }
 
-// AN ARRIVING ISSUE STARTS NOTHING. Even with a repository start rule that
-// allows the waiting item, this Mac's runner, on and polling, launches no job:
-// a job starts only when a person presses Run.
+// AN ARRIVING ISSUE STARTS NOTHING WHILE "START ON ITS OWN" IS OFF, which it
+// is until a person turns it on. Even with a repository start rule that allows
+// the waiting item, this Mac's runner, on and polling, launches no job: a job
+// starts only when a person presses Run.
 func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
@@ -321,6 +322,32 @@ func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 		if it.State != factory.StateNew {
 			t.Fatalf("an item left Backlog on its own: %+v", it)
 		}
+	}
+}
+
+// TURNED ON, THE SAME ISSUE STARTS BY ITSELF: with the factory's "Start on its
+// own" on, the start rule that let it through launches it once, and the next
+// polls leave it be.
+func TestStartOnItsOwnLaunchesWhatTheStartRulesAllow(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	if _, err := floor.ChangeHouseRules(func(h *factory.HouseRules) error { h.StartOnItsOwn = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the ready issue started", func() bool { return world.launches.Load() == 1 })
+	settle()
+	if n := world.launches.Load(); n != 1 {
+		t.Fatalf("%d launches for one ready issue", n)
 	}
 }
 

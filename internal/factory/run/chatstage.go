@@ -612,6 +612,7 @@ func stageBrief(job Job) string {
 		para(p...)
 	}
 	para(stagePlace(job))
+	para(rulesBrief(job))
 	para(planBrief(job))
 	var notes []string
 	for _, n := range job.Notes {

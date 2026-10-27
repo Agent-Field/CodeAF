@@ -220,6 +220,11 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 	adapt := AdaptFree
 	if mode == EditInRun && who != ByYou {
 		adapt = recipe.AdaptFor(kind)
+		// THE FACTORY'S OWN WORD TRAVELS WITH THE JOB ([Item.House]) and can
+		// only tighten the repository's, whichever machine runs the edit.
+		if it.House != nil {
+			adapt, _ = StricterAdapt(adapt, it.House.Adapt)
+		}
 	}
 	if adapt == AdaptFixed {
 		return it, nil, fmt.Errorf("the recipe for %s is fixed; %s may not change the stages", kind, who)
@@ -695,3 +700,26 @@ type EditRefusal struct{ Cause error }
 
 func (e EditRefusal) Error() string { return e.Cause.Error() }
 func (e EditRefusal) Unwrap() error { return e.Cause }
+
+// adaptRank orders the adapt words from the most freedom to the least: "" and
+// adapt let the plan reshape within the bounds, ask makes a person ratify it,
+// fixed lets nobody but the person change the steps.
+func adaptRank(m AdaptMode) int {
+	switch m {
+	case AdaptAsk:
+		return 1
+	case AdaptFixed:
+		return 2
+	}
+	return 0
+}
+
+// StricterAdapt is want when it gives the plan no more freedom than have, and
+// have (false) when want would loosen it: a personal file or the factory may
+// tighten a repository's adapt word, never loosen it.
+func StricterAdapt(have, want AdaptMode) (AdaptMode, bool) {
+	if adaptRank(want) < adaptRank(have) {
+		return have, false
+	}
+	return want, true
+}

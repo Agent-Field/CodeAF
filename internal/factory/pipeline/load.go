@@ -305,6 +305,13 @@ func Merge(repo, personal File) (File, []Problem) {
 	for name, step := range personal.Steps {
 		probs = tightenStep(&out, repo, name, step, probs)
 	}
+	if personal.set.adapt {
+		if next, ok := factory.StricterAdapt(repo.Adapt, personal.Adapt); ok {
+			out.Adapt = next
+		} else {
+			probs = append(probs, Problem{Where: "adapt", Why: "ignored; a personal file cannot let the plan reshape more than the repository allows"})
+		}
+	}
 	if personal.set.mergeAuto {
 		if personal.Merge.Auto && !repo.Merge.Auto {
 			probs = append(probs, Problem{Where: "merge.auto", Why: "ignored; a personal file cannot turn auto-merge on"})
@@ -557,6 +564,9 @@ func cloneFile(f File) File {
 	out.Start.AskFirst = append([]string(nil), f.Start.AskFirst...)
 	out.Fixed = append([]string(nil), f.Fixed...)
 	out.Rules = append([]string(nil), f.Rules...)
+	out.House.Rules = append([]string(nil), f.House.Rules...)
+	out.House.AskFirst = append([]string(nil), f.House.AskFirst...)
+	out.House.Never = append([]string(nil), f.House.Never...)
 	out.Problems = append([]Problem(nil), f.Problems...)
 	out.Pipeline = map[factory.Kind][]string{}
 	for kind, names := range f.Pipeline {
