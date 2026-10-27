@@ -418,6 +418,91 @@ func TestKnowledgePreservedCoreUsesCurrentConflictMetadata(t *testing.T) {
 	}
 }
 
+func TestKnowledgeReusesMaintainedCoreWithoutReexpandingRawParagraphs(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 13; i++ {
+		core = append(core, fmt.Sprintf("Preserve history partition %d during reset.", i))
+	}
+	mergeSizes := []int{}
+	v, add := answerIntegrationFixture(t, "Reconnect provider credentials after resetting settings.", func(p map[string]any) map[string]any {
+		if p["merge_policy"] != nil {
+			mergeSizes = append(mergeSizes, len(p["paragraphs"].([]any)))
+		}
+		if r := fixtureMergedAnswer(p); r != nil {
+			return r
+		}
+		if p["integration_policy"] != nil {
+			return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+		}
+		ids := []any{}
+		for _, raw := range p["paragraphs"].([]any) {
+			ids = append(ids, raw.(map[string]any)["id"])
+		}
+		return map[string]any{"sections": []any{map[string]any{"heading": "Reset settings", "paragraphs": ids[:min(12, len(ids))]}}}
+	}, core)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	page := settingsGuide(t, v)
+	text := page.Sections[0].Paragraphs[0].Text
+	for _, fact := range append(core[:12], "Reconnect provider credentials after resetting settings.") {
+		if !strings.Contains(text, fact) {
+			t.Fatalf("maintained core lost useful meaning: %s", fact)
+		}
+	}
+	if len(page.Sections[0].Paragraphs[0].Evidence) != 3 {
+		t.Fatal("maintained core lost original or later citations")
+	}
+	if len(mergeSizes) != 2 || mergeSizes[1] != 2 {
+		t.Fatalf("unchanged core was expanded from raw history again: %v", mergeSizes)
+	}
+}
+
+func TestKnowledgeChangedCoreContextInvalidatesMaintainedReuse(t *testing.T) {
+	changed, inspected := false, false
+	fresh := "A settings reset leaves saved conversations intact."
+	v, add := answerIntegrationFixtureWithUnderstanding(t, "Reconnect provider credentials after resetting settings.", func(p map[string]any) map[string]any {
+		if p["integration_policy"] != nil {
+			if changed {
+				texts := []string{}
+				for _, section := range p["existing_sections"].([]any) {
+					for _, raw := range section.(map[string]any)["paragraphs"].([]any) {
+						texts = append(texts, raw.(map[string]any)["text"].(string))
+					}
+				}
+				inspected = true
+				if !strings.Contains(strings.Join(texts, " "), fresh) {
+					t.Error("changed current context was hidden by maintained-core reuse")
+				}
+			}
+			return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+		}
+		return fixtureMergedAnswer(p)
+	}, func(response map[string]any) map[string]any {
+		if sections, ok := response["sections"].([]any); ok && changed {
+			sections[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)["text"] = fresh
+		}
+		return response
+	})
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	changed = true
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	if !inspected || !strings.Contains(settingsGuide(t, v).Sections[0].Paragraphs[0].Text, fresh) {
+		t.Fatal("changed core did not reach the published guide")
+	}
+}
+
 func settingsGuide(t *testing.T, v *knowledge.Vault) knowledge.Page {
 	t.Helper()
 	s, err := v.Snapshot()

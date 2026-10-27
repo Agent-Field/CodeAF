@@ -61,6 +61,7 @@ func curatePublishedGuides(draft document, model compilerModel) (document, error
 					cancel()
 					return
 				}
+				note["editorial_core_hash"] = guideCoreFingerprint(items(note["sections"]))
 				note["sections"] = sections
 				if len(sections) == 0 {
 					note["learning_state"] = "needs_evidence"

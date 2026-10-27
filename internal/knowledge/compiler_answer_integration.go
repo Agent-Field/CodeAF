@@ -75,14 +75,6 @@ func integrateGuideAnswers(note, previous, vault document, model compilerModel) 
 	if len(answers) == 0 {
 		return base, nil
 	}
-
-	if !guideWithinLimits(base) {
-		compact, err := curateGuideSections(note, items(note["sections"]), model)
-		if err != nil {
-			return nil, err
-		}
-		base = coreGuideSections(compact)
-	}
 	// Selection may summarize raw detail, but it cannot silently discard a
 	// still-supported paragraph the reader already had. Include those paragraphs
 	// in the merge coverage inputs after checking current claim/source validity.
@@ -101,6 +93,16 @@ func integrateGuideAnswers(note, previous, vault document, model compilerModel) 
 		if len(paragraphs) > 0 {
 			preserved = append(preserved, merge(section, document{"paragraphs": paragraphs}))
 		}
+	}
+	priorCore := coreGuideSections(items(previous["sections"]))
+	if textValue(previous["editorial_core_hash"]) == guideCoreFingerprint(base) && len(preserved) > 0 && guideParagraphCount(preserved) == guideParagraphCount(priorCore) {
+		base = []document{}
+	} else if !guideWithinLimits(base) {
+		compact, err := curateGuideSections(note, items(note["sections"]), model)
+		if err != nil {
+			return nil, err
+		}
+		base = coreGuideSections(compact)
 	}
 	base = mergeSubjectSections(append(base, preserved...))
 	refreshGuideEvidence(base, items(note["conflicts"]), active, sources)
@@ -206,4 +208,16 @@ func coreGuideSections(sections []document) []document {
 		}
 	}
 	return result
+}
+
+func guideCoreFingerprint(sections []document) string {
+	return identity(answerIntegrationPayload(document{}, coreGuideSections(sections), nil)["existing_sections"])
+}
+
+func guideParagraphCount(sections []document) int {
+	count := 0
+	for _, section := range sections {
+		count += len(items(section["paragraphs"]))
+	}
+	return count
 }
