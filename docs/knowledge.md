@@ -95,7 +95,10 @@ remain mandatory coverage inputs; refreshed evidence metadata preserves current
 conflicts. Unchanged core context reuses maintained prose only while all original
 support remains valid. Changed context is reviewed again. Useful additions are woven into their existing sections with support and meaning
 review, including when they already fit the reading target. Only affected
-sections are rewritten when the remaining guide fits.
+sections are rewritten when the remaining guide fits. A budget failure can widen
+the rewrite to the whole guide, with two attempts per scope. Semantic rejection
+cannot trigger that fallback. Formatting consolidation is reviewed as part of
+the actual proposed prose.
 The word limit is a target for maintenance: after a bounded repair, a reviewed
 merge may retain up to its input word count to preserve useful meaning. Section
 and paragraph limits still apply. Oversized integration inputs stop before integration requests; bounded selection

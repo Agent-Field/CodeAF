@@ -610,6 +610,134 @@ func TestKnowledgeMalformedAdmissionKeepsPublicationAndRetries(t *testing.T) {
 	}
 }
 
+func TestKnowledgeExpandsMergeScopeWhenSectionBudgetCannotFit(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 12; i++ {
+		core = append(core, fmt.Sprintf("Preserve history partition %d during reset.", i))
+	}
+	v, add := answerIntegrationFixture(t, "Reconnect provider credentials after resetting settings.", func(p map[string]any) map[string]any {
+		if p["merge_policy"] != nil && fmt.Sprint(p["max_paragraphs"]) != "12" {
+			r := fixtureMergedAnswer(p)
+			paragraph := r["sections"].([]any)[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)
+			paragraph["text"] = paragraph["text"].(string) + strings.Repeat(" repeated", 901)
+			return r
+		}
+		if r := fixtureMergedAnswer(p); r != nil {
+			return r
+		}
+		return fixtureIntegrateAll(p)
+	}, core)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	page := settingsGuide(t, v)
+	if len(page.Sections) != 1 || len(page.Sections[0].Paragraphs) != 1 {
+		t.Fatal("whole-guide fallback did not retain a coherent guide")
+	}
+	for _, fact := range append(core, "Reconnect provider credentials after resetting settings.") {
+		if !strings.Contains(page.Sections[0].Paragraphs[0].Text, fact) {
+			t.Fatalf("scope expansion lost knowledge: %s", fact)
+		}
+	}
+	if len(page.Sections[0].Paragraphs[0].Evidence) != 2 {
+		t.Fatal("scope expansion lost original citations")
+	}
+}
+
+func TestKnowledgePacksAdjacentParagraphsWithoutLosingFacts(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 12; i++ {
+		core = append(core, fmt.Sprintf("Preserve history partition %d during reset.", i))
+	}
+	detail := "Reconnect provider credentials after resetting settings."
+	v, add := answerIntegrationFixture(t, detail, func(p map[string]any) map[string]any {
+		if p["merge_policy"] != nil {
+			paragraphs := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				v := raw.(map[string]any)
+				paragraphs = append(paragraphs, map[string]any{"text": v["text"], "inputs": []any{v["id"]}})
+			}
+			return map[string]any{"sections": []any{map[string]any{"heading": "Reset settings", "paragraphs": paragraphs}}}
+		}
+		if p["coverage_policy"] != nil {
+			checks, coverage := []any{}, []any{}
+			for _, raw := range p["proposed"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "supported": true, "useful": true})
+			}
+			for _, raw := range p["paragraphs"].([]any) {
+				coverage = append(coverage, map[string]any{"id": raw.(map[string]any)["id"], "preserved": true})
+			}
+			return map[string]any{"checks": checks, "coverage": coverage}
+		}
+		return fixtureIntegrateAll(p)
+	}, core)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	page := settingsGuide(t, v)
+	texts := []string{}
+	count := 0
+	for _, section := range page.Sections {
+		for _, p := range section.Paragraphs {
+			texts = append(texts, p.Text)
+			count++
+		}
+	}
+	if count > 12 {
+		t.Fatalf("paragraph target not respected: %d", count)
+	}
+	text := strings.Join(texts, " ")
+	for _, fact := range append(core, detail) {
+		if strings.Count(text, fact) != 1 {
+			t.Fatalf("paragraph packing lost or repeated meaning: %s", fact)
+		}
+	}
+}
+
+func TestKnowledgeSemanticRejectionDoesNotPurchaseScopeFallback(t *testing.T) {
+	core := []string{}
+	for i := 0; i < 12; i++ {
+		core = append(core, fmt.Sprintf("Preserve history partition %d during reset.", i))
+	}
+	writers := 0
+	v, add := answerIntegrationFixture(t, "Reconnect provider credentials after resetting settings.", func(p map[string]any) map[string]any {
+		if p["merge_policy"] != nil {
+			writers++
+			r := fixtureMergedAnswer(p)
+			paragraph := r["sections"].([]any)[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)
+			if writers == 1 {
+				paragraph["text"] = "Delete all saved history."
+			}
+			if writers == 2 {
+				paragraph["text"] = strings.Repeat("oversized ", 901)
+			}
+			return r
+		}
+		if p["coverage_policy"] != nil {
+			r := fixtureMergedAnswer(p)
+			if p["proposed"].([]any)[0].(map[string]any)["text"] == "Delete all saved history." {
+				check := r["checks"].([]any)[0].(map[string]any)
+				check["supported"] = false
+				for _, raw := range r["coverage"].([]any) {
+					raw.(map[string]any)["preserved"] = false
+				}
+			}
+			return r
+		}
+		return fixtureIntegrateAll(p)
+	}, core)
+	before := settingsGuide(t, v)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err == nil {
+		t.Fatal("semantic rejection was hidden by a later budget failure")
+	}
+	if writers != 2 || settingsGuide(t, v).Revision != before.Revision {
+		t.Fatalf("semantic failure purchased scope fallback or changed publication: writers=%d", writers)
+	}
+}
+
 func settingsGuide(t *testing.T, v *knowledge.Vault) knowledge.Page {
 	t.Helper()
 	s, err := v.Snapshot()

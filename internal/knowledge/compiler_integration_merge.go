@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+var (
+	errIntegrationBudget  = errors.New("knowledge integration merge exceeded the guide budget; prior publication retained")
+	errIntegrationMeaning = errors.New("knowledge integration merge did not preserve supported meaning; prior publication retained")
+)
+
 func validateIntegrationMerge(payload, response document) error {
 	allowed := index(items(payload["paragraphs"]))
 	headings := map[string]bool{}
@@ -78,6 +83,9 @@ func mergeIntegratedGuide(note document, sections []document, vault document, mo
 	}
 	if len(changed) > 0 && len(unchanged) > 0 && words < guideMaxWords-100 && paragraphs < guideMaxParagraphs && len(unchanged) < guideMaxSections {
 		merged, err := mergeGuideWithinBudget(note, changed, vault, model, guideMaxWords-words, guideMaxParagraphs-paragraphs, guideMaxSections-len(unchanged))
+		if errors.Is(err, errIntegrationBudget) {
+			return mergeGuideWithinBudget(note, sections, vault, model, guideMaxWords, guideMaxParagraphs, guideMaxSections)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -116,20 +124,21 @@ func mergeGuideWithinBudget(note document, sections []document, vault document, 
 		inputWords += len(strings.Fields(textValue(section["heading"])))
 	}
 	var proposal document
-	accepted := false
-	failure := "knowledge integration merge did not preserve supported meaning; prior publication retained"
+	accepted, rejectedMeaning := false, false
+	failure := errIntegrationMeaning
 	for attempt := 0; attempt < 2; attempt++ {
 		var err error
 		proposal, err = model.call("merge_integration", payload)
 		if err != nil {
 			return nil, err
 		}
+		proposal = packIntegrationParagraphs(proposal, maxParagraphs)
 		withinTarget := integrationWithinBudget(items(proposal["sections"]), maxWords, maxParagraphs, maxSections)
 		// After one repair, prefer reviewed meaning over an arbitrary word target.
 		// Never expand the input, or relax structural limits.
 		withinPreservationBudget := attempt > 0 && integrationWithinBudget(items(proposal["sections"]), max(maxWords, inputWords), maxParagraphs, maxSections)
 		if !withinTarget && !withinPreservationBudget {
-			failure = "knowledge integration merge exceeded the guide budget; prior publication retained"
+			failure = errIntegrationBudget
 			words, paragraphs := 0, 0
 			for _, section := range items(proposal["sections"]) {
 				words += len(strings.Fields(textValue(section["heading"])))
@@ -153,7 +162,7 @@ func mergeGuideWithinBudget(note document, sections []document, vault document, 
 			return nil, err
 		}
 		accepted = true
-		failure = "knowledge integration merge did not preserve supported meaning; prior publication retained"
+		failure = errIntegrationMeaning
 		for _, check := range items(review["checks"]) {
 			accepted = accepted && flag(check["supported"]) && flag(check["useful"])
 		}
@@ -163,11 +172,15 @@ func mergeGuideWithinBudget(note document, sections []document, vault document, 
 		if accepted {
 			break
 		}
+		rejectedMeaning = true
 		payload["previous_draft"] = proposal
 		payload["review_feedback"] = review
 	}
 	if !accepted {
-		return nil, errors.New(failure)
+		if rejectedMeaning {
+			return nil, errIntegrationMeaning
+		}
+		return nil, failure
 	}
 	claims := activeClaims(vault)
 	sources := object(vault["sources"])
@@ -214,4 +227,33 @@ func integrationWithinBudget(sections []document, maxWords, maxParagraphs, maxSe
 		}
 	}
 	return words <= maxWords && paragraphs <= maxParagraphs && len(sections) <= maxSections
+}
+
+// Adjacent paragraphs under the same heading can share a paragraph boundary.
+// Only formatting and input-reference unions change; review sees the packed prose.
+func packIntegrationParagraphs(proposal document, limit int) document {
+	result := clone(proposal)
+	sections := items(result["sections"])
+	for guideParagraphCount(sections) > limit {
+		bestSection, bestParagraph, bestWords := -1, -1, 0
+		for i, section := range sections {
+			paragraphs := items(section["paragraphs"])
+			for j := 0; j+1 < len(paragraphs); j++ {
+				words := len(strings.Fields(textValue(paragraphs[j]["text"]))) + len(strings.Fields(textValue(paragraphs[j+1]["text"])))
+				if bestSection < 0 || words < bestWords {
+					bestSection, bestParagraph, bestWords = i, j, words
+				}
+			}
+		}
+		if bestSection < 0 {
+			break
+		}
+		section := sections[bestSection]
+		paragraphs := items(section["paragraphs"])
+		left, right := paragraphs[bestParagraph], paragraphs[bestParagraph+1]
+		left["text"] = strings.TrimSpace(textValue(left["text"])) + " " + strings.TrimSpace(textValue(right["text"]))
+		left["inputs"] = sortedUnique(append(stringsValue(left["inputs"]), stringsValue(right["inputs"])...))
+		section["paragraphs"] = append(paragraphs[:bestParagraph+1], paragraphs[bestParagraph+2:]...)
+	}
+	return result
 }
