@@ -399,6 +399,14 @@ func TestKnowledgeFinalGuideBudgetIncludesReviewedQuestionAnswers(t *testing.T) 
 	answerSelected := false
 	answer := "Cedar queues retry failed jobs."
 	withConcurrentKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			checks := []any{}
+			for _, raw := range p["answers"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "useful": true})
+			}
+			return map[string]any{"checks": checks}
+		}
+
 		if p["merge_policy"] != nil {
 			paragraphs := []any{}
 			for _, raw := range p["paragraphs"].([]any) {

@@ -12,7 +12,7 @@ module. Product behavior belongs in the [Memory manual](../internal/manual/chat/
 | Admit immutable sources and publish readable pages | `internal/knowledge/store.go` |
 | Compile evidence into maintained concept guides | `internal/knowledge/compiler.go` |
 | Reuse validated evidence checks across updates | `internal/knowledge/compiler_questions.go`, `internal/knowledge/compiler_provider.go` |
-| Integrate reviewed additions into maintained guides | `internal/knowledge/compiler_answer_integration.go`, `internal/knowledge/compiler_integration_merge.go` |
+| Integrate reviewed additions into maintained guides | `internal/knowledge/compiler_candidate_review.go`, `internal/knowledge/compiler_answer_integration.go`, `internal/knowledge/compiler_integration_merge.go` |
 | Preserve edits and deletion intent | `internal/knowledge/edit.go` |
 | Agent knowledge tools and local recall | `internal/session/knowledge_tools.go`, `internal/knowledge/compiler_recall.go` |
 | Memory rendering, navigation, and editor | `internal/tui3/knowledge*.go` |
@@ -86,7 +86,9 @@ cache affinity within a profile, model, and compiler role. These optimizations
 remain inside the vault; callers do not manage cache identity or invalidate
 compiler checkpoints themselves.
 
-Reviewed additions are organized against the existing guide before publication.
+Reviewed additions and changed core drafts are screened against the specific
+concept guide before placement. Sharing a project does not establish relevance.
+This maintenance also runs when no question has an accepted answer.
 A size-limited update merges overlapping explanations with separate support and
 meaning-coverage checks. Still-supported paragraphs from the previous publication
 remain mandatory coverage inputs; refreshed evidence metadata preserves current

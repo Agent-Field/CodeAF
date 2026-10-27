@@ -86,6 +86,9 @@ func validateCompilerResponse(role string, result document) error {
 			}
 		}{}
 		required = "sections"
+	case "review_additions":
+		target = &struct{ Checks []modelCheck }{}
+		required = "checks"
 	case "integrate_answers":
 		target = &struct {
 			Decisions []struct{ ID, Action, Section, Heading, Reason string }
@@ -215,6 +218,9 @@ func validateCompilerResponse(role string, result document) error {
 }
 
 func validateCompilerReferences(role string, payload, response document) error {
+	if role == "review_additions" {
+		return validateAdditionReview(payload, response)
+	}
 	if role == "merge_integration" {
 		return validateIntegrationMerge(payload, response)
 	}

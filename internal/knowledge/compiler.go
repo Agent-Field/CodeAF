@@ -138,7 +138,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	published, err = curatePublishedGuides(published, model)
+	published, err = curatePublishedGuides(published, model, !needsLearning)
 	if err != nil {
 		return err
 	}

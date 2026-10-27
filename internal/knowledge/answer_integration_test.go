@@ -24,6 +24,18 @@ func answerIntegrationFixtureWithUnderstanding(t *testing.T, answer string, edit
 		t.Fatal(err)
 	}
 	withKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			if understanding != nil {
+				if r := understanding(p); r["checks"] != nil {
+					return r
+				}
+			}
+			checks := []any{}
+			for _, raw := range p["answers"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "useful": true})
+			}
+			return map[string]any{"checks": checks}
+		}
 		if p["integration_policy"] != nil || p["merge_policy"] != nil || p["coverage_policy"] != nil {
 			return edit(p)
 		}
@@ -243,7 +255,7 @@ func TestKnowledgePreservesOversizedCoreBeforeIntegratingAdditions(t *testing.T)
 			}
 			return map[string]any{"checks": []any{map[string]any{"id": "R0", "supported": true, "useful": true}}, "coverage": coverage}
 		}
-		return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+		return fixtureIntegrateAll(p)
 	}, core)
 	add()
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
@@ -432,7 +444,7 @@ func TestKnowledgeReusesMaintainedCoreWithoutReexpandingRawParagraphs(t *testing
 			return r
 		}
 		if p["integration_policy"] != nil {
-			return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+			return fixtureIntegrateAll(p)
 		}
 		ids := []any{}
 		for _, raw := range p["paragraphs"].([]any) {
@@ -476,11 +488,14 @@ func TestKnowledgeChangedCoreContextInvalidatesMaintainedReuse(t *testing.T) {
 					}
 				}
 				inspected = true
+				for _, raw := range p["answers"].([]any) {
+					texts = append(texts, raw.(map[string]any)["text"].(string))
+				}
 				if !strings.Contains(strings.Join(texts, " "), fresh) {
 					t.Error("changed current context was hidden by maintained-core reuse")
 				}
 			}
-			return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0"}}}
+			return fixtureIntegrateAll(p)
 		}
 		return fixtureMergedAnswer(p)
 	}, func(response map[string]any) map[string]any {
@@ -494,12 +509,104 @@ func TestKnowledgeChangedCoreContextInvalidatesMaintainedReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	changed = true
+	if err := v.Capture(knowledge.Source{ID: "changed-core", Session: "chat", Role: "user", TS: "2026-10-26T14:00:00Z", Text: "A settings reset leaves saved conversations intact; retained messages remain readable."}); err != nil {
+		t.Fatal(err)
+	}
 	add()
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
 	}
 	if !inspected || !strings.Contains(settingsGuide(t, v).Sections[0].Paragraphs[0].Text, fresh) {
 		t.Fatal("changed core did not reach the published guide")
+	}
+}
+
+func TestKnowledgeCoreUpdatesPreserveMeaningWithoutGapAnswers(t *testing.T) {
+	changed := false
+	detail := "Reconnect provider credentials after resetting settings."
+	v, add := answerIntegrationFixtureWithUnderstanding(t, detail, func(p map[string]any) map[string]any {
+		if p["integration_policy"] != nil {
+			return fixtureIntegrateAll(p)
+		}
+		return fixtureMergedAnswer(p)
+	}, func(response map[string]any) map[string]any {
+		if sections, ok := response["sections"].([]any); ok {
+			response["questions"] = []any{}
+			if changed {
+				sections[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)["text"] = detail
+			}
+		}
+		return response
+	})
+	before := settingsGuide(t, v)
+	changed = true
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	after := settingsGuide(t, v)
+	if after.ID != before.ID || len(after.Sections) != 1 || len(after.Sections[0].Paragraphs) != 1 {
+		t.Fatal("core update fragmented the maintained guide")
+	}
+	p := after.Sections[0].Paragraphs[0]
+	if !strings.Contains(p.Text, settingsGuideText) || !strings.Contains(p.Text, detail) || len(p.Evidence) != 2 {
+		t.Fatalf("core update without answered gaps lost meaning or citations: %+v", p)
+	}
+}
+
+func TestKnowledgeRejectsUnrelatedConceptsWithinTheSameProject(t *testing.T) {
+	placements := 0
+	v, add := answerIntegrationFixtureWithUnderstanding(t, "Cedar's queue scheduler runs parallel workers.", func(p map[string]any) map[string]any {
+		placements++
+		return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "new_section", "heading": "Queue scheduling"}}}
+	}, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			return map[string]any{"checks": []any{map[string]any{"id": "A0", "useful": false, "reason": "Queue scheduling is another concept, not settings and history."}}}
+		}
+		return p
+	})
+	before := settingsGuide(t, v)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	after := settingsGuide(t, v)
+	if placements != 0 || after.ID != before.ID || len(after.Sections) != 1 || after.Sections[0].Paragraphs[0].Text != settingsGuideText || len(after.Evidence) != 2 {
+		t.Fatalf("project-wide relevance polluted the specific concept guide: %+v placements=%d", after, placements)
+	}
+}
+
+func TestKnowledgeMalformedAdmissionKeepsPublicationAndRetries(t *testing.T) {
+	invalid := true
+	v, add := answerIntegrationFixtureWithUnderstanding(t, "Reconnect provider credentials after resetting settings.", func(p map[string]any) map[string]any {
+		if p["integration_policy"] != nil {
+			return fixtureIntegrateAll(p)
+		}
+		return fixtureMergedAnswer(p)
+	}, func(p map[string]any) map[string]any {
+		if p["admission_policy"] != nil {
+			check := map[string]any{"id": "A0"}
+			if !invalid {
+				check["useful"] = true
+			}
+			return map[string]any{"checks": []any{check}}
+		}
+		return p
+	})
+	before := settingsGuide(t, v)
+	add()
+	if err := v.Flush(context.Background(), "fixture", true); err == nil {
+		t.Fatal("missing admission judgement was treated as a valid rejection")
+	}
+	if after := settingsGuide(t, v); after.Revision != before.Revision || knowledge.PageMarkdown(after) != knowledge.PageMarkdown(before) {
+		t.Fatal("malformed admission changed the published guide")
+	}
+	invalid = false
+	if err := v.Flush(context.Background(), "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(settingsGuide(t, v).Sections[0].Paragraphs[0].Text, "Reconnect provider credentials") {
+		t.Fatal("malformed admission poisoned retry")
 	}
 }
 
@@ -713,4 +820,12 @@ func fixtureMergedAnswer(p map[string]any) map[string]any {
 		return map[string]any{"checks": []any{map[string]any{"id": "R0", "supported": true, "useful": true}}, "coverage": coverage}
 	}
 	return nil
+}
+
+func fixtureIntegrateAll(p map[string]any) map[string]any {
+	decisions := []any{}
+	for _, raw := range p["answers"].([]any) {
+		decisions = append(decisions, map[string]any{"id": raw.(map[string]any)["id"], "action": "integrate", "section": "S0"})
+	}
+	return map[string]any{"decisions": decisions}
 }

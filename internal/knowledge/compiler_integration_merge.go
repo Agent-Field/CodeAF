@@ -148,7 +148,7 @@ func mergeGuideWithinBudget(note document, sections []document, vault document, 
 				proposed = append(proposed, merge(p, document{"id": fmt.Sprintf("R%d", len(proposed)), "heading": section["heading"]}))
 			}
 		}
-		review, err := model.call("review_integration", document{"coverage_policy": "integration-coverage-1", "paragraphs": inputs, "proposed": proposed})
+		review, err := model.call("review_integration", document{"coverage_policy": "integration-coverage-1", "subject": choose(note, "id", "title", "scope"), "paragraphs": inputs, "proposed": proposed})
 		if err != nil {
 			return nil, err
 		}

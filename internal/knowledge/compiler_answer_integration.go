@@ -72,9 +72,6 @@ func integrateGuideAnswers(note, previous, vault document, model compilerModel) 
 			base = append(base, merge(clone(section), document{"paragraphs": kept}))
 		}
 	}
-	if len(answers) == 0 {
-		return base, nil
-	}
 	// Selection may summarize raw detail, but it cannot silently discard a
 	// still-supported paragraph the reader already had. Include those paragraphs
 	// in the merge coverage inputs after checking current claim/source validity.
@@ -95,8 +92,27 @@ func integrateGuideAnswers(note, previous, vault document, model compilerModel) 
 		}
 	}
 	priorCore := coreGuideSections(items(previous["sections"]))
-	if textValue(previous["editorial_core_hash"]) == guideCoreFingerprint(base) && len(preserved) > 0 && guideParagraphCount(preserved) == guideParagraphCount(priorCore) {
-		base = []document{}
+	unchanged := textValue(previous["editorial_core_hash"]) == guideCoreFingerprint(base) && guideParagraphCount(preserved) == guideParagraphCount(priorCore)
+	if len(preserved) > 0 {
+		byText := map[string]document{}
+		for _, section := range preserved {
+			for _, p := range items(section["paragraphs"]) {
+				byText[textValue(p["text"])] = p
+			}
+		}
+		for _, section := range base {
+			for _, p := range items(section["paragraphs"]) {
+				if prior := byText[textValue(p["text"])]; prior != nil {
+					prior["claims"] = sortedUnique(append(stringsValue(prior["claims"]), stringsValue(p["claims"])...))
+					prior["depends_on"] = sortedUnique(append(stringsValue(prior["depends_on"]), stringsValue(p["depends_on"])...))
+					prior["evidence"] = unionEvidence(items(prior["evidence"]), items(p["evidence"]))
+					prior["partial"] = p["partial"]
+				} else if !unchanged {
+					answers = append(answers, merge(clone(p), document{"heading": section["heading"], "derivation": "gap_answer"}))
+				}
+			}
+		}
+		base = preserved
 	} else if !guideWithinLimits(base) {
 		compact, err := curateGuideSections(note, items(note["sections"]), model)
 		if err != nil {
@@ -104,11 +120,10 @@ func integrateGuideAnswers(note, previous, vault document, model compilerModel) 
 		}
 		base = coreGuideSections(compact)
 	}
-	base = mergeSubjectSections(append(base, preserved...))
 	refreshGuideEvidence(base, items(note["conflicts"]), active, sources)
 	for len(answers) > 0 {
 		count := 1
-		for count < len(answers) && count < guideCandidateLimit {
+		for count < len(answers) && count+1+guideParagraphCount(base) <= guideCandidateLimit {
 			if jsonCharacterLength(answerIntegrationPayload(note, base, answers[:count+1])) > guideCandidateCharacters {
 				break
 			}
@@ -149,6 +164,15 @@ func placeGuideAnswers(note document, base, answers []document, vault document, 
 	if paragraphs > guideCandidateLimit || jsonCharacterLength(payload) > guideCandidateCharacters {
 		return nil, errors.New("knowledge integration input exceeds safe review bounds; prior publication retained")
 	}
+	var err error
+	answers, err = reviewGuideAdditions(note, base, answers, model)
+	if err != nil {
+		return nil, err
+	}
+	if len(answers) == 0 {
+		return base, nil
+	}
+	payload = answerIntegrationPayload(note, base, answers)
 	proposed := items(payload["answers"])
 	response, err := model.call("integrate_answers", payload)
 	if err != nil {
