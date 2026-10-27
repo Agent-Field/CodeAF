@@ -310,12 +310,23 @@ func TestBalanceAChangedKeyIsAskedAtOnceAndNeverShowsTheOldAccount(t *testing.T)
 }
 
 func TestBalanceRedirectIsNeverFollowedWithTheKey(t *testing.T) {
-	b, fake, _ := balanceBackend(t, func(r *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 302, Header: http.Header{"Location": {"https://elsewhere.invalid/key"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})
-	r := askBalance(t, b, "openrouter")
-	if fake.count() != 1 || r.Status != appwire.BalanceInvalid || r.ErrorKind != "unexpected_status" {
-		t.Fatalf("asks %v %+v", fake.asks, r)
+	// E5: #1904 refuses a foreign origin before it returns an HTTP status.
+	// The balance door's stricter policy also refuses same-origin redirects.
+	for _, tc := range []struct {
+		name, location, status, kind string
+	}{
+		{"foreign origin", "https://elsewhere.invalid/key", appwire.BalanceUnreachable, "unreachable"},
+		{"same origin", "/api/v1/elsewhere", appwire.BalanceInvalid, "unexpected_status"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, fake, _ := balanceBackend(t, func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 302, Header: http.Header{"Location": {tc.location}}, Body: io.NopCloser(strings.NewReader(""))}, nil
+			})
+			r := askBalance(t, b, "openrouter")
+			if fake.count() != 1 || r.Status != tc.status || r.ErrorKind != tc.kind || r.RemainingUSD != nil {
+				t.Fatalf("asks %v %+v", fake.asks, r)
+			}
+		})
 	}
 }
 
