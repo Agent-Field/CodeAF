@@ -1452,47 +1452,11 @@ func (b *appBackend) FollowProcess(id string, follow bool) error {
 	if start {
 		var f *appFollow
 		b.locked(func() { f = b.follows[id] })
-		from, _ := appCountLines(path)
-		guard.Go("app/follow", func() { b.follow(id, path, from, f) })
+		reader := &appFollowReader{}
+		_ = reader.start(path)
+		guard.Go("app/follow", func() { b.follow(id, path, reader, f) })
 	}
 	return nil
-}
-
-// appCountLines is how many complete lines a spool holds now.
-func appCountLines(path string) (int, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, nil
-	}
-	defer file.Close()
-	reader := bufio.NewReaderSize(file, 64<<10)
-	n := 0
-	for {
-		if _, err := reader.ReadString('\n'); err != nil {
-			return n, nil
-		}
-		n++
-	}
-}
-
-// follow tails one spool until it is unfollowed or the backend closes.
-func (b *appBackend) follow(id, path string, from int, f *appFollow) {
-	defer close(f.done)
-	ticker := time.NewTicker(appFollowEvery)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-f.stop:
-			return
-		case <-ticker.C:
-		}
-		lines, next, err := appReadLines(path, from, appOutputLines)
-		if err != nil || len(lines) == 0 {
-			continue
-		}
-		from = next
-		b.emit.Emit(appwire.EventProcessOutput, appwire.ProcessOutput{ID: id, Lines: lines})
-	}
 }
 
 // StopProcess stops one running process.
