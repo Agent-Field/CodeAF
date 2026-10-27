@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"io"
 	"os"
+	"time"
 )
 
 const clusterHelp = `codeaf cluster status
@@ -26,6 +27,8 @@ type clusterDoor interface {
 	ClusterStatus(context.Context) (clusterctl.Status, error)
 	LeadCluster(context.Context, uint64) (cs.LeadershipReceipt, error)
 }
+
+const clusterStatusTimeout = 5 * time.Second
 
 func runCluster(args []string) error {
 	if askedForHelp(args) {
@@ -55,6 +58,11 @@ func runCluster(args []string) error {
 // store open that ignores its context cannot hold the terminal past it, and an
 // answer that arrives late never reaches the terminal at all.
 func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writer) error {
+	if verb == "status" {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, clusterStatusTimeout)
+		defer cancel()
+	}
 	return boundedClusterOutput(ctx, out, func(ctx context.Context, out io.Writer) error {
 		if verb == "lead" {
 			r, err := c.LeadCluster(ctx, 0)

@@ -32,7 +32,7 @@ func (a *app) moveTakeDraftCopies(state composerState) {
 	}
 	want := keptSlot(mainRecipient, state)
 	owner := a.draftKeepOwner()
-	files, _ := filepath.Glob(filepath.Join(filepath.Dir(a.draftFile), draftPrefix(a.workspace)+"*.json"))
+	files, _ := filepath.Glob(filepath.Join(filepath.Dir(a.draftFile), "draft-*.json"))
 	for _, file := range files {
 		if file == draftKeepPath(a.draftFile) || draftWindowAlive(file) {
 			continue

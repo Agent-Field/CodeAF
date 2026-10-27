@@ -18,6 +18,7 @@ const (
 	NoIdentity   = "this machine has no identity yet: codeaf identity import"
 	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync address"
 	Unreachable  = "other machines unreachable"
+	ReadTimedOut = "other machines did not answer in time"
 	SyncPaused   = "this chat is not syncing because other machines are unreachable; it keeps working here"
 	SyncRestored = "this chat is syncing again"
 	ClockOff     = "this computer's clock is off by more than 5 minutes"

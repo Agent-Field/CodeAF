@@ -885,7 +885,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	if dir, err := v3Dir(); err == nil {
 		store := history.New(filepath.Join(dir, "history.jsonl"))
 		options.History = store
-		options.DraftFile = tui3.DraftFile(dir, dest+":"+welcome.Workspace)
+		options.DraftFile = tui3.ChatDraftFile(dir, dest, welcome.Workspace, welcome.SessionFile)
 	}
 	// ── AND THE DOORS ONTO ANOTHER CONVERSATION ─────────────────────────────
 	//

@@ -483,7 +483,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	draft := ""
 	if keepDraft {
 		if dir, err := v3Dir(); err == nil {
-			draft = tui3.DraftFile(dir, workspace)
+			draft = tui3.ChatDraftFile(dir, "", workspace, cfg.SessionFile)
 		}
 	}
 	// THE AGENT-BUILDING SEAM (chatv3_process.go's [v3Seam]). Every conversation

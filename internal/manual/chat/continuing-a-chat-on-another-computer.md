@@ -51,6 +51,14 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 On `Continue this chat here?`, `leave it there` closes the question without moving the chat. Your typed words stay in the box and nothing is sent. If the question opened because you tried to send from an older window, this answer is already selected. Choose `1 continue here` to bring the chat here before sending.
 
+## Esc on a continue card returns to my chat, and each card keeps its own draft
+
+If Enter in a displaced chat raises the continue card, `esc` or `2 leave it there` returns to that same chat window with its full draft still in the box. If you opened the card from a Home row, leaving the card keeps you on Home.
+
+A continue card previews only that chat's unsent words, or nothing when no draft is available. Its project foot belongs to the selected chat. Words typed in another chat never appear on this card. Saved drafts belong to their chat even when a copied chat moves to a different project folder; opening another copy cannot adopt them.
+
+Home says `other machines did not answer in time` when its ownership listing reaches a deadline. Your words stay unsent. This sentence does not establish a network failure.
+
 ## Why does continue here say this chat was last held here
 
 When this computer was the chat's last holder and its hold expired, the card says `this chat was last held here; last saved turn 2h ago`, with the age of its saved turn. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.

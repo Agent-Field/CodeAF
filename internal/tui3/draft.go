@@ -15,35 +15,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// THE DRAFT IS THE PERSON'S, NOT THE SESSION'S.
+// A DRAFT BELONGS TO ONE CHAT AND ONE WINDOW.
 //
-// That one sentence decides everything in this file. The half-written message
-// in the box belongs to whoever typed it, so it survives a closed window, a
-// crash, a /new, and a session file that has moved on without it — a draft
-// older than the session's last message is STILL restored, because the person
-// who typed it did not stop meaning it when a turn finished. It is keyed by
-// directory rather than by session for the same reason: the sentence was about
-// this project.
+// Unsent words survive closing, crashes and later turns, but sharing a project
+// never transfers them to another chat. An identified chat keeps the same draft
+// identity when its copy moves folders. Each window also has its own file, so
+// one window's edits and sends cannot overwrite another window's box.
 //
-// It is cleared on submit, and only on submit.
-//
-// ── AND IT BELONGS TO ONE BOX ──
-//
-// A draft is the text in a window's input, and two windows open on one project
-// are two inputs. Keyed by directory alone they were one file: each window's
-// debounce overwrote the other's half-sentence, whichever quit last decided what
-// survived, a submit in either deleted what the other was still typing, and both
-// restored the leftover at startup — the person's own words appearing in a
-// window they had never typed them into. So the name carries the WINDOW as well
-// as the directory, and the window is this process.
-//
-// What that costs is the restore, and paying it is [adoptDraft] below: a
-// window's own file is gone the next time codeaf starts, because the pid is. A
-// draft whose window is dead is an ORPHAN, and an orphan is the person's
-// sentence with nobody holding it — so the next window opened on that directory
-// takes it over. A file whose pid is still running is never touched, which is
-// the one guarantee that matters here: it is better to leave a sentence on disk
-// for the next window than to lift it out of a live one.
+// A later window restores only records belonging to its chat whose original
+// process is gone. Older plain drafts with no recorded chat can still be adopted
+// by older conversations in the same project. A live window's file stays with it.
 
 // draftOwner is what this process's drafts are named after. A pid is unique
 // among the processes alive at one moment, which is exactly the property the
@@ -70,8 +51,7 @@ const draftDebounce = 300 * time.Millisecond
 // matches has nothing left to do.
 type draftSaveMsg struct{ file string }
 
-// draftOrdinals is how many drafts this process has named on each workspace,
-// keyed by the canonical directory.
+// draftOrdinals counts the files this process has named for each draft identity.
 //
 // IT EXISTS BECAUSE ONE TERMINAL CAN HOLD TWO CONVERSATIONS IN ONE PROJECT.
 // The name used to be the workspace and the pid, which is unique among the
@@ -109,6 +89,15 @@ func DraftFile(dir, workspace string) string {
 	draftOrdinals.mu.Unlock()
 	return filepath.Join(dir,
 		draftPrefix(workspace)+strconv.Itoa(ordinal)+"-"+strconv.Itoa(draftOwner)+".txt")
+}
+
+// ChatDraftFile names a window's draft by its chat, even when its copy moves.
+func ChatDraftFile(dir, host, workspace, file string) string {
+	key := draftOwnerOf(host, workspace, file)
+	if key == "" {
+		key = host + ":" + workspace
+	}
+	return DraftFile(dir, key)
 }
 
 // draftPrefix is everything in the name before the window: the part two windows
@@ -347,6 +336,9 @@ func adoptDraft(own, workspace string) string {
 	)
 	for _, path := range candidates {
 		if path == own || draftWindowAlive(path) {
+			continue
+		}
+		if keep, how := readDraftKeep(draftKeepPath(path)); how == draftKeepFound && namedConversation(keep.Owner) {
 			continue
 		}
 		info, err := os.Stat(path)

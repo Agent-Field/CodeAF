@@ -931,7 +931,7 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 	draft := ""
 	if keepDraft {
 		if dir, err := v3Dir(); err == nil {
-			draft = tui3.DraftFile(dir, workspace)
+			draft = tui3.ChatDraftFile(dir, "", workspace, cfg.SessionFile)
 		}
 	}
 	var recall tui3.History

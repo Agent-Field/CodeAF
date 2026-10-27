@@ -1223,14 +1223,15 @@ that has moved on. There is nothing to press; it is automatic.
   as `ctrl+j` on some terminals; only the latter opens a blank line, and nothing on the frame draws them. One kept on disk used
   to be adopted by the next window in the directory, which then opened with a box that
   looked empty, was not, and refused `space space` for home.
-- The file is keyed by the directory plus this process's id, and is written with mode
-  0600.
-- At startup, if this window's own draft file is missing, codeaf takes the newest
-  draft in the same directory whose process is no longer running, moves it into this
-  window's name, and loads it. Files belonging to a process that is still alive are
-  never touched, and older orphans are left where they are. An empty orphan is
-  deleted. A process id that cannot be checked is treated as still alive — codeaf
-  errs toward leaving your sentence on disk.
+- The file is keyed by the chat and this window, and is written with mode 0600.
+  Copied chats have separate keys across projects, and the same chat keeps its
+  identity when its copy moves to another folder.
+- At startup, codeaf restores that chat's newest saved draft from a window whose
+  process is no longer running. Another chat's saved words are never adopted.
+  Older plain drafts without a recorded chat can still be recovered for older
+  conversations in the same project. Files belonging to a process that is still
+  alive are never touched, and older drafts are left where they are. A process id
+  that cannot be checked is treated as still alive.
 - CR and CRLF in a restored draft are normalised to LF.
 - No draft is kept at all if codeaf was started without a draft file.
 

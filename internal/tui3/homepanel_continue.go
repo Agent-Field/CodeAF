@@ -175,7 +175,7 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 	// BRANCH, so with it out of reach the acting offers are disabled and say why
 	// on the foot, where every other refusal on this screen is said.
 	if a.machineRead.down {
-		a.home.say(chatlist.Unreachable, "")
+		a.home.say(a.machineRead.unavailableWord(), "")
 		return nil
 	}
 	return run(a, row, offer)
@@ -227,7 +227,9 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 // takeover sentence as the reason. The cursor starts on option `at`.
 func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 	row = a.presentRow(row)
+	card := a.continueCardFor(row, at == continueStayAt)
 	return questionShown{
+		continuation: card,
 		question: session.Question{
 			Kind:    homeContinueKind,
 			Ask:     session.AskConfirmation,
@@ -246,6 +248,9 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 		pick: at,
 		local: func(answer session.Answer) tea.Cmd {
 			if answer.FirstKey() != "1" {
+				if card.returnFile != "" && a.file == card.returnFile {
+					a.closeHome()
+				}
 				return nil
 			}
 			return a.takeRemote(row)

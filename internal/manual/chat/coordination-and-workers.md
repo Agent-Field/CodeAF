@@ -13,7 +13,7 @@ A phone would need a supported client, persistent storage, enrollment and a live
 
 ## Cluster status did not answer in time — slow storage or sync service
 
-`codeaf cluster status` has a thirty-second command ceiling, including local
+`codeaf cluster status` has a five-second command ceiling, including local
 storage work. A computer already joined is read from the service without
 reopening its local member store. A deadline says
 `the sync service at <address> did not answer in time — try again`.
