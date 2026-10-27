@@ -553,6 +553,18 @@ func (d *Desk) change(change func(*document, time.Time) (bool, error)) error {
 	})
 }
 
+// LiveHold is [Desk.HasLiveHold] and whether that hold is thread-only: the
+// manager lent to a reply, running no step and taking no execution slot.
+func (d *Desk) LiveHold(id int) (live, threadOnly bool, err error) {
+	err = d.locked(func(doc *document, now time.Time) error {
+		if h := find(doc, id); h != nil && h.live(now) {
+			live, threadOnly = true, h.ThreadOnly
+		}
+		return nil
+	})
+	return live, threadOnly, err
+}
+
 // HasLiveHold observes presence without reaping leases or changing job state.
 // Status questions must never become implicit recovery actions.
 func (d *Desk) HasLiveHold(id int) (bool, error) {

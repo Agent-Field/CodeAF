@@ -40,6 +40,13 @@ type ManagerStatus struct {
 }
 
 func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
+	return StatusForManagerHold(it, held, false, now)
+}
+
+// StatusForManagerHold is [StatusForManager] knowing whether the live hold is
+// thread-only: the manager answering a reply runs no step and takes no
+// execution slot, so it is never described as the step running.
+func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) ManagerStatus {
 	out := ManagerStatus{At: now, QuestionID: PendingQuestionID(it)}
 	var done []string
 	step := "pipeline"
@@ -75,8 +82,12 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 		out.Text += it.FollowUp.Reason
 	case it.Stream != nil && it.Stream.Paused:
 		out.Text += step + " is paused. Resume pipeline to continue."
+	case it.State == StateQueued && held && threadOnly:
+		out.Text += step + " is queued; waiting for an available execution slot. Answering a reply in this thread does not take one. Change Jobs at once in Settings → Factory → Your computers."
 	case it.State == StateQueued:
 		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers. Idle PR monitoring does not use an execution slot."
+	case it.State == StateRunning && held && threadOnly:
+		out.Text += step + " is not running: only a reply in this thread is being answered, which takes no execution slot. Use Try again to recover the step."
 	case it.State == StateRunning && held:
 		out.Text += step + " is running on its worker."
 	case it.State == StateRunning:

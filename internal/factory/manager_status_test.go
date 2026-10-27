@@ -81,3 +81,19 @@ func TestManagerStatusQueuedExplainsExecutionCapacityAndSettings(t *testing.T) {
 		t.Fatal(status.Text)
 	}
 }
+
+// A thread-only hold is the manager answering a reply: it is never described
+// as the step running, and it takes no execution slot.
+func TestThreadOnlyHoldIsNotTheStepRunning(t *testing.T) {
+	it := Item{State: StateRunning, Stream: &Stream{Cur: 0, Phases: []Phase{{Name: "code", State: PhaseRunning}}}}
+	if got := StatusForManagerHold(it, true, true, time.Now()).Text; strings.Contains(got, "running on its worker") || !strings.Contains(got, "takes no execution slot") {
+		t.Fatalf("thread-only hold: %q", got)
+	}
+	if got := StatusForManagerHold(it, true, false, time.Now()).Text; !strings.Contains(got, "code is running on its worker") {
+		t.Fatalf("a real hold: %q", got)
+	}
+	it.State = StateQueued
+	if got := StatusForManagerHold(it, true, true, time.Now()).Text; !strings.Contains(got, "Answering a reply in this thread does not take one") {
+		t.Fatalf("queued with a thread-only hold: %q", got)
+	}
+}
