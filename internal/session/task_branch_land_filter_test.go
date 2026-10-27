@@ -261,12 +261,19 @@ func TestALandWithNoFilterProgramNeverAsksAboutAttributes(t *testing.T) {
 	real := landCommand
 	t.Cleanup(func() { landCommand = real })
 	asked := false
+	// No filter program anywhere: HOME is empty, and the system config is left
+	// out too (git-lfs installs a system-wide driver on CI runners and with Git
+	// for Windows), since the land strips any GIT_* this process inherits.
+	hermetic := func(command *exec.Cmd) *exec.Cmd {
+		command.Env = append(command.Env, "GIT_CONFIG_NOSYSTEM=1")
+		return command
+	}
 	landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
 		if joined := strings.Join(args, " "); strings.Contains(joined, "check-attr") || strings.Contains(joined, "GIT_ATTR_") {
 			asked = true
-			return real(ctx, dir, "check-attr", "--no-such-option")
+			return hermetic(real(ctx, dir, "check-attr", "--no-such-option"))
 		}
-		return real(ctx, dir, args...)
+		return hermetic(real(ctx, dir, args...))
 	}
 	plan := planLand(t, place, repo)
 	if _, err := LandTaskBranch(landCtx(t), place, repo, plan); err != nil {
