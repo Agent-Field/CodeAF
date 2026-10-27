@@ -61,6 +61,11 @@ type ownershipReadMsg struct {
 type sendHold struct {
 	fence   uint64
 	blocked bool
+	// seen marks a block that only news of another holder set: a listing row
+	// or the displaced notice. A fresh reading made for this send that finds
+	// the chat held here again lifts it, because that reading is newer than
+	// the news; a block a take decided, or a failed take, never lifts that way.
+	seen bool
 	// failed marks a hold whose take did not finish, so its session is a
 	// copy this window may not keep using even if a later take finds the
 	// chat already here.
@@ -242,7 +247,11 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if msg.proof {
 			fence = msg.fence
 		}
-		if row.Status == chatlist.Here && row.Fence == fence && !held.blocked {
+		if row.Status == chatlist.Here && row.Fence == fence && (!held.blocked || held.seen && row.Mine && !held.failed) {
+			if held.blocked {
+				held.blocked, held.seen = false, false
+				a.machineRead.sendHolds[id] = held
+			}
 			return msg.resume()
 		}
 		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
@@ -303,7 +312,7 @@ func (a *app) rememberSendHolds(msg homeMachinesMsg) {
 	for _, row := range msg.rows {
 		held, known := a.machineRead.sendHolds[row.Cell]
 		if heldElsewhere(row) && (!known || row.Fence >= held.fence) {
-			held.blocked = true
+			held.blocked, held.seen = true, !known || held.seen || !held.blocked
 			a.machineRead.sendHolds[row.Cell] = held
 		}
 		if row.Status != chatlist.Here || held.blocked || held.failed {
@@ -320,7 +329,8 @@ func (a *app) rememberSendHolds(msg homeMachinesMsg) {
 var displacedSendSuffix = chatlist.Superseded("")
 
 // blockDisplacedSend keeps a shown displacement stronger than a cached writer
-// reading. Only a successful continuation can make this window writable again.
+// reading. A successful continuation makes this window writable again, and so
+// does a fresh reading for a send that finds the chat held here.
 func (a *app) blockDisplacedSend(text string) {
 	if a.file == "" || !strings.HasSuffix(text, displacedSendSuffix) {
 		return
@@ -329,8 +339,8 @@ func (a *app) blockDisplacedSend(text string) {
 		a.machineRead.sendHolds = map[string]sendHold{}
 	}
 	id := filepath.Base(session.DirOf(a.file))
-	held := a.machineRead.sendHolds[id]
-	held.blocked = true
+	held, known := a.machineRead.sendHolds[id]
+	held.blocked, held.seen = true, !known || held.seen || !held.blocked
 	a.machineRead.sendHolds[id] = held
 }
 
