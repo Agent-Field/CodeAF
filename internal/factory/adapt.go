@@ -297,6 +297,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		}
 		ask := oneLine(e.Ask[name])
 		switch {
+		// A CHECK'S ASK IS A SHELL COMMAND: only the person changes what runs
+		// on their checkout, never a model that read the issue.
+		case stages[i].Kind == StageCheck && who != ByYou && ask != stages[i].Ask:
+			refuse("only the person may change the command of %s, a check", stages[i].Name)
 		case fixed(i) && ask != stages[i].Ask:
 			errs = append(errs, FixedRefusal(stages[i].Name))
 		case started[stages[i].Name]:
@@ -339,6 +343,12 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		}
 	}
 	for _, add := range e.Add {
+		// A CHECK RUNS A SHELL COMMAND in the job's checkout, so only the
+		// person adds one; the manager and the plan add conversations.
+		if add.Stage.Kind == StageCheck && who != ByYou {
+			refuse("only the person may add a check to a job; %s adds conversations", who)
+			continue
+		}
 		st, when, bad := plannedStage(add.Stage)
 		if bad != nil {
 			refuse("%s", bad.Error())
@@ -584,6 +594,43 @@ func sortedKeys(m map[string]string) []string {
 // knows, with no gate of its own, named by one word. when is where its ask's
 // time word puts it. bad says what is wrong with it, and is nil when nothing
 // is.
+// plannedCheck is a check added to one run: its ask is the command, run as
+// written; it stops on done, clean, green or proven (green when it says none)
+// and takes no effort or fanout, since no model reads it. Max is its rounds,
+// zero for one.
+func plannedCheck(add Stage, place string) (Stage, string, error) {
+	st := add
+	st.Ask = strings.TrimSpace(oneLine(add.Ask))
+	switch {
+	case strings.TrimSpace(add.Name) == "":
+		return Stage{}, "", errors.New("a check added to a run needs a name")
+	case st.Ask == "":
+		return Stage{}, "", errors.New("a check added to a run needs the command it runs")
+	case askCells(st.Ask) > AskMost:
+		return Stage{}, "", ErrAskTooLong
+	case st.Effort != "" || st.Fanout != "":
+		return Stage{}, "", errors.New("a check runs a command, not a model; it takes no effort or fanout")
+	case st.Max < 0 || st.Max > CheckRoundsMost:
+		return Stage{}, "", fmt.Errorf("a check runs from 1 to %d rounds", CheckRoundsMost)
+	}
+	switch strings.ToLower(strings.TrimSpace(st.Until)) {
+	case "":
+		st.Until = UntilGreen
+	case UntilDone, UntilClean, UntilGreen, UntilProven:
+		st.Until = strings.ToLower(strings.TrimSpace(st.Until))
+	default:
+		return Stage{}, "", errors.New("a check stops on done, clean, green or proven")
+	}
+	st.Name = strings.ToLower(strings.TrimSpace(add.Name))
+	st.Kind, st.On = StageCheck, true
+	st.OldGate, st.OldGateWhen = "", ""
+	st.Proof = nil
+	return st, place, nil
+}
+
+// CheckRoundsMost is the most rounds a check added to one run may take.
+const CheckRoundsMost = 9
+
 func plannedStage(add Stage) (st Stage, when string, bad error) {
 	// AN APPROVE STEP IS ADDED BY ITS NAME OR ITS KIND, and has no ask: the
 	// person is the step. Its place is the ask's time word or the edit's
@@ -600,8 +647,11 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 		a.Why, a.By = add.Why, add.By
 		return a, place, nil
 	}
+	if add.Kind == StageCheck {
+		return plannedCheck(add, place)
+	}
 	if add.Kind != "" && add.Kind != StageChat {
-		return Stage{}, "", errors.New("a stage added to a run is a conversation, not a " + string(add.Kind) + " stage")
+		return Stage{}, "", errors.New("a stage added to a run is a conversation or a check, not a " + string(add.Kind) + " stage")
 	}
 	parsed, when, err := StageSentence(strings.TrimSpace(add.Ask))
 	if err != nil && strings.TrimSpace(add.Name) == "" {
