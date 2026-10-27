@@ -13,9 +13,20 @@ import (
 
 type localWorkerHistory struct{ journal, model string }
 
+// The conversation location may have a symlink above it. Resolve that trusted
+// location before rejecting redirects within its retained task history.
+func taskHistoryDir(place Place, session string) string {
+	if place.Dir != "" {
+		place.Dir = canonicalPath(place.Dir)
+	}
+	return taskJournalDir(place, session)
+}
+
 // Plan workers have their own numeric task directory. Never search another
 // task, accept helper logs, or reuse an absolute path from a moved checkpoint.
-func findWorkerHistory(base string, id uint64) localWorkerHistory {
+func findWorkerHistory(place Place, session string, id uint64) localWorkerHistory {
+	base := taskHistoryDir(place, session)
+	journalDir := taskJournalDir(place, session)
 	relative := strconv.FormatUint(id, 10)
 	directory, err := openTaskHistoryPath(base, relative, true)
 	if err != nil {
@@ -38,12 +49,12 @@ func findWorkerHistory(base string, id uint64) localWorkerHistory {
 		}
 		header, ok := readWorkerHeader(base, filepath.Join(relative, name))
 		if ok {
-			return localWorkerHistory{journal: filepath.Join(base, relative, name), model: header.Model}
+			return localWorkerHistory{journal: filepath.Join(journalDir, relative, name), model: header.Model}
 		}
 	}
 	worker := filepath.Join(relative, "worker.jsonl")
 	if header, ok := readWorkerHeader(base, worker); ok {
-		return localWorkerHistory{journal: filepath.Join(base, worker), model: header.Model}
+		return localWorkerHistory{journal: filepath.Join(journalDir, worker), model: header.Model}
 	}
 	return localWorkerHistory{}
 }
@@ -73,7 +84,7 @@ func withLocalWorkerHistory(entry TaskIndexEntry, place Place) TaskIndexEntry {
 	if err != nil || id == 0 {
 		return entry
 	}
-	history := findWorkerHistory(taskJournalDir(place, entry.SessionID), id)
+	history := findWorkerHistory(place, entry.SessionID, id)
 	entry.TranscriptURI = taskURI(history.journal)
 	if entry.Model == "" {
 		entry.Model = history.model
@@ -91,7 +102,7 @@ func (a *Agent) planWorkerRecordedModel(taskID string) string {
 	a.mu.Lock()
 	place, session := a.familyPlace(nil), a.sessionID()
 	a.mu.Unlock()
-	return findWorkerHistory(taskJournalDir(place, session), id).model
+	return findWorkerHistory(place, session, id).model
 }
 
 // Resolve retained worker identities before graph recovery takes its lock.
@@ -100,13 +111,12 @@ func (a *Agent) restoreWorkerHistory(document *taskDocument) {
 	a.mu.Lock()
 	place, session := a.familyPlace(nil), a.sessionID()
 	a.mu.Unlock()
-	base := taskJournalDir(place, session)
 	for i := range document.Runs {
 		record := &document.Runs[i]
 		if record.Kind != "" || record.ID == 0 || record.Model != "" && record.PlanTask != "" {
 			continue
 		}
-		history := findWorkerHistory(base, record.ID)
+		history := findWorkerHistory(place, session, record.ID)
 		if record.Model == "" {
 			record.Model = history.model
 		}
@@ -169,14 +179,15 @@ func (a *Agent) historicalPlanPage(id string) (PlanTaskPage, bool) {
 			page.Description = notice.PendingRun.Brief
 		}
 		a.mu.Lock()
-		base := taskJournalDir(a.familyPlace(nil), a.sessionID())
+		place, session := a.familyPlace(nil), a.sessionID()
 		a.mu.Unlock()
+		base := taskHistoryDir(place, session)
 		relative := filepath.Join(strconv.FormatUint(notice.ID, 10), planTrajectoryFile)
 		page.Steps = planStepDisplayFactsForPage(decodePlanTrajectory(readHistoricalFile(base, relative)), a.planDisplayRunCopy())
 		page.Row.Steps = len(page.Steps)
-		history := findWorkerHistory(base, notice.ID)
+		history := findWorkerHistory(place, session, notice.ID)
 		if history.journal != "" {
-			relative, err := filepath.Rel(base, history.journal)
+			relative, err := filepath.Rel(taskJournalDir(place, session), history.journal)
 			if err == nil {
 				page.Worker = ReadTranscriptBytes(readHistoricalFile(base, relative)).Entries
 			}
