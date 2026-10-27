@@ -4830,6 +4830,13 @@ holds the same door through its `tasks` tool, and whichever of the two is used f
 The other finds the question already gone and says `already answered` rather than raising
 an error.
 
+## Saving task progress and desktop settings on Windows
+
+Task checkpoints and session, project and desktop records wait up to 630 ms when
+a Windows reader briefly has the old file open. A lasting failure keeps the old
+file and the writer's usual error handling. A task checkpoint failure is still
+logged as `session: could not write the task checkpoint` with its path and cause.
+
 ## The task has a conflict — conflicts with your branch, resolve it or drop it
 
 When the same file changed on both sides, nothing is forced onto your branch: the merge is

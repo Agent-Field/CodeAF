@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -147,7 +148,7 @@ func (b *appBackend) keepAppEntries(a *appAgent, entries []appwire.Entry, afterC
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), path)
+	return fsreplace.Rename(temp.Name(), path)
 }
 
 func (b *appBackend) emitAppFooter(a *appAgent, key string) {

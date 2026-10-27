@@ -53,6 +53,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -849,7 +850,7 @@ func writeFixDocument(path string, document fixDocument) bool {
 		_ = os.Remove(name)
 		return false
 	}
-	if err := os.Rename(name, path); err != nil {
+	if err := fsreplace.Rename(name, path); err != nil {
 		_ = os.Remove(name)
 		return false
 	}

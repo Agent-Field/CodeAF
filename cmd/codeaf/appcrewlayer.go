@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // appCrewLayerName is the layer's file, beside the app's state file.
@@ -151,7 +152,7 @@ func (l *appCrewLayer) write(fn func(*appCrewLayerFile) error) error {
 	if err := os.WriteFile(temp, out, appStateFileMode); err != nil {
 		return err
 	}
-	if err := os.Rename(temp, l.path); err != nil {
+	if err := fsreplace.Rename(temp, l.path); err != nil {
 		return err
 	}
 	// The next read rechecks disk, including a replacement immediately after

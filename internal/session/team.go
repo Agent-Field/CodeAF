@@ -74,6 +74,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -1057,7 +1058,7 @@ func writeTeamFile(path string, raw []byte) error {
 		_ = os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, path); err != nil {
+	if err := fsreplace.Rename(name, path); err != nil {
 		_ = os.Remove(name)
 		return err
 	}

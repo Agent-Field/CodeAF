@@ -34,6 +34,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const (
@@ -542,7 +543,7 @@ func replaceShareReceipt(dir string, raw []byte) error {
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(name, filepath.Join(dir, shareOpReceipt)); err != nil {
+	if err := fsreplace.Rename(name, filepath.Join(dir, shareOpReceipt)); err != nil {
 		return err
 	}
 	return syncShareOpDir(dir)

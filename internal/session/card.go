@@ -37,6 +37,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/reflex"
 )
 
@@ -202,7 +203,7 @@ func (s *cardStore) saveLocked() error {
 	if err := os.WriteFile(temporary, append(encoded, '\n'), 0o644); err != nil {
 		return err
 	}
-	if err := os.Rename(temporary, s.path); err != nil {
+	if err := fsreplace.Rename(temporary, s.path); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}
