@@ -12,6 +12,8 @@ invalidates:
   - "The computer holding a chat said nothing while the relay was unreachable; it now says once that the chat is not syncing, and again when syncing is back."
   - "codeaf cluster status printed a raw Go error when the relay was down; it now prints the same plain sentence as codeaf devices."
   - "The embedded storage engine was furrow 0.3.4, which could unlink a newer daemon's socket; it is now furrow 0.3.5, which removes only its own."
+  - "codeaf devices printed a false nothing-is-paired line and exited 0 when the relay was down; it now prints only the unavailable sentence and exits non-zero."
+  - "A pairing that timed out showed raw Go error text; it now says plainly that the sync service did not answer in time."
 ---
 Fixes the defects the real two-computer relay tests found after the workspace
 work landed. Closing a chat no longer freezes the window, Home never offers to
