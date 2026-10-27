@@ -39,6 +39,12 @@ Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or nati
 computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
 Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
 
+## My idle chat was continued on another computer — sending, queueing, steering and retrying
+
+Before accepting new work, an open synced chat checks who holds it if its last ownership confirmation is older than two seconds. Back-to-back submissions reuse that confirmation. The check waits at most three quarters of a second. If the relay is slow or unreachable, it is logged, you keep working locally, and the chat does not ask again for 30 seconds.
+
+If another computer has continued the chat, this window only shows it. Sending, queueing, steering and retrying are refused before saving your words or calling a model. The moved notice names the other computer. You can still answer an existing question or stop work. Desktop and terminal chats share this check. With sync off, an unpaired home, unavailable sync or no sync drive, there is no added network wait.
+
 ## What does /laptop do — /pair, /sync and /link
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

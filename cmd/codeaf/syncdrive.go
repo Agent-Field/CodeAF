@@ -62,8 +62,9 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	// A drive side that no longer holds the chat's lease (another machine took it, or it was moved
 	// back here) never drives again: the chat opened here needs a drive side of its own, or every
 	// tool call in it would be refused as superseded.
+	workAdmissions.Delete(b.drive[c.ID])
 	delete(b.drive, c.ID)
-	d := newLiveDrive(func() (*syncsetup.Drive, error) { return startDriveWith(c, engine, report, b.notices) })
+	d := newAdmissionDrive(func() (*syncsetup.Drive, error) { return startDriveWith(c, engine, report, b.notices) })
 	if d != nil {
 		if b.drive == nil {
 			b.drive = map[string]*liveDrive{}
@@ -165,6 +166,9 @@ func (b *driveBook) take() map[string]*liveDrive {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	drives := b.drive
+	for _, d := range drives {
+		workAdmissions.Delete(d)
+	}
 	b.drive = nil
 	return drives
 }
@@ -178,15 +182,21 @@ func driveGate(d *liveDrive) func() error {
 	return d.Gate
 }
 
-// driveWorkGate reads the same viewer fact without waiting for captures,
-// startup or relay work. The terminal's ordinary input path stays local.
+// driveWorkGate shares a fresh ownership confirmation across the app and
+// session doors. Startup and captures never hold admission; an idle drive's
+// directory read has its own short budget and degrades to local work on error.
 func driveWorkGate(d *liveDrive) func() error {
 	if d == nil {
 		return nil
 	}
+	value, ok := workAdmissions.Load(d)
+	if !ok {
+		value, _ = workAdmissions.LoadOrStore(d, &workAdmission{})
+	}
+	check := value.(*workAdmission)
 	return func() error {
 		if started := d.started(); started != nil {
-			return started.Gate()
+			return check.admit(started)
 		}
 		return nil
 	}
@@ -220,6 +230,7 @@ func (b *driveBook) takeCell(id string) *liveDrive {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	d := b.drive[id]
+	workAdmissions.Delete(d)
 	delete(b.drive, id)
 	return d
 }
