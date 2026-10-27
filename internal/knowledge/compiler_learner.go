@@ -112,9 +112,12 @@ func learnSubject(vault, subject, previous document, model compilerModel, goal s
 	previousParts := object(previous["parts"])
 	groups := [][]string{}
 	covered := map[string]bool{}
-	for _, key := range stringsValue(previous["part_order"]) {
+	previousOrder := stringsValue(previous["part_order"])
+	for i, key := range previousOrder {
 		ids := stringsValue(object(previousParts[key])["claim_ids"])
-		if len(ids) != 80 {
+		// Every nonfinal part was closed by the claim or character limit. Keep
+		// those memberships stable when a correction invalidates an earlier part.
+		if len(ids) == 0 || len(ids) > 80 || (len(ids) < 80 && i == len(previousOrder)-1) {
 			continue
 		}
 		valid := true

@@ -3,6 +3,7 @@ package knowledge_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -15,10 +16,12 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 		name           string
 		initial, added int
 		twoDrafts      bool
+		longClaims     bool
 	}{
-		{"initial 161 claims", 161, 0, false},
-		{"consolidated 161 claims", 161, 0, true},
-		{"existing 100 grows to 170", 100, 70, false},
+		{"initial 161 claims", 161, 0, false, false},
+		{"consolidated 161 claims", 161, 0, true, false},
+		{"existing 100 grows to 170", 100, 70, false, false},
+		{"character-bounded parts survive a correction", 100, 70, false, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			v := knowledge.Open(t.TempDir())
@@ -28,6 +31,7 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 			var mu sync.Mutex
 			initialSeen, refreshedSeen := map[string]bool{}, map[string]bool{}
 			requests := 0
+			refreshParts := [][]string{}
 			retiredID, retiredSource, retiredText := "", "", ""
 			withConcurrentKnowledgeModel(t, func(p map[string]any) map[string]any {
 				if p["admission_policy"] != nil {
@@ -87,7 +91,7 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 				refs := []any{}
 				mu.Lock()
 				requests++
-				if p["remaining_steps"] != nil && len(claims) == 80 && retiredID == "" {
+				if p["remaining_steps"] != nil && retiredID == "" {
 					claim := claims[0].(map[string]any)
 					retiredID, retiredText = claim["id"].(string), claim["text"].(string)
 					var number int
@@ -98,6 +102,13 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 					id := raw.(map[string]any)["id"].(string)
 					seen[id] = true
 					refs = append(refs, id)
+				}
+				if p["remaining_steps"] != nil {
+					ids := make([]string, len(refs))
+					for i, id := range refs {
+						ids[i] = id.(string)
+					}
+					refreshParts = append(refreshParts, ids)
 				}
 				mu.Unlock()
 				return map[string]any{"action": "write", "sections": []any{map[string]any{"heading": "Queue operations", "paragraphs": []any{map[string]any{"text": fmt.Sprintf("Queue operations include the sourced rules beginning with %v.", refs[0]), "claims": refs}}}}}
@@ -111,13 +122,24 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 			capture := func(start, count int) {
 				t.Helper()
 				for i := start; i < start+count; i++ {
-					if err := v.Capture(knowledge.Source{ID: fmt.Sprintf("rule-%03d", i), Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: fmt.Sprintf("Cedar queue rule %03d is active.", i)}); err != nil {
+					text := fmt.Sprintf("Cedar queue rule %03d is active.", i)
+					if test.longClaims {
+						text += " " + strings.Repeat("Durable queue conditions and exceptions remain applicable. ", 6)
+					}
+					if err := v.Capture(knowledge.Source{ID: fmt.Sprintf("rule-%03d", i), Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: text}); err != nil {
 						t.Fatal(err)
 					}
 				}
-				for i := 0; i < (count+63)/64; i++ {
+				for {
 					if err := v.Flush(context.Background(), "fixture", true); err != nil {
 						t.Fatal(err)
+					}
+					state, err := v.Status()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if state.Pending == 0 && !state.NeedsUpdate {
+						break
 					}
 				}
 			}
@@ -153,6 +175,23 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 				if updated.ID != original.ID || len(refreshedSeen) != test.initial+test.added {
 					t.Fatalf("growing the concept lost identity or skipped evidence: id=%s seen=%d", updated.ID, len(refreshedSeen))
 				}
+				unchangedClosedClaims := map[string]bool{}
+				if test.longClaims {
+					if len(refreshParts) < 3 {
+						t.Fatalf("fixture needs at least three character-bounded evidence parts, got %d", len(refreshParts))
+					}
+					for _, ids := range refreshParts[:len(refreshParts)-1] {
+						if len(ids) >= 80 {
+							t.Fatalf("fixture hit the count limit instead of the character limit: %d", len(ids))
+						}
+						if slices.Contains(ids, retiredID) {
+							continue
+						}
+						for _, id := range ids {
+							unchangedClosedClaims[id] = true
+						}
+					}
+				}
 				beforeAppend := requests
 				capture(test.initial+test.added, 1)
 				appended := readGuide(test.initial + test.added + 1)
@@ -160,6 +199,7 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 					t.Fatalf("adding one rule invalidated unchanged full evidence parts: id=%s requests=%d", appended.ID, requests-beforeAppend)
 				}
 				beforeCorrection := requests
+				partsBeforeCorrection := len(refreshParts)
 				if err := v.Capture(knowledge.Source{ID: "correction", Session: "correction", Role: "user", TS: "2026-10-26T12:00:00Z", Text: strings.Replace(retiredText, " is active.", " is inactive.", 1)}); err != nil {
 					t.Fatal(err)
 				}
@@ -167,8 +207,16 @@ func TestKnowledgeLargeConceptKeepsOneUsableGuideAndReadsEveryClaim(t *testing.T
 					t.Fatal(err)
 				}
 				corrected := readGuide(test.initial + test.added + 1)
+				t.Logf("correction refreshed %d evidence parts", requests-beforeCorrection)
 				if corrected.ID != original.ID || requests-beforeCorrection < 1 || requests-beforeCorrection > 2 {
 					t.Fatalf("retiring a cached claim failed to refresh affected evidence parts: requests=%d", requests-beforeCorrection)
+				}
+				for _, ids := range refreshParts[partsBeforeCorrection:] {
+					for _, id := range ids {
+						if unchangedClosedClaims[id] {
+							t.Fatalf("correction repeated review of unchanged character-bounded evidence: %s", id)
+						}
+					}
 				}
 				for _, section := range corrected.Sections {
 					for _, paragraph := range section.Paragraphs {
