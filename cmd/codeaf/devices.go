@@ -23,6 +23,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -428,15 +429,21 @@ func explainSyncUnreachable(err error, relay string) error {
 	}
 	var request *url.Error
 	var network net.Error
-	if !errors.Is(err, directory.ErrUnreachable) && !errors.As(err, &request) && !errors.As(err, &network) {
-		return err
-	}
+	errors.As(err, &request)
+	errors.As(err, &network)
 	if relay == "" && request != nil {
 		if address, parseErr := url.Parse(request.URL); parseErr == nil {
 			relay = address.Scheme + "://" + address.Host
 		}
 	}
-	return toldLine{line: fmt.Sprintf("the sync service at %s cannot be reached from here — check this computer's network", relay), err: err}
+	if errors.Is(err, context.DeadlineExceeded) || network != nil && network.Timeout() {
+		return toldLine{line: fmt.Sprintf("the sync service at %s did not answer in time — try again", relay), err: err}
+	}
+	var dns *net.DNSError
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) || errors.As(err, &dns) {
+		return toldLine{line: fmt.Sprintf("the sync service at %s cannot be reached from here — check this computer's network", relay), err: err}
+	}
+	return err
 }
 
 // explainRemovedDevice gives every command the same removal and recovery words.

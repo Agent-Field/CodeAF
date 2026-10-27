@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -48,6 +49,31 @@ func runCluster(args []string) error {
 	return explainSyncUnreachable(clusterCommand(ctx, s, args[0], os.Stdout), s.Relay)
 }
 func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writer) error {
+	ctx, cancel := context.WithTimeout(ctx, clusterctl.ForwardTimeout)
+	defer cancel()
+	type result struct {
+		text string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var output bytes.Buffer
+		err := clusterCommandWork(ctx, c, verb, &output)
+		done <- result{output.String(), err}
+	}()
+	select {
+	case got := <-done:
+		if got.err != nil {
+			return got.err
+		}
+		_, err := io.WriteString(out, got.text)
+		return err
+	case <-ctx.Done():
+		return explainSyncUnreachable(ctx.Err(), "")
+	}
+}
+
+func clusterCommandWork(ctx context.Context, c clusterDoor, verb string, out io.Writer) error {
 	if verb == "lead" {
 		r, err := c.LeadCluster(ctx, 0)
 		if err != nil {

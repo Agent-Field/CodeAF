@@ -11,6 +11,18 @@ There is no codeaf phone app yet, so a phone cannot lead yet. A phone browser's 
 
 A phone would need a supported client, persistent storage, enrollment and a live connection before it could take this role. Those requirements are not a working phone capability today. Leadership coordinates metadata; it does not move a chat or run its tools.
 
+## Cluster status did not answer in time — slow storage or sync service
+
+`codeaf cluster status` has a thirty-second command ceiling, including local
+storage work. A computer already joined is read from the service without
+reopening its local member store. A deadline says
+`the sync service at <address> did not answer in time — try again`.
+Slow local storage can also use up that allowance; this sentence does not
+establish a network failure.
+
+A refused connection, missing route or failed name lookup instead says
+`the sync service at <address> cannot be reached from here — check this computer's network`.
+
 ## Joined computers, learner capacity and an outdated build
 
 An open, paired home with sync on joins the hosted relay, or a self-hosted `codeaf relay --store <dir>`, as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. Three anchors vote until a personal computer is explicitly asked to lead, so pairing alone never requires either laptop to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
