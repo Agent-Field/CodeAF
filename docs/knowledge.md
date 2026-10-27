@@ -90,11 +90,13 @@ Reviewed additions are organized against the existing guide before publication.
 A size-limited update merges overlapping explanations with separate support and
 meaning-coverage checks. Still-supported paragraphs from the previous publication
 remain mandatory coverage inputs; refreshed evidence metadata preserves current
-conflicts. Only affected sections are rewritten when the remaining guide fits.
+conflicts. Useful additions are woven into their existing sections with support and meaning
+review, including when they already fit the reading target. Only affected
+sections are rewritten when the remaining guide fits.
 The word limit is a target for maintenance: after a bounded repair, a reviewed
 merge may retain up to its input word count to preserve useful meaning. Section
-and paragraph limits still apply. Oversized review inputs stop before editorial
-provider work. Failed updates keep the previous publication visible.
+and paragraph limits still apply. Oversized integration inputs stop before integration requests; bounded selection
+may already have incurred model charges. Failed updates keep the previous publication visible.
 Projection policy upgrades can repair existing guides without importing history
 again; the background worker owns that work through the normal vault lifecycle.
 

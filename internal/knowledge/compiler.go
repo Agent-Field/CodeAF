@@ -16,7 +16,7 @@ import (
 
 func knowledgeModel(profile string) string { return config.KnowledgeModelAt(profile) }
 
-const knowledgeProjectionVersion = "knowledge-projection-2"
+const knowledgeProjectionVersion = "knowledge-projection-3"
 
 func (v *Vault) compile(ctx context.Context, key string, force bool) (err error) {
 	if !v.Enabled() {

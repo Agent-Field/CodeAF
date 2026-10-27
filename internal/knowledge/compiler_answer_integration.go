@@ -162,11 +162,13 @@ func placeGuideAnswers(note document, base, answers []document, vault document, 
 	for i, answer := range proposed {
 		byAnswer[textValue(answer["id"])] = answers[i]
 	}
+	needsMerge := false
 	for _, decision := range items(response["decisions"]) {
 		action := textValue(decision["action"])
 		if action == "covered" || action == "evidence_only" {
 			continue
 		}
+		needsMerge = needsMerge || action == "integrate"
 		id := textValue(decision["id"])
 		paragraph := clone(byAnswer[id])
 		delete(paragraph, "heading")
@@ -184,7 +186,7 @@ func placeGuideAnswers(note document, base, answers []document, vault document, 
 		}
 		base[target]["paragraphs"] = append(items(base[target]["paragraphs"]), paragraph)
 	}
-	if !guideWithinLimits(base) {
+	if needsMerge || !guideWithinLimits(base) {
 		return mergeIntegratedGuide(note, base, vault, model)
 	}
 	return base, nil

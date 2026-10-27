@@ -764,12 +764,13 @@ in the section that already explains the topic. Repeated explanations and
 one-off run, issue, or machine reports remain linked evidence. A distinct lasting
 topic can receive a new section.
 
-When additions would make a guide too large, overlapping explanations are merged
-concisely. Separate checks require support for the new prose and preservation of
+Useful additions to existing sections are woven into the section prose,
+consolidating overlapping explanations instead of appending another summary. Separate checks require support for the new prose and preservation of
 the useful meaning of every input, including still-supported existing guidance.
 Unchanged sections remain intact where possible. The reading word limit is a
 target: preserving reviewed useful meaning takes priority over trimming to fit.
-Oversized review inputs stop safely before editorial model work.
+Oversized integration inputs stop before the integration request; earlier
+bounded selection may already have incurred charges.
 If an update fails these checks, the previous
 published guide stays visible. Original source records and citations remain
 available. Human edits and deleted pages keep their existing protection.

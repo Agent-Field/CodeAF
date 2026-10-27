@@ -388,6 +388,9 @@ func TestKnowledgePreservedCoreUsesCurrentConflictMetadata(t *testing.T) {
 	updated, inspected := false, false
 	oldClaim := ""
 	v, add := answerIntegrationFixtureWithUnderstanding(t, "Resetting settings removes saved conversation history.", func(p map[string]any) map[string]any {
+		if r := fixtureMergedAnswer(p); r != nil {
+			return r
+		}
 		paragraph := p["existing_sections"].([]any)[0].(map[string]any)["paragraphs"].([]any)[0].(map[string]any)
 		basis := paragraph["evidence_basis"].(map[string]any)
 		inspected = true
@@ -468,6 +471,9 @@ func TestKnowledgeIntegratesUsefulDetailIntoItsExistingSection(t *testing.T) {
 	detail := "Reconnect the model provider after resetting settings because credentials are stored there."
 	edits := 0
 	v, add := answerIntegrationFixture(t, detail, func(p map[string]any) map[string]any {
+		if r := fixtureMergedAnswer(p); r != nil {
+			return r
+		}
 		edits++
 		return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "integrate", "section": "S0", "reason": "An additional condition for this procedure", "text": "Invented replacement must never enter the guide"}}}
 	})
@@ -477,10 +483,10 @@ func TestKnowledgeIntegratesUsefulDetailIntoItsExistingSection(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := settingsGuide(t, v)
-	if after.ID != before.ID || len(after.Sections) != 1 || after.Sections[0].Heading != "Reset settings" || len(after.Sections[0].Paragraphs) != 2 {
+	if after.ID != before.ID || len(after.Sections) != 1 || after.Sections[0].Heading != "Reset settings" || len(after.Sections[0].Paragraphs) != 1 {
 		t.Fatalf("new detail did not update its existing home: %+v", after)
 	}
-	if after.Sections[0].Paragraphs[0].Text != settingsGuideText || after.Sections[0].Paragraphs[1].Text != detail || len(after.Sections[0].Paragraphs[1].Evidence) == 0 {
+	if after.Sections[0].Paragraphs[0].Text != settingsGuideText+" "+detail || len(after.Sections[0].Paragraphs[0].Evidence) != 2 {
 		t.Fatalf("integration changed reviewed prose or lost citations: %+v", after.Sections)
 	}
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
@@ -525,6 +531,9 @@ func TestKnowledgeInvalidIntegrationKeepsPublicationAndRetries(t *testing.T) {
 		t.Run(mistake, func(t *testing.T) {
 			invalid := true
 			v, add := answerIntegrationFixture(t, "Reconnect credentials after the settings reset.", func(p map[string]any) map[string]any {
+				if r := fixtureMergedAnswer(p); r != nil {
+					return r
+				}
 				d := map[string]any{"id": "A0", "action": "integrate", "section": "S0"}
 				decisions := []any{d}
 				if invalid {
@@ -556,7 +565,7 @@ func TestKnowledgeInvalidIntegrationKeepsPublicationAndRetries(t *testing.T) {
 			if err := v.Flush(context.Background(), "fixture", true); err != nil {
 				t.Fatalf("invalid response poisoned the retry: %v", err)
 			}
-			if len(settingsGuide(t, v).Sections[0].Paragraphs) != 2 {
+			if !strings.Contains(settingsGuide(t, v).Sections[0].Paragraphs[0].Text, "Reconnect credentials after the settings reset.") {
 				t.Fatal("retry lost the useful new detail")
 			}
 		})
@@ -598,4 +607,25 @@ func TestKnowledgeHumanOverridesDoNotPurchaseHiddenIntegration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fixtureMergedAnswer(p map[string]any) map[string]any {
+	if p["merge_policy"] != nil {
+		refs, texts := []any{}, []string{}
+		paragraphs := p["paragraphs"].([]any)
+		for _, raw := range paragraphs {
+			v := raw.(map[string]any)
+			refs = append(refs, v["id"])
+			texts = append(texts, v["text"].(string))
+		}
+		return map[string]any{"sections": []any{map[string]any{"heading": paragraphs[0].(map[string]any)["heading"], "paragraphs": []any{map[string]any{"text": strings.Join(texts, " "), "inputs": refs}}}}}
+	}
+	if p["coverage_policy"] != nil {
+		coverage := []any{}
+		for _, raw := range p["paragraphs"].([]any) {
+			coverage = append(coverage, map[string]any{"id": raw.(map[string]any)["id"], "preserved": true})
+		}
+		return map[string]any{"checks": []any{map[string]any{"id": "R0", "supported": true, "useful": true}}, "coverage": coverage}
+	}
+	return nil
 }
