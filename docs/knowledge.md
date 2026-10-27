@@ -12,6 +12,7 @@ module. Product behavior belongs in the [Memory manual](../internal/manual/chat/
 | Admit immutable sources and publish readable pages | `internal/knowledge/store.go` |
 | Compile evidence into maintained concept guides | `internal/knowledge/compiler.go` |
 | Reuse validated evidence checks across updates | `internal/knowledge/compiler_questions.go`, `internal/knowledge/compiler_provider.go` |
+| Integrate reviewed additions into maintained guides | `internal/knowledge/compiler_answer_integration.go`, `internal/knowledge/compiler_integration_merge.go` |
 | Preserve edits and deletion intent | `internal/knowledge/edit.go` |
 | Agent knowledge tools and local recall | `internal/session/knowledge_tools.go`, `internal/knowledge/compiler_recall.go` |
 | Memory rendering, navigation, and editor | `internal/tui3/knowledge*.go` |
@@ -84,6 +85,12 @@ Changed evidence still reaches the compiler. Background provider requests retain
 cache affinity within a profile, model, and compiler role. These optimizations
 remain inside the vault; callers do not manage cache identity or invalidate
 compiler checkpoints themselves.
+
+Reviewed additions are organized against the existing guide before publication.
+A size-limited update merges overlapping explanations with separate support and
+meaning-coverage checks. Failed updates keep the previous publication visible.
+Projection policy upgrades can repair existing guides without importing history
+again; the background worker owns that work through the normal vault lifecycle.
 
 ## Reader responsiveness
 

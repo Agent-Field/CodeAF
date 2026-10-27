@@ -9,10 +9,17 @@ import (
 )
 
 func curatePublishedGuides(draft document, model compilerModel) (document, error) {
+	overrides, err := readOverrides(model.db)
+	if err != nil {
+		return nil, err
+	}
 	notes := append([]document{}, items(draft["notes"])...)
 	indices := []int{}
 	for i, note := range notes {
-		if textValue(note["kind"]) == "subject" && !guideWithinLimits(items(note["sections"])) {
+		if _, overridden := overrides[textValue(note["id"])]; overridden {
+			continue
+		}
+		if textValue(note["kind"]) == "subject" && (!guideWithinLimits(items(note["sections"])) || hasGuideAnswers(items(note["sections"]))) {
 			indices = append(indices, i)
 		}
 	}
@@ -40,7 +47,10 @@ func curatePublishedGuides(draft document, model compilerModel) (document, error
 					return
 				}
 				note := clone(notes[indices[i]])
-				sections, err := curateGuideSections(note, items(note["sections"]), workerModel)
+				sections, err := integrateGuideAnswers(note, draft, workerModel)
+				if err == nil {
+					sections, err = curateGuideSections(note, sections, workerModel)
+				}
 				if err != nil {
 					results[i].err = err
 					cancel()

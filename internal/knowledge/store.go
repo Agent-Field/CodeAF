@@ -505,7 +505,7 @@ func (v *Vault) commitPublication(vault, learning, registry document, digest str
 	if err = saveState(tx, "topics", registry); err != nil {
 		return err
 	}
-	if err = saveState(tx, "projection", document{"input_hash": digest}); err != nil {
+	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion}); err != nil {
 		return err
 	}
 	if _, err = tx.Exec("DELETE FROM state WHERE key='organization_boundary'"); err != nil {

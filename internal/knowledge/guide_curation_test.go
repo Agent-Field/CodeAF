@@ -399,6 +399,28 @@ func TestKnowledgeFinalGuideBudgetIncludesReviewedQuestionAnswers(t *testing.T) 
 	answerSelected := false
 	answer := "Cedar queues retry failed jobs."
 	withConcurrentKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if p["merge_policy"] != nil {
+			paragraphs := []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				candidate := raw.(map[string]any)
+				answerSelected = answerSelected || candidate["text"] == answer
+				paragraphs = append(paragraphs, map[string]any{"text": candidate["text"], "inputs": []any{candidate["id"]}})
+			}
+			return map[string]any{"sections": []any{map[string]any{"heading": "Queue practice 0", "paragraphs": paragraphs}}}
+		}
+		if p["coverage_policy"] != nil {
+			coverage, checks := []any{}, []any{}
+			for _, raw := range p["paragraphs"].([]any) {
+				coverage = append(coverage, map[string]any{"id": raw.(map[string]any)["id"], "preserved": true})
+			}
+			for _, raw := range p["proposed"].([]any) {
+				checks = append(checks, map[string]any{"id": raw.(map[string]any)["id"], "supported": true, "useful": true})
+			}
+			return map[string]any{"checks": checks, "coverage": coverage}
+		}
+		if p["integration_policy"] != nil {
+			return map[string]any{"decisions": []any{map[string]any{"id": "A0", "action": "new_section", "heading": "Retry behavior"}}}
+		}
 		if messages, ok := p["messages"].([]any); ok {
 			s := messages[0].(map[string]any)
 			return map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": s["text"], "scope": "Cedar", "topic": "Queues", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}}}}
