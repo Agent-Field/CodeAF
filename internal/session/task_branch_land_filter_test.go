@@ -166,7 +166,9 @@ func TestAUsedFilterRefusesALandWithItsPaths(t *testing.T) {
 
 // L3: attributes and driver configuration are re-read under the plan's lock.
 func TestFilterFactsChangingAfterAPlanRefuseTheLand(t *testing.T) {
-	for _, change := range []string{"attribute", "active attribute", "driver", "global attribute", "tree attribute", "unused driver"} {
+	// L3 with L6: an attribute that appears after the plan matters only where a
+	// filter program could then run, so those cases configure one up front.
+	for _, change := range []string{"attribute", "global attribute", "driver", "tree attribute", "unused driver"} {
 		t.Run(change, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			repo, place := landRepo(t)
@@ -179,7 +181,7 @@ func TestFilterFactsChangingAfterAPlanRefuseTheLand(t *testing.T) {
 			if change == "driver" {
 				writeFile(t, attrs, "b.txt filter=land-test-late\n")
 			}
-			if change == "active attribute" {
+			if change == "attribute" || change == "global attribute" {
 				gitT(t, repo, "config", "filter.land-test-late.clean", "cat")
 			}
 			plan := planLand(t, place, repo)
@@ -281,5 +283,24 @@ func TestALandWithNoFilterProgramNeverAsksAboutAttributes(t *testing.T) {
 	}
 	if asked {
 		t.Fatal("a land with no filter program asked git about attributes")
+	}
+}
+
+// L3/L6: with no filter program configured, an attribute naming a filter that
+// appears after the plan is inert (git has nothing to run), so the land goes ahead.
+func TestAnInertFilterAttributeAfterThePlanDoesNotRefuseALand(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo, place := landRepo(t)
+	real := landCommand
+	t.Cleanup(func() { landCommand = real })
+	landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+		command := real(ctx, dir, args...)
+		command.Env = append(command.Env, "GIT_CONFIG_NOSYSTEM=1")
+		return command
+	}
+	plan := planLand(t, place, repo)
+	writeFile(t, filepath.Join(repo, ".git", "info", "attributes"), "b.txt filter=land-test-late\n")
+	if _, err := LandTaskBranch(landCtx(t), place, repo, plan); err != nil {
+		t.Fatalf("an inert attribute after the plan refused the land: %v", err)
 	}
 }
