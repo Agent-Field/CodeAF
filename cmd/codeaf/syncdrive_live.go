@@ -21,6 +21,8 @@ import (
 // is the identity, and goes on with the real drive from the call that finds it.
 type liveDrive struct {
 	start func() (*syncsetup.Drive, error)
+	// transcript identifies the retained turns if this writer's final publish fails.
+	transcript string
 
 	mu        sync.Mutex
 	drive     *syncsetup.Drive
@@ -28,12 +30,15 @@ type liveDrive struct {
 	ready     chan struct{}
 	attempted bool
 	closed    bool
+	// changes coalesces local health updates for the host's cached surface state.
+	changes chan struct{}
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
 // seals do not wait for the relay; new tool work waits for its ownership check.
-func newLiveDrive(start func() (*syncsetup.Drive, error)) *liveDrive {
-	l := &liveDrive{start: start}
+func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
+	l := &liveDrive{changes: make(chan struct{}, 1)}
+	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
 	l.try()
 	return l
 }
@@ -76,7 +81,37 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	if d != nil {
 		d.CatchUp()
 	}
+	l.renewalChanged()
 	return l.closed
+}
+
+// RenewalStatus reads an already-started drive without starting one or waiting.
+func (l *liveDrive) RenewalStatus() (time.Time, time.Duration, bool) {
+	if l == nil {
+		return time.Time{}, 0, false
+	}
+	l.mu.Lock()
+	d, closed := l.drive, l.closed
+	l.mu.Unlock()
+	if d == nil || closed {
+		return time.Time{}, 0, false
+	}
+	return d.RenewalStatus()
+}
+
+// RenewalChanges lets the host hear health changes even when no turn is running.
+func (l *liveDrive) RenewalChanges() <-chan struct{} {
+	if l == nil {
+		return nil
+	}
+	return l.changes
+}
+
+func (l *liveDrive) renewalChanged() {
+	select {
+	case l.changes <- struct{}{}:
+	default:
+	}
 }
 
 // pending reads the startup boundary without holding the mutex while waiting

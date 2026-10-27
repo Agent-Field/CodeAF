@@ -1274,7 +1274,7 @@ func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
 		return cmd, more
 	}
 	a.conversationClosing = true
-	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure)), true
+	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted)), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another

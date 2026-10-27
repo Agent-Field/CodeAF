@@ -24,6 +24,7 @@ var (
 	surfaceRunningExecutable = os.Executable
 	surfaceRevision          = buildinfo.Revision
 	surfaceArguments         = func() []string { return append([]string(nil), os.Args[1:]...) }
+	surfaceForceExit         = os.Exit
 )
 
 // ── THE ONE WAY THE v3 SURFACE IS RUN ───────────────────────────────────────
@@ -49,12 +50,27 @@ var (
 func runSurface(ctx context.Context, options tui3.Options) error {
 	finalSaving.Lock()
 	finalSaving.surface = true
+	finalSaving.forced = make(chan struct{})
+	forced := finalSaving.forced
 	finalSaving.Unlock()
 	previousSaveFailure := options.SaveFailure
 	options.SaveFailure = func(err error) {
 		recordFinalSaveFailure(err)
 		if previousSaveFailure != nil {
 			previousSaveFailure(err)
+		}
+	}
+	previousClosing, previousForce := options.ClosingStarted, options.ForceQuit
+	options.ClosingStarted = func(done <-chan struct{}) {
+		retainFinalClose(done)
+		if previousClosing != nil {
+			previousClosing(done)
+		}
+	}
+	options.ForceQuit = func() {
+		forceFinalClose()
+		if previousForce != nil {
+			previousForce()
 		}
 	}
 	revision := surfaceRevision()
@@ -172,7 +188,15 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	defer closeWire()
 	options.Output = wire
 	return withSurfaceLogger(options.ProfileDir, func() error {
-		return runSurfaceProgram(ctx, options)
+		err := runSurfaceProgram(ctx, options)
+		select {
+		case <-forced:
+			// The screen is restored before the forced exit skips stuck cleanup.
+			surfaceForceExit(130)
+		default:
+		}
+		awaitFinalCloses(ctx)
+		return err
 	})
 }
 

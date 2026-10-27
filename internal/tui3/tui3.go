@@ -445,6 +445,10 @@ type Options struct {
 	// SaveFailure keeps a close failure for the terminal's restored screen.
 	// The callback may run outside the update loop.
 	SaveFailure func(error)
+	// ClosingStarted retains pending cleanup until the restored terminal can report it.
+	ClosingStarted func(<-chan struct{})
+	// ForceQuit cancels that wait when a second interrupt asks to leave immediately.
+	ForceQuit func()
 	// Takeover continues a chat from another machine here. Nil is a machine
 	// that cannot, and the offer is then absent rather than failing
 	// (homepanel_continue.go).

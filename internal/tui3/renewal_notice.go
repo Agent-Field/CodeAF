@@ -13,6 +13,7 @@ type renewalReader interface {
 	RenewalStatus() (time.Time, time.Duration, bool)
 }
 
+// takeRenewalNotice says each sustained outage and recovery once for its chat.
 func (a *app) takeRenewalNotice() {
 	source, ok := a.agent.(renewalReader)
 	if !ok {

@@ -7,15 +7,17 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 type failedSaveAgent struct{}
 
 func (failedSaveAgent) Close() error {
-	return errors.New("snapshot: dial unix /missing.sock: connection refused")
+	return session.SavingError("/temporary/chat/transcript.jsonl", errors.New("snapshot: dial unix /missing.sock: connection refused"))
 }
 
 // B7 puts the failure on the restored screen even when stderr is a log.
@@ -60,7 +62,7 @@ func TestQuitSaveFailureUsesTheRestoredSurfaceOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start."
+	want := "codeaf could not save this chat; unsaved turns are kept in /temporary/chat/transcript.jsonl and return on the next start."
 	if strings.Count(string(printed), want) != 1 || !strings.HasSuffix(string(printed), want+"\n") || !strings.HasPrefix(string(printed), "screen restored\n") {
 		t.Fatalf("restored terminal: %q", printed)
 	}
@@ -101,5 +103,102 @@ func TestQuitSaveFailureIsOnePlainSentence(t *testing.T) {
 	want := "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start.\n"
 	if code == 0 || string(printed) != want {
 		t.Fatalf("exit=%d terminal=%q", code, printed)
+	}
+}
+
+// Contract D2 waits for the actual saving reply after restoring the screen.
+func TestQuitKeepsALateSaveFailureAfterTheScreenIsRestored(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Cleanup(cell.UseAvailabilityInTests(false))
+	oldRun, oldFlush, oldOut := runSurfaceProgram, flushFinalSaves, os.Stdout
+	out, err := os.CreateTemp(t.TempDir(), "screen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	os.Stdout = out
+	t.Cleanup(func() { runSurfaceProgram, flushFinalSaves, os.Stdout = oldRun, oldFlush, oldOut })
+	release, saved, restored := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		<-saved
+	}()
+	runSurfaceProgram = func(_ context.Context, options tui3.Options) error {
+		if options.ClosingStarted != nil {
+			options.ClosingStarted(saved)
+		}
+		go func() {
+			defer close(saved)
+			<-release
+			options.SaveFailure(failedSaveAgent{}.Close())
+		}()
+		_, err := io.WriteString(os.Stdout, "screen restored\n")
+		close(restored)
+		return err
+	}
+	profile := t.TempDir()
+	finished := make(chan error, 1)
+	go func() { finished <- runSurface(context.Background(), tui3.Options{ProfileDir: profile}) }()
+	<-restored
+	select {
+	case err := <-finished:
+		t.Fatalf("quit returned %v before the host's saving reply", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	released = true
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	flushFinalSaves = func(context.Context) error { return nil }
+	defer telemetryArgs("--version")()
+	if code := execute(); code == 0 {
+		t.Fatal("the late failed save exited successfully")
+	}
+	if _, err := out.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	printed, err := io.ReadAll(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "codeaf could not save this chat; unsaved turns are kept in /temporary/chat/transcript.jsonl and return on the next start.\n"
+	if !strings.HasPrefix(string(printed), "screen restored\n") || !strings.HasSuffix(string(printed), want) || strings.Count(string(printed), want) != 1 {
+		t.Fatalf("late saving report = %q", printed)
+	}
+}
+
+// Contract D3 lets a second interrupt end the process after restoring its screen.
+func TestSecondQuitInterruptSkipsStuckCleanupAfterRestoringScreen(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Cleanup(cell.UseAvailabilityInTests(false))
+	oldRun, oldExit := runSurfaceProgram, surfaceForceExit
+	t.Cleanup(func() {
+		runSurfaceProgram, surfaceForceExit = oldRun, oldExit
+		finalSaving.Lock()
+		finalSaving.surface, finalSaving.forced = false, nil
+		finalSaving.Unlock()
+	})
+	restored, exitCode := false, 0
+	surfaceForceExit = func(code int) {
+		if !restored {
+			t.Fatal("the forced exit ran before restoring the terminal")
+		}
+		exitCode = code
+	}
+	runSurfaceProgram = func(_ context.Context, options tui3.Options) error {
+		options.ClosingStarted(make(chan struct{}))
+		options.ForceQuit()
+		restored = true
+		return nil
+	}
+	if err := runSurface(context.Background(), tui3.Options{ProfileDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != 130 {
+		t.Fatalf("the second interrupt did not end the process: exit=%d", exitCode)
 	}
 }

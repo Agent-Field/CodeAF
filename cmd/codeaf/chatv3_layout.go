@@ -792,6 +792,7 @@ func v3Seated(cfg session.Config) session.Config {
 	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
 	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
+	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
 	if machine != nil {
 		cfg.Machine = machine
 	}

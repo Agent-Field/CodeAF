@@ -918,7 +918,11 @@ func (c *Client) deliver(frame Frame) {
 		return
 	}
 	if frame.Error != "" {
-		waiting <- result{err: errors.New(frame.Error), answered: true}
+		err := errors.New(frame.Error)
+		if frame.UnsavedTranscript != "" {
+			err = session.SavingError(frame.UnsavedTranscript, err)
+		}
+		waiting <- result{err: err, answered: true}
 		return
 	}
 	waiting <- result{payload: frame.Payload, answered: true}
@@ -1935,7 +1939,7 @@ func (a *Agent) Compact(ctx context.Context) error {
 // behind it, and only cmd/codeaf shuts the door.
 func (a *Agent) Close() error {
 	_, err := a.c.call(nil, MethodClose, nil)
-	return err
+	return session.SavingError(a.c.Welcome().SessionFile, err)
 }
 
 // WorkOutlivesExit says whether this conversation keeps working once the view
@@ -1948,18 +1952,16 @@ func (a *Agent) WorkOutlivesExit() bool { return a.c.Welcome().Persistent }
 // Detach lets go of this VIEW of the conversation, which is what a terminal
 // closing means: the window is gone and the work need not be.
 //
-// Against a session host it sends [MethodDetach] — nothing interrupted, nothing
-// closed, the connection ended by the far side's reader loop with the turn left
-// to finish — because [MethodClose] would end a running task on behalf of
-// somebody who only shut a window. Against a one-shot engine, whose whole life
-// is this pipe, leaving IS ending, so the interrupt and the flush stand.
+// Running work stays on its host. A paired writer with no remaining work
+// finishes saving before acknowledging departure, so its final failure still
+// reaches the terminal. A one-shot engine ends with its connection and always
+// interrupts and flushes before leaving.
 //
-// Every call below is bounded ([Client.call] carries callDeadline) and safe on a
-// dead connection, so this cannot hold a quit open.
+// Every request is bounded, and the surface restores while slow saving finishes.
 func (a *Agent) Detach() error {
 	if a.WorkOutlivesExit() {
 		_, err := a.c.call(nil, MethodDetach, nil)
-		return err
+		return session.SavingError(a.c.Welcome().SessionFile, err)
 	}
 	a.Interrupt()
 	return a.Close()
@@ -1972,7 +1974,7 @@ func (a *Agent) DetachAndWait() error {
 		return a.Detach()
 	}
 	_, err := a.c.call(nil, MethodDetach, DetachArgs{WaitRelease: true})
-	return err
+	return session.SavingError(a.c.Welcome().SessionFile, err)
 }
 
 // Model is the model the next request will use.
@@ -2647,6 +2649,14 @@ func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }
 // stated: the seal watch lives with that machine's seat, so this is a memory
 // read of what it said and never a frame on the wire.
 func (a *Agent) SealFailing() bool { return a.c.facts.read().Unsealed }
+
+// RenewalStatus reads the far writer's last health update without a network call.
+func (a *Agent) RenewalStatus() (time.Time, time.Duration, bool) {
+	if state := a.c.facts.read().Renewal; state != nil {
+		return state.Since, state.Period, state.Held
+	}
+	return time.Time{}, 0, false
+}
 
 // ReplaceQuestion starts a revised request after retiring the pending turn.
 func (a *Agent) ReplaceQuestion(ctx context.Context, answer session.Answer) (<-chan session.Event, error) {

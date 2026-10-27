@@ -2,17 +2,69 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const quitSaveFailedWord = "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start."
+const quitSaveKeptWord = "codeaf could not save this chat; unsaved turns are kept in %s and return on the next start."
 
+// finalSaving keeps one failure until cleanup has returned the terminal.
 var finalSaving struct {
 	sync.Mutex
 	failure error
 	surface bool
+	// pending keeps closing replies alive until the launcher can safely shut their links.
+	pending []<-chan struct{}
+	// forced bypasses cleanup after a second interrupt has restored the screen.
+	forced chan struct{}
+}
+
+func retainFinalClose(done <-chan struct{}) {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	kept := finalSaving.pending[:0]
+	for _, previous := range finalSaving.pending {
+		select {
+		case <-previous:
+		default:
+			kept = append(kept, previous)
+		}
+	}
+	finalSaving.pending = append(kept, done)
+}
+
+func forceFinalClose() {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	if finalSaving.forced != nil {
+		select {
+		case <-finalSaving.forced:
+		default:
+			close(finalSaving.forced)
+		}
+	}
+}
+
+// awaitFinalCloses keeps the links open for saving replies after the screen closes.
+func awaitFinalCloses(ctx context.Context) {
+	finalSaving.Lock()
+	pending, forced := finalSaving.pending, finalSaving.forced
+	finalSaving.pending = nil
+	finalSaving.Unlock()
+	for _, done := range pending {
+		select {
+		case <-done:
+		case <-forced:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // Close can fail while the alternate screen still owns the terminal. Retain
@@ -23,11 +75,21 @@ func recordFinalSaveFailure(err error) {
 	}
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
-	if finalSaving.failure == nil {
+	if finalSaving.failure == nil || (unsavedTranscript(finalSaving.failure) == "" && unsavedTranscript(err) != "") {
 		finalSaving.failure = err
 	}
 }
 
+// unsavedTranscript reads only the typed location supplied by the writer.
+func unsavedTranscript(err error) string {
+	var unsaved *session.UnsavedChatError
+	if errors.As(err, &unsaved) {
+		return unsaved.Transcript
+	}
+	return ""
+}
+
+// finishFinalSaving reports one plain sentence after the screen is restored.
 func finishFinalSaving(ctx context.Context) bool {
 	recordFinalSaveFailure(flushFinalSaves(ctx))
 	finalSaving.Lock()
@@ -41,6 +103,10 @@ func finishFinalSaving(ctx context.Context) bool {
 	if surface {
 		terminal = os.Stdout
 	}
-	fmt.Fprintln(terminal, quitSaveFailedWord)
+	line := quitSaveFailedWord
+	if transcript := unsavedTranscript(err); transcript != "" {
+		line = fmt.Sprintf(quitSaveKeptWord, transcript)
+	}
+	fmt.Fprintln(terminal, line)
 	return false
 }

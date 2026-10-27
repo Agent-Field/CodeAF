@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // B1 keeps every edit with the opening chat and leaves an early send unsent.
@@ -167,13 +168,24 @@ func (a *renewalAgent) RenewalStatus() (time.Time, time.Duration, bool) {
 	return a.since, 10 * time.Second, a.held
 }
 
-// B6 says a sustained renewal outage once, then says syncing is back once.
+func (a *renewalAgent) RenewalChanges() <-chan struct{} { return nil }
+
+// Contract D1 says a sustained outage and recovery once through the real agent.
 func TestHolderReportsRenewalOutageAndRecovery(t *testing.T) {
-	agent := &renewalAgent{fakeAgent: &fakeAgent{model: "m"}, held: true}
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	source := &renewalAgent{fakeAgent: &fakeAgent{model: "m"}, held: true}
+	agent, err := session.New(session.Config{
+		Workspace: t.TempDir(), Model: "test/renewal", APIKey: "fixture",
+		BaseURL: "http://127.0.0.1:1/v1", System: "Test only", Renewals: source,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
 	a := newTestApp(agent)
 	now := time.Now()
 	a.clock = func() time.Time { return now }
-	agent.since = now
+	source.since = now
 	a.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
 	if got := plain(frame(a)); strings.Contains(got, "this chat is not syncing") {
 		t.Fatalf("a brief renewal failure was announced: %s", got)
@@ -186,7 +198,7 @@ func TestHolderReportsRenewalOutageAndRecovery(t *testing.T) {
 	if got := plain(frame(a)); strings.Count(got, outage) != 1 {
 		t.Fatalf("outage notice count is wrong: %s", got)
 	}
-	agent.since = time.Time{}
+	source.since = time.Time{}
 	for range 3 {
 		a.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
 	}
@@ -284,5 +296,37 @@ func TestQuittingLastChatNeverBlocksTheUpdateLoop(t *testing.T) {
 		close(agent.release)
 		<-returned
 		t.Fatal("last chat close held the update loop")
+	}
+}
+
+// Contract D3 keeps a second interrupt available while a close is stuck.
+func TestSecondCtrlCLeavesWhileQuitIsStillClosing(t *testing.T) {
+	agent := &blockedCloseAgent{fakeAgent: &fakeAgent{model: "m"}, release: make(chan struct{}), entered: make(chan struct{})}
+	a := newTestApp(agent)
+	forced := false
+	a.forceQuit = func() { forced = true }
+	_, first := a.Update(key("ctrl+c"))
+	if first == nil {
+		t.Fatal("the first interrupt did not start quitting")
+	}
+	finished := make(chan tea.Msg, 1)
+	go func() { finished <- first() }()
+	defer func() { close(agent.release); <-finished }()
+	select {
+	case <-agent.entered:
+	case <-time.After(time.Second):
+		t.Fatal("quit never started closing")
+	}
+	_, second := a.Update(key("ctrl+c"))
+	if second == nil {
+		t.Fatal("quitting swallowed the second interrupt")
+	}
+	if msg := second(); msg == nil {
+		t.Fatal("the second interrupt did not end the surface")
+	} else if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("second interrupt returned %T", msg)
+	}
+	if !forced {
+		t.Fatal("the second interrupt did not release process cleanup")
 	}
 }

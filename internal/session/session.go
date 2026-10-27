@@ -1260,6 +1260,8 @@ type Config struct {
 	// seat: whoever builds one builds the other, and a config with no seat has
 	// none. Nil draws and says nothing.
 	Seals SealState
+	// Renewals reads the local writer's health so the surface can report an outage.
+	Renewals RenewalState
 	// AuthKeySource explains a refused worker account without supplying routing
 	// settings to a worker whose completer already owns its endpoint and key.
 	// Nil keeps ordinary sessions on their own profile and source ladder.

@@ -2839,12 +2839,21 @@ type app struct {
 	// read by [app.placeWord] and [app.contextStart].
 	owned bool
 	// movedName names a chat moved here whose project is not on this machine.
-	movedName           string
-	deviceID            string
-	syncOutages         map[string]bool
+	movedName string
+	// deviceID excludes this computer from offers to continue another computer's chat.
+	deviceID string
+	// syncOutages remembers which chats have already announced their current outage.
+	syncOutages map[string]bool
+	// conversationClosing discards keys while a departing chat finishes closing.
 	conversationClosing bool
-	quitting            bool
-	saveFailure         func(error)
+	// quitting keeps new input out of teardown while allowing another interrupt to leave.
+	quitting bool
+	// saveFailure retains closing errors for the report after the screen is restored.
+	saveFailure func(error)
+	// closingStarted retains pending engine replies after the terminal is restored.
+	closingStarted func(<-chan struct{})
+	// forceQuit requests immediate process exit after a second interrupt restores the screen.
+	forceQuit func()
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
 	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
@@ -3085,6 +3094,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		movedName:           movedName,
 		deviceID:            opts.DeviceID,
 		saveFailure:         opts.SaveFailure,
+		closingStarted:      opts.ClosingStarted,
+		forceQuit:           opts.ForceQuit,
 		landing:             opts.Landing,
 		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
 		takeOverAt:          opts.TakeOver,
@@ -3926,7 +3937,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
-		if a.quitting || (a.conversationClosing && msg.String() != "ctrl+c") {
+		if a.quitting {
+			if msg.String() == "ctrl+c" {
+				if a.forceQuit != nil {
+					a.forceQuit()
+				}
+				return a, tea.Quit
+			}
+			return a, nil
+		}
+		if a.conversationClosing && msg.String() != "ctrl+c" {
 			return a, nil
 		}
 		if a.cdelete.on {
@@ -9098,7 +9118,7 @@ func (a *app) quit() tea.Cmd {
 	// transcript; one left open by a process that has gone is a conversation
 	// nobody can reopen, and a stood one's folder would never reach the item it
 	// made (homeexchange.go's [app.fileEveryExchange]).
-	return quitAfterClosing(leave)
+	return quitAfterClosing(leave, a.closingStarted)
 }
 
 // interrupt is esc: stop the turn, keep what it said.

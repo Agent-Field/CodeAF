@@ -6,53 +6,45 @@ import (
 	"time"
 )
 
-// A clean quit requires the last idle chat's closing boundary to finish before the
-// terminal receives its deliberate departure acknowledgment.
+// Contract D2 keeps the saving result in every idle writer's departure reply.
 func TestDetachAcknowledgesOnlyAfterClosingRelease(t *testing.T) {
-	far := newCloseGatedAgent()
-	engine := &Engine{Agent: far, ReleaseOnLeave: func(WrappedAgent) bool { return true }}
-	client := viewOn(t, NewSession(engine, true))
-	done := make(chan error, 1)
-	go func() { done <- client.Agent().DetachAndWait() }()
-	select {
-	case <-far.entered:
-	case <-done:
-		close(far.release)
-		_ = client.Close()
-		t.Fatal("detach acknowledged before starting the closing release")
-	case <-time.After(time.Second):
-		close(far.release)
-		t.Fatal("detach did not start the closing release")
-	}
-	acknowledged := false
-	select {
-	case <-done:
-		acknowledged = true
-		t.Error("detach acknowledged before the closing release finished")
-	default:
-	}
-	close(far.release)
-	if !acknowledged {
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-// A clean quit requires an ordinary window to keep its asynchronous detach even
-// when its chat will release after the last connection closes.
-func TestOrdinaryDetachDoesNotWaitForRelease(t *testing.T) {
-	far := newCloseGatedAgent()
-	engine := &Engine{Agent: far, ReleaseOnLeave: func(WrappedAgent) bool { return true }}
-	client := viewOn(t, NewSession(engine, true))
-	defer close(far.release)
-	if err := client.Agent().Detach(); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-far.entered:
-		t.Fatal("ordinary detach waited for the closing release")
-	default:
+	for _, ordinary := range []bool{false, true} {
+		t.Run(map[bool]string{false: "coordinating", true: "ordinary"}[ordinary], func(t *testing.T) {
+			far := newCloseGatedAgent()
+			engine := &Engine{Agent: far, ReleaseOnLeave: func(WrappedAgent) bool { return true }}
+			client := viewOn(t, NewSession(engine, true))
+			done := make(chan error, 1)
+			go func() {
+				if ordinary {
+					done <- client.Agent().Detach()
+				} else {
+					done <- client.Agent().DetachAndWait()
+				}
+			}()
+			select {
+			case <-far.entered:
+			case <-done:
+				close(far.release)
+				_ = client.Close()
+				t.Fatal("detach acknowledged before starting the closing release")
+			case <-time.After(time.Second):
+				close(far.release)
+				t.Fatal("detach did not start the closing release")
+			}
+			acknowledged := false
+			select {
+			case <-done:
+				acknowledged = true
+				t.Error("detach acknowledged before the closing release finished")
+			default:
+			}
+			close(far.release)
+			if !acknowledged {
+				if err := <-done; err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

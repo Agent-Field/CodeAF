@@ -26,12 +26,20 @@ A close still running after that second says
 `this chat is still finishing in the background`.
 A slow close alone does not mean saving failed.
 
-## Could not save on quit — unsaved turns on the next start
+## Could not save on quit — where are the unsaved turns kept
 
-If the final save fails, the restored terminal says
+If the final save fails and the transcript location is known, the restored terminal says
+`codeaf could not save this chat; unsaved turns are kept in <transcript path> and return on the next start.`
+The path names the transcript on the computer running the chat, including over
+`--host`. When the location is unknown, it says
 `codeaf could not save this chat; unsaved turns stay on this computer and return on the next start.`
-The command exits with a failure status. This sentence stays visible after
+The command exits with a failure status. One sentence stays visible after
 the full-screen chat closes, including when error output goes to a log.
+
+The screen closes after at most one second while a slow close finishes. The
+launcher keeps its connection open for the saving reply before it exits. A
+second ctrl+c while quitting restores the terminal and exits immediately;
+unfinished turns stay on the computer running the chat for the next start.
 
 ## How do I make this one chat think harder — can I click the thinking level — effort keys
 

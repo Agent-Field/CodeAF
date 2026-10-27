@@ -30,6 +30,8 @@ type DriveOptions struct {
 	Title func() string
 	// OnNotice hears a person-facing line: the superseded line, the skew line.
 	OnNotice func(string)
+	// OnRenewalChange wakes local readers after a renewal or ownership change.
+	OnRenewalChange func()
 	// Sleep replaces real time between flushes; tests inject a fake.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
@@ -312,15 +314,16 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 			Dir: s.Dir, Publisher: pub, Map: branches,
 			NewID: func() (string, error) { return cell.NewID(time.Now()) },
 		},
-		Driving:      &drv,
-		Interval:     s.Interval,
-		Info:         d.info,
-		OnFlush:      d.flushed(),
-		OnSuperseded: d.becomeViewer,
-		OnLost:       func() { d.refusal(directory.ErrFenceStale) },
-		OnError:      d.refusal,
-		Sleep:        d.opt.Sleep,
-		Liveness:     s.Liveness(),
+		Driving:         &drv,
+		Interval:        s.Interval,
+		Info:            d.info,
+		OnFlush:         d.flushed(),
+		OnSuperseded:    d.becomeViewer,
+		OnLost:          func() { d.refusal(directory.ErrFenceStale) },
+		OnError:         d.refusal,
+		Sleep:           d.opt.Sleep,
+		Liveness:        s.Liveness(),
+		OnRenewalChange: d.opt.OnRenewalChange,
 	}, nil
 }
 
@@ -342,8 +345,12 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	}
 	line := chatlist.Superseded(device)
 	d.mu.Lock()
+	changed := d.line == ""
 	d.line = line
 	d.mu.Unlock()
+	if changed && d.opt.OnRenewalChange != nil {
+		d.opt.OnRenewalChange()
+	}
 	// Refuse new work immediately, then preserve the pending save before
 	// announcing displacement. A routine ownership check does no fsync (C28).
 	ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
@@ -397,6 +404,14 @@ func (d *Drive) Viewer() (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.line, d.line != ""
+}
+
+// RenewalStatus reads this writer's cached renewal health without network work.
+func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
+	if _, viewer := d.Viewer(); viewer || d.batcher == nil || d.sync.removed.Load() {
+		return time.Time{}, 0, false
+	}
+	return d.batcher.RenewalStatus()
 }
 
 // HoldsLease says whether this drive side still drives the chat: it is not a
