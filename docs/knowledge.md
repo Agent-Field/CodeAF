@@ -86,11 +86,10 @@ cache affinity within a profile, model, and compiler role. These optimizations
 remain inside the vault; callers do not manage cache identity or invalidate
 compiler checkpoints themselves.
 
-A correction preserves unaffected completed evidence groups, including groups
-closed by the text-size limit. Only groups whose inputs or dependencies change
-need another learner and support review. The final partial group can grow with
-new evidence. Reuse still checks current sources, claims, and conflicts before
-publishing an updated guide.
+A correction keeps unaffected completed evidence groups stable, including groups
+closed by the text-size limit. The final partial group can grow with new evidence.
+Reuse remains subject to the learner's source, claim, conflict, and paragraph
+dependency checks before an updated guide is published.
 
 Reviewed additions and changed core drafts are screened against the specific
 concept guide before placement. Sharing a project does not establish relevance.
