@@ -45,7 +45,9 @@ func canonicalEnvironment(workspace string) string {
 	}
 	// The variable list is read from the profile at each side's moment.
 	names := config.ProviderKeyEnvNamesAt(profileDir)
-	names = append(names, "CODEAF_BASE_URL")
+	// The Azure address and deployment make a provider without a key variable
+	// of their own, so a changed gateway restarts an idle host too.
+	names = append(names, "CODEAF_BASE_URL", config.AzureBaseEnv, config.AzureDeploymentEnv)
 	for _, row := range config.NewSettings(config.SettingsOptions{ProfileDir: profileDir}).Rows() {
 		if row.Env != "" {
 			names = append(names, row.Env)

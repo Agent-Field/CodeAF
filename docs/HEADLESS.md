@@ -772,6 +772,7 @@ The full list is `codeaf help env`. What matters headless:
 | Variable | Default | Why a harness cares |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | — | Required. |
+| `AZURE_API_BASE`, `AZURE_API_KEY` | unset | Both set connect the `azure` provider at `<base>/openai/v1`; run it with `--model azure/<deployment>`. `AZURE_API_DEPLOYMENT` is its preferred model. |
 | `CODEAF_MODEL` | unset | Pins the worker for every run it is set on. `--model` overrides per run; unset, a `/crew pin` or the router answers — see the ladder in section 1. |
 | `CODEAF_PLAN_MODEL` | unset | Pins the planner: plans, replans, contracts and the delivery gate. Unset, a `/crew pin` or the router answers. |
 | `CODEAF_CHECK_MODEL` | unset | Pins the checker. Unset, a `/crew pin` or the router answers — never the planner. |

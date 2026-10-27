@@ -321,3 +321,27 @@ In Phase 1 a **Custom OpenAI-compatible API** provider must provide the compatib
 tries `GET <base>/models` first; the models from an answered list fill its picker group.
 A new custom address must answer its model-list check before it can be saved. An
 answered empty list leaves the picker asking you to type a model id. Direct calls record no cost in Phase 1 and have one host.
+
+## Azure OpenAI — use an Azure deployment or an Azure API gateway with AZURE_API_BASE
+
+codeaf connects to Azure OpenAI from two environment variables, the names LiteLLM uses:
+`AZURE_API_BASE` (the resource or gateway root, such as
+`https://my-resource.openai.azure.com`) and `AZURE_API_KEY`. With both set, a provider
+named `azure` is connected; unset either one and it is gone. It has no row in `/connect`;
+the key stays in your environment.
+
+Its models are your **deployment names**, written `azure/<deployment>` — for example
+`/model azure/gpt-5.6-sol-2026-07-09`. Azure lists no models, so the picker group is empty
+and you type the id. `AZURE_API_DEPLOYMENT`, when set, is the provider's preferred model.
+`AZURE_API_VERSION` is not read.
+
+codeaf talks to the v1 surface, `<AZURE_API_BASE>/openai/v1/chat/completions`, and appends
+`/openai/v1` unless the address already ends with it. The key travels in the `api-key`
+header, never as a bearer token. The thinking level travels as `reasoning_effort`: off
+is `none`, and the rungs above high are `xhigh`. A level the deployment refuses is
+dropped and the call retried, the same way as on any provider.
+
+What it does not do: the crew never picks an Azure model by itself — pin one with `/crew`.
+Picture-making, speech and video are off the belt for it, the same as any provider without
+a model list. The classic `/openai/deployments/<name>` address shape and the Responses API
+are not used. Azure answers carry no price, so they record no cost.

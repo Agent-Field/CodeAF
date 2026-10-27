@@ -96,7 +96,7 @@ func TestCanonicalEnvironmentUsesTheRegistryAndSharedProviderList(t *testing.T) 
 	if err := config.WriteSources(profile, []config.PersistedSource{{ID: "z-ai", Written: "z-ai", KeyEnv: "CODEAF_TEST_CONNECTED_KEY"}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range append(config.ProviderKeyEnvNames(), "CODEAF_BASE_URL") {
+	for _, name := range append(config.ProviderKeyEnvNames(), "CODEAF_BASE_URL", config.AzureBaseEnv, config.AzureDeploymentEnv) {
 		if strings.HasPrefix(name, env.Legacy("CODEAF_")) {
 			continue
 		}
@@ -117,7 +117,7 @@ func TestCanonicalEnvironmentUsesTheRegistryAndSharedProviderList(t *testing.T) 
 	if got := canonicalEnvironment(""); got != "" {
 		t.Fatalf("empty canonical environment: %q", got)
 	}
-	for _, name := range append(config.ProviderKeyEnvNames(), "CODEAF_BASE_URL") {
+	for _, name := range append(config.ProviderKeyEnvNames(), "CODEAF_BASE_URL", config.AzureBaseEnv, config.AzureDeploymentEnv) {
 		if strings.HasPrefix(name, env.Legacy("CODEAF_")) {
 			continue
 		}

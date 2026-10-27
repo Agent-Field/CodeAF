@@ -22,7 +22,9 @@ func ProviderKeyEnvNames() []string {
 // The host comparison resolves relative references in the host's workspace,
 // because its daemon changes directory before opening any conversations.
 func ProviderKeyEnvNamesAt(profileDir string) []string {
-	names := []string{APIKeyEnv, "OPENAI_API_KEY"}
+	// The Azure OpenAI service is not vendored, because it is read from the
+	// environment rather than shipped (azureFromEnv), so its key is named here.
+	names := []string{APIKeyEnv, "OPENAI_API_KEY", modelsource.AzureSource("", "").KeyEnv}
 	for _, source := range modelsource.Vendored() {
 		if source.KeyEnv != "" {
 			names = append(names, source.KeyEnv)
