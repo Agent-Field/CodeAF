@@ -837,13 +837,14 @@ func TestRootStartDoesNotReplaceAManagerItCannotCheck(t *testing.T) {
 	}
 }
 
-// A REAL CONVERSATION (in-process engine, scripted model on loopback, fake key)
-// keeps the person's said and the client id on the persisted first line, and
+// C1 and C2: a real conversation (in-process engine, scripted model on loopback,
+// fake key) keeps the person's said and client id on the persisted first line, and
 // after a restart the same request is a repeat that mints nothing, opens no
-// first turn and leaves exactly one person line in the record.
+// first turn and leaves exactly one person line in the record. A read-only
+// crew open may still be finishing when the replay answers.
 func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 	root := resolvedTempDir(t)
-	_, workspace := wakeEnvironment(t, root)
+	model, workspace := wakeEnvironment(t, root)
 	rec := newAppRecorder()
 	first := newAppBackend(rec, appOpenInProcess)
 	closed := false
@@ -868,6 +869,9 @@ func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	closed = true
+	model.mu.Lock()
+	requestsBeforeRestart := len(model.requests)
+	model.mu.Unlock()
 	if n := appUserCount(member.File); n != 1 {
 		t.Fatalf("the record holds %d person lines", n)
 	}
@@ -895,13 +899,44 @@ func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var booting bool
-	second.locked(func() { booting = a.boot != nil || a.opening })
+	// C2 permits a read-only open, including a crew hold admitted before its
+	// goroutine takes the agent's gate. Wait for both to finish before asking
+	// whether the repeat left a first turn booting, running or queued.
+	run := second.crews()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var opening bool
+		second.locked(func() { opening = a.opening })
+		run.locked(func() { opening = opening || run.opening[got.Start.Manager] })
+		if !opening {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the read-only conversation open did not settle within five seconds")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var booting, running bool
+	var queued int
+	second.locked(func() {
+		booting = a.boot != nil || a.opening || a.starting
+		running = a.live != nil && a.live.running
+		queued = len(a.queue)
+	})
 	if minted != 0 || booting {
 		t.Fatalf("the repeat minted %d and left a first turn booting: %v", minted, booting)
 	}
+	if turns := second.turns.Load(); turns != 0 || running || queued != 0 {
+		t.Fatalf("the repeat started %d turns, running: %v, queued: %d", turns, running, queued)
+	}
 	if err := second.Close(); err != nil {
 		t.Fatal(err)
+	}
+	model.mu.Lock()
+	newRequests := len(model.requests) - requestsBeforeRestart
+	model.mu.Unlock()
+	if newRequests != 0 {
+		t.Fatalf("after the restart the model received %d new requests", newRequests)
 	}
 	if n := appUserCount(member.File); n != 1 {
 		t.Fatalf("after the repeat the record holds %d person lines", n)
