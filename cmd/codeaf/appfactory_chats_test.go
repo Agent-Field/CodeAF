@@ -136,7 +136,9 @@ func TestAJobsChatsNameEachFinishedRoundsChat(t *testing.T) {
 	}
 }
 
-func TestFinishedStageChatKeepsItsExecutionModel(t *testing.T) {
+// E5: a71691760d (factory-close-and-default-fallback.md) makes a saved
+// conversation's model authoritative; execution history must not replace it.
+func TestFinishedStageChatKeepsItsSavedModel(t *testing.T) {
 	s := newLocalSetup(t)
 	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
 		return &appConn{Conv: &fakeConversation{model: "profile/default"}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
@@ -155,7 +157,7 @@ func TestFinishedStageChatKeepsItsExecutionModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, _, err := s.backend.ensure(a)
-	if err != nil || view.Model != "vendor/strong" {
+	if err != nil || view.Model != "profile/default" {
 		t.Fatalf("model=%s err=%v", view.Model, err)
 	}
 }
