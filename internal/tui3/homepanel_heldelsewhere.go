@@ -23,9 +23,8 @@ import (
 // instead: home, with the chat's row from that machine under the cursor and the
 // `Continue here` card up. The words stay in the box.
 //
-// A submitted message asks once off the loop before choosing the door, because
-// the cached holder may have changed. The draft stays intact until the answer
-// arrives; an unreachable reading leaves those words unsent.
+// Local authority lets an ordinary message send without a relay request. A copy
+// without that authority asks once off the loop before choosing its door.
 
 // heldElsewhere is the row of the chat on screen when another machine holds it.
 func (a *app) heldElsewhere() (chatlist.Row, bool) {
@@ -53,6 +52,7 @@ type ownershipReadMsg struct {
 	head, leaseCell string
 	fence           uint64
 	proof           bool
+	local           bool
 }
 
 type sendHold struct {
@@ -68,9 +68,8 @@ type sendLeaseSource interface {
 	SendLease(string) (string, uint64, error)
 }
 
-// checkBeforeSend closes the interval between another device's acquire and
-// its change frame arriving. This one read per submitted message stays off the
-// update loop, and a never-paired home remains quiet through its source's gate.
+// checkBeforeSend reads local authority before requesting any missing ownership.
+// The read stays off the update loop, including its bounded network fallback.
 func (a *app) checkBeforeSend() tea.Cmd {
 	return a.checkBeforeSendWith(func() tea.Cmd { return a.enterCheckedLine(true) })
 }
@@ -84,6 +83,7 @@ func (a *app) needsOwnershipRead() bool {
 
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	src, file, draft := a.machines, a.file, a.input.String()
+	offline := a.machineRead.down
 	chips := slices.Clone(a.chips)
 	var first *composerState
 	if a.conversationPreview != nil && !a.conversationOpening {
@@ -94,8 +94,20 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
-		rows, version, err := chatlist.RowsForSend(ctx, src)
-		msg := ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
+		var rows []chatlist.Row
+		var version uint64
+		var local bool
+		var err error
+		if scoped, ok := src.(interface {
+			RowsForChatSend(context.Context, string, bool) ([]chatlist.Row, uint64, bool, error)
+		}); ok {
+			rows, version, local, err = scoped.RowsForChatSend(ctx, file, offline)
+		} else if offline {
+			err = directory.ErrUnreachable
+		} else {
+			rows, version, err = chatlist.RowsForSend(ctx, src)
+		}
+		msg := ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
 		id := filepath.Base(session.DirOf(file))
 		if local, ok := src.(sendLeaseSource); ok {
 			msg.proof = true
@@ -138,6 +150,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 				side.pastes, side.draftCursor = nil, nil
 			}
 		}
+		a.note("chat changed before sending; your words are still unsent")
 		return nil
 	}
 	if msg.first != nil {
@@ -145,7 +158,10 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		// draft, which must not invalidate that send while ownership is read.
 		next := a.liveComposer()
 		a.putComposer(*msg.first)
-		reading := a.recordMachines(msg.reading)
+		var reading tea.Cmd
+		if !msg.local {
+			reading = a.recordMachines(msg.reading)
+		}
 		cmd := a.resumeOwnedSend(msg)
 		if a.liveComposer().empty() {
 			a.putComposer(next)
@@ -159,9 +175,13 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		return tea.Batch(reading, cmd)
 	}
 	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) {
+		a.note("draft changed before sending; press enter to send your current words")
 		return nil
 	}
-	reading := a.recordMachines(msg.reading)
+	var reading tea.Cmd
+	if !msg.local {
+		reading = a.recordMachines(msg.reading)
+	}
 	return tea.Batch(reading, a.resumeOwnedSend(msg))
 }
 

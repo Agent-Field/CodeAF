@@ -1268,13 +1268,20 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // arrived, and "you closed this conversation" and "another window took it" are
 // two different sentences to be owed (internal/session's stopcause.go).
 func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
+	name := a.sessionName()
+	if name == "" {
+		name = a.place
+	}
 	var leaving Agent
 	cmd, more := a.leaveFront(func(agent Agent) { leaving = agent }, true)
 	if !more || leaving == nil {
 		return cmd, more
 	}
 	a.conversationClosing = true
-	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted)), true
+	desk := a.outsideDesk
+	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func() {
+		desk.Say(name + ": " + closeSaveFailedWord)
+	})), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -1304,8 +1311,7 @@ func (a *app) endAgent(agent Agent) { a.endAgentFor(agent, session.StopByLeaving
 // CONVERSATION to go, not for the reply to be thrown away — so the engine owes
 // them a sentence about the answer that never came.
 func (a *app) endAgentFor(agent Agent, door session.StopDoor) {
-	agent.InterruptFor(door)
-	if err := agent.Close(); err != nil {
+	if err := leaveAgentFor(agent, door); err != nil {
 		a.note("close failed: " + err.Error())
 	}
 }
@@ -1462,9 +1468,9 @@ func leaveAgentError(agent Agent) error {
 }
 
 // Permanent deletion closes the owner rather than detaching its view.
-func leaveAgentFor(agent Agent, door session.StopDoor) {
+func leaveAgentFor(agent Agent, door session.StopDoor) error {
 	agent.InterruptFor(door)
-	_ = agent.Close()
+	return agent.Close()
 }
 
 // leaveOffFrame is [leaveAgent] started away from the caller. Detach and

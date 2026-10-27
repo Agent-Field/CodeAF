@@ -11,6 +11,9 @@ chat you were leaving, unsent, with
 `opening cancelled; your words are back in this chat, unsent`.
 Typing when no chat is opening works as usual.
 
+Closing the terminal or quitting during opening also keeps those words,
+including an unfinished paste. They return unsent on the next start.
+
 ## Closing a chat when the engine is unreachable — window frozen, queued keys
 
 `/quit` closes the current chat when another chat is open. The next chat
@@ -25,6 +28,8 @@ If closing fails, it says
 A close still running after that second says
 `this chat is still finishing in the background`.
 A slow close alone does not mean saving failed.
+If that background close later fails, the active chat shows the closed chat's
+name followed by the same saving-failure sentence, once.
 
 ## Could not save on quit — where are the unsaved turns kept
 
@@ -37,9 +42,26 @@ The command exits with a failure status. One sentence stays visible after
 the full-screen chat closes, including when error output goes to a log.
 
 The screen closes after at most one second while a slow close finishes. The
-launcher keeps its connection open for the saving reply before it exits. A
+launcher keeps its connection open for the final publish and release before it exits.
+When the wait after restoring the screen lasts more than about a second, it says
+`saving this chat before quitting… (up to 30s)`.
+This wait is bounded by the saving ceiling. If the ceiling expires, the final
+saving-failure sentence stays visible and unsaved turns remain on this computer. A
 second ctrl+c while quitting restores the terminal and exits immediately;
 unfinished turns stay on the computer running the chat for the next start.
+
+## One Enter sends — checking which computer holds this chat
+
+A chat held here, or one never shared, sends with one Enter using its local
+hold. Sending does not wait for the sync service to answer. An established
+outage does not add another network wait to every send.
+
+A copy with no current hold gets one fresh check, bounded to five seconds.
+It sends, offers `Continue this chat here?`, or explains why the words remain
+unsent. If you change chats meanwhile, it says
+`chat changed before sending; your words are still unsent`.
+If you edit the draft meanwhile, it says
+`draft changed before sending; press enter to send your current words`.
 
 ## How do I make this one chat think harder — can I click the thinking level — effort keys
 

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -38,19 +39,26 @@ func quitAfterClosing(work func(), started func(<-chan struct{})) tea.Cmd {
 
 // Closing releases the keyboard after a bounded wait. The close method has no
 // cancellation door, so it can finish later without holding the update loop.
-func closeConversationLater(agent Agent, door session.StopDoor, report func(error), started func(<-chan struct{})) tea.Cmd {
+func closeConversationLater(agent Agent, door session.StopDoor, report func(error), started func(<-chan struct{}), lateFailure func()) tea.Cmd {
 	done, finished := make(chan error, 1), make(chan struct{})
+	var mu sync.Mutex
+	late := false
 	if started != nil {
 		started(finished)
 	}
 	go func() {
 		defer close(finished)
-		agent.InterruptFor(door)
-		err := agent.Close()
+		err := leaveAgentFor(agent, door)
 		if err != nil && report != nil {
 			report(err)
 		}
+		mu.Lock()
 		done <- err
+		notify := late && err != nil && lateFailure != nil
+		mu.Unlock()
+		if notify {
+			lateFailure()
+		}
 	}()
 	return func() tea.Msg {
 		timer := time.NewTimer(conversationCloseWithin)
@@ -59,6 +67,14 @@ func closeConversationLater(agent Agent, door session.StopDoor, report func(erro
 		case err := <-done:
 			return conversationClosedMsg{err: err}
 		case <-timer.C:
+			mu.Lock()
+			defer mu.Unlock()
+			select {
+			case err := <-done:
+				return conversationClosedMsg{err: err}
+			default:
+				late = true
+			}
 			return conversationClosedMsg{finishing: true}
 		}
 	}

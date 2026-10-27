@@ -3435,6 +3435,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
 	// AND THE NOTICE DESK, once the surface can say a note (notices.go).
+	if opts.Notices == nil {
+		opts.Notices = NewNotices()
+	}
 	a.useNotices(opts.Notices)
 	return a
 }
@@ -9088,6 +9091,14 @@ func (a *app) quit() tea.Cmd {
 	// surface even when the browser is still open, just as account connections
 	// and file doors below do.
 	a.cancelSetupAuth()
+	if a.conversationOpening {
+		a.cancelConversationOpening()
+	}
+	if a.pasting {
+		a.pasting = false
+		a.paste(string(a.pasted))
+		a.pasted = nil
+	}
 	// The draft goes to disk on the way out, synchronously and before anything
 	// else: the debounce may be mid-window, and a sentence typed in the last
 	// three hundred milliseconds of a session is exactly the one a person would

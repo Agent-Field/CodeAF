@@ -68,6 +68,33 @@ func wireSync(o *tui3.Options) {
 // surfaceMachines keeps display hints out of the decision to send a message.
 type surfaceMachines struct{ *syncsetup.Sync }
 
+// RowsForChatSend uses a local hold or a never-shared chat before asking the relay.
+// A known outage keeps unknown copies unsent without repeating the network wait.
+func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offline bool) ([]chatlist.Row, uint64, bool, error) {
+	if s.Removed() {
+		return nil, 0, false, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, true, nil
+	}
+	root := session.DirOf(file)
+	id := filepath.Base(root)
+	if remote, fence, err := s.SendLease(id); err == nil && fence != 0 {
+		return []chatlist.Row{{Cell: remote, Status: chatlist.Here, Mine: true, Fence: fence}}, 0, true, nil
+	}
+	if c, err := cell.OpenAt(root, id); err == nil {
+		shared, err := cellstore.Shared(c)
+		if err == nil && !shared {
+			return nil, 0, true, nil
+		}
+	}
+	if offline {
+		return nil, 0, false, directory.ErrUnreachable
+	}
+	rows, version, err := s.RowsForSend(ctx)
+	return rows, version, false, err
+}
+
 func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
 	if s.Relay != "" {
 		current, ok, err := syncsetup.Open(s.Home)

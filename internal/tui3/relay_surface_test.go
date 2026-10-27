@@ -13,11 +13,24 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// Each fixture closes the workers its gestures start before releasing its files.
+func keepSurfaceWorkersInTest(t *testing.T, a *app) {
+	t.Helper()
+	t.Cleanup(func() {
+		if !a.quitting {
+			a.leaveEverything()
+		}
+		a.doorLine.close()
+	})
+	a.closingStarted = func(done <-chan struct{}) { t.Cleanup(func() { <-done }) }
+}
+
 // B1 keeps every edit with the opening chat and leaves an early send unsent.
 func TestNewOpeningKeepsTypingPasteAndEarlyEnter(t *testing.T) {
 	for _, cancel := range []bool{false, true} {
 		t.Run(map[bool]string{false: "open", true: "cancel"}[cancel], func(t *testing.T) {
 			a := openingLab(t)
+			keepSurfaceWorkersInTest(t, a)
 			a.closeHome()
 			old := a.agent.(*fakeAgent)
 			next := &fakeAgent{model: "m"}
@@ -54,6 +67,7 @@ func TestNewOpeningKeepsTypingPasteAndEarlyEnter(t *testing.T) {
 // B1 keeps a paste that starts before arrival and ends after the chat opens.
 func TestNewOpeningKeepsAPasteAcrossArrival(t *testing.T) {
 	a := openingLab(t)
+	keepSurfaceWorkersInTest(t, a)
 	a.closeHome()
 	next := &fakeAgent{model: "m"}
 	release := make(chan struct{})
@@ -85,6 +99,7 @@ func TestRemovedComputerReopensWithTheSameProjectLabel(t *testing.T) {
 				want = "ws9 (copy from another machine)"
 			}
 			a := newTestApp(&fakeAgent{model: "m"})
+			keepSurfaceWorkersInTest(t, a)
 			a.file = "/tmp/old/transcript.jsonl"
 			spend(t, a, a.takeBeside(Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/copy/transcript.jsonl", Workspace: work}))
 			a.title = "Copy chat"
@@ -107,6 +122,7 @@ func TestRemovedComputerReopensWithTheSameProjectLabel(t *testing.T) {
 func TestResumeNeverOffersThisComputersOwnDevice(t *testing.T) {
 	for _, status := range []chatlist.Status{chatlist.Running, chatlist.Off, chatlist.Idle} {
 		a := leftOffApp(&fakeTaker{})
+		keepSurfaceWorkersInTest(t, a)
 		a.deviceID = "self"
 		a.Update(homeMachinesMsg{rows: []chatlist.Row{{Cell: "chat", DeviceID: "self", Device: "laptop", Status: status}}})
 		if got := leftOffFrame(a); strings.Contains(got, "Continue laptop's latest chat here?") {
@@ -114,6 +130,7 @@ func TestResumeNeverOffersThisComputersOwnDevice(t *testing.T) {
 		}
 	}
 	a := leftOffApp(&fakeTaker{})
+	keepSurfaceWorkersInTest(t, a)
 	a.Update(homeMachinesMsg{rows: []chatlist.Row{{Cell: "chat", DeviceID: "self", Device: "laptop", Status: chatlist.Off}}})
 	a.Update(rosterMsg{devices: []chatlist.Device{{ID: "self", Name: "laptop", Self: true}}})
 	if got := leftOffFrame(a); strings.Contains(got, "Continue laptop's latest chat here?") {
@@ -142,6 +159,7 @@ func (s *openingMachineSource) RowsForSend(ctx context.Context) ([]chatlist.Row,
 // B4 waits for an actual reading before the first send decides the move card.
 func TestFirstEnterWaitsForOwnershipReading(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
+	keepSurfaceWorkersInTest(t, a)
 	a.file = "/tmp/chat/transcript.jsonl"
 	a.taker = &fakeTaker{}
 	src := &openingMachineSource{ready: make(chan struct{}), row: chatlist.Row{Cell: "chat", DeviceID: "other", Device: "tower", Status: chatlist.Running, Fence: 3}}
@@ -183,6 +201,7 @@ func TestHolderReportsRenewalOutageAndRecovery(t *testing.T) {
 	}
 	defer agent.Close()
 	a := newTestApp(agent)
+	keepSurfaceWorkersInTest(t, a)
 	now := time.Now()
 	a.clock = func() time.Time { return now }
 	source.since = now
@@ -225,6 +244,7 @@ func (a *blockedCloseAgent) Close() error {
 func TestClosingChatNeverBlocksTheUpdateLoop(t *testing.T) {
 	agent := &blockedCloseAgent{fakeAgent: &fakeAgent{model: "m"}, release: make(chan struct{}), entered: make(chan struct{})}
 	a := newTestApp(agent)
+	keepSurfaceWorkersInTest(t, a)
 	a.file = "/tmp/closing/transcript.jsonl"
 	keepThree(t, a)
 	a.input.setText("/quit")
@@ -270,6 +290,7 @@ func TestClosingChatNeverBlocksTheUpdateLoop(t *testing.T) {
 func TestQuittingLastChatNeverBlocksTheUpdateLoop(t *testing.T) {
 	agent := &blockedCloseAgent{fakeAgent: &fakeAgent{model: "m"}, release: make(chan struct{}), entered: make(chan struct{})}
 	a := newTestApp(agent)
+	keepSurfaceWorkersInTest(t, a)
 	a.input.setText("/quit")
 	returned := make(chan tea.Cmd, 1)
 	go func() { _, cmd := a.Update(key("enter")); returned <- cmd }()
@@ -303,6 +324,7 @@ func TestQuittingLastChatNeverBlocksTheUpdateLoop(t *testing.T) {
 func TestSecondCtrlCLeavesWhileQuitIsStillClosing(t *testing.T) {
 	agent := &blockedCloseAgent{fakeAgent: &fakeAgent{model: "m"}, release: make(chan struct{}), entered: make(chan struct{})}
 	a := newTestApp(agent)
+	keepSurfaceWorkersInTest(t, a)
 	forced := false
 	a.forceQuit = func() { forced = true }
 	_, first := a.Update(key("ctrl+c"))
