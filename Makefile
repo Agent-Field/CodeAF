@@ -46,8 +46,8 @@ embed: manual-pack-law
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
-# Unix builds carry furrow, so the build fetches it before producing codeaf.
-# Windows embeds the native engine through the same artifact door.
+# Every release platform carries furrow, including native Windows, so the build
+# fetches it before producing codeaf.
 # This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
@@ -61,9 +61,10 @@ embed: manual-pack-law
 # build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
-# explicit artifact is a developer override; the normal fetch checks the pin:
+# explicit artifact is a developer override and announces the pinned version it
+# replaces; the normal fetch checks the pin:
 #
-#   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
+#   make furrow FURROW_ARTIFACT=/path/to/furrow-linux-amd64
 #
 # THE TARGET IS READ FIRST AND THEN UNSET. A cross-compiling build sets GOOS and
 # GOARCH for codeaf, and the fetcher has to know them — but it must not be built
@@ -456,9 +457,8 @@ check: vet fmt-check test test-packed-manual size build-cross
 #   make app-sidecar APP_GOOS=darwin APP_GOARCH=arm64   # one triple
 #   make app-sidecars                                   # all four
 #
-# Windows has no pinned furrow, so — as release.yml does — a Windows sidecar is
-# built without one and codeaf answers ErrNotEmbedded where furrow would be asked.
-# It is also built WITHOUT garble: Microsoft Defender quarantined the garbled
+# Windows carries its pinned native furrow, just as release.yml does.
+# It is built WITHOUT garble: Microsoft Defender quarantined the garbled
 # binary on first run as "a virus or potentially unwanted software" (2026-10-19).
 # release.yml's Windows codeaf is a plain go build too.
 # It is not in app-sidecars' loop: the desktop app ships for macOS and Linux, and
@@ -476,7 +476,7 @@ $(GARBLE):
 	mv $(@D)/garble-$(GARBLE_VERSION).d/garble $@
 	rmdir $(@D)/garble-$(GARBLE_VERSION).d
 
-app-sidecar: embed $(GARBLE)
+app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 	@set -eu; \
 	case "$(APP_GOOS)/$(APP_GOARCH)" in \
 		darwin/arm64) triple=aarch64-apple-darwin ;; \
@@ -486,12 +486,10 @@ app-sidecar: embed $(GARBLE)
 		windows/amd64) triple=x86_64-pc-windows-msvc ;; \
 		*) printf 'app-sidecar: no desktop target for %s/%s\n' "$(APP_GOOS)" "$(APP_GOARCH)" >&2; exit 1 ;; \
 	esac; \
+	env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -goos=$(APP_GOOS) -goarch=$(APP_GOARCH); \
 	ext=""; build="$(GARBLE) -literals -tiny build"; \
 	if [ "$(APP_GOOS)" = windows ]; then \
-		rm -f internal/furrowbin/cache/furrow-*.gz; \
 		ext=".exe"; build="go build"; \
-	else \
-		env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -goos=$(APP_GOOS) -goarch=$(APP_GOARCH); \
 	fi; \
 	mkdir -p $(APP_DIST); \
 	CGO_ENABLED=0 GOOS=$(APP_GOOS) GOARCH=$(APP_GOARCH) $$build \

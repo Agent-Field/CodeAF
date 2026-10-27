@@ -4,10 +4,10 @@ This page says how to test every path a chat takes between two computers, from t
 fastest check to a walk by hand. Run the sections in order. Each one costs more than the
 one before it and proves more.
 
-Moving chats is off on every build unless `CODEAF_CELLS=1` is set when codeaf starts
-on both computers. Add `export CODEAF_CELLS=1` to each shell profile to keep it on;
-unset, `0` or any other value leaves it off. It needs a compatible configured or embedded
-furrow engine and Unix; Windows users run codeaf in WSL.
+Moving chats needs a compatible configured or embedded furrow engine on both
+computers. Normal builds, including the desktop sidecar, carry the pinned engine
+for Linux, macOS and native Windows. Native Windows uses Git for Windows for
+shell commands. The former `CODEAF_CELLS` switch is no longer needed.
 
 Settings. Every script that names a machine, a folder or a relay reads it from an
 environment variable (through `scripts/measure/rigenv.py`) and stops with a message that
@@ -120,8 +120,10 @@ For an unreleased engine, use `make build FURROW_SOURCE=/path/to/furrow`.
 For a cross-build, build furrow for the destination platform in that external checkout
 first (for Linux, in a Linux container), then pass its binary as
 `GOOS=linux GOARCH=arm64 make build FURROW_ARTIFACT=/path/to/furrow-linux-arm64`.
-The source and artifact roads deliberately override the pin. Runtime checks the actual
-exchange verbs and changed-path sealing flags once; an older engine leaves chat movement
+The source and artifact roads deliberately override the pin; the fetcher prints the
+staged path, target platform and pinned version without verifying the override against
+the pin. Runtime checks the actual exchange verbs and changed-path sealing flags once;
+an older engine leaves chat movement
 absent and says `moving chats needs a newer furrow engine than this build carries`.
 
 Export the settings above first; each script's docstring says which of them it reads and the
