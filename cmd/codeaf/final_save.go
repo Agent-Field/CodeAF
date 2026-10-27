@@ -28,6 +28,35 @@ var finalSaving struct {
 	forced chan struct{}
 }
 
+// armFinalSaving marks this process as one whose surface reports the final save
+// on the restored terminal, and returns the channel a forced exit closes.
+func armFinalSaving() chan struct{} {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	finalSaving.surface = true
+	finalSaving.forced = make(chan struct{})
+	return finalSaving.forced
+}
+
+// takeFinalCloses hands the waiter every closing reply still owed, once.
+func takeFinalCloses() ([]<-chan struct{}, chan struct{}) {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	pending := finalSaving.pending
+	finalSaving.pending = nil
+	return pending, finalSaving.forced
+}
+
+// takeFinalSaveFailure hands back the retained failure, once, and whether a
+// surface was running, which decides the terminal stream the sentence goes to.
+func takeFinalSaveFailure() (error, bool) {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	err, surface := finalSaving.failure, finalSaving.surface
+	finalSaving.failure, finalSaving.surface = nil, false
+	return err, surface
+}
+
 func retainFinalClose(done <-chan struct{}) {
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
@@ -58,10 +87,7 @@ func forceFinalClose() {
 func awaitFinalCloses(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, cellstore.SealWithin)
 	defer cancel()
-	finalSaving.Lock()
-	pending, forced := finalSaving.pending, finalSaving.forced
-	finalSaving.pending = nil
-	finalSaving.Unlock()
+	pending, forced := takeFinalCloses()
 	if len(pending) == 0 {
 		return
 	}
@@ -116,10 +142,7 @@ func unsavedTranscript(err error) string {
 // finishFinalSaving reports one plain sentence after the screen is restored.
 func finishFinalSaving(ctx context.Context) bool {
 	recordFinalSaveFailure(flushFinalSaves(ctx))
-	finalSaving.Lock()
-	err, surface := finalSaving.failure, finalSaving.surface
-	finalSaving.failure, finalSaving.surface = nil, false
-	finalSaving.Unlock()
+	err, surface := takeFinalSaveFailure()
 	if err == nil {
 		return true
 	}

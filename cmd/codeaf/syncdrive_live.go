@@ -85,15 +85,24 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	return l.closed
 }
 
+// openDrive is the started drive, or nil when none has started or this writer
+// has closed. It never starts one.
+func (l *liveDrive) openDrive() *syncsetup.Drive {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil
+	}
+	return l.drive
+}
+
 // RenewalStatus reads an already-started drive without starting one or waiting.
 func (l *liveDrive) RenewalStatus() (time.Time, time.Duration, bool) {
 	if l == nil {
 		return time.Time{}, 0, false
 	}
-	l.mu.Lock()
-	d, closed := l.drive, l.closed
-	l.mu.Unlock()
-	if d == nil || closed {
+	d := l.openDrive()
+	if d == nil {
 		return time.Time{}, 0, false
 	}
 	return d.RenewalStatus()
