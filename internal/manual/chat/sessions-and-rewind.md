@@ -995,9 +995,12 @@ Otherwise the process exits after its idle timeout, within 10 minutes, and the
 next save starts it again.
 
 “sealing works again, and the calls made meanwhile are sealed now” appears only
-after this chat's own turns are saved again. A chat that syncs must also have
-published those turns. Another task saving successfully does not clear this
-chat's saving failure.
+after this chat's own latest turn is saved again. A spoken turn that syncs must
+also be published. An unused startup chat recovers after its local seal; it owes
+no publication until you speak. The notice appears once on the next surface tick,
+even after the answer has finished, and the saving-failure status clears.
+Later bookkeeping does not hide that recovery. Another task saving successfully
+does not clear this chat's saving failure.
 
 If closing cannot finish saving, the error names the local transcript that keeps
 the unsaved turns. Keep that file: after storage becomes reachable again, the

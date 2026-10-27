@@ -890,6 +890,11 @@ func (c *Client) read() {
 			// reader goroutine before the surface is notified of a changed name.
 			// Reading the replica never waits for the update loop to catch up.
 			c.factsFrame(frame.Payload)
+		case "notice":
+			var line string
+			if json.Unmarshal(frame.Payload, &line) == nil && line != "" {
+				c.note(line)
+			}
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
 			return

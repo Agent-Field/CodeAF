@@ -4,9 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
@@ -42,6 +44,8 @@ func (s *Sync) SendLease(id string) (string, uint64, error) {
 
 func (d *Drive) recordSendLease() error {
 	fence := d.batcher.Fence()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if fence == 0 || fence == d.recordedFence {
 		return nil
 	}
@@ -53,6 +57,11 @@ func (d *Drive) recordSendLease() error {
 }
 
 func (s *Sync) recordSendLease(id string, held sendLease) error {
+	lock, err := s.lockSendLease(id)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	raw, err := json.Marshal(held)
 	if err != nil {
 		return err
@@ -78,4 +87,49 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 		return err
 	}
 	return nil
+}
+
+// forgetSendLease retires only this writer's fence, preserving a newer local owner.
+func (s *Sync) forgetSendLease(id string, expected sendLease) error {
+	lock, err := s.lockSendLease(id)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	path := s.sendLeasePath(id)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var held sendLease
+	if err := json.Unmarshal(raw, &held); err != nil {
+		return err
+	}
+	if held != expected {
+		return nil
+	}
+	err = os.Remove(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func (s *Sync) lockSendLease(id string) (*os.File, error) {
+	path := s.sendLeasePath(id)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := filelock.Lock(lock, true, false); err != nil {
+		lock.Close()
+		return nil, err
+	}
+	return lock, nil
 }

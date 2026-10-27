@@ -1,6 +1,10 @@
 package remote
 
-import "github.com/Agent-Field/codeaf/internal/guard"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
+)
 
 // watchRenewals forwards idle health changes through the ordinary cached facts.
 // A swap replaces the subscription so the previous writer cannot keep it alive.
@@ -16,12 +20,12 @@ func (sess *Session) watchRenewals() {
 	if closed {
 		return
 	}
-	source, ok := agent.(interface{ RenewalChanges() <-chan struct{} })
-	if !ok {
-		return
+	var changes <-chan struct{}
+	if source, ok := agent.(interface{ RenewalChanges() <-chan struct{} }); ok {
+		changes = source.RenewalChanges()
 	}
-	changes := source.RenewalChanges()
-	if changes == nil {
+	seals, sealing := agent.(interface{ TakeSealNotice() string })
+	if changes == nil && !sealing {
 		return
 	}
 	stop := make(chan struct{})
@@ -35,6 +39,12 @@ func (sess *Session) watchRenewals() {
 	sess.mu.Unlock()
 	guard.Go("chat renewal changes", func() {
 		defer sess.pumps.Done()
+		var tick <-chan time.Time
+		if sealing {
+			timer := time.NewTicker(100 * time.Millisecond)
+			defer timer.Stop()
+			tick = timer.C
+		}
 		for {
 			select {
 			case _, open := <-changes:
@@ -42,6 +52,23 @@ func (sess *Session) watchRenewals() {
 					return
 				}
 				sess.announce()
+			case <-tick:
+				sess.mu.Lock()
+				if sess.closed || sess.generation != generation {
+					sess.mu.Unlock()
+					return
+				}
+				watching := sess.watchingLocked()
+				sess.mu.Unlock()
+				if len(watching) == 0 {
+					continue
+				}
+				for line := seals.TakeSealNotice(); line != ""; line = seals.TakeSealNotice() {
+					sess.announce()
+					for _, surface := range watching {
+						_ = surface.send(Frame{Kind: "notice", Payload: mustJSON(line)})
+					}
+				}
 			case <-stop:
 				return
 			}

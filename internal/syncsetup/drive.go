@@ -97,7 +97,10 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err := d.recordSendLease(); err != nil {
 		return nil, errors.Join(err, s.Dir.Release(ctx, drv.ID(), drv.Fence))
 	}
-	d.publicationDone = cellstore.RequirePublication(c)
+	d.publicationDone = cellstore.RequirePublication(c, func(end int64) bool {
+		spoken, known := session.ConversationIn(session.Place{Dir: c.Root}.Transcript(), end)
+		return spoken || !known
+	})
 	d.catchUp(drv)
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
@@ -347,7 +350,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	d.mu.Lock()
 	changed := d.line == ""
 	d.line = line
+	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 	d.mu.Unlock()
+	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
+		d.notice(err.Error())
+	}
 	if changed && d.opt.OnRenewalChange != nil {
 		d.opt.OnRenewalChange()
 	}
@@ -535,6 +542,12 @@ func (d *Drive) Close(ctx context.Context) error {
 		d.syncVault(ctx)
 		d.closeErr = d.batcher.Close(ctx)
 		d.scope.Settle() // a publish that failed after the last flush line still counts
+		if d.closeErr == nil {
+			d.mu.Lock()
+			expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
+			d.mu.Unlock()
+			d.closeErr = d.sync.forgetSendLease(d.cell.ID, expected)
+		}
 		if d.closeErr == nil && d.publicationDone != nil {
 			d.publicationDone()
 		}
