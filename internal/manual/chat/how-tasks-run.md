@@ -2322,6 +2322,32 @@ one, which lands the way it always did.
 cannot decide which of two versions of your file you meant, so an accept over a folder that
 moved leaves the task needing your look with the same sentence.
 
+## Land a kept task branch in the desktop app — Git LFS, filters and changed plans
+
+The desktop app can plan a merge of a task branch recorded by this conversation
+into your checkout, then land the exact commit after confirmation. It refuses a
+dirty checkout or a conflict. It does not put your changes aside. If the branch,
+checkout, configuration, hooks or attributes change after the plan, plan again.
+
+Having Git LFS installed globally or system-wide does not by itself prevent a
+land. A filter refusal means an attribute selects a configured `clean`, `smudge`
+or `process` program for a file the land writes or compares. That includes tracked
+files checked for cleanliness and the task branch's checked-out copies. The
+refusal names up to 50 affected paths and says “this repository runs a filter
+program on its files, and a land cannot vouch for it”.
+
+Attributes in either branch, the merge base, nested `.gitattributes`,
+`info/attributes`, and global or system attribute files all count. If their
+meaning or readability cannot be established, the land refuses. These checks
+need Git's tree-attribute and attribute-file-location queries (Git 2.42 or newer
+provides both), and run only when a filter program is configured: without one, an
+older Git lands as before. Attribute path lists and answers are limited to 8 MiB per read;
+attribute files outside committed trees share an 8 MiB budget per checkout.
+
+Custom merge programs, sparse checkouts and branch-specific merge options still
+prevent a confirmed land. The branch stays available for you to inspect or
+merge with Git yourself.
+
 ## Nothing is thrown away
 
 On every ending except a clean merge, the branch is **kept and named**. This is true
