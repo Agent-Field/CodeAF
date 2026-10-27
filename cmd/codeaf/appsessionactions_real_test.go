@@ -1,9 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -297,53 +297,33 @@ func TestRealRememberErrorIsUncertainAndNeverRetried(t *testing.T) {
 	if m := h.capabilities().Actions[2]; !m.Available {
 		t.Fatalf("the real conversation keeps no memory: %s", m.Why)
 	}
-	// FILL THE PROJECT'S BLOCK so the line just does not fit, with the room one
-	// filler holds enough for it: the real store's own measure decides both.
-	line := "the deploy notes say " + strings.TrimSpace(strings.Repeat("ship small and often ", 22))
-	fillerOf := func(i int) string {
-		return "filler line " + strconv.Itoa(i) + " " + strings.TrimSpace(strings.Repeat("keeps room taken ", 28))
+	// E5: 0d82108605 (1892-contextual-memory.md) removed storage capacity
+	// refusals. Fail the real SQLite write instead, then repair it before replay.
+	line := "the deploy notes say ship small and often"
+	raw, err := sql.Open("sqlite", defaultChatDB())
+	if err != nil {
+		t.Fatal(err)
 	}
-	used := 0
-	for _, kept := range h.memories("") {
-		used += store.MemoryLineCost(kept.Text)
-	}
-	need, fill := store.MemoryLineCost(line), store.MemoryLineCost(fillerOf(0))
-	if fill < need {
-		t.Fatalf("a filler (%d) must hold the room the line (%d) needs", fill, need)
-	}
-	fillers := 0
-	for used+need <= store.MemoryBlockRunes {
-		filler := fillerOf(fillers)
-		if r, e := h.w.act(memoryAsk(h.agent, "real-fill-"+strconv.Itoa(fillers), filler, "")); e != nil || r.State != appwire.ActionDone {
-			t.Fatalf("filler %d: %+v %+v %v", fillers, r, r.ProducerError, e)
-		}
-		used += store.MemoryLineCost(filler)
-		fillers++
+	defer raw.Close()
+	if _, err := raw.Exec(`CREATE TRIGGER e5_refuse_memory BEFORE INSERT ON memories
+BEGIN SELECT RAISE(ABORT, 'scripted memory write failure'); END`); err != nil {
+		t.Fatal(err)
 	}
 	ask := memoryAsk(h.agent, "real-m-full", line, "")
 	r, e := h.w.act(ask)
-	if e != nil || r.State != appwire.ActionUncertain || r.ProducerError == nil || !strings.Contains(r.ProducerError.Message, "full") || r.Memory != nil || r.Replayed {
+	if e != nil || r.State != appwire.ActionUncertain || r.ProducerError == nil || !strings.Contains(r.ProducerError.Message, "scripted memory write failure") || r.Memory != nil || r.Replayed {
 		t.Fatalf("a real producer error: %+v %v", r, e)
 	}
 	if added, skipped := h.journal(line); added != 0 || skipped != 0 {
 		t.Fatalf("a refused line was journalled: %d %d", added, skipped)
 	}
 
-	// MAKE THE ROOM, so the same call would now keep the line.
-	kept := h.memories("filler line 0")
-	if len(kept) != 1 {
-		t.Fatalf("the first filler reads %+v", kept)
-	}
-	brain, err := store.Open(defaultChatDB())
-	if err != nil {
+	// Repair the store so a retry reaching the producer would now succeed.
+	if _, err := raw.Exec("DROP TRIGGER e5_refuse_memory"); err != nil {
 		t.Fatal(err)
 	}
-	if err := brain.ForgetMemoryForOwners(session.MemoryOwners(v3ProjectKey(h.cwd)), kept[0].ID, ""); err != nil {
+	if err := raw.Close(); err != nil {
 		t.Fatal(err)
-	}
-	brain.Close()
-	if left := h.memories("filler line 0"); len(left) != 0 {
-		t.Fatalf("the filler is still kept: %+v", left)
 	}
 
 	h.restart()
@@ -367,7 +347,7 @@ func TestRealRememberErrorIsUncertainAndNeverRetried(t *testing.T) {
 	// The observation is not blind: a NEW client_id asks again and keeps it.
 	fresh, e := h.w.act(memoryAsk(h.agent, "real-m-full-2", line, ""))
 	if e != nil || fresh.State != appwire.ActionDone || fresh.Replayed {
-		t.Fatalf("a new client_id once there is room: %+v %v", fresh, e)
+		t.Fatalf("a new client_id after the store is repaired: %+v %v", fresh, e)
 	}
 	if added, _ := h.journal(line); added != 1 || len(h.memories("deploy notes")) != 1 {
 		t.Fatalf("a kept line is not seen: %d writes", added)
