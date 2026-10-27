@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: Reuse unchanged knowledge checks across incremental updates
-pr: 1990
+pr: 1992
 surface: [engine, docs]
 invalidates: []
 ---
