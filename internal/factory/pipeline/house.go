@@ -64,10 +64,14 @@ func StartRulesOf(f File) *factory.StartRules {
 // path a planned file matches, by the same matcher a start uses, or "" when
 // none does. A sentence rule that names no path is judged before a start, not
 // here: a plan's files can only answer a question about paths. A plan that
-// names no files, under a path rule, is held too.
+// names no files, under a path rule, is held too, and so is every plan of a
+// job that started with its repository's rules unread.
 func PlanHold(rules *factory.StartRules, files []string) string {
 	if rules == nil {
 		return ""
+	}
+	if rules.Unread {
+		return factory.StartRulesUnreadHold
 	}
 	// A PLAN WHOSE FILES ARE UNKNOWN CANNOT CLEAR A PATH RULE: with one in
 	// force, a plan that declared no list (or an ambiguous one) is a person's.

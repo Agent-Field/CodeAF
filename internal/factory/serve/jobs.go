@@ -103,9 +103,10 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		// THE RULES A JOB STARTS UNDER GO WITH IT: the repository's ask-first
 		// and never lines with the factory's own, so the approval after its
 		// plan is checked against them on whichever machine runs it. A
-		// repository file that cannot be read leaves the defaults with the
-		// factory's rules, as a start always had; only the factory's own
-		// rules unread refuse it.
+		// repository file that cannot be read does not stop a person's start:
+		// the job takes the defaults with the factory's rules, is marked as
+		// started with its rules unread, and its plan then waits for a person.
+		// Only the factory's own rules unread refuse it.
 		var rules *factory.StartRules
 		if h.config.Pipeline != nil && !queued {
 			f, err := h.config.Pipeline(r.Context(), itemRepo(cur), "")
@@ -114,6 +115,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				return
 			}
 			rules = pipeline.StartRulesOf(f)
+			rules.Unread = err != nil
 		}
 		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
@@ -122,6 +124,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				}
 				if rules != nil {
 					cur.StartRules, cur.RuleHold = rules, ""
+					if rules.Unread {
+						cur.Note(h.clock(), "Started with the repository's rules unread; its plan will wait for you")
+					}
 				}
 				if queued {
 					if cur.State != factory.StateQueued {
@@ -870,6 +875,21 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 				return nil
 			})
 			continue
+		}
+		// A PERSON'S YES TO A HELD START IS THEIR START, as pressing Start is: a
+		// job nobody is on becomes theirs before it launches, so Auto has an
+		// owner at its first approval. Only a start approval does this; a yes to
+		// a plan or a proof never makes anyone the job's person.
+		if a.Kind == "start" && !a.Automatic && it.Person() == "" && a.DecidedBy != "" {
+			starter := factory.NormalizeHandle(a.DecidedBy)
+			if err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+				if cur.Person() == "" {
+					cur.Starter = starter
+				}
+				return nil
+			}); err == nil {
+				it.Starter = starter
+			}
 		}
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
 		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: a.DecidedBy}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))

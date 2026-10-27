@@ -90,7 +90,7 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	}
 	clearPhase(w)
 	saved, err := h.config.Store.ChangeHouseRules(func(cur *factory.HouseRules) error {
-		if expect != nil && !reflect.DeepEqual(*expect, *cur) {
+		if expect != nil && !sameRules(*expect, *cur) {
 			return errRulesMoved
 		}
 		was := *cur
@@ -116,4 +116,17 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.write(w, 200, saved)
+}
+
+// sameRules says whether a writer's read is what the factory keeps. The adapt
+// word "adapt" asks nothing more than saying none does (the factory's word only
+// tightens), so the two are the same read: a client that shows them as one
+// choice is not refused for it.
+func sameRules(a, b factory.HouseRules) bool {
+	for _, h := range []*factory.HouseRules{&a, &b} {
+		if h.Adapt == factory.AdaptFree {
+			h.Adapt = ""
+		}
+	}
+	return reflect.DeepEqual(a, b)
 }

@@ -43,8 +43,9 @@ func TestAStartStampsTheRulesTheJobStartsUnder(t *testing.T) {
 }
 
 // A REPOSITORY FILE THAT CANNOT BE READ DOES NOT STOP A PERSON'S START: the
-// read's defaults, with the factory's rules, go on the job. Only the factory's
-// own rules unread refuse it, in plain words.
+// read's defaults, with the factory's rules, go on the job, marked unread, so
+// its plan waits for a person. Only the factory's own rules unread refuse it,
+// in plain words.
 func TestAStartGoesOnWhenOnlyTheRepositoryFileIsUnread(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
@@ -61,8 +62,13 @@ func TestAStartGoesOnWhenOnlyTheRepositoryFileIsUnread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cur.StartRules == nil || !reflect.DeepEqual(cur.StartRules.AskFirst, []string{"touch auth/"}) {
+	if cur.StartRules == nil || !reflect.DeepEqual(cur.StartRules.AskFirst, []string{"touch auth/"}) || !cur.StartRules.Unread {
 		t.Fatalf("start rules %#v", cur.StartRules)
+	}
+	// ITS PLAN IS A PERSON'S, whatever files it names: the repository's own
+	// lines may be missing from what the job carries.
+	if hold := pipeline.PlanHold(cur.StartRules, []string{"cmd/main.go"}); hold != factory.StartRulesUnreadHold {
+		t.Fatalf("a plan of a job started with its rules unread holds %q", hold)
 	}
 	f.h.Close()
 	f.cfg.Pipeline = func(context.Context, string, string) (pipeline.File, error) {

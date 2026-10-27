@@ -8,6 +8,7 @@ invalidates:
   - "A pattern that ends in a slash now covers everything under that folder, in a plan check and before a start alike: `touch auth/` and a never line `auth/` cover `internal/auth/login.go`. Before a start the pattern as written still matches too, so an issue that names the folder itself asks as before; only more asks, never fewer."
   - "A finished plan that declares no file list (or an ambiguous one) could not be checked. Under an ask-first path rule or a never line it now holds too: `rule_hold` is \"ask first · the plan names no files\"."
   - "An ask-first path was read in lower case (`touch src/Auth/` matched nothing in `src/Auth/`). Only the `touch`, `touches` or `path:` prefix is read without case now; the path is matched as written, before a start and in a plan alike."
+  - "A person's Start on a repository whose `.codeaf/factory.yaml` could not be read took the defaults silently. The job now carries `start_rules.unread: true` and a note, and its plan always waits for a person: `rule_hold` is \"ask first · the repository's rules could not be read\"."
 ---
 
 The serving factory works the hold out itself when a worker's report brings

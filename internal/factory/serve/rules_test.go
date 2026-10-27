@@ -126,3 +126,18 @@ func TestFactoryRulesRouteRefusesAWriteFromAStaleRead(t *testing.T) {
 		t.Fatalf("a fresh write saved %#v", got)
 	}
 }
+
+// THE ADAPT WORD "adapt" READS AS NONE when a write's read is compared: a
+// client that shows the two as one choice is not refused as stale forever.
+func TestFactoryRulesRouteReadsAdaptAndNoneAsTheSameRead(t *testing.T) {
+	f := peopleV2Setup(t, "team")
+	var saved factory.HouseRules
+	f.request(t, "PUT", "/v1/rules", "operator-secret", map[string]any{"rules": []string{}, "ask_first": []string{}, "never": []string{}, "adapt": "adapt"}, 200, &saved)
+	read := saved
+	read.Adapt = ""
+	var got factory.HouseRules
+	f.request(t, "PUT", "/v1/rules", "operator-secret", map[string]any{"rules": []string{"x"}, "ask_first": []string{}, "never": []string{}, "expect": read}, 200, &got)
+	if len(got.Rules) != 1 {
+		t.Fatalf("saved %#v", got)
+	}
+}

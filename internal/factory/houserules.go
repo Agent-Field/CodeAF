@@ -132,4 +132,12 @@ func cleanRuleList(name string, in []string) ([]string, error) {
 type StartRules struct {
 	AskFirst []string `json:"ask_first"`
 	Never    []string `json:"never"`
+	// Unread says the repository's own rules could not be read when the job
+	// started, so the lines above may lack its own: the approval after its
+	// plan is then always a person's.
+	Unread bool `json:"unread,omitempty"`
 }
+
+// StartRulesUnreadHold is the hold a plan gets when its job started with the
+// repository's rules unread ([StartRules.Unread]).
+const StartRulesUnreadHold = "ask first · the repository's rules could not be read"
