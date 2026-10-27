@@ -5,13 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"sync"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const quitSaveFailedWord = "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start."
 const quitSaveKeptWord = "codeaf could not save this chat; unsaved turns are kept in %s and return on the next start."
+const quitSavingWord = "saving this chat before quitting… (up to %s)"
 
 // finalSaving keeps one failure until cleanup has returned the terminal.
 var finalSaving struct {
@@ -52,17 +56,37 @@ func forceFinalClose() {
 
 // awaitFinalCloses keeps the links open for saving replies after the screen closes.
 func awaitFinalCloses(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, cellstore.SealWithin)
+	defer cancel()
 	finalSaving.Lock()
 	pending, forced := finalSaving.pending, finalSaving.forced
 	finalSaving.pending = nil
 	finalSaving.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+	defer signal.Stop(interrupt)
 	for _, done := range pending {
-		select {
-		case <-done:
-		case <-forced:
-			return
-		case <-ctx.Done():
-			return
+	waiting:
+		for {
+			select {
+			case <-done:
+				break waiting
+			case <-timer.C:
+				fmt.Fprintln(os.Stdout, fmt.Sprintf(quitSavingWord, cellstore.SealWithin))
+			case <-forced:
+				return
+			case <-interrupt:
+				surfaceForceExit(130)
+				return
+			case <-ctx.Done():
+				recordFinalSaveFailure(ctx.Err())
+				return
+			}
 		}
 	}
 }
