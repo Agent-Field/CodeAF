@@ -86,7 +86,9 @@ func (a *app) needsOwnershipRead() bool {
 
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	src, file, draft, agent := a.machines, a.file, a.input.String(), a.agent
-	offline := a.machineRead.down
+	// A read that only ran out of time does not show the connection is down,
+	// so the next Enter asks again rather than replaying the cached failure.
+	offline := a.machineRead.down && a.machineRead.unavailableWord() != chatlist.ReadTimedOut
 	blocked := a.machineRead.sendHolds[filepath.Base(session.DirOf(file))].blocked
 	chips := slices.Clone(a.chips)
 	var first *composerState
@@ -228,7 +230,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if a.offlineSendHeld(id, remote, msg) {
 			return msg.resume()
 		}
-		a.note(chatlist.Unreachable)
+		a.note(a.machineRead.unavailableWord())
 		return nil
 	}
 	for _, row := range msg.reading.rows {
