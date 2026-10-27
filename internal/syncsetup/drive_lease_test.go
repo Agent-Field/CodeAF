@@ -72,6 +72,7 @@ func TestC7R2OwnershipReadIncludesFirstPublish(t *testing.T) {
 				})
 			})
 			parent = r.cell.ID
+			appendTo(t, transcriptOf(r.cell), `{"type":"message","role":"user","content":"start this chat"}`+"\n")
 			c := r.startChat(&noticeLog{})
 			flushed := c.drive.batcher.OnFlush
 			c.drive.batcher.OnFlush = func(f cellsync.Flush) {
@@ -136,6 +137,7 @@ func TestC7R2DisplacedWindowDoesNotOwnItsPreservedBranch(t *testing.T) {
 	})
 	ctx := t.Context()
 	parent = r.cell.ID
+	appendTo(t, transcriptOf(r.cell), `{"type":"message","role":"user","content":"start this chat"}`+"\n")
 	sealed, err := r.engine.Seal(ctx, r.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
 	_, err = r.a.Dir.Create(ctx, parent, directory.CellInit{Head: sealed.Turn.ID})

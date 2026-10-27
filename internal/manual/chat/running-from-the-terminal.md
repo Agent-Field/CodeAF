@@ -1,5 +1,13 @@
 # Commands you type in a terminal
 
+## codeaf cluster status when the sync service cannot be reached
+
+If the service cannot be reached, `codeaf cluster status` exits with a failure
+status and uses the same sentence as `codeaf devices`:
+`the sync service at <address> cannot be reached from here — check this computer's network`.
+The address is your configured sync service. Check this computer's network
+and that the service is running, then try the command again.
+
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
 Every launch of a release build checks whether there is a newer version: the

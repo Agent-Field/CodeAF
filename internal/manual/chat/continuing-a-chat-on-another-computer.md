@@ -29,15 +29,41 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Before showing this question for a send, codeaf checks which computer holds the chat now. An older listing alone cannot raise it. If the check cannot reach your other devices and this window already knows the chat moved away, your words stay in the box and nothing is sent. Continuing a chat this computer already holds keeps its open conversation and your typed words.
 
+The first Enter waits up to five seconds for a current reading when this window
+does not hold the shared chat, including in a freshly opened copy.
+`other machines unreachable` means that reading
+failed; it never means a reading has not happened yet. Your words stay unsent
+while the reading is in progress.
+
 After `continue here` succeeds, those same words, pasted text and attachments are in the arrived chat's box. Press enter again when you want to send them. Choosing `leave it there` or a move that fails also keeps the whole draft.
 
+The move opens one conversation for that chat. Once you send those words, they are cleared from its saved drafts, including matching copies left by an earlier window. Taking the chat back, reopening it or restarting codeaf then shows an empty box unless you typed a new draft.
+
 Taking a chat from Home restores that chat's own saved draft, or leaves its box empty. Words typed for a different chat stay with that chat, even when both work in one place on disk. A draft held behind a send's continuation card stays with the chat that raised it.
+
+## Read a finished task's worker conversation after moving its chat
+
+Open `/task` and choose the finished task. Its saved worker conversation and steps remain readable with its outcome after moving the chat, even when the original working copy is no longer available. A finished task offers no restart action; typing `r` or `R` writes those letters in the box.
 
 ## What does leave it there do
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 On `Continue this chat here?`, `leave it there` closes the question without moving the chat. Your typed words stay in the box and nothing is sent. If the question opened because you tried to send from an older window, this answer is already selected. Choose `1 continue here` to bring the chat here before sending.
+
+## Esc on a continue card returns to my chat, and each card keeps its own draft
+
+If Enter in a displaced chat raises the continue card, `esc` or `2 leave it there` returns to that same chat window with its full draft still in the box. If you opened the card from a Home row, leaving the card keeps you on Home.
+
+A continue card previews only that chat's unsent words, or nothing when no draft is available. Its project foot belongs to the selected chat. Words typed in another chat never appear on this card. Saved drafts belong to their chat even when a copied chat moves to a different project folder; opening another copy cannot adopt them.
+
+Home says `other machines did not answer in time` when its ownership listing reaches a deadline. Your words stay unsent. This sentence does not establish a network failure.
+
+## Why does continue here say this chat was last held here
+
+When this computer was the chat's last holder and its hold expired, the card says `this chat was last held here; last saved turn 2h ago`, with the age of its saved turn. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
+
+If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
 ## What does running on tower mean — a row on home and the verb it offers
 
@@ -62,6 +88,9 @@ alt+c continue here · alt+x not now
 - `alt+x` dismisses it for that device until you open codeaf again.
 
 The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. A device that is online and still working on the chat is never offered.
+
+Home never offers this computer's own chat as work to continue from another
+computer, even when an older record says this computer went offline.
 
 To bring work from a device that is online, use the devices row: `alt+m bring work here`. The page *Adding a device to your devices, approving it, and removing it* shows the row and the dots.
 
@@ -129,6 +158,22 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
 
+Removing this computer from your devices does not change those project
+labels. Switching away and back keeps the same copy label or ordinary project
+name.
+
+## This chat is not syncing — other machines unreachable, working offline
+
+If this computer holds the chat and renewals have failed for longer than one
+renewal period, one dim line says
+`this chat is not syncing because other machines are unreachable; it keeps working here`.
+It is said once per outage.
+When renewals succeed again, one line says `this chat is syncing again`.
+
+You can keep working here while offline. If another computer continued the
+chat meanwhile, the existing `<device> continued this chat; this window now
+only shows it` notice still applies.
+
 ## Reopen a kept copy after another computer takes the chat
 
 When unsent turns were kept as a separate copy, reopening that copy checks who holds the copy itself. Another computer may still hold the original chat. The previous window finishes saving and stops syncing before the reopened copy starts its own sync, so a late save cannot change which copy it opens. Taking that copy elsewhere still stops new tool work in its older window.
@@ -153,6 +198,33 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+
+## This window only shows the chat — can I still send here
+
+Once this window learns that another computer holds the chat, Enter opens
+**Continue this chat here?** and keeps your words unsent. This applies as soon
+as the live update or the `<device> continued this chat; this window now only
+shows it` notice arrives; it does not wait for the next background ownership
+check. Enter cannot start a reply, publish a turn or create a separate chat
+from this displaced window. Choose `continue here` to bring the latest chat
+back before sending.
+
+A chat this computer still holds sends on one Enter without an extra request
+to the sync service. A chat that has never been shared does too.
+
+## Take my chat back after a crash, a killed process or a power loss
+
+If this computer was killed and another computer continued the chat, reopen
+codeaf and choose **continue here** from Home or from the question raised by
+Enter in the old local copy. The move brings the latest saved chat here and
+says `Moved from <device>`. An old saved hold cannot keep the chat here or
+make that copy send a message. The question uses the other computer and last
+saved turn reported by the sync service. An offline holder is named as
+`<device> offline; last saved turn <N> ago`.
+
+Turns and file edits that never reached the service are kept separately before
+the newer chat arrives. Shared turns and unchanged closing bookkeeping do not
+need another upload before the move.
 
 ## I reopened an old local chat after the other computer let go — where are the newer turns
 
@@ -303,6 +375,11 @@ Yes. Directory requests from older builds keep the existing 1 MiB request limit,
 ## Why did Enter show Continue here instead of sending my message
 
 Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Choose **continue here** to bring the saved chat here, then press Enter to send.
+
+Once this window says another computer continued the chat, its first Enter
+raises that question without running a turn or making a branch. A saved hold
+from an earlier process cannot bypass the question. A window whose writer
+still holds the chat sends with one Enter without asking the service first.
 
 A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. That safe return happens without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
 

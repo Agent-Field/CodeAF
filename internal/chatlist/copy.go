@@ -18,6 +18,9 @@ const (
 	NoIdentity   = "this machine has no identity yet: codeaf identity import"
 	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync address"
 	Unreachable  = "other machines unreachable"
+	ReadTimedOut = "other machines did not answer in time"
+	SyncPaused   = "this chat is not syncing because other machines are unreachable; it keeps working here"
+	SyncRestored = "this chat is syncing again"
 	ClockOff     = "this computer's clock is off by more than 5 minutes"
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
@@ -35,6 +38,7 @@ const (
 	branchKeep     = "%s from %s: discard"
 	branchShort    = "%s · %s"
 	takeoverLine   = "last saved turn %s ago"
+	lastHeldHere   = "this chat was last held here"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	supersededLine = "%s continued this chat; this window now only shows it"
@@ -174,8 +178,14 @@ func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanT
 // says where first, because continuing it here stops it there.
 func TakeoverLine(r Row) string {
 	line := fmt.Sprintf(takeoverLine, agoWord(r.DurableAgo))
+	if r.Mine {
+		return lastHeldHere + "; " + line
+	}
 	if r.Pending > 0 {
 		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
+	}
+	if r.Status == Off && r.Device != "" {
+		return fmt.Sprintf("%s offline; %s", r.Device, line)
 	}
 	return holderLead(r) + line
 }

@@ -2,7 +2,10 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"net"
 	"os"
 	"os/exec"
@@ -37,6 +40,9 @@ const retryAfter = 30 * time.Second
 // how long its final group flush and catalog close will take (U1/C28).
 var daemonExits sync.Map
 
+var daemonOwners sync.Map
+var startLocks sync.Map
+
 var (
 	startMu sync.Mutex
 	failed  = map[string]failure{} // socket -> last failed start
@@ -52,17 +58,58 @@ type failure struct {
 // process won the race for the socket) is a success: the daemon exits quietly
 // when it loses.
 func startAndDial(ctx context.Context, d Daemon) (net.Conn, error) {
-	startMu.Lock()
-	defer startMu.Unlock()
+	gate, _ := startLocks.LoadOrStore(d.Socket, make(chan struct{}, 1))
+	lock := gate.(chan struct{})
+	timer := time.NewTimer(startWait)
+	defer timer.Stop()
+	select {
+	case lock <- struct{}{}:
+		defer func() { <-lock }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		if heldWithoutSocket(d.Socket) {
+			return nil, &SavingStuckError{Socket: d.Socket}
+		}
+		return nil, errors.New("saving is waiting for the storage process to start; try again shortly")
+	}
 	if conn, err := dial(ctx, d.Socket); err == nil {
-		return conn, nil // an earlier caller started it while this one waited
+		return conn, nil
 	}
-	if f, ok := failed[d.Socket]; ok && time.Since(f.at) < retryAfter {
-		return nil, f.err
+	startMu.Lock()
+	f, cached := failed[d.Socket]
+	startMu.Unlock()
+	if cached && time.Since(f.at) < retryAfter {
+		var stuck *SavingStuckError
+		if !errors.As(f.err, &stuck) || heldWithoutSocket(d.Socket) {
+			return nil, f.err
+		}
 	}
+	if heldWithoutSocket(d.Socket) {
+		timer := time.NewTimer(missingSocketWithin)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+		if conn, err := dial(ctx, d.Socket); err == nil {
+			return conn, nil
+		}
+		if heldWithoutSocket(d.Socket) && !recoverOwnedDaemon(ctx, d.Socket) {
+			err := &SavingStuckError{Socket: d.Socket}
+			startMu.Lock()
+			failed[d.Socket] = failure{at: time.Now(), err: err}
+			startMu.Unlock()
+			return nil, err
+		}
+	}
+
 	conn, err := launchAndDial(ctx, d)
 	if err != nil {
+		startMu.Lock()
 		failed[d.Socket] = failure{at: time.Now(), err: err}
+		startMu.Unlock()
 	}
 	return conn, err
 }
@@ -93,9 +140,12 @@ func launch(d Daemon) (<-chan struct{}, error) {
 	exited := make(chan struct{})
 	remember(cmd.Process, exited)
 	daemonExits.Store(d.Socket, (<-chan struct{})(exited))
+	owner := &spawnedDaemon{process: cmd.Process, exited: exited}
+	daemonOwners.Store(d.Socket, owner)
 	go func() { // reap it; it outlives this call by design
 		_ = cmd.Wait()
 		close(exited)
+		daemonOwners.CompareAndDelete(d.Socket, owner)
 		daemonExits.CompareAndDelete(d.Socket, (<-chan struct{})(exited))
 	}()
 	return exited, nil
@@ -112,12 +162,39 @@ func awaitDial(ctx context.Context, socket string, exited <-chan struct{}) (net.
 	for {
 		conn, err := dial(ctx, socket)
 		if err == nil || time.Now().After(deadline) || ctx.Err() != nil {
+			if err != nil && heldWithoutSocket(socket) {
+				return nil, &SavingStuckError{Socket: socket}
+			}
 			return conn, err
 		}
 		select {
 		case <-exited:
+			if heldWithoutSocket(socket) {
+				return nil, &SavingStuckError{Socket: socket}
+			}
 			return dial(ctx, socket)
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
+}
+
+// A lock can precede bind briefly during startup. One quiet wait distinguishes
+// that race from a listener whose socket disappeared while it stayed alive.
+const missingSocketWithin = 250 * time.Millisecond
+
+func heldWithoutSocket(socket string) bool {
+	if _, err := os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	file, err := os.OpenFile(socket+".lock", os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	err = filelock.Lock(file, true, true)
+	if err == nil {
+		_ = filelock.Unlock(file)
+		return false
+	}
+	return filelock.IsBusy(err)
 }

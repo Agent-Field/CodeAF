@@ -1483,6 +1483,10 @@ type app struct {
 	// LEAVING. The open's landing spends it; a shared window opens in place
 	// and spends it at once.
 	homeTakenSaid func() tea.Cmd
+	// homeTaking keeps a retiring session on its own continuation until arrival.
+	homeTaking string
+	// homeTakeDraft moves the source composer only after the arriving door opens.
+	homeTakeDraft *homeTakenMsg
 	// teamsDisk is where the teams are kept and the edits not yet written
 	// there (teamseam.go).
 	teamsDisk teamsDisk
@@ -2840,6 +2844,20 @@ type app struct {
 	owned bool
 	// movedName names a chat moved here whose project is not on this machine.
 	movedName string
+	// deviceID excludes this computer from offers to continue another computer's chat.
+	deviceID string
+	// syncOutages remembers which chats have already announced their current outage.
+	syncOutages map[string]bool
+	// conversationClosing discards keys while a departing chat finishes closing.
+	conversationClosing bool
+	// quitting keeps new input out of teardown while allowing another interrupt to leave.
+	quitting bool
+	// saveFailure retains closing errors for the report after the screen is restored.
+	saveFailure func(error)
+	// closingStarted retains pending engine replies after the terminal is restored.
+	closingStarted func(<-chan struct{})
+	// forceQuit requests immediate process exit after a second interrupt restores the screen.
+	forceQuit func()
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
 	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
@@ -3078,6 +3096,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               owned,
 		movedName:           movedName,
+		deviceID:            opts.DeviceID,
+		saveFailure:         opts.SaveFailure,
+		closingStarted:      opts.ClosingStarted,
+		forceQuit:           opts.ForceQuit,
 		landing:             opts.Landing,
 		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
 		takeOverAt:          opts.TakeOver,
@@ -3417,6 +3439,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
 	// AND THE NOTICE DESK, once the surface can say a note (notices.go).
+	if opts.Notices == nil {
+		opts.Notices = NewNotices()
+	}
 	a.useNotices(opts.Notices)
 	return a
 }
@@ -3774,6 +3799,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
 	a.takeSealNotice()
+	a.takeRenewalNotice()
 	// An explicit gesture after View replaces its pending navigation intent.
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
@@ -3788,6 +3814,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 	switch msg := msg.(type) {
+	case conversationClosedMsg:
+		a.conversationClosing = false
+		if msg.err != nil {
+			a.note(closeSaveFailedWord)
+		} else if msg.finishing {
+			a.note(closeStillFinishingWord)
+		}
+		a.touch()
+		return a, nil
 	case completionToastExpiredMsg:
 		if msg.serial == a.completionToast.serial {
 			a.dismissCompletionToast()
@@ -3909,6 +3944,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		if a.quitting {
+			if msg.String() == "ctrl+c" {
+				if a.forceQuit != nil {
+					a.forceQuit()
+				}
+				return a, tea.Quit
+			}
+			return a, nil
+		}
+		if a.conversationClosing && msg.String() != "ctrl+c" {
+			return a, nil
+		}
 		if a.cdelete.on {
 			return a, a.conversationDeleteKey(msg)
 		}
@@ -3923,6 +3970,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 			a.cancelConversationOpening()
+			if msg.String() == "esc" {
+				return a, nil
+			}
 		}
 		a.sawAPerson()
 		a.stirred()
@@ -4073,6 +4123,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			view.pasting, view.pasted, view.pasteAt = true, view.pasted[:0], a.now()
@@ -4084,6 +4137,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			if view.pasting {
@@ -4114,6 +4170,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			if view.pasting {
@@ -7231,7 +7290,10 @@ func (a *app) take(u session.Usage) {
 
 // note answers a UI action or reports something requiring the person's attention.
 // Engine bookkeeping uses feed.note so its audience is explicit at the producer.
-func (a *app) note(text string) { a.noteWritten(text, false, nil) }
+func (a *app) note(text string) {
+	a.blockDisplacedSend(text)
+	a.noteWritten(text, false, nil)
+}
 
 // noteWritten is the one body behind all three of the app's note doors, and the
 // only thing it adds to the feed's own is THE ECHO ONTO HOME'S MESSAGE LINE.
@@ -8877,7 +8939,7 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 		// The older seam hands back an agent alone, so the surface keeps every
 		// other seam it was holding ([app.takeUp] states this).
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
-			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned && a.movedName == "",
 			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
@@ -9023,6 +9085,10 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // conversation it is holding — ending the ones this process runs, detaching from
 // the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
+	if a.quitting {
+		return nil
+	}
+	a.quitting = true
 	if a.creditHookStop != nil {
 		a.creditHookStop()
 		a.creditHookStop = nil
@@ -9032,6 +9098,14 @@ func (a *app) quit() tea.Cmd {
 	// surface even when the browser is still open, just as account connections
 	// and file doors below do.
 	a.cancelSetupAuth()
+	if a.conversationOpening {
+		a.cancelConversationOpening()
+	}
+	if a.pasting {
+		a.pasting = false
+		a.paste(string(a.pasted))
+		a.pasted = nil
+	}
 	// The draft goes to disk on the way out, synchronously and before anything
 	// else: the debounce may be mid-window, and a sentence typed in the last
 	// three hundred milliseconds of a session is exactly the one a person would
@@ -9052,7 +9126,7 @@ func (a *app) quit() tea.Cmd {
 	// thing running it. The ones held behind the screen have their own drafts
 	// already on disk — written when they were left — so what is above is the
 	// only box that still needs saving.
-	a.leaveEverything()
+	leave := a.leavingWork()
 	// AND THE FILE DOOR GOES WITH THE SURFACE THAT OPENED IT. Every minted id and
 	// the browse token die here, which is the whole of the capability bargain: a
 	// URL that outlived the conversation would be a door onto somebody else's
@@ -9062,8 +9136,7 @@ func (a *app) quit() tea.Cmd {
 	// transcript; one left open by a process that has gone is a conversation
 	// nobody can reopen, and a stood one's folder would never reach the item it
 	// made (homeexchange.go's [app.fileEveryExchange]).
-	a.fileEveryExchange()
-	return tea.Quit
+	return quitAfterClosing(leave, a.closingStarted)
 }
 
 // interrupt is esc: stop the turn, keep what it said.

@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
@@ -39,8 +40,9 @@ func wireSync(o *tui3.Options) {
 		return
 	}
 	if o.Machines == nil {
-		o.Machines = s
+		o.Machines = surfaceMachines{s}
 	}
+	o.DeviceID = s.Device.ID()
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
@@ -61,6 +63,68 @@ func wireSync(o *tui3.Options) {
 	}
 	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayHomeOnce) })
 	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayHomeOnce) })
+}
+
+// surfaceMachines keeps display hints out of the decision to send a message.
+type surfaceMachines struct{ *syncsetup.Sync }
+
+// RowsForChatSend uses a live writer's receipt or a never-shared chat before asking the relay.
+// A known outage keeps unknown copies unsent without repeating the network wait.
+func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offline, holding bool) ([]chatlist.Row, uint64, bool, error) {
+	root := session.DirOf(file)
+	id := filepath.Base(root)
+	if s.Removed() {
+		if c, err := cell.OpenAt(root, id); err == nil {
+			if shared, err := cellstore.Shared(c); err == nil && !shared {
+				return nil, 0, true, directory.ErrRevoked
+			}
+		}
+		return nil, 0, false, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, true, nil
+	}
+	remote, fence, leaseErr := s.SendLease(id)
+	if holding && leaseErr == nil && fence != 0 {
+		return []chatlist.Row{{Cell: remote, Status: chatlist.Here, Mine: true, Fence: fence}}, 0, true, nil
+	}
+	if c, err := cell.OpenAt(root, id); err == nil && (leaseErr != nil || fence == 0) {
+		shared, err := cellstore.Shared(c)
+		if err == nil && !shared {
+			return nil, 0, true, nil
+		}
+	}
+	if offline {
+		return nil, 0, false, directory.ErrUnreachable
+	}
+	rows, version, err := s.RowsForSend(ctx)
+	return rows, version, false, err
+}
+
+func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if s.Relay != "" {
+		current, ok, err := syncsetup.Open(s.Home)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !ok {
+			return nil, 0, nil
+		}
+		s.Sync = current
+	}
+	if s.Removed() {
+		return nil, 0, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, nil
+	}
+	l, err := s.Dir.List(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	key := directory.MetadataKey(s.Identity.CellKey())
+	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
+	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.

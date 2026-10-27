@@ -46,13 +46,15 @@ type Batcher struct {
 	OnLost  func()
 	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
 	Now     func() time.Time // default time.Now; tests inject a fake clock
+	// OnRenewalChange wakes local readers when renewal health or ownership changes.
+	OnRenewalChange func()
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
 	// the heartbeat is sent only while it cannot. Nil beats every tick.
 	Liveness Liveness
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
-	mu        sync.Mutex // guards Driving, noted, stale, published, refusedSince and told; never held over the network
+	mu        sync.Mutex // guards driving and renewal state; never held over the network
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
@@ -60,6 +62,10 @@ type Batcher struct {
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once
+	// renewalSince retains the first unreachable renewal for the current hold.
+	renewalSince time.Time
+	// renewalEnded prevents a displaced or removed writer from claiming a hold.
+	renewalEnded bool
 
 	work  wakeup // tells the flush loop a turn was noted, so an upload can start at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
@@ -385,6 +391,9 @@ func (b *Batcher) release(ctx context.Context) error {
 			return err
 		}
 		err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
+		if err == nil || errors.Is(err, directory.ErrFenceStale) {
+			b.endRenewals()
+		}
 		if errors.Is(err, directory.ErrFenceStale) {
 			return nil
 		}
@@ -447,6 +456,7 @@ func (b *Batcher) drain(ctx context.Context) error {
 func (b *Batcher) publish(ctx context.Context, head string) error {
 	d, _, _ := b.view()
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
+	b.renewalResult(d, err)
 	if errors.Is(err, ErrSuperseded) {
 		b.setStale()
 		if b.OnLost != nil {
@@ -473,6 +483,7 @@ func (b *Batcher) beat(ctx context.Context) {
 		return
 	}
 	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending})
+	b.renewalResult(d, err)
 	switch {
 	case err == nil:
 		b.tell(pending)
@@ -601,11 +612,21 @@ func (b *Batcher) view() (Driving, uint32, bool) {
 
 func (b *Batcher) adopt(d Driving) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	changed := b.Driving.ID() != d.ID() || b.Driving.Fence != d.Fence
+	if changed {
+		b.renewalSince = time.Time{}
+	}
 	*b.Driving = d
+	b.mu.Unlock()
+	if changed {
+		b.renewalChanged()
+	}
 }
 
-func (b *Batcher) setStale()   { b.setFlag(&b.stale, true) }
+func (b *Batcher) setStale() {
+	b.setFlag(&b.stale, true)
+	b.endRenewals()
+}
 func (b *Batcher) clearStale() { b.setFlag(&b.stale, false) }
 
 func (b *Batcher) setFlag(flag *bool, v bool) {

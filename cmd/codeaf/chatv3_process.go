@@ -931,7 +931,7 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 	draft := ""
 	if keepDraft {
 		if dir, err := v3Dir(); err == nil {
-			draft = tui3.DraftFile(dir, workspace)
+			draft = tui3.ChatDraftFile(dir, "", workspace, cfg.SessionFile)
 		}
 	}
 	var recall tui3.History
@@ -1088,6 +1088,6 @@ func v3RehomeLegacyMemories(brain *store.Store) {
 // closed. A bounded drain must never silently acknowledge a pending save (D3).
 func closeV3Agent(agent interface{ Close() error }) {
 	if err := agent.Close(); err != nil {
-		fmt.Fprintln(os.Stderr, "codeaf: "+err.Error())
+		recordFinalSaveFailure(err)
 	}
 }

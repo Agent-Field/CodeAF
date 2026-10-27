@@ -31,9 +31,10 @@ import (
 // [homeCellTitleFloor] cells does the sentence go whole.
 
 // machineReading is the last listing the other machines gave, and whether the
-// last ask failed. A failed ask keeps the rows: the list stays on screen, dim,
-// under `other machines unreachable`.
+// last ask failed. A failed ask keeps the rows and explains whether the reading
+// reached its deadline or the connection could not be made.
 type machineReading struct {
+	err             error
 	sendHolds       map[string]sendHold
 	computerRemoved bool
 	rows            []chatlist.Row
@@ -63,8 +64,7 @@ type homeMachinesMsg struct {
 	holdFence uint64
 }
 
-// machinesAskTimeout bounds one ask, so a silent relay is unreachable rather
-// than an ask that never returns.
+// machinesAskTimeout bounds one ask without treating silence as a network failure.
 const machinesAskTimeout = 5 * time.Second
 
 // askMachines lists the other machines, off the update loop for the reason a
@@ -122,6 +122,7 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 	}
 	before, wasElsewhere := a.heldElsewhere()
 	a.fileMachines(msg)
+	a.machineRead.err = msg.err
 	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
 		a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
 	}
@@ -145,9 +146,18 @@ func (m machineReading) into(in *homeGridInput, own []homeLine) homePanelRows {
 	rows := homePanelCut(in, panelSessions, lines)
 	if m.down {
 		rows.lines = append(rows.lines, homeLine{kind: homeMachineRow, cell: &homeCell{
-			kind: cellWhisper, panel: panelSessions, title: chatlist.Unreachable}})
+			kind: cellWhisper, panel: panelSessions, title: m.unavailableWord()}})
 	}
 	return rows
+}
+
+// unavailableWord preserves the distinction between a deadline and a failed connection.
+func (m machineReading) unavailableWord() string {
+	var timeout interface{ Timeout() bool }
+	if errors.Is(m.err, context.DeadlineExceeded) || errors.As(m.err, &timeout) && timeout.Timeout() {
+		return chatlist.ReadTimedOut
+	}
+	return chatlist.Unreachable
 }
 
 // lines are the rows to draw: none of the kind that only this machine can hold,

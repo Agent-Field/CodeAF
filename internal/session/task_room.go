@@ -882,7 +882,7 @@ func (a *Agent) TaskJournal(id uint64) string {
 		a.mu.Lock()
 		place, session := a.familyPlace(nil), a.sessionID()
 		a.mu.Unlock()
-		return findWorkerHistory(taskJournalDir(place, session), id).journal
+		return findWorkerHistory(place, session, id).journal
 	}
 	if path := node.journalPath(); path != "" {
 		return path

@@ -81,6 +81,19 @@ func (a *app) openPlanRoom(page session.PlanTaskPage) tea.Cmd {
 	room.plan = &planRoom{id: id}
 	a.room = room
 	a.planRoomTake(page)
+	if page.Historical {
+		// Retained work opens expanded so the saved steps and worker replies
+		// are visible even when the worker ended by making a final call.
+		room.workOpen = make(map[int]bool)
+		folds := a.deckFolds(room.deck())
+		for _, fold := range folds {
+			room.workOpen[fold.key] = true
+		}
+		stampHierarchy(room.entries, folds)
+		for _, caption := range deriveCaptions(room.entries, 0) {
+			room.capOpen[caption.start] = true
+		}
+	}
 	// THE BOX TALKS TO THIS TASK, under its own name, exactly as it does on a
 	// node's page ([app.openRoom]): what was being written elsewhere is stashed
 	// under its own reader and this page's own unsent line comes back.
@@ -209,6 +222,9 @@ func (a *app) planRoomEntries(page session.PlanTaskPage) ([]entry, int) {
 		if command := planDisplayCommand(live.Command, page.Row.LiveParts); command != "" {
 			call(live.Step, command, "", false)
 		}
+	}
+	for _, entry := range page.Worker {
+		add(entry)
 	}
 	for _, note := range page.Notes {
 		body := strings.TrimSpace(note.Body)
@@ -462,6 +478,10 @@ func (a *app) planRoomAncestors() []*taskNode {
 // while the tab is the one on screen. `now` asks for it even when a read has
 // already come back, which is what switching to the tab does.
 func (a *app) planRoomWorkRead(now bool) tea.Cmd {
+	if plan := a.roomPlan(); plan != nil && plan.page.Historical {
+		plan.workRead = true
+		return nil
+	}
 	plan := a.roomPlan()
 	if plan == nil || a.room.tab != roomTabWork || plan.working {
 		return nil

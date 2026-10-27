@@ -34,6 +34,10 @@ import (
 // the span it covered, the last thing anybody said on it, and where its record
 // lives.
 type PlanTaskRow struct {
+	// HistoricalRun and HistoricalSession identify the retained run receipt
+	// before its roster notice arrives, without guessing from its title.
+	HistoricalRun     uint64 `json:",omitempty"`
+	HistoricalSession string `json:",omitempty"`
 	// Done, Running, Queued, Failed and Total summarize every task below a run root.
 	// They stay zero on ordinary task rows. Claimed work is running; pending and
 	// ready work is queued. Total includes every descendant store row.
@@ -178,7 +182,11 @@ type PlanTaskNote struct {
 // the description that is its work order, every note left on it, and the steps
 // its worker recorded.
 type PlanTaskPage struct {
-	Row PlanTaskRow
+	// Historical pages are retained receipts and accept no task actions.
+	Historical bool `json:",omitempty"`
+	// Worker is the transferred worker conversation for a historical page.
+	Worker []DisplayEntry `json:",omitempty"`
+	Row    PlanTaskRow
 	// Models are the run's accepted seats, including on a child page and before
 	// any spend was saved. Row.Model remains the ledger's historical reading.
 	Models      []PlanTaskModel `json:",omitempty"`
@@ -291,7 +299,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
-		return nil
+		return a.historicalPlanRows(nil)
 	}
 	var rows []PlanTaskRow
 	copies := a.planDisplayRunCopy()
@@ -325,6 +333,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 			}
 		}
 	}
+	rows = a.historicalPlanRows(rows)
 	if rows == nil {
 		return []PlanTaskRow{}
 	}
@@ -339,7 +348,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
-		return PlanTaskPage{}, false
+		return a.historicalPlanPage(id)
 	}
 	var store *plandb.Store
 	var task *plandb.Task
@@ -350,7 +359,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		}
 	}
 	if task == nil {
-		return PlanTaskPage{}, false
+		return a.historicalPlanPage(id)
 	}
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
@@ -920,6 +929,10 @@ func planTrajectory(dir, id string) []PlanStep {
 	if err != nil {
 		return nil
 	}
+	return decodePlanTrajectory(data)
+}
+
+func decodePlanTrajectory(data []byte) []PlanStep {
 	var steps []PlanStep
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)

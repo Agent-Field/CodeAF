@@ -88,7 +88,7 @@ func TestC4SeatConstructionDoesNotWaitForTheRelay(t *testing.T) {
 // TestC4AStartupFaultReleasesWaitingTools proves C4: background sync failing
 // cannot leave the visible conversation waiting forever for its ownership read.
 func TestC4AStartupFaultReleasesWaitingTools(t *testing.T) {
-	d := newLiveDrive(func() (*syncsetup.Drive, error) { panic("startup fixture") })
+	d := newLiveDrive(func(func()) (*syncsetup.Drive, error) { panic("startup fixture") })
 	done := make(chan struct{})
 	go func() { _ = d.Gate(); close(done) }()
 	select {

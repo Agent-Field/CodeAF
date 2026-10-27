@@ -277,7 +277,7 @@ func TestPlanBackedHistoryRefusesRedirectedTaskAndWorker(t *testing.T) {
 }
 
 // A taken chat may retain its completed task and journal without a plan store.
-// Its ordinary task room reads the replayed notice, not a PlanTaskPage or index.
+// Its historical task room and replayed roster retain the recorded model.
 func TestTakenWorkerRosterCarriesRecordedModelWithoutPlanStore(t *testing.T) {
 	for _, saved := range []string{"", "recorded/prior-model"} {
 		t.Run(saved, func(t *testing.T) {
@@ -296,8 +296,8 @@ func TestTakenWorkerRosterCarriesRecordedModelWithoutPlanStore(t *testing.T) {
 				t.Fatal(err)
 			}
 			agent := journalAgent(t, place)
-			if _, found := agent.PlanTaskPage("t-2"); found {
-				t.Fatal("fixture unexpectedly has a plan page; it must use the generic task room")
+			if page, found := agent.PlanTaskPage("t-2"); !found || !page.Historical {
+				t.Fatalf("completed worker has no historical task room: %+v", page)
 			}
 			if got := agent.TaskJournal(2); got != journal {
 				t.Fatalf("worker journal=%q, want %q", got, journal)

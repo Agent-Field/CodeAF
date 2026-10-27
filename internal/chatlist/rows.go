@@ -69,6 +69,20 @@ type Versioned interface {
 	RowsAt(ctx context.Context) ([]Row, uint64, error)
 }
 
+// SendSource reads ownership for a submitted message independently of display
+// hints. The context bounds any wait for a first directory reading.
+type SendSource interface {
+	RowsForSend(context.Context) ([]Row, uint64, error)
+}
+
+// RowsForSend uses the source's ownership door when it has one.
+func RowsForSend(ctx context.Context, src Source) ([]Row, uint64, error) {
+	if fresh, ok := src.(SendSource); ok {
+		return fresh.RowsForSend(ctx)
+	}
+	return RowsAt(ctx, src)
+}
+
 // RowsAt reads src and reports the version it was read at, or 0 when the
 // source does not keep versions.
 func RowsAt(ctx context.Context, src Source) ([]Row, uint64, error) {

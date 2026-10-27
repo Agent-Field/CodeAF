@@ -28,6 +28,9 @@ import (
 
 // TakeOptions is what the surface tells the take side about this machine.
 type TakeOptions struct {
+	// OnPhase receives local continuation measurements when requested.
+	OnPhase func(handoff.Phase)
+
 	// WorkspaceRoots explicitly associates incoming working-root identities with
 	// chosen local folders in the ownership prototype. It grants no landing
 	// permission; task work is restored into private copies. Nil reuses only
@@ -75,7 +78,14 @@ type Continuer struct {
 // SyncEngine, and the After hooks bring the chat's derived files and its
 // secrets to the folder the tree landed in.
 func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
-	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
+	eng.WorkspaceOf = func(at cell.Cell) string {
+		// A staged tree can carry derived metadata from a borrowed folder. Its
+		// restore must still target private scratch until admission and acquisition.
+		if strings.HasSuffix(at.Root, handoff.StagingSuffix) && opt.RootFor != nil && filepath.Clean(at.Root) == filepath.Clean(opt.RootFor(at.ID)+handoff.StagingSuffix) {
+			return session.Place{Dir: at.Root, Owned: true}.Work()
+		}
+		return workspaceOf(at.Root)
+	}
 	return &Continuer{sync: s, eng: eng, opt: opt}
 }
 
@@ -85,7 +95,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	s := c.sync
 	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
-	engine := landing{Engine: sync}
+	engine := landing{Engine: sync, workspace: c.eng.WorkspaceOf}
 	pub := &cellsync.Publisher{Engine: engine, Store: sc.Store, Dir: s.Dir}
 	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
 	// id on this machine; only the edits set aside live in the branch, and a
@@ -94,6 +104,7 @@ func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	// local chat does become the branch.)
 	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
 	return handoff.Taker{
+		OnPhase: c.opt.OnPhase,
 		Dir:     s.Dir,
 		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
 		Local:   engineLocal{eng: c.eng, ctx: ctx},
@@ -139,11 +150,17 @@ func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error
 func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (Continued, error) {
 	root := c.opt.RootFor(id)
 	defer handoff.Arrive(root)()
+	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
 	if err := cellstore.Await(ctx, cell.Cell{Root: root}); err != nil {
+		localCapture()
 		return Continued{}, err
 	}
+	localCapture()
 	view, err := c.sync.Dir.Cell(ctx, id)
 	if err != nil {
+		return Continued{}, err
+	}
+	if err := c.sync.reconcileSendLease(id, id, view); err != nil {
 		return Continued{}, err
 	}
 	if branchOnly && (view.Cell.ParentCell == "" || view.Cell.Archived) {
@@ -177,7 +194,12 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
 	}
 	from := c.sync.deviceName(lease.Device)
+	if lease.Device == c.sync.Device.ID() {
+		from = ""
+	}
+	retired := handoff.Trace(c.opt.OnPhase, "retirement")
 	c.retireHolder(ctx, id)
+	retired()
 	sc := c.sync.scope(id)
 	defer sc.Settle()
 	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
@@ -185,10 +207,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		intendedPrimary = project
 	}
 	taker := c.taker(ctx, sc)
-	taker.Preflight = func(_ context.Context, staged cell.Cell) error {
+	preflight := func(_ context.Context, staged cell.Cell) error {
 		place := session.Place{Dir: staged.Root, Workspace: intendedPrimary}
 		plan, err := session.TaskWorkspaceTransferPlan(place)
-		if err != nil || plan == nil {
+		if err != nil {
 			return err
 		}
 		// Independent branches extract settled results in branchIdentity; they
@@ -196,10 +218,26 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if view.Cell.ParentCell != "" {
 			return nil
 		}
+		if plan == nil {
+			return session.ValidateTaskRestoreRoots(place, intendedPrimary)
+		}
 		if !session.WorkspaceOwnershipEnabled(place) {
 			return errors.New("this chat needs supported private task placement on the receiving device")
 		}
 		return session.ValidateTaskWorkspaceSetBindingsForDestination(place, root, c.opt.WorkspaceRoots)
+	}
+	taker.Prepare = func(ctx context.Context, staged cell.Cell, head string) error {
+		if err := c.eng.StageAdmission(ctx, staged, head); err != nil {
+			return err
+		}
+		needed, err := session.TaskWorkspaceAdmissionNeeded(session.Place{Dir: staged.Root, Workspace: intendedPrimary})
+		if err != nil || !needed {
+			return err
+		}
+		if err := c.eng.StageWorkspace(ctx, staged, head); err != nil {
+			return err
+		}
+		return preflight(ctx, staged)
 	}
 	if view.Cell.ParentCell != "" {
 		// The branch's snapshot was sealed before it had its own id. Rebind
@@ -377,6 +415,11 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 		if err != nil {
 			return "", err
 		}
+		// A final save can finish the same exchange as the earlier tool saves.
+		// Count the complete kept conversation once after that save.
+		if _, turns, err = cellstore.Unpublished(opened, from.Head); err != nil {
+			return "", err
+		}
 		return b.Branch(ctx, from, head, turns, c.sync.publishInfo(opened, titleOf(opened.Root)))
 	}
 }
@@ -384,10 +427,17 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 // landing is the engine for a chat that has not landed on this machine yet: the
 // engine works from inside the folder it restores into, so the folders are
 // made before it is asked what it is missing.
-type landing struct{ cellsync.Engine }
+type landing struct {
+	cellsync.Engine
+	workspace func(cell.Cell) string
+}
 
 func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, error) {
-	if err := os.MkdirAll(workspaceOf(c.Root), 0o700); err != nil {
+	workspace := workspaceOf(c.Root)
+	if l.workspace != nil {
+		workspace = l.workspace(c)
+	}
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		return nil, err
 	}
 	return l.Engine.Want(ctx, c, head)

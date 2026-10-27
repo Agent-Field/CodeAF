@@ -698,3 +698,34 @@ func syncWorkspaceDirectory(path string) error {
 	defer directory.Close()
 	return directory.Sync()
 }
+
+// TaskWorkspaceAdmissionNeeded inspects only authenticated incoming metadata.
+// Carriers still receive their complete validation before the lease is taken.
+func TaskWorkspaceAdmissionNeeded(place Place) (bool, error) {
+	meta, err := LoadMeta(place.Dir)
+	if err != nil {
+		return false, err
+	}
+	if err := validateWorkspacePolicy(meta.WorkspacePolicy); err != nil {
+		return false, err
+	}
+	if meta.WorkspacePolicy != nil || WorkspaceOwnershipPrototypeEnabled() {
+		return true, nil
+	}
+	raw, err := readWorkspaceCheckpointBytes(place.Tasks())
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	document, err := decodeTasks(raw)
+	if err != nil {
+		return false, err
+	}
+	if document.WorkspaceTransfer != nil {
+		return true, nil
+	}
+	_, err = os.Lstat(filepath.Join(place.Dir, taskcopy.WorkspaceCarrierPath, "manifest.json"))
+	return !errors.Is(err, os.ErrNotExist), nil
+}

@@ -1,8 +1,11 @@
 package cellstore
 
 import (
+	"os"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // TailQuiet is how long the record must be still, after a turn ended, before
@@ -26,6 +29,8 @@ const TailQuiet = 2 * time.Second
 // surface to draw a segment on sets Say, and the sentences go there as they
 // happen instead of waiting to be taken.
 type SealWatch struct {
+	turn cell.Cell
+
 	// Say, when set, receives each sentence as it happens.
 	Say func(string)
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
@@ -46,6 +51,8 @@ type SealWatch struct {
 	cause   string
 	said    []string
 	failing bool
+	// requiredEnd follows conversation writes, so later bookkeeping cannot hide recovery.
+	requiredEnd int64
 }
 
 // Report takes the outcome of one seal: nil when it held, the error when it did
@@ -57,6 +64,7 @@ func (w *SealWatch) Report(err error) {
 		w.recover()
 		return
 	}
+	w.requireTranscript()
 	w.fail(err.Error())
 }
 
@@ -80,6 +88,9 @@ func (w *SealWatch) fail(cause string) {
 }
 
 func (w *SealWatch) recover() {
+	if w.turn.Root != "" && !w.ownTurnSaved() {
+		return
+	}
 	if w.failing {
 		w.say("sealing works again, and the calls made meanwhile are sealed now")
 	}
@@ -160,6 +171,7 @@ func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
 	w.started = true
 	w.idle = true
+	w.requireTranscript()
 	w.stopTail()
 	w.mu.Unlock()
 	if w.OnTurnEnd != nil {
@@ -167,10 +179,13 @@ func (w *SealWatch) TurnEnded() {
 	}
 }
 
-// Failing reports whether the most recent seal failed.
+// Failing reports whether this chat still has a saving failure.
 func (w *SealWatch) Failing() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.failing && w.turn.Root != "" {
+		w.recover()
+	}
 	return w.failing
 }
 
@@ -178,10 +193,75 @@ func (w *SealWatch) Failing() bool {
 func (w *SealWatch) Take() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.failing && w.turn.Root != "" {
+		w.recover()
+	}
 	if len(w.said) == 0 {
 		return ""
 	}
 	sentence := w.said[0]
 	w.said = w.said[1:]
 	return sentence
+}
+
+// TrackTurn binds recovery notices to this chat's saved transcript.
+func (w *SealWatch) TrackTurn(root string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.turn = cell.Cell{Root: root}
+	w.requiredEnd = 0
+	w.requireTranscript()
+}
+
+func (w *SealWatch) requireTranscript() {
+	if w.turn.Root != "" {
+		if info, err := os.Stat(rel(w.turn, cell.TranscriptPath)); err == nil {
+			w.requiredEnd = max(w.requiredEnd, info.Size())
+		}
+	}
+}
+
+// A successful background seal cannot speak for the chat's unsaved answer.
+// Synced turns also retain their failure until the publish boundary covers it.
+func (w *SealWatch) ownTurnSaved() bool {
+	if w.started && !w.idle {
+		return false
+	}
+	captures.Lock()
+	state := captures.cells[w.turn.Root]
+	if state != nil {
+		select {
+		case <-state.done:
+			if state.err != nil {
+				captures.Unlock()
+				return false
+			}
+		default:
+			captures.Unlock()
+			return false
+		}
+	}
+	captures.Unlock()
+	head, err := Head(w.turn)
+	if err != nil || head == nil {
+		return false
+	}
+	info, err := os.Stat(rel(w.turn, cell.TranscriptPath))
+	if err != nil {
+		return false
+	}
+	requiredEnd := w.requiredEnd
+	if !w.idle {
+		requiredEnd = max(requiredEnd, info.Size())
+	}
+	if info.Size() < requiredEnd || head.Receipt.Transcript.End < requiredEnd {
+		return false
+	}
+	if head.Turn.Fence != 0 || requiresPublication(w.turn, head.Receipt.Transcript.End) {
+		unpublished, _, err := Unpublished(w.turn, "")
+		if err != nil || unpublished != "" {
+			return false
+		}
+	}
+	return true
 }

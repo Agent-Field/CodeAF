@@ -139,7 +139,8 @@ var _ Transport = Fallback{}
 // Do implements Transport.
 func (f Fallback) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	out, err := f.Primary.Do(ctx, t, op)
-	if errors.Is(err, ErrUnavailable) {
+	var stuck *SavingStuckError
+	if errors.Is(err, ErrUnavailable) && !errors.As(err, &stuck) {
 		return f.Secondary.Do(ctx, t, op)
 	}
 	return out, err

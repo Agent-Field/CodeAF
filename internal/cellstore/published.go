@@ -14,6 +14,19 @@ import (
 // a clean working tree can still hold turns no other device has received.
 const publishedPath = ".cell/published.json"
 
+// Shared reports whether a chat has ever crossed a publication or adoption boundary.
+// Missing records mean a local chat; unreadable records cannot grant permission.
+func Shared(c cell.Cell) (bool, error) {
+	for _, path := range []string{publishedPath, adoptedPath} {
+		if _, err := os.Stat(rel(c, path)); err == nil {
+			return true, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
 // KnowsHead says whether head is in this tree's sealed ancestry. An adopted
 // head has no line in the carried turn log, so its note counts even after the
 // next local seal has extended it.
@@ -85,18 +98,23 @@ func Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	var n uint32
+	span := head.Receipt.Transcript
 	for i := len(turns) - 1; i >= 0; i-- {
 		turn := turns[i]
 		if turn.ID == base {
 			break
 		}
-		n++
+		receipt, err := readReceipt(c, turn.Receipt)
+		if err != nil {
+			return "", 0, err
+		}
+		span.Start = min(span.Start, receipt.Transcript.Start)
 		// An adopted head has no line in this log. Its first local child
 		// still names that boundary, so earlier history is already uploaded.
 		if turn.Parent == base {
 			break
 		}
 	}
-	return head.Turn.ID, max(1, n), nil
+	n, err := unpublishedConversationTurns(c, span)
+	return head.Turn.ID, max(1, n), err
 }

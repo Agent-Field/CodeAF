@@ -164,7 +164,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	h.sign(req, body)
 	resp, err := h.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {

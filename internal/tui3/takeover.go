@@ -71,6 +71,7 @@ package tui3
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -586,6 +587,12 @@ func (a *app) landTakeover(transcript string) {
 // (draft.go's [adoptDraft]), so the sentence the person was in the middle of
 // walks to the other terminal with the conversation.
 func (a *app) takeOver() tea.Cmd {
+	if a.homeTaking != "" && filepath.Base(session.DirOf(a.file)) == a.homeTaking {
+		// This window is reopening the same chat, so retirement needs no new chat.
+		a.dropParked()
+		a.writeDraftsNow(a.leavingDraft())
+		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil)
+	}
 	a.dropParked()
 	if a.draftFile != "" {
 		// The whole composer, so the window taking this conversation over takes
@@ -708,7 +715,7 @@ func (a *app) freshAfterLeaving(let func(Agent)) tea.Cmd {
 	}
 	if !whole {
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
-			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned && a.movedName == "",
 			ContextWindow: a.ctxWindow, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}

@@ -34,7 +34,8 @@ func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return pair.Offer(ctx, route, grant, ui)
+	label, err := pair.Offer(ctx, route, grant, ui)
+	return label, explainSyncUnreachable(err, route.URL)
 }
 
 // Join types another computer's code and takes its chats. A computer with
@@ -48,7 +49,7 @@ func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pai
 		return pair.Joined{}, err
 	}
 	joined, err := pair.Join(ctx, route, pairJoining(false), typed, ui)
-	return joined, chatJoinRefusal(err)
+	return joined, chatJoinRefusal(explainSyncUnreachable(err, route.URL))
 }
 
 // chatJoinRefusal says the plain refusal the chat's way: the terminal's own
@@ -70,7 +71,8 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 	if err != nil {
 		return pair.Joined{}, err
 	}
-	return pair.Join(ctx, route, pairJoining(true), typed, ui)
+	joined, err := pair.Join(ctx, route, pairJoining(true), typed, ui)
+	return joined, explainSyncUnreachable(err, route.URL)
 }
 
 // HasOwnChats reports whether this home holds an identity of its own — the

@@ -52,6 +52,11 @@ func planNoTask(id string) error {
 // cancelled, a revision is only for work that has not started — travels back
 // as the store wrote it, because the store is the one that knows its own laws.
 func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error) error {
+	for _, notice := range a.historicalPlanNotices() {
+		if planTaskID(notice.PlanTask) == planTaskID(id) {
+			return errPlanEndedRun
+		}
+	}
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {

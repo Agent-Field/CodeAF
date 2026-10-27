@@ -1,12 +1,16 @@
 package session
 
 import (
+	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
 
+// Contract A2 keeps a finished moved task readable without its plan database.
 func TestAMovedRunKeepsItsRosterAndWorkerTranscript(t *testing.T) {
 	for _, name := range []string{"worker.jsonl", "20261026-120000.000000_worker.jsonl"} {
 		t.Run(name, func(t *testing.T) {
@@ -14,7 +18,7 @@ func TestAMovedRunKeepsItsRosterAndWorkerTranscript(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(place.Dir, ".cell"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			writeCheckpoint(t, place.Tasks(), taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 1, Runs: []runRecord{{ID: 1, Title: "Create hello-task.txt", State: TaskDone, PlanTask: "t-1", Model: "z-ai/glm-5.3-flash", Merge: "merged", Changed: []string{"hello-task.txt"}}}})
+			writeCheckpoint(t, place.Tasks(), taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 1, Runs: []runRecord{{ID: 1, Title: "Create hello-task.txt", State: TaskDone, PlanTask: "t-1", PendingRun: &PendingRunRecord{Brief: "Write a friendly greeting"}, Model: "z-ai/glm-5.3-flash", Merge: "merged", Changed: []string{"hello-task.txt"}}}})
 			dir := filepath.Join(place.NodeJournals(), "1")
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				t.Fatal(err)
@@ -28,14 +32,22 @@ func TestAMovedRunKeepsItsRosterAndWorkerTranscript(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), trajectory, 0600); err != nil {
 				t.Fatal(err)
 			}
-			agent := journalAgent(t, place)
-			if len(agent.PlanTasks()) != 0 {
-				t.Fatal("fixture unexpectedly contains a plan database")
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.SessionFile = place.Transcript()
+				config.Place = place
+				config.knowledgeReadVault = knowledge.Open(t.TempDir())
+			})
+			planRows := agent.PlanTasks()
+			if len(planRows) != 1 || planRows[0].StateWord() != "done" {
+				t.Fatalf("finished historical task rows: %+v", planRows)
 			}
-			if _, found := agent.PlanTaskPage("t-1"); found {
-				t.Fatal("a trajectory file unexpectedly recreated the missing plan page")
+			page, found := agent.PlanTaskPage("t-1")
+			if !found || !page.Historical || page.Row.Title != "Create hello-task.txt" || page.Description != "Write a friendly greeting" || len(page.Steps) != 1 || page.Steps[0].Command != "printf hello" || len(page.Worker) != 1 || page.Worker[0].Text != "created hello-task.txt" {
+				t.Fatalf("finished historical page: found=%v page=%+v", found, page)
 			}
-			t.Log("trajectory is present; a plan page still requires the plan database")
+			if err := agent.PlanResume("t-1"); err == nil {
+				t.Fatal("a settled historical task resumed")
+			}
 			events, stop := agent.WatchTaskUpdates()
 			defer stop()
 			select {
@@ -63,6 +75,7 @@ func TestAMovedRunKeepsItsRosterAndWorkerTranscript(t *testing.T) {
 	}
 }
 
+// Contract A2 reads historical pages only from this task's retained local files.
 func TestWorkerHistoryPrefersTheNewestAndRefusesRedirects(t *testing.T) {
 	place := newPlace(t, false)
 	writeCheckpoint(t, place.Tasks(), taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 1, Runs: []runRecord{{ID: 1, Title: "Create hello-task.txt", State: TaskDone, PlanTask: "t-1"}}})
@@ -89,7 +102,8 @@ func TestWorkerHistoryPrefersTheNewestAndRefusesRedirects(t *testing.T) {
 		t.Fatal(err)
 	}
 	outside := filepath.Join(t.TempDir(), "worker.jsonl")
-	if err := os.WriteFile(outside, body, 0600); err != nil {
+	outsideBody := string(body) + `{"type":"message","role":"assistant","content":"outside reply must stay out"}` + "\n"
+	if err := os.WriteFile(outside, []byte(outsideBody), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, stable); err != nil {
@@ -107,10 +121,37 @@ func TestWorkerHistoryPrefersTheNewestAndRefusesRedirects(t *testing.T) {
 	if err := os.Remove(dir); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(outside), planTrajectoryFile), []byte(`{"kind":"step","step":1,"command":"outside step must stay out"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(filepath.Dir(outside), dir); err != nil {
 		t.Fatal(err)
 	}
 	if got := agent.TaskJournal(1); got != "" {
 		t.Fatalf("redirected task directory=%q", got)
+	}
+	if page, ok := agent.PlanTaskPage("t-1"); !ok || len(page.Worker) != 0 || len(page.Steps) != 0 {
+		t.Fatalf("redirected history entered the historical page: %+v", page)
+	}
+}
+
+// Contract A2 keeps the sending computer's database page ahead of its receipt.
+func TestHistoricalReceiptLeavesTheSendingPlanPageUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "sender", plandb.TaskSpec{ID: "1", Title: "Store title", Description: "Store description"})
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "sender")
+	before, found := agent.PlanTaskPage("t-1")
+	if !found {
+		t.Fatal("sender page missing")
+	}
+	agent.publishRunRow(agent.graph(), TaskNotice{ID: 1, PlanTask: "t-1", Title: "Receipt title", State: TaskDone, PendingRun: &PendingRunRecord{Brief: "Receipt description"}})
+	after, found := agent.PlanTaskPage("t-1")
+	if !found || after.Historical || !reflect.DeepEqual(before, after) {
+		t.Fatalf("receipt changed the sending page: before=%+v after=%+v", before, after)
+	}
+	if rows := agent.PlanTasks(); len(rows) != 2 {
+		t.Fatalf("receipt duplicated a sender row: %+v", rows)
 	}
 }

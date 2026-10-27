@@ -28,6 +28,7 @@ func TestSendRequiresTheWindowsCurrentHold(t *testing.T) {
 		t.Run(state.name, func(t *testing.T) {
 			src := &continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Here, Mine: true, Fence: 2}}
 			a, agent := heldLab(t, src, &fakeTaker{})
+			keepSurfaceWorkersInTest(t, a)
 			a.closeHome()
 			src.change(func(r *chatlist.Row) { r.Status, r.Mine, r.Fence = state.status, state.mine, state.fence })
 			src.change(func(r *chatlist.Row) { r.Head = "newer" })
@@ -53,6 +54,7 @@ func (*windowProofSource) SendLease(string) (string, uint64, error) { return hel
 func TestFreshReadRejectsAnotherWindowsHold(t *testing.T) {
 	src := &windowProofSource{&continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Here, Mine: true, Fence: 2}}}
 	a, agent := heldLab(t, src, &fakeTaker{})
+	keepSurfaceWorkersInTest(t, a)
 	a.closeHome()
 	a.input.setText("still unsent")
 	drive(t, a, key("enter"))
@@ -67,6 +69,7 @@ func TestFreshReadRejectsAnotherWindowsHold(t *testing.T) {
 func TestHeldSendUsesOneFreshReading(t *testing.T) {
 	src := &continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Here, Mine: true, Fence: 2}}
 	a, agent := heldLab(t, src, &fakeTaker{})
+	keepSurfaceWorkersInTest(t, a)
 	a.closeHome()
 	before := src.reads
 	a.input.setText("send this")
@@ -90,6 +93,7 @@ func TestLapsedCurrentChatSendsAfterAConditionalReturn(t *testing.T) {
 	src := &continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Off, Mine: true, DeviceID: "dev_here", Fence: 2, Head: "saved"}}
 	taker := &returningTaker{}
 	a, old := heldLab(t, src, taker)
+	keepSurfaceWorkersInTest(t, a)
 	a.closeHome()
 	root := session.DirOf(a.file)
 	if err := os.MkdirAll(filepath.Join(root, ".cell"), 0700); err != nil {
@@ -118,6 +122,7 @@ func TestFailedRestoreCannotSendOnTheReleasedCopy(t *testing.T) {
 	src := &continuationListing{row: leftOffRow(heldCell, "other", chatlist.Running, time.Minute)}
 	taker := &fakeTaker{err: errors.New("handoff: engine materialize: rewind cancelled before mutation: workspace path changed during rewind: .git")}
 	a, agent := heldLab(t, src, taker)
+	keepSurfaceWorkersInTest(t, a)
 	a.closeHome()
 	a.input.setText("keep this unsent")
 	drive(t, a, key("enter"))
@@ -142,6 +147,7 @@ func TestHeldAndUnpublishedChatsStillSend(t *testing.T) {
 			rows = chatlist.Static{{Cell: heldCell, Status: chatlist.Here, Mine: true, Fence: 2}}
 		}
 		a, agent := heldLab(t, rows, &fakeTaker{})
+		keepSurfaceWorkersInTest(t, a)
 		a.closeHome()
 		a.input.setText("send this")
 		drive(t, a, key("enter"))

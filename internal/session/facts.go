@@ -1,5 +1,7 @@
 package session
 
+import "time"
+
 // facts.go is the SMALL SET OF FACTS A FRAME READS, gathered in one place.
 //
 // A surface sitting in front of a local agent asks these one at a time and each
@@ -113,6 +115,15 @@ type Facts struct {
 	// that is not sealed at all and an engine that predates the field all state
 	// nothing, and the emptiness law draws nothing for each.
 	Unsealed bool `json:"unsealed,omitempty"`
+	// Renewal carries optional writer health; older engines leave it absent.
+	Renewal *RenewalFact `json:"renewal,omitempty"`
+}
+
+// RenewalFact is a local renewal reading carried whole to a watching surface.
+type RenewalFact struct {
+	Since  time.Time     `json:"since,omitzero"`
+	Period time.Duration `json:"period,omitempty"`
+	Held   bool          `json:"held,omitempty"`
 }
 
 // LevelFor is the reasoning level held for one model id, and "" for a model
@@ -203,6 +214,14 @@ func FactsOf(source FactSource) Facts {
 	// AND WHETHER THE LAST SEAL FAILED, on the same terms.
 	if door, ok := source.(interface{ SealFailing() bool }); ok {
 		facts.Unsealed = door.SealFailing()
+	}
+	if door, ok := source.(interface {
+		RenewalStatus() (time.Time, time.Duration, bool)
+	}); ok {
+		since, period, held := door.RenewalStatus()
+		if period > 0 {
+			facts.Renewal = &RenewalFact{Since: since, Period: period, Held: held}
+		}
 	}
 	return facts
 }

@@ -139,6 +139,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.WorkspaceURI != "" {
 		system += "\n\nWORKSPACE STORAGE\nUse mktemp or $TMPDIR for temporary files and $XDG_CACHE_HOME for ordinary caches. These locations are outside the files that a task lands. Keep task deliverables in the assigned working directory. The directory is an assignment, not a shell sandbox; external and remote writes still need an explicit purpose."
 	}
+	if watch, ok := config.Seals.(interface{ TrackTurn(string) }); ok && config.Place.Dir != "" && !config.InTask && !config.Errand {
+		watch.TrackTurn(config.Place.Dir)
+	}
 	agent := &Agent{
 		config: config,
 		system: system,
@@ -2405,7 +2408,8 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // bounded because Close is what the person's quit reaches: a turn wedged
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
-func (a *Agent) Close() error {
+func (a *Agent) Close() (saveErr error) {
+	defer func() { saveErr = SavingError(a.config.SessionFile, saveErr) }()
 	// WHAT THE RECORD ALREADY HOLDS IS SETTLED BEFORE THE DOOR SHUTS, so an idle
 	// session that read a landing in its last turn does not re-tell it tomorrow.
 	// What the record does NOT hold stays owed, which is the whole point: a note

@@ -26,6 +26,9 @@ func (s *Sync) ClusterStatus(ctx context.Context) (clusterctl.Status, error) {
 	if err != nil {
 		return status, s.clusterRefusal(ctx, err)
 	}
+	if status.Self != 0 {
+		return status, nil
+	}
 	s.memberMu.Lock()
 	defer s.memberMu.Unlock()
 	if s.member != nil {

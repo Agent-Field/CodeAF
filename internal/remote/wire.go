@@ -450,6 +450,8 @@ type Frame struct {
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
+	// UnsavedTranscript preserves a recovery location on a failed saving reply.
+	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 
 	// Seq is this event's position in its stream, counting from 1, on "event"
 	// and "closed" frames only.

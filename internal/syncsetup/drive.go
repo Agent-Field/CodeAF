@@ -30,6 +30,8 @@ type DriveOptions struct {
 	Title func() string
 	// OnNotice hears a person-facing line: the superseded line, the skew line.
 	OnNotice func(string)
+	// OnRenewalChange wakes local readers after a renewal or ownership change.
+	OnRenewalChange func()
 	// Sleep replaces real time between flushes; tests inject a fake.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
@@ -49,10 +51,12 @@ type Drive struct {
 	directoryID   string
 	recordedFence uint64
 
-	cancel   context.CancelFunc
-	done     chan struct{}
-	once     sync.Once
-	closeErr error
+	cancel          context.CancelFunc
+	done            chan struct{}
+	once            sync.Once
+	closeErr        error
+	publicationDone func()
+	ownership       chan struct{}
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -73,7 +77,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err != nil {
 		return nil, err
 	}
-	d := &Drive{sync: s, files: files, cell: c, opt: opt, done: make(chan struct{})}
+	d := &Drive{sync: s, files: files, cell: c, opt: opt, done: make(chan struct{}), ownership: make(chan struct{}, 1)}
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
@@ -94,12 +98,19 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err := d.recordSendLease(); err != nil {
 		return nil, errors.Join(err, s.Dir.Release(ctx, drv.ID(), drv.Fence))
 	}
+	d.publicationDone = cellstore.RequirePublication(c, func(end int64) bool {
+		spoken, known := session.ConversationIn(session.Place{Dir: c.Root}.Transcript(), end)
+		return spoken || !known
+	})
 	d.catchUp(drv)
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
 	go func() {
 		defer close(d.done)
+		var work sync.WaitGroup
+		work.Go(func() { d.followOwnership(run) })
 		_ = d.batcher.Run(run)
+		work.Wait()
 	}()
 	return d, nil
 }
@@ -238,6 +249,9 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	if err != nil {
 		return drv, "", err
 	}
+	if err := s.reconcileSendLease(c.ID, drv.ID(), view); err != nil {
+		return drv, "", err
+	}
 	known, err := cellstore.KnowsHead(c, view.Cell.Head)
 	if err != nil {
 		return drv, "", err
@@ -310,15 +324,16 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 			Dir: s.Dir, Publisher: pub, Map: branches,
 			NewID: func() (string, error) { return cell.NewID(time.Now()) },
 		},
-		Driving:      &drv,
-		Interval:     s.Interval,
-		Info:         d.info,
-		OnFlush:      d.flushed(),
-		OnSuperseded: d.becomeViewer,
-		OnLost:       func() { d.refusal(directory.ErrFenceStale) },
-		OnError:      d.refusal,
-		Sleep:        d.opt.Sleep,
-		Liveness:     s.Liveness(),
+		Driving:         &drv,
+		Interval:        s.Interval,
+		Info:            d.info,
+		OnFlush:         d.flushed(),
+		OnSuperseded:    d.becomeViewer,
+		OnLost:          func() { d.refusal(directory.ErrFenceStale) },
+		OnError:         d.refusal,
+		Sleep:           d.opt.Sleep,
+		Liveness:        s.Liveness(),
+		OnRenewalChange: d.renewalChanged,
 	}, nil
 }
 
@@ -334,6 +349,17 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
+	d.mu.Lock()
+	changed := d.line == ""
+	d.line = chatlist.Superseded(unknownDevice)
+	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
+	d.mu.Unlock()
+	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
+		d.notice(err.Error())
+	}
+	if changed && d.opt.OnRenewalChange != nil {
+		d.opt.OnRenewalChange()
+	}
 	device := unknownDevice
 	if s.By != "" && s.By != unknownDevice {
 		device = d.sync.deviceName(s.By)
@@ -395,6 +421,14 @@ func (d *Drive) Viewer() (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.line, d.line != ""
+}
+
+// RenewalStatus reads this writer's cached renewal health without network work.
+func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
+	if _, viewer := d.Viewer(); viewer || d.batcher == nil || d.sync.removed.Load() {
+		return time.Time{}, 0, false
+	}
+	return d.batcher.RenewalStatus()
 }
 
 // HoldsLease says whether this drive side still drives the chat: it is not a
@@ -518,6 +552,15 @@ func (d *Drive) Close(ctx context.Context) error {
 		d.syncVault(ctx)
 		d.closeErr = d.batcher.Close(ctx)
 		d.scope.Settle() // a publish that failed after the last flush line still counts
+		if d.closeErr == nil {
+			d.mu.Lock()
+			expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
+			d.mu.Unlock()
+			d.closeErr = d.sync.forgetSendLease(d.cell.ID, expected)
+		}
+		if d.closeErr == nil && d.publicationDone != nil {
+			d.publicationDone()
+		}
 	})
 	return d.closeErr
 }

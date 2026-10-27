@@ -398,7 +398,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"╭─ ? Continue this chat here? ────────────────────────────────────────────────╮",
-			"│ last saved turn 3h ago; up to 3 turns may still be on host-a                │",
+			"│ host-a offline; last saved turn 3h ago; up to 3 turns may still be on host- │",
+			"│ a                                                                           │",
 			"│                                                                             │",
 			"│ ▸ 1  continue here                                                          │",
 			"│   2  leave it there                                            safe answer  │",
@@ -407,8 +408,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 		},
 		40: {
 			"╭─ ? Continue this chat here? ────────╮",
-			"│ last saved turn 3h ago; up to 3     │",
-			"│ turns may still be on host-a        │",
+			"│ host-a offline; last saved turn 3h  │",
+			"│ ago; up to 3 turns may still be on  │",
 			"│                                     │",
 			"│ ▸ 1  continue here                  │",
 			"│   2  leave it there    safe answer  │",

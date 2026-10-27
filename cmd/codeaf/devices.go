@@ -18,9 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"net"
+	"net/url"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -348,12 +350,7 @@ func rank(b bool) int {
 func (c chatsKind) table(time.Time) (string, error) {
 	rows, err := c.rows()
 	if err != nil {
-		if errors.Is(err, directory.ErrRevoked) {
-			return "", err
-		}
-		// The other kind is still worth showing when the relay is not answering.
-		fmt.Fprintln(os.Stderr, "your devices cannot be listed now:", err)
-		return "", nil
+		return "", err
 	}
 	// A list of only this computer says nothing a person did not know.
 	if len(rows) == 0 || (len(rows) == 1 && rows[0].This) {
@@ -411,9 +408,34 @@ func (c chatsKind) explain(err error) error {
 	case errors.Is(err, wireauth.ErrSkew):
 		return errors.New(chatlist.ClockOff)
 	case errors.Is(err, directory.ErrUnreachable):
-		return fmt.Errorf("the sync service at %s cannot be reached from here — check this computer's network", c.relay)
+		return explainSyncUnreachable(err, c.relay)
 	case errors.Is(err, directory.ErrNotFound):
 		return errors.New("that device is not in your list any more — `codeaf devices` shows the ones there are")
+	}
+	return err
+}
+
+// explainSyncUnreachable keeps network failures in the same words at every
+// command door while preserving the cause for exit handling.
+func explainSyncUnreachable(err error, relay string) error {
+	if errors.Is(err, directory.ErrRevoked) {
+		return err
+	}
+	var request *url.Error
+	var network net.Error
+	errors.As(err, &request)
+	errors.As(err, &network)
+	if relay == "" && request != nil {
+		if address, parseErr := url.Parse(request.URL); parseErr == nil {
+			relay = address.Scheme + "://" + address.Host
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) || network != nil && network.Timeout() {
+		return pair.ServiceTimeout(err, relay)
+	}
+	var dns *net.DNSError
+	if errors.Is(err, directory.ErrUnreachable) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) || errors.As(err, &dns) {
+		return toldLine{line: fmt.Sprintf("the sync service at %s cannot be reached from here — check this computer's network", relay), err: err}
 	}
 	return err
 }

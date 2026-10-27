@@ -985,3 +985,23 @@ In windows that can keep several chats open, its connection opens in the
 background, with an opening notice on the current chat. You can select another tab or cancel with Escape while the engine is
 busy. A canceled opening does not replace the selected chat when it finishes.
 Chats already open in this window switch directly.
+
+## Saving stopped or could not save this chat
+
+If the storage process is alive but its socket has disappeared, codeaf says
+“saving is stuck”. Your turns stay on this computer. When codeaf can safely
+replace its own unreachable storage process, saving resumes with a fresh one.
+Otherwise the process exits after its idle timeout, within 10 minutes, and the
+next save starts it again.
+
+“sealing works again, and the calls made meanwhile are sealed now” appears only
+after this chat's own latest turn is saved again. A spoken turn that syncs must
+also be published. An unused startup chat recovers after its local seal; it owes
+no publication until you speak. The notice appears once on the next surface tick,
+even after the answer has finished, and the saving-failure status clears.
+Later bookkeeping does not hide that recovery. Another task saving successfully
+does not clear this chat's saving failure.
+
+If closing cannot finish saving, the error names the local transcript that keeps
+the unsaved turns. Keep that file: after storage becomes reachable again, the
+turns can be saved and published, or kept separately when you continue the chat.

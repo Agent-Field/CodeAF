@@ -44,6 +44,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var flushFinalSaves = cellstore.Flush
+
 func main() {
 	if startupMaintenanceNeeded(os.Args[1:]) {
 		home.Adopt(log.Printf)
@@ -196,8 +198,7 @@ func execute() (code int) {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 		defer cancel()
-		if err := cellstore.Flush(ctx); err != nil {
-			fmt.Fprintln(os.Stderr, "codeaf: could not finish saving this chat:", err)
+		if !finishFinalSaving(ctx) {
 			if code == 0 {
 				code = 1
 			}

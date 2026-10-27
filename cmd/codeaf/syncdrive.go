@@ -64,7 +64,8 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	// back here) never drives again: the chat opened here needs a drive side of its own, or every
 	// tool call in it would be refused as superseded.
 	delete(b.drive, c.ID)
-	d := newLiveDrive(func() (*syncsetup.Drive, error) { return startDrive(c, engine, report) })
+	d := newLiveDrive(func(changed func()) (*syncsetup.Drive, error) { return startDrive(c, engine, report, changed) })
+	d.transcript = (session.Place{Dir: c.Root}).Transcript()
 	if d != nil {
 		if b.drive == nil {
 			b.drive = map[string]*liveDrive{}
@@ -77,7 +78,7 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 // startDrive opens the drive side of c. The error it answers is already
 // reported; it is returned so a caller can tell a computer that has no identity
 // yet (which /pair will change) from one that cannot sync at all.
-func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*syncsetup.Drive, error) {
+func startDrive(c cell.Cell, engine cellstore.Engine, report func(error), changed ...func()) (*syncsetup.Drive, error) {
 	s, ok, err := syncsetup.Open(home.Dir())
 	if errors.Is(err, syncsetup.ErrNoIdentity) {
 		// Waiting for an identity is not a seal failing: the live drive starts by itself once one
@@ -96,8 +97,13 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*sync
 	if line, first := s.FirstRun(); first {
 		surfaceNotices.Say(line)
 	}
+	var onChange func()
+	if len(changed) > 0 {
+		onChange = changed[0]
+	}
 	d, err := s.Drive(context.Background(), engine, c, syncsetup.DriveOptions{
-		DeviceName: deviceName(),
+		DeviceName:      deviceName(),
+		OnRenewalChange: onChange,
 		// The title the chat has now, sealed on its way out: the other machine's
 		// list names the chat by it.
 		Title: func() string { return chatTitle(c) },
@@ -109,6 +115,13 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error)) (*sync
 	}
 	report(err)
 	return d, err
+}
+
+// renewalsOf reads the writer already installed for a chat without starting one.
+func (b *driveBook) renewalsOf(id string) *liveDrive {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.drive[id]
 }
 
 // sayRefusal tells the person what the relay refused when it refused this
@@ -142,6 +155,7 @@ func (b *driveBook) closeAll() {
 	for _, d := range drives {
 		if err := d.Close(ctx); err != nil {
 			log.Print("sync: closing a chat: ", err)
+			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
 	}
 }
@@ -175,16 +189,14 @@ func driveStore(d *liveDrive) func(cellstore.Engine) cellstore.Store {
 
 // closeCell is a conversation's final release after its agent has closed and
 // its last seal is durable, even when the local engine process stays alive.
-func (b *driveBook) closeCell(id string) {
+func (b *driveBook) closeCell(id string) error {
 	d := b.takeCell(id)
 	if d == nil {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
 	defer cancel()
-	if err := d.Close(ctx); err != nil {
-		log.Print("sync: closing a chat: ", err)
-	}
+	return session.SavingError(d.transcript, d.Close(ctx))
 }
 
 // takeCell forgets one drive under the book lock before any closing I/O begins.
