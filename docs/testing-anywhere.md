@@ -120,8 +120,10 @@ For an unreleased engine, use `make build FURROW_SOURCE=/path/to/furrow`.
 For a cross-build, build furrow for the destination platform in that external checkout
 first (for Linux, in a Linux container), then pass its binary as
 `GOOS=linux GOARCH=arm64 make build FURROW_ARTIFACT=/path/to/furrow-linux-arm64`.
-The source and artifact roads deliberately override the pin. Runtime checks the actual
-exchange verbs and changed-path sealing flags once; an older engine leaves chat movement
+The source and artifact roads deliberately override the pin; the fetcher prints the
+staged path, target platform and pinned version without verifying the override against
+the pin. Runtime checks the actual exchange verbs and changed-path sealing flags once;
+an older engine leaves chat movement
 absent and says `moving chats needs a newer furrow engine than this build carries`.
 
 Export the settings above first; each script's docstring says which of them it reads and the

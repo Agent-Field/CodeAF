@@ -61,9 +61,10 @@ embed: manual-pack-law
 # build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
-# explicit artifact is a developer override; the normal fetch checks the pin:
+# explicit artifact is a developer override and announces the pinned version it
+# replaces; the normal fetch checks the pin:
 #
-#   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
+#   make furrow FURROW_ARTIFACT=/path/to/furrow-linux-amd64
 #
 # THE TARGET IS READ FIRST AND THEN UNSET. A cross-compiling build sets GOOS and
 # GOARCH for codeaf, and the fetcher has to know them — but it must not be built
