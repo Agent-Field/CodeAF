@@ -64,6 +64,10 @@ type appFactoryHost struct {
 	// counts the goroutines close waits for. THE START IS PER HOST, never per
 	// process: a process-wide once would leave a later host in the same
 	// process, after this one closed, without its reads for good.
+	// answered names the requests whose first answer the startup trace has
+	// recorded (startup.log on the floor): the first of all, the queue, a job.
+	answeredMu           sync.Mutex
+	answered             map[string]bool
 	loopMu               sync.Mutex
 	loopsOn, loopsClosed bool
 	loops                sync.WaitGroup
@@ -129,22 +133,29 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.handler != nil {
 		return h.handler, nil
 	}
+	trace := filepath.Join(h.floor.Root(), "startup.log")
+	began := time.Now()
 	if target, ok := liveFactoryDiscovery(); ok {
+		traceStartup(trace, "factory: another codeaf serves this floor; used it after %d ms", ms(time.Since(began)))
 		return appFactoryProxy(target), nil
 	}
+	discovered := time.Now()
 	release, err := factoryFileLock(filepath.Join(h.floor.Root(), "serve.lock"), true)
 	if err != nil {
 		release()
 		target, e := waitForFactoryDiscovery(factoryLockWait)
+		traceStartup(trace, "factory: the floor was locked by another codeaf; waited %d ms (%v)", ms(time.Since(discovered)), e == nil)
 		if e != nil {
 			return nil, e
 		}
 		return appFactoryProxy(target), nil
 	}
+	locked := time.Now()
 	if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
 		release()
 		return nil, err
 	}
+	forgot := time.Now()
 	history, err := record.Open(h.floor, record.Options{})
 	if err != nil {
 		release()
@@ -183,6 +194,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		release()
 		return nil, err
 	}
+	traceStartup(trace, "factory: ready in %d ms (discovery %d, lock %d, forget PR jobs %d, serve %d)", ms(time.Since(began)), ms(discovered.Sub(began)), ms(locked.Sub(discovered)), ms(forgot.Sub(locked)), ms(time.Since(forgot)))
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
 	if h.quiet {
@@ -328,8 +340,37 @@ func (h *appFactoryHost) mountSolo(ctx context.Context) (http.Handler, error) {
 			_, _ = w.Write([]byte(`{"reason":"no_factory","error":"the solo factory is unavailable"}`))
 			return
 		}
+		served := time.Now()
 		handler.ServeHTTP(w, r)
+		h.traceAnswer(r, time.Since(served))
 	}), nil
+}
+
+// traceAnswer writes the first answer of all, of the queue and of a job to the
+// startup trace, with how long each took: what a cold start waits on.
+func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
+	kinds := []string{"any"}
+	if r.URL.Path == "/v1/queue" {
+		kinds = append(kinds, "queue")
+	} else if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/jobs/"); ok && rest != "" && !strings.Contains(rest, "/") {
+		kinds = append(kinds, "job")
+	}
+	h.answeredMu.Lock()
+	var fresh []string
+	for _, k := range kinds {
+		if !h.answered[k] {
+			if h.answered == nil {
+				h.answered = map[string]bool{}
+			}
+			h.answered[k] = true
+			fresh = append(fresh, k)
+		}
+	}
+	h.answeredMu.Unlock()
+	for _, k := range fresh {
+		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
+		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, r.URL.Path, ms(took))
+	}
 }
 func appFactoryProxy(target factoryTarget) http.Handler {
 	address, _ := url.Parse(target.url)
