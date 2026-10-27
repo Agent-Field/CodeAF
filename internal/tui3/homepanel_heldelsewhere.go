@@ -87,6 +87,7 @@ func (a *app) needsOwnershipRead() bool {
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	src, file, draft, agent := a.machines, a.file, a.input.String(), a.agent
 	offline := a.machineRead.down
+	blocked := a.machineRead.sendHolds[filepath.Base(session.DirOf(file))].blocked
 	chips := slices.Clone(a.chips)
 	var first *composerState
 	if a.conversationPreview != nil && !a.conversationOpening {
@@ -105,6 +106,9 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		if writer, ok := agent.(renewalReader); ok {
 			_, _, holding = writer.RenewalStatus()
 			notHeld = !holding
+		}
+		if blocked {
+			holding, notHeld = false, true
 		}
 		if scoped, ok := src.(interface {
 			RowsForChatSend(context.Context, string, bool, bool) ([]chatlist.Row, uint64, bool, error)
@@ -296,6 +300,10 @@ func (a *app) rememberSendHolds(msg homeMachinesMsg) {
 	}
 	for _, row := range msg.rows {
 		held, known := a.machineRead.sendHolds[row.Cell]
+		if heldElsewhere(row) && (!known || row.Fence >= held.fence) {
+			held.blocked = true
+			a.machineRead.sendHolds[row.Cell] = held
+		}
 		if row.Status != chatlist.Here || held.blocked || held.failed {
 			continue
 		}
@@ -305,6 +313,23 @@ func (a *app) rememberSendHolds(msg homeMachinesMsg) {
 			a.machineRead.sendHolds[row.Cell] = sendHold{fence: row.Fence}
 		}
 	}
+}
+
+var displacedSendSuffix = chatlist.Superseded("")
+
+// blockDisplacedSend keeps a shown displacement stronger than a cached writer
+// reading. Only a successful continuation can make this window writable again.
+func (a *app) blockDisplacedSend(text string) {
+	if a.file == "" || !strings.HasSuffix(text, displacedSendSuffix) {
+		return
+	}
+	if a.machineRead.sendHolds == nil {
+		a.machineRead.sendHolds = map[string]sendHold{}
+	}
+	id := filepath.Base(session.DirOf(a.file))
+	held := a.machineRead.sendHolds[id]
+	held.blocked = true
+	a.machineRead.sendHolds[id] = held
 }
 
 func (a *app) failedTake(msg homeTakenMsg) string {

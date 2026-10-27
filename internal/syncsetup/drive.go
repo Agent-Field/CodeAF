@@ -56,6 +56,7 @@ type Drive struct {
 	once            sync.Once
 	closeErr        error
 	publicationDone func()
+	ownership       chan struct{}
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -76,7 +77,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err != nil {
 		return nil, err
 	}
-	d := &Drive{sync: s, files: files, cell: c, opt: opt, done: make(chan struct{})}
+	d := &Drive{sync: s, files: files, cell: c, opt: opt, done: make(chan struct{}), ownership: make(chan struct{}, 1)}
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
@@ -106,7 +107,10 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	d.cancel = cancel
 	go func() {
 		defer close(d.done)
+		var work sync.WaitGroup
+		work.Go(func() { d.followOwnership(run) })
 		_ = d.batcher.Run(run)
+		work.Wait()
 	}()
 	return d, nil
 }
@@ -329,7 +333,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		OnError:         d.refusal,
 		Sleep:           d.opt.Sleep,
 		Liveness:        s.Liveness(),
-		OnRenewalChange: d.opt.OnRenewalChange,
+		OnRenewalChange: d.renewalChanged,
 	}, nil
 }
 
@@ -345,14 +349,9 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
-	device := unknownDevice
-	if s.By != "" && s.By != unknownDevice {
-		device = d.sync.deviceName(s.By)
-	}
-	line := chatlist.Superseded(device)
 	d.mu.Lock()
 	changed := d.line == ""
-	d.line = line
+	d.line = chatlist.Superseded(unknownDevice)
 	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 	d.mu.Unlock()
 	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
@@ -361,6 +360,14 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	if changed && d.opt.OnRenewalChange != nil {
 		d.opt.OnRenewalChange()
 	}
+	device := unknownDevice
+	if s.By != "" && s.By != unknownDevice {
+		device = d.sync.deviceName(s.By)
+	}
+	line := chatlist.Superseded(device)
+	d.mu.Lock()
+	d.line = line
+	d.mu.Unlock()
 	// Refuse new work immediately, then preserve the pending save before
 	// announcing displacement. A routine ownership check does no fsync (C28).
 	ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)

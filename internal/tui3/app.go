@@ -7290,7 +7290,10 @@ func (a *app) take(u session.Usage) {
 
 // note answers a UI action or reports something requiring the person's attention.
 // Engine bookkeeping uses feed.note so its audience is explicit at the producer.
-func (a *app) note(text string) { a.noteWritten(text, false, nil) }
+func (a *app) note(text string) {
+	a.blockDisplacedSend(text)
+	a.noteWritten(text, false, nil)
+}
 
 // noteWritten is the one body behind all three of the app's note doors, and the
 // only thing it adds to the feed's own is THE ECHO ONTO HOME'S MESSAGE LINE.

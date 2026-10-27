@@ -191,6 +191,19 @@ A chat has one holder at a time. To take a chat back from the computer that took
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
+## This window only shows the chat — can I still send here
+
+Once this window learns that another computer holds the chat, Enter opens
+**Continue this chat here?** and keeps your words unsent. This applies as soon
+as the live update or the `<device> continued this chat; this window now only
+shows it` notice arrives; it does not wait for the next background ownership
+check. Enter cannot start a reply, publish a turn or create a separate chat
+from this displaced window. Choose `continue here` to bring the latest chat
+back before sending.
+
+A chat this computer still holds sends on one Enter without an extra request
+to the sync service. A chat that has never been shared does too.
+
 ## Take my chat back after a crash, a killed process or a power loss
 
 If this computer was killed and another computer continued the chat, reopen
