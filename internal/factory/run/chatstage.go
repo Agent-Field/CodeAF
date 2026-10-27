@@ -943,10 +943,12 @@ func (d *stageDoor) result() factory.StageResult {
 
 // RejectReport withdraws a previous completion when a newer attempt is refused.
 // Keep its evidence for correction, but never let stale success stand in for it.
+// ONLY A DONE REPORT IS WITHDRAWN: an incomplete one (a blocker, a "needs you")
+// is not a success, and turning it into a checkpoint would hide what it said.
 func (d *stageDoor) RejectReport() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.report != nil {
+	if d.report != nil && d.report.Done {
 		d.report.Checkpoint = true
 	}
 }
