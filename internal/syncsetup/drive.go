@@ -49,10 +49,11 @@ type Drive struct {
 	directoryID   string
 	recordedFence uint64
 
-	cancel   context.CancelFunc
-	done     chan struct{}
-	once     sync.Once
-	closeErr error
+	cancel          context.CancelFunc
+	done            chan struct{}
+	once            sync.Once
+	closeErr        error
+	publicationDone func()
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -94,6 +95,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err := d.recordSendLease(); err != nil {
 		return nil, errors.Join(err, s.Dir.Release(ctx, drv.ID(), drv.Fence))
 	}
+	d.publicationDone = cellstore.RequirePublication(c)
 	d.catchUp(drv)
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
@@ -518,6 +520,9 @@ func (d *Drive) Close(ctx context.Context) error {
 		d.syncVault(ctx)
 		d.closeErr = d.batcher.Close(ctx)
 		d.scope.Settle() // a publish that failed after the last flush line still counts
+		if d.closeErr == nil && d.publicationDone != nil {
+			d.publicationDone()
+		}
 	})
 	return d.closeErr
 }
