@@ -1,7 +1,7 @@
 ---
 kind: added
 title: The engine edits a repository's own rules, and a repository that has no pipeline file yet
-pr: 0
+pr: 1997
 surface: [engine]
 invalidates:
   - "The source-preview change entry 0-factory-pipeline-edit-source-preview.md said a missing `.codeaf/factory.yaml` refuses editing. Behind the new feature `factory.pipeline_edit_rules` a `missing` source is `editable: true` with `text: \"\"` and describes the shipped default pipeline the repository runs without a file (`budget_in_file` false, every pipeline and step `in_file` false); `factory.pipeline_preview` with `base_text: \"\"` applies the edits to those defaults and answers the whole canonical file the pull request then creates (`factory.pipeline_pr` already created a file the default branch did not have). Only `\"\"` means no file; a base of blanks is still `base_invalid`."

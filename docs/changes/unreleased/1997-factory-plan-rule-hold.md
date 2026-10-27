@@ -1,7 +1,7 @@
 ---
 kind: added
 title: A plan that touches a path a rule guards waits for a person, even in Auto
-pr: 0
+pr: 1997
 surface: [engine]
 invalidates:
   - "A repository's `start.ask_first` and `start.never` were read only before a job started on its own; a job a person started, and every plan, ran past them. A job now carries the ask-first and never lines it started under (`start_rules` on the wire, the repository's with the factory's own), and when its finished plan names a file one of them covers, the approval after the plan records the rule and file (`rule_hold`) and Auto will not pass it (`autonomy_why` says \"A rule asks first: …\")."

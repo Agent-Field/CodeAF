@@ -1,7 +1,7 @@
 ---
 kind: added
 title: A factory keeps rules of its own, for every repository, and every step is told them
-pr: 0
+pr: 1997
 surface: [engine]
 invalidates:
   - "Rules lived only in each repository's `.codeaf/factory.yaml` (and a personal `~/.codeaf/factory.yaml` on one machine). A factory now keeps its OWN rules (`rules`, `ask_first`, `never`) in its store beside its runner settings, served at `GET`/`PUT /v1/rules` (PUT is operator-only and replaces all three lists; every refusal before the save carries the phase marker). They are merged into every repository's read the way the personal file is: they only ever add."
