@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
@@ -45,6 +46,13 @@ type Local interface {
 
 // Taker continues a chat on this device.
 type Taker struct {
+	// stagedHead joins a claim's value copies so a failure restores only
+	// a native binding that the claim may have moved.
+	stagedHead *string
+
+	// OnPhase receives measurements of local work during this take.
+	OnPhase func(Phase)
+
 	Dir   directory.Client
 	Fetch Fetch
 	Local Local
@@ -69,6 +77,9 @@ type Taker struct {
 	// Preflight validates the authenticated staged tree before acquiring a lease
 	// or replacing local files. It runs again if the acquired head moved.
 	Preflight func(context.Context, cell.Cell) error
+	// Prepare admits incoming objects in private scratch without changing the
+	// chat's native binding. It replaces staged fetching and Preflight when set.
+	Prepare func(context.Context, cell.Cell, string) error
 }
 
 // Taken is a chat this device now drives.
@@ -80,8 +91,8 @@ type Taken struct {
 }
 
 // Take makes this device the driver of chat id. The order is fixed: the
-// directory's record, then keep local edits, then fetch into a staging folder,
-// then the lease, then (only if the head moved meanwhile) one more fetch, then
+// directory's record, then keep local edits, then fetch and admit incoming work
+// in private scratch, then the lease and a second check if the head moved, then
 // the staging folder becomes the root, then the After hooks, then open. Fetch
 // precedes acquire, so a failed fetch never takes a lease, and the root
 // changes only after the acquire, so a lost race (directory.ErrLeaseHeld)
@@ -141,11 +152,15 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 	if !exists(c.Root) {
 		return "", nil
 	}
+	checked := Trace(t.OnPhase, "unpublished check")
 	head, turns, err := t.Local.Unpublished(c, parentHead)
+	checked()
 	if err != nil {
 		return "", err
 	}
+	checked = Trace(t.OnPhase, "dirty check")
 	dirty, err := t.Local.Dirty(ctx, c)
+	checked()
 	if err != nil {
 		return "", err
 	}
@@ -160,7 +175,9 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 		return "", nil
 	}
 	from := &cellsync.Driving{Cell: c, Head: parentHead, Frames: plan}
+	keptUpload := Trace(t.OnPhase, "kept-branch upload")
 	kept, err := t.Branch(ctx, from, head, turns)
+	keptUpload()
 	if err != nil {
 		return "", fmt.Errorf("handoff: keep local edits of %s: %w", c.ID, err)
 	}
@@ -173,6 +190,7 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 // staging folder never outlives a failed claim.
 func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
+	t.stagedHead = new(string)
 	head, fence, plan, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
 		if err = t.install(ctx, stage, c, head); err != nil {
@@ -183,7 +201,7 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 		// Staged admission may have moved the engine's timeline binding even
 		// though local files stayed in place. A retry must inspect that original
 		// root rather than the staging folder we are about to remove.
-		if t.Preflight != nil && exists(c.Root) && exists(stage.Root) {
+		if (t.Preflight != nil && t.Prepare == nil || t.stagedHead != nil && *t.stagedHead != "") && exists(c.Root) && exists(stage.Root) {
 			err = errors.Join(err, t.Local.Follow(ctx, stage, c))
 		}
 		return "", 0, nil, errors.Join(err, os.RemoveAll(stage.Root))
@@ -198,25 +216,54 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 // nothing at from it starts empty. A chat in the person's own folder is only
 // completed in the store: it is restored where it stands once the lease is
 // ours, except when Preflight needs the staged files to validate admission
-// before any local replacement. It answers the plan of the record the device actually
+// before any local replacement. Prepare instead admits fetched objects in its
+// own timeline and leaves the real restore until acquisition. It answers the
+// plan of the record the device actually
 // acquired: another device may have published while the fetch ran, and the
 // next publish replaces the record's plan wholesale, so seeding from the
 // record read before the claim would carry the stale one (contract §22.2).
 func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
+	if t.stagedHead == nil {
+		t.stagedHead = new(string)
+	}
+	staged := Trace(t.OnPhase, "staging/preflight")
+	defer func() {
+		if staged != nil {
+			staged()
+		}
+	}()
 	inPlace := t.InPlace != nil && t.InPlace(cell.Cell{ID: stage.ID, Root: from})
-	if !inPlace || t.Preflight != nil {
-		if err := freshDir(stage.Root); err != nil {
-			return "", 0, nil, fmt.Errorf("handoff: prepare %s: %w", stage.ID, err)
+	prepare := func(head string) error {
+		if t.Prepare != nil {
+			if err := freshDir(stage.Root); err != nil {
+				return err
+			}
+			if err := t.bring(ctx, stage, true, head); err != nil {
+				return fmt.Errorf("handoff: fetch %s: %w", short(head), err)
+			}
+			return t.Prepare(ctx, stage, head)
 		}
-		seedFrom(from, stage.Root)
-	}
-	if err := t.bring(ctx, stage, inPlace && t.Preflight == nil, head); err != nil {
-		return "", 0, nil, fmt.Errorf("handoff: fetch %s: %w", short(head), err)
-	}
-	if t.Preflight != nil {
-		if err := t.Preflight(ctx, stage); err != nil {
-			return "", 0, nil, err
+		if !inPlace || t.Preflight != nil {
+			if err := freshDir(stage.Root); err != nil {
+				return err
+			}
+			seedFrom(from, stage.Root)
 		}
+		if err := t.bring(ctx, stage, inPlace && t.Preflight == nil, head); err != nil {
+			return fmt.Errorf("handoff: fetch %s: %w", short(head), err)
+		}
+		if t.Preflight != nil {
+			return t.Preflight(ctx, stage)
+		}
+		return nil
+	}
+	if err := prepare(head); err != nil {
+		return "", 0, nil, err
+	}
+	staged()
+	staged = nil
+	if t.OnPhase != nil {
+		t.OnPhase(Phase{Name: "first acquire", Started: time.Now()})
 	}
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
 	if err != nil {
@@ -224,13 +271,8 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
-		if err := t.bring(ctx, stage, inPlace && t.Preflight == nil, head); err != nil {
-			return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: fetch %s: %w", short(head), err))
-		}
-		if t.Preflight != nil {
-			if err := t.Preflight(ctx, stage); err != nil {
-				return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
-			}
+		if err := prepare(head); err != nil {
+			return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
 		}
 	}
 	return head, got.Cell.Lease.Fence, got.Cell.Frames, nil
@@ -239,15 +281,22 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 // bring puts head where the claim restores it from: in the store alone for a
 // folder the person owns, else also in the staging folder.
 func (t Taker) bring(ctx context.Context, stage cell.Cell, inPlace bool, head string) error {
+	defer Trace(t.OnPhase, "fetch")()
 	if inPlace {
 		return t.Fetch.Complete(ctx, stage, head)
+	}
+	if t.stagedHead != nil {
+		*t.stagedHead = head
 	}
 	return t.Fetch.Fetch(ctx, stage, head)
 }
 
+// StagingSuffix identifies a takeover's private scratch folder.
+const StagingSuffix = ".taking"
+
 // stagingOf is the folder a takeover materializes into: beside the root, so
 // the final move is a rename on one filesystem.
-func stagingOf(root string) string { return root + ".taking" }
+func stagingOf(root string) string { return root + StagingSuffix }
 
 // freshDir makes dir exist and be empty, whatever a crashed takeover left.
 func freshDir(dir string) error {
@@ -262,7 +311,19 @@ func freshDir(dir string) error {
 // staging fetch, so this is only the engine's restore to that tree, and the
 // staging folder is dropped. A copy is replaced by the staging folder.
 func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) error {
+	defer Trace(t.OnPhase, "restore")()
 	if t.InPlace == nil || !t.InPlace(c) {
+		if t.Prepare != nil {
+			if err := freshDir(stage.Root); err != nil {
+				return err
+			}
+			if t.stagedHead != nil {
+				*t.stagedHead = head
+			}
+			if err := t.Fetch.Fetch(ctx, stage, head); err != nil {
+				return err
+			}
+		}
 		return t.replace(ctx, stage, c)
 	}
 	if err := t.Fetch.Fetch(ctx, c, head); err != nil {

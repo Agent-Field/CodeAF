@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
 )
 
+// Contract A1 keeps workspace admission ahead of writes to borrowed folders.
 // Labelled API fixture: native/public Take is real; task metadata is supplied
 // explicitly to test rejection before task restoration mutates a shared repo.
 func TestPublicTakeRejectsTwoUnboundRootsBeforeRepoOrRegistryMutation(t *testing.T) {
@@ -40,6 +41,14 @@ func TestPublicTakeRejectsTwoUnboundRootsBeforeRepoOrRegistryMutation(t *testing
 	}
 	at := first.Taken.Cell
 	work := workspaceOf(at.Root)
+	meta, err := session.LoadMeta(at.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Owned, meta.Workspace = false, work
+	if err := session.SaveMeta(at.Root, meta); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv(home.EnvVar, h.homeB)
 	secondHead := seedTwoRootProtocolFixture(t, at, work)
 	b := h.openOn(h.b, h.engB, at, work, nameB)
@@ -51,26 +60,29 @@ func TestPublicTakeRejectsTwoUnboundRootsBeforeRepoOrRegistryMutation(t *testing
 		t.Fatal(err)
 	}
 	t.Setenv(home.EnvVar, h.homeA)
+	keptFile := filepath.Join(h.work, "receiver-only.txt")
+	if err := os.WriteFile(keptFile, []byte("keep the receiver folder until admission"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	registryPath := filepath.Join(h.homeA, "workspace-identities")
 	if _, err := os.Stat(registryPath); !os.IsNotExist(err) {
 		t.Fatalf("fixture receiver already has registry: %v", err)
 	}
-	var beforeRefs, beforeObjects string
-	observed := false
-	h.engine.Transport = afterRestoreSnapshot{under: h.engine.Transport, after: func(target cellstore.Target) {
-		observed = true
-		beforeRefs = gitOut(t, target.Tree, "show-ref")
-		beforeObjects = gitOut(t, target.Tree, "count-objects", "-v")
-		if exec.Command("git", "-C", target.Tree, "cat-file", "-e", secondHead+"^{commit}").Run() == nil {
-			t.Fatal("fixture secondary commit already in primary snapshot")
-		}
-	}}
+	beforeTake, err := h.a.Dir.Cell(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeRefs := gitOut(t, h.work, "show-ref")
+	beforeObjects := gitOut(t, h.work, "count-objects", "-v")
+	if exec.Command("git", "-C", h.work, "cat-file", "-e", secondHead+"^{commit}").Run() == nil {
+		t.Fatal("fixture secondary commit already in primary snapshot")
+	}
 	_, err = h.continuerA().Take(ctx, h.cell.ID)
 	if err == nil || !strings.Contains(err.Error(), "working root") {
 		t.Fatalf("Take did not explain unbound roots: %v notices=%v", err, h.wall.all())
 	}
-	if !observed {
-		t.Fatal("native restore observation did not run")
+	if got, err := os.ReadFile(keptFile); err != nil || string(got) != "keep the receiver folder until admission" {
+		t.Errorf("admission changed the borrowed folder: %q %v", got, err)
 	}
 	if got := gitOut(t, h.work, "show-ref"); got != beforeRefs {
 		t.Fatal("task restoration changed borrowed primary refs before rejection")
@@ -88,9 +100,20 @@ func TestPublicTakeRejectsTwoUnboundRootsBeforeRepoOrRegistryMutation(t *testing
 		if _, err := os.Stat(filepath.Join(h.cell.Root, cell.TreesDir, id)); !os.IsNotExist(err) {
 			t.Fatalf("rejected task %s was instantiated", id)
 		}
-		if _, err := os.Stat(filepath.Join(h.cell.Root, cell.CarriedTreesPath, id, "tree.json")); err != nil {
-			t.Fatalf("incoming archive %s lost: %v", id, err)
+		if _, err := os.Stat(filepath.Join(h.cell.Root, cell.CarriedTreesPath, id, "tree.json")); !os.IsNotExist(err) {
+			t.Fatalf("rejected admission wrote incoming archive %s into the chat: %v", id, err)
 		}
+	}
+	afterTake, err := h.a.Dir.Cell(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterTake.Cell.Lease != beforeTake.Cell.Lease {
+		t.Fatal("rejected admission changed the lease")
+	}
+	incoming := h.engine.Sync(cellstore.SyncKeys{CellKey: h.a.Identity.CellKey(), Dedup: h.a.Identity.DedupSecret()}, h.a.Ledger)
+	if wanted, err := incoming.Want(ctx, h.cell, beforeTake.Cell.Head); err != nil || len(wanted) != 0 {
+		t.Fatalf("rejected admission lost fetched objects: %v %v", wanted, err)
 	}
 }
 

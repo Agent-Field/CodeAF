@@ -8,16 +8,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// Contract A1 retires a displaced local session before taking back an expired hold.
 func TestTakeBackRetiresARepliedSessionWithoutKeepingSharedWork(t *testing.T) {
-	h := newTwoHomes(t)
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "0")
+	var firstAcquire atomic.Int64
+	h := newTwoHomes(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/acquire") {
+				firstAcquire.CompareAndSwap(0, time.Now().UnixNano())
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	defer cancel()
 	a := h.openA()
 	mustNil(t, os.Remove(transcriptOf(h.cell)))
@@ -69,7 +82,27 @@ func TestTakeBackRetiresARepliedSessionWithoutKeepingSharedWork(t *testing.T) {
 			}
 		}
 	}()
-	back, err := h.continuerA().Take(ctx, h.cell.ID)
+	// The other holder disappears without releasing; only its expired lease remains.
+	b.drive.cancel()
+	<-b.drive.done
+	h.quiet.Store(true)
+	h.clock.advance(directory.LeaseTTL + time.Millisecond)
+	continuer := h.continuerA()
+	started := time.Now()
+	firstAcquire.Store(0)
+	continuer.opt.OnPhase = func(phase handoff.Phase) {
+		if !phase.Ended.IsZero() {
+			t.Logf("%s: %s", phase.Name, phase.Ended.Sub(phase.Started))
+		}
+	}
+	back, err := continuer.Take(ctx, h.cell.ID)
+	if first := firstAcquire.Load(); first == 0 {
+		t.Error("take never reached acquire")
+	} else if elapsed := time.Unix(0, first).Sub(started); elapsed > 2*time.Second {
+		t.Errorf("first acquire took %s; want within 2s", elapsed)
+	} else {
+		t.Logf("first acquire: %s", elapsed)
+	}
 	mustNil(t, err)
 	mustNil(t, <-retired)
 	if session.InUse(transcriptOf(h.cell)) {
@@ -83,18 +116,33 @@ func TestTakeBackRetiresARepliedSessionWithoutKeepingSharedWork(t *testing.T) {
 	}
 	raw, err := os.ReadFile(transcriptOf(back.Taken.Cell))
 	mustNil(t, err)
+	file := filepath.Join(workspaceOf(back.Taken.Cell.Root), fmt.Sprintf("turn-%s-1.txt", h.cell.ID[len(h.cell.ID)-4:]))
+	if body, err := os.ReadFile(file); err != nil || string(body) != "reply after the move" {
+		t.Errorf("latest file lost: %q, %v", body, err)
+	}
 	if !strings.Contains(string(raw), "reply after the move") {
 		t.Fatal("arrived chat lost the newer reply")
 	}
 }
 
+// Contract A1 keeps unpublished local files while the newer chat continues.
 func TestTakeBackKeepsFilesSealedAfterDisplacement(t *testing.T) {
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "0")
 	h := bContinued(t)
 	ctx := context.Background()
 	mustNil(t, os.WriteFile(filepath.Join(h.work, "unsent.txt"), []byte("keep this file"), 0600))
 	_, err := h.engine.Seal(ctx, h.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
-	back, err := h.continuerA().Take(ctx, h.cell.ID)
+	continuer := h.continuerA()
+	started := time.Now()
+	continuer.opt.OnPhase = func(p handoff.Phase) {
+		if !p.Ended.IsZero() {
+			t.Logf("%s: %s", p.Name, p.Ended.Sub(p.Started))
+		} else {
+			t.Logf("first acquire after %s", p.Started.Sub(started))
+		}
+	}
+	back, err := continuer.Take(ctx, h.cell.ID)
 	mustNil(t, err)
 	if back.Taken.Kept == "" || back.KeptTurns != 1 {
 		t.Fatalf("unsent file was not kept once: %+v", back)
