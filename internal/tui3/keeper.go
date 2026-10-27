@@ -1268,7 +1268,13 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // arrived, and "you closed this conversation" and "another window took it" are
 // two different sentences to be owed (internal/session's stopcause.go).
 func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
-	return a.leaveFront(func(agent Agent) { a.endAgentFor(agent, door) }, true)
+	var leaving Agent
+	cmd, more := a.leaveFront(func(agent Agent) { leaving = agent }, true)
+	if !more || leaving == nil {
+		return cmd, more
+	}
+	a.conversationClosing = true
+	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure)), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -1374,6 +1380,12 @@ func (a *app) leaveFront(let func(Agent), say bool) (tea.Cmd, bool) {
 // serial quit would get slower the more of them somebody had open; this one
 // does not.
 func (a *app) leaveEverything() {
+	a.leavingWork()()
+}
+
+// leavingWork captures surface state before any engine work leaves the loop.
+// The returned work owns only the captured agents and thread-safe callbacks.
+func (a *app) leavingWork() func() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
 		agents = append(agents, a.agent)
@@ -1386,32 +1398,67 @@ func (a *app) leaveEverything() {
 		delete(a.behind, key)
 	}
 	a.prev = nil
-	waitRelease := a.waitForRelease != nil && a.waitForRelease()
-	var wg sync.WaitGroup
-	for _, agent := range agents {
-		wg.Add(1)
-		go func(agent Agent) {
-			defer wg.Done()
-			if waitRelease {
-				if hosted, ok := agent.(interface{ DetachAndWait() error }); ok {
-					_ = hosted.DetachAndWait()
-					return
-				}
-			}
-			leaveAgent(agent)
-		}(agent)
+	type errandClose struct {
+		agent   Agent
+		working bool
 	}
-	wg.Wait()
+	var errands []errandClose
+	for _, ex := range a.exchanges {
+		if ex != nil && !ex.filed {
+			ex.filed = true
+			errands = append(errands, errandClose{agent: ex.agent, working: ex.working})
+		}
+	}
+	a.exchanges, a.home.exchanges = nil, nil
+	waitForRelease, report := a.waitForRelease, a.saveFailure
+	return func() {
+		waitRelease := waitForRelease != nil && waitForRelease()
+		var wg sync.WaitGroup
+		for _, agent := range agents {
+			wg.Add(1)
+			go func(agent Agent) {
+				defer wg.Done()
+				if waitRelease {
+					if hosted, ok := agent.(interface{ DetachAndWait() error }); ok {
+						if err := hosted.DetachAndWait(); err != nil && report != nil {
+							report(err)
+						}
+						return
+					}
+				}
+				if err := leaveAgentError(agent); err != nil && report != nil {
+					report(err)
+				}
+			}(agent)
+		}
+		for _, ex := range errands {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if ex.working {
+					ex.agent.InterruptFor(session.StopByLeaving)
+				}
+				if err := ex.agent.Close(); err != nil && report != nil {
+					report(err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
 }
 
 // leaveAgent takes this terminal off one conversation: a detach where the work
 // outlives the window, and the ordinary interrupt-and-close where it does not.
 func leaveAgent(agent Agent) {
+	_ = leaveAgentError(agent)
+}
+
+func leaveAgentError(agent Agent) error {
 	if hosted, ok := agent.(detachable); ok {
-		_ = hosted.Detach()
-		return
+		return hosted.Detach()
 	}
-	leaveAgentFor(agent, session.StopByLeaving)
+	agent.InterruptFor(session.StopByLeaving)
+	return agent.Close()
 }
 
 // Permanent deletion closes the owner rather than detaching its view.

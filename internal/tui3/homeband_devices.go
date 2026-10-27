@@ -85,6 +85,7 @@ func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 	a.devRow.asking = false
 	if msg.err == nil {
 		a.devRow.devices = msg.devices
+		a.considerResume()
 		a.touch()
 	}
 	return a.finishBring()

@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
@@ -39,8 +40,9 @@ func wireSync(o *tui3.Options) {
 		return
 	}
 	if o.Machines == nil {
-		o.Machines = s
+		o.Machines = surfaceMachines{s}
 	}
+	o.DeviceID = s.Device.ID()
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
@@ -61,6 +63,35 @@ func wireSync(o *tui3.Options) {
 	}
 	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayHomeOnce) })
 	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayHomeOnce) })
+}
+
+// surfaceMachines keeps display hints out of the decision to send a message.
+type surfaceMachines struct{ *syncsetup.Sync }
+
+func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if s.Relay != "" {
+		current, ok, err := syncsetup.Open(s.Home)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !ok {
+			return nil, 0, nil
+		}
+		s.Sync = current
+	}
+	if s.Removed() {
+		return nil, 0, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, nil
+	}
+	l, err := s.Dir.List(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	key := directory.MetadataKey(s.Identity.CellKey())
+	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
+	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.

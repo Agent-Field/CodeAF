@@ -1088,6 +1088,6 @@ func v3RehomeLegacyMemories(brain *store.Store) {
 // closed. A bounded drain must never silently acknowledge a pending save (D3).
 func closeV3Agent(agent interface{ Close() error }) {
 	if err := agent.Close(); err != nil {
-		fmt.Fprintln(os.Stderr, "codeaf: "+err.Error())
+		recordFinalSaveFailure(err)
 	}
 }

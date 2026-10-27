@@ -29,6 +29,11 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Before showing this question for a send, codeaf checks which computer holds the chat now. An older listing alone cannot raise it. If the check cannot reach your other devices and this window already knows the chat moved away, your words stay in the box and nothing is sent. Continuing a chat this computer already holds keeps its open conversation and your typed words.
 
+The first Enter waits up to five seconds for a current reading, including in
+a freshly opened copy. `other machines unreachable` means that reading
+failed; it never means a reading has not happened yet. Your words stay unsent
+while the reading is in progress.
+
 After `continue here` succeeds, those same words, pasted text and attachments are in the arrived chat's box. Press enter again when you want to send them. Choosing `leave it there` or a move that fails also keeps the whole draft.
 
 Taking a chat from Home restores that chat's own saved draft, or leaves its box empty. Words typed for a different chat stay with that chat, even when both work in one place on disk. A draft held behind a send's continuation card stays with the chat that raised it.
@@ -62,6 +67,9 @@ alt+c continue here · alt+x not now
 - `alt+x` dismisses it for that device until you open codeaf again.
 
 The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. A device that is online and still working on the chat is never offered.
+
+Home never offers this computer's own chat as work to continue from another
+computer, even when an older record says this computer went offline.
 
 To bring work from a device that is online, use the devices row: `alt+m bring work here`. The page *Adding a device to your devices, approving it, and removing it* shows the row and the dots.
 
@@ -128,6 +136,22 @@ Taking a chat back into its original project restores that project in place. The
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
+
+Removing this computer from your devices does not change those project
+labels. Switching away and back keeps the same copy label or ordinary project
+name.
+
+## This chat is not syncing — other machines unreachable, working offline
+
+If this computer holds the chat and renewals have failed for longer than one
+renewal period, one dim line says
+`this chat is not syncing because other machines are unreachable; it keeps working here`.
+It is said once per outage.
+When renewals succeed again, one line says `this chat is syncing again`.
+
+You can keep working here while offline. If another computer continued the
+chat meanwhile, the existing `<device> continued this chat; this window now
+only shows it` notice still applies.
 
 ## Reopen a kept copy after another computer takes the chat
 

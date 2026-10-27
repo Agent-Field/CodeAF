@@ -47,6 +47,16 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	finalSaving.Lock()
+	finalSaving.surface = true
+	finalSaving.Unlock()
+	previousSaveFailure := options.SaveFailure
+	options.SaveFailure = func(err error) {
+		recordFinalSaveFailure(err)
+		if previousSaveFailure != nil {
+			previousSaveFailure(err)
+		}
+	}
 	revision := surfaceRevision()
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand

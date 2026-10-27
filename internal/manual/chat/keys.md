@@ -1,5 +1,38 @@
 # Keys, typing, and the mouse — what all the keys do
 
+## Typing while a new chat opens — /new, paste, Enter and Escape
+
+Words typed or pasted while `/new` opens belong to the new chat. Backspace
+edits those words. Enter during the opening leaves them unsent in the new
+chat's composer; press Enter after it opens to send them.
+
+Escape cancels the opening. If you typed words meanwhile, they return to the
+chat you were leaving, unsent, with
+`opening cancelled; your words are back in this chat, unsent`.
+Typing when no chat is opening works as usual.
+
+## Closing a chat when the engine is unreachable — window frozen, queued keys
+
+`/quit` closes the current chat when another chat is open. The next chat
+appears immediately while closing finishes in the background. The keyboard
+waits for that close for at most one second; keys and pastes during that wait
+are discarded, so they cannot send the next chat's draft. The window keeps
+drawing and resizing throughout.
+
+If closing fails, it says
+`this chat could not be saved; its unsaved turns stay on this computer for the next start`.
+
+A close still running after that second says
+`this chat is still finishing in the background`.
+A slow close alone does not mean saving failed.
+
+## Could not save on quit — unsaved turns on the next start
+
+If the final save fails, the restored terminal says
+`codeaf could not save this chat; unsaved turns stay on this computer and return on the next start.`
+The command exits with a failure status. This sentence stays visible after
+the full-screen chat closes, including when error output goes to a log.
+
 ## How do I make this one chat think harder — can I click the thinking level — effort keys
 
 `alt+e` walks this conversation's thinking rung; `/effort` opens the ladder and

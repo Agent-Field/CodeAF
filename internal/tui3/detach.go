@@ -240,7 +240,7 @@ func (a *app) front() Conversation {
 		SessionFile:      a.file,
 		Workspace:        a.workspace,
 		Place:            a.place,
-		Owned:            a.owned,
+		Owned:            a.owned && a.movedName == "",
 		ContextWindow:    a.ctxWindow,
 		DraftFile:        a.draftFile,
 		History:          a.history,

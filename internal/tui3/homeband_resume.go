@@ -80,6 +80,7 @@ func (r *resumeOffer) answer() {
 // resumeState is what the offer needs to know about the fleet, so the choice of
 // chat is a pure function of it.
 type resumeState struct {
+	self     string
 	rows     []chatlist.Row
 	online   []string
 	feedUp   bool
@@ -101,7 +102,7 @@ func (s resumeState) pick() *chatlist.Row {
 // offered says a row is a chat to rescue.
 func (s resumeState) offered(row chatlist.Row) bool {
 	live := row.Status == chatlist.Running || row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine)
-	return live && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
+	return live && !row.Mine && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
 // away says the chat's device has let go of it or is gone: its lease lapsed,
@@ -132,6 +133,13 @@ func (a *app) considerResume() {
 // resumeState is the fleet as the newest good listing and the feed show it.
 func (a *app) resumeState() resumeState {
 	state := resumeState{rows: a.machineRead.rows, answered: a.leftOff.answered}
+	state.self = a.deviceID
+	for _, device := range a.devRow.devices {
+		if device.Self {
+			state.self = device.ID
+			break
+		}
+	}
 	if a.dirFeed != nil {
 		st := a.dirFeed.State()
 		state.feedUp, state.online = st.Up, st.Online
@@ -228,9 +236,10 @@ func (a *app) continueAfterQuit(err error) tea.Cmd {
 		return nil
 	}
 	var best *chatlist.Row
+	self := a.resumeState().self
 	for i := range a.machineRead.rows {
 		r := &a.machineRead.rows[i]
-		if r.Status == chatlist.Idle && r.Released && !r.Mine && r.DeviceID != "" && r.ReleasedAgo >= 0 && r.ReleasedAgo <= resumeRecent && (best == nil || r.ReleasedAgo < best.ReleasedAgo) {
+		if r.Status == chatlist.Idle && r.Released && !r.Mine && r.DeviceID != "" && r.DeviceID != self && r.ReleasedAgo >= 0 && r.ReleasedAgo <= resumeRecent && (best == nil || r.ReleasedAgo < best.ReleasedAgo) {
 			best = r
 		}
 	}

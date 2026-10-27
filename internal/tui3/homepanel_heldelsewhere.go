@@ -94,7 +94,7 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
-		rows, version, err := chatlist.RowsAt(ctx, src)
+		rows, version, err := chatlist.RowsForSend(ctx, src)
 		msg := ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
 		id := filepath.Base(session.DirOf(file))
 		if local, ok := src.(sendLeaseSource); ok {

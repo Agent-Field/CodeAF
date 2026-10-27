@@ -2839,7 +2839,12 @@ type app struct {
 	// read by [app.placeWord] and [app.contextStart].
 	owned bool
 	// movedName names a chat moved here whose project is not on this machine.
-	movedName string
+	movedName           string
+	deviceID            string
+	syncOutages         map[string]bool
+	conversationClosing bool
+	quitting            bool
+	saveFailure         func(error)
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
 	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
@@ -3078,6 +3083,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               owned,
 		movedName:           movedName,
+		deviceID:            opts.DeviceID,
+		saveFailure:         opts.SaveFailure,
 		landing:             opts.Landing,
 		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
 		takeOverAt:          opts.TakeOver,
@@ -3774,6 +3781,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
 	a.takeSealNotice()
+	a.takeRenewalNotice()
 	// An explicit gesture after View replaces its pending navigation intent.
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
@@ -3788,6 +3796,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 	switch msg := msg.(type) {
+	case conversationClosedMsg:
+		a.conversationClosing = false
+		if msg.err != nil {
+			a.note(closeSaveFailedWord)
+		} else if msg.finishing {
+			a.note(closeStillFinishingWord)
+		}
+		a.touch()
+		return a, nil
 	case completionToastExpiredMsg:
 		if msg.serial == a.completionToast.serial {
 			a.dismissCompletionToast()
@@ -3909,6 +3926,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		if a.quitting || (a.conversationClosing && msg.String() != "ctrl+c") {
+			return a, nil
+		}
 		if a.cdelete.on {
 			return a, a.conversationDeleteKey(msg)
 		}
@@ -3923,6 +3943,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 			a.cancelConversationOpening()
+			if msg.String() == "esc" {
+				return a, nil
+			}
 		}
 		a.sawAPerson()
 		a.stirred()
@@ -4073,6 +4096,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			view.pasting, view.pasted, view.pasteAt = true, view.pasted[:0], a.now()
@@ -4084,6 +4110,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			if view.pasting {
@@ -4114,6 +4143,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			if view.pasting {
@@ -8877,7 +8909,7 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 		// The older seam hands back an agent alone, so the surface keeps every
 		// other seam it was holding ([app.takeUp] states this).
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
-			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned && a.movedName == "",
 			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
@@ -9023,6 +9055,10 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // conversation it is holding — ending the ones this process runs, detaching from
 // the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
+	if a.quitting {
+		return nil
+	}
+	a.quitting = true
 	if a.creditHookStop != nil {
 		a.creditHookStop()
 		a.creditHookStop = nil
@@ -9052,7 +9088,7 @@ func (a *app) quit() tea.Cmd {
 	// thing running it. The ones held behind the screen have their own drafts
 	// already on disk — written when they were left — so what is above is the
 	// only box that still needs saving.
-	a.leaveEverything()
+	leave := a.leavingWork()
 	// AND THE FILE DOOR GOES WITH THE SURFACE THAT OPENED IT. Every minted id and
 	// the browse token die here, which is the whole of the capability bargain: a
 	// URL that outlived the conversation would be a door onto somebody else's
@@ -9062,8 +9098,7 @@ func (a *app) quit() tea.Cmd {
 	// transcript; one left open by a process that has gone is a conversation
 	// nobody can reopen, and a stood one's folder would never reach the item it
 	// made (homeexchange.go's [app.fileEveryExchange]).
-	a.fileEveryExchange()
-	return tea.Quit
+	return quitAfterClosing(leave)
 }
 
 // interrupt is esc: stop the turn, keep what it said.
