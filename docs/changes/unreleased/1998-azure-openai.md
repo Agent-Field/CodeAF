@@ -1,17 +1,15 @@
 ---
 kind: added
-title: ONE LINE, NO FULL STOP, THE WAY YOU WOULD SAY IT OUT LOUD
+title: Azure OpenAI connects from AZURE_API_BASE and AZURE_API_KEY, and is spoken to in its own dialect
 pr: 1998
-# Optional. Which part of the repository this touches, so a reader can skip it.
-# One or more of: build, chat, docs, engine, remote, resident
-surface: []
-# Optional, and the reason this file exists. Every statement that WAS true and is
-# not any more, written whole: what it was, and what it is now. A model reading
-# this has to be able to check its own memory against it, so "branch names" is
-# useless and "the trunk was chat-v3-task and no longer exists; work goes to dev"
-# is the whole point. Leave the list empty if nothing anybody believed changed.
-invalidates: []
+surface: [chat, engine, docs]
+invalidates:
+  - "Every request to every service carried `Authorization: Bearer`, the router's `reasoning` object and `usage: {include: true}`, so an Azure OpenAI resource or gateway answered 401 or 400 to all of them and could not be used, not even as a custom endpoint. With `AZURE_API_BASE` and `AZURE_API_KEY` set, an `azure` service is connected at `$AZURE_API_BASE/openai/v1`; its key travels as `api-key`, and its requests carry `reasoning_effort` and `max_completion_tokens` and no `usage` opt-in."
+  - "Every connected service came from a persisted `model_sources` row written by `/connect`. The `azure` service is the exception: it comes from the environment alone, has no `/connect` row, and is gone when either variable is unset."
+  - "`max_completion_tokens` replaced `max_tokens` only on an openai.com, openai.azure.com or openrouter.ai address. It now also does so on any service whose `modelsource.Source` sets `OpenAIDialect`, whatever its host."
 ---
 
-Optional. A paragraph on WHY, if the title does not already carry it. Delete this
-line if it does.
+A gateway in front of Azure carries its owner's hostname, so the key header and
+the dialect are data on the service (`KeyHeader`, `OpenAIDialect`) and never
+read off the address. The crew reaches the service only by a pin, because its
+models are deployment names no catalog carries.
