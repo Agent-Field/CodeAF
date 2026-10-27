@@ -1,10 +1,17 @@
 package serve
 
 import (
+	"errors"
 	"net/http"
+	"reflect"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
+
+// errRulesMoved refuses a write whose reader's copy is no longer what the
+// factory keeps.
+var errRulesMoved = errors.New("the factory's rules changed since they were read")
 
 // houseRulesBody is the whole PUT /v1/rules body. EVERY LIST IS REQUIRED, so a
 // client that meant to change one list and sent only that one cannot wipe the
@@ -20,6 +27,10 @@ type houseRulesBody struct {
 	// factory has.
 	StartOnItsOwn *bool     `json:"start_on_its_own"`
 	StartLabels   *[]string `json:"start_labels"`
+	// Expect is the rules as the writer last read them. When it is sent and
+	// the factory keeps anything else, NOTHING IS WRITTEN: two views that
+	// each read the rules cannot quietly undo each other's change.
+	Expect *factory.HouseRules `json:"expect"`
 }
 
 // houseRules answers and replaces the factory's own rules
@@ -28,7 +39,8 @@ type houseRulesBody struct {
 // work on it. On a solo factory the one person is its operator.
 //
 // A PUT replaces all three lists at once and answers what was saved, cleaned
-// (trimmed, repeats dropped). Every refusal before the save carries the phase
+// (trimmed, repeats dropped). One that sends `expect` is refused with 409 when
+// the rules changed after the writer read them. Every refusal before the save carries the phase
 // marker (phase.go), so a client knows it changed nothing.
 func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.config.Store != nil) {
@@ -67,8 +79,20 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	var expect *factory.HouseRules
+	if body.Expect != nil {
+		clean, err := body.Expect.Clean()
+		if err != nil {
+			h.fail(w, http.StatusUnprocessableEntity, "expect: "+err.Error())
+			return
+		}
+		expect = &clean
+	}
 	clearPhase(w)
 	saved, err := h.config.Store.ChangeHouseRules(func(cur *factory.HouseRules) error {
+		if expect != nil && !reflect.DeepEqual(*expect, *cur) {
+			return errRulesMoved
+		}
 		was := *cur
 		*cur = next
 		if body.Adapt == nil {
@@ -82,6 +106,12 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+	if errors.Is(err, errRulesMoved) {
+		// Refused before anything was written: again a proven no-write.
+		w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
+		h.fail(w, http.StatusConflict, errRulesMoved.Error()+"; read them again, then make the change")
+		return
+	}
 	if h.failed(w, err) {
 		return
 	}

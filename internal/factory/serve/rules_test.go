@@ -101,3 +101,28 @@ func TestFactoryRulesRouteKeepsStartOnItsOwnUnlessItIsSent(t *testing.T) {
 		t.Fatalf("turning it off kept %#v", got)
 	}
 }
+
+// A WRITE THAT SAYS WHAT IT READ IS REFUSED WHEN THE RULES MOVED: two views of
+// the rules cannot undo each other's change. The refusal is 409 with the phase
+// marker and writes nothing; a write whose expect matches is saved.
+func TestFactoryRulesRouteRefusesAWriteFromAStaleRead(t *testing.T) {
+	f := peopleV2Setup(t, "team")
+	var read factory.HouseRules
+	f.request(t, "GET", "/v1/rules", "operator-secret", nil, 200, &read)
+	var saved factory.HouseRules
+	f.request(t, "PUT", "/v1/rules", "operator-secret", map[string]any{"rules": []string{"first"}, "ask_first": []string{}, "never": []string{}, "start_on_its_own": true, "expect": read}, 200, &saved)
+	stale := map[string]any{"rules": []string{}, "ask_first": []string{}, "never": []string{}, "adapt": "ask", "expect": read}
+	w := identityRequest(f.h, "PUT", "/v1/rules", rulesBody(t, stale), "operator-secret", nil)
+	if w.Code != 409 || w.Header().Get(api.PhaseHeader) != api.PhasePreMutation {
+		t.Fatalf("a stale write answered %d with phase %q: %s", w.Code, w.Header().Get(api.PhaseHeader), w.Body)
+	}
+	if now, _ := f.st.HouseRules(); !reflect.DeepEqual(now, saved) {
+		t.Fatalf("a stale write changed the rules: %#v", now)
+	}
+	stale["expect"] = saved
+	var got factory.HouseRules
+	f.request(t, "PUT", "/v1/rules", "operator-secret", stale, 200, &got)
+	if got.Adapt != factory.AdaptAsk || !got.StartOnItsOwn {
+		t.Fatalf("a fresh write saved %#v", got)
+	}
+}

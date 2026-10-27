@@ -1,10 +1,16 @@
 package pipeline
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+// ErrHouseRulesUnread marks a read whose factory rules could not be read, as
+// against one whose repository file could not: a start may go on with the
+// defaults for a broken repository file, never without the factory's rules.
+var ErrHouseRulesUnread = errors.New("the factory's own rules could not be read")
 
 // WithHouseRules adds the factory's own rules ([factory.HouseRules]) to one
 // repository's read, the way a personal file tightens it: its rules join the
@@ -57,9 +63,23 @@ func StartRulesOf(f File) *factory.StartRules {
 // ask-first path rule (`touch auth/`, `touches auth/`, `path: auth/`) or never
 // path a planned file matches, by the same matcher a start uses, or "" when
 // none does. A sentence rule that names no path is judged before a start, not
-// here: a plan's files can only answer a question about paths.
+// here: a plan's files can only answer a question about paths. A plan that
+// names no files, under a path rule, is held too.
 func PlanHold(rules *factory.StartRules, files []string) string {
-	if rules == nil || len(files) == 0 {
+	if rules == nil {
+		return ""
+	}
+	// A PLAN WHOSE FILES ARE UNKNOWN CANNOT CLEAR A PATH RULE: with one in
+	// force, a plan that declared no list (or an ambiguous one) is a person's.
+	if len(files) == 0 {
+		if len(rules.Never) > 0 {
+			return "ask first · the plan names no files"
+		}
+		for _, rule := range rules.AskFirst {
+			if askFirstPath(rule) != "" {
+				return "ask first · the plan names no files"
+			}
+		}
 		return ""
 	}
 	for _, rule := range rules.AskFirst {
@@ -83,12 +103,14 @@ func PlanHold(rules *factory.StartRules, files []string) string {
 	return ""
 }
 
-// askFirstPath is the path an ask-first rule names, or "" for a sentence.
+// askFirstPath is the path an ask-first rule names, or "" for a sentence. Only
+// the prefix is read without case: the path keeps the case it was written in,
+// because a path is matched as written (`touch src/Auth/` guards src/Auth/).
 func askFirstPath(rule string) string {
-	words := strings.ToLower(strings.TrimSpace(rule))
+	words := strings.TrimSpace(rule)
 	for _, prefix := range []string{"touches ", "touch ", "path:"} {
-		if rest, ok := strings.CutPrefix(words, prefix); ok {
-			return strings.TrimSpace(rest)
+		if len(words) >= len(prefix) && strings.EqualFold(words[:len(prefix)], prefix) {
+			return strings.TrimSpace(words[len(prefix):])
 		}
 	}
 	return ""

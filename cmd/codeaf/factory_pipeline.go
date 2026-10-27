@@ -153,10 +153,7 @@ func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipelin
 	}
 	house, herr := st.HouseRules()
 	if herr != nil {
-		if err == nil {
-			err = herr
-		}
-		return f, err
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, herr)
 	}
 	return pipeline.WithHouseRules(f, house), err
 }

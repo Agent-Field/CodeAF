@@ -256,6 +256,8 @@ decides which combinations are accepted.
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.rules` | `in.FactoryRef` | `FactoryRules` |
+| `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |

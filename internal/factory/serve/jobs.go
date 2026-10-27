@@ -102,11 +102,15 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		}
 		// THE RULES A JOB STARTS UNDER GO WITH IT: the repository's ask-first
 		// and never lines with the factory's own, so the approval after its
-		// plan is checked against them on whichever machine runs it.
+		// plan is checked against them on whichever machine runs it. A
+		// repository file that cannot be read leaves the defaults with the
+		// factory's rules, as a start always had; only the factory's own
+		// rules unread refuse it.
 		var rules *factory.StartRules
 		if h.config.Pipeline != nil && !queued {
 			f, err := h.config.Pipeline(r.Context(), itemRepo(cur), "")
-			if h.failed(w, err) {
+			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
+				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
 				return
 			}
 			rules = pipeline.StartRulesOf(f)

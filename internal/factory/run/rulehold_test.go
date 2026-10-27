@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -28,10 +29,30 @@ func TestAPlanTouchingAGuardedPathHoldsItsApproval(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	served, err := g.st.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
 	it := g.asked(id, "plan is ready · continue, or send it back?")
+	// THE SERVING FACTORY HOLDS IT TOO: a worker runs on a mirror and only its
+	// report reaches the server, which works the hold out from what it holds.
+	served.State = factory.StateRunning
+	report, ok := Diff(served, it)
+	if !ok {
+		t.Fatal("the plan's question made no report")
+	}
+	if err := ApplyReport(&served, report, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if served.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
+		t.Fatalf("the server's copy holds %q", served.RuleHold)
+	}
+	if why := factory.AutonomyBlockReason(served); !strings.Contains(why, "touch auth/") {
+		t.Fatalf("the server's Auto would pass it: %q", why)
+	}
 	if it.RuleHold != "ask first · touch auth/ · internal/auth/login.go" {
 		t.Fatalf("hold %q", it.RuleHold)
 	}

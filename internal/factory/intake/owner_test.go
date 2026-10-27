@@ -16,7 +16,8 @@ import (
 // A JOB A START RULE STARTS IS THE FACTORY OWNER'S: with nobody on it, it
 // starts with the owner as its person, so Auto no longer stops at "A job owner
 // is required"; a job that already has a person keeps them; and one a rule
-// holds for approval waits on the owner too.
+// holds for approval stays nobody's, so any teammate who could approve it
+// still can.
 func TestARuleStartedJobBelongsToTheFactoryOwner(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -66,7 +67,7 @@ func TestARuleStartedJobBelongsToTheFactoryOwner(t *testing.T) {
 	if got, _ := st.Get(someone.ID); got.Person() != "priya" {
 		t.Fatalf("an assigned job changed hands to %q", got.Person())
 	}
-	if got, _ := st.Get(held.ID); got.QKind != factory.QKindAskFirst || got.Person() != "owner" {
+	if got, _ := st.Get(held.ID); got.QKind != factory.QKindAskFirst || got.Person() != "" {
 		t.Fatalf("a held job: kind %q, person %q", got.QKind, got.Person())
 	}
 }

@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"strings"
 )
 
 // DecideJob applies the v2 intake rules to explicit job facts. No AI estimate,
@@ -32,14 +31,7 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 		reasons = append(reasons, why)
 	}
 	for _, rule := range f.Start.AskFirst {
-		words := strings.TrimSpace(rule)
-		glob := ""
-		for _, prefix := range []string{"touches ", "touch ", "path:"} {
-			if rest, ok := strings.CutPrefix(strings.ToLower(words), prefix); ok {
-				glob = strings.TrimSpace(rest)
-				break
-			}
-		}
+		glob := askFirstPath(rule)
 		if glob == "" {
 			reasons = append(reasons, "ask first · "+rule)
 			continue

@@ -57,8 +57,19 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 	if got := PlanHold(rules, []string{"cmd/main.go"}); got != "" {
 		t.Errorf("an unguarded plan was held: %q", got)
 	}
-	if PlanHold(nil, []string{"internal/auth/login.go"}) != "" || PlanHold(rules, nil) != "" {
-		t.Error("a job with no rules or a plan with no files was held")
+	if PlanHold(nil, []string{"internal/auth/login.go"}) != "" {
+		t.Error("a job with no rules was held")
+	}
+	if got := PlanHold(rules, nil); got != "ask first · the plan names no files" {
+		t.Errorf("a plan with unknown files under a path rule held as %q", got)
+	}
+	if got := PlanHold(&factory.StartRules{AskFirst: []string{"don't touch auth without checking with me"}, Never: []string{}}, nil); got != "" {
+		t.Errorf("a plan with unknown files under only a sentence rule held as %q", got)
+	}
+	// A PATH KEEPS ITS CASE: only the prefix is read without it.
+	upper := &factory.StartRules{AskFirst: []string{"Touch src/Auth/"}, Never: []string{}}
+	if got := PlanHold(upper, []string{"src/Auth/login.go"}); got != "ask first · Touch src/Auth/ · src/Auth/login.go" {
+		t.Errorf("a capitalised path held as %q", got)
 	}
 	f := WithHouseRules(Defaults(), factory.HouseRules{AskFirst: []string{"touch auth/"}})
 	if got := StartRulesOf(f); !reflect.DeepEqual(got.AskFirst, []string{"touch auth/"}) || got.Never == nil {

@@ -101,8 +101,11 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 	if !decision.Start && !decision.Ask {
 		return nil
 	}
+	// ONLY A JOB THE RULES START IS THE OWNER'S. One they hold waits for
+	// whoever approves it: owning it would shut out a teammate who could
+	// approve it before.
 	owner := ""
-	if it.Person() == "" && in.opts.Owner != nil {
+	if decision.Start && it.Person() == "" && in.opts.Owner != nil {
 		owner = factory.NormalizeHandle(in.opts.Owner(ctx))
 	}
 	own := func(cur *factory.Item) {
@@ -119,7 +122,6 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
-			own(cur)
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}

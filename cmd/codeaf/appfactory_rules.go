@@ -63,13 +63,14 @@ func (b *appBackend) FactoryRulesSet(ctx context.Context, p appwire.FactoryRules
 	// THE ADAPT WORD IS SENT ONLY WHEN IT WAS ASKED, "" included: omitted, the
 	// factory keeps its word as it is.
 	body := struct {
-		Rules    []string  `json:"rules"`
-		AskFirst []string  `json:"ask_first"`
-		Never    []string  `json:"never"`
-		Adapt    *string   `json:"adapt,omitempty"`
-		Start    *bool     `json:"start_on_its_own,omitempty"`
-		Labels   *[]string `json:"start_labels,omitempty"`
-	}{clean.Rules, clean.AskFirst, clean.Never, p.Adapt, p.StartOnItsOwn, nil}
+		Rules    []string            `json:"rules"`
+		AskFirst []string            `json:"ask_first"`
+		Never    []string            `json:"never"`
+		Adapt    *string             `json:"adapt,omitempty"`
+		Start    *bool               `json:"start_on_its_own,omitempty"`
+		Labels   *[]string           `json:"start_labels,omitempty"`
+		Expect   *factory.HouseRules `json:"expect,omitempty"`
+	}{clean.Rules, clean.AskFirst, clean.Never, p.Adapt, p.StartOnItsOwn, nil, p.Expect}
 	if p.StartLabels != nil {
 		labels := append([]string{}, clean.StartLabels...)
 		body.Labels = &labels
@@ -85,6 +86,9 @@ func (b *appBackend) FactoryRulesSet(ctx context.Context, p appwire.FactoryRules
 		return none, appwire.Errorf(appwire.CodeUncertain, "the sign-in changed while this was saving, and the result is not known; read the rules before trying again")
 	}
 	if r.provedNoWrite() {
+		if r.status == http.StatusConflict {
+			return none, appwire.Errorf(appwire.CodeStale, "the factory's rules changed since they were read; nothing was changed")
+		}
 		return none, linkRefusal(r, "the factory refused these rules")
 	}
 	if r.status != http.StatusOK {

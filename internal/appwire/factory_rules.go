@@ -16,8 +16,9 @@ import (
 // it never starts on by itself. A repository's own rules stay in its
 // `.codeaf/factory.yaml`; these only ever ADD to them.
 //
-// factory.rules_set PARAMS ARE EXACTLY {factory, rules, ask_first, never}, and
-// all three lists are required: an omitted list is bad_params, never read as
+// factory.rules_set PARAMS ARE {factory, rules, ask_first, never}, the
+// optional settings, and `expect`, the rules as last read. All three lists are
+// required: an omitted list is bad_params, never read as
 // empty, so a caller that meant to change one list cannot wipe the others. The
 // lines are checked here as the factory checks them (one line each, bounded),
 // so a request it would refuse is refused before anything is sent.
@@ -53,6 +54,10 @@ type FactoryRulesSetParams struct {
 	// omitted keeps the factory's setting.
 	StartOnItsOwn *bool     `json:"start_on_its_own,omitempty"`
 	StartLabels   *[]string `json:"start_labels,omitempty"`
+	// Expect is the rules as the caller last read them (factory.rules). Sent,
+	// a factory that keeps anything else changes nothing and the call is
+	// [CodeStale]: read the rules again, then make the change.
+	Expect *factory.HouseRules `json:"expect,omitempty"`
 }
 
 // FactoryRulesKeeper is the engine's half of factory.rules and
@@ -95,6 +100,13 @@ func CheckRulesSet(p FactoryRulesSetParams) (FactoryRulesSetParams, factory.Hous
 	clean, err := rules.Clean()
 	if err != nil {
 		return p, factory.HouseRules{}, Errorf(CodeBadParams, "%s", err.Error())
+	}
+	if p.Expect != nil {
+		expect, err := p.Expect.Clean()
+		if err != nil {
+			return p, factory.HouseRules{}, Errorf(CodeBadParams, "expect: %s", err.Error())
+		}
+		p.Expect = &expect
 	}
 	return p, clean, nil
 }

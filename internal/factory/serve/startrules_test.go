@@ -1,10 +1,16 @@
 package serve_test
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
 // A PERSON'S START STAMPS THE RULES THE JOB STARTS UNDER: the repository's
@@ -33,5 +39,39 @@ func TestAStartStampsTheRulesTheJobStartsUnder(t *testing.T) {
 	}
 	if cur.House == nil || !reflect.DeepEqual(cur.House.Rules, []string{"no new dependencies without asking"}) {
 		t.Fatalf("house rules %#v", cur.House)
+	}
+}
+
+// A REPOSITORY FILE THAT CANNOT BE READ DOES NOT STOP A PERSON'S START: the
+// read's defaults, with the factory's rules, go on the job. Only the factory's
+// own rules unread refuse it, in plain words.
+func TestAStartGoesOnWhenOnlyTheRepositoryFileIsUnread(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	unread := errors.New(".codeaf/factory.yaml: github is not connected")
+	f.cfg.Pipeline = func(context.Context, string, string) (pipeline.File, error) {
+		p := pipeline.Defaults()
+		p.Start.AskFirst = []string{"touch auth/"}
+		return p, unread
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Cap: 3})
+	f.post(t, it, "run", "", 200)
+	cur, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur.StartRules == nil || !reflect.DeepEqual(cur.StartRules.AskFirst, []string{"touch auth/"}) {
+		t.Fatalf("start rules %#v", cur.StartRules)
+	}
+	f.h.Close()
+	f.cfg.Pipeline = func(context.Context, string, string) (pipeline.File, error) {
+		return pipeline.Defaults(), fmt.Errorf("%w: disk", pipeline.ErrHouseRulesUnread)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	other := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Cap: 3, Num: 2})
+	w := f.post(t, other, "run", "", 503)
+	if !strings.Contains(w.Body.String(), "factory's own rules could not be read") {
+		t.Fatalf("refusal %s", w.Body.String())
 	}
 }
