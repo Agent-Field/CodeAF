@@ -125,6 +125,8 @@ type EditOp struct {
 	Fixed   *bool
 	MaxSize *string
 	MaxCost *float64
+	// Who belongs to set_approver, with Name.
+	Who *string
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -132,8 +134,10 @@ type EditOp struct {
 // step whose kind is check, gate or post, and any name the file lists under fixed. InFile is false for a step the file does not
 // define itself, whose wording is a shipped default.
 type StepView struct {
-	Name   string
-	Gate   bool
+	Name string
+	Gate bool
+	// Who is who a person step waits on; "" the job's person.
+	Who    string
 	Prompt string
 	Kind   string
 	When   string
@@ -353,15 +357,16 @@ func runtimeDrops(f File) []string {
 // readable and are written back as they were; until a preview carries the
 // kind, they are changed in the file itself.
 func lockedStep(f File, name string) bool {
-	return factory.ApproveWord(name) || listed(f.Fixed, name) || f.Steps[name].Kind != ""
+	k := f.Steps[name].Kind
+	return factory.ApproveWord(name) || listed(f.Fixed, name) || (k != "" && k != string(factory.StageCheck))
 }
 
 func stepView(f File, name string) StepView {
 	if factory.ApproveWord(name) {
-		return StepView{Name: name, Gate: true, Locked: true, InFile: true}
+		return StepView{Name: name, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
 	}
 	s := f.Steps[name]
-	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout,
+	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
 		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
 		InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
@@ -526,7 +531,7 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return st.setStep(i, op)
 	case OpSetList:
 		return st.setList(i, op)
-	case OpSetAdapt, OpSetFixed, OpSetStart:
+	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
 		return st.settings(i, op)
 	}
 	return st.structure(i, op)
@@ -544,8 +549,20 @@ func (st *editState) setStep(i int, op EditOp) *EditError {
 	if !st.inPipeline[op.Name] {
 		return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
 	}
-	if k := st.base.Steps[op.Name].Kind; k != "" && !factory.ApproveWord(op.Name) {
+	k := st.base.Steps[op.Name].Kind
+	if k != "" && k != string(factory.StageCheck) && !factory.ApproveWord(op.Name) {
 		return refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
+	}
+	// A CHECK'S PROMPT IS ITS COMMAND, edited like any prompt; it keeps its kind.
+	if k == string(factory.StageCheck) {
+		if op.Kind != nil && *op.Kind != k {
+			return refuseEdit(EditLocked, i, "%s is a check; a step's kind is changed only in the file itself", op.Name)
+		}
+		check := op
+		check.Kind = &k
+		if bad := checkCheckWords(i, check); bad != nil {
+			return bad
+		}
 	}
 	if lockedStep(st.base, op.Name) {
 		return refuseEdit(EditLocked, i, "%s is locked and cannot be edited", op.Name)
@@ -663,7 +680,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size or max_cost", op.Op)
 	}
 	switch op.Op {
-	case OpSetAdapt, OpSetFixed, OpSetStart:
+	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
 		return checkSettings(i, op)
 	case OpSetList:
 		return checkSetList(i, op)
@@ -674,7 +691,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed and set_start")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start and set_approver")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)

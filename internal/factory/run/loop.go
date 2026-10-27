@@ -1153,10 +1153,68 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
 			continue
 		}
+		// A FAILING CHECK SENDS THE WORK BACK TO THE CHAT BEFORE IT: running the
+		// same command again would fail the same way, so the conversation that
+		// made the change gets the failure and another round, and the check runs
+		// after it. The check keeps its own count; once its max is spent the
+		// person is asked, above.
+		if kindOf(st) == factory.StageCheck {
+			if prev := lp.chatBefore(c, i); prev >= 0 {
+				return lp.checkBack(c, i, prev, round, checkFailure(st, res))
+			}
+		}
 		lp.say(c, "fail", fmt.Sprintf("%s %d/%d: %s · going again", name, round, limit, shortfall(res)))
 		round++
 	}
 }
+
+// chatBefore is the finished conversation step a failing check at i sends
+// its work back to: the last finished step before it, when that is a chat;
+// -1 otherwise (a check first in its pipeline, or one after another check).
+func (lp *floorLoop) chatBefore(c *loopCtl, i int) int {
+	cur, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || cur.Stream == nil {
+		return -1
+	}
+	prev := factory.PreviousWork(cur.Stream.Phases, i)
+	if prev < 0 {
+		return -1
+	}
+	if k := cur.Stream.Phases[prev].Kind; k != "" && k != factory.StageChat {
+		return -1
+	}
+	return prev
+}
+
+// checkBack is [floorLoop.back] for a failing check: the chat at prev runs
+// again with the failure as its note, and the check's next run is its next
+// round, so its max bounds how often the work goes round.
+func (lp *floorLoop) checkBack(c *loopCtl, i, prev, round int, words string) bool {
+	if lp.write(c, func(it *factory.Item) error {
+		it.Stream.Phases[i].Round = round + 1
+		return nil
+	}) != nil {
+		return false
+	}
+	return lp.back(c, i, prev, words)
+}
+
+// checkFailure is what a failing check tells the chat it sends back to: the
+// command, how it ended, and the last of what it printed.
+func checkFailure(st factory.Stage, res factory.StageResult) string {
+	out := strings.TrimSpace(res.Output)
+	if lines := strings.Split(out, "\n"); len(lines) > checkBackLines {
+		out = strings.Join(lines[len(lines)-checkBackLines:], "\n")
+	}
+	head := fmt.Sprintf("the check `%s` failed (%s)", strings.TrimSpace(st.Ask), shortfall(res))
+	if out == "" {
+		return head + "; make it pass"
+	}
+	return head + "; make it pass. Its output ended:\n" + out
+}
+
+// checkBackLines is how much of a failing check's output goes back with it.
+const checkBackLines = 20
 
 // stepShort is what the person reads about a step that ended without its
 // until holding: the note the step keeps, and why, "" when the note says it.

@@ -152,11 +152,12 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Why: body.Why, By: factory.ByYou}
 	for _, addition := range body.Add {
 		d := addition.Step
-		if d.Max != 0 || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" {
-			h.fail(w, 422, "new steps accept name, kind, ask, until and effort")
+		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
+		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" {
+			h.fail(w, 422, "new steps accept name, kind, ask, until and effort, and a check its max")
 			return
 		}
-		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Effort: d.Effort, On: true}, After: addition.After})
+		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Effort: d.Effort, Max: d.Max, On: true}, After: addition.After})
 	}
 	var updated factory.Item
 	var lines []string

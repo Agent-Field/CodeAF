@@ -40,8 +40,8 @@ import (
 //
 // WHAT AN EDIT CAN SAY is deliberately the factory's bounded edit language and
 // no more: reword a step's ask, set its thinking, switch steps on or off, and
-// add a step with only a name, kind, ask, until and effort, optionally after
-// another step. It cannot reorder or remove a step, cannot change a step's kind
+// add a step with only a name, kind, ask, until and effort (and a check its
+// max), optionally after another step. It cannot reorder or remove a step, cannot change a step's kind
 // or its max, when, fanout, proof or model, and cannot name a path. A part the
 // language lacks is `bad_params` (a field this wire does not carry is refused,
 // not ignored).
@@ -54,6 +54,11 @@ import (
 // factory.job_step_edits_read and factory.job_step_edit.
 const FeatureFactoryJobStepEdit = "factory.job_step_edit"
 
+// FeatureFactoryJobStepEditChecks is announced beside FeatureFactoryJobStepEdit
+// when this engine carries a check (kind check, with a max) in an added step.
+// The factory still decides: it takes one only from the job's person.
+const FeatureFactoryJobStepEditChecks = "factory.job_step_edit_checks"
+
 // FactoryJobStepEditsParams names the job whose steps are read.
 type FactoryJobStepEditsParams struct {
 	Factory string `json:"factory"`
@@ -65,12 +70,16 @@ type FactoryJobStepEditsParams struct {
 // field of a step.
 type FactoryNewStep struct {
 	Name string `json:"name,omitempty"`
-	// Kind is empty or chat (a conversation), or gate (a step the person
-	// approves). Any other kind is refused by the factory.
-	Kind   string `json:"kind,omitempty" enum:"chat,gate"`
+	// Kind is empty or chat (a conversation), gate (a step the person
+	// approves) or check (Ask is a shell command run in the job's checkout;
+	// its exit code is the evidence). Any other kind is refused by the factory,
+	// which also refuses a check from anyone but the job's person.
+	Kind   string `json:"kind,omitempty" enum:"chat,gate,check"`
 	Ask    string `json:"ask,omitempty"`
 	Until  string `json:"until,omitempty"`
 	Effort string `json:"effort,omitempty" enum:"cheap,strong"`
+	// Max is a check's rounds, 1 to 9; any other step takes none.
+	Max int `json:"max,omitempty"`
 }
 
 // FactoryStepAddition is one step to add, optionally after a named step.
@@ -144,6 +153,7 @@ func withFactoryJobStepEditFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryJobStepEditor); ok {
 		hello = withFeature(hello, FeatureFactoryJobStepEdit)
+		hello = withFeature(hello, FeatureFactoryJobStepEditChecks)
 	}
 	return hello
 }
@@ -341,9 +351,15 @@ func checkNewStep(a *FactoryStepAddition) error {
 		}
 	}
 	switch st.Kind = strings.TrimSpace(st.Kind); st.Kind {
-	case "", string(factory.StageChat), string(factory.StageGate):
+	case "", string(factory.StageChat), string(factory.StageGate), string(factory.StageCheck):
 	default:
-		return Errorf(CodeBadParams, "a step added to a job is a conversation (chat) or an approval (gate)")
+		return Errorf(CodeBadParams, "a step added to a job is a conversation (chat), an approval (gate) or a check")
+	}
+	if st.Kind != string(factory.StageCheck) && st.Max != 0 {
+		return Errorf(CodeBadParams, "only a check says its rounds")
+	}
+	if st.Max < 0 || st.Max > factory.CheckRoundsMost {
+		return Errorf(CodeBadParams, "a check runs from 1 to %d rounds", factory.CheckRoundsMost)
 	}
 	if st.Ask, err = stepWords("ask", st.Ask, factory.AskMost); err != nil {
 		return err

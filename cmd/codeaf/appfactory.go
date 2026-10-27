@@ -759,6 +759,16 @@ func (b *appBackend) PipelineRulesEdits() {}
 // announce factory.pipeline_edit_settings.
 func (b *appBackend) PipelineSettingsEdits() {}
 
+// PipelineCheckEdits marks this backend as one whose preview applies an
+// add_step of kind check, which is what lets hello announce
+// factory.pipeline_edit_checks.
+func (b *appBackend) PipelineCheckEdits() {}
+
+// PipelineApproverEdits marks this backend as one whose preview applies
+// set_approver, which is what lets hello announce
+// factory.pipeline_edit_approvers.
+func (b *appBackend) PipelineApproverEdits() {}
+
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,

@@ -363,7 +363,7 @@ func TestLegacyPreviewAndPRAreUnchangedWithoutAttestation(t *testing.T) {
 	}
 }
 
-func TestAttestedRuntimeBaseKeepsItsWordsAndLocksNonChatSteps(t *testing.T) {
+func TestAttestedRuntimeBaseKeepsItsWordsAndEditsACheckAsACommand(t *testing.T) {
 	w := newGuardWire(t)
 	w.attest(t, runtimeSourceFile)
 	got, err := w.previewAt(prBaseSHA, runtimeSourceFile, promptEdit("plan", "plan better"))
@@ -375,13 +375,10 @@ func TestAttestedRuntimeBaseKeepsItsWordsAndLocksNonChatSteps(t *testing.T) {
 			t.Fatalf("lost %q:\n%s", word, got.Text)
 		}
 	}
-	_, err = w.previewAt(prBaseSHA, runtimeSourceFile, promptEdit("test", "go vet"))
-	var we *appwire.Error
-	if !errors.As(err, &we) {
-		t.Fatalf("%v", err)
-	}
-	if d, ok := we.Detail.(appwire.FactoryPipelineEditRefusal); !ok || d.Code != "locked" {
-		t.Fatalf("%+v", we.Detail)
+	// A CHECK'S COMMAND IS EDITED LIKE A PROMPT, and it stays a check.
+	got, err = w.previewAt(prBaseSHA, runtimeSourceFile, promptEdit("test", "go vet ./..."))
+	if err != nil || !got.Changed || !strings.Contains(got.Text, "kind: check") || !strings.Contains(got.Text, "go vet ./...") {
+		t.Fatalf("%+v %v", got, err)
 	}
 }
 

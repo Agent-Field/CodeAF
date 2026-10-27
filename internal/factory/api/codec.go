@@ -189,6 +189,9 @@ func needsYou(it factory.Item) *NeedsYou {
 		return nil
 	}
 	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
+	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
+		ny.WhoCanAnswer, ny.Approver = factory.WhoApprover, who
+	}
 	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
 		ny.Question = needsQuestion(it)
 	}
@@ -275,6 +278,17 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	owner := person == "" || person == factory.NormalizeHandle(caller)
 	approval := factory.JobApproval(it)
 	approve := approval != nil && approval.State == "waiting" && person != "" && person == factory.NormalizeHandle(caller)
+	// AN APPROVAL THAT NAMES WHO IT WAITS ON IS THEIRS, the job's person's no
+	// longer (factory.MayApprove). The operator role is the serving factory's
+	// to grant; a caller here is not known to be one.
+	named := factory.WaitingApprover(it) != ""
+	if named {
+		approve = approval != nil && approval.State == "waiting" && factory.NormalizeHandle(caller) != "" && factory.MayApprove(it, caller, false)
+	}
+	answer := a.Answer
+	if named && it.QKind == factory.QKindApprove {
+		answer = factory.NormalizeHandle(caller) != "" && factory.MayApprove(it, caller, false)
+	}
 	state := factory.JobState(it)
 	// A RUN THAT ALREADY ENDED HAS NOTHING TO STOP, so a failed or stopped
 	// job offers no Stop beside its Run again ([factory.UnderWay]).
@@ -293,10 +307,27 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner,
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
 		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
-		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
-		RejectPlan: a.Answer && planSendsBack(it),
+		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
+		RejectPlan: answer && planSendsBack(it),
 		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 		Restore:    owner && factory.JobDoneHow(it) == "dropped",
+	}
+}
+
+// AsOperator grants what an approval that waits on the factory's operators
+// lets an operator do: approve it, and answer it when it is a question. Only
+// the serving factory knows a caller is an operator, so it applies this after
+// [CanFor]; nothing else changes.
+func AsOperator(can *Can, it factory.Item, caller string) {
+	if factory.WaitingApprover(it) != factory.ApproverOperator || factory.NormalizeHandle(caller) == "" {
+		return
+	}
+	if a := factory.JobApproval(it); a != nil && a.State == "waiting" {
+		can.Approve = true
+	}
+	if it.QKind == factory.QKindApprove {
+		can.Answer = true
+		can.RejectPlan = planSendsBack(it)
 	}
 }
 
@@ -656,12 +687,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 
 func fromStage(s factory.Stage) StepDef {
 	return StepDef{Name: s.Name, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
-		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By}
+		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
 	return factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
-		On: !d.Off, When: d.When, Effort: d.Effort, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By}
+		On: !d.Off, When: d.When, Effort: d.Effort, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 
 // stockNames are the step names the default pipeline spells for any kind; a

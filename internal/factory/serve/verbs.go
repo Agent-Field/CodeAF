@@ -108,6 +108,9 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	}
 	job := h.withVersion(api.FromItem(updated))
 	job.Can = api.CanFor(updated, me, h.clock())
+	if h.mode() != api.FactorySolo && h.isOperator(r) {
+		api.AsOperator(&job.Can, updated, me)
+	}
 	h.presentJob(r, &job)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
@@ -146,6 +149,9 @@ func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}
 	job := h.withVersion(api.FromItem(updated))
 	job.Can = api.CanFor(updated, me, h.clock())
+	if h.mode() != api.FactorySolo && h.isOperator(r) {
+		api.AsOperator(&job.Can, updated, me)
+	}
 	h.presentJob(r, &job)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
@@ -346,6 +352,9 @@ func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.I
 	if h.mode() == api.FactorySolo {
 		return true
 	}
+	if factory.WaitingApprover(it) != "" {
+		return h.approves(w, r, it)
+	}
 	if !factory.JobPersonOnly(factory.NeedsKind(it)) {
 		return true
 	}
@@ -363,6 +372,35 @@ func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.I
 	h.writeRefusal(w, http.StatusForbidden, refusalBody{
 		Error: "only @" + who + " can answer this", Reason: factory.ReasonNotJobPerson,
 		By: "@" + who, JobPerson: "@" + who, NowState: h.withVersion(api.FromItem(it)).State,
+	})
+	return false
+}
+
+// approves is [Handler.owns] for an approval: when the approval names who it
+// waits on (factory.WaitingApprover), that person, or any operator for the
+// operator role, and nobody else, the job's person included; otherwise the
+// job's person. A solo factory has one person, who answers everything.
+func (h *Handler) approves(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.mode() == api.FactorySolo {
+		return true
+	}
+	who := factory.WaitingApprover(it)
+	if who == "" {
+		return h.owns(w, r, it)
+	}
+	handle, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return false
+	}
+	if factory.MayApprove(it, handle, h.isOperator(r)) {
+		return true
+	}
+	words := "only " + who + " can approve this"
+	if who == factory.ApproverOperator {
+		words = "only an operator of this factory can approve this"
+	}
+	h.writeRefusal(w, http.StatusForbidden, refusalBody{
+		Error: words, Reason: factory.ReasonNotApprover, By: who, NowState: h.withVersion(api.FromItem(it)).State,
 	})
 	return false
 }

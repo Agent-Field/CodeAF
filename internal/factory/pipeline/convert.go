@@ -19,6 +19,7 @@ func Encode(f File) ([]byte, error) {
 		Fanout string  `yaml:"fanout,omitempty"`
 		Until  string  `yaml:"until,omitempty"`
 		Max    int     `yaml:"max,omitempty"`
+		Who    string  `yaml:"who,omitempty"`
 	}
 	names := make([]string, 0, len(f.Steps))
 	for name := range f.Steps {
@@ -28,7 +29,11 @@ func Encode(f File) ([]byte, error) {
 	steps := make(map[string]step)
 	for _, name := range names {
 		s := f.Steps[name]
+		// A PERSON IS WRITTEN ONLY FOR WHO IT WAITS ON: approve has no prompt.
 		if factory.ApproveWord(name) {
+			if s.Who != "" {
+				steps[name] = step{Who: s.Who}
+			}
 			continue
 		}
 		// A STEP THAT HOLDS IS NEVER WRITTEN. The word that made it hold
@@ -40,7 +45,7 @@ func Encode(f File) ([]byte, error) {
 		if s.Kind == string(factory.StageGate) && s.Prompt == "" {
 			prompt = nil // a person needs no prompt, and "" would read as a missing one
 		}
-		steps[name] = step{prompt, s.Kind, s.When, s.Effort, s.Fanout, s.Until, s.Max}
+		steps[name] = step{prompt, s.Kind, s.When, s.Effort, s.Fanout, s.Until, s.Max, s.Who}
 	}
 	var start any
 	var size any

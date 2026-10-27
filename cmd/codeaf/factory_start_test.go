@@ -167,3 +167,28 @@ func TestFactoryStartLeavesARuleHeldPlanToThePerson(t *testing.T) {
 		t.Fatalf("the held job moved to %s %q", got.State, got.QKind)
 	}
 }
+
+// AN APPROVAL THAT NAMES SOMEONE ELSE IS THEIRS: the manager leaves it to them.
+func TestFactoryStartLeavesANamedApproversApprovalToThem(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.Add(context.Background(), factory.Item{Title: "release it", Repo: "acme/api", Tier: factory.TierOwner, Assignee: "sam",
+		Stages: []factory.Stage{{Name: "plan", Ask: "plan", On: true}, {Name: factory.ApproveName, Kind: factory.StageGate, On: true, Who: "@rel"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(id, func(it *factory.Item) error {
+		it.State, it.QKind = factory.StateNeedsYou, factory.QKindApprove
+		it.Stream = &factory.Stream{Cur: 1, Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: factory.ApproveName, Kind: factory.StageGate, State: factory.PhaseWaiting}}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := st.Get(id)
+	_, err = startItem(st, "", t.TempDir(), it)
+	if err == nil || !strings.Contains(err.Error(), "waits on @rel") {
+		t.Fatalf("the manager approved @rel's approval: %v", err)
+	}
+}
