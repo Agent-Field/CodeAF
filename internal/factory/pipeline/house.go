@@ -87,21 +87,14 @@ func PlanHold(rules *factory.StartRules, files []string) string {
 		return ""
 	}
 	for _, rule := range rules.AskFirst {
-		glob := underDir(askFirstPath(rule))
-		if glob == "" {
-			continue
-		}
+		globs := underDirs([]string{askFirstPath(rule)})
 		for _, path := range files {
-			if touches(glob, path) {
+			if touchesAny(globs, path) {
 				return "ask first · " + strings.TrimSpace(rule) + " · " + path
 			}
 		}
 	}
-	never := make([]string, 0, len(rules.Never))
-	for _, glob := range rules.Never {
-		never = append(never, underDir(glob))
-	}
-	if why := neverWhy(never, files); why != "" {
+	if why := neverWhy(underDirs(rules.Never), files); why != "" {
 		return "never starts on its own · " + why
 	}
 	return ""
@@ -138,11 +131,31 @@ func underDir(glob string) string {
 }
 
 // underDirs is [underDir] of every pattern, so a folder a never line names
-// covers what is under it at a start as it does in a plan.
+// covers what is under it at a start as it does in a plan. A BARE NAME IS A
+// FOLDER TOO: `touch auth` covers auth/ and everything under it as well as a
+// file named auth, because a person who writes it means the folder as often
+// as the file, and a rule that guards more only asks more.
 func underDirs(globs []string) []string {
 	out := make([]string, 0, len(globs))
 	for _, g := range globs {
+		g = strings.TrimSpace(g)
+		if g == "" {
+			continue
+		}
 		out = append(out, underDir(g))
+		if !strings.HasSuffix(g, "/") && !strings.ContainsAny(g, "*?[") {
+			out = append(out, g+"/**")
+		}
 	}
 	return out
+}
+
+// touchesAny says whether path matches one of globs ([touches]).
+func touchesAny(globs []string, path string) bool {
+	for _, g := range globs {
+		if touches(g, path) {
+			return true
+		}
+	}
+	return false
 }

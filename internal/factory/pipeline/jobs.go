@@ -45,7 +45,7 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 			continue
 		}
 		for _, path := range paths {
-			if touches(glob, path) || touches(underDir(glob), path) {
+			if touches(glob, path) || touchesAny(underDirs([]string{glob}), path) {
 				reasons = append(reasons, "ask first · "+rule+" · "+path)
 				break
 			}

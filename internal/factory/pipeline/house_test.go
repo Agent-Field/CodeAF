@@ -80,6 +80,31 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 // THE ADAPT WORD: a file's `adapt:` reaches every pipeline's recipe and is
 // written back by the encoder, a personal file or the factory may tighten it
 // and never loosen it, and a word that is not one is a problem, not a default.
+// A BARE NAME GUARDS ITS FOLDER: `touch auth` asks about auth/keys.go as
+// `touch auth/` does, at a start and in a plan, and a never line named the
+// same way holds the same; a name that is only a prefix of a folder does not.
+func TestABareNameInAPathRuleCoversItsFolder(t *testing.T) {
+	rules := &factory.StartRules{AskFirst: []string{"touch auth"}, Never: []string{}}
+	if got := PlanHold(rules, []string{"auth/keys.go"}); got != "ask first · touch auth · auth/keys.go" {
+		t.Errorf("touch auth held auth/keys.go as %q", got)
+	}
+	if got := PlanHold(rules, []string{"authors/list.md"}); got != "" {
+		t.Errorf("touch auth held authors/list.md as %q", got)
+	}
+	never := &factory.StartRules{AskFirst: []string{}, Never: []string{"infra"}}
+	if got := PlanHold(never, []string{"infra/main.tf"}); !strings.Contains(got, "infra/main.tf") {
+		t.Errorf("never infra held infra/main.tf as %q", got)
+	}
+	f, err := Parse("start:\n  labels: [ready]\n  ask_first: [touch auth]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go"})
+	if !d.Ask || !strings.Contains(strings.Join(d.Reasons, "; "), "ask first · touch auth · auth/keys.go") {
+		t.Errorf("a start that names auth/keys.go under touch auth = %+v", d)
+	}
+}
+
 func TestTheAdaptWordIsReadWrittenAndOnlyTightened(t *testing.T) {
 	f, err := Parse("adapt: ask\npipeline:\n  issue: [plan, approve, write, test, review, proof]\n")
 	if err != nil {
