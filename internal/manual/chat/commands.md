@@ -468,8 +468,10 @@ with a fresh agent and a fresh session file.
 
 On a current engine connection, opening runs in the background. The screen says
 `opening conversation… · esc cancels` while it prepares the conversation. Repeated
-Enter does not create another one. Esc, typing, or clicking cancels the pending
-transition; the existing conversation and unsent draft stay available.
+Enter does not create another one. Words you type meanwhile belong to the new
+conversation and wait, unsent, in its box once it opens. Esc or clicking cancels the
+pending transition; the existing conversation and its unsent draft stay available, and
+anything typed for the new one comes back to this one, unsent.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
