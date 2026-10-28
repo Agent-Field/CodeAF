@@ -69,6 +69,15 @@ func e2TempDir(t *testing.T) string {
 
 func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
 	t.Helper()
+	return e2StartAppWithSetup(t, dir, func(app *e2App) {
+		machineCall[any](t, app.w, "setup.get", struct{}{})
+		machineCall[appwire.Empty](t, app.w, "keys.set", map[string]any{"provider": "openrouter", "key": "test-key"})
+		machineCall[appwire.ChatsResult](t, app.w, "chats.list", struct{}{})
+	}, daemon...)
+}
+
+func e2StartAppWithSetup(t *testing.T, dir string, setup func(*e2App), daemon ...bool) *e2App {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -166,9 +175,9 @@ func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
 		t.Fatal("app hello timed out")
 	}
 
-	machineCall[any](t, app.w, "setup.get", struct{}{})
-	machineCall[appwire.Empty](t, app.w, "keys.set", map[string]any{"provider": "openrouter", "key": "test-key"})
-	machineCall[appwire.ChatsResult](t, app.w, "chats.list", struct{}{})
+	if setup != nil {
+		setup(app)
+	}
 	return app
 }
 func (a *e2App) wait(t *testing.T, match func(e2Frame) bool) {
