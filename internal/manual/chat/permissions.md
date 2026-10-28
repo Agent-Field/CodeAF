@@ -1254,8 +1254,8 @@ cannot be reached, the request returns the error immediately. Permission scopes,
 required options and budget payloads are checked before the hold too: raising an
 agent budget needs a positive amount, and Tell needs words and an idle agent.
 Service health answers must choose Restart or Stop, and standing order runs need
-an offered verdict. A crew decision needs an option or answer text. Landed tasks
-need an offered verdict, and Tell needs words. Fuel top-ups need a positive dollar
+one of the offered choices. A crew decision needs an option or answer text. A
+landed task needs one of its offered choices, and Tell needs words. Fuel top-ups need a positive dollar
 amount; finishing or stopping needs no amount. Text-only model answers and task
 redirects remain supported. A valid answer waits five seconds; Undo during that
 hold leaves the question waiting and sends nothing.
