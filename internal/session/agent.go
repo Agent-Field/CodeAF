@@ -2066,13 +2066,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the transcript on the line above; a shell opening additionally waits
 		// for an ordinary reply to explain its output. Naming is started under
 		// this lock so two Submits racing to be first cannot buy two names.
-		if user.bash == "" {
+		if user.bash == "" && a.config.PrepareModel == nil {
 			a.startTitleLocked()
 		}
 		// A DESKTOP CONVERSATION IS NAMED FROM WHAT THE PERSON OPENED WITH, and
 		// the shell opening is one of the things that decides it too
 		// (intentname.go).
-		a.startIntentNameLocked(user)
+		// A continued chat may still need model setup. Its turn checks readiness
+		// before starting either naming errand, which also calls a provider.
+		if a.config.PrepareModel == nil {
+			a.startIntentNameLocked(user)
+		}
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one

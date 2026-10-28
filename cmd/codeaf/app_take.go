@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -21,10 +23,42 @@ func appTakeError(err error) error {
 		return appwire.Errorf(appwire.CodeNotFound, "that chat is not available")
 	}
 	var wire *appwire.Error
-	if errors.As(err, &wire) && wire.Code != appwire.CodeEngine {
-		return wire
+	if errors.As(err, &wire) {
+		if wire.Code != appwire.CodeEngine {
+			return wire
+		}
+		message := appTakeWords(wire.Message)
+		if strings.HasPrefix(message, "This chat used ") {
+			return &appwire.Error{Code: wire.Code, Message: message, Detail: appTakeDetail(err)}
+		}
 	}
-	return &appwire.Error{Code: appwire.CodeEngine, Message: appTakeFailed, Detail: err.Error()}
+	var missing *continuedModelUnavailable
+	if errors.As(err, &missing) {
+		return &appwire.Error{Code: appwire.CodeEngine, Message: missing.Error(), Detail: fmt.Sprintf("model %q, provider %q: no usable local default model", missing.model, missing.provider)}
+	}
+	return &appwire.Error{Code: appwire.CodeEngine, Message: appTakeFailed, Detail: appTakeDetail(err)}
+}
+
+func appTakeDetail(err error) any {
+	var wire *appwire.Error
+	detail := err.Error()
+	if errors.As(err, &wire) && wire.Detail != nil {
+		if words, ok := wire.Detail.(string); ok {
+			detail = words
+		} else {
+			return wire.Detail
+		}
+	}
+	return appTakeWords(detail)
+}
+
+// Loopback and app codecs can each have added their own engine label.
+func appTakeWords(words string) string {
+	const prefix = appwire.CodeEngine + ": "
+	for strings.HasPrefix(words, prefix) {
+		words = strings.TrimPrefix(words, prefix)
+	}
+	return words
 }
 func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if p.Cell == "" || p.Seen.Device == "" {
@@ -133,5 +167,14 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	b.located(a, location)
 	agent.Location = location
+	// Acquisition may have been observed before installation and admission.
+	// Reconcile the local id even when no later directory version will arrive.
+	b.chats.op.Lock()
+	_, err = b.readChats(ctx, s, b.chats.feed, true)
+	b.chats.op.Unlock()
+	if err != nil {
+		// The take has completed. Inventory recovery belongs to its follower.
+		b.startChatInventory()
+	}
 	return agent, nil
 }

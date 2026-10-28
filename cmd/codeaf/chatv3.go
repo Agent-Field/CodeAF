@@ -1462,7 +1462,13 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	model, modelNotice, err := continuedModel(cfg)
 	if err != nil {
-		return nil, cfg, "", err
+		var missing *continuedModelUnavailable
+		if !errors.As(err, &missing) {
+			return nil, cfg, "", err
+		}
+		// Taking and opening a chat do not require a usable model. Retain the
+		// incoming identity even if seating seals local bookkeeping first.
+		cfg.PrepareModel = missing.prepare
 	}
 	if model != "" {
 		cfg.Model = model
