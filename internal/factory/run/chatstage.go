@@ -917,6 +917,8 @@ func (d *stageDoor) Edit(_ context.Context, edit factory.PlanEdit) error {
 	d.edit.Add = append(d.edit.Add, edit.Add...)
 	d.edit.On = append(d.edit.On, edit.On...)
 	d.edit.Skip = append(d.edit.Skip, edit.Skip...)
+	d.edit.Remove = append(d.edit.Remove, edit.Remove...)
+	d.edit.Move = append(d.edit.Move, edit.Move...)
 	if why := strings.TrimSpace(edit.Why); why != "" {
 		d.edit.Why = why
 	}

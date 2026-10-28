@@ -15,7 +15,10 @@ package session
 // never dropped, a fixed stage never changes, a stage that started is never
 // touched, and a refusal comes back in Edit's own sentence with nothing
 // changed. AN APPROVE STEP (where the run holds until the person says
-// continue) is added or skipped like any stage: add one named approve.
+// continue) is added like any stage: add one named approve; only the person
+// skips, removes or moves one. A stage the person no longer wants in this job
+// is REMOVED (gone from its steps), not only skipped (still there, off), and a
+// stage may be MOVED after another, or first.
 
 import (
 	"context"
@@ -53,11 +56,11 @@ const (
 var runThinking = []string{"cheap", "strong", "default"}
 
 const factoryRunDescription = "Shape the run of the ONE factory item this conversation manages. Its stages are one lowercase word each, at most nine. " +
-	"set changes a stage's ask (what done looks like) or its thinking (cheap, strong, default); add puts in a new stage after a named one, with its ask and one line of why; on switches a stage of the recipe on; skip switches one off; why is one sentence for the whole change. " +
-	"Keep the recipe's stages unless the item says otherwise, change asks before adding stages, and add a stage only for work no stage covers. Proof is never skipped. " +
-	"An approve step (named approve, a second one approve2) is where the run holds until the person says continue: add one after the stage the person wants to read first, with no ask, or skip it to let the run go on; a fixed one stays. " +
+	"set changes a stage's ask (what done looks like) or its thinking (cheap, strong, default); add puts in a new stage after a named one, with its ask and one line of why; on switches a stage of the recipe on; skip switches one off and keeps it in the job; remove takes a stage out of this job altogether (when the person says remove, delete or drop a step, remove it; do not skip it); move puts a stage after another (after \"\" is first); why is one sentence for the whole change. " +
+	"Keep the recipe's stages unless the item says otherwise, change asks before adding stages, and add a stage only for work no stage covers. Proof is never skipped, removed or moved, nor is a stage that has run; nothing moves after proof. " +
+	"An approve step (named approve, a second one approve2) is where the run holds until the person says continue: add one after the stage the person wants to read first, with no ask; only the person skips, removes or moves one, and a fixed one stays. " +
 	"Before the run the change is made at once and NO CARD IS SHOWN to the person: nothing is running, and the stages on the item's page redraw. During a run it changes only the stages that have not started, and the run's next round reads them. " +
-	"The answer is the line the item's page shows (manager set review: … · added arch after review · why: …), or why it was refused, with nothing changed. " +
+	"The answer is the line the item's page shows (manager set review: … · added arch after review · removed pretest · moved docs after write · why: …), or why it was refused, with nothing changed. " +
 	"Budget, thinking for the conversation steps that have not begun and are not fixed, and notes for the stages stay with factory_item."
 
 func factoryRunSchemaJSON() string {
@@ -78,7 +81,12 @@ func factoryRunSchemaJSON() string {
 		`"why":{"type":"string","description":"One line of why no stage covers this work."}` +
 		`},"required":["name","after"],"additionalProperties":false}},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names of the recipe to switch on."},` +
-		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off. Never proof."},` +
+		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off; they stay in the job. Never proof."},` +
+		`"remove":{"type":"array","items":{"type":"string"},"description":"Stage names to take out of this job altogether. Never proof, a fixed stage or one that has run."},` +
+		`"move":{"type":"array","description":"Stages to move, each after a stage the run has.","items":{"type":"object","properties":{` +
+		`"stage":{"type":"string","description":"The stage to move, one lowercase word."},` +
+		`"after":{"type":"string","description":"The stage it now goes after; \"\" puts it first."}` +
+		`},"required":["stage","after"],"additionalProperties":false}},` +
 		`"why":{"type":"string","description":"One sentence saying why."}` +
 		`},"additionalProperties":false}`
 }
@@ -99,9 +107,14 @@ type runArgs struct {
 		After string `json:"after"`
 		Why   string `json:"why"`
 	} `json:"add"`
-	On   []string `json:"on"`
-	Skip []string `json:"skip"`
-	Why  string   `json:"why"`
+	On     []string `json:"on"`
+	Skip   []string `json:"skip"`
+	Remove []string `json:"remove"`
+	Move   []struct {
+		Stage string  `json:"stage"`
+		After *string `json:"after"`
+	} `json:"move"`
+	Why string `json:"why"`
 }
 
 // runEditOf is the tool's arguments as the edit the door applies, by the
@@ -166,6 +179,19 @@ func runEditOf(args runArgs) (factory.RunEdit, error) {
 	}
 	e.On = runNames(args.On)
 	e.Skip = runNames(args.Skip)
+	e.Remove = runNames(args.Remove)
+	for _, m := range args.Move {
+		name, err := factory.StageWord(m.Stage)
+		if err != nil {
+			return factory.RunEdit{}, err
+		}
+		// A MOVE SAYS WHERE IT GOES: "" is first, and a move with no after is
+		// refused rather than read as first.
+		if m.After == nil {
+			return factory.RunEdit{}, errors.New("move " + name + " needs after: the stage it goes after, or \"\" for first")
+		}
+		e.Move = append(e.Move, factory.Moved{Stage: name, After: strings.ToLower(strings.TrimSpace(*m.After))})
+	}
 	return e, nil
 }
 
@@ -226,7 +252,7 @@ func (a *Agent) factoryRunTool() bare.Tool {
 				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()+"."), true, nil
 			}
 			if edit.Empty() {
-				return rejectToolArguments(ctx, "Invalid arguments: factory_run needs something to change: set, add, on or skip."), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_run needs something to change: set, add, on, skip, remove or move."), true, nil
 			}
 			_, lines, err := a.runDoorForTurn().EditRun(ctx, a.config.SessionFile, edit)
 			if err != nil {

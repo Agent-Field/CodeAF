@@ -102,12 +102,12 @@ const itemAddedMark = "+"
 // knee, which the floor stores as nothing.
 var itemEfforts = []string{"cheap", "strong", "default"}
 
-const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the conversation steps think (the field is effort; the person calls it \"thinking\": cheap, strong, default; only steps that have not begun and are not fixed change, and the answer says which), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
+const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\", \"remove pretest\", \"run docs after write\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the conversation steps think (the field is effort; the person calls it \"thinking\": cheap, strong, default; only steps that have not begun and are not fixed change, and the answer says which), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
 	"This conversation is the item's hub: change it with this tool, leave notes here, and once the item runs, its stages report into this conversation. " +
 	"Use it only for the item this conversation was opened for; never for another item. The factory id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its factory id. " +
-	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. Give only what changes. " +
+	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has; remove takes a stage out of the item altogether (skip only switches it off), and move puts a stage after another (after \"\" is first). When the person asks to remove or delete a stage, remove it; do not skip it. Give only what changes. " +
 	"NOTHING CHANGES BY CALLING THIS: the person is shown a card with the item before and after, and only their `yes` changes anything. Nothing launches either; that is the person's, in the factory. " +
-	"The recipe's bounds hold whatever is asked: proof and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every stage change (a card that changes only the thinking is not one; it skips fixed or begun stages and changes the rest, but a conversation stage after proof refuses the whole card); a refusal comes back with its reason before any card. " +
+	"The recipe's bounds hold whatever is asked: proof and a stage the policy names are never skipped, removed or moved, a fixed stage is never skipped, removed or moved, a stage that already ran is never touched, nothing moves after proof, and a `fixed` recipe refuses every stage change (a card that changes only the thinking is not one; it skips fixed or begun stages and changes the rest, but a conversation stage after proof refuses the whole card); a refusal comes back with its reason before any card. " +
 	"If they type a change instead, nothing changes and you are told their words: propose again with them."
 
 func factoryItemSchemaJSON() string {
@@ -123,6 +123,11 @@ func factoryItemSchemaJSON() string {
 		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add, e.g. \"after review, read it for auth holes\"."},` +
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off for this item."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on for this item."},` +
+		`"remove":{"type":"array","items":{"type":"string"},"description":"Stage names to take out of this item altogether; skip only switches one off."},` +
+		`"move":{"type":"array","description":"Stages to move, each after a stage the item has.","items":{"type":"object","properties":{` +
+		`"stage":{"type":"string","description":"The stage to move."},` +
+		`"after":{"type":"string","description":"The stage it now goes after; \"\" puts it first."}` +
+		`},"required":["stage","after"],"additionalProperties":false}},` +
 		`"cap":{"type":"number","description":"The item's budget in dollars: the most it may spend; the person calls this \"budget\"."},` +
 		`"effort":{"type":"string","enum":[` + quoted(itemEfforts) + `],"description":"How hard the conversation steps think; the person calls this \"thinking\". Only steps that have not begun and are not fixed by the recipe change, and they keep their own if not (the answer names which); a conversation step after proof, a job whose proof has started and a landed job refuse the whole card. default is the usual amount."},` +
 		`"note":{"type":"string","description":"One sentence the item's stages will read."},` +
@@ -282,6 +287,8 @@ func ItemFactsOf(it factory.Item) ItemFacts {
 	for _, st := range it.Stages {
 		if st.On {
 			f.Stages = append(f.Stages, st.Name)
+		} else {
+			f.Off = append(f.Off, st.Name)
 		}
 		// EVERY CONVERSATION STAGE IS RECORDED, on or off, the default as "".
 		// A change edits a stage that is off so it is right when switched on
@@ -309,9 +316,27 @@ func itemRef(n ItemNotice) string {
 
 // itemStagesMoved, itemCapMoved and the rest say which parts of the item the
 // card changes, read off before and after rather than off the ask, so a
-// switch-on of a stage that is already on is no change at all.
+// switch-on of a stage that is already on is no change at all. A stage that is
+// off and is removed moves only the off list.
 func itemStagesMoved(n ItemNotice) bool {
-	return strings.Join(n.Before.Stages, "\x00") != strings.Join(n.After.Stages, "\x00")
+	return strings.Join(n.Before.Stages, "\x00") != strings.Join(n.After.Stages, "\x00") ||
+		strings.Join(n.Before.Off, "\x00") != strings.Join(n.After.Off, "\x00")
+}
+
+// itemRemoved is every stage the item had, on or off, that it no longer has,
+// in the order it had them: a removal, read off before and after.
+func itemRemoved(n ItemNotice) []string {
+	after := map[string]bool{}
+	for _, s := range append(append([]string(nil), n.After.Stages...), n.After.Off...) {
+		after[s] = true
+	}
+	var out []string
+	for _, s := range append(append([]string(nil), n.Before.Stages...), n.Before.Off...) {
+		if !after[s] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 func itemCapMoved(n ItemNotice) bool { return n.Before.Cap != n.After.Cap }
 func itemEffortMoved(n ItemNotice) bool {
@@ -540,6 +565,35 @@ func itemStagesQuestion(n ItemNotice) string {
 			lost = append(lost, s)
 		}
 	}
+	// A REMOVAL IS SAID AS ONE, never as a skip: a stage gone from the item is
+	// not a stage switched off. Every stage that stops running must be one the
+	// item no longer has, or the card asks about the whole change.
+	removed := itemRemoved(n)
+	gone := map[string]bool{}
+	for _, s := range removed {
+		gone[s] = true
+	}
+	onlyRemoved := len(removed) > 0 && len(gained) == 0
+	for _, s := range lost {
+		onlyRemoved = onlyRemoved && gone[s]
+	}
+	if onlyRemoved && len(removed) == 1 {
+		if factory.ApproveWord(removed[0]) {
+			return "remove the approve step?"
+		}
+		return "remove the " + removed[0] + " stage?"
+	}
+	if onlyRemoved {
+		return "remove the " + itemAnd(removed) + " stages?"
+	}
+	// A MOVE CHANGES THE ORDER AND NOTHING ELSE: the same stages run, in
+	// another order.
+	if len(gained) == 0 && len(lost) == 0 && len(removed) == 0 {
+		if len(n.Move) == 1 {
+			return "move the " + n.Move[0].Stage + " stage?"
+		}
+		return "change the order of the stages?"
+	}
 	switch {
 	case len(lost) == 0 && len(gained) == 1 && factory.ApproveWord(gained[0]):
 		return "add an approve step?"
@@ -572,7 +626,14 @@ func itemAnd(list []string) string {
 func ItemRows(n ItemNotice) []string {
 	var rows []string
 	if itemStagesMoved(n) {
-		rows = append(rows, "now: "+itemList(n.Before.Stages), "after: "+itemAfterList(n.Before.Stages, n.After.Stages))
+		if strings.Join(n.Before.Stages, "\x00") != strings.Join(n.After.Stages, "\x00") {
+			rows = append(rows, "now: "+itemList(n.Before.Stages), "after: "+itemAfterList(n.Before.Stages, n.After.Stages))
+		}
+		// A removed stage is named: off, it is on neither row, and on, its
+		// absence from the after row reads like a skip.
+		if removed := itemRemoved(n); len(removed) > 0 {
+			rows = append(rows, "removed: "+itemList(removed))
+		}
 	}
 	if itemCapMoved(n) {
 		rows = append(rows, "budget  "+itemMoneyOr(n.Before.Cap)+" → "+itemMoneyOr(n.After.Cap))
@@ -708,7 +769,7 @@ func itemThinkingReceipt(n ItemNotice) []string {
 // a conversation stage with that ask; Adapt names and places it.
 func itemChange(n ItemNotice) ItemChange {
 	change := ItemChange{
-		Edit:   factory.PlanEdit{On: n.On, Skip: n.Skip, Why: n.Why},
+		Edit:   factory.PlanEdit{On: n.On, Skip: n.Skip, Remove: n.Remove, Move: n.Move, Why: n.Why},
 		Cap:    n.Cap,
 		Effort: n.Effort,
 		Note:   n.Note,
@@ -744,10 +805,15 @@ func (a *Agent) factoryItemTool() bare.Tool {
 				Add    []string `json:"add"`
 				Skip   []string `json:"skip"`
 				On     []string `json:"on"`
-				Cap    float64  `json:"cap"`
-				Effort string   `json:"effort"`
-				Note   string   `json:"note"`
-				Why    string   `json:"why"`
+				Remove []string `json:"remove"`
+				Move   []struct {
+					Stage string  `json:"stage"`
+					After *string `json:"after"`
+				} `json:"move"`
+				Cap    float64 `json:"cap"`
+				Effort string  `json:"effort"`
+				Note   string  `json:"note"`
+				Why    string  `json:"why"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
@@ -759,6 +825,7 @@ func (a *Agent) factoryItemTool() bare.Tool {
 				Add:    cleanNames(parsed.Add),
 				Skip:   cleanNames(parsed.Skip),
 				On:     cleanNames(parsed.On),
+				Remove: cleanNames(parsed.Remove),
 				Cap:    parsed.Cap,
 				Effort: strings.ToLower(strings.TrimSpace(parsed.Effort)),
 				Note:   strings.Join(strings.Fields(parsed.Note), " "),
@@ -766,6 +833,15 @@ func (a *Agent) factoryItemTool() bare.Tool {
 			}
 			if notice.Item <= 0 {
 				return rejectToolArguments(ctx, "Invalid arguments: factory_item needs the factory id of the item this conversation is about."), true, nil
+			}
+			for _, m := range parsed.Move {
+				stage := strings.Join(strings.Fields(m.Stage), " ")
+				// A MOVE SAYS WHERE IT GOES: "" is first, and a move with no after
+				// is refused rather than read as first.
+				if stage == "" || m.After == nil {
+					return rejectToolArguments(ctx, "Invalid arguments: a stage to move needs its name and after: the stage it goes after, or \"\" for first."), true, nil
+				}
+				notice.Move = append(notice.Move, factory.Moved{Stage: stage, After: strings.Join(strings.Fields(*m.After), " ")})
 			}
 			if notice.Effort != "" && !oneOf(notice.Effort, itemEfforts) {
 				return rejectToolArguments(ctx, "Invalid arguments: effort is one of "+strings.Join(itemEfforts, ", ")+", or left out."), true, nil
@@ -780,7 +856,7 @@ func (a *Agent) factoryItemTool() bare.Tool {
 			}
 			change := itemChange(notice)
 			if change.Empty() {
-				return rejectToolArguments(ctx, "Invalid arguments: factory_item needs something to change: add, skip, on, cap, effort or note."), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: factory_item needs something to change: add, skip, on, remove, move, cap, effort or note."), true, nil
 			}
 			door := a.config.FactoryItem
 			// THE CHANGE IS PREVIEWED BEFORE ANY CARD, so the card shows the item

@@ -163,6 +163,14 @@ Proof is the step named proof, a send-back's prove step, or any step that runs u
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
 
+## remove or move a step of one job — delete a step, reorder, run it after, skip versus remove
+
+Skipping a step leaves it in the job, switched off. Removing it takes it out of the job's steps altogether; moving it puts it after another step, or first. Both change this job only, never the repository's pipeline, and both go through the same edit and bounds as every other change: tell the job's manager (`remove pretest`, `run docs after write`), or use the step's menu on the job's tab.
+
+A step that has already run, is running, waits on you or failed is never removed or moved, and nothing is moved before one. Proof is never removed or moved (`you may not remove proof; proof vouches for the work before it`), nothing but your approval is moved after proof, and a fixed step or a step a rule names stays (`review is fixed by the recipe`, `you may not move test; the policy names it`). Only you remove or move an approval (`only you may remove approve, where the run holds for you`); the manager may move a conversation step across one. Under a recipe's `fixed` only you change the steps, and under `ask` the manager's change gets an approval after plan, as for any edit. A job keeps at least one step, and a step moved to where it already stands changes nothing.
+
+An edit is whole or nothing: a step removed is not also changed by the same edit, nor moved after, and a step is moved once per edit. The job's record says `manager removed pretest` and `you moved docs after write` (or `moved docs first`), after any set, added, switched on and skipped lines.
+
 
 ## two steps with the same name — step names in capitals, "more than one stage is named", cannot change a step by name
 
