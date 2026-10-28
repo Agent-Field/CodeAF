@@ -11,7 +11,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -23,6 +25,8 @@ type appChats struct {
 	byAgent map[string]appwire.ChatRow
 	take    sync.Mutex
 	op      sync.Mutex
+	// Offered is guarded by op and records an attempted startup pass.
+	offered bool
 	mu      sync.Mutex
 	rows    []appwire.ChatRow
 	version uint64
@@ -35,6 +39,26 @@ type appChats struct {
 type appLocalChat struct {
 	agent    string
 	copyable bool
+}
+
+// Startup offers local cells without subscribing to directory events. Device
+// management stays passive until the desktop asks for the chat inventory.
+func (b *appBackend) startLocalChatPublication() {
+	guard.Go("app/existing-chats", func() {
+		c := &b.chats
+		c.op.Lock()
+		defer c.op.Unlock()
+		c.mu.Lock()
+		closed := c.closed
+		c.mu.Unlock()
+		if closed || c.offered {
+			return
+		}
+		if s, ok, err := syncsetup.Open(b.relayHome()); err == nil && ok && syncsetup.MayTalk(b.relayHome()) {
+			b.publishLocalChats(s)
+			c.offered = true
+		}
+	})
 }
 
 // localChats relates physical chat folders to directory ids. Older chats may
@@ -96,6 +120,10 @@ func (b *appBackend) startChatInventory() {
 }
 
 func (b *appBackend) ListChats() (appwire.ChatsResult, error) {
+	return b.listChats(false)
+}
+
+func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error) {
 	c := &b.chats
 	c.op.Lock()
 	defer c.op.Unlock()
@@ -133,7 +161,58 @@ func (b *appBackend) ListChats() (appwire.ChatsResult, error) {
 	}
 	feed := c.feed
 	c.mu.Unlock()
+	if !c.offered || publishExisting {
+		b.publishLocalChats(s)
+		c.offered = true
+	}
 	return b.readChats(context.Background(), s, feed)
+}
+
+// PublishCopy is also the terminal's background publication door. One finite,
+// sequential pass offers existing cell chats without opening or resealing them.
+// Older chats are left to the terminal's separate conversion policy.
+func (b *appBackend) publishLocalChats(s *syncsetup.Sync) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-b.left:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	// ReadWorld resolves older originals to conversion copies. Enumerate direct
+	// cells instead so this pass never offers a legacy home-folder conversion.
+	roots, _ := filepath.Glob(filepath.Join(s.Home, "v3", "projects", "*", "*"))
+	name := devname.Name(s.Home)
+	for _, root := range roots {
+		if ctx.Err() != nil {
+			return
+		}
+		if !cell.ValidID(filepath.Base(root)) {
+			continue
+		}
+		c, err := cell.OpenAt(root, filepath.Base(root))
+		if err != nil {
+			continue
+		}
+		// An unopened shell has nothing to share and needs no relay request.
+		if head, err := cellstore.Head(c); err != nil || head == nil {
+			continue
+		}
+		meta, err := session.LoadMeta(root)
+		if err != nil {
+			continue
+		}
+		e := cellstore.EngineFor(meta.Workspace)
+		e.DataRoot = filepath.Join(s.Home, "v3", "stores")
+		if meta.Owned {
+			e.Workspace = filepath.Join(root, "work")
+		}
+		one, stop := context.WithTimeout(ctx, cellstore.SealWithin)
+		_ = s.PublishCopy(one, e, c, name, meta.Title)
+		stop()
+	}
 }
 func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
@@ -162,7 +241,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		if state.Up && r.DeviceID != "" && !slices.Contains(state.Online, r.DeviceID) && !r.Mine {
 			r = r.Quiet()
 		}
-		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: r.Mine, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !r.Mine && r.Head != "", Line: chatlist.StatusLine(r), TakeoverLine: ""}
+		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: r.Mine, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !r.Mine && r.Head != "", Line: appChatStatusLine(r), TakeoverLine: ""}
 		if r.DeviceID != "" {
 			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
 		}
@@ -172,7 +251,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		if r.DurableAt > 0 {
 			row.SavedAt = time.UnixMilli(r.DurableAt).UTC()
-			row.TakeoverLine = chatlist.TakeoverLine(r)
+			row.TakeoverLine = appChatTakeoverLine(r)
 		}
 		if l, ok := local[r.Cell]; ok {
 			row.LocalAgent = l.agent

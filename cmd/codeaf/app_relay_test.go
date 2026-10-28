@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -17,7 +18,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -192,7 +192,7 @@ func TestAppChatsEC1(t *testing.T) {
 
 // E-P1 and E-P2: explicit replacement precedes any exchange; both pairing sides
 // answer the same typed app door, with two homes and a loopback relay.
-func TestAppPairEP1EP2(t *testing.T) {
+func TestAppPairEP1EP2L3(t *testing.T) {
 	for _, used := range []bool{false, true} {
 		t.Run(map[bool]string{false: "empty", true: "replace"}[used], func(t *testing.T) {
 			celltest.Available(t)
@@ -204,13 +204,15 @@ func TestAppPairEP1EP2(t *testing.T) {
 			if err := session.SaveMeta(source, session.Meta{ID: "source", Title: "A saved chat", Workspace: t.TempDir()}); err != nil {
 				t.Fatal(err)
 			}
-			_, _, wa := appDeviceBackend(t, dirA)
+			_, recA, wa := appDeviceBackend(t, dirA)
 			for _, feature := range []string{appwire.FeatureDevicesPair, appwire.FeatureChatsTake, appwire.FeatureSyncRelay} {
 				if !slices.Contains(wa.hello, feature) {
 					t.Fatalf("missing feature %s", feature)
 				}
 			}
-			_, _, wb := appDeviceBackend(t, dirB)
+			_, recB, wb := appDeviceBackend(t, dirB)
+			defer assertAppPairCopyL3(t, recA)
+			defer assertAppPairCopyL3(t, recB)
 			var kept string
 			if used {
 				if _, err := identity.Ensure(dirB); err != nil {
@@ -268,6 +270,40 @@ func TestAppPairEP1EP2(t *testing.T) {
 	}
 }
 
+func assertAppPairCopyL3(t *testing.T, rec *appRecorder) {
+	t.Helper()
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Join another computer and enter [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. This computer now shares your chats\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Replace this computer's chats\?|This computer already has its own chats\. Pairing replaces them with the chats from your other computer\.|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Replace this computer's chats|Not now|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for i, name := range rec.events {
+		if name != appwire.EventPairChanged {
+			continue
+		}
+		p := rec.data[i].(appwire.PairResult).Pairing
+		visible := slices.Clone(p.Lines)
+		if q := p.Question; q != nil {
+			visible = append(visible, q.Title, q.Detail)
+			for _, option := range q.Options {
+				visible = append(visible, option.Label)
+				if !slices.Contains([]string{"Pair", "Don't pair", "Replace this computer's chats", "Not now"}, option.Label) {
+					t.Errorf("L3 option: %q", option.Label)
+				}
+			}
+		}
+		for _, line := range visible {
+			if line != "" && !allowed.MatchString(line) {
+				t.Errorf("L3 unexpected app copy: %q", line)
+			}
+
+			for _, banned := range []string{"codeaf pair", "--replace", "device"} {
+				if strings.Contains(strings.ToLower(line), banned) {
+					t.Errorf("L3 terminal copy: %q", line)
+				}
+			}
+		}
+	}
+}
+
 // E-P4: a wrong code uses the engine's failure sentence and adds no computer.
 func TestAppPairEP4(t *testing.T) {
 	celltest.Available(t)
@@ -281,7 +317,7 @@ func TestAppPairEP4(t *testing.T) {
 	wrong := p.Code[:len(p.Code)-1] + string('0'+(last-'0'+1)%10)
 	join := machineCall[appwire.PairResult](t, wb, "pair.start", appwire.PairStartParams{Mode: "use_code", Code: wrong}).Pairing
 	failed := e2PairWait(t, wb, join.ID, "failed")
-	if failed.Error == nil || failed.Error.Message != pair.ErrCodeDidNotWork.Error() {
+	if failed.Error == nil || failed.Error.Message != "That code did not work, or it timed out. Ask for a new one." {
 		t.Fatalf("failure: %+v", failed)
 	}
 	if got := appDeviceList(t, wa); len(got.Devices) != 1 {
@@ -295,8 +331,10 @@ func TestAppPairLinksEP1(t *testing.T) {
 	celltest.Available(t)
 	relay := e2Relay(t)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	a, _, wa := appDeviceBackend(t, t.TempDir())
-	_, _, wb := appDeviceBackend(t, t.TempDir())
+	a, recA, wa := appDeviceBackend(t, t.TempDir())
+	_, recB, wb := appDeviceBackend(t, t.TempDir())
+	defer assertAppPairCopyL3(t, recA)
+	defer assertAppPairCopyL3(t, recB)
 	if _, err := identity.Ensure(a.relayHome()); err != nil {
 		t.Fatal(err)
 	}

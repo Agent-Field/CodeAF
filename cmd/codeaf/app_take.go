@@ -20,7 +20,11 @@ func appTakeError(err error) error {
 	if errors.Is(err, directory.ErrNotFound) {
 		return appwire.Errorf(appwire.CodeNotFound, "that chat is not available")
 	}
-	return appEngineError(err)
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Code != appwire.CodeEngine {
+		return wire
+	}
+	return &appwire.Error{Code: appwire.CodeEngine, Message: appTakeFailed, Detail: err.Error()}
 }
 func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if p.Cell == "" || p.Seen.Device == "" {
@@ -110,7 +114,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	b.located(a, location)
 	agent, err := b.OpenAgent(id)
 	if err != nil {
-		return appwire.Agent{}, err
+		return appwire.Agent{}, appTakeError(err)
 	}
 	// A local display replica may still be catching up to the acquired receipt.
 	if agent.Location != nil {

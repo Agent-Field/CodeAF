@@ -879,6 +879,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b.stopPhases = b.listenPhases()
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
+	b.startLocalChatPublication()
 	return b
 }
 

@@ -11,7 +11,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -242,7 +241,7 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 	switch {
 	case err == nil:
 		if !restart {
-			guard.Go("app/paired-chats", func() { _, _ = o.backend.ListChats() })
+			guard.Go("app/paired-chats", func() { _, _ = o.backend.listChats(true) })
 		}
 		// These events precede done: a desktop may immediately restart on done.
 		if view, e := o.backend.devices.snapshot(); e == nil {
@@ -252,11 +251,11 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 		o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
 		o.finish("done", "", nil, restart)
 	case o.ctx.Err() != nil || errors.Is(err, context.Canceled):
-		o.finish("cancelled", pair.CancelledLine, nil, false)
+		o.finish("cancelled", appPairCancelled, nil, false)
 	case errors.Is(err, pair.ErrRefused):
-		o.finish("cancelled", pair.DeclinedLine, nil, false)
+		o.finish("cancelled", appPairDeclined, nil, false)
 	default:
-		o.finish("failed", err.Error(), err, false)
+		o.finish("failed", appPairFailure(err), errors.New(appPairFailure(err)), false)
 	}
 }
 func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
@@ -277,7 +276,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 				return err, false
 			}
 			if !fresh {
-				a := o.ask(o.ctx, "replace_own_chats", pair.ErrDifferentChats.Error(), pair.ErrDifferentChats.Error(), []appwire.PairOption{{ID: "replace", Label: "--replace"}, {ID: "cancel", Label: chatlist.OfferNotNow}})
+				a := o.ask(o.ctx, "replace_own_chats", appPairReplaceTitle, appPairReplaceDetail, appPairReplaceOptions())
 				if a != "replace" {
 					return context.Canceled, false
 				}
@@ -297,7 +296,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 	}
 	record := func() {
 		if err := ownDeviceRecord(o.ctx, dir, route); err != nil {
-			o.line(pair.RecordUnsaidLine(err))
+			o.line(appPairRecordUnsaid)
 		}
 	}
 	switch p.Mode {
@@ -311,7 +310,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return err, false
 		}
 		record()
-		o.line(pair.PairedChatsLine(name))
+		o.line(appPairPaired(name))
 		return nil, false
 	case "use_code":
 		joined, err := pair.Join(o.ctx, route, pairJoiningAt(dir)(replace), p.Code, o)
@@ -319,7 +318,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return err, false
 		}
 		record()
-		o.line(joined.Sentence())
+		o.line(appPairJoinedLine(joined))
 		return nil, !joined.Already
 	case "request_link":
 		joined, err := pair.JoinByLink(o.ctx, linkRequests(route), linkJoining(dir)(route, replace), o)
@@ -328,9 +327,9 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		}
 		record()
 		if err != nil {
-			o.line(err.Error())
+			o.line(appPairListUnread)
 		} else {
-			o.line(pair.JoinedFleetLine(joined.Fleet.Workspaces))
+			o.line(appPairJoined)
 		}
 		return nil, !joined.Already
 	case "approve_link":
@@ -347,8 +346,8 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		if err != nil {
 			return err, false
 		}
-		o.line(pair.WantsToJoinLine(asking.Name, asking.Platform))
-		answer := o.ask(o.ctx, "approve", pair.CheckQuestion(asking.Check), "", pairApprovalOptions())
+		o.line(appPairApproveTitle(asking.Name))
+		answer := o.ask(o.ctx, "approve", appPairApproveTitle(asking.Name), appPairCheck(asking.Check), pairApprovalOptions())
 		if answer != "y" {
 			if o.ctx.Err() != nil {
 				return o.ctx.Err(), false
@@ -365,33 +364,29 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return err, false
 		}
 		record()
-		o.line(pair.ApprovedLine(asking.Name))
+		o.line(appPairPaired(asking.Name))
 		return nil, false
 	}
 	return errors.New("unknown pairing mode"), false
-}
-func pairApprovalOptions() []appwire.PairOption {
-	answers := strings.Split(pair.AskChoice, " / ")
-	return []appwire.PairOption{{ID: answers[0], Label: answers[0]}, {ID: answers[1], Label: answers[1]}}
 }
 func (o *appPairOperation) Show(code *pair.Code, lines string) {
 	o.update(func(p *appwire.Pairing) {
 		p.State = "waiting"
 		p.Code = code.Shown()
 		p.ExpiresAt = code.Born().Add(pair.CodeValidFor)
-		p.Lines = append(p.Lines, strings.Split(lines, "\n")...)
+		p.Lines = append(p.Lines, appPairCodeLines(code.Shown())...)
 	})
 }
-func (o *appPairOperation) Burned() { o.line(pair.BurnLine) }
+func (o *appPairOperation) Burned() { o.line(appPairBurned) }
 func (o *appPairOperation) Ask(ctx context.Context, label, words string) bool {
 	o.update(func(p *appwire.Pairing) { p.Words = words })
-	return o.ask(ctx, "approve", pair.AskChatsLine(label, words), "", pairApprovalOptions()) == "y"
+	return o.ask(ctx, "approve", appPairApproveTitle(label), appPairWords(words), pairApprovalOptions()) == "y"
 }
 func (o *appPairOperation) Waiting(words string) {
 	o.update(func(p *appwire.Pairing) {
 		p.State = "waiting"
 		p.Words = words
-		p.Lines = append(p.Lines, pair.WaitingChatsLine(words))
+		p.Lines = append(p.Lines, appPairWaiting(words))
 	})
 }
 func (o *appPairOperation) Invited(in pair.Invite) {
@@ -403,6 +398,6 @@ func (o *appPairOperation) Invited(in pair.Invite) {
 		}
 		p.Words = in.Check
 		p.ExpiresAt = time.Now().Add(in.ExpiresIn)
-		p.Lines = append(p.Lines, strings.Split(pair.InviteLines(in), "\n")...)
+		p.Lines = append(p.Lines, appPairInviteLines(in.Check, in.ExpiresIn)...)
 	})
 }
