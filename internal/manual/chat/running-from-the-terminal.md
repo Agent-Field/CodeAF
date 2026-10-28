@@ -541,6 +541,12 @@ hold so another computer can continue. Each saving boundary waits up to 30 secon
 A successful save is quiet; a definite final-save failure is kept in the engine
 log and leaves unsaved turns on this computer.
 
+Crew members follow the same quit and resume rules. A member still opening
+does not hold up quitting for optional file cleanup; its files are kept.
+Closing the desktop's input pipe starts the same bounded shutdown as a first
+SIGTERM, including while the engine is waiting for a lock. A second SIGTERM
+ends the process immediately.
+
 ## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
 
 If the desktop app closes unexpectedly during a reply, opening it again carries
