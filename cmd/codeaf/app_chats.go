@@ -31,6 +31,8 @@ type appChats struct {
 	offered bool
 	mu      sync.Mutex
 	rows    []appwire.ChatRow
+	facts   map[string]chatlist.Row
+	sent    []appwire.ChatRow
 	version uint64
 	source  *syncsetup.Sync
 	feed    dirwatch.Follower
@@ -156,7 +158,7 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 		c.mu.Lock()
 		version := c.version
 		c.mu.Unlock()
-		b.publishChats([]appwire.ChatRow{}, version)
+		b.publishChats([]appwire.ChatRow{}, version, false)
 		return appwire.ChatsResult{Chats: []appwire.ChatRow{}, Version: version}, nil
 	}
 	c.mu.Lock()
@@ -177,7 +179,7 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 		b.publishLocalChats(s)
 		c.offered = true
 	}
-	return b.readChats(context.Background(), s, feed)
+	return b.readChats(context.Background(), s, feed, false)
 }
 
 // PublishCopy is also the terminal's background publication door. One finite,
@@ -226,7 +228,7 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync) {
 		stop()
 	}
 }
-func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower) (appwire.ChatsResult, error) {
+func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
 	defer cancel()
 	rows, version, err := s.RowsAt(ctx)
@@ -244,28 +246,24 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	if feed != nil {
 		state = feed.State()
 	}
+	known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
 	local := b.localChats(s)
 	out := make([]appwire.ChatRow, 0, len(rows))
+	facts := make(map[string]chatlist.Row, len(rows))
 	for _, r := range rows {
 		if r.Parent != "" || r.Status == chatlist.Branch {
 			continue
 		}
-		if state.Up && r.DeviceID != "" && !slices.Contains(state.Online, r.DeviceID) && !r.Mine {
-			r = r.Quiet()
-		}
+		facts[r.Cell] = r
 		_, installed := local[r.Cell]
 		here := r.Mine && (r.Status == chatlist.Here || installed)
-		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !here && r.Head != "", Line: appChatStatusLine(r), TakeoverLine: ""}
+		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !here && r.Head != ""}
 		if r.DeviceID != "" {
 			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
 		}
-		if state.Up && r.DeviceID != "" {
-			online := r.Mine || slices.Contains(state.Online, r.DeviceID)
-			row.Online = &online
-		}
-		if r.DurableAt > 0 {
-			row.SavedAt = time.UnixMilli(r.DurableAt).UTC()
-			row.TakeoverLine = appChatTakeoverLine(r)
+		appChatPresence(&row, r, state, known)
+		if r.SavedAt > 0 {
+			row.SavedAt = time.UnixMilli(r.SavedAt).UTC()
 		}
 		if l, ok := local[r.Cell]; ok {
 			row.LocalAgent = l.agent
@@ -276,17 +274,33 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		out = append(out, row)
 	}
-	b.publishChats(out, version)
+	b.chats.mu.Lock()
+	b.chats.facts = facts
+	b.chats.mu.Unlock()
+	b.publishChats(out, version, emit)
 	return appwire.ChatsResult{Chats: out, Version: version}, nil
 }
-func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64) {
+
+func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
+	row.Online = nil
+	if state.Up && fact.DeviceID != "" {
+		if online, ok := known[fact.DeviceID]; ok {
+			row.Online = &online
+		}
+	}
+	row.Line = appChatStatusLine(fact, row.Online)
+	row.TakeoverLine = appChatTakeoverLine(fact, row.Online)
+}
+
+// Inventory operations hold op through caching and emission. A list refreshes
+// the cache silently; only the follower compares against rows actually emitted.
+func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit bool) {
 	c := &b.chats
 	c.mu.Lock()
 	if version < c.version {
 		c.mu.Unlock()
 		return
 	}
-	old := c.rows
 	c.rows = rows
 	c.byAgent = make(map[string]appwire.ChatRow)
 	for _, row := range rows {
@@ -295,7 +309,14 @@ func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64) {
 		}
 	}
 	c.version = version
+	old := c.sent
+	if emit {
+		c.sent = rows
+	}
 	c.mu.Unlock()
+	if !emit {
+		return
+	}
 	before := map[string]appwire.ChatRow{}
 	for _, r := range old {
 		before[r.Cell] = r
@@ -349,21 +370,18 @@ func (b *appBackend) followChats(ctx context.Context, feed dirwatch.Follower) {
 		c.mu.Unlock()
 		state := feed.State()
 		if state.Version > version {
-			_, _ = b.readChats(ctx, s, feed)
+			_, _ = b.readChats(ctx, s, feed, true)
 		} else {
 			// Presence alone changes no directory version and needs no directory GET.
 			c.mu.Lock()
 			rows := slices.Clone(c.rows)
 			c.mu.Unlock()
+			known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
 			for i := range rows {
 				r := &rows[i]
-				r.Online = nil
-				if state.Up && r.Holder != nil {
-					online := r.Here || slices.Contains(state.Online, r.Holder.ID)
-					r.Online = &online
-				}
+				appChatPresence(r, c.facts[r.Cell], state, known)
 			}
-			b.publishChats(rows, version)
+			b.publishChats(rows, version, true)
 		}
 		c.op.Unlock()
 	}

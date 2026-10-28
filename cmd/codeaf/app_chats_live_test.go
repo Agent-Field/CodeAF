@@ -106,6 +106,9 @@ func TestAppChatsL2L6(t *testing.T) {
 		t.Fatal(err)
 	}
 	machineCall[appwire.ChatsResult](t, w, "chats.list", struct{}{})
+	rec.waitFor(t, 10*time.Second, func(name string, data any) bool {
+		return name == appwire.EventChatChanged && data.(appwire.ChatChanged).Chat.Title == "changed"
+	})
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	changedRows, removed := []string{}, 0

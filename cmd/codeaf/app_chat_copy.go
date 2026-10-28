@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"time"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 )
@@ -10,22 +10,28 @@ import (
 const appTakeFailed = "This chat could not be moved to this computer."
 
 // A live lease means this chat is open there; it says nothing about a turn.
-func appChatStatusLine(r chatlist.Row) string {
+func appChatStatusLine(r chatlist.Row, online *bool) string {
+	if online != nil && !*online && r.Device != "" {
+		return fmt.Sprintf("%s offline", r.Device)
+	}
 	if r.Status == chatlist.Running {
 		return fmt.Sprintf("open on %s", r.Device)
+	}
+	if r.Status == chatlist.Off {
+		return ""
 	}
 	return chatlist.StatusLine(r)
 }
 
-// Absolute save times keep unrelated directory bumps from changing every
-// row's relative-age sentence. SavedAt carries the same stable fact on the wire.
-func appChatTakeoverLine(r chatlist.Row) string {
-	line := "Last saved " + time.UnixMilli(r.DurableAt).UTC().Format("2 Jan 2006 at 15:04:05 MST") + "."
+// The desktop formats SavedAt locally. Only holder and pending-work facts add
+// anything to the takeover sentence, and neither changes as the clock advances.
+func appChatTakeoverLine(r chatlist.Row, online *bool) string {
+	parts := []string{}
+	if status := appChatStatusLine(r, online); status != "" {
+		parts = append(parts, status)
+	}
 	if r.Pending > 0 {
-		line += fmt.Sprintf(" Some work may still be on %s.", r.Device)
+		parts = append(parts, fmt.Sprintf("Some work may still be on %s.", r.Device))
 	}
-	if status := appChatStatusLine(r); status != "" {
-		line = status + "; " + line
-	}
-	return line
+	return strings.Join(parts, "; ")
 }
