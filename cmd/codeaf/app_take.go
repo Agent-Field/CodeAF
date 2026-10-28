@@ -39,7 +39,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		return appwire.Agent{}, appTakeError(err)
 	}
 	if !ok {
-		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, chatlist.SyncOff)
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, appSyncOff)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -10,7 +10,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -169,7 +168,7 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 	state := appwire.Sync{Mode: appwire.SyncQuiet, Relay: appRelay(b.relayHome())}
 	switch {
 	case state.Relay.Off:
-		state.Mode, state.Reason = appwire.SyncOff, chatlist.SyncOff
+		state.Mode, state.Reason = appwire.SyncOff, appSyncOff
 	case !cell.Available():
 		state.Mode, state.Reason = appwire.SyncUnavailable, cell.UnavailableReason()
 	case syncsetup.MayTalk(b.relayHome()):

@@ -23,6 +23,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
+// appDevicesQuiet is the desktop's line for a home that has not paired yet: the
+// desktop pairs by itself (devices.pair), so it never sends people to a terminal.
+const appDevicesQuiet = "Only this computer is here so far."
+
+// appSyncOff is the desktop's line when sync is off: the desktop turns it on and
+// off in its Relay settings, so the terminal's environment-variable advice does not apply.
+const appSyncOff = "Sync is off on this computer."
+
 // appDevices observes traffic already owned by the engine. Opening Settings
 // does not start a follower; only a person's list request reads the relay.
 type appDevices struct {
@@ -66,7 +74,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	known := d.watch.Snapshot(id, self)
 	switch {
 	case !syncsetup.Resolve(d.home).On():
-		view.Mode, view.Line = appwire.DevicesOff, chatlist.SyncOff
+		view.Mode, view.Line = appwire.DevicesOff, appSyncOff
 	case !cell.Available():
 		view.Mode, view.Line = appwire.DevicesUnavailable, cell.UnavailableReason()
 	case errors.Is(known.Refused, dirwatch.ErrRevoked):
@@ -74,7 +82,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	case errors.Is(known.Refused, dirwatch.ErrRotated):
 		view.Mode, view.Line = appwire.DevicesUnavailable, chatlist.Replaced
 	case !syncsetup.MayTalk(d.home):
-		view.Mode, view.Line = appwire.DevicesQuiet, chatlist.DevicesQuiet
+		view.Mode, view.Line = appwire.DevicesQuiet, appDevicesQuiet
 	}
 	if view.Mode != appwire.DevicesOn {
 		if rec, ok := known.Devices[self.ID()]; ok {
@@ -125,7 +133,7 @@ func (b *appBackend) ListDevices() (appwire.Devices, error) {
 	if err != nil || !ok {
 		view.Devices, view.Mode = view.Devices[:1], appwire.DevicesUnavailable
 		view.Devices[0].Online = nil
-		view.Line = chatlist.SyncOff
+		view.Line = appSyncOff
 		if err != nil {
 			view.Line = err.Error()
 		}
@@ -183,7 +191,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 		return appwire.DeviceRemoveResult{}, deviceError(err)
 	}
 	if !ok {
-		return appwire.DeviceRemoveResult{}, appwire.Errorf(appwire.CodeEngine, "%s", chatlist.SyncOff)
+		return appwire.DeviceRemoveResult{}, appwire.Errorf(appwire.CodeEngine, "%s", appSyncOff)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), syncsetup.DeviceRequestWithin)
 	defer cancel()

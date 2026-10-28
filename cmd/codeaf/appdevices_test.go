@@ -429,10 +429,10 @@ func TestAppDevicesV4V5LocalModesMakeNoRelayRequests(t *testing.T) {
 			if view.Mode != mode || len(view.Devices) != 1 || !view.Devices[0].Self || view.Devices[0].Online != nil || !view.Devices[0].LastSeen.IsZero() || view.Devices[0].RemoveLine != "" || view.Line == "" {
 				t.Fatalf("local list: %+v", view)
 			}
-			if mode == appwire.DevicesQuiet && (view.Line != chatlist.DevicesQuiet || !strings.Contains(view.Line, "codeaf pair") || !identity.Solo(dir)) {
-				t.Fatalf("fresh home is not quiet with terminal instructions: %+v", view)
+			if mode == appwire.DevicesQuiet && (view.Line != appDevicesQuiet || strings.Contains(view.Line, "codeaf pair") || !identity.Solo(dir)) {
+				t.Fatalf("fresh home is not quiet with the desktop's own line: %+v", view)
 			}
-			if mode == appwire.DevicesOff && view.Line != chatlist.SyncOff {
+			if mode == appwire.DevicesOff && view.Line != appSyncOff {
 				t.Fatalf("off copy: %q", view.Line)
 			}
 			if mode != appwire.DevicesUnavailable {
