@@ -30,7 +30,7 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"effort", "approval", "archived", "places", "launchDir"} {
+	for _, field := range []string{"model", "modelProvider", "modelIdentity", "effort", "approval", "archived", "places", "launchDir"} {
 		if strings.Contains(string(raw), `"`+field+`"`) {
 			t.Errorf("meta.json still holds %s:\n%s", field, raw)
 		}
@@ -45,7 +45,7 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 // Seal a session, materialize ONLY the sealed tree (workspace plus .cell/) into
 // a fresh folder, and open it: the dials and cursors are the same.
 // C27.7 exercises this behaviour without an opt-in switch.
-func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
+func TestSealedTreeCarriesTheSessionTruthC1bModelChoice(t *testing.T) {
 	// The suite pins furrow away; this proof uses the explicit test engine.
 	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
 	bin, err := furrow.ResolveBinary()
@@ -63,6 +63,8 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	seed.Model, seed.ModelProvider = "fixture/current", "openrouter"
+	seed.ModelIdentity = &ModelIdentity{Selected: seed.Model, Models: &ConversationModels{Main: seed.Model, Fallback: "fixture/backup"}}
 	RunLandedTasks(t, dir, "map the parser") // tasks.json holds journal paths the law must see
 	if err := SaveMeta(dir, seed); err != nil {
 		t.Fatal(err)
@@ -89,6 +91,9 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 	meta, err := LoadMetaIn(freshDir, freshWorkspace)
 	if err != nil || meta.Effort != "high" || meta.Approval != "allow" || !meta.Archived || len(meta.ArchivedTasks) != 1 {
 		t.Errorf("truth meta = %+v, %v", meta, err)
+	}
+	if meta.Model != seed.Model || meta.ModelProvider != seed.ModelProvider || meta.ModelIdentity == nil || !reflect.DeepEqual(meta.ModelIdentity.Models, seed.ModelIdentity.Models) {
+		t.Fatalf("C1b sealed model choice = %+v, identity=%+v", meta, meta.ModelIdentity)
 	}
 	assertResolvedHere(t, meta, freshDir, there)
 	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))

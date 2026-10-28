@@ -1,11 +1,11 @@
 package session
 
-// metatruth.go splits a session's meta in two. The summary (title, model,
-// spend, times) is a citation of the transcript and stays in meta.json, outside
-// the sealed tree, where internal/cellindex rebuilds it. The truth is what no
-// transcript can restate (the dials, the places, the unlanded trees, what was
-// put away) and lives in .cell/session.json, so it is sealed with the
-// workspace and travels with it.
+// metatruth.go splits a session's meta in two. The summary (title, spend,
+// times) is a citation of the transcript and stays in meta.json, outside the
+// sealed tree, where internal/cellindex rebuilds it. The truth is what no
+// transcript can restate (the model choice, the dials, the places, the unlanded
+// trees, what was put away) and lives in .cell/session.json, so it is sealed
+// with the workspace and travels with it.
 //
 // Trees records which worktrees exist; the worktree directories themselves are
 // workspace material with absolute paths, and they stay where they are.
@@ -29,6 +29,9 @@ type SessionTruth struct {
 	V               uint16           `json:"V"`
 	ChatURI         string           `json:"chat_uri,omitempty"`
 	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
+	Model           string           `json:"model,omitempty"`
+	ModelProvider   string           `json:"model_provider,omitempty"`
+	ModelIdentity   *ModelIdentity   `json:"model_identity,omitempty"`
 	LaunchDir       string           `json:"launch_dir,omitempty"`
 	Owned           bool             `json:"owned,omitempty"`
 	Effort          string           `json:"effort,omitempty"`
@@ -42,12 +45,13 @@ type SessionTruth struct {
 const truthVersion = 1
 
 func (m Meta) truth() SessionTruth {
-	return SessionTruth{V: truthVersion, ChatURI: m.ChatURI, WorkspacePolicy: m.WorkspacePolicy, LaunchDir: m.LaunchDir, Owned: m.Owned, Effort: m.Effort, Approval: m.Approval, Places: m.Places, Trees: m.Trees, Archived: m.Archived, ArchivedTasks: m.ArchivedTasks}
+	return SessionTruth{V: truthVersion, ChatURI: m.ChatURI, WorkspacePolicy: m.WorkspacePolicy, Model: m.Model, ModelProvider: m.ModelProvider, ModelIdentity: m.ModelIdentity, LaunchDir: m.LaunchDir, Owned: m.Owned, Effort: m.Effort, Approval: m.Approval, Places: m.Places, Trees: m.Trees, Archived: m.Archived, ArchivedTasks: m.ArchivedTasks}
 }
 
 func (m *Meta) setTruth(t SessionTruth) {
 	m.ChatURI = t.ChatURI
 	m.WorkspacePolicy = t.WorkspacePolicy
+	m.Model, m.ModelProvider, m.ModelIdentity = t.Model, t.ModelProvider, t.ModelIdentity
 	m.LaunchDir, m.Owned, m.Effort, m.Approval = t.LaunchDir, t.Owned, t.Effort, t.Approval
 	m.Places, m.Trees, m.Archived, m.ArchivedTasks = t.Places, t.Trees, t.Archived, t.ArchivedTasks
 }
@@ -72,6 +76,11 @@ func overlayTruth(dir string, meta Meta) (Meta, error) {
 	}
 	if err != nil {
 		return Meta{}, err
+	}
+	// Older cells kept their model only in the local summary. Preserve that
+	// choice until its next save writes the additive sealed fields.
+	if t.Model == "" && t.ModelIdentity == nil {
+		t.Model, t.ModelProvider, t.ModelIdentity = meta.Model, meta.ModelProvider, meta.ModelIdentity
 	}
 	meta.setTruth(mapTruth(t, codecOf(dir, meta).resolve))
 	return meta, nil
