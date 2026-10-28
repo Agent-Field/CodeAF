@@ -426,6 +426,26 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	if service, err := b.laterServiceItem(id, askID, later); service {
 		return err
 	}
+	if strings.HasPrefix(askID, appProposalAskPrefix) {
+		run := b.crews()
+		run.proposal.Lock()
+		defer run.proposal.Unlock()
+		var ask appwire.Ask
+		if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+			p := f.Proposals[strings.TrimPrefix(askID, appProposalAskPrefix)]
+			if p == nil || p.Agent != agent {
+				return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
+			}
+			p.Later = later
+			ask = appProposalAskOf(*p)
+			return nil
+		}); err != nil {
+			return err
+		}
+		run.locked(func() { run.asks[askID] = ask })
+		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+		return nil
+	}
 	a, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err

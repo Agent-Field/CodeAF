@@ -658,7 +658,7 @@ func appProposalAskOf(p appwire.Proposal) appwire.Ask {
 		ID: appProposalAskPrefix + p.ID, Agent: p.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewProposal,
 		Title: "Bring in helpers: " + p.Name, Detail: strings.Join(detail, "\n"), Reason: p.Goal,
 		Subject:  &appwire.AskSubject{Kind: appwire.SubjectCrewProposal, Ref: p.ID},
-		Proposal: &p,
+		Proposal: &p, Later: p.Later,
 		Options: []appwire.AskOption{
 			{ID: appwire.ProposalCreate, Label: "Make the crew"},
 			{ID: appwire.ProposalEdit, Label: "Edit"},
@@ -717,14 +717,16 @@ func (b *appBackend) answerProposal(agent, id, option string) error {
 
 // dropProposal forgets a proposal and closes its ask.
 func (b *appBackend) dropProposal(id, option string) {
-	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
-		delete(f.Proposals, id)
-		return nil
-	})
 	run := b.crews()
 	if run == nil {
 		return
 	}
+	run.proposal.Lock()
+	defer run.proposal.Unlock()
+	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+		delete(f.Proposals, id)
+		return nil
+	})
 	var ask appwire.Ask
 	run.locked(func() {
 		ask = run.asks[appProposalAskPrefix+id]

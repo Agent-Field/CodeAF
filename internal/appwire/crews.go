@@ -340,6 +340,7 @@ type CrewProposalDelta struct {
 
 // Proposal is an agent's proposal to become a crew (app layer).
 type Proposal struct {
+	Later     bool             `json:"later,omitempty"`
 	Teams     []ProposalTeam   `json:"teams,omitempty"`
 	Note      string           `json:"note,omitempty"`
 	ID        string           `json:"id"`
