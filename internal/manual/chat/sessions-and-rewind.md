@@ -1007,6 +1007,10 @@ Chats already open in this window switch directly.
 
 ## Saving stopped or could not save this chat
 
+Each codeaf home shares its own local saving engine, separate from other homes.
+If its connection closes, the next save reconnects, starting that engine again
+if needed. An interrupted operation is not replayed.
+
 If the storage process is alive but its socket has disappeared, codeaf says
 “saving is stuck”. Your turns stay on this computer. When codeaf can safely
 replace its own unreachable storage process, saving resumes with a fresh one.
@@ -1024,3 +1028,14 @@ does not clear this chat's saving failure.
 If closing cannot finish saving, the error names the local transcript that keeps
 the unsaved turns. Keep that file: after storage becomes reachable again, the
 turns can be saved and published, or kept separately when you continue the chat.
+
+## Rewind is off when Windows cannot save file history securely
+
+If Windows cannot provide a private local saving connection within its address
+limit, codeaf turns saved file history off for that chat and says once:
+
+> rewind is off because this chat cannot save file history securely; restart codeaf to try again.
+
+Tools keep working and the conversation still saves normally. Reopening the chat
+does not repeat the sentence. Restart codeaf to try saving file history again.
+Ordinary project chats with a usable saving connection keep their history.

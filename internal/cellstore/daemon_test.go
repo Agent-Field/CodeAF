@@ -103,6 +103,10 @@ func TestDaemonOfANonEngineIsUnavailable(t *testing.T) {
 
 // Two engine builds never share a daemon: the socket is named after the binary.
 func TestSocketIsKeyedToTheEngineBinary(t *testing.T) {
+	base := filepath.Dir(testSocket(t))
+	t.Setenv("CODEAF_HOME", base)
+	t.Setenv("LOCALAPPDATA", base)
+	t.Setenv("XDG_RUNTIME_DIR", "")
 	a := socketFor("/x/furrow-0.1.0-aaaaaaaaaaaa")
 	b := socketFor("/x/furrow-0.1.0-bbbbbbbbbbbb")
 	if a == b || (runtime.GOOS != "windows" && filepath.Base(a) != "engine-0.1.0-aaaaaaaaaaaa.sock") {
