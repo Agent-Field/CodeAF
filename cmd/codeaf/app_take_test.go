@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -42,6 +44,27 @@ type e2App struct {
 	more   chan struct{}
 	done   chan error
 	log    string
+}
+
+// e2TempDir retains native evidence and avoids deleting state still held by
+// the shared daemon, which outlives the app processes until its idle shutdown.
+func e2TempDir(t *testing.T) string {
+	t.Helper()
+	if os.Getenv("CODEAF_E2_KEEP_FAILED") != "1" {
+		return resolvedTempDir(t)
+	}
+	dir, err := os.MkdirTemp("", "e2-app-state-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		t.Logf("retained app state: %s", dir)
+	})
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return real
 }
 
 func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
@@ -87,6 +110,10 @@ func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
 		case <-time.After(90 * time.Second):
 			_ = cmd.Process.Kill()
 			t.Error("app did not exit")
+		}
+		if t.Failed() {
+			raw, err := os.ReadFile(log)
+			t.Logf("app %s log: %s (read: %v)\n%s", dir, log, err, raw)
 		}
 	})
 	scanner := bufio.NewScanner(out)
@@ -202,9 +229,24 @@ func TestAppTakeF1P2FenceAndPromptPublication(t *testing.T) {
 	appTakeRoundTrip(t, false)
 }
 
-func appTakeRoundTrip(t *testing.T, daemon bool) {
+// W5 removes the sender's workspace before the receiver takes its empty chat.
+func TestAppTakeMissingWorkspaceW5(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("removing the sender's watched workspace needs Unix rename semantics; native W5 is in handoff")
+	}
+	appTakeRoundTrip(t, true, true)
+}
+
+func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 	celltest.RequireEngine(t)
-	_, workspace := wakeEnvironment(t, resolvedTempDir(t))
+	_, workspace := wakeEnvironment(t, e2TempDir(t))
+	absent := len(missingWorkspace) > 0 && missingWorkspace[0]
+	if absent {
+		workspace = filepath.Join(e2TempDir(t), "sender-project")
+		if err := os.MkdirAll(workspace, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	model := appTwoMessageSource(t, "echo codeaf-e2")
 	t.Cleanup(model.Close)
 	t.Setenv("CODEAF_BASE_URL", model.URL)
@@ -238,7 +280,8 @@ func appTakeRoundTrip(t *testing.T, daemon bool) {
 	})
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
-	dirA, dirB := home.Dir(), t.TempDir()
+	dirA, dirB := home.Dir(), e2TempDir(t)
+	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(dirA)
 	if err != nil {
 		t.Fatal(err)
@@ -273,11 +316,19 @@ func appTakeRoundTrip(t *testing.T, daemon bool) {
 	// Start continuation from a chat saved by the real app leaving path. This
 	// exercises a saved chat independently of background first-publication timing.
 	e2Quit(t, a)
-	a = e2StartApp(t, dirA, daemon)
-	machineCall[appwire.TakeResult](t, a.w, "agents.open", appwire.IDParams{ID: created.ID})
+	if absent {
+		if err := os.Rename(workspace, workspace+".away"); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		a = e2StartApp(t, dirA, daemon)
+		machineCall[appwire.TakeResult](t, a.w, "agents.open", appwire.IDParams{ID: created.ID})
+	}
 
 	t.Logf("created %s", string(e2JSON(created)))
-	t.Logf("A sync: %s", string(e2JSON(machineCall[appwire.SyncResult](t, a.w, "sync.get", struct{}{}))))
+	if !absent {
+		t.Logf("A sync: %s", string(e2JSON(machineCall[appwire.SyncResult](t, a.w, "sync.get", struct{}{}))))
+	}
 	var row appwire.ChatRow
 	appSyncWait(t, "published chat", func() bool {
 		rows := machineCall[appwire.ChatsResult](t, b.w, "chats.list", struct{}{})
@@ -305,6 +356,22 @@ func appTakeRoundTrip(t *testing.T, daemon bool) {
 		}
 		return false
 	})
+	if absent {
+		info, err := os.Stat(taken.Workspace)
+		if err != nil || !info.IsDir() || !strings.HasPrefix(taken.Workspace, dirB+string(filepath.Separator)) {
+			t.Fatalf("W5 receiver workspace %q: %v", taken.Workspace, err)
+		}
+		bound, err := os.ReadFile(filepath.Join(dirB, "v3", "stores", row.Cell, "engine-tree"))
+		if err != nil || string(bound) != taken.Workspace {
+			t.Fatalf("W5 followed tree %q, want %q: %v", bound, taken.Workspace, err)
+		}
+		if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+			t.Fatalf("W5 sender workspace was recreated: %v", err)
+		}
+		e2Turn(t, b, taken.ID, "after take")
+		e2Quit(t, b)
+		return
+	}
 	a.wait(t, func(f e2Frame) bool {
 		if f.Event != appwire.EventAgentChanged {
 			return false
