@@ -68,10 +68,15 @@ func TestASecondBeatJoinsTheFirstRatherThanFetchingAgain(t *testing.T) {
 	after, stopAfter := context.WithCancel(context.Background())
 	defer stopAfter()
 	third := make(chan struct{})
+	const every = time.Millisecond
 	go func() {
-		Beat(after, s, []string{other}, time.Millisecond)
+		Beat(after, s, []string{other}, every)
 		close(third)
 	}()
+	// A cached restart alone is idle. Select after the reading is stale so
+	// the new owner's catch-up proves that the first owner released its claim.
+	time.Sleep(2 * every)
+	Default().Chooser().Choose(Request{Model: other, Now: time.Now()})
 	waitFor(t, func() bool { return stub.Sheets(other) > 1 })
 	stopAfter()
 	<-third
