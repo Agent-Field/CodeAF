@@ -4,6 +4,10 @@ title: Desktop engines pair computers and continue chats from other computers
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
+  - "A failed pairing-time computer record previously waited for a synced chat; paired engines now publish at startup and retry independently of chats."
+  - "A readable computer roster previously failed when its separate presence request failed; the roster now remains available with unknown presence."
+  - "Native relay activation previously flushed unsupported Windows directory handles; it now preserves regular-file syncs and uses platform-aware directory sync."
+  - "Windows raft-store paths previously became SQLite URI authorities; drive letters now stay in absolute file paths, allowing native store activation."
   - "Recovered job checkpoints previously left stale process files running and reopened background chats; a running record whose ending the checkpoint already holds no longer counts as unfinished, and the next held recovery writes that ending."
   - "Conversation model identities previously stayed in a local index, letting a take back reuse older model slots; the saved main and fallback now travel with the chat."
   - "Preparing an unavailable incoming main model previously recorded a generic change and its specific reason; the change now records and publishes only the specific reason."
@@ -26,6 +30,22 @@ invalidates:
   - "Following an installed chat previously spawned the engine inside its workspace; empty or long Windows copy paths now use an existing local store directory and pass the workspace explicitly."
   - "Taking a project chat back on Windows could fail restoring receipts beyond MAX_PATH; the engine now receives an extended-length composed-directory path."
 ---
+Paired engines publish their own computer record at startup, after pairing and
+after rename, retrying failures with waits capped at sixty seconds. Unchanged
+names and capabilities cause no repeated writes. Computer changes share the
+existing directory follower and emit only when the displayed roster changes.
+Pairing instructions name Pair a computer and Enter a code from the other
+computer. Approval includes the other computer's platform. A successful pairing
+does not warn about a deferred record write, and rename receipts distinguish a
+published name from one waiting for the relay.
+
+Native relay unavailability logs its underlying local error through the relay
+logger, once per cause per minute with bounded retained causes. Activation,
+raft-store creation and transport generations preserve file syncs and atomic
+replacement while avoiding unsupported directory flushes on Windows. HTTP
+responses remain unchanged. Windows raft-store filenames also retain their
+drive letters as absolute URI paths rather than invalid URI authorities.
+
 The additive app wire reports the resolved Relay address and source, retains the
 last pairing operation, and sends device and sync changes after pairing. Joining
 with existing chats asks before replacement and requests an engine restart when

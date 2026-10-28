@@ -76,14 +76,18 @@ when none was saved. Off stops sync. Saving a desktop relay setting restarts its
 engine; working agents require confirmation first. Cancelling keeps the setting.
 A computer that has never paired remains quiet even with a relay address set.
 
-## Add a computer or join another computer from the desktop
+## Pair a computer or enter a pairing code in Computers
 
-Devices offers Add a computer to show a code, and Join another computer to type
-one. Setup also offers joining. A link can request or approve pairing instead.
+Computers offers Pair a computer. Choose to show a code, or choose
+Enter a code from the other computer to type one. Setup also offers joining.
+A link can request or approve pairing instead.
 Compare the engine's three words or check number on both computers, then answer
 its explicit question. Nothing is approved by pressing Enter without a choice.
-Choose Pair or Don't pair. The code lasts ten minutes; its instructions name
-Join another computer on the other computer.
+Choose Pair or Don't pair. The code's instruction says: `On your other computer,
+choose Pair a computer, then Enter a code from the other computer, and type
+<code>. This code lasts 10 minutes.` The approval names the other computer and
+its platform, for example `Pair with Abir (Windows)?`, including when both
+computers share a name.
 Cancel takes back the waiting code or ends the request. A wrong code shows the
 engine's sentence and does not add a computer.
 
@@ -93,6 +97,25 @@ continue. Finish any live work before
 joining another computer. After joining changes what this computer shares, the
 desktop restarts its engine and reads setup, devices and sync again.
 These actions appear only when the engine advertises pairing support.
+
+## When does a paired computer appear and when is its new name shared
+
+Every paired desktop engine shares its own computer name and capabilities at
+startup and after pairing, even with no chats. A failed write retries
+automatically, starting after five seconds and doubling to a maximum of sixty
+seconds between attempts. Success ends the retry. Reconnecting checks the
+record again; an unchanged record is not rewritten. Sync off and a home that
+has never paired remain quiet.
+
+Renaming shares the new name immediately and says `This computer is now called
+<name>.` If the relay cannot accept it yet, the name stays saved here and the
+line adds `Your other computers will see it when they can reach the relay.`
+The engine retries without another rename or a chat.
+
+Computers lists this computer and the relay's roster even while this computer's
+own record is still waiting to be shared. A separate presence failure leaves
+online status unknown; a readable roster is still shown. Changes arrive through
+engine events, and unchanged lists do not repeat them.
 
 ## Chats on your other computers and Continue here in the desktop
 
