@@ -773,3 +773,11 @@ checks with `Codeaf-Head-Takes: 1`; older relays retain exact-fence requests.
 Watch reconnects retain fresh presence, last-seen times never regress, and an
 unchanged row emits no chat event. Device events wait for the complete roster
 and compare the full last-emitted value across every emitter.
+
+`agents.open` keeps the conversation open until explicit close, including while
+its tab is hidden. Its idle relay hold renews through heartbeats with the same
+fence, without release/acquire or `chat.changed` for unchanged content. Calls that
+read the open agent keep using that conversation. Conversations opened only for
+background work retain the ten-minute idle release, checked every 30 seconds;
+new work reopens through existing admission. Running turns, unanswered questions,
+established open crew holds and kept services retain their conversations.

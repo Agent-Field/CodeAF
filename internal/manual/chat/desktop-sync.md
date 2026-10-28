@@ -123,6 +123,21 @@ Continue here still works after a reconnect when the same computer holds the
 same saved turn. A different holder or a newer saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
 
+## Does an idle desktop chat keep its hold on the relay
+
+A chat opened for viewing keeps its conversation and relay hold until it is
+explicitly closed, including while its tab is hidden. Heartbeats renew the same
+hold without releasing it or moving its fence. Reading the chat does not cause
+ownership changes or repeat unchanged chat rows.
+
+A conversation opened only for background work is let go after ten idle minutes;
+the sweep checks every 30 seconds. It stays released until work needs it again.
+Sending, queueing or retrying opens it through the normal ownership check.
+Steering still needs a running turn. A task or job can also open it. Running
+turns, unanswered questions, held crew members and kept services retain their
+conversations. If another computer continues a chat, the existing Continue here
+and kept-work rules still apply.
+
 ## Relay outages, local turns and automatic recovery
 
 While the relay is unreachable, an open chat continues to run and save on this

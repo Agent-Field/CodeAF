@@ -4,6 +4,7 @@ title: Desktop engines pair computers and continue chats from other computers
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
+  - "An open desktop view previously lost its writer to the idle sweep and read calls acquired a new fence; explicitly open views now renew the same hold until closed."
   - "An expired own hold previously rejected newer locally saved work after a relay outage; unchanged ownership now renews and publishes that work."
   - "A failed renewal of an expired own hold previously blocked local work; unreachable renewals now leave outage turns writable and saved for retry."
   - "A taken chat previously sent an unavailable provider model to the receiver's router; it now checks provider readiness and explains its usable local default."
@@ -88,3 +89,10 @@ default, explain the change once, and apply the existing conversation model-swit
 rules. A computer without a usable default gets a plain setup reason.
 The saved model choice also identifies its provider before any call, so a newly
 selected custom alias cannot fall through to a different computer's router.
+
+An explicitly open desktop view keeps its hold through idle sweeps; heartbeats
+renew the same fence without row churn. Conversations opened only for background
+work still release after ten idle minutes and re-acquire when work needs them.
+Hold receipts also
+require a nonempty home, so a misconfigured sync cannot write relative lock files
+into the source tree. The stale-drive refusal fixture now uses a temporary home.
