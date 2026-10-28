@@ -4,6 +4,7 @@ title: Desktop engines pair computers and continue chats from other computers
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
+  - "Chat inventory could miss its first online rows when startup device publication connected the shared watch first; it now reconciles an already connected watch when subscribing."
   - "A failed pairing-time computer record previously waited for a synced chat; paired engines now publish at startup and retry independently of chats."
   - "A readable computer roster previously failed when its separate presence request failed; the roster now remains available with unknown presence."
   - "Native relay activation previously flushed unsupported Windows directory handles; it now preserves regular-file syncs and uses platform-aware directory sync."
@@ -52,7 +53,9 @@ with existing chats asks before replacement and requests an engine restart when
 the computer's shared keys change. Live work blocks joining.
 
 One shared inventory follower supplies versioned chat changes and removals;
-presence-only changes reuse cached rows. Local agent list and open responses
+presence-only changes reuse cached rows. A chat subscriber also reconciles the
+shared watch's existing connected state, so startup device publication cannot
+leave its first online rows silent. Local agent list and open responses
 use cached locations without waiting for relay reads. Continue here uses the engine's observed
 computer and fence and returns a local app agent. A stale choice reports the
 engine's lost-race sentence. Older home-folder chats remain local. Kept branches

@@ -373,6 +373,12 @@ func chatLocation(r appwire.ChatRow) *appwire.Location {
 	return &appwire.Location{Cell: r.Cell, Seen: &seen, Here: r.Here, Holder: r.Holder, CanTake: r.CanTake, Line: line, TakeoverLine: r.TakeoverLine}
 }
 func (b *appBackend) followChats(ctx context.Context, feed dirwatch.Follower) {
+	// Device publication may have connected the shared watch before this
+	// subscriber joined. Changes announces only future frames, so reconcile
+	// its current state once; a watch that has not spoken still stays silent.
+	if feed.State().Up && !b.refreshChatInventory(ctx, feed) {
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
