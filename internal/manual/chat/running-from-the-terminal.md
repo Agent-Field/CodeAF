@@ -1233,6 +1233,10 @@ own keypair, and `CODEAF_MODEL_POOL_RELAY_URL` with `models.pool.public_key`
 server, a watcher — one per line, tab separated: the name, the status, how long it has been
 up, what is watched for health, and where its log is.
 
+A shell command that has already finished keeps any background server or watcher
+it left running when the turn ends. Interrupting a command that is still running
+stops the command and its child processes.
+
 ```
 dev-server	running	2h	port:5173	/tmp/dev.log
 ```
