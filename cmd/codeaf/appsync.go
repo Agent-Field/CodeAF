@@ -301,6 +301,7 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 			return
 		}
 		a.live, a.windowMoved = nil, true
+		a.lastLive = b.now()
 		a.view.State = appwire.StateIdle
 		live.stopping, mine = true, true
 	})

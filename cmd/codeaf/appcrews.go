@@ -99,6 +99,10 @@ type appCrewRun struct {
 	watcher    *fsnotify.Watcher
 	since      time.Time
 	wakeStamps map[string]string
+	// Cold admission state is protected by tick.
+	coldAfter   string
+	lazyStarted bool
+	stamp       func(string) string
 	// recovering is true during startup admission and false once settled. A
 	// settled recovery is revisited for new traffic, never for its old claim.
 	recovering map[string]bool

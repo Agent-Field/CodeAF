@@ -1,5 +1,37 @@
 # Measuring performance
 
+## Idle desktop chat admission
+
+`TestAppLazyQuietColdSweepBoundAndCoverage` in `cmd/codeaf/applazy_quiet_test.go`
+counts work-input probes with 13, 100 and 1,000 saved chats and a fake clock.
+Startup stamps every eligible closed candidate once. Each subsequent two-second
+beat stamps every hot candidate plus at most `ceil(cold / 30)` cold candidates
+in round-robin order. `appLazyColdSweep` is one minute; `appCrewPoll` is two
+seconds. Every cold chat is visited within 30 ticks for a stable population.
+
+| Quiet cold chats | Base work-input stats per tick | Cold stamps per tick | Local/budget probes per tick | Shared team stats per tick |
+| --- | --- | --- | --- | --- |
+| 13 | 104 | 1 | 7 | 1 |
+| 100 | 800 | 4 | 25 | 1 |
+| 1,000 | 8,000 | 34 | 205 | 1 |
+
+Each selected chat uses six local metadata probes. The budget and profile/team
+stamps are computed once per admission pass; traffic stamps once per crew per
+pass. The existing crew-view metadata checks and admission reads after a stamp
+changes are separate from these work-input counts. Work counts are the gate;
+elapsed test time is diagnostic.
+
+Live factory stages, kept/starting services, existing crew holds, due retries
+and chats seen live within `appLazyHotWindow` (10 minutes) stay on the hot beat.
+Crew traffic/team events retain their existing immediate reconciliation. Other
+work-file changes wait for the next cold visit (up to 60 seconds, plus a tick at
+the boundary), including when events are lost, watching is unavailable or work
+directories are re-created. Watcher errors still reconcile crews immediately.
+There is no periodic full cold repair. Only the base profile, teams and per-team
+traffic directories are watched; no watch or native buffer is added per saved
+chat. `TestAppLazyWatchSetDoesNotGrowWithChatHistory` checks the same three
+watches for one team at all three history sizes.
+
 ## Measure the changed path
 
 Use focused tests and benchmarks while editing. Record the Go version, operating
