@@ -18,6 +18,7 @@ const (
 // Sync is this computer's sync setting. Disclosure is present only after a
 // hosted drive starts and until a surface acknowledges the sentence.
 type Sync struct {
+	Relay      *Relay          `json:"relay,omitempty"`
 	Mode       string          `json:"mode" enum:"quiet,on,off,unavailable"`
 	Reason     string          `json:"reason,omitempty"`
 	Disclosure *SyncDisclosure `json:"disclosure,omitempty"`
@@ -36,12 +37,16 @@ type SyncChanged struct {
 	Sync Sync `json:"sync"`
 }
 
-// Location says why this window cannot take new work. Its absence leaves the
-// ordinary admission rules in force; S0 never sends here:true.
+// Location names the computer that can continue this chat. Its absence leaves
+// the ordinary admission rules in force; chats.take also reports local ownership.
 type Location struct {
-	Here   bool            `json:"here"`
-	Holder *LocationHolder `json:"holder,omitempty"`
-	Line   string          `json:"line,omitempty"`
+	Cell         string          `json:"cell,omitempty"`
+	Seen         *Seen           `json:"seen,omitempty"`
+	CanTake      bool            `json:"can_take,omitempty"`
+	TakeoverLine string          `json:"takeover_line,omitempty"`
+	Here         bool            `json:"here"`
+	Holder       *LocationHolder `json:"holder,omitempty"`
+	Line         string          `json:"line,omitempty"`
 }
 
 type LocationHolder struct {

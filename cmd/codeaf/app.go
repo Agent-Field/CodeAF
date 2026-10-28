@@ -455,6 +455,8 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	chats       appChats
+	pair        appPair
 	drives      *driveBook
 	sync        appSync
 	syncPending map[string][]appSyncFact
@@ -959,7 +961,16 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
+	// Publish cannot miss an agent first remembered from a saved row.
+	// Holding both locks makes its initial location agree with the inventory;
+	// a later publication will see the new agent and send its location change.
+	b.chats.mu.Lock()
 	b.mu.Lock()
+	var location *appwire.Location
+	if cached, ok := b.chats.byAgent[row.ID]; ok {
+		location = chatLocation(cached)
+	}
+	b.chats.mu.Unlock()
 	a := b.agentLocked(row.ID)
 	defer func() {
 		b.mu.Unlock()
@@ -968,6 +979,9 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}()
 	if a.transcript == "" {
 		a.transcript = row.Transcript
+		if a.view.Location == nil {
+			a.view.Location = location
+		}
 	}
 	disk := appRowView(row)
 	disk.Location = a.view.Location
@@ -1054,6 +1068,7 @@ func appRowOnDisk(id string) (session.SessionRow, bool) {
 
 // ListAgents reads the disk and never opens a conversation.
 func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
+	b.startChatInventory()
 	want := ""
 	if strings.TrimSpace(workspace) != "" {
 		want = filepath.Clean(workspace)
@@ -1163,6 +1178,9 @@ type appCreatePrep struct {
 // prepareCreate is everything agents.create can refuse, checked with nothing
 // made: the workspace, shutdown, and every attachment read whole.
 func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error) {
+	if err := b.pairingWorkRefusal(); err != nil {
+		return appCreatePrep{}, err
+	}
 	if err := (session.Submission{ClientID: ask.ClientID}).Check(); err != nil {
 		return appCreatePrep{}, appEngineError(err)
 	}
@@ -1500,6 +1518,8 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
+	b.startChatInventory()
+	b.dress(&view)
 	return view, nil
 }
 
@@ -4092,6 +4112,8 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	b.closePair()
+	b.closeChats()
 	if b.devices != nil {
 		b.devices.close()
 	}

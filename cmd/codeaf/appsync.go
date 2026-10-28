@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -142,8 +142,7 @@ func (b *appBackend) located(a *appAgent, location *appwire.Location) {
 		if old == nil && location == nil {
 			return
 		}
-		if old != nil && location != nil && old.Here == location.Here && old.Line == location.Line &&
-			(old.Holder == nil && location.Holder == nil || old.Holder != nil && location.Holder != nil && *old.Holder == *location.Holder) {
+		if reflect.DeepEqual(old, location) {
 			return
 		}
 		a.view.Location = location
@@ -155,6 +154,7 @@ func (b *appBackend) located(a *appAgent, location *appwire.Location) {
 }
 
 func (b *appBackend) syncStarted(s *syncsetup.Sync) {
+	guard.Go("app/chats-started", func() { _, _ = b.ListChats() })
 	b.sync.mu.Lock()
 	defer b.sync.mu.Unlock()
 	if _, owed := s.PeekFirstRun(); owed {
@@ -166,13 +166,13 @@ func (b *appBackend) syncStarted(s *syncsetup.Sync) {
 // syncStatusLocked is a local read. In particular it neither opens Sync nor
 // creates an identity, starts a drive or contacts a relay.
 func (b *appBackend) syncStatusLocked() appwire.Sync {
-	state := appwire.Sync{Mode: appwire.SyncQuiet}
+	state := appwire.Sync{Mode: appwire.SyncQuiet, Relay: appRelay(b.relayHome())}
 	switch {
-	case syncsetup.Resolve(home.Dir()).Off:
+	case state.Relay.Off:
 		state.Mode, state.Reason = appwire.SyncOff, chatlist.SyncOff
 	case !cell.Available():
 		state.Mode, state.Reason = appwire.SyncUnavailable, cell.UnavailableReason()
-	case syncsetup.MayTalk(home.Dir()):
+	case syncsetup.MayTalk(b.relayHome()):
 		state.Mode = appwire.SyncOn
 	}
 	if b.sync.owed != nil {
@@ -195,7 +195,7 @@ func (b *appBackend) syncChangedLocked() appwire.Sync {
 	state := b.syncStatusLocked()
 	old := b.sync.last
 	sameDisclosure := old.Disclosure == nil && state.Disclosure == nil || old.Disclosure != nil && state.Disclosure != nil && *old.Disclosure == *state.Disclosure
-	if old.Mode != state.Mode || old.Reason != state.Reason || !sameDisclosure {
+	if old.Mode != state.Mode || old.Reason != state.Reason || !sameDisclosure || !reflect.DeepEqual(old.Relay, state.Relay) {
 		b.sync.last = state
 		b.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: state})
 	}
@@ -228,6 +228,9 @@ func appLocationRefusal(location *appwire.Location) error {
 }
 
 func (b *appBackend) knownWorkRefusal(a *appAgent) error {
+	if err := b.pairingWorkRefusal(); err != nil {
+		return err
+	}
 	var refusal error
 	b.locked(func() {
 		if a.windowMoved {
