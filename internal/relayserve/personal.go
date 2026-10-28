@@ -38,10 +38,9 @@ func (n *namespaces) enrollPersonal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid enrollment", 403)
 		return
 	}
-	n.mu.Lock()
-	d := n.groups[id]
-	n.mu.Unlock()
+	d := n.group(id)
 	if d == nil {
+		n.unavailable("personal enrollment", errors.New("authenticated namespace is absent"))
 		http.Error(w, "cluster is unavailable", 503)
 		return
 	}
@@ -81,9 +80,7 @@ func (n *namespaces) exchangePersonal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid peer request", 400)
 		return
 	}
-	n.mu.Lock()
-	d := n.groups[request.Scope.Identity]
-	n.mu.Unlock()
+	d := n.group(request.Scope.Identity)
 	if d == nil && checkedID(request.Scope.Identity) == nil {
 		// A returning peer may activate an EXISTING durable namespace, but an
 		// unregistered key cannot create storage or invent a cluster root.

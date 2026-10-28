@@ -1,6 +1,7 @@
 package relayserve
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 
@@ -27,21 +28,28 @@ func (n *namespaces) clusterAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := n.activate(r.Context(), cs.IdentityID(request.IdentityKey), request.IdentityKey)
 	if err != nil {
+		n.unavailable("cluster activation", err)
 		http.Error(w, cs.LeadershipUnavailable, 503)
 		return
 	}
 	clock, err := cs.Sign(cs.Command{Schema: cs.SchemaVersion, Cluster: d.Cluster, Actor: d.effects.Actor, Session: "ingress", Sequence: 1, Now: n.now().UnixMilli(), Change: cs.Mutation{DeviceSeen: &cs.DeviceSeen{Device: actor}}}, d.effects.Key)
 	if err != nil {
+		n.unavailable("ingress clock", err)
 		http.Error(w, cs.LeadershipUnavailable, 503)
 		return
 	}
 	result, err := d.host.ClusterAPI(r.Context(), request, clock)
 	if err != nil {
+		n.unavailable("cluster operation", err)
 		http.Error(w, "the selected work is unavailable; refresh before trying again", 503)
 		return
 	}
 	raw, err = cs.Encode(result)
 	if err != nil || len(raw) > cs.MaxEvaluationBytes {
+		if err == nil {
+			err = fmt.Errorf("cluster result exceeds %d bytes: %d", cs.MaxEvaluationBytes, len(raw))
+		}
+		n.unavailable("cluster encoding", err)
 		http.Error(w, cs.LeadershipUnavailable, 503)
 		return
 	}

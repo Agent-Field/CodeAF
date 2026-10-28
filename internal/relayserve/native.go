@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/raftdirectory"
 	"github.com/Agent-Field/codeaf/internal/raftstore"
 	"github.com/Agent-Field/codeaf/internal/rafttransport"
@@ -61,9 +62,7 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 	}
 	n.activation.Lock()
 	defer n.activation.Unlock()
-	n.mu.Lock()
-	d := n.groups[id]
-	n.mu.Unlock()
+	d := n.group(id)
 	if d != nil {
 		return d, nil
 	}
@@ -126,17 +125,12 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 		if e != nil {
 			return nil, e
 		}
-		if e = os.Rename(tmp, provisionPath); e != nil {
+		if e = fsreplace.Rename(tmp, provisionPath); e != nil {
 			return nil, e
 		}
 		// Newly created ancestors must survive before the source UUID freezes.
 		for _, dir := range []string{path, filepath.Dir(path), n.root, filepath.Dir(n.root)} {
-			parent, e := os.Open(dir)
-			if e != nil {
-				return nil, e
-			}
-			e = errors.Join(parent.Sync(), parent.Close())
-			if e != nil {
+			if e = fsreplace.SyncDir(dir); e != nil {
 				return nil, e
 			}
 		}
@@ -244,9 +238,9 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 		return nil, err
 	}
 	n.mu.Lock()
+	defer n.mu.Unlock()
 	d.armMembers()
 	n.groups[id] = d
-	n.mu.Unlock()
 	return d, nil
 }
 func (d *nativeNamespace) project(s *raftstore.SQLite, a raftstore.Application) error {
@@ -407,12 +401,14 @@ func (n *namespaces) authenticate(r *http.Request, body []byte) (string, string,
 		if errors.Is(err, wireauth.ErrGone) {
 			return "", "", err
 		}
+		n.unavailable("directory activation", err)
 		return "", "", errors.Join(wireauth.ErrUnavailable, err)
 	}
 	if err = d.authority(r.Context(), actor, false); err != nil {
 		if errors.Is(err, wireauth.ErrRevoked) {
 			return "", "", err
 		}
+		n.unavailable("directory authority", err)
 		return "", "", errors.Join(wireauth.ErrUnavailable, err)
 	}
 	*r = *r.WithContext(context.WithValue(r.Context(), blobActorKey{}, actor))
@@ -520,12 +516,8 @@ func advanceNativeTransport(path string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err = os.Rename(f.Name(), path); err != nil {
+	if err = fsreplace.Rename(f.Name(), path); err != nil {
 		return 0, err
 	}
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return 0, err
-	}
-	return generation, errors.Join(dir.Sync(), dir.Close())
+	return generation, fsreplace.SyncDir(filepath.Dir(path))
 }
