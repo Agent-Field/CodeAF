@@ -13,6 +13,9 @@ invalidates:
   - "Synced model choices previously applied without a usable local provider; skipped choices now stay skipped until a newer choice arrives."
   - "Opening an existing local hold previously acquired another fence; startup and idle ownership checks now renew an unchanged hold."
   - "Presence refreshes previously ignored the reconnect grace period and could emit older last-seen times; queries now agree with watch events."
+  - "Excluding takeover staging folders from desktop admission did not release the store daemon's directory watcher; fetched copies now finish materialization in a one-shot process before installation."
+  - "Following an installed chat previously spawned the engine inside its workspace; empty or long Windows copy paths now use an existing local store directory and pass the workspace explicitly."
+  - "Taking a project chat back on Windows could fail restoring receipts beyond MAX_PATH; the engine now receives an extended-length composed-directory path."
 ---
 The additive app wire reports the resolved Relay address and source, retains the
 last pairing operation, and sends device and sync changes after pairing. Joining
@@ -61,3 +64,13 @@ all device emitters compare their last value, and last-seen times never regress.
 Presence queries honor the watch's reconnect grace period. Reconnecting without
 changing a chat row emits no chat change. A completed turn after takeover is
 published promptly while its holder stays open.
+Incoming copies also finish materialization in a one-shot store process, releasing
+its directory watcher before Windows renames the staging folder into place. The
+engine follows the installed folder for later edits and saves. Failed installations
+retain the existing lease release behavior.
+Follow and later dirty checks pass the installed tree as an engine argument,
+running from the local store so long Windows copy paths can be rebound. Missing
+empty workspaces are created before binding; incoming chats use their receiver
+workspace instead of an unavailable absolute path recorded on the sender.
+Taking a project chat back on Windows also restores composed turn receipts whose
+full paths exceed MAX_PATH, using the native extended-length path spelling.

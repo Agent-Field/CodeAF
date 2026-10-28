@@ -413,6 +413,8 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
 
 Native Windows moves chats with the native engine, just like Linux and macOS.
+Continue here installs the saved chat while other chats stay open. You can send
+from the installed copy and continue it back on your other computer.
 Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
 A build with no compatible engine keeps moving chats absent and says
 `moving chats needs a newer furrow engine than this build carries`.
@@ -424,6 +426,10 @@ or mixed line endings even when the receiving Git uses another checkout setting.
 links; links that cannot be created are reported on the same line. Hard-linked names
 currently arrive on Windows as separate files with identical bytes. The chat works
 in its folder on this computer, with old absolute workspace paths remapped there.
+An empty workspace is created here too. Continuing a chat follows its installed
+folder even when the copy's full path exceeds Windows' process-directory limit.
+Taking a project chat back also restores its saved turn receipts when their
+paths exceed Windows' usual file-path limit.
 
 The encrypted vault and withheld secrets live under your codeaf home in your user profile. Windows protects that profile with its account permissions; Unix file
 mode bits are recorded for later moves, but do not provide Windows access control.
