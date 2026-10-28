@@ -128,16 +128,13 @@ func (d *Doors) Launch(id int) error {
 			// ([factory.Item.PipelineCopy]) when the read used it, as the
 			// factory's rules do: a runner on another machine reads its rules
 			// from the job, never from its own read of main. The job's record
-			// says which file it runs whenever that changes.
-			if !file.Copy.Same(it.PipelineCopy) {
-				switch {
-				case file.Copy != nil:
-					it.Note(now, "Runs this factory's copy of "+factory.PipelineFile+", "+file.Copy.Saved()+", not main's")
-				default:
-					it.Note(now, "Runs main's "+factory.PipelineFile+" again; this factory no longer keeps its own copy")
-				}
+			// says which file it runs whenever that changes. ONLY A JOB THAT
+			// NEVER RAN takes the file this read used (the only kind StampSteps
+			// restamps): a job that ran keeps the file it started under, so its
+			// steps and its rules never come from two files.
+			if it.Stream == nil {
+				carryCopy(it, file.Copy, now)
 			}
-			it.PipelineCopy = file.Copy.Clone()
 		}
 		// EVERY START CARRIES ITS START RULES ([factory.Item.StartRules]), so
 		// the approval after the plan is checked whichever door started it.
@@ -162,6 +159,20 @@ func (d *Doors) Launch(id int) error {
 		delete(doc.Signals, id)
 		return stale, nil
 	})
+}
+
+// carryCopy puts the factory's copy c on the job in place of the one it
+// carries (nil: main's file), and its record says so when that changes.
+func carryCopy(it *factory.Item, c *factory.PipelineCopy, now time.Time) {
+	if !c.Same(it.PipelineCopy) {
+		switch {
+		case c != nil:
+			it.Note(now, "Runs this factory's copy of "+factory.PipelineFile+", "+c.Saved()+", not main's")
+		default:
+			it.Note(now, "Runs main's "+factory.PipelineFile+" again; this factory no longer keeps its own copy")
+		}
+	}
+	it.PipelineCopy = c.Clone()
 }
 
 // Stop puts the job back to new and takes its lease away: the worker learns

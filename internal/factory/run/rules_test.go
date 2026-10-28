@@ -1,19 +1,21 @@
 package run
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // EVERY STEP IS TOLD THE RULES: the repository's, then the factory's, each
 // once, as one paragraph of its brief; a job with none says nothing about them.
 func TestEveryStepsBriefCarriesTheRepositorysAndTheFactorysRules(t *testing.T) {
-	recipe := func(repo string) factory.Recipe {
-		if repo != "acme/api" {
-			t.Fatalf("recipe read for %q", repo)
+	recipe := func(it factory.Item) factory.Recipe {
+		if it.Repo != "acme/api" {
+			t.Fatalf("recipe read for %q", it.Repo)
 		}
 		return factory.Recipe{Policy: []string{"tests pass before anything posts", "no new dependencies without asking"}}
 	}
@@ -85,13 +87,25 @@ func TestAHouseRuleCodeKnowsIsAppliedToPosts(t *testing.T) {
 	}
 }
 
+// mainReads is a runner's recipe as the wire builds it ([pipeline.JobFile]):
+// the factory's copy the job carries first, else main's file, which says
+// rules.
+func mainReads(rules ...string) func(factory.Item) factory.Recipe {
+	return func(it factory.Item) factory.Recipe {
+		f, _ := pipeline.JobFile(it.PipelineCopy, "", func() (pipeline.File, error) {
+			f := pipeline.Defaults()
+			f.Rules = rules
+			return f, nil
+		})
+		return f.Recipe()
+	}
+}
+
 // A JOB THAT CARRIES THE FACTORY'S COPY of its repository's file follows the
 // copy's rules, never what this machine reads of main: a runner on another
 // machine cannot read the factory's store, so the job is where it learns.
 func TestAJobsRulesComeFromTheFactoryCopyItCarries(t *testing.T) {
-	main := func(string) factory.Recipe {
-		return factory.Recipe{Policy: []string{"main's rule"}}
-	}
+	main := mainReads("main's rule")
 	it := factory.Item{ID: 1, Repo: "acme/api", House: &factory.HouseRules{Rules: []string{"house rule"}},
 		PipelineCopy: &factory.PipelineCopy{Repo: "acme/api", Text: "pipeline:\n  issue: [write, proof]\nrules:\n  - the copy's rule\n", By: "test-owner"}}
 	if got := JobRules(main, it); !reflect.DeepEqual(got, []string{"the copy's rule", "house rule"}) {
@@ -104,5 +118,24 @@ func TestAJobsRulesComeFromTheFactoryCopyItCarries(t *testing.T) {
 	it.PipelineCopy = nil
 	if got := JobRules(main, it); !reflect.DeepEqual(got, []string{"main's rule", "house rule"}) {
 		t.Fatalf("without a copy %q", got)
+	}
+}
+
+// A POST IS CHECKED AGAINST THE RULES OF THE FILE THE JOB RUNS: the copy it
+// carries says "never close an issue", main's file says nothing, and the close
+// is refused before anything is written; the same job under main's file closes.
+func TestAPostIsCheckedAgainstTheCopyTheJobCarries(t *testing.T) {
+	recipe := mainReads()
+	src := &fakeSource{}
+	ex := NewPostExecutorWith(PostOptions{Source: func(string) factory.Source { return src }, Policy: func(it factory.Item) []string { return recipe(it).Policy }})
+	it := item()
+	it.PipelineCopy = &factory.PipelineCopy{Repo: "r", Text: "pipeline:\n  issue: [write, proof]\nrules:\n  - never close an issue\n", By: "test-owner"}
+	res, err := ex.Run(context.Background(), Job{Item: it, Stage: factory.Stage{Name: "post", Kind: factory.StagePost, Ask: "close"}})
+	if err != nil || res.Done || !strings.Contains(res.Output, "post refused: never close an issue") || len(src.got) != 0 {
+		t.Fatalf("the copy's rule did not hold: %+v %v, wrote %+v", res, err, src.got)
+	}
+	it.PipelineCopy = nil
+	if res, err := ex.Run(context.Background(), Job{Item: it, Stage: factory.Stage{Name: "post", Kind: factory.StagePost, Ask: "close"}}); err != nil || !res.Done || len(src.got) != 1 {
+		t.Fatalf("main's file refused the close: %+v %v", res, err)
 	}
 }

@@ -117,6 +117,7 @@ var Lost = map[string]string{
 	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
 	"CheckRun.AppID":               "server-side readiness matching only; every poll reads it from GitHub again before a required check is matched",
 	"PullRequest.ReadinessContext": "server-side review material up to 384 KiB; a queued final review carries it to the worker as the follow-up's details",
+	"PipelineCopy.Text":            "the whole copied file, up to 256 KiB a job; a reader's job carries who saved it and when, and only the worker's pull carries the file (WorkerJob)",
 	// Known gaps, recorded rather than carried (2026-10-27): each is the service's own record, and carrying it would
 	// make an older factory refuse a worker's whole report.
 	"Item.ReportReceipts": "known gap: the service's own acknowledgments of retained worker results, kept with the item so a lost reply never charges twice; no reader needs them",
@@ -140,7 +141,7 @@ func FromItem(it factory.Item) Job {
 		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
 		HouseRules:       cloneHouse(it.House),
-		PipelineCopy:     it.PipelineCopy.Clone(),
+		PipelineCopy:     copyWithoutText(it.PipelineCopy),
 		StartRules:       cloneStartRules(it.StartRules),
 		RuleHold:         it.RuleHold,
 		Steps:            steps(it),
@@ -1067,6 +1068,17 @@ func strip(jobs []Job) []Cell {
 		}
 		out[i].Jobs++
 		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateProof
+	}
+	return out
+}
+
+// copyWithoutText is the factory's copy a job carries as a reader sees it:
+// who saved it and when, without the file, which only the runner pulling the
+// job is sent ([WorkerJob]). Nil stays nil.
+func copyWithoutText(c *factory.PipelineCopy) *factory.PipelineCopy {
+	out := c.Clone()
+	if out != nil {
+		out.Text = ""
 	}
 	return out
 }

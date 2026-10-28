@@ -17,7 +17,9 @@ package main
 //
 // THE ANSWER IS NOT TAKEN ON TRUST. The engine writes the file the way the
 // factory does ([pipeline.Encode]) and believes a saved copy only when it is
-// that file, for that repository, at a version past the one read.
+// that file, for that repository, at a version past the one read. A stop is
+// believed at a version past the one read with no copy, or at the version
+// read with no copy: stopping a copy the factory does not keep writes nothing.
 
 import (
 	"context"
@@ -104,7 +106,14 @@ func (b *appBackend) pipelineCopyWrite(ctx context.Context, id, repo, method str
 		return none, pipelineCopyUncertain()
 	}
 	var got api.PipelineCopyAnswer
-	if json.Unmarshal(r.body, &got) != nil || !strings.EqualFold(got.Repo, repo) || got.Version <= read {
+	if json.Unmarshal(r.body, &got) != nil || !strings.EqualFold(got.Repo, repo) {
+		return none, pipelineCopyUncertain()
+	}
+	// A WRITE MOVES THE VERSION, but STOPPING NOTHING WRITES NOTHING: a stop
+	// of a copy the factory does not keep comes back at the version read, with
+	// no copy, and that is the stop done.
+	stoppedNothing := want == nil && got.FactoryCopy == nil && got.Version == read
+	if got.Version <= read && !stoppedNothing {
 		return none, pipelineCopyUncertain()
 	}
 	out := appwire.FactoryPipelineCopyDone{Factory: id, Repo: repo, Version: got.Version}

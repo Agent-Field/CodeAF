@@ -135,6 +135,25 @@ func TestTheCopyClearsItselfWhenMainSaysTheSame(t *testing.T) {
 	}
 }
 
+// MAIN IS JUDGED ON ITS OWN FILE, NOT WITH THE PERSONAL FILE: a personal file
+// with a problem of its own does not keep a merged copy standing, and the read
+// that answers is main's, tightened by that personal file as before.
+func TestAPersonalFilesProblemDoesNotKeepAMergedCopy(t *testing.T) {
+	keep := newCopyKeeper()
+	keep.copies["acme/api"] = &factory.PipelineCopy{Repo: "acme/api", Text: copyText, At: time.Now()}
+	personal := filepath.Join(t.TempDir(), "factory.yaml")
+	if err := os.WriteFile(personal, []byte("default_budget: 5\nfixed: [lint]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := WithFactoryCopy(mainRead(t, copyText), nil, keep, "acme/api", personal)
+	if err != nil || got.Copy != nil || keep.copies["acme/api"] != nil || got.From != factory.FromMainBranch {
+		t.Fatalf("the copy stayed: %+v from %q (%v)", got.Copy, got.From, err)
+	}
+	if !got.Personal || got.DefaultBudget != 5 || len(got.Problems) == 0 {
+		t.Fatalf("main's read is not tightened by the personal file: personal %v budget %v problems %v", got.Personal, got.DefaultBudget, got.Problems)
+	}
+}
+
 // A COPY THAT CANNOT BE READ REFUSES THE READ like the factory's rules do: a
 // job must never quietly run main's steps when a person replaced them.
 func TestAnUnreadableCopyRefusesLikeTheFactorysRules(t *testing.T) {
@@ -159,6 +178,29 @@ func TestSameFileComparesWhatTheFileSays(t *testing.T) {
 	} {
 		if SameFile(c.a, c.b) != c.same {
 			t.Errorf("SameFile(%q, %q) is %v", c.a, c.b, !c.same)
+		}
+	}
+}
+
+// A JOB IS BOUNDED BY THE COPY IT CARRIES, tightened by the personal file,
+// whatever the factory reads now; one with no copy, or with only who saved a
+// copy and when (a reader's job list), is bounded by the factory's read.
+func TestAJobIsBoundedByTheCopyItCarries(t *testing.T) {
+	personal := filepath.Join(t.TempDir(), "factory.yaml")
+	if err := os.WriteFile(personal, []byte("default_budget: 5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := func() (File, error) {
+		return mainRead(t, "pipeline:\n  issue: [write, proof]\nrules:\n  - main's rule\n"), nil
+	}
+	carried := &factory.PipelineCopy{Repo: "acme/api", Text: copyText, By: "test-owner", At: time.Now()}
+	got, err := JobFile(carried, personal, now)
+	if err != nil || got.From != factory.FromFactoryCopy || strings.Join(got.Rules, "|") != "keep the copy's rule" || got.DefaultBudget != 5 {
+		t.Fatalf("carried: from %q rules %v budget %v (%v)", got.From, got.Rules, got.DefaultBudget, err)
+	}
+	for name, c := range map[string]*factory.PipelineCopy{"no copy": nil, "who and when only": {Repo: "acme/api", By: "test-owner", At: time.Now()}} {
+		if got, err := JobFile(c, personal, now); err != nil || strings.Join(got.Rules, "|") != "main's rule" {
+			t.Fatalf("%s: rules %v (%v)", name, got.Rules, err)
 		}
 	}
 }

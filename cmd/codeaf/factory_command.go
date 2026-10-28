@@ -271,6 +271,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryPipelineRead(ctx, st, repo, dir)
 		},
+		JobPipeline: func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+			return factoryJobRead(ctx, st, it, "")
+		},
 	}
 	if servedBy == "factory" && mode == api.FactoryTeam {
 		// THE TEAM SERVER NEVER WRITES TO GITHUB, even with a host override.

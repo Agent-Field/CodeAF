@@ -20,8 +20,10 @@ type PostOptions struct {
 	Record *record.Record
 	// Source answers the item's source, nil when none.
 	Source func(repo string) factory.Source
-	// Policy answers the repo's recipe policy lines.
-	Policy func(repo string) []string
+	// Policy answers the policy lines of the recipe the job runs: the
+	// factory's copy it carries first, else its repository's file
+	// ([Options.Recipe]).
+	Policy func(it factory.Item) []string
 	// Push publishes the item's branch from its folder before a `pr` is
 	// opened from it; the wire hands [GitPush]. Nil pushes nothing, and the
 	// pull request is opened from whatever the remote already has.
@@ -30,7 +32,11 @@ type PostOptions struct {
 
 // NewPostExecutor runs a post stage: one write through the item's source.
 func NewPostExecutor(source func(repo string) factory.Source, policy func(repo string) []string) Executor {
-	return NewPostExecutorWith(PostOptions{Source: source, Policy: policy})
+	o := PostOptions{Source: source}
+	if policy != nil {
+		o.Policy = func(it factory.Item) []string { return policy(it.Repo) }
+	}
+	return NewPostExecutorWith(o)
 }
 
 // NewPostExecutorWith runs a post stage: one write through the item's source.
@@ -79,7 +85,7 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			return factory.StageResult{}, fmt.Errorf("%s is not on a source codeaf can post to", it.Ref())
 		}
 		if policy != nil {
-			if ok, why := PolicyAllows(withHouse(policy(it.Repo), it), it, action, job.Prior); !ok {
+			if ok, why := PolicyAllows(withHouse(policy(it), it), it, action, job.Prior); !ok {
 				return factory.StageResult{
 					Output: "post refused: " + why,
 					Claims: []factory.Claim{{Text: verb + " refused by policy", OK: false, Evidence: why, Medium: "policy"}},

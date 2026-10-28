@@ -21,19 +21,21 @@ import (
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
-// factoryPipelineOption is the seam's repository recipe: main's file, or the
-// factory's own copy in its place when st keeps one, as every job reads it
-// ([pipeline.WithFactoryCopy]). st is nil for a worker's mirror, which keeps
-// no copy: the jobs it runs carry theirs.
+// factoryPipelineOption is the seam's recipes: a repository's is main's
+// file, or the factory's own copy in its place when st keeps one
+// ([factoryRepoRead]); a job's is the copy it carries first
+// ([factoryJobFile]). st is nil for a worker's mirror, which keeps no copy:
+// the jobs it runs carry theirs.
 func factoryPipelineOption(st *store.Store) factory.LocalOption {
-	return factory.WithOptions(pipeline.LocalFiles(), factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
-		personal := home.Join("factory.yaml")
-		f, err := factoryRules().Load(context.Background(), repo, dir, personal)
-		if st != nil {
-			f, err = pipeline.WithFactoryCopy(f, err, st, repo, personal)
-		}
-		return f.Recipe(), f.RecipeProblems(), err
-	}))
+	return factory.WithOptions(pipeline.LocalFiles(),
+		factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
+			f, err := factoryRepoRead(context.Background(), st, repo, dir)
+			return f.Recipe(), f.RecipeProblems(), err
+		}),
+		factory.WithJobRecipeLoader(func(it factory.Item, dir string) (factory.Recipe, []factory.Problem, error) {
+			f, err := factoryJobFile(context.Background(), st, it, it.Repo, dir)
+			return f.Recipe(), f.RecipeProblems(), err
+		}))
 }
 
 func runFactoryConvert(args []string, out, warnings io.Writer) error {
@@ -156,12 +158,42 @@ func factoryRules() *factorygithub.PipelineLoader {
 // then the factory's own rules on top ([withFactoryHouseRules]). The order is
 // the precedence factory.RecipeSource records: copy, else main, else built-in.
 func factoryPipelineRead(ctx context.Context, st *store.Store, repo, dir string) (pipeline.File, error) {
-	personal := home.Join("factory.yaml")
-	f, err := factoryRules().Load(ctx, repo, dir, personal)
-	if st != nil {
-		f, err = pipeline.WithFactoryCopy(f, err, st, repo, personal)
-	}
+	f, err := factoryRepoRead(ctx, st, repo, dir)
 	return withFactoryHouseRules(st, f, err)
+}
+
+// factoryJobRead is [factoryPipelineRead] for ONE JOB: the factory's copy the
+// job carries in place of the repository's read ([factoryJobFile]), with the
+// factory's own rules on top. Every door that edits a job's steps reads this.
+func factoryJobRead(ctx context.Context, st *store.Store, it factory.Item, dir string) (pipeline.File, error) {
+	f, err := factoryJobFile(ctx, st, it, factory.RepoOf(it), dir)
+	return withFactoryHouseRules(st, f, err)
+}
+
+// factoryRepoRead is one repository's pipeline before the factory's own
+// rules: main's file with the personal file, or the factory's copy in its
+// place when st keeps one ([pipeline.WithFactoryCopy], which is handed main's
+// read before the personal file and merges it itself). A nil st keeps no
+// copy.
+func factoryRepoRead(ctx context.Context, st *store.Store, repo, dir string) (pipeline.File, error) {
+	personal := home.Join("factory.yaml")
+	if st == nil {
+		return factoryRules().Load(ctx, repo, dir, personal)
+	}
+	f, err := factoryRules().Load(ctx, repo, dir, "")
+	return pipeline.WithFactoryCopy(f, err, st, repo, personal)
+}
+
+// factoryJobFile is THE ONE RESOLVER of the file a job is bounded by, before
+// the factory's own rules ([pipeline.JobFile]): THE COPY THE JOB CARRIES
+// ([factory.Item.PipelineCopy]) with the personal file, else this factory's
+// read of repo now ([factoryRepoRead]). The edit doors, the manager's brief,
+// the item card and the runner (its rules, its plan's bounds and a post's
+// policy) all read it, so none of them bounds a job by a file it does not run.
+func factoryJobFile(ctx context.Context, st *store.Store, it factory.Item, repo, dir string) (pipeline.File, error) {
+	return pipeline.JobFile(it.PipelineCopy, home.Join("factory.yaml"), func() (pipeline.File, error) {
+		return factoryRepoRead(ctx, st, repo, dir)
+	})
 }
 
 // withFactoryHouseRules adds the factory's own rules (the store's, see

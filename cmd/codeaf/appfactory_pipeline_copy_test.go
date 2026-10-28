@@ -75,6 +75,13 @@ func TestPipelineCopyWireAgainstTheRealFactoryHandler(t *testing.T) {
 	if src.State != "missing" || src.FactoryCopy != nil || src.CopyVersion != 1 || src.Can == nil || !src.Can.UseOnFactory {
 		t.Fatalf("source %+v", src)
 	}
+	// Stopping a copy the factory does not keep writes nothing, and is done.
+	var stopped appwire.FactoryPipelineCopyDone
+	w.must("factory.pipeline_copy_clear", appwire.FactoryPipelineCopyClearParams{Factory: conn.ID, Repo: "acme/api",
+		Expect: &appwire.FactoryPipelineCopyExpect{Version: src.CopyVersion}}, &stopped)
+	if stopped.Version != 1 || stopped.FactoryCopy != nil {
+		t.Fatalf("stopped nothing %+v", stopped)
+	}
 	var prev appwire.FactoryPipelinePreview
 	w.must("factory.pipeline_preview", appwire.FactoryPipelinePreviewParams{Factory: conn.ID, Repo: "acme/api", BaseSHA: src.BaseSHA, BaseText: src.Text,
 		Edits: []appwire.FactoryPipelineEdit{{Op: "set_step", Name: "write", Max: num(7)}}}, &prev)

@@ -385,8 +385,10 @@ type Job struct {
 	// PipelineCopy is the factory's own copy of the repository's pipeline
 	// file the job was queued under (factory.PipelineCopy): its steps and
 	// rules are that file's, not main's. Absent when the job runs main's
-	// file. It carries the whole file, so a runner on another machine reads
-	// the same rules.
+	// file. A reader's job (the queue, a job read) carries its repo, by and at
+	// only; THE WHOLE FILE GOES ONLY TO THE RUNNER that pulls the job
+	// ([WorkerJob]), so it reads the same rules, and a list of jobs never
+	// carries every file again.
 	PipelineCopy *factory.PipelineCopy `json:"pipeline_copy,omitempty"`
 	// StartRules are the ask-first and never lines the job was started under
 	// (factory.StartRules); RuleHold is the rule and file that make its

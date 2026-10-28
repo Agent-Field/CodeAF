@@ -180,8 +180,11 @@ func setFactoryProcess(change func()) {
 // cap, today's rail) and nowhere else.
 func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
-	recipe := func(repo string) factory.Recipe {
-		return factoryItemRecipe(dirs, factory.Item{Repo: repo})
+	// EVERY BOUND ON A JOB IS THE FILE IT RUNS: the factory's copy it carries
+	// first, else main's file here ([factoryItemRecipe]). No store copy is
+	// read: a job the factory started under its copy carries it.
+	recipe := func(it factory.Item) factory.Recipe {
+		return factoryItemRecipe(nil, dirs, it)
 	}
 	source := factorySource(floor, profileDir)
 	money := factoryrun.NewMoney(items, nil, time.Now)
@@ -210,7 +213,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 			factory.StagePost: factoryrun.NewPostExecutorWith(factoryrun.PostOptions{
 				Record: history,
 				Source: source,
-				Policy: func(repo string) []string { return recipe(repo).Policy },
+				Policy: func(it factory.Item) []string { return recipe(it).Policy },
 				Push:   factoryrun.GitPush(pushGit),
 			}),
 			// A GATE IS A PERSON, and the loop answers it before it would look

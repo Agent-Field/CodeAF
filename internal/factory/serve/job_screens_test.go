@@ -382,3 +382,25 @@ func TestJobScreensRemoveAndMoveAStepOfOneJob(t *testing.T) {
 		t.Fatalf("record = %q", cur.Adapted)
 	}
 }
+
+// A STEP EDIT IS BOUNDED BY THE FILE THE JOB RUNS: the factory's copy it
+// carries fixes docs, which main's file does not, so its person may not
+// remove docs from it; the same job under main's file may.
+func TestJobScreensAStepEditIsBoundedByTheCopyTheJobCarries(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.Edit = factory.LocalSeam(f.st, now).Edit
+	reopenJobs(t, f)
+	stages := []factory.Stage{
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "docs", Kind: factory.StageChat, Ask: "say it", On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "prove", Until: factory.UntilProven, On: true},
+	}
+	carried := &factory.PipelineCopy{Repo: "acme/api", Text: "pipeline:\n  issue: [write, docs, proof]\nsteps:\n  docs: say it\nfixed: [docs]\n", By: "test-owner", At: now}
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: factory.CopyStages(stages), PipelineCopy: carried})
+	f.post(t, it, "step-edits", `{"remove":["docs"]}`, 409)
+	if cur, _ := f.st.Get(it.ID); len(cur.Stages) != 3 {
+		t.Fatalf("the copy's fixed step went: %+v", cur.Stages)
+	}
+	plain := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: factory.CopyStages(stages)})
+	f.post(t, plain, "step-edits", `{"remove":["docs"]}`, 200)
+}

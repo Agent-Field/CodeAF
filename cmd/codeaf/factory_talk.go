@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -123,7 +122,7 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 			return "", err
 		}
 		name := talkTeamName(it)
-		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(dirs, it))); err != nil {
+		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(st, dirs, it))); err != nil {
 			return "", err
 		}
 		if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
@@ -369,21 +368,17 @@ func talkHandle(it factory.Item) string {
 	return h
 }
 
-// factoryItemRecipe shares the forge-backed rules the floor and intake read.
-func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe {
+// factoryItemRecipe is the recipe one job is bounded by, as its manager's
+// brief and its item card read it: the factory's copy the job carries first,
+// else st's read of its repository (its copy, else main's file, else the
+// built-in steps), with the personal file ([factoryJobFile]). A nil st keeps
+// no copy, as a worker's runner, whose jobs carry theirs.
+func factoryItemRecipe(st *store.Store, dirs func(string) string, it factory.Item) factory.Recipe {
 	dir := ""
 	if dirs != nil {
 		dir = strings.TrimSpace(dirs(it.Repo))
 	}
-	// A JOB THAT CARRIES THE FACTORY'S COPY of its repository's file runs that
-	// file ([factory.Item.PipelineCopy]), so its brief and its bounds are the
-	// copy's, never main's.
-	if it.PipelineCopy != nil {
-		f, err := pipeline.CopyFile(*it.PipelineCopy)
-		f, _ = pipeline.MergePersonal(f, home.Join("factory.yaml"), err)
-		return f.Recipe()
-	}
-	f, _ := factoryRules().Load(context.Background(), it.Repo, dir, home.Join("factory.yaml"))
+	f, _ := factoryJobFile(context.Background(), st, it, it.Repo, dir)
 	return f.Recipe()
 }
 
@@ -521,7 +516,7 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 	if err != nil {
 		return factory.Item{}, factory.Item{}, err
 	}
-	recipe := factoryItemRecipe(d.dirs, it)
+	recipe := factoryItemRecipe(d.st, d.dirs, it)
 	before := session.ItemStaged(it, recipe)
 	after, err := session.ApplyItemChange(it, change, recipe)
 	if err != nil {
@@ -536,7 +531,7 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemChange) (factory.Item, error) {
 	var now factory.Item
 	err := d.st.Update(item, func(it *factory.Item) error {
-		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.dirs, *it))
+		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.st, d.dirs, *it))
 		if err != nil {
 			return err
 		}

@@ -29,8 +29,9 @@ type PipelineCopy struct {
 	// Repo is the repository as the person who saved it named it, owner/name.
 	Repo string `json:"repo"`
 	// Text is the whole file, exactly as the factory writes it (the bytes a
-	// pull request of the same steps would commit).
-	Text string `json:"text"`
+	// pull request of the same steps would commit). A reader's job list
+	// leaves it out (api.FromItem): only a runner pulling the job is sent it.
+	Text string `json:"text,omitempty"`
 	// By is who saved it (their handle), At when.
 	By string    `json:"by"`
 	At time.Time `json:"at"`

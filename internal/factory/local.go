@@ -163,7 +163,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if len(startedStages(*it)) > 0 {
 				mode = EditInRun
 			}
-			next, l, err := Edit(*it, e, o.recipe(it.Repo), mode)
+			next, l, err := Edit(*it, e, o.jobRecipe(*it), mode)
 			if err != nil {
 				return err
 			}
@@ -262,6 +262,14 @@ func WithRepositoryRecipeLoader(load func(repo, dir string) (Recipe, []Problem, 
 	return func(o *localOptions) { o.loadRepoRecipe = load }
 }
 
+// WithJobRecipeLoader reads the recipe one job is bounded by: the factory's
+// copy of its repository's file the job carries ([Item.PipelineCopy]), else
+// its repository's (pipeline.JobFile). Without it a job is bounded by its
+// repository's read alone.
+func WithJobRecipeLoader(load func(it Item, dir string) (Recipe, []Problem, error)) LocalOption {
+	return func(o *localOptions) { o.loadJobRecipe = load }
+}
+
 func (o localOptions) defaultRecipe() Recipe {
 	if o.loadRecipe != nil {
 		r, _, _ := o.loadRecipe("")
@@ -279,6 +287,7 @@ func (o localOptions) load(dir string) (Recipe, []Problem, error) {
 
 type localOptions struct {
 	loadRepoRecipe func(string, string) (Recipe, []Problem, error)
+	loadJobRecipe  func(Item, string) (Recipe, []Problem, error)
 	loadRecipe     func(string) (Recipe, []Problem, error)
 	files          RecipeFiles
 	runner         RunnerDoors
@@ -492,13 +501,27 @@ func (o localOptions) recipe(repo string) Recipe {
 	return r
 }
 
-// itemRecipe is the recipe of the repository item id is on, read before the
-// store's update so no git read happens inside it; the default recipe when
-// the item or its folder is not known.
+// itemRecipe is the recipe item id is bounded by ([localOptions.jobRecipe]),
+// read before the store's update so no git read happens inside it; the
+// default recipe when the item or its folder is not known.
 func (o localOptions) itemRecipe(st ItemStore, id int) Recipe {
 	it, err := localItem(st, id)
 	if err != nil {
 		return DefaultRecipe()
+	}
+	return o.jobRecipe(it)
+}
+
+// jobRecipe is the recipe one job is bounded by: the job loader's, which reads
+// the copy the job carries first, else its repository's ([localOptions.recipe]).
+func (o localOptions) jobRecipe(it Item) Recipe {
+	if o.loadJobRecipe != nil && it.Repo != "" {
+		dir := ""
+		if o.dirs != nil {
+			dir = strings.TrimSpace(o.dirs(it.Repo))
+		}
+		r, _, _ := o.loadJobRecipe(it, dir)
+		return r
 	}
 	return o.recipe(it.Repo)
 }

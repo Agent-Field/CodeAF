@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -185,8 +187,8 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if h.config.Pipeline != nil {
-			file, err := h.config.Pipeline(r.Context(), itemRepo(it), "")
+		if h.config.Pipeline != nil || h.config.JobPipeline != nil {
+			file, err := h.jobPipeline(r.Context(), it)
 			if h.failed(w, err) {
 				return
 			}
@@ -204,6 +206,22 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.stepEditsReply(w, r, updated, lines)
+}
+
+// jobPipeline is the pipeline one job's step edits are bounded by: THE
+// FACTORY'S COPY THE JOB CARRIES first, else this factory's read of its
+// repository now ([Config.JobPipeline], pipeline.JobFile), so an edit is
+// bounded by the file the job runs, never by one saved or stopped since.
+func (h *Handler) jobPipeline(ctx context.Context, it factory.Item) (pipeline.File, error) {
+	if h.config.JobPipeline != nil {
+		return h.config.JobPipeline(ctx, it)
+	}
+	return pipeline.JobFile(it.PipelineCopy, "", func() (pipeline.File, error) {
+		if h.config.Pipeline == nil {
+			return pipeline.Defaults(), nil
+		}
+		return h.config.Pipeline(ctx, itemRepo(it), "")
+	})
 }
 
 func (h *Handler) readJobHandOff(w http.ResponseWriter, r *http.Request) {

@@ -304,8 +304,9 @@ func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 // managerEdit is the manager's edit through the door a person's edit takes
 // ([lease.Doors.EditSteps]): A WORKER RUNNING THE JOB FROM ITS OWN COPY IS
 // WITHDRAWN in the same change, so it pulls the edited steps, and no report
-// from the old copy can write its steps back. The bounds are the repository's
-// pipeline with the factory's rules, as the person's edit is bounded.
+// from the old copy can write its steps back. The bounds are the pipeline the
+// job runs (the factory's copy it carries first, [factoryJobRead]) with the
+// factory's rules, as the person's edit is bounded.
 func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
 	return func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
 		it, err := st.Get(id)
@@ -313,7 +314,7 @@ func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Con
 			return factory.Item{}, nil, err
 		}
 		repo := factory.RepoOf(it)
-		f, err := factoryPipelineRead(ctx, st, repo, dirs(repo))
+		f, err := factoryJobRead(ctx, st, it, dirs(repo))
 		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 			return factory.Item{}, nil, err
 		}
