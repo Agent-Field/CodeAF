@@ -40,7 +40,7 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 		{"auth directory", "start:\n  labels: [agent-ready]\n  never: [auth/**]\n", "update auth/", "S", "auth/**", false},
 		{"budget", "default_budget: 3\nstart:\n  labels: [agent-ready]\n  max_cost: 2\n", "fix docs", "S", "job budget $3 is over $2", false},
 		{"large", "start:\n  labels: [agent-ready]\n  max_size: M\n", "fix docs", "L", "this one is L", false},
-		{"path rule", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix auth/keys.go", "S", "touches auth/**", false},
+		{"path rule", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix auth/keys.go", "S", "protected · auth/** · auth/keys.go", false},
 		{"unknown rule asks", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "fix docs", "S", "changes secrets", false},
 		{"unmatched path", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix docs/readme.md", "S", "", true},
 		{"missing size reads as M", "start:\n  labels: [agent-ready]\n", "fix docs", "", "", true},

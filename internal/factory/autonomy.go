@@ -1,6 +1,9 @@
 package factory
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Auto approves routine pipeline progress, never merge or critical questions.
 const AutonomyAuto = "auto"
@@ -54,10 +57,10 @@ func AutonomyBlockReason(it Item) string {
 	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
 	// to be asked, so Auto asks.
 	if it.QKind == QKindApprove && it.RuleHold != "" {
-		return "A rule asks first: " + it.RuleHold + ". Review the plan, then press Approve."
+		return ruleHoldWords(it.RuleHold) + ". Review the plan, then press Approve."
 	}
 	if it.State == StateLanded && it.RuleHold != "" {
-		return "A rule asks first: " + it.RuleHold + ". Review the changes, then press Approve."
+		return ruleHoldWords(it.RuleHold) + ". Review the changes, then press Approve."
 	}
 	if it.Approval != nil && it.Approval.Error != "" {
 		return "Automatic approval failed: " + it.Approval.Error + ". Review the problem before trying again."
@@ -97,4 +100,14 @@ func AutonomyBlockReason(it Item) string {
 		return "A job owner is required before Auto can approve progress."
 	}
 	return ""
+}
+
+// ruleHoldWords is a rule hold in a person's words: a protected path match
+// (`protected · auth/ · auth/login.go`) is "A protected path: auth/ ·
+// auth/login.go"; any other hold is said as the rule that asks first.
+func ruleHoldWords(hold string) string {
+	if rest, ok := strings.CutPrefix(hold, "protected · "); ok {
+		return "A protected path: " + rest
+	}
+	return "A rule asks first: " + hold
 }

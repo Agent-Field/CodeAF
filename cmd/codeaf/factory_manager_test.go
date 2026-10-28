@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -103,9 +103,28 @@ func TestTheTalkDoorAndTheRunMakeOneManager(t *testing.T) {
 	}
 }
 
+// lastAssistantMessage is the whole of the last assistant message in a
+// session file, "" when there is none. (session.LastSaid keeps only its last
+// sentence.)
+func lastAssistantMessage(path string) string {
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		var m struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &m) == nil && m.Role == "assistant" {
+			return m.Content
+		}
+	}
+	return ""
+}
+
 func TestARunReportsIntoTheManagersJournalAndReadsItsBrief(t *testing.T) {
 	st, web, profile := talkLab(t)
-	id, err := st.Add(context.Background(), factory.Item{Repo: "web", Title: "fix the ledger double count",
+	// Manual: the run lands for the person's approval (Auto would go on to publish).
+	id, err := st.Add(context.Background(), factory.Item{Repo: "web", Title: "fix the ledger double count", Autonomy: factory.AutonomyManual,
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, Ask: "plan it", Until: factory.UntilDone, On: true}}})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +166,9 @@ func TestARunReportsIntoTheManagersJournalAndReadsItsBrief(t *testing.T) {
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if got := session.LastSaid(chat); got == "landed · proof sheet ready · your approval" {
+		// The landing is the last thing said, as the run now words it: the work
+		// is done and waits for the person's approval.
+		if got := lastAssistantMessage(chat); strings.HasPrefix(got, "Implementation, tests, review and proof are complete.") && strings.Contains(got, "Approval needed: push the branch") {
 			break
 		}
 		if time.Now().After(deadline) {

@@ -35,20 +35,17 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 	if budget > f.Start.MaxCost {
 		reasons = append(reasons, "job budget "+money(budget)+" is over "+money(f.Start.MaxCost))
 	}
-	if why := neverWhy(underDirs(f.Start.Never), paths); why != "" {
-		reasons = append(reasons, why)
+	// One reason per protected path the issue names (ask-first path lines and
+	// never paths alike), then one per ask-first sentence, which nothing here
+	// can judge, so it always asks.
+	for _, path := range ProtectedPaths(f.Start.AskFirst, f.Start.Never) {
+		if why := protectedWhy([]string{path}, paths); why != "" {
+			reasons = append(reasons, why)
+		}
 	}
 	for _, rule := range f.Start.AskFirst {
-		glob := askFirstPath(rule)
-		if glob == "" {
+		if askFirstPath(rule) == "" {
 			reasons = append(reasons, "ask first · "+rule)
-			continue
-		}
-		for _, path := range paths {
-			if touches(glob, path) || touchesAny(underDirs([]string{glob}), path) {
-				reasons = append(reasons, "ask first · "+rule+" · "+path)
-				break
-			}
 		}
 	}
 	if len(reasons) > 0 {

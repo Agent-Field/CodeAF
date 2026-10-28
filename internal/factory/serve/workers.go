@@ -247,6 +247,13 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		body.Machine = body.Name
 	}
 	worker := lease.Worker{Machine: body.Machine, ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned, Slots: body.Slots}
+	// Live reaps expired leases as a side effect (an asleep one past
+	// AsleepCeiling included), sending their jobs back to the queue before
+	// this attach reads what is held.
+	held, err := h.workers.desk.Live()
+	if h.failed(w, err) {
+		return
+	}
 	h.workers.mu.Lock()
 	asleep := false
 	newRunner := true
@@ -268,6 +275,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
 		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Asleep: asleep,
 	}
+	h.workers.forgetQuietLocked(worker, held, h.runnerOfflineAfter())
 	err = h.workers.saveRegistry()
 	h.workers.mu.Unlock()
 	if h.failed(w, err) {
@@ -280,6 +288,31 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, RunnerID: body.Machine, Credential: credential, Slots: body.Slots})
+}
+
+// forgetQuietLocked removes the registrations of worker's own computer, for
+// the same person, that have been silent past offline and hold no job. A
+// computer attaches one registration per slot each time its factory moves to
+// a new address (the app's own factory takes a new port on every start), and
+// without this they collect forever. ONLY THAT PERSON'S OWN COMPUTER IS
+// TOUCHED, and never a registration a lease names, so no running or sleeping
+// job loses its worker. A worker whose quiet registration was removed and
+// comes back is told it is not attached and attaches again.
+func (s *workerService) forgetQuietLocked(worker lease.Worker, held []lease.Lease, offline time.Duration) {
+	holding := map[string]bool{}
+	for _, l := range held {
+		holding[l.Worker] = true
+	}
+	now := s.now()
+	for key, row := range s.credentials {
+		if row.Worker.Handle != worker.Handle || row.Worker.Machine != worker.Machine || row.Worker.ID == worker.ID {
+			continue
+		}
+		if holding[row.Worker.ID] || now.Sub(row.Last) <= offline {
+			continue
+		}
+		delete(s.credentials, key)
+	}
 }
 
 // machineFor is the attached worker's machine for this handle, or "" when

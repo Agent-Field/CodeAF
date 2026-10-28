@@ -393,11 +393,11 @@ func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (fa
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	held, err := desk.HasLiveHold(it.ID)
+	held, threadOnly, err := desk.LiveHold(it.ID)
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	return factory.StatusForManager(it, held, time.Now()), nil
+	return factory.StatusForManagerHold(it, held, threadOnly, time.Now()), nil
 }
 
 func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {

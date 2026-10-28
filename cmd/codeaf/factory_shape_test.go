@@ -37,7 +37,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		talkBlockBrief,
 		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
 		talkBlockInbox,
-		"Say what you set in three lines at most, then stop. Do not narrate.",
+		talkBlockSay,
 		talkRecipeLaw,
 		"",
 		"#12 · fix the ledger double count",

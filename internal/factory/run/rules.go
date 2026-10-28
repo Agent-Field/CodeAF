@@ -43,9 +43,10 @@ func JobRules(recipe func(repo string) factory.Recipe, it factory.Item) []string
 //	rules for this work (follow every one; if the work would break one, stop and ask through ask instead):
 //	- don't touch auth without checking with me
 //	- no new dependencies without asking
-//	- ask before touching: auth/, billing/
+//	- ask before touching: auth/, billing/, infra/
 //	- ask before you: change the public API
-//	- never touch: infra/
+//
+// (infra/ there is a never path: a protected path like the ask-first ones.)
 //
 // "" when there are none (the emptiness law).
 func rulesBrief(job Job) string {
@@ -56,17 +57,19 @@ func rulesBrief(job Job) string {
 		}
 	}
 	if sr := job.Item.StartRules; sr != nil {
-		var paths, sentences, never []string
-		for _, rule := range sr.AskFirst {
-			if p := oneLine(pipeline.AskFirstPath(rule)); p != "" {
+		// EVERY PROTECTED PATH IS ONE LINE: ask-first path lines and never
+		// paths hold a job the same way, so the steps are told the same thing.
+		var paths, sentences []string
+		for _, p := range pipeline.ProtectedPaths(sr.AskFirst, sr.Never) {
+			if p = oneLine(p); p != "" {
 				paths = append(paths, p)
-			} else if r := oneLine(rule); r != "" {
-				sentences = append(sentences, r)
 			}
 		}
-		for _, p := range sr.Never {
-			if p = oneLine(p); p != "" {
-				never = append(never, p)
+		for _, rule := range sr.AskFirst {
+			if pipeline.AskFirstPath(rule) == "" {
+				if r := oneLine(rule); r != "" {
+					sentences = append(sentences, r)
+				}
 			}
 		}
 		if len(paths) > 0 {
@@ -74,9 +77,6 @@ func rulesBrief(job Job) string {
 		}
 		if len(sentences) > 0 {
 			lines = append(lines, "- ask before you: "+strings.Join(sentences, "; "))
-		}
-		if len(never) > 0 {
-			lines = append(lines, "- never touch: "+strings.Join(never, ", "))
 		}
 	}
 	if len(lines) == 0 {

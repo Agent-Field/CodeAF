@@ -44,14 +44,15 @@ func TestHouseRulesAddToARepositoryAndDropNothing(t *testing.T) {
 }
 
 // A PLAN'S FILES ARE CHECKED AGAINST THE RULES A JOB STARTED UNDER: a path an
-// ask-first rule or a never line names holds the approval, a sentence rule
-// says nothing here, and no rules or no files hold nothing.
+// ask-first rule or a never line names holds the approval, in one wording
+// (`protected · <path> · <file>`), a sentence rule says nothing here, and no
+// rules or no files hold nothing.
 func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 	rules := &factory.StartRules{AskFirst: []string{"don't touch auth without checking with me", "touch auth/"}, Never: []string{"infra/"}}
-	if got := PlanHold(rules, []string{"cmd/main.go", "internal/auth/login.go"}); got != "ask first · touch auth/ · internal/auth/login.go" {
+	if got := PlanHold(rules, []string{"cmd/main.go", "internal/auth/login.go"}); got != "protected · auth/ · internal/auth/login.go" {
 		t.Errorf("auth plan held as %q", got)
 	}
-	if got := PlanHold(rules, []string{"infra/deploy.yaml"}); got != "never starts on its own · touches infra/deploy.yaml (infra/**)" {
+	if got := PlanHold(rules, []string{"infra/deploy.yaml"}); got != "protected · infra/ · infra/deploy.yaml" {
 		t.Errorf("infra plan held as %q", got)
 	}
 	if got := PlanHold(rules, []string{"cmd/main.go"}); got != "" {
@@ -60,7 +61,7 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 	if PlanHold(nil, []string{"internal/auth/login.go"}) != "" {
 		t.Error("a job with no rules was held")
 	}
-	if got := PlanHold(rules, nil); got != "ask first · the plan names no files" {
+	if got := PlanHold(rules, nil); got != "protected · the plan names no files" {
 		t.Errorf("a plan with unknown files under a path rule held as %q", got)
 	}
 	if got := PlanHold(&factory.StartRules{AskFirst: []string{"don't touch auth without checking with me"}, Never: []string{}}, nil); got != "" {
@@ -68,7 +69,7 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 	}
 	// A PATH KEEPS ITS CASE: only the prefix is read without it.
 	upper := &factory.StartRules{AskFirst: []string{"Touch src/Auth/"}, Never: []string{}}
-	if got := PlanHold(upper, []string{"src/Auth/login.go"}); got != "ask first · Touch src/Auth/ · src/Auth/login.go" {
+	if got := PlanHold(upper, []string{"src/Auth/login.go"}); got != "protected · src/Auth/ · src/Auth/login.go" {
 		t.Errorf("a capitalised path held as %q", got)
 	}
 	f := WithHouseRules(Defaults(), factory.HouseRules{AskFirst: []string{"touch auth/"}})
@@ -85,7 +86,7 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 // same way holds the same; a name that is only a prefix of a folder does not.
 func TestABareNameInAPathRuleCoversItsFolder(t *testing.T) {
 	rules := &factory.StartRules{AskFirst: []string{"touch auth"}, Never: []string{}}
-	if got := PlanHold(rules, []string{"auth/keys.go"}); got != "ask first · touch auth · auth/keys.go" {
+	if got := PlanHold(rules, []string{"auth/keys.go"}); got != "protected · auth · auth/keys.go" {
 		t.Errorf("touch auth held auth/keys.go as %q", got)
 	}
 	if got := PlanHold(rules, []string{"authors/list.md"}); got != "" {
@@ -100,7 +101,7 @@ func TestABareNameInAPathRuleCoversItsFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go"})
-	if !d.Ask || !strings.Contains(strings.Join(d.Reasons, "; "), "ask first · touch auth · auth/keys.go") {
+	if !d.Ask || !strings.Contains(strings.Join(d.Reasons, "; "), "protected · auth · auth/keys.go") {
 		t.Errorf("a start that names auth/keys.go under touch auth = %+v", d)
 	}
 }
@@ -143,5 +144,45 @@ func TestTheFactorysStartLabelsCountOnlyWhileItsSwitchIsOn(t *testing.T) {
 	on := WithHouseRules(repo, factory.HouseRules{StartOnItsOwn: true, StartLabels: []string{"codeaf", "Agent-Ready"}})
 	if !reflect.DeepEqual(on.Start.Labels, []string{"agent-ready", "codeaf"}) {
 		t.Fatalf("labels with the switch on: %q", on.Start.Labels)
+	}
+}
+
+// A PROTECTED PATH HOLDS IN ONE WORDING WHEREVER IT IS CHECKED: an ask-first
+// path line and a never path named by the issue at a start, a plan's file and
+// a change's file all read `protected · <path> · <file>`; a sentence keeps its
+// own words.
+func TestAProtectedPathHoldsInOneWordingAtStartPlanAndChange(t *testing.T) {
+	f, err := Parse("start:\n  labels: [ready]\n  ask_first: [touch auth/, change the schema]\n  never: [infra/]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go", "infra/main.tf"})
+	if want := []string{"protected · auth/ · auth/keys.go", "protected · infra/ · infra/main.tf", "ask first · change the schema"}; !reflect.DeepEqual(d.Reasons, want) {
+		t.Fatalf("start reasons %q, want %q", d.Reasons, want)
+	}
+	rules := StartRulesOf(f)
+	for _, tc := range []struct{ file, want string }{{"auth/keys.go", "protected · auth/ · auth/keys.go"}, {"infra/main.tf", "protected · infra/ · infra/main.tf"}} {
+		if got := PlanHold(rules, []string{tc.file}); got != tc.want {
+			t.Errorf("plan hold %q, want %q", got, tc.want)
+		}
+		if got := ChangeHold(rules, []string{tc.file}); got != tc.want {
+			t.Errorf("change hold %q, want %q", got, tc.want)
+		}
+	}
+}
+
+// The dry run's Decide and real intake's DecideJob read an ask-first path line
+// alike: a protected path held by its own reason, never an unjudged sentence.
+func TestDecideAndDecideJobAgreeOnAPathLine(t *testing.T) {
+	f, err := Parse("start:\n  labels: [ready]\n  ask_first: [touch auth/]\n  never: [infra/]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, files := range [][]string{{"auth/keys.go", "infra/main.tf"}, {"docs/readme.md"}} {
+		intake := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, files)
+		dry := f.Decide(Job{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Size: "S", Paths: files})
+		if !reflect.DeepEqual(intake, dry) {
+			t.Errorf("%v: intake %+v, dry run %+v", files, intake, dry)
+		}
 	}
 }

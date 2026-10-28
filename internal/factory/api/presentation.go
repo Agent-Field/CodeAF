@@ -4,6 +4,10 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 
 const ConcurrencySettingsHint = "Change Jobs at once in Settings → Factory → Your computers."
 
+// WaitingForComputer is a queued job whose work is on a computer that is
+// offline or asleep: no runner or Jobs at once setting can start it elsewhere.
+const WaitingForComputer = "waiting_for_computer"
+
 // PresentJob is shared by every producer. The service narrows controls using
 // its actual doors after caller permissions and runner presence are known.
 func PresentJob(j *Job) {
@@ -37,7 +41,7 @@ func PresentJob(j *Job) {
 		if j.State == StateQueued {
 			p.Detail = "Queued. Waiting for an available runner. " + ConcurrencySettingsHint
 			// Presence decorates only this read, never the saved job or its version.
-			if j.StatePresentation.Kind == "waiting_for_capacity" {
+			if j.StatePresentation.Kind == "waiting_for_capacity" || j.StatePresentation.Kind == WaitingForComputer {
 				p = j.StatePresentation
 			}
 		}

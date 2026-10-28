@@ -36,16 +36,30 @@ offline or unknown runner is reported as waiting for a runner, without
 inventing a full-capacity count. The manager calls these execution slots, never
 benches, and gives the same Settings location.
 
+A queued job whose work is already on one computer can only run there. While
+that computer is offline or asleep, the job says **Waiting for <computer>
+(offline for 3 h)** instead, and no free slot elsewhere or Jobs at once setting
+starts it. Only that computer's own person sees its name; anyone else reads
+**Waiting for its computer**.
+
 Two overrides act on one queued job, and only its person may use them:
 
 - **Start now** lets that job take one slot above Jobs at once, this one time,
   so it starts without waiting for another job to finish. It reads **Starting
   now** until a computer takes it. A job that goes back to the queue later
-  waits like any other. Start on a Backlog job only queues it at the top.
+  waits like any other. Start on a Backlog job only queues it at the top. On a
+  job waiting for a computer that is down, Start now is refused with that
+  reason and changes nothing.
 - **Hold** keeps a queued job from starting; it reads **Held**. **Resume** puts
   it back in the queue, and Start now on a held job lifts the hold and starts it.
 
 Both are recorded in the factory's activity with who made them.
+
+A computer attaches once per slot each time its factory moves to a new
+address; the factory inside the app takes a new port on every start. When the
+same person's same computer attaches again, the factory forgets its older
+registrations that have been silent past the runner timeout and hold no job,
+so the list of registrations does not grow without end.
 
 Idle Follow PR monitoring uses the factory's background GitHub poll, with no
 execution slot or model turn. New actionable review feedback, failing CI or a
@@ -103,21 +117,21 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 
 A step that falls short goes round again until its rounds run out, and only then asks you what to do. New jobs default to Auto, which passes routine optional approvals and publishes passing proof as a draft PR within the job budget. Manual asks before enabled approval gates and publication; the job header switch saves that choice. Fixed gates and critical unresolved decisions still ask. Merge remains your decision. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
 
-## the factory's own rules — rules for every repository, instructions, ask first, never, "don't touch auth without checking with me"
+## the factory's own rules — rules for every repository, instructions, protected paths, ask first, never, "don't touch auth without checking with me"
 
-A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, Repos → the repository → Settings edits them with its pipeline, as one pull request, and a repository with no file yet gets one. The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the factory's **Rules** tab: one row per rule, with Edit, Copy and Remove, and an Add field per list.
+A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
 
 They hold three lists:
 
 - **rules**: sentences every step of every job is told, below the repository's own, in a "rules for this work" paragraph. A step that would break one stops and asks instead. A sentence codeaf recognises, such as "never close an issue" or "tests pass before anything posts", is also applied by code, exactly like the repository's.
-- **ask first**: things a job asks about before it starts on its own, like `start.ask_first` (`touch auth/` matches a path).
-- **never**: paths a job never starts on by itself, like `start.never`.
+- **ask first**: protected paths, written `touch auth/`, and sentences a job asks about before it starts on its own, like `start.ask_first`. In the app the paths are **Protected folders and files**.
+- **never**: kept so older files still work. A path listed here is a protected path, exactly like `touch <path>` under ask first; it is not held more strictly or briefed differently. Write new ones under ask first.
 
 The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
 
-## a rule asks first — Auto paused at the plan, a plan that touches auth, why a job waits on a rule
+## a rule asks first — protected paths, Auto paused at the plan, a plan that touches auth, why a job waits on a rule
 
-When a job starts, the ask-first paths and never paths it starts under (the repository's and the factory's) go with it. When its plan names a file one of them covers (`touch auth/` covers everything under `auth/`), the approval after the plan is never routine, even in Auto: the job waits and says "A rule asks first:" with the rule and the file. Answering it clears the hold.
+Ask-first paths and never paths are one kind of rule, **protected paths**. When a job starts, the protected paths it starts under (the repository's and the factory's) go with it, and every step is told them on one line, "ask before touching: auth/, infra/". A job is held at its start, after its plan and before its change is published whenever a file it names or changes is under one (`touch auth/`, or a bare `auth`, covers everything under `auth/`). The approval is never routine, even in Auto: the job waits with `protected · auth/ · auth/login.go`, shown as "A protected path: auth/ · auth/login.go". A plan that names no files waits with `protected · the plan names no files`. Answering it clears the hold. Ask-first sentences, which nothing can check against files, are told on their own line, "ask before you: …", and hold a job before it starts with "ask first ·" and the sentence.
 
 ## pick up issues — labelled work starts by itself, its labels, who owns those jobs
 
@@ -131,7 +145,7 @@ A job's plan step may change the steps the rest of the job runs, within bounds c
 - **ask**: the plan may reshape them, and a person approves before anything after the plan runs.
 - **fixed**: the steps run as the pipeline wrote them; only you can change them.
 
-A repository says it with `adapt:` in its `.codeaf/factory.yaml` (one word for every pipeline in the file). The factory can say it for every repository (Settings → Factory → How jobs run, "Plans may reshape a job's steps"), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
+A repository says it with `adapt:` in its `.codeaf/factory.yaml` (one word for every pipeline in the file). The factory can say it for every repository (the Steps tab's Global view, "Plans may reshape a job's steps"), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
 
 ## issues only — pull requests are outcomes, old PR jobs removed
 
@@ -250,6 +264,10 @@ The factory reads GitHub on its own about once a minute, but those reads list op
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
+## a job refused for a missing key — no key, which has no key, add a key for its service
+
+On a factory on your own machine, a person's Start, Run, Start now or Run again is refused before anything is written when the job's own choice (or the default, when the job names none) is on a service with no key: "This job can't start: its model, …, is on …, which has no key." Only that choice counts: a call on a service with no key is reported, never moved to a fallback, so a fallback with a key would not be asked. Add a key for that service in Settings, or choose another for the job. A team server never checks, since it holds none of its people's keys, and neither does a profile set to one model for every task, which checks that model itself.
+
 ## a job's repository isn't checked out — clone, cloning, private repository, Start refused, not checked out on this machine
 
 **The factory gets the repository itself.** When a job's repository has no checkout on the computer that runs it (codeaf was never opened in its folder), the run's first step clones it into the factory's own folder, `~/.codeaf/v3/factory/repos/<owner>/<name>`, and the job's log says `cloning acme/api…` while it does. The clone goes over https with the same GitHub connection the factory reads and pushes with, never over ssh, so a private repository clones too. From then on it is that repository's checkout for every job: it is never cloned twice, and two jobs started together share the one clone. Every job still works in its own worktree and branch, never in the checkout itself.
@@ -295,8 +313,8 @@ Budget wakes a fresh GitHub read and releases only that stop, within the existin
 repair-attempt limit. Manual mode, takeover, critical questions, exhausted attempts
 and uncertain publication retain their own recovery controls. Cumulative spend,
 local work and other contributors' commits are kept. Interrupted automatic step
-recovery preserves attempts and freezes its remaining retry window while waiting
-for budget; raising a limit does not grant unlimited retries.
+recovery keeps its attempts while waiting for budget: time spent waiting is not
+an attempt, and raising a limit does not grant more retries.
 
 GitHub observations continue while spending is blocked. Before paid Follow PR
 work resumes, the runner reads the existing PR again. Merge or closure ends the
@@ -324,4 +342,4 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 ## runner recovery window — running time versus waiting for reconnect
 
-Automatic interrupted-step recovery allows three retries with a two-minute reconnect window. Time actually spent running an admitted retry does not consume that waiting window. Waiting, backoff and attempts remain bounded, survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
