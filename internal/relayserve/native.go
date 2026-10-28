@@ -430,6 +430,12 @@ type nativeClient struct {
 	owner *nativeNamespace
 }
 
+// Preserve the signed quiet-release mutation through the presence wrapper.
+// Falling back to Release changes the request that the consensus adapter checks.
+func (c *nativeClient) ReleaseQuiet(ctx context.Context, id string, fence uint64) error {
+	return directory.ReleaseQuiet(ctx, c.Client, id, fence)
+}
+
 func (c *nativeClient) Presence(ctx context.Context) (directory.PresenceView, error) {
 	p, e := c.Client.Presence(ctx)
 	if e != nil {
