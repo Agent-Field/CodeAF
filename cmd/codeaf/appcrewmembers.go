@@ -740,6 +740,9 @@ func (b *appBackend) dropProposal(id, option string) {
 	// "Made the crew" here drew the card's end twice. A kept agent's receipt
 	// says so in its own words.
 	if option == appwire.ProposalCreate {
+		// The formation fact names the crew, so its receipt id cannot resolve
+		// the proposal's Inbox item through the usual receipt-id mapping.
+		b.inboxResolved(appInboxID(ask.Agent, ask.ID), appwire.Entry{})
 		return
 	}
 	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
