@@ -2716,6 +2716,9 @@ type Agent struct {
 	conversationModels *ConversationModels
 	modelRequestSlot   string
 	fallbackNoticeOwed bool
+	// continuedModelNoticed suppresses the next main-request announcement when
+	// the receiver already explained this exact change on continuation.
+	continuedModelNoticed string
 
 	modelIdentity   ModelIdentity
 	automaticModels atomic.Int32

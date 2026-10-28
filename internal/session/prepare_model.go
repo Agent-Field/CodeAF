@@ -13,15 +13,8 @@ func (a *Agent) prepareModel(hub *eventHub) (resolved, ready bool) {
 	a.mu.Unlock()
 	replacement, notice, err := prepare(model, sources)
 	if err == nil && replacement != "" {
-		if pair, ok := a.ConversationModelPair(); ok {
-			pair.Main = replacement
-			if pair.Fallback == replacement {
-				pair.Fallback = ""
-			}
-			_, err = a.SetConversationModels(pair)
-		} else {
-			a.SetModel(replacement)
-		}
+		err = a.ContinueWithModel(replacement, notice)
+		notice = ""
 	}
 	if err != nil {
 		hub.send(Event{Kind: EventError, Err: err})

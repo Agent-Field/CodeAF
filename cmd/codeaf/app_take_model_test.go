@@ -19,7 +19,7 @@ import (
 
 // E10 T1/T2/T3: moving a chat and setting up its model are separate actions.
 // Both computers use real app commands; only the provider is scripted.
-func TestAppTakeModelT1T2T3NoUsableDefault(t *testing.T) {
+func TestAppTakeModelT1T2T3N1NoUsableDefault(t *testing.T) {
 	celltest.RequireEngine(t)
 	_, workspace := wakeEnvironment(t, e2TempDir(t))
 	model := appTwoMessageSource(t, "echo model-ready")
@@ -101,7 +101,7 @@ func TestAppTakeModelT1T2T3NoUsableDefault(t *testing.T) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	failures, notices := 0, 0
+	failures, notices, switches := 0, 0, 0
 	for _, f := range b.events {
 		var added appwire.EntryAdded
 		if f.Event != appwire.EventEntryAdded || json.Unmarshal(f.Data, &added) != nil || added.Entry.Agent != taken.ID {
@@ -110,12 +110,15 @@ func TestAppTakeModelT1T2T3NoUsableDefault(t *testing.T) {
 		if added.Entry.Text == reason {
 			failures++
 		}
+		if added.Entry.NoticeKind == "model_switch" {
+			switches++
+		}
 		if strings.Contains(added.Entry.Text, "isn't set up here") && strings.Contains(added.Entry.Text, "fixture/default") {
 			notices++
 		}
 	}
-	if failures != 1 || notices != 1 {
-		t.Fatalf("T1/T3 model reasons = %d, recovery notices = %d; want one each", failures, notices)
+	if failures != 1 || notices != 1 || switches != 1 {
+		t.Fatalf("T1/T3/N1 model reasons = %d, specific notices = %d, all model notices = %d; want one each", failures, notices, switches)
 	}
 }
 

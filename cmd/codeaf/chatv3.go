@@ -1506,17 +1506,9 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	agent, err := open(restored)
 	if err == nil {
 		if model != "" {
-			if pair, ok := agent.ConversationModelPair(); ok {
-				pair.Main = model
-				if pair.Fallback == model {
-					pair.Fallback = ""
-				}
-				if _, err := agent.SetConversationModels(pair); err != nil {
-					closeV3Agent(agent)
-					return nil, cfg, "", err
-				}
-			} else {
-				agent.SetModel(model)
+			if err := agent.ContinueWithModel(model, modelNotice); err != nil {
+				closeV3Agent(agent)
+				return nil, cfg, "", err
 			}
 		}
 		if restoredPosture != "" {
