@@ -8,6 +8,7 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -91,6 +92,7 @@ func pairJoiningAt(dir string) func(replace bool) pair.Joining {
 			Home:        dir,
 			ProfileDir:  config.ProfileDir(),
 			Label:       devname.Name(dir),
+			Platform:    runtime.GOOS,
 			Replace:     replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
 		}

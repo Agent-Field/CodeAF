@@ -250,6 +250,7 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 	err, restart := o.perform(p)
 	switch {
 	case err == nil:
+		o.backend.devices.wakePublication()
 		if !restart {
 			guard.Go("app/paired-chats", func() { _, _ = o.backend.listChats(true) })
 		}
@@ -303,9 +304,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return err, false
 	}
 	record := func() {
-		if err := ownDeviceRecord(o.ctx, dir, route); err != nil {
-			o.line(appPairRecordUnsaid)
-		}
+		_ = ownDeviceRecord(o.ctx, dir, route)
 	}
 	switch p.Mode {
 	case "offer_code":
@@ -349,13 +348,17 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		if err != nil {
 			return err, false
 		}
-		who.BeforeApprove = func(ctx context.Context) error { return ownDeviceRecord(ctx, dir, route) }
+		who.BeforeApprove = func(ctx context.Context) error {
+			_ = ownDeviceRecord(ctx, dir, route)
+			return nil
+		}
 		asking, err := who.Look(o.ctx, ref)
 		if err != nil {
 			return err, false
 		}
-		o.line(appPairApproveTitle(asking.Name))
-		answer := o.ask(o.ctx, "approve", appPairApproveTitle(asking.Name), appPairCheck(asking.Check), pairApprovalOptions())
+		label := pair.ComputerLabel(asking.Name, asking.Platform)
+		o.line(appPairApproveTitle(label))
+		answer := o.ask(o.ctx, "approve", appPairApproveTitle(label), appPairCheck(asking.Check), pairApprovalOptions())
 		if answer != "y" {
 			if o.ctx.Err() != nil {
 				return o.ctx.Err(), false
