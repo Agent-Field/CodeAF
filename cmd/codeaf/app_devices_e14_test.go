@@ -124,7 +124,7 @@ func e14PairedEnginesRetry(t *testing.T, restart bool) {
 	}
 	allow.Store(false)
 	pending := machineCall[appwire.DeviceRenameResult](t, wa, "devices.rename", appwire.DeviceRenameParams{Name: "office"})
-	if pending.Line != "This computer is now called office. Your other computers will see it when they can reach the relay." {
+	if pending.Line != "This computer is now called office. Your other computers will see it once this computer is back online." {
 		t.Fatalf("A3: pending rename receipt: %q", pending.Line)
 	}
 	allow.Store(true)

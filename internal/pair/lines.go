@@ -178,7 +178,7 @@ func RenamedLine(name string) string {
 // service could not be reached: the next time this computer connects it tells
 // the others, so nothing needs to be typed again.
 func RenamedHereLine(name string) string {
-	return fmt.Sprintf("This computer is now called %s. Your other computers will see it when they can reach the relay.", name)
+	return fmt.Sprintf("This computer is now called %s. Your other computers will see it once this computer is back online.", name)
 }
 
 // NamePrompt is the question a person is asked while a computer joins: the name

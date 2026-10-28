@@ -49,7 +49,7 @@ This computer is now called atlas.
 Your other devices show the new name the next time they list devices or draw a home row. If the sync service cannot be reached at that moment, the device keeps the name and says:
 
 ```
-This computer is now called atlas. Your other computers will see it when they can reach the relay.
+This computer is now called atlas. Your other computers will see it once this computer is back online.
 ```
 
 You do not type it again. A running paired desktop engine retries automatically,

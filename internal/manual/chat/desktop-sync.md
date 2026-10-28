@@ -109,7 +109,7 @@ has never paired remain quiet.
 
 Renaming shares the new name immediately and says `This computer is now called
 <name>.` If the relay cannot accept it yet, the name stays saved here and the
-line adds `Your other computers will see it when they can reach the relay.`
+line adds `Your other computers will see it once this computer is back online.`
 The engine retries without another rename or a chat.
 
 Computers lists this computer and the relay's roster even while this computer's
