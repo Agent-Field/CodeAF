@@ -1,5 +1,13 @@
 # Models, context, and what it costs
 
+## A fallback list naming only the current model — keep the answer on that model
+
+The `fallback models` row is your list of other models a failed request may try.
+If it names only the current model, there is no other model to try: codeaf does
+not replace it with a suggestion from the catalog.
+Repeating the same model or adding blank rows does not change that choice.
+A list containing only blanks leaves the catalog free to suggest another model.
+
 ## Lost internet, Wi-Fi disconnected, DNS errors, and waiting for connection
 
 When DNS or a connection attempt fails before the request is accepted, codeaf
