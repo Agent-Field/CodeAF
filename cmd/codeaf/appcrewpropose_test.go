@@ -462,6 +462,7 @@ func TestAppCrewProposalAtTheDayCapAsksAboutTheCap(t *testing.T) {
 // agent alone leaves "Kept as one agent · you · <time>", and making the crew
 // leaves the crew's formation fact alone — not a second "Made the crew" beside
 // it.
+// Contract 1: proposal answers settle the Inbox and chat exactly once.
 func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 	conv := &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal}
 	backend, rec, agent := proposingBackend(t, conv)
@@ -495,6 +496,12 @@ func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 	}
 
 	kept := opened()
+	if err := backend.AnswerAsk(agent.ID, kept.ID, appwire.ProposalEdit, ""); err != nil {
+		t.Fatal(err)
+	}
+	if waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, ""); err != nil || len(waiting) != 1 || counts.Waiting != 1 {
+		t.Fatalf("Edit changed Waiting: %+v %+v %v", waiting, counts, err)
+	}
 	rec.mu.Lock()
 	mark := len(rec.events)
 	rec.mu.Unlock()
@@ -512,8 +519,23 @@ func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 	// Made with its helpers edited away, so no start runs on behind the test:
 	// the receipt is what is asserted, and a start is the crew watch's own.
 	edits := &appwire.Proposal{Helpers: []appwire.ProposalHelper{}}
-	if _, err := backend.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: strings.TrimPrefix(made.ID, appProposalAskPrefix), Edits: edits}); err != nil {
+	create := appwire.CrewCreate{From: "proposal", Proposal: strings.TrimPrefix(made.ID, appProposalAskPrefix), Edits: edits}
+	crew, err := backend.CrewCreate(create)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if asks, err := backend.ListAsks(agent.ID); err != nil || len(asks) != 0 {
+		t.Fatalf("asks after create: %+v %v", asks, err)
+	}
+	if waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, ""); err != nil || len(waiting) != 0 || counts.Waiting != 0 {
+		t.Fatalf("Waiting after create: %+v %+v %v", waiting, counts, err)
+	}
+	if again, err := backend.CrewCreate(create); err != nil || again.ID != crew.ID {
+		t.Fatalf("retried create: %+v %v", again, err)
+	}
+	done, counts, err := backend.ListInbox(appwire.InboxDone, "")
+	if err != nil || len(done) != 2 || counts.DoneToday != 2 || done[0].ID != appInboxID(agent.ID, made.ID) || done[0].Answered == nil || done[0].Answered.Option != appwire.ProposalCreate {
+		t.Fatalf("Done after Keep and retried create: %+v %+v %v", done, counts, err)
 	}
 	got := receipts(mark)
 	if len(got) != 1 || got[0].Op == nil || got[0].Op.Kind != appwire.OpCrewFormed || got[0].Op.Name != "flaky" {

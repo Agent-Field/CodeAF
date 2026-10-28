@@ -141,3 +141,10 @@ does not hand out another 15 minutes. The next time the manager's conversation i
 countdown continues with the time that is left. If that time already ran out while codeaf
 was closed, codeaf brings the incomplete report once, the same way it does when the clock
 runs out with codeaf open. Opening codeaf again does not bring that report a second time.
+
+## Desktop crew proposal — Make the crew, Edit, Keep it one agent
+
+"Make the crew" closes the proposal in the chat and removes it from Inbox
+Waiting. Inbox Done records that answer once. The chat keeps one crew formation
+fact, including when a create request is retried. "Edit" leaves the proposal
+open; "Keep it one agent" closes it with its own receipt.

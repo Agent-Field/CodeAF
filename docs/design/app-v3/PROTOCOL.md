@@ -368,6 +368,14 @@ decides which combinations are accepted.
 
 ## models methods
 
+`models.list` waits at most three seconds for discovery already in flight and
+returns the models available then. When a pending catalog or provider listing
+completes, the app emits `models.changed` with empty data (`{}`) and the usual
+sequence number. Read `models.list` again to obtain the completed list. Repeated
+reads do not start polling. Notices enter an ordered queue without holding the
+backend lock while waiting for stdout. Close removes the completion subscription
+and cancels and joins the initial catalog waiter and wire sender.
+
 | method | params | result |
 |---|---|---|
 | `models.list` | `{}` | `ModelsResult` |
@@ -626,6 +634,7 @@ decides which combinations are accepted.
 | `log` | `Log` |
 | `media.changed` | `MediaSourceChanged` |
 | `member.changed` | `MemberChanged` |
+| `models.changed` | `Empty` |
 | `note.changed` | `NoteChanged` |
 | `order.asking` | `OrderFired` |
 | `order.changed` | `OrderChanged` |

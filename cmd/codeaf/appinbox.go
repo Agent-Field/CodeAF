@@ -18,6 +18,7 @@ package main
 // [appBackend.sweepAgent]), which is what keeps its asks answerable here.
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -352,12 +353,74 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 	if !ok {
 		return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)
 	}
+	// Validate outside the Inbox lock because finding a crew owner can emit.
+	words := strings.TrimSpace(strings.TrimSpace(text) + "\n" + strings.TrimSpace(why))
+	if episode, service := strings.CutPrefix(ask, "service:"); service {
+		if err := appValidateServiceAnswer(option); err != nil {
+			return time.Time{}, err
+		}
+		local, _, _ := strings.Cut(episode, ".")
+		svc, owner, serviceID, err := b.serviceRow(agent + ":" + local)
+		if err != nil {
+			return time.Time{}, err
+		}
+		if _, err := svc.sup.Get(owner, serviceID); err != nil {
+			return time.Time{}, appServiceError(err)
+		}
+	} else {
+		asks, err := b.ListAsks(agent)
+		if err != nil {
+			return time.Time{}, err
+		}
+		at := slices.IndexFunc(asks, func(q appwire.Ask) bool { return q.ID == ask })
+		if at < 0 {
+			return time.Time{}, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", ask)
+		}
+		q := asks[at]
+		switch q.Subkind {
+		case appwire.SubkindCrewProposal:
+			err = appValidateProposalAnswer(option)
+		case appwire.SubkindOrderRun:
+			err = appValidateOrderAnswer(ask, option)
+		case appwire.SubkindCrewDecision:
+			_, err = appValidateCrewDecisionAnswer(option, text)
+		}
+		if err != nil {
+			return time.Time{}, err
+		}
+		a, err := b.findCrewOwner(agent)
+		if err != nil {
+			return time.Time{}, err
+		}
+		var refused error
+		b.locked(func() {
+			if a.live == nil {
+				return
+			}
+			if money, found := a.live.money[ask]; found {
+				_, refused = appValidateMoneyAnswer(money.scope, ask, option, words, a.live.running)
+			} else if question, found := a.live.questions[ask]; found {
+				_, refused = appValidateQuestionAnswer(ask, question, option, words, scope)
+			}
+		})
+		if refused != nil {
+			return time.Time{}, refused
+		}
+		if option != "" && !slices.ContainsFunc(q.Options, func(o appwire.AskOption) bool { return o.ID == option }) {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", ask, option)
+		}
+		if q.Subkind == appwire.SubkindPermission {
+			if err := appValidateScope(option, scope, q.Scopes); err != nil {
+				return time.Time{}, err
+			}
+		}
+	}
 	in := b.inbox
 	var refused error
 	var until time.Time
 	in.locked(func() {
 		switch {
-		case in.items[id] == nil:
+		case in.items[id] == nil || in.closing[id].ID != "":
 			refused = appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
 		case in.held[id] != nil:
 			refused = appwire.Errorf(appwire.CodeBusy, "the Inbox item %s is already being answered", id)

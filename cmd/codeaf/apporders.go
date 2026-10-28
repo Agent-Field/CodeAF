@@ -522,16 +522,22 @@ func (b *appBackend) answerOrderAsk(askID, option string) (bool, error) {
 	if err != nil {
 		return true, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", askID)
 	}
-	switch option {
-	case appwire.VerdictGo, appwire.VerdictSkip, appwire.VerdictNotRight:
-	default:
-		return true, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, skip or not_right", askID)
+	if err := appValidateOrderAnswer(askID, option); err != nil {
+		return true, err
 	}
 	_, err = b.OrderVerdict(r.AutomationID, run, option)
 	if err == nil {
 		appOrderAnswered.Store(run, option)
 	}
 	return true, err
+}
+
+func appValidateOrderAnswer(id, option string) error {
+	switch option {
+	case appwire.VerdictGo, appwire.VerdictSkip, appwire.VerdictNotRight:
+		return nil
+	}
+	return appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, skip or not_right", id)
 }
 
 // appOrderAnswered is the runs this app answered, with the option, so the

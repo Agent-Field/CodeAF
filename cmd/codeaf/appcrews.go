@@ -2011,10 +2011,11 @@ func (b *appBackend) CrewDecisions(id string, all bool) ([]appwire.Decision, err
 // closes the crew it reports on.
 func (b *appBackend) CrewDecide(packet, option, text, reason string) (appwire.Decision, error) {
 	profile := b.crewProfile()
-	decision := strings.TrimSpace(option)
-	if decision == "" {
-		decision = strings.TrimSpace(text)
-	} else if strings.TrimSpace(text) != "" && strings.TrimSpace(reason) == "" {
+	decision, err := appValidateCrewDecisionAnswer(option, text)
+	if err != nil {
+		return appwire.Decision{}, err
+	}
+	if strings.TrimSpace(option) != "" && strings.TrimSpace(text) != "" && strings.TrimSpace(reason) == "" {
 		reason = text
 	}
 	p, err := teamstore.Decide(profile, packet, teamstore.Person, decision, strings.TrimSpace(reason))
@@ -2042,6 +2043,17 @@ func (b *appBackend) CrewDecide(packet, option, text, reason string) (appwire.De
 		b.crewTick(run, false)
 	}
 	return appDecisionOf(f, p), nil
+}
+
+func appValidateCrewDecisionAnswer(option, text string) (string, error) {
+	decision := strings.TrimSpace(option)
+	if decision == "" {
+		decision = strings.TrimSpace(text)
+	}
+	if decision == "" {
+		return "", appwire.Errorf(appwire.CodeBadParams, "a decision needs an answer")
+	}
+	return decision, nil
 }
 
 // CrewManager makes a member the crew's manager, or clears it.

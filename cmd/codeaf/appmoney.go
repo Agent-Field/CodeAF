@@ -277,6 +277,39 @@ func (b *appBackend) moneyAfter(a *appAgent, live *appLive, today float64) {
 	}
 }
 
+// appValidateMoneyAnswer checks the payload without changing a cap or an ask.
+func appValidateMoneyAnswer(scope, askID, option, text string, running bool) (float64, error) {
+	switch scope {
+	case appwire.CapAgent:
+		switch option {
+		case appwire.OptionRaise:
+			usd, ok := appParseUSD(text)
+			if !ok {
+				return 0, appwire.Errorf(appwire.CodeBadParams, "raise needs the new budget as text, such as \"8.00\"")
+			}
+			return usd, nil
+		case appwire.OptionStop:
+			return 0, nil
+		case appwire.OptionTell:
+			if strings.TrimSpace(text) == "" {
+				return 0, appwire.Errorf(appwire.CodeBadParams, "tell needs the words to tell it")
+			}
+			if running {
+				return 0, appwire.Errorf(appwire.CodeBusy, "this agent is still working on a turn; tell it when the turn ends")
+			}
+			return 0, nil
+		}
+		return 0, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers raise, stop and tell", askID)
+	case appwire.CapDay:
+		if option == appwire.OptionRaiseToday || option == appwire.OptionWait {
+			usd, _ := appParseUSD(text)
+			return usd, nil
+		}
+		return 0, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers raise_today and wait", askID)
+	}
+	return 0, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", askID)
+}
+
 // answerMoney answers one of this process's budget asks, and says whether the
 // ask was one.
 func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool, error) {
@@ -294,15 +327,15 @@ func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool,
 	if !found {
 		return false, nil
 	}
+	usd, err := appValidateMoneyAnswer(open.scope, askID, option, text, running)
+	if err != nil {
+		return true, err
+	}
 	now := b.now()
 	switch open.scope {
 	case appwire.CapAgent:
 		switch option {
 		case appwire.OptionRaise:
-			usd, ok := appParseUSD(text)
-			if !ok {
-				return true, appwire.Errorf(appwire.CodeBadParams, "raise needs the new budget as text, such as \"8.00\"")
-			}
 			return true, b.RaiseCap(appwire.CapRaise{Scope: appwire.CapAgent, ID: id, ToUSD: usd, For: appwire.RaiseGood})
 		case appwire.OptionStop:
 			if running {
@@ -313,12 +346,6 @@ func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool,
 			return true, nil
 		case appwire.OptionTell:
 			words := strings.TrimSpace(text)
-			if words == "" {
-				return true, appwire.Errorf(appwire.CodeBadParams, "tell needs the words to tell it")
-			}
-			if running {
-				return true, appwire.Errorf(appwire.CodeBusy, "this agent is still working on a turn; tell it when the turn ends")
-			}
 			b.closeMoneyAsks(a, appwire.CapAgent, appwire.OptionTell, "Told it")
 			guard.Go("app/tell", func() { _, _ = b.Send(id, words, "") })
 			return true, nil
@@ -327,8 +354,7 @@ func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool,
 	case appwire.CapDay:
 		switch option {
 		case appwire.OptionRaiseToday:
-			usd, ok := appParseUSD(text)
-			if !ok {
+			if usd == 0 {
 				// Nothing typed raises the cap by itself again: twice the
 				// cap, for the rest of today.
 				limit, err := b.dayCap(now)
