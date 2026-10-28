@@ -198,6 +198,10 @@ func TestAppTakeProcessS6(t *testing.T) {
 	appTakeRoundTrip(t, true)
 }
 
+func TestAppTakeF1P2FenceAndPromptPublication(t *testing.T) {
+	appTakeRoundTrip(t, false)
+}
+
 func appTakeRoundTrip(t *testing.T, daemon bool) {
 	celltest.RequireEngine(t)
 	_, workspace := wakeEnvironment(t, resolvedTempDir(t))
@@ -205,7 +209,33 @@ func appTakeRoundTrip(t *testing.T, daemon bool) {
 	t.Cleanup(model.Close)
 	t.Setenv("CODEAF_BASE_URL", model.URL)
 
-	relay := e2Relay(t)
+	var publicationMu sync.Mutex
+	var publications []string
+	relay := e2Relay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/publish") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			reply := httptest.NewRecorder()
+			next.ServeHTTP(reply, r)
+			publicationMu.Lock()
+			publications = append(publications, r.URL.Path+" "+reply.Result().Status+" "+reply.Body.String())
+			publicationMu.Unlock()
+			for k, v := range reply.Header() {
+				w.Header()[k] = v
+			}
+			w.WriteHeader(reply.Code)
+			_, _ = w.Write(reply.Body.Bytes())
+		})
+	})
+	t.Cleanup(func() {
+		if t.Failed() {
+			publicationMu.Lock()
+			defer publicationMu.Unlock()
+			t.Logf("publication receipts: %v", publications)
+		}
+	})
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	dirA, dirB := home.Dir(), t.TempDir()
@@ -263,6 +293,18 @@ func appTakeRoundTrip(t *testing.T, daemon bool) {
 	if taken.Location == nil || !taken.Location.Here {
 		t.Fatalf("taken: %+v", taken)
 	}
+	appSyncWait(t, "F1 take fence reaches the next row", func() bool {
+		rows := machineCall[appwire.ChatsResult](t, b.w, "chats.list", struct{}{})
+		for _, r := range rows.Chats {
+			if r.Cell == row.Cell {
+				if r.Seen.Fence > taken.Location.Seen.Fence {
+					t.Fatalf("F1 take returned fence %d, next row has %d", taken.Location.Seen.Fence, r.Seen.Fence)
+				}
+				return r.Seen.Fence == taken.Location.Seen.Fence
+			}
+		}
+		return false
+	})
 	a.wait(t, func(f e2Frame) bool {
 		if f.Event != appwire.EventAgentChanged {
 			return false
@@ -290,6 +332,15 @@ func appTakeRoundTrip(t *testing.T, daemon bool) {
 	coldWire.close()
 	_ = cold.Close()
 	e2Turn(t, b, taken.ID, "after take")
+	appSyncWait(t, "P2 completed taken turn reaches A before B quits", func() bool {
+		rows := machineCall[appwire.ChatsResult](t, a.w, "chats.list", struct{}{})
+		for _, r := range rows.Chats {
+			if r.Cell == row.Cell && r.SavedAt.After(row.SavedAt) {
+				return true
+			}
+		}
+		return false
+	})
 	// EOF immediately after turn.done must flush and release, with no empty turn.
 	e2Quit(t, b)
 	s := appDeviceSync(t, dirA)
@@ -384,12 +435,12 @@ func e2Quit(t *testing.T, a *e2App) {
 	}
 }
 
-func e2Relay(t *testing.T) *httptest.Server {
+func e2Relay(t *testing.T, wrappers ...func(http.Handler) http.Handler) *httptest.Server {
 	t.Helper()
 	if os.Getenv("CODEAF_E2_DURABLE_RELAY") == "1" {
 		return appSyncRelay(t)
 	}
-	return e2WireRelay(t)
+	return e2WireRelay(t, wrappers...)
 }
 
 // E-T2: stale consent is refused before any restore, even for a chat that has

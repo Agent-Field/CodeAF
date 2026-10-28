@@ -42,6 +42,9 @@ func TestContinueChecksOwnershipBeforeRetiring(t *testing.T) {
 				view, err := h.a.Dir.Cell(ctx, h.cell.ID)
 				mustNil(t, err)
 				seen := &directory.LeaseExpectation{Device: h.b.Device.ID(), Fence: view.Cell.Lease.Fence - 1}
+				if own {
+					seen = &directory.LeaseExpectation{Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence, Head: view.Cell.Head}
+				}
 				if !own {
 					seen = &directory.LeaseExpectation{Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence}
 					_, err = h.b.Dir.Acquire(ctx, h.cell.ID, directory.AcquireOpts{Force: true, Expect: seen, RequireConditional: true})

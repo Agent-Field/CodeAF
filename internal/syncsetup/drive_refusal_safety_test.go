@@ -32,7 +32,7 @@ func TestTheSendProofNamesTheDrivesActualFence(t *testing.T) {
 	}
 }
 
-func TestAnExpiredHoldCannotAuthorizeTools(t *testing.T) {
+func TestFenceF1ReleasedHoldCannotAuthorizeTools(t *testing.T) {
 	r := newDriveRig(t)
 	sealed, err := r.engine.Seal(t.Context(), r.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
@@ -42,9 +42,10 @@ func TestAnExpiredHoldCannotAuthorizeTools(t *testing.T) {
 	mustNil(t, err)
 	defer drive.Close(t.Context())
 	r.clock.Advance(directory.LeaseTTL + time.Second)
+	mustNil(t, r.a.Dir.Release(t.Context(), r.cell.ID, drive.batcher.Fence()))
 	mustNil(t, drive.CheckLease(t.Context()))
 	if drive.Gate() == nil {
-		t.Fatal("expired ownership still authorizes tools")
+		t.Fatal("released ownership still authorizes tools")
 	}
 }
 

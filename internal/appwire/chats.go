@@ -12,6 +12,7 @@ const (
 type Seen struct {
 	Device string `json:"device"`
 	Fence  uint64 `json:"fence"`
+	Head   string `json:"head,omitempty"`
 }
 type ChatRow struct {
 	Cell         string          `json:"cell"`

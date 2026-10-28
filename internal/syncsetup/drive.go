@@ -298,13 +298,21 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 		}
 	}
-	v, err := s.Dir.Acquire(ctx, drv.ID(), directory.AcquireOpts{RequireConditional: wasFree, Expect: &directory.LeaseExpectation{
-		Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence,
-	}})
+	var v directory.CellView
+	if view.Cell.Lease.Device == s.Device.ID() && view.Cell.Lease.Expires != 0 {
+		// Opening an installed copy, including just after a take or a process
+		// restart, resumes the same hold. Heartbeat checks its fence atomically
+		// and can renew an expired lease that nobody else acquired.
+		v, err = s.Dir.Heartbeat(ctx, drv.ID(), directory.Beat{Fence: view.Cell.Lease.Fence, Pending: view.Cell.Lease.Pending})
+	} else {
+		v, err = s.Dir.Acquire(ctx, drv.ID(), directory.AcquireOpts{RequireConditional: wasFree, Expect: &directory.LeaseExpectation{
+			Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence,
+		}})
+	}
 	switch {
 	case errors.Is(err, directory.ErrNotFound):
 		return drv, "", nil
-	case errors.Is(err, directory.ErrLeaseHeld):
+	case errors.Is(err, directory.ErrLeaseHeld), errors.Is(err, directory.ErrFenceStale):
 		return drv, s.holder(ctx, drv.ID()), nil
 	case err != nil:
 		return drv, "", err
@@ -487,16 +495,27 @@ func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
 // directory that cannot be asked answers true, because a drive side that cannot
 // tell must not be thrown away for it.
 func (d *Drive) HoldsLease(ctx context.Context) bool {
-	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
+	if line, viewer := d.Viewer(); viewer && line != chatlist.Available || d.batcher == nil {
 		return false
 	}
 	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
+	expired := err == nil && v.Cell.Lease.Expires <= v.Now
+	if err == nil {
+		v, err = d.renewIdleLease(ctx, v, d.batcher.Fence())
+	}
 	if err != nil {
+		if errors.Is(err, directory.ErrFenceStale) || errors.Is(err, cellstore.ErrReadOnly) || expired {
+			return false
+		}
 		return true
 	}
 	lease := v.Cell.Lease
 	// The first publish may establish the fence while the read is in flight.
-	return lease.Expires > v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
+	held := lease.Expires > v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
+	if held {
+		d.resumeViewer()
+	}
+	return held
 }
 
 // CheckLease closes the stale-window gap before a tool runs, even when no
@@ -513,14 +532,50 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
 		return nil
 	}
+	if err == nil {
+		v, err = d.renewIdleLease(ctx, v, fence)
+	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
 		d.available()
 		return nil
 	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
+	} else if err == nil {
+		d.resumeViewer()
 	}
 	return nil
+}
+
+// renewIdleLease covers the gap between a watch reconnect and its ordinary
+// heartbeat. Expiry alone never retires an unchanged owner that can still
+// renew; an explicit release or a different fence still needs continuation.
+func (d *Drive) renewIdleLease(ctx context.Context, v directory.CellView, fence uint64) (directory.CellView, error) {
+	lease := v.Cell.Lease
+	if lease.Expires != 0 && lease.Expires <= v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == fence {
+		// Close stops writers under the same lock before its release. A late
+		// ownership read must never resurrect that released fence.
+		d.sealMu.Lock()
+		d.mu.Lock()
+		stopped := d.stopped
+		d.mu.Unlock()
+		if stopped {
+			d.sealMu.Unlock()
+			return v, cellstore.ErrReadOnly
+		}
+		renewed, err := d.sync.Dir.Heartbeat(ctx, d.directoryID, directory.Beat{Fence: fence, Pending: d.batcher.Pending()})
+		d.sealMu.Unlock()
+		if errors.Is(err, directory.ErrFenceStale) {
+			d.becomeViewer(cellsync.Superseded{})
+		} else if err != nil {
+			d.available()
+		}
+		if err != nil {
+			return v, err
+		}
+		return renewed, err
+	}
+	return v, nil
 }
 
 func nonemptyHolder(id string) string {

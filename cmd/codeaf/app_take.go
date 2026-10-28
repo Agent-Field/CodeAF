@@ -59,7 +59,8 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
-	if view.Cell.Lease.Device != p.Seen.Device || view.Cell.Lease.Fence != p.Seen.Fence {
+	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
+	if !seen.Matches(view.Cell) {
 		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
 	}
 	if view.Cell.Archived || view.Cell.ParentCell != "" {
@@ -88,13 +89,13 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		}
 		existing.gate.Unlock()
 	}
-	got, err := chatContinuer(s, nil).TakeSeen(ctx, p.Cell, &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence})
+	got, err := chatContinuer(s, nil).TakeSeen(ctx, p.Cell, seen)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
 	// The continuer's already-here shortcut may observe a local acquisition
 	// that happened after our preflight read. It must not accept older consent.
-	if got.AlreadyHere && (p.Seen.Device != s.Device.ID() || p.Seen.Fence != got.Taken.Driving.Fence) {
+	if got.AlreadyHere && (p.Seen.Device != s.Device.ID() || !seen.Matches(directory.Cell{Head: got.Taken.Driving.Head, Lease: directory.Lease{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence}})) {
 		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
 	}
 	root := got.Taken.Cell.Root
@@ -110,7 +111,10 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created})
 	a := b.agent(id)
 	b.locked(func() { a.transcript = transcript; a.windowMoved = false })
-	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
+	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
+	if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
+		location.Seen.Head = ""
+	}
 	b.located(a, location)
 	agent, err := b.OpenAgent(id)
 	if err != nil {

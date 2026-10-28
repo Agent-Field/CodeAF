@@ -45,6 +45,7 @@ func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
 	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/list", nil, &l)
 	if err == nil {
 		l.Version, _ = strconv.ParseUint(hdr.Get(VersionHeader), 10, 64)
+		headTakeServices.Store(h.serviceKey(), hdr.Get(HeadTakeHeader) == "1")
 	}
 	return l, err
 }
@@ -53,6 +54,7 @@ func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {
 	hdr, err := h.doHeader(ctx, http.MethodGet, cellPath(id, ""), nil, &v)
 	if err == nil {
 		conditionalServices.Store(h.serviceKey(), hdr.Get(ConditionalTakeHeader) == "1")
+		headTakeServices.Store(h.serviceKey(), hdr.Get(HeadTakeHeader) == "1")
 	}
 	return v, err
 }
@@ -82,7 +84,29 @@ func (h *HTTP) Acquire(ctx context.Context, id string, o AcquireOpts) (v CellVie
 			return v, err
 		}
 	}
+	if o.Expect != nil && o.Expect.Head != "" {
+		if supported, _ := headTakeServices.Load(h.serviceKey()); supported != true {
+			if _, err := h.Cell(ctx, id); err != nil {
+				return v, err
+			}
+			if supported, _ = headTakeServices.Load(h.serviceKey()); supported != true {
+				return v, ErrConditionalTake
+			}
+		}
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "acquire"), o, &v)
+}
+
+// HeadTakeHeader advertises atomic saved-head checks on conditional takes.
+const HeadTakeHeader = "Codeaf-Head-Takes"
+
+var headTakeServices sync.Map
+
+// HeadTakes reports the service's last advertised atomic head-check support.
+// Callers omit head observations on older relays, preserving their take wire.
+func (h *HTTP) HeadTakes() bool {
+	known, _ := headTakeServices.Load(h.serviceKey())
+	return known == true
 }
 
 // ConditionalTakeHeader is the service's promise that a take compares the

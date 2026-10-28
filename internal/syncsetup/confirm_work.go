@@ -26,6 +26,10 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	v, err = d.renewIdleLease(ctx, v, fence)
+	if err != nil {
+		return false, err
+	}
 	lease := v.Cell.Lease
 	// A first publish or branch can change the lease during the read. That
 	// answer confirms neither a takeover nor the batcher's new lease.
@@ -102,6 +106,10 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 
 func (d *Drive) resumeViewer() {
 	d.mu.Lock()
+	if d.stopped {
+		d.mu.Unlock()
+		return
+	}
 	changed := d.viewer.Line != ""
 	d.viewer = Viewer{}
 	d.mu.Unlock()

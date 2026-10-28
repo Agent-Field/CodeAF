@@ -103,12 +103,17 @@ const ROUTES = [
   ['POST', /^\/v1\/store\/locate$/, STORE, async (c) => json({ at: await c.tenant.locate(asRids(object(c.body))) })],
   ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
   ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats.snapshot())],
-  ['GET', /^\/v1\/dir\/list$/, DIR, (c) => withVersion(json(c.tenant.dir.list()), c.tenant.dir.version)],
+  ['GET', /^\/v1\/dir\/list$/, DIR, (c) => {
+    const response = withVersion(json(c.tenant.dir.list()), c.tenant.dir.version);
+    response.headers.set('Codeaf-Head-Takes', '1');
+    return response;
+  }],
   ['GET', /^\/v1\/dir\/watch$/, DIR_WRITE, (c) => watching(c)],
   // C7: the client reads this promise before it can displace a holder.
   ['GET', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => {
     const response = json(c.tenant.dir.cell(id));
     response.headers.set('codeaf-conditional-takes', '1');
+    response.headers.set('Codeaf-Head-Takes', '1');
     return response;
   }],
   ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR_WRITE, (c, [id]) => {

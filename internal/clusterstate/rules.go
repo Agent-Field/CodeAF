@@ -25,7 +25,7 @@ func Lifted(c Cell, vouchedUntil int64) Cell {
 func Acquire(c Cell, device string, now int64, force bool, expected ...*LeaseExpectation) (Cell, error) {
 	if len(expected) > 0 && expected[0] != nil {
 		seen := expected[0]
-		if c.Lease.Device != seen.Device || c.Lease.Fence != seen.Fence {
+		if !seen.Matches(c) {
 			return c, ErrLeaseHeld
 		}
 	}

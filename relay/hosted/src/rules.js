@@ -29,7 +29,9 @@ export function makeRules({ ttlMs, renewOnPublish }) {
   // force is the amendment: a person who chose "continue here" takes a live lease at once.
   // The fence still goes up, so the old holder's next write is refused as before.
   const acquire = (c, device, now, force = false, expect = undefined) => {
-    if (expect != null && (c.lease.device !== expect.device || c.lease.fence !== expect.fence)) throw refuse('lease_held');
+    if (expect != null && (c.lease.device !== expect.device ||
+        (expect.head && c.head !== expect.head) ||
+        (c.lease.fence !== expect.fence && !(expect.head && c.lease.fence > expect.fence)))) throw refuse('lease_held');
     if (!force && c.lease.expires > now && c.lease.device !== device) throw refuse('lease_held');
     return { ...c, lease: { device, fence: c.lease.fence + 1, expires: now + ttlMs, pending: 0 } };
   };

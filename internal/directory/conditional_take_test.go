@@ -38,6 +38,40 @@ func TestC7OldServiceRefusesTakesAcrossClients(t *testing.T) {
 	}
 }
 
+func TestHTTPF2HeadGuardRequiresAtomicSupport(t *testing.T) {
+	for _, supported := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy", true: "current"}[supported], func(t *testing.T) {
+			takes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(directory.ConditionalTakeHeader, "1")
+				if supported {
+					w.Header().Set(directory.HeadTakeHeader, "1")
+				}
+				if strings.HasSuffix(r.URL.Path, "/acquire") {
+					takes++
+					var body directory.AcquireOpts
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					if body.Expect == nil || body.Expect.Head != "saved-head" {
+						t.Error("F2 head guard was stripped")
+					}
+				}
+				_ = json.NewEncoder(w).Encode(directory.CellView{})
+			}))
+			defer srv.Close()
+			client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
+			_, err := client.Acquire(t.Context(), cellX, directory.AcquireOpts{Force: true, Expect: &directory.LeaseExpectation{Device: devA, Fence: 1, Head: "saved-head"}})
+			if supported && (err != nil || takes != 1) {
+				t.Fatalf("F2 supported take failed: %v, %d requests", err, takes)
+			}
+			if !supported && (!errors.Is(err, directory.ErrConditionalTake) || takes != 0) {
+				t.Fatalf("F2 unsupported atomic guard was weakened: %v, %d requests", err, takes)
+			}
+		})
+	}
+}
+
 // TestC7OldServiceStillAllowsAnOrdinaryResume proves C7's compatibility
 // boundary: a local non-forced resume cannot displace a live other holder.
 func TestC7OldServiceStillAllowsAnOrdinaryResume(t *testing.T) {
