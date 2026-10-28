@@ -97,6 +97,7 @@ func MergePersonal(repo File, personal string, err error) (File, error) {
 	// The repository text stays the file that was read. The personal file
 	// is named beside it so a client can say which lines came from home.
 	merged.Text = repo.Text
+	merged.Copy = repo.Copy.Clone()
 	merged.Personal = true
 	merged.PersonalText = pf.Text
 	return merged, err
@@ -568,6 +569,7 @@ func cloneFile(f File) File {
 	out.House.AskFirst = append([]string(nil), f.House.AskFirst...)
 	out.House.Never = append([]string(nil), f.House.Never...)
 	out.Problems = append([]Problem(nil), f.Problems...)
+	out.Copy = f.Copy.Clone()
 	out.Pipeline = map[factory.Kind][]string{}
 	for kind, names := range f.Pipeline {
 		out.Pipeline[kind] = append([]string(nil), names...)

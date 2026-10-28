@@ -21,7 +21,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -80,9 +79,8 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 	if err != nil {
 		return nil
 	}
-	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, repo string) (pipeline.File, error) {
-		f, err := factoryRules().Load(ctx, repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
-		return withFactoryHouseRules(st, f, err)
+	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+		return factoryJobRead(ctx, st, it, st.CheckoutDir(factory.RepoOf(it)))
 	}))
 }
 
@@ -182,8 +180,12 @@ func setFactoryProcess(change func()) {
 // cap, today's rail) and nowhere else.
 func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
-	recipe := func(repo string) factory.Recipe {
-		return factoryItemRecipe(dirs, factory.Item{Repo: repo})
+	// EVERY BOUND ON A JOB IS THE FILE IT WAS DECIDED ON at its first start:
+	// the factory's copy it carries, else main's file here
+	// ([factoryItemRecipe]). No store copy is read: the factory that handed
+	// the job over, this machine's or a remote one, decided its file.
+	recipe := func(it factory.Item) factory.Recipe {
+		return factoryItemRecipe(nil, dirs, it)
 	}
 	source := factorySource(floor, profileDir)
 	money := factoryrun.NewMoney(items, nil, time.Now)
@@ -212,7 +214,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 			factory.StagePost: factoryrun.NewPostExecutorWith(factoryrun.PostOptions{
 				Record: history,
 				Source: source,
-				Policy: func(repo string) []string { return recipe(repo).Policy },
+				Policy: func(it factory.Item) []string { return recipe(it).Policy },
 				Push:   factoryrun.GitPush(pushGit),
 			}),
 			// A GATE IS A PERSON, and the loop answers it before it would look

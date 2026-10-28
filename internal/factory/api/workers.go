@@ -145,7 +145,8 @@ func stageResultItem(r StepResult) factory.StageResult {
 }
 
 // WorkerJob is the job as the worker holding its lease pulls it: [FromItem],
-// with each step that ran carrying its whole last report.
+// with each step that ran carrying its whole last report, and the factory's
+// copy of the pipeline file it runs whole ([Job.PipelineCopy]).
 //
 // A RUNNER THAT TAKES A JOB ON MUST KNOW WHAT CAME BEFORE. A job moves to
 // another machine when its worker goes away, and the runner there rebuilds
@@ -157,6 +158,8 @@ func stageResultItem(r StepResult) factory.StageResult {
 // only the lease holder may read (serve's withholdChats).
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
+	// The runner runs the file the job carries, so it is sent whole here.
+	j.PipelineCopy = it.PipelineCopy.Clone()
 	if it.Stream == nil {
 		return j
 	}

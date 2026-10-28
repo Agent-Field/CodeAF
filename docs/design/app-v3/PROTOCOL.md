@@ -247,6 +247,8 @@ decides which combinations are accepted.
 | `factory.me` | `in.FactoryRef` | `FactoryMe` |
 | `factory.people` | `in.FactoryRef` | `People` |
 | `factory.pipeline` | `in.FactoryRepoParams` | `FactoryPipeline` |
+| `factory.pipeline_copy_clear` | `in.FactoryPipelineCopyClearParams` | `FactoryPipelineCopyDone` |
+| `factory.pipeline_copy_set` | `in.FactoryPipelineCopySetParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_pr` | `in.FactoryPipelinePRParams` | `FactoryPipelinePRDone` |
 | `factory.pipeline_preview` | `in.FactoryPipelinePreviewParams` | `FactoryPipelinePreview` |
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |

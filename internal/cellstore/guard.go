@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,13 +22,25 @@ import (
 // so the file stays where it is on this machine and is simply never captured.
 // Nothing is written into the tree: the exclusions live in the cell's own folder.
 //
-// The zero Guard works: the vault lives in the codeaf home and a notice is one
-// line on stderr.
+// A FILE KEPT OUT FOR A SECRET IS LOGGED, NEVER SAID IN THE CHAT. A fresh
+// checkout of a repository whose tests carry fake keys kept a dozen of them out
+// on its first seal, and each was a line in the chat that asked nothing of the
+// person. The line goes to the engine's log instead ([Guard.Kept]), and the
+// cell's policy file keeps the list of what is withheld. A file this machine
+// cannot read, or a vault that cannot be written, is still said: the person can
+// fix those.
+//
+// The zero Guard works: the vault lives in the codeaf home, a kept-out file is
+// one line in the log and a notice is one line on stderr.
 type Guard struct {
 	// Home is the codeaf home that holds the vault; empty means the state root.
 	Home string
-	// Notify receives one line for a path newly withheld; nil writes to stderr.
+	// Notify receives one line the person should see (a file this machine
+	// cannot read, a vault that cannot be written); nil writes to stderr.
 	Notify func(string)
+	// Kept receives one line for a path newly withheld because it holds a
+	// secret; nil writes it to the log.
+	Kept func(string)
 	// Ledger, when set, spares a file that has not changed since it was found
 	// clean from being read again; EngineFor sets one per session.
 	Ledger *keys.Ledger
@@ -130,14 +143,22 @@ func pathsOf(found []keys.Finding) []string {
 	return out
 }
 
-// announce tells a person once about each path newly withheld. It names the
-// file and the rule, never the value.
+// announce logs once each path newly withheld. It names the file and the rule,
+// never the value.
 func (g Guard) announce(before policyFile, found []keys.Finding) {
 	for _, f := range found {
 		if !before.isWithheld(f.Path) {
-			g.notify(noticeFor(f))
+			g.kept(noticeFor(f))
 		}
 	}
+}
+
+func (g Guard) kept(line string) {
+	if g.Kept != nil {
+		g.Kept(line)
+		return
+	}
+	log.Printf("seal guard: %s", line)
 }
 
 // announceUnreadable tells a person once about each path newly left out because

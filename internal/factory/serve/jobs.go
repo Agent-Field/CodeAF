@@ -102,10 +102,6 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		now := strings.HasSuffix(r.URL.Path, "/start_now")
 		mark = now && !cur.Marked
 		queued = now && cur.State == factory.StateQueued
-		budget, err := h.startBudget(r, cur)
-		if h.failed(w, err) {
-			return
-		}
 		// THE RULES A JOB STARTS UNDER GO WITH IT: the repository's ask-first
 		// and never lines with the factory's own, so the approval after its
 		// plan is checked against them on whichever machine runs it. A
@@ -113,20 +109,46 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		// the job takes the defaults with the factory's rules, is marked as
 		// started with its rules unread, and its plan then waits for a person.
 		// Only the factory's own rules unread refuse it.
+		//
+		// THEY ARE READ FROM THE JOB'S OWN FILE ([Handler.jobPipeline]): the
+		// one it was first started under, or, for a job never started, the
+		// factory's read now, which this start decides on the job for its life
+		// ([factory.Item.DecidePipeline]) in the same write as its rules and
+		// budget, so its steps, rules and budget come from one file.
 		var rules *factory.StartRules
+		var file *pipeline.File
+		var fileErr error
 		if h.config.Pipeline != nil && !queued {
-			f, err := h.config.Pipeline(r.Context(), itemRepo(cur), "")
+			f, err := h.jobPipeline(r.Context(), cur, "")
 			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
 				return
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
+			file, fileErr = &f, err
+		}
+		var budget float64
+		if file != nil && cur.Cap <= 0 {
+			// The budget comes from the same read, and a read that failed
+			// refuses the start as the budget's own read would.
+			err = fileErr
+			if err == nil {
+				budget, err = h.budgetOf(file.Recipe())
+			}
+		} else {
+			budget, err = h.startBudget(r, cur)
+		}
+		if h.failed(w, err) {
+			return
 		}
 		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
+				}
+				if file != nil {
+					cur.DecidePipeline(file.Copy, h.clock())
 				}
 				if rules != nil {
 					cur.StartRules, cur.RuleHold = rules, ""
@@ -264,6 +286,11 @@ func (h *Handler) startBudget(r *http.Request, it factory.Item) (float64, error)
 	if err != nil {
 		return 0, err
 	}
+	return h.budgetOf(recipe)
+}
+
+// budgetOf is the budget recipe gives a job that has none.
+func (h *Handler) budgetOf(recipe factory.Recipe) (float64, error) {
 	// A PIPELINE FILE'S BUDGET IS TAKEN AS IT SAYS, and one that says none is
 	// refused below; a recipe read any other way falls back to the default.
 	budget := recipe.DefaultBudget
@@ -276,11 +303,13 @@ func (h *Handler) startBudget(r *http.Request, it factory.Item) (float64, error)
 	return budget, nil
 }
 
-// recipeOf is the job's repository's recipe as it reads now: the host's
-// pipeline reader when it has one, else the floor's, else the built-in recipe.
+// recipeOf is the job's recipe: the host's read of the job's own file when it
+// reads pipelines ([Handler.jobPipeline]: the file its first start decided, or
+// its repository's as it reads now before that), else the floor's, else the
+// built-in recipe.
 func (h *Handler) recipeOf(r *http.Request, it factory.Item) (factory.Recipe, error) {
 	if h.config.Pipeline != nil {
-		f, err := h.config.Pipeline(r.Context(), itemRepo(it), "")
+		f, err := h.jobPipeline(r.Context(), it, "")
 		if err != nil {
 			return factory.Recipe{}, err
 		}
@@ -355,7 +384,11 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 	}
 	// The recipe is read before anything changes, so a pipeline file that
 	// cannot be read refuses the whole Bring back and the job stays dropped.
-	recipe, err := h.recipeOf(r, it)
+	// It is read as for a job never started: Bring back forgets the file the
+	// job was decided on, and its next start decides afresh.
+	fresh := it
+	fresh.ForgetPipeline()
+	recipe, err := h.recipeOf(r, fresh)
 	if h.failed(w, err) {
 		return
 	}
@@ -378,8 +411,8 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 // proof, its change and the commits and machine it was made on, and what it
 // published; and every trace of what was said about it: its conversations
 // ([forgetChats]), the notes for its steps, and the changes made to its
-// steps, which are the recipe's for its kind again. Everything else on the
-// job is the job's own and stays.
+// steps, which are the recipe's for its kind again, with the pipeline file
+// it was decided on. Everything else on the job is the job's own and stays.
 func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	forgetChats(it)
 	it.State = factory.StateNew
@@ -401,6 +434,9 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.Notes = nil
 	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil
 	it.StartRules, it.RuleHold = nil, ""
+	// The pipeline file it was decided on goes too: its next start decides
+	// afresh ([factory.Item.DecidePipeline]).
+	it.ForgetPipeline()
 }
 
 // forgetChats takes every link to a conversation off the job: its agent's

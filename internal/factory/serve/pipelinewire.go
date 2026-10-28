@@ -100,6 +100,10 @@ func pipelineOrigin(from string) string {
 		return "working tree"
 	case factory.FromDefault:
 		return "defaults"
+	case factory.FromFactoryCopy:
+		// The factory's own copy of the file, in place of main's
+		// (factory.PipelineCopy); Text is the copy's.
+		return "factory copy"
 	default:
 		return ""
 	}

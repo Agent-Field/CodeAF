@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -65,7 +66,7 @@ const (
 	talkBlockWho   = "You are the manager of %s in %s."
 	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
 	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here from the runner’s recorded state, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
-	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step."
+	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. When the person asks to remove or delete a stage, remove it (it leaves this job; skip only switches it off), and move a stage when they ask for another order. Never drop, remove or move proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and leave skipping, removing or moving one to the person. Nothing posts outward before an approve step."
 	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate. Call concurrency limits execution slots, never benches. When a job is queued, explain that it waits for an available execution slot and point to Jobs at once in Settings → Factory → Your computers. Its person can press Start now on a queued job to give it one slot above that limit, or Hold it until they resume it. Read factory_status for current facts; never invent a limit, running-job count or start time. Idle PR monitoring uses no execution slot."
 )
 
@@ -102,6 +103,15 @@ const talkItemDoor = "factory_item changes the budget (its field is cap), the th
 // checkout only when it is the repository's, [factoryRepoDirs]), and
 // profileDir the profile whose teams file the item's team is written into.
 func talkMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	return talkMakerReading(st, st, workspace, profileDir)
+}
+
+// talkMakerReading is [talkMaker] whose brief reads the factory copies kept
+// by copies: st for this machine's own floor, whose jobs it decides; NIL FOR A
+// JOB ANOTHER FACTORY HANDED THIS MACHINE (a worker's runner, a job a remote
+// factory runs here), which carries the file it was decided on, so this
+// machine's own copy is never read for it, nor cleared by that read.
+func talkMakerReading(st, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
 		factoryReconcileOnce(profileDir, st)
@@ -122,7 +132,7 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 			return "", err
 		}
 		name := talkTeamName(it)
-		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(dirs, it))); err != nil {
+		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(copies, dirs, it))); err != nil {
 			return "", err
 		}
 		if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
@@ -137,8 +147,12 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 // named the lead of the item's team either way, so a conversation `T` made
 // before this build, or before the team had a lead, is the lead from its next
 // run on.
+//
+// THE RUNNER'S JOB WAS HANDED OVER BY A FACTORY, this machine's own or a
+// remote one, and carries the pipeline file it was decided on: its brief
+// reads that file, never st's own copy ([talkMakerReading] with no copies).
 func managerMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
-	mint := talkMaker(st, workspace, profileDir)
+	mint := talkMakerReading(st, nil, workspace, profileDir)
 	dirs := factoryRepoDirs(st, workspace)
 	return func(ctx context.Context, it factory.Item) (string, error) {
 		chat := strings.TrimSpace(it.Talk)
@@ -368,13 +382,18 @@ func talkHandle(it factory.Item) string {
 	return h
 }
 
-// factoryItemRecipe shares the forge-backed rules the floor and intake read.
-func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe {
+// factoryItemRecipe is the recipe one job is bounded by, as its manager's
+// brief and its item card read it, with the personal file ([factoryJobFile]):
+// the factory's copy the job carries, else main's file for a job decided on
+// it, else, for a job not decided yet, st's read of its repository (its copy,
+// else main's file, else the built-in steps). A nil st keeps no copy, as for a
+// worker's runner, whose jobs carry their file.
+func factoryItemRecipe(st *store.Store, dirs func(string) string, it factory.Item) factory.Recipe {
 	dir := ""
 	if dirs != nil {
 		dir = strings.TrimSpace(dirs(it.Repo))
 	}
-	f, _ := factoryRules().Load(context.Background(), it.Repo, dir, home.Join("factory.yaml"))
+	f, _ := factoryJobFile(context.Background(), st, it, it.Repo, dir)
 	return f.Recipe()
 }
 
@@ -512,7 +531,7 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 	if err != nil {
 		return factory.Item{}, factory.Item{}, err
 	}
-	recipe := factoryItemRecipe(d.dirs, it)
+	recipe := factoryItemRecipe(d.st, d.dirs, it)
 	before := session.ItemStaged(it, recipe)
 	after, err := session.ApplyItemChange(it, change, recipe)
 	if err != nil {
@@ -524,10 +543,18 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 // Apply makes the change in one read-modify-write of the item's document,
 // against the item as it is NOW — a stage may have started since the card was
 // raised, and the bounds are asked again — and answers the item as saved.
+//
+// IT GOES THROUGH THE DOOR A PERSON'S STEP EDIT TAKES ([lease.Doors.ChangeSteps]):
+// a step the card removes or moves is laid out of, or into its new place in,
+// the run's phases not yet begun, queued or running, and a worker running the
+// job from its own copy is withdrawn so it pulls the changed steps.
 func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemChange) (factory.Item, error) {
-	var now factory.Item
-	err := d.st.Update(item, func(it *factory.Item) error {
-		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.dirs, *it))
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	_, err = lease.NewDoors(desk).ChangeSteps(item, func(it *factory.Item) error {
+		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.st, d.dirs, *it))
 		if err != nil {
 			return err
 		}
@@ -540,10 +567,7 @@ func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemCha
 	if err != nil {
 		return factory.Item{}, err
 	}
-	if now, err = d.st.Get(item); err != nil {
-		return factory.Item{}, err
-	}
-	return now, nil
+	return d.st.Get(item)
 }
 
 // Stages is the stage names kind runs in repo's recipe today, which the recipe

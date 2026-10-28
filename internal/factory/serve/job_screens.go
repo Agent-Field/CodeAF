@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -29,6 +31,9 @@ func (h *Handler) jobScreens() {
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
+	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{
+		http.MethodGet: h.pipelineCopy, http.MethodPut: h.pipelineCopy, http.MethodDelete: h.pipelineCopy,
+	})
 	h.route("/v1/issues", map[string]http.HandlerFunc{http.MethodGet: h.searchIssues, http.MethodPost: h.createIssueJob})
 }
 
@@ -149,7 +154,16 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Why: body.Why, By: factory.ByYou}
+	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	for _, mv := range body.Move {
+		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
+		// rather than guessed.
+		if mv.After == nil {
+			h.fail(w, 422, "a moved step names the step it goes after, or \"\" for first")
+			return
+		}
+		edit.Move = append(edit.Move, factory.Moved{Stage: mv.Step, After: *mv.After})
+	}
 	for _, addition := range body.Add {
 		d := addition.Step
 		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
@@ -173,8 +187,8 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if h.config.Pipeline != nil {
-			file, err := h.config.Pipeline(r.Context(), itemRepo(it), "")
+		if h.config.Pipeline != nil || h.config.JobPipeline != nil {
+			file, err := h.jobPipeline(r.Context(), it, "")
 			if h.failed(w, err) {
 				return
 			}
@@ -192,6 +206,24 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.stepEditsReply(w, r, updated, lines)
+}
+
+// jobPipeline is the pipeline one job is bounded by, for every door that
+// starts it, edits its steps or merges it: THE FILE ITS FIRST LAUNCH DECIDED
+// ([factory.Item.DecidePipeline]: the factory's copy it carries, else main's
+// file), else, before that, this factory's read of its repository now
+// ([Config.JobPipeline], pipeline.JobFile), so nothing bounds a job by a copy
+// saved or stopped since. dir is its checkout, "" when not known.
+func (h *Handler) jobPipeline(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
+	if h.config.JobPipeline != nil {
+		return h.config.JobPipeline(ctx, it, dir)
+	}
+	return pipeline.JobFile(it, "", func(bool) (pipeline.File, error) {
+		if h.config.Pipeline == nil {
+			return pipeline.Defaults(), nil
+		}
+		return h.config.Pipeline(ctx, itemRepo(it), dir)
+	})
 }
 
 func (h *Handler) readJobHandOff(w http.ResponseWriter, r *http.Request) {

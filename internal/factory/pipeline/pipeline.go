@@ -97,6 +97,10 @@ type File struct {
 	// read, so a client can say which lines came from the factory rather than
 	// the repository. The repository's Text never holds them.
 	House factory.HouseRules
+	// Copy is the factory's own copy of the repository's file when
+	// [WithFactoryCopy] read it in place of main's: Text is then the copy's,
+	// and From is factory.FromFactoryCopy. Nil for every other read.
+	Copy *factory.PipelineCopy
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
 

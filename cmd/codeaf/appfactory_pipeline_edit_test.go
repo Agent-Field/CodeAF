@@ -44,6 +44,8 @@ type editStub struct {
 	me     api.Me
 	source func(http.ResponseWriter, *http.Request)
 	onRead func()
+	// other answers every other route; nil is a plain 404.
+	other func(http.ResponseWriter, *http.Request)
 }
 
 func newEditStub(t *testing.T, me api.Me) *editStub {
@@ -53,7 +55,7 @@ func newEditStub(t *testing.T, me api.Me) *editStub {
 		s.mu.Lock()
 		s.log = append(s.log, r.Method+" "+r.URL.RequestURI())
 		s.auths = append(s.auths, r.Header.Get("Authorization"))
-		me, source, onRead := s.me, s.source, s.onRead
+		me, source, onRead, other := s.me, s.source, s.onRead, s.other
 		s.mu.Unlock()
 		switch {
 		case r.URL.Path == "/v1/me":
@@ -67,6 +69,8 @@ func newEditStub(t *testing.T, me api.Me) *editStub {
 				return
 			}
 			editSourceReply(editSourceFor(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/repos/"), "/pipeline/edit-source"), editTestFile))(w, r)
+		case other != nil:
+			other(w, r)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
