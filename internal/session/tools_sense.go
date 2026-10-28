@@ -238,6 +238,9 @@ func (a *Agent) senseRead(inner bare.Tool) bare.Tool {
 				return inner.Execute(ctx, args)
 			}
 			absolute := resolveInWorkspace(parsed.Path, a.config.Workspace)
+			if err := a.RestoreTaskPath(ctx, absolute); err != nil {
+				return "could not restore the saved task file: " + err.Error(), true, nil
+			}
 			// A file that is not there, or is a directory, is bare's sentence
 			// and not one of ours. A name ending in .mp3 is a claim about a file
 			// that does not exist yet, and "Error reading file: no such file" is
@@ -248,7 +251,13 @@ func (a *Agent) senseRead(inner bare.Tool) bare.Tool {
 			}
 
 			shown := filepath.ToSlash(parsed.Path)
-			switch entry := sniffSense(absolute); entry.kind {
+			entry := sniffSense(absolute)
+			if entry.kind != senseNone {
+				if err := markTaskStorageUncertain(a.config.Workspace); err != nil {
+					return "could not record reader process uncertainty: " + err.Error(), true, nil
+				}
+			}
+			switch entry.kind {
 			case sensePDF:
 				return a.pdfSense(shown, absolute, parsed.Offset, parsed.Limit)
 			case senseImage:

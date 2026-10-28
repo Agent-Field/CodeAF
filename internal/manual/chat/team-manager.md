@@ -263,7 +263,9 @@ where it was. Its tab arrives at the end of the team's run, named `@lexer` until
 and its working mark is the only thing that moves. With the team's auto-wake on, the member
 starts on its own: it is handed the brief on its first request, marked `◆ brief from manager`,
 and its page shows the brief as a quoted card headed `◆ manager → @lexer`, never as your
-message. With auto-wake off the conversation is still opened behind the one you are in, and
+message. If opening or configuring the conversation delays its team membership, it still
+starts from that brief once it joins; you do not need to send a second message.
+With auto-wake off the conversation is still opened behind the one you are in, and
 no turn is started; the traffic says `opened @lexer; this team's auto-wake is off, so no turn
 was started. It reads the brief when it next runs.`, and the brief arrives on that next turn
 the same way. When the manager stops a member,

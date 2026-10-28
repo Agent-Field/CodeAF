@@ -153,6 +153,8 @@ func harnessWrote(path string) bool {
 	switch {
 	case isTaskDropping(path):
 		return true
+	case path == furrowMarkerDir, strings.HasPrefix(path, furrowMarkerPattern):
+		return true
 	case path == planStoreFilename,
 		strings.HasPrefix(path, planStoreFilename+"."),
 		strings.HasPrefix(path, planStoreFilename+"-"):

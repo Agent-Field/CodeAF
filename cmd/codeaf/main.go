@@ -44,15 +44,18 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var flushFinalSaves = cellstore.Flush
+
 func main() {
 	// THE DEVELOPER-ONLY PROFILE STARTS FIRST AND STOPS LAST, and is inert
 	// unless CODEAF_DIAGNOSTIC_PROFILE_DIR is set (diagnostics.go).
 	stopDiagnostics := startDiagnostics()
-	home.Adopt(log.Printf)
-	// CODEAF SCHEDULES NOTHING ON THE MACHINE. The timers the feature that
-	// automations replaced installed are taken off this login on every start,
-	// whoever installed them (internal/automation's legacy.go).
-	automation.RemoveOldTimers()
+	if startupMaintenanceNeeded(os.Args[1:]) {
+		home.Adopt(log.Printf)
+		// CODEAF SCHEDULES NOTHING ON THE MACHINE. Real starts remove the
+		// timers installed by the feature that automations replaced.
+		automation.RemoveOldTimers()
+	}
 	registerRunningCLI()
 	code := execute()
 	stopDiagnostics()
@@ -200,8 +203,7 @@ func execute() (code int) {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 		defer cancel()
-		if err := cellstore.Flush(ctx); err != nil {
-			fmt.Fprintln(os.Stderr, "codeaf: could not finish saving this chat:", err)
+		if !finishFinalSaving(ctx) {
 			if code == 0 {
 				code = 1
 			}
@@ -341,6 +343,8 @@ func run() error {
 		// whoever hosts the relay and not typed in a conversation, so like
 		// `engine` it is absent from the usage text.
 		return relayserve.Main(os.Args[2:])
+	case "cluster":
+		return runCluster(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
@@ -628,7 +632,7 @@ Housekeeping — changes state on disk or on the network
       approve a new device; or use or show a six-digit code for your chats
   codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
-  codeaf devices
+  codeaf devices | codeaf cluster status | lead
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one

@@ -3,6 +3,7 @@ package cellstore
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -166,5 +167,103 @@ func TestWithNoticesSendsTheGuardsLineToTheSurface(t *testing.T) {
 	e.Guard.notify("one line")
 	if len(said) != 1 || said[0] != "one line" {
 		t.Fatalf("guard notice went elsewhere: %q", said)
+	}
+}
+
+func TestWaitingArmsOnlyTheInitialIdleChat(t *testing.T) {
+	tails := make(chan struct{}, 2)
+	ends := 0
+	watch := &SealWatch{Quiet: 10 * time.Millisecond, OnTail: func() { tails <- struct{}{} }, OnTurnEnd: func() { ends++ }}
+	watch.Waiting()
+	if ends != 0 {
+		t.Fatal("initial waiting pretended a foreground turn ended")
+	}
+	watch.Wrote()
+	select {
+	case <-tails:
+	case <-time.After(time.Second):
+		t.Fatal("initial idle write was not sealed")
+	}
+	watch.TurnStarted()
+	watch.Waiting() // Startup notification cannot rearm a running foreground turn.
+	watch.Wrote()
+	select {
+	case <-tails:
+		t.Fatal("waiting rearmed an active turn")
+	case <-time.After(50 * time.Millisecond):
+	}
+	watch.TurnEnded()
+	if ends != 1 {
+		t.Fatal("actual turn end was lost")
+	}
+}
+
+// Contract A3 keeps an unrelated seal from announcing recovery of this chat.
+func TestSealWatchWaitsForItsOwnTurnAndPublish(t *testing.T) {
+	c := newCell(t)
+	transcript := rel(c, ".cell/transcript.jsonl")
+	if err := os.WriteFile(transcript, []byte("the unsaved reply\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	engine := (&fakeEngine{}).engine(t)
+	engine.Identity = Identity{Device: "this-computer", Fence: 1}
+	var watch SealWatch
+	watch.TrackTurn(c.Root)
+	watch.Report(errors.New("turn seal failed"))
+	watch.Take()
+	other := newCell(t)
+	if _, err := engine.Seal(t.Context(), other, TurnInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if !watch.Failing() || watch.Take() != "" {
+		t.Fatal("unrelated successful seal claimed recovery")
+	}
+	saved, err := engine.Seal(t.Context(), c, TurnInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if !watch.Failing() || watch.Take() != "" {
+		t.Fatal("unpublished turn claimed recovery")
+	}
+	if err := NotePublished(c, saved.Turn.ID); err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if watch.Failing() || !strings.Contains(watch.Take(), "sealing works again") || watch.Take() != "" {
+		t.Fatal("own saved and published turn did not say recovery once")
+	}
+	watch.Report(nil)
+	if watch.Take() != "" {
+		t.Fatal("recovery repeated")
+	}
+}
+
+// Contract A3 also waits for publication when startup sealed before its first fence.
+func TestSealWatchStartupTurnStillWaitsForPublish(t *testing.T) {
+	c := newCell(t)
+	if err := os.WriteFile(rel(c, ".cell/transcript.jsonl"), []byte("startup reply\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	release := RequirePublication(c)
+	defer release()
+	var watch SealWatch
+	watch.TrackTurn(c.Root)
+	watch.Report(errors.New("startup turn failed"))
+	watch.Take()
+	saved, err := (&fakeEngine{}).engine(t).Seal(t.Context(), c, TurnInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if !watch.Failing() || watch.Take() != "" {
+		t.Fatal("startup seal claimed recovery before publishing")
+	}
+	if err := NotePublished(c, saved.Turn.ID); err != nil {
+		t.Fatal(err)
+	}
+	if watch.Failing() || !strings.Contains(watch.Take(), "sealing works again") {
+		t.Fatal("published startup turn did not recover")
 	}
 }

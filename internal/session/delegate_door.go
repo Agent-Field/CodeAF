@@ -305,7 +305,7 @@ func programCopyReceipt(ground string, via delegate.Delegate, record *TaskCopyRe
 // or advising `git init` inside their dotfiles; it names the repository, the
 // way the run's ending does ([ProgramFolderEnd.Sentence]).
 func delegateFolderReceipt(ground string, via delegate.Delegate) string {
-	if _, _, outer, _ := programFolderOf(ground); outer != "" && !holdsHomeFolder(outer) {
+	if _, _, outer, _ := programFolderOf(ground); outer != "" && !HoldsHomeFolder(outer) {
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself; git ignores this folder inside " + outer +
 			", so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
 	} else if outer != "" {
@@ -366,7 +366,7 @@ func delegateStartedReceipt(id uint64, title, on, where, elsewhere string) strin
 // what it changed — every file under the home folder, and a refusal from the
 // first one macOS keeps to itself. instead is what the one refused can do.
 func programHomeRefusal(program delegate.Delegate, dir, instead string) string {
-	if !program.LandsTree() || !holdsHomeFolder(dir) {
+	if !program.LandsTree() || !HoldsHomeFolder(dir) {
 		return ""
 	}
 	what := "holds your home folder"
@@ -376,8 +376,8 @@ func programHomeRefusal(program delegate.Delegate, dir, instead string) string {
 	return program.Name + " works in one project's folder, and " + dir + " " + what + "; " + instead
 }
 
-// holdsHomeFolder says dir is the person's home folder or a folder above it.
-func holdsHomeFolder(dir string) bool {
+// HoldsHomeFolder says dir is the person's home folder or a folder above it.
+func HoldsHomeFolder(dir string) bool {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" || strings.TrimSpace(dir) == "" {
 		return false

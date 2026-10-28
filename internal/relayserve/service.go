@@ -11,14 +11,21 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
+	"github.com/Agent-Field/codeaf/internal/rafttransport"
 	"github.com/Agent-Field/codeaf/internal/relay"
-	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
 
 // Config is everything a relay is told. The zero Store is the blind pipe.
 type Config struct {
+	// Cluster is supplied by the persistent member host after loading its
+	// committed enrollment view. Its handler is an internal assembly seam, not a
+	// rollout switch or an alternative directory writer.
+	Cluster http.Handler
+
 	Store  string           // directory holding directory/ and blobs/; empty serves the pipe only
 	Status bool             // answer GET /status with what is connected right now
 	Now    func() time.Time // the relay's clock; nil is the wall clock
@@ -94,8 +101,8 @@ func (s *Service) sweepLoop(every time.Duration, logf func(string, ...any)) {
 
 // New builds the relay. Every relay is the blind pipe and the pairing mailbox,
 // which needs no disk and no identity. Given a store it also serves the
-// directory and store wires, every request authenticated by the real signature
-// check against the relay's own clock.
+// directory and store wires through three persistent local anchors per identity.
+// First use migrates the source; every request proves its original signature.
 func New(cfg Config) *Service {
 	now := cfg.Now
 	if now == nil {
@@ -103,6 +110,7 @@ func New(cfg Config) *Service {
 	}
 	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
 	mountPairing(mux, cfg, now)
+	mountCluster(mux, cfg.Cluster)
 	mux.HandleFunc("/p/", servePairPage)
 	svc := &Service{Handler: stamped(now, mux)}
 	if cfg.Store == "" {
@@ -112,7 +120,15 @@ func New(cfg Config) *Service {
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
 	svc.ns.after = cfg.After
 	svc.ns.links = links
-	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
+	mux.HandleFunc(clusterstate.ClusterAPIPath, svc.ns.clusterAPI)
+	mux.HandleFunc(clusterstate.PersonalAdmissionPath, svc.ns.enrollPersonal)
+	if cfg.Cluster == nil {
+		mux.HandleFunc(rafttransport.ExchangePath, svc.ns.exchangePersonal)
+		mux.HandleFunc(rafttransport.SocketPath, svc.ns.exchangePersonal)
+		mux.HandleFunc(clusterctl.ForwardPath, svc.ns.exchangePersonal)
+	}
+	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
+	auth := noting(svc.ns.authenticate)
 	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)

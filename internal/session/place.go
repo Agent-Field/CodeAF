@@ -44,7 +44,9 @@ const (
 	// peek.go admits only transcript-shaped .jsonl files, and sweep.go descends
 	// only into directories, so neither conversation scan can mistake it for a
 	// conversation or a thing to reap.
-	placeMetaLock     = "meta.lock"
+	placeMetaLock = "meta.lock"
+	// MetaLockName is the empty lock file kept beside conversation metadata.
+	MetaLockName      = placeMetaLock
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
 	placeTrees        = cell.TreesDir
@@ -235,6 +237,9 @@ type Meta struct {
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
 	ID string `json:"id"`
+	// ChatURI is stable conversation identity carried in the sealed truth.
+	ChatURI         string           `json:"chat_uri,omitempty"`
+	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
 	Title string `json:"title,omitempty"`
@@ -426,7 +431,7 @@ func SetArchived(dir string, archived bool) error {
 			return nil
 		}
 		meta.Archived = archived
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -453,7 +458,7 @@ func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
 		} else {
 			delete(meta.ArchivedTasks, taskID)
 		}
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -462,11 +467,35 @@ func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
 // cell layout the truth-only fields go to .cell/ first and meta.json keeps the
 // summary alone, so no field lives in two files.
 func SaveMeta(dir string, meta Meta) error {
+	return withMetaLock(dir, func() error { return saveMetaLocked(dir, meta) })
+}
+
+// saveMetaLocked preserves immutable identity while a metadata transaction holds the lock.
+func saveMetaLocked(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
+	}
+	current, err := LoadMeta(dir)
+	if err != nil {
+		return fmt.Errorf("read session identity: %w", err)
+	}
+	if err := validateWorkspacePolicy(meta.WorkspacePolicy); err != nil {
+		return err
+	}
+	if current.WorkspacePolicy != nil {
+		if meta.WorkspacePolicy != nil && *meta.WorkspacePolicy != *current.WorkspacePolicy {
+			return fmt.Errorf("save session meta: workspace policy cannot be replaced")
+		}
+		meta.WorkspacePolicy = current.WorkspacePolicy
+	}
+	if current.ChatURI != "" {
+		if meta.ChatURI != "" && meta.ChatURI != current.ChatURI {
+			return fmt.Errorf("save session meta: conversation identity cannot be replaced")
+		}
+		meta.ChatURI = current.ChatURI
 	}
 	// K3: schema paths use slashes even when their source machine is Windows.
 	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {

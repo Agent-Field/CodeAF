@@ -29,7 +29,7 @@ const excludeSentinel = "# senior-dev: workflow artifacts (managed by senior-dev
 // actually consults, which for a linked worktree is the repository's shared
 // one.
 func EnsureSeniorDevExcluded(ctx context.Context, workspace string) (bool, error) {
-	result, err := RunProcess(ctx, []string{"git", "rev-parse", "--git-path", "info/exclude"}, RunOptions{
+	result, err := RunProcess(ctx, []string{"git", "--no-optional-locks", "rev-parse", "--git-path", "info/exclude"}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: workspace},
 		NoThrow:        true,
 	})

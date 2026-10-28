@@ -28,7 +28,8 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 		},
 		"naming-a-device": {devicesNameKeys, devicesNameAsk + "atlas▏", devicesNameOwn},
 		"continuing-a-chat-on-another-computer": {
-			continueAsk, continueStay, continueFails, lostRaceWord, chatlist.Unreachable,
+			chatlist.SyncPaused, chatlist.SyncRestored,
+			continueAsk, continueStay, continueFails, continueUnreachable, lostRaceWord, chatlist.Unreachable,
 			fmt.Sprintf(resumeAskFormat, "tower"), resumeYes, resumeNo,
 			chatlist.Moved("tower", 3200e6, true), chatlist.Moved("", 3200e6, false),
 			chatlist.ArrivedHead("tower"), chatlist.OfferSetUp, chatlist.OfferNotNow,

@@ -468,8 +468,10 @@ with a fresh agent and a fresh session file.
 
 On a current engine connection, opening runs in the background. The screen says
 `opening conversation… · esc cancels` while it prepares the conversation. Repeated
-Enter does not create another one. Esc, typing, or clicking cancels the pending
-transition; the existing conversation and unsent draft stay available.
+Enter does not create another one. Words you type meanwhile belong to the new
+conversation and wait, unsent, in its box once it opens. Esc or clicking cancels the
+pending transition; the existing conversation and its unsent draft stay available, and
+anything typed for the new one comes back to this one, unsent.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
@@ -1031,11 +1033,17 @@ The `$` is optional, and the amount can be a word — see the next section.
 
 ## /cache — the build cache, disk space, and why codeaf is using so much disk
 
-`/cache` prints one line: how big the shared build cache is and where it lives —
-`~/.codeaf/cache`. That directory holds the toolchain caches task workers fill as they
+`/cache` prints one line: how big the shared build cache is and where it lives.
+New caches live under `~/.codeaf/cache`. That directory holds the toolchain caches task workers fill as they
 build — go modules and build outputs, npm, pip, cargo — shared across sessions so the same
 module is downloaded once instead of per task. It can quietly grow to hundreds of
 megabytes; that growth is this cache, not your conversations.
+
+With the experimental private-task switch on Linux and macOS, project caches
+also live beneath this cache directory and are reused by tasks
+using the same working root. Older admitted cache locations remain in use;
+`/cache` includes them in its size and lists them before an explicit clean.
+Temporary files and saved work are outside the cache cleanup.
 
 With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 
@@ -1267,6 +1275,10 @@ machine, whose list of names the picker shows.
 `/resume` (or `/sessions`) opens the picker of earlier conversations. It is the same
 surface `codeaf resume` opens on. The list is resolved at that keystroke, so a
 conversation you had in another terminal since is in it.
+
+While the list loads, it says `reading saved conversations… · esc cancels`.
+You can type a filter immediately or press esc to leave. A late result never
+reopens a picker you cancelled, and enter waits until the list is available.
 
 A filter box takes the input line's place. Type to filter, ↑↓ to move, pgup/pgdown by 10.
 The filter ranks over the name and the description together, every token matching, prefix

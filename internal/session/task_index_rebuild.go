@@ -19,8 +19,9 @@ import (
 // closed by the session's own reopen. A background job never had a row.
 //
 // A rebuilt row names no folder of the machine that ran the work (Where,
-// Ground, the artifact and transcript URIs), because a moved chat reads this on
-// another machine where those paths are false.
+// Ground and the artifact URI), because a moved chat reads this on
+// another machine where those paths are false. A worker transcript is cited only
+// when its transferred local task directory contains a verified worker journal.
 //
 // Fields the checkpoint never carried stay absent, as they do in a row written
 // live for such a record: EndedAt is zero for a record that predates the
@@ -43,7 +44,7 @@ func RebuiltTaskRows(dir string) []TaskIndexEntry {
 	for _, record := range document.Runs {
 		if row, ok := runIndexRow(record, id); ok && !filed[row.ID] {
 			filed[row.ID] = true
-			rows = append(rows, row)
+			rows = append(rows, withLocalWorkerHistory(row, Place{Dir: dir}))
 		}
 	}
 	return rows

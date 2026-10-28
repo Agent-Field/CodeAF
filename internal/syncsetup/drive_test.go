@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -32,23 +32,41 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
-// skewedClock is the relay's clock: the wall clock plus an offset a test moves
-// to let a lease run out without waiting for it. The offset stays well inside
-// the five minutes a signed request may be off by.
-type skewedClock struct{ offsetMs atomic.Int64 }
+// driveClock keeps lease expiry and maintenance on the same explicit timeline.
+// Starting near wall time keeps ordinary client signatures within clock skew.
+type driveClock struct{ *directorytest.FakeClock }
 
-func (c *skewedClock) Now() time.Time {
-	return time.Now().Add(time.Duration(c.offsetMs.Load()) * time.Millisecond)
+func (c *driveClock) advance(d time.Duration) { c.Advance(d) }
+
+// C7 allows another computer to acquire exactly when the relay's lease expires.
+func TestC7LeaseExpiresAtRelayDeadline(t *testing.T) {
+	r := newDriveRig(t)
+	ctx := t.Context()
+	created, err := r.a.Dir.Create(ctx, r.cell.ID, directory.CellInit{Head: head})
+	mustNil(t, err)
+	r.clock.advance(directory.LeaseTTL - time.Millisecond)
+	before, err := r.b.Dir.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	if before.Now != created.Now+directory.LeaseTTL.Milliseconds()-1 {
+		t.Fatalf("relay time before expiry = %d, want %d", before.Now, created.Now+directory.LeaseTTL.Milliseconds()-1)
+	}
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("acquire before expiry = %v, want lease held", err)
+	}
+	r.clock.advance(time.Millisecond)
+	taken, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{})
+	mustNil(t, err)
+	if taken.Now != created.Cell.Lease.Expires || taken.Cell.Lease.Fence != created.Cell.Lease.Fence+1 || taken.Cell.Lease.Device != r.b.Device.ID() {
+		t.Fatalf("acquire at expiry = %+v, original lease %+v", taken, created.Cell.Lease)
+	}
 }
-
-func (c *skewedClock) advance(d time.Duration) { c.offsetMs.Add(d.Milliseconds()) }
 
 // driveRig is one identity on two machines and a real relay with a store, in
 // this process. Machine A is the one that chats.
 type driveRig struct {
 	t      *testing.T
 	bin    string
-	clock  *skewedClock
+	clock  *driveClock
 	store  string // the relay's --store directory
 	svc    *relayserve.Service
 	url    string // where the relay answers
@@ -67,9 +85,10 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
-	clock := &skewedClock{}
+	clock := &driveClock{directorytest.NewFakeClock()}
+	clock.Advance(time.Since(clock.Now()))
 	storeDir := t.TempDir()
-	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
+	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, After: clock.After, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	handler := svc.Handler
 	for _, one := range wrap {
@@ -147,6 +166,35 @@ func openSync(t *testing.T, home string) *Sync {
 		t.Fatalf("Open = %v, %v", ok, err)
 	}
 	return s
+}
+
+// spokenFixture records a person's command before a publication fixture seals its work.
+// An unused chat intentionally does not appear on other computers.
+func (r *driveRig) spokenFixture() {
+	r.t.Helper()
+	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil,
+		func(cellstore.Engine) cellstore.Store { return r.engine })
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	agent, err := session.New(session.Config{Workspace: r.work, Place: session.Place{Dir: r.cell.Root, Workspace: r.work}, SessionFile: session.Place{Dir: r.cell.Root}.Transcript(), Seat: seat, Model: "stub/chat", APIKey: "stub", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	events, err := agent.SubmitBash(r.t.Context(), "! true")
+	if err != nil {
+		agent.Close()
+		r.t.Fatal(err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			agent.Close()
+			r.t.Fatal(event.Text)
+		}
+	}
+	if err := agent.Close(); err != nil {
+		r.t.Fatal(err)
+	}
 }
 
 // chat is A's conversation: a seat whose every tool call seals through the
@@ -228,6 +276,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 // D1 keeps the engine's published ledger beside its shared objects.
 func TestDriveSidePublishesTurns(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	var notices noticeLog
 	c := r.startChat(&notices)
 	c.mustSay()
@@ -358,6 +407,7 @@ func assertBranch(t *testing.T, r *driveRig, turns uint32) {
 // published, then the lease is given back so another machine takes over at once.
 func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	ctx := context.Background()
 	var notices noticeLog
 	c := r.startChat(&notices)
@@ -419,6 +469,7 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 // that machine, and nothing of it runs here: no batcher, no lease taken.
 func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	var notices noticeLog
 	c := r.startChat(&notices)
 	c.mustSay()
@@ -506,6 +557,7 @@ func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
 // was killed before its last upload left behind.
 func TestDriveSideUploadsTurnsASealedRunNeverSent(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil, func(cellstore.Engine) cellstore.Store { return r.engine })
 	if err != nil {
 		t.Fatal(err)

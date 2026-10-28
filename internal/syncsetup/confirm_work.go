@@ -47,13 +47,20 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	d.viewer = viewer
+	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 	d.mu.Unlock()
 	if d.opt.OnViewer != nil {
 		d.opt.OnViewer(viewer)
 	}
+	if d.opt.OnRenewalChange != nil {
+		d.opt.OnRenewalChange()
+	}
 	// Match becomeViewer's capture-before-notice ordering in the background:
 	// pending saves must settle, but admission cannot inherit their disk wait.
 	go func() {
+		if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
+			d.notice(err.Error())
+		}
 		pending, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 		defer cancel()
 		if err := cellstore.Await(pending, d.cell); err != nil {

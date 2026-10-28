@@ -127,6 +127,9 @@ type RunSpec struct {
 	// commits: the run's own working copy, or the folder itself for a program
 	// that edits files (programfolder.go).
 	Workspace string
+	// WorkspaceURI is the durable identity of an admitted private working copy.
+	WorkspaceURI string
+	WorkspaceSet *WorkspaceSet
 	// Title and Brief are the run's own words: the title names the root row,
 	// and the brief is the assignment the root worker reads.
 	Title string
@@ -277,8 +280,11 @@ const (
 // the engine's outcome word, the root's result, the run's size, and the limit
 // that ended it when one did.
 type RunSummary struct {
-	Outcome string
-	Result  string
+	// StorageSafe means every worker closed its jobs and no owned process group
+	// remained alive when the run returned. Missing proof keeps copies resident.
+	StorageSafe bool
+	Outcome     string
+	Result      string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
 	// Program is how a delegated run's program ended when it did not finish,
@@ -576,6 +582,12 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	if engine == nil || g == nil || g.planPath() == "" {
 		return false, errRunRoadUnavailable
 	}
+	if via == nil {
+		stand, err = a.ownedRunPlacement(ctx, stand)
+		if err != nil {
+			return false, err
+		}
+	}
 	path := g.planPath()
 	storeID := strconv.FormatUint(id, 10)
 	dependencies := make([]plandb.Dependency, 0, len(dependsOn))
@@ -683,6 +695,9 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	} else {
 		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
 		if err != nil {
+			if tree.workspaceSet != nil {
+				a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskFailed, Report: err.Error(), Copy: runCopyOf(tree), WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet), EndedAt: a.taskClockNow()})
+			}
 			discardUnstartedRunStore(store)
 			return false, err
 		}
@@ -698,7 +713,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	born := a.taskClockNow()
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
-		workspace: tree.dir, ground: ground, tree: tree, admission: admission,
+		workspace: tree.dir, ground: ground, tree: tree, stand: stand, admission: admission,
 		cut: cut, born: born, over: make(chan struct{}),
 		delegate: via, folder: folder, asked: asked, crew: crew,
 	}
@@ -715,7 +730,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	// ([TaskNotice.Program], [Agent.publishRunRow]).
 	a.publishRunRow(g, TaskNotice{
 		ID: id, Title: title, State: TaskRunning, StartedAt: born,
-		Copy: runCopyOf(tree), Program: programName(via),
+		Copy: runCopyOf(tree), WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet), Program: programName(via),
 		// THE ROOT'S ROW NAMES THE STORE'S ROOT, which is this same number: the
 		// store was seeded under `storeID` a few lines up, so the row the person
 		// was answered with and the task the store drives are one identity said
@@ -775,7 +790,7 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 		ID: id, Title: title, State: TaskQueued, Program: programName(via),
 		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(), Waiting: waitingMachineBusy,
-		PendingRun: &PendingRunRecord{Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
+		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
 	})
 	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
 	return false, nil
@@ -908,7 +923,7 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 				a.beltMu.Unlock()
 				return nil, refusal
 			}
-			if canonicalPath(stand.dir) != live.ground {
+			if !stand.sharesWorkspace(live) {
 				a.beltMu.Unlock()
 				return nil, standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
 			}
@@ -1083,13 +1098,15 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		admission = newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	}
 	return RunSpec{
-		Store:     run.store,
-		Workspace: run.workspace,
-		Title:     run.title,
-		Brief:     brief,
-		Slots:     a.config.TaskParallel,
-		CostUSD:   cost,
-		Elapsed:   wallLeft,
+		Store:        run.store,
+		Workspace:    run.workspace,
+		WorkspaceURI: run.tree.workerWorkspaceURI(),
+		Title:        run.title,
+		Brief:        brief,
+		WorkspaceSet: cloneWorkspaceSet(run.tree.workspaceSet),
+		Slots:        a.config.TaskParallel,
+		CostUSD:      cost,
+		Elapsed:      wallLeft,
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.
 		StepsPerTask: taskMaxSteps,
@@ -1853,7 +1870,7 @@ func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
 	if g := a.graph(); g != nil {
 		a.publishRunRow(g, TaskNotice{
 			ID: run.row, Title: run.title, State: TaskRunning, StartedAt: run.born,
-			Copy: runCopyOf(tree), Program: programName(run.delegate),
+			Copy: runCopyOf(tree), WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet), Program: programName(run.delegate),
 			PlanTask: planStoreID(run.root), Crew: run.crewDecision(), Model: run.crewWorker(),
 		})
 		a.publishJoinedRunRows(g, run)
@@ -1930,7 +1947,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	fold := &beltFold{agent: a}
 	spec.OnSpend = fold.total
 	spec.OnCharge = fold.charge
-	summary := engine.Start(ctx, spec)
+	summary := startRunWithTaskStorageProof(ctx, engine, spec)
 	// THE RUN'S WORK IS OVER THE MOMENT THE ENGINE ANSWERS, and that instant is
 	// taken now, before the landing, the summary refresh and the note — which
 	// can take a quarter of a minute between them and are not the work.
@@ -1946,6 +1963,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	closing := run.closing
 	a.beltMu.Unlock()
 	defer a.releaseBeltRun(run)
+	defer a.parkBeltRunStorage(run, summary)
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
 	fold.total(summary.USD)
@@ -2116,6 +2134,9 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 // branch the conversation's note names is the ground's, and a merge that would
 // not go in answers with the sentence that names the kept branch and the files.
 func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
+	if run.tree.workspaceSet != nil {
+		return a.landWorkspaceSet(ctx, engine, run)
+	}
 	landing, err := engine.Land(ctx, run.store, run.workspace, run.tree.checkBase, run.root)
 	if err != nil {
 		if stopped, _ := a.beltRunStopped(run); stopped {
@@ -2140,7 +2161,7 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	if run.tree.dir == "" {
 		return landing
 	}
-	merge, said, _, _ := run.tree.comeHome(run.title, nil, a.signsGitWork())
+	merge, said, _, _ := run.tree.comeHome(run.title, landing.Changed, a.signsGitWork())
 	if landing.Refused != "" {
 		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
 		// the sentence the engine answered is the whole account.
@@ -2684,6 +2705,9 @@ func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
 	if notice.State == TaskQueued && notice.PendingRun == nil {
 		notice.PendingRun = kept.PendingRun
 	}
+	if notice.WorkspaceSet == nil {
+		notice.WorkspaceSet = cloneWorkspaceSet(kept.WorkspaceSet)
+	}
 	if notice.Copy == nil && kept.Copy != nil {
 		notice.Copy = kept.Copy
 	}
@@ -2711,4 +2735,15 @@ func (a *Agent) beltWorkerLifetime(run *beltRun, id string, on bool) {
 		close(done)
 		delete(run.workers, id)
 	}
+}
+
+func (tree taskTree) workerWorkspaceURI() string {
+	if tree.uri == "" && tree.mode == TaskModeInPlace {
+		return tree.projectURI
+	}
+	return tree.uri
+}
+
+func (stand taskStand) sharesWorkspace(live *beltRun) bool {
+	return canonicalPath(stand.dir) == live.ground && sameWorkspaceSetRequest(stand.workspaceSet, live.stand.workspaceSet)
 }

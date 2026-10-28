@@ -355,13 +355,17 @@ func (f *engineFleet) takeAll() []*engineConn {
 func (f *engineFleet) bundle(conn *engineConn, welcome remote.Welcome) tui3.Conversation {
 	agent := &besideAgent{countingAgent: &countingAgent{Agent: conn.client.Agent()}, conn: conn, fleet: f}
 	link := hostLink(newHostSeams(conn.client))
+	draft := ""
+	if f.machine.draft != "" {
+		draft = tui3.ChatDraftFile(filepath.Dir(f.machine.draft), f.dest, welcome.Workspace, welcome.SessionFile)
+	}
 	conv := tui3.Conversation{
 		Agent:       agent,
 		SessionFile: welcome.SessionFile,
 		Workspace:   welcome.Workspace,
 		Resumed:     welcome.Resumed,
 		Notice:      hostEntryNotice(welcome),
-		DraftFile:   f.machine.draft,
+		DraftFile:   draft,
 		History:     f.machine.history,
 		Link:        &link,
 		TaskRoom:    agent.TaskRoom,

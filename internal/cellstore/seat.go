@@ -35,6 +35,9 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	for _, opt := range opts {
 		opt(&engine)
 	}
+	if workspace != "" && engine.workspace(c) == "" {
+		engine.Guard.notify(homeFolderWord)
+	}
 	var store Store = engine
 	if over != nil {
 		store = over(engine)
@@ -49,6 +52,10 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	return executor.Watching(sealed{Stance: base, rec: rec}, obs), nil
 }
 
+// homeFolderWord is said once when a chat opens in a folder that holds the home
+// folder: the conversation is saved, the folder's files are not.
+const homeFolderWord = "this folder holds your home folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
+
 // SeatOption adjusts the engine a seat seals through.
 type SeatOption func(*Engine)
 
@@ -56,8 +63,8 @@ type SeatOption func(*Engine)
 // call and close still drains the same recorder, with a bounded wait (D3).
 func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 
-// WithWarmCapture starts the first screened capture as soon as the seat opens,
-// rather than leaving a cold attachment for the second command (E2).
+// WithWarmCapture screens the folder as soon as the seat opens without adding
+// an empty turn. The first command waits for this screen before changing files.
 func WithWarmCapture() SeatOption { return func(e *Engine) { e.warm = true } }
 
 // WithNotices sends the guard's one-line notices (a file kept out of the saved

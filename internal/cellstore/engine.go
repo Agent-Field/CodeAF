@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
 // dataDirEnv names where the engine keeps its store and catalog. One directory
@@ -82,6 +84,23 @@ func (cs Composers) Compose(c cell.Cell) error {
 	return nil
 }
 
+// ComposeWorkspace supplies the current source project to carriers that need
+// its baseline. Other carriers retain their ordinary Compose contract.
+func (cs Composers) ComposeWorkspace(c cell.Cell, workspace string) error {
+	for _, one := range cs {
+		var err error
+		if scoped, ok := one.(interface{ ComposeWorkspace(cell.Cell, string) error }); ok {
+			err = scoped.ComposeWorkspace(c, workspace)
+		} else {
+			err = one.Compose(c)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LocalDir holds only this cell's private WAL, overlays and transport scratch.
 // An older engine store there stays in place for compatibility (D1).
 func (e Engine) LocalDir(c cell.Cell) string { return filepath.Join(e.Root(), c.ID) }
@@ -92,6 +111,12 @@ func (e Engine) Root() string {
 		return home.Join("v3", "stores")
 	}
 	return e.DataRoot
+}
+
+// Prepare screens the initial folder without adding an empty turn to its history.
+// The first actual seal still obtains its own fresh capture scope.
+func (e Engine) Prepare(ctx context.Context, c cell.Cell) error {
+	return e.screenCapture(ctx, c)
 }
 
 // Seal implements Store: compose the harness-owned files, snapshot the folder,
@@ -107,6 +132,14 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: encode receipt: %w", err)
 	}
+	if err := e.markOwnFolder(c); err != nil {
+		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
+	}
+	release, err := taskcopy.LockWorkspaceCheckpoint(ctx, c)
+	if err != nil {
+		return Sealed{}, fmt.Errorf("seal: workspace checkpoint: %w", err)
+	}
+	defer release()
 	if err := e.compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}
@@ -191,12 +224,97 @@ func (e Engine) tree(c cell.Cell) string {
 }
 
 // workspace is the folder the tools of c work in, "" when c's own folder is
-// what is sealed.
+// what is sealed. A folder that holds the home folder is never sealed (see
+// [holdsHome]): its chat seals its own folder, so the conversation is kept and
+// the folder's files are not.
 func (e Engine) workspace(c cell.Cell) string {
+	w := e.named(c)
+	if w != "" && (holdsHome(w) || ForeignFolder(c.Root, w)) {
+		return ""
+	}
+	return w
+}
+
+// named is the workspace the caller names for c, before the rules above.
+func (e Engine) named(c cell.Cell) string {
 	if e.WorkspaceOf != nil {
 		return e.WorkspaceOf(c)
 	}
 	return e.Workspace
+}
+
+// OwnFolderPath marks a chat that has sealed only its own folder because the
+// folder it was opened in held a home folder. It lives in the cell's .cell/
+// directory, so it travels with every snapshot and arrives wherever the chat
+// is continued.
+const OwnFolderPath = cell.StateDir + "/own-folder"
+
+// ForeignFolder reports whether workspace is a folder the chat at root must
+// never be sealed or restored in here: the chat carries only its own folder
+// (OwnFolderPath), and workspace is outside that folder and holds no home
+// folder here. A folder that holds this machine's home is the chat's working
+// folder as on the machine it came from: its tools run there, and only its
+// files are never sealed.
+//
+// THE RECEIVER CANNOT JUDGE THE SENDER'S HOME. A path that was somebody's home
+// on the machine that sealed the chat can be an ordinary folder here, holding
+// files the snapshot never had, and restoring the chat's own folder over it
+// would replace them. [holdsHome] answers for this machine's home; the mark
+// answers for the machine the chat came from. A workspace inside the chat's
+// own folder (an owned work/) is still the chat's.
+func ForeignFolder(root, workspace string) bool {
+	if workspace == "" || holdsHome(workspace) {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(OwnFolderPath))); err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(canonicalTree(root), canonicalTree(workspace))
+	return err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// markOwnFolder records, before a seal composes the cell, that this chat's
+// folder holds a home folder and so only the chat's own folder is sealed.
+func (e Engine) markOwnFolder(c cell.Cell) error {
+	if w := e.named(c); w == "" || !holdsHome(w) {
+		return nil
+	}
+	path := rel(c, OwnFolderPath)
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	if err := writeFile(path, []byte("this chat saves its own folder, never the folder it was opened in\n")); err != nil {
+		return err
+	}
+	commits.mark(c.Root, path, true)
+	return nil
+}
+
+// holdsHome reports whether dir is the home folder, a folder above it, or a
+// filesystem root: the places a person opens a general chat, which are not a
+// project and whose files are everything they own.
+//
+// IT IS DECIDED BY WHERE THE FOLDER IS, NEVER BY WHAT IS IN IT. Counting files
+// or bytes to find a folder too big to save is itself the walk this rule
+// exists to avoid, and a cap would draw its line through somebody's real
+// project. A folder that holds the home folder needs no look inside: a home of
+// 2.5 GB took a capture that never finished inside SealWithin, and every try
+// left its whole plan on disk. Every caller that seals, rewinds or takes a chat
+// goes through [Engine.workspace], so all of them agree on the tree.
+func holdsHome(dir string) bool {
+	tree := canonicalTree(dir)
+	if filepath.Dir(tree) == tree {
+		return true
+	}
+	house, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(house) == "" {
+		return false
+	}
+	rel, err := filepath.Rel(tree, canonicalTree(house))
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // policyDir is where the harness keeps its exclusions: the cell's directory

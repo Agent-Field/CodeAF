@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -531,9 +530,7 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 		Model:      a.model,
 		Workspace:  a.workspace,
 	}
-	if file := row.Transcript; file != "" {
-		row.ID = filepath.Base(filepath.Dir(file))
-	}
+	row.ID = taskSessionOf(row.Transcript)
 	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()
 	return row

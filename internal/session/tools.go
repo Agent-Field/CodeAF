@@ -285,6 +285,7 @@ func (a *Agent) belt() []bare.Tool {
 	// index, or the sink a worker was built with — and is absent elsewhere.
 	tools = append(tools, a.shareTools()...)
 	tools = append(tools, a.memoryTools()...)
+	tools = append(tools, a.knowledgeTools()...)
 	// An owned conversation has no project until the person names one. The
 	// anchoring hand exists only in that state; after it succeeds the rebuilt
 	// belt omits it, because a capability whose job is already done is absent.

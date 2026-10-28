@@ -23,6 +23,7 @@ import (
 	"context"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1434,6 +1435,8 @@ type Config struct {
 	// sends its output as it arrives (EventToolOutput), as one the person
 	// typed always does, so a work log can show what a long command is saying.
 	LiveToolOutput bool
+	// knowledgeReadVault lends the parent project knowledge to task worktrees, read-only.
+	knowledgeReadVault *knowledge.Vault
 
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close
@@ -1442,6 +1445,12 @@ type Config struct {
 	WaitForBeltSteps bool
 
 	Workspace string // tools root here; all relative paths resolve inside it
+	// WorkspaceURI selects a previously admitted owned run for worker scratch routing.
+	WorkspaceURI string
+	// WorkspaceSet carries identity-backed routes to a prototype task worker.
+	WorkspaceSet            *WorkspaceSet
+	workspaceWriteRoots     []string
+	workspaceProtectedRoots []string
 	// Seat is the executor this session owns: every tool call runs on it, so
 	// the class the workspace declared and the seal after each call follow the
 	// session and never a path. Nil is a session with no cell, whose calls run
@@ -1459,6 +1468,8 @@ type Config struct {
 	// seat: whoever builds one builds the other, and a config with no seat has
 	// none. Nil draws and says nothing.
 	Seals SealState
+	// Renewals reads the local writer's health so the surface can report an outage.
+	Renewals RenewalState
 	// AuthKeySource explains a refused worker account without supplying routing
 	// settings to a worker whose completer already owns its endpoint and key.
 	// Nil keeps ordinary sessions on their own profile and source ladder.
@@ -2718,6 +2729,10 @@ type Agent struct {
 	// beside the window that opened it with [Config.LiveToolOutput].
 	liveOutputWanted atomic.Int32
 	chatStarts       map[string]bool
+	knowledgeMu      sync.RWMutex
+	knowledgeRetired []*knowledgeJournal
+	knowledgeVault   *knowledge.Vault
+	knowledgeJournal *knowledgeJournal
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
@@ -2988,6 +3003,10 @@ type Agent struct {
 	// have a lane context, and "did a beat start" is the question the gate is
 	// about (agent.go's [Agent.startLaneBeat]).
 	laneBeating bool
+	// furrow is the background question to furrow about this session's folder
+	// (tools_workspace.go): started at construction, settled once by the first
+	// request, cancelled and joined by Close.
+	furrow furrowRefresher
 
 	// turnLane is what THIS agent's own last request was served by, and it is
 	// the only honest source there is for the lane half of a usage row

@@ -27,6 +27,7 @@ effort
 google_oauth_client
 google_oauth_secret
 history.enabled
+knowledge.model
 lane.guard
 lane.talk
 lane.talk.borrow

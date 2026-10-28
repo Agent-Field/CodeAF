@@ -1,6 +1,6 @@
 # Running on another machine
 
-## Can I run it on another computer — what --host is, running this on my dev box over ssh
+## Can I run it on another computer?
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
@@ -9,6 +9,8 @@ Everything about the conversation happens over there: the workspace, the files, 
 it runs, the model key, the session file. Your terminal keeps the screen, the keyboard and
 your draft. The two halves talk to each other with a small line-based protocol over the
 ssh pipes; you never see it.
+
+## What --host is, running this on my dev box over ssh
 
 ```
 codeaf chat --host devbox

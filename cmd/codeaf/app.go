@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
@@ -142,6 +143,13 @@ func runApp(args []string) error {
 	// once the door has returned (appleave.go).
 	returned := make(chan struct{})
 	defer close(returned)
+	// Keep final local durability inside the app lifetime and its leaving bound.
+	// execute reports a retained failure on stderr after the protocol has ended.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		recordFinalSaveFailure(flushFinalSaves(ctx))
+	}()
 	guard.Go("app/leave", func() { leaveWithin(ctx, backend.left, returned, appLeaveWait, appLeaveNow) })
 	// Capture the previous holders before crews, quit resumes or client calls
 	// can open a journal and overwrite the evidence with this process's claim.
@@ -372,7 +380,7 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	release := func() {
 		once.Do(func() {
 			close(stop)
-			_ = loop.Close()
+			recordFinalSaveFailure(loop.Close())
 		})
 	}
 	if c := booted.Load(); c != nil {

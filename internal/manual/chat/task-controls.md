@@ -226,3 +226,80 @@ this recovered task has no final check receipt and asks you to inspect and accep
 refute it. A missing copy or changed branch is refused with its location; nothing is
 recreated in its place. If saving a receipt fails after a merge, the error reports the
 actual commit and which record could not be saved. Inspect that outcome before retrying.
+
+## Review and apply an owned task root
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+Completed tasks keep their output in their private working copies. Starting a
+copy, sharing it or mapping a received copy to a local folder does not give it
+permission to write the original folder.
+
+Use `/task review <task number> <root slot>` to capture an immutable local snapshot
+and read its changes, private copy and locally mapped apply destination. For an ordinary one-root task,
+the slot is `work`; a multi-root task uses its declared slots.
+
+After reviewing, `/task apply <task number> <root slot>` applies only that root
+through conflict checks against the recorded original bytes and metadata. The apply uses exactly the reviewed snapshot;
+edits made in the original private copy after review stay there. Review again to
+select a newer snapshot. Read roots cannot be applied. A known live run, checker
+or cooperator blocks apply until it is idle.
+Conflicts retain the original and the private result for review. The original
+private copy and its identity remain available after a successful apply too.
+Uncertain writers continue to prevent destructive retirement of that copy. Applying one root
+does not authorize another root or give later tasks automatic landing permission.
+A received root stays private until this explicit local action.
+
+For Git projects, the codeaf profile and the destination Git index must be on
+the same disk. Otherwise Apply refuses before writing the destination:
+`the codeaf profile and this project are on different disks; Apply needs them on the same disk`.
+
+On a chat without private task copies, `/task review` and `/task apply` reply:
+`review and apply are for private task copies; this chat doesn't have them`.
+
+## Experimental Apply metadata and recovery
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+Explicit reviewed apply may update the chosen branch, including `main`. Automatic
+task landing still refuses protected branches. Checkout movement, conflicts and
+ref/index checks continue to protect the destination.
+
+The portable apply contract preserves raw file bytes and line endings, file
+permissions, empty directories and directory permissions. Changed paths with
+unsupported ownership, hardlinks, extended attributes, native flags or access
+control metadata are refused before writing the original. Timestamps are outside
+this portable contract. Older copies without a historical metadata baseline stay
+readable, but this apply door cannot infer their original metadata safely.
+
+If an apply reports that its outcome could not be saved, retry `/task apply` for
+the same root. The retained receipt records work that already arrived, so recovery
+does not apply it twice. Recover that pending operation before requesting a new
+review of the root.
+
+## Experimental private task inputs and portable carriers
+
+This section applies only to chats opted into the experimental private-task
+switch, `CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME`,
+on Linux and macOS. A saved private-task policy travels with the chat and remains
+active there even after the switch is off. Windows is not supported.
+
+New owned plain-folder task copies retain their actual runtime inputs, including
+ignored files. Bash task cooperators share that admitted private copy. Files
+screened as secrets stay readable there but are excluded from its initial history
+and portable payload. Changed or new screened outputs refuse review. A tracked
+secret already in Git history refuses portable capture rather than rewriting
+history. Receiving a task cannot restore inputs that were deliberately withheld.
+The legacy family initializer and its separate child-copy behavior are unchanged.
+
+Portable task carriers preserve tracked, changed and new symlink targets and
+supported link permissions using typed metadata. Both sending and receiving codeaf versions must support this format;
+workspace receivers without its required capability refuse before promotion.
+Older standalone receivers do not provide this capability check and must be
+updated before taking these carriers.

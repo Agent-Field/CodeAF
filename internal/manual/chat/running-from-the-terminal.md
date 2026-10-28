@@ -1,9 +1,17 @@
 # Commands you type in a terminal
 
-## Is there a newer version — update codeaf — update a dev build — /update
+## codeaf cluster status when the sync service cannot be reached
 
-Every launch of a release build checks the newest release of the channel it
-follows, and what happens next depends on the build:
+If the service cannot be reached, `codeaf cluster status` exits with a failure
+status and uses the same sentence as `codeaf devices`:
+`the sync service at <address> cannot be reached from here — check this computer's network`.
+The address is your configured sync service. Check this computer's network
+and that the service is running, then try the command again.
+
+## Is there a newer version — update codeaf — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
+
+Every launch of a release build checks whether there is a newer version: the
+newest release of the channel it follows. What happens next depends on the build:
 
 - A released codeaf — a stable tag, in a file named `codeaf` — with `automatic
   updates` on (the default) installs the newest stable release BEFORE the chat
@@ -512,6 +520,11 @@ by quit". Automations are not touched by a quit and fire again once the app is
 open. A conversation the app joined in a terminal window is that window's, and
 quitting the app only lets go of it.
 
+The app waits for local saving, publishes the newest saved turn and releases its
+hold so another computer can continue. Each saving boundary waits up to 30 seconds.
+A successful save is quiet; a definite final-save failure is kept in the engine
+log and leaves unsaved turns on this computer.
+
 ## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
 
 If the desktop app closes unexpectedly during a reply, opening it again carries
@@ -547,8 +560,8 @@ When the app closes, or its window is killed, the codeaf behind it leaves by
 itself: it never keeps working without the app. It lets go of this machine's
 factory first (a running job stops the way a quit stops it and goes back to the
 queue), then stops its replies and processes, which carry on when the app opens
-again. Leaving takes at most 30 seconds, and a second SIGTERM or SIGINT ends it
-at once.
+again. Leaving takes at most two minutes, including the final saving waits.
+A second SIGTERM or SIGINT ends it at once.
 
 If the app is opened again before the last one has let go, the factory on this
 machine is listed as not answering with the words "Another codeaf on this

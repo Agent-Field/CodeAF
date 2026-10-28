@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -78,7 +79,8 @@ var fallbackClientID atomic.Uint64
 // surface asks Model() on frames it repaints, so a measurement there would have
 // doubled the cost of drawing a status line.
 
-// callDeadline is how long any one call waits for its result. See the law above.
+// callDeadline bounds ordinary calls. Compact and taskWorkspaceCall are
+// explicit bounded exceptions for off-reader work that outlives this window.
 const callDeadline = 10 * time.Second
 
 // Client is one connection to one engine. It is safe for concurrent use, which
@@ -898,6 +900,11 @@ func (c *Client) read() {
 			// reader goroutine before the surface is notified of a changed name.
 			// Reading the replica never waits for the update loop to catch up.
 			c.factsFrame(frame.Payload)
+		case "notice":
+			var line string
+			if json.Unmarshal(frame.Payload, &line) == nil && line != "" {
+				c.note(line)
+			}
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
 			return
@@ -930,6 +937,9 @@ func (c *Client) deliver(frame Frame) {
 		if frame.WorkRefusal != nil {
 			frame.WorkRefusal.Line = frame.Error
 			err = frame.WorkRefusal
+		}
+		if frame.UnsavedTranscript != "" {
+			err = session.SavingError(frame.UnsavedTranscript, err)
 		}
 		waiting <- result{err: err, answered: true}
 		return
@@ -2092,8 +2102,16 @@ func (a *Agent) Compact(ctx context.Context) error {
 // conversation impossible. The connection is the DOOR; the session is what is
 // behind it, and only cmd/codeaf shuts the door.
 func (a *Agent) Close() error {
-	_, err := a.c.call(nil, MethodClose, nil)
-	return err
+	return a.finishSaving(MethodClose, nil)
+}
+
+// finishSaving gives departures their saving budget and distinguishes a missing reply from a refusal.
+func (a *Agent) finishSaving(method string, args any) error {
+	_, answered, err := a.c.callAnswered(nil, method, args, executor.DrainWithin)
+	if err != nil && !answered {
+		err = errors.Join(session.ErrSavingUnanswered, err)
+	}
+	return session.SavingError(a.c.Welcome().SessionFile, err)
 }
 
 // WorkOutlivesExit says whether this conversation keeps working once the view
@@ -2106,21 +2124,27 @@ func (a *Agent) WorkOutlivesExit() bool { return a.c.Welcome().Persistent }
 // Detach lets go of this VIEW of the conversation, which is what a terminal
 // closing means: the window is gone and the work need not be.
 //
-// Against a session host it sends [MethodDetach] — nothing interrupted, nothing
-// closed, the connection ended by the far side's reader loop with the turn left
-// to finish — because [MethodClose] would end a running task on behalf of
-// somebody who only shut a window. Against a one-shot engine, whose whole life
-// is this pipe, leaving IS ending, so the interrupt and the flush stand.
+// Running work stays on its host. A paired writer with no remaining work
+// finishes saving before acknowledging departure, so its final failure still
+// reaches the terminal. A one-shot engine ends with its connection and always
+// interrupts and flushes before leaving.
 //
-// Every call below is bounded ([Client.call] carries callDeadline) and safe on a
-// dead connection, so this cannot hold a quit open.
+// Every request is bounded, and the surface restores while slow saving finishes.
 func (a *Agent) Detach() error {
 	if a.WorkOutlivesExit() {
-		_, err := a.c.call(nil, MethodDetach, nil)
-		return err
+		return a.finishSaving(MethodDetach, nil)
 	}
 	a.Interrupt()
 	return a.Close()
+}
+
+// DetachAndWait joins an idle chat's closing release before acknowledging
+// departure, so its terminal can safely stop coordinating afterwards.
+func (a *Agent) DetachAndWait() error {
+	if !a.WorkOutlivesExit() {
+		return a.Detach()
+	}
+	return a.finishSaving(MethodDetach, DetachArgs{WaitRelease: true})
 }
 
 // Model is the model the next request will use.
@@ -2453,6 +2477,23 @@ func (a *Agent) PlanTaskWork(id string) (session.PlanTaskWork, bool) {
 	var result PlanTaskWorkResult
 	if json.Unmarshal(payload, &result) != nil {
 		return session.PlanTaskWork{}, false
+	}
+	return result.Work, result.OK
+}
+
+// OpenPlanTaskWork is an explicit storage reopen, never a background query.
+// An older engine retains its original work tab through the read-only fallback.
+func (a *Agent) OpenPlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	payload, err := a.c.call(nil, MethodOpenPlanTaskWork, PlanTaskArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") {
+			return a.PlanTaskWork(id)
+		}
+		return session.PlanTaskWork{Error: err.Error()}, true
+	}
+	var result PlanTaskWorkResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return session.PlanTaskWork{Error: "could not read the saved working copy response"}, true
 	}
 	return result.Work, result.OK
 }
@@ -2823,6 +2864,14 @@ func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }
 // stated: the seal watch lives with that machine's seat, so this is a memory
 // read of what it said and never a frame on the wire.
 func (a *Agent) SealFailing() bool { return a.c.facts.read().Unsealed }
+
+// RenewalStatus reads the far writer's last health update without a network call.
+func (a *Agent) RenewalStatus() (time.Time, time.Duration, bool) {
+	if state := a.c.facts.read().Renewal; state != nil {
+		return state.Since, state.Period, state.Held
+	}
+	return time.Time{}, 0, false
+}
 
 // ReplaceQuestion starts a revised request after retiring the pending turn.
 func (a *Agent) ReplaceQuestion(ctx context.Context, answer session.Answer) (<-chan session.Event, error) {

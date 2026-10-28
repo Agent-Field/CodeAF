@@ -225,6 +225,9 @@ func (a *app) targetChordWords() string {
 // targetProject is the destination of the next conversation, written as a
 // path so projects with the same basename remain distinguishable.
 func (a *app) targetProject() string {
+	if a.at(pageHome) && a.home.ask != nil && a.home.ask.continuation != nil {
+		return a.home.ask.continuation.project
+	}
 	// A ROW THAT IS A COPY TAKEN HERE FROM ANOTHER MACHINE is named for where
 	// it came from and never for the folder it recorded: that folder is on
 	// the machine the chat left, and the footer of the conversation itself

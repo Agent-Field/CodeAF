@@ -23,7 +23,7 @@ const ignoredReadFailure = "cannot read which folders Git ignores here"
 func gitIgnored(tree, path string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //codeaf:plumbing A rebuild needs the lockfile in the capture.
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "check-ignore", "-q", "--", path) //codeaf:plumbing A rebuild needs the lockfile in the capture.
 	cmd.Dir = tree
 	_, err := cmd.Output()
 	if err == nil {
@@ -44,7 +44,7 @@ func gitIgnored(tree, path string) bool {
 func ignoredDirectories(tree string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Git names ignored directories without opening them.
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Git names ignored directories without opening them.
 	cmd.Dir = tree
 	raw, err := cmd.Output()
 	if err != nil {
@@ -65,7 +65,7 @@ func ignoredDirectories(tree string) ([]string, error) {
 	}
 	// ls-files may collapse a directory whose only child is an ignored file.
 	// Pruning that directory would hide config/.env.local from the vault.
-	check := exec.CommandContext(ctx, "git", "check-ignore", "--stdin", "-z") //codeaf:plumbing Only an ignored directory itself can bypass the secret screen.
+	check := exec.CommandContext(ctx, "git", "--no-optional-locks", "check-ignore", "--stdin", "-z") //codeaf:plumbing Only an ignored directory itself can bypass the secret screen.
 	check.Dir = tree
 	check.Stdin = strings.NewReader(strings.Join(candidates, "\x00") + "\x00")
 	checked, err := check.Output()

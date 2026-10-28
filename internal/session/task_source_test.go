@@ -534,3 +534,23 @@ func TestExplicitUnknownSourceNeverFallsBackToANewerMessage(t *testing.T) {
 		t.Fatalf("explicit captured unknown took current source %+v", got)
 	}
 }
+
+// A moved chat may retain only its run receipt. The read-only page and listing
+// must keep the desktop's message identity without a local plan database.
+func TestHistoricalPlanRowsAndPagesKeepTheirRecordedSource(t *testing.T) {
+	place := Place{Dir: filepath.Join(t.TempDir(), sourceOwner)}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile, config.Place, config.ProfileDir = place.Transcript(), place, t.TempDir()
+	})
+	source := &TaskSource{ID: "s#retained", Kind: TaskSourceMessage, Text: "finish the migration"}
+	agent.graph().keepRunRows(7, []TaskNotice{{ID: 7, Title: "retained task", State: TaskDone,
+		PlanTask: "t-history-7", Source: source}})
+	rows := agent.PlanTasks()
+	if len(rows) != 1 || rows[0].Source == nil || rows[0].Source.ID != source.ID || rows[0].Source.Text != source.Text {
+		t.Fatalf("historical task lost its message identity: %+v", rows)
+	}
+	page, ok := agent.PlanTaskPage("t-history-7")
+	if !ok || !page.Historical || page.Row.Source == nil || page.Row.Source.ID != source.ID {
+		t.Fatalf("historical page lost its message identity: %+v, %v", page, ok)
+	}
+}

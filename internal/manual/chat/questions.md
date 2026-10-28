@@ -28,7 +28,7 @@ A question with more behind it than the block draws **opens out into a page of
 its own** — `O` opens it, `esc` closes it, and the sections below say what you
 can do in there.
 
-## The squiggle, the tick and the amber mark at the start of a card
+## The squiggly line at the start of a card — the squiggle, tick and amber mark
 
 Every question opens with **one cell**, and it says whether the card in front of
 you is waiting for you at all:

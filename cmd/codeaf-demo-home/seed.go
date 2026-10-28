@@ -285,7 +285,7 @@ func initRepository(dir string, now time.Time) error {
 		{"add", "."},
 		{"-c", "user.name=Demo", "-c", "user.email=demo@example.invalid", "commit", "--quiet", "-m", "the first commit"},
 	} {
-		command := exec.Command("git", append([]string{"-C", dir}, argv...)...)
+		command := exec.Command("git", append([]string{"--no-optional-locks", "-C", dir}, argv...)...)
 		command.Env = append(os.Environ(),
 			"GIT_AUTHOR_DATE="+stamp, "GIT_COMMITTER_DATE="+stamp,
 			// A demo home must not inherit the machine's git configuration:

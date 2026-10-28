@@ -6,6 +6,9 @@ import "time"
 // machine. The surface sends intent; sizing, shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
+	MethodTaskWorkspaceReview = "Task.Workspace.Review"
+	MethodTaskWorkspaceApply  = "Task.Workspace.Apply"
+	MethodTaskWorkspaceCancel = "Task.Workspace.Cancel"
 	// MethodDelegateList and MethodDelegateStart are the program door
 	// (internal/session's delegate_door.go): the programs the ENGINE machine's
 	// build carries, and handing a brief to one. They belong to the engine side

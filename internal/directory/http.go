@@ -164,7 +164,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	h.sign(req, body)
 	resp, err := h.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
@@ -199,6 +199,13 @@ func refusal(resp *http.Response) error {
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrTooOld
+	}
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		// Coordination can refuse before a directory handler has an error
+		// body. It is the same retryable refusal the coded answer names, not
+		// an unreachable network, so closing releases retry it and nothing
+		// tells a person to check a connection that works.
+		return fmt.Errorf("%w: %s", wireauth.ErrUnavailable, resp.Status)
 	}
 	return fmt.Errorf("directory: %s", resp.Status)
 }

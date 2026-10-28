@@ -5290,6 +5290,21 @@ fold. Click its `Tasks` heading to open results and history on demand. Finished 
 keep their results, reports, files, branch and run details; hiding routine completion
 receipts never deletes their records.
 
+A moved chat keeps the same finished task in Tasks even when its checkpoint has
+only completed runs and no plan nodes. The activity page lists the chat once and
+uses the task's settled state. When the transferred local worker journal is
+present, its transcript remains readable without the original plan database.
+
+## Read finished task steps and transcript after moving to another computer
+
+Open `/task`, select the finished task and press `enter`. Its saved steps and
+worker replies open expanded, including on macOS and when the chat lives under
+a temporary folder. The `transcript` tab shows that worker's conversation;
+`work` shows the working copy when it is available. If the copy is gone, the tab
+says `the run's working copy is not here any more`; return to `transcript` to
+keep reading. Finished history is read-only, offers no task actions, and never
+starts the task again.
+
 ## What does queued behind it mean? — open tasks are waiting on this one
 
 `· 2 queued behind it` on a row means two open tasks directly wait for that task

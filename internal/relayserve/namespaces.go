@@ -27,8 +27,8 @@ func checkedID(id string) error {
 	return nil
 }
 
-// namespaces gives each identity its own directory file and its own blob
-// tree under one root, so an identity can only reach what its id names.
+// namespaces isolates each identity's frozen source, three durable anchors
+// and encrypted blob tree under the identity proven by its request.
 type namespaces struct {
 	root     string
 	now      func() time.Time
@@ -39,24 +39,26 @@ type namespaces struct {
 
 	links directory.Decider // where an approve decides a pending request; set once by New
 
-	mu   sync.Mutex
-	dirs map[string]*directory.SQLite
+	activation sync.Mutex
+	groups     map[string]*nativeNamespace
+	mu         sync.Mutex
+	dirs       map[string]*directory.SQLite
 }
 
 func newNamespaces(root string, now func() time.Time, grace directory.GraceBounds, watchers int) *namespaces {
 	if grace == (directory.GraceBounds{}) {
 		grace = directory.DefaultGraceBounds
 	}
-	return &namespaces{root: root, now: now, grace: grace, watchers: watchers, dirs: map[string]*directory.SQLite{}}
+	return &namespaces{root: root, now: now, grace: grace, watchers: watchers, dirs: map[string]*directory.SQLite{}, groups: map[string]*nativeNamespace{}}
 }
 
-// directory opens (once) the SQLite directory of one identity. A SQLite file
-// is one identity's directory, so the file is per identity: <root>/directory/<id>.db.
+// directory resolves only the irrevocably published consensus owner. Source
+// access stays inside activation and never becomes a fallback request writer.
 func (n *namespaces) directory(id string) (directory.Directory, error) {
-	return n.sqlite(id)
+	return n.activate(context.Background(), id, nil)
 }
 
-// sqlite is directory with its concrete type, for what only a relay may ask.
+// sqlite opens the preserved migration source, never a live request backend.
 func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 	if err := checkedID(id); err != nil {
 		return nil, err
@@ -92,7 +94,7 @@ func (n *namespaces) sqlite(id string) (*directory.SQLite, error) {
 // blobs opens one identity's disk store at <root>/blobs/<id>/. A replaced
 // identity's store takes no frame: reads stay open for the grace period.
 func (n *namespaces) blobs(id string) (blobstore.Store, error) {
-	d, err := n.sqlite(id)
+	d, err := n.activate(context.Background(), id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -100,21 +102,13 @@ func (n *namespaces) blobs(id string) (blobstore.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return readOnlyOnceReplaced{Store: disk, rotation: d.Rotated}, nil
-}
-
-// readOnlyOnceReplaced is a store that refuses a put when its identity has been
-// replaced by a rotation, and is the store unchanged otherwise.
-type readOnlyOnceReplaced struct {
-	blobstore.Store
-	rotation func() *directory.Rotation
-}
-
-func (r readOnlyOnceReplaced) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
-	if r.rotation() != nil {
-		return "", wireauth.ErrRotated
-	}
-	return r.Store.PutFrame(ctx, frame)
+	return CommittedBlobStore{Store: disk, Authorize: func(ctx context.Context) error {
+		actor, _ := ctx.Value(blobActorKey{}).(string)
+		if actor == "" {
+			return wireauth.ErrUnauthorized
+		}
+		return d.authority(ctx, actor, true)
+	}}, nil
 }
 
 // Close releases every directory file this relay opened.
@@ -122,6 +116,12 @@ func (n *namespaces) Close() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	var first error
+	for id, d := range n.groups {
+		if err := d.Close(); err != nil && first == nil {
+			first = err
+		}
+		delete(n.groups, id)
+	}
 	for id, d := range n.dirs {
 		if err := d.Close(); err != nil && first == nil {
 			first = err
@@ -131,13 +131,44 @@ func (n *namespaces) Close() error {
 	return first
 }
 
-// revoked says whether device has been stopped by its identity. It opens the
-// identity's directory (once) and then answers from memory, so the check costs
-// no query per request.
-func (n *namespaces) revoked(identity, device string) (bool, error) {
-	d, err := n.sqlite(identity)
-	if err != nil {
-		return false, err
+// CommittedBlobStore checks current committed authority on both sides of an
+// external put. A revocation or freeze during disk/R2 I/O leaves the bytes for
+// reuse but returns no successful upload to that caller. The receipt command
+// rechecks authority again at its own log position before any head may move.
+// Namespace activation installs it only after the old writer is frozen.
+type CommittedBlobStore struct {
+	blobstore.Store
+	Authorize func(context.Context) error
+}
+
+func (s CommittedBlobStore) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
+	if s.Authorize == nil {
+		return "", wireauth.ErrUnauthorized
 	}
-	return d.Revoked(device), nil
+	if err := s.Authorize(ctx); err != nil {
+		return "", err
+	}
+	id, err := s.Store.PutFrame(ctx, frame)
+	if err != nil {
+		return "", err
+	}
+	if err = s.Authorize(ctx); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// ConfirmReferences preserves the disk store's extra durability boundary through
+// this authorization wrapper; embedding Store alone would hide that method.
+func (s CommittedBlobStore) ConfirmReferences(ctx context.Context, head string, frames []string) error {
+	if s.Authorize == nil {
+		return wireauth.ErrUnauthorized
+	}
+	if err := s.Authorize(ctx); err != nil {
+		return err
+	}
+	if err := blobstore.CheckReferences(ctx, s.Store, head, frames); err != nil {
+		return err
+	}
+	return s.Authorize(ctx)
 }

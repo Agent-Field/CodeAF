@@ -453,6 +453,8 @@ type Frame struct {
 	Error string `json:"error,omitempty"`
 	// WorkRefusal preserves ownership facts beside the unchanged error sentence.
 	WorkRefusal *executor.WorkRefusal `json:"workRefusal,omitempty"`
+	// UnsavedTranscript preserves a recovery location on a failed saving reply.
+	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 
 	// Seq is this event's position in its stream, counting from 1, on "event"
 	// and "closed" frames only.
@@ -628,6 +630,7 @@ const (
 	// [MethodPlanSpend]'s reason — an engine that does not know it answers
 	// "no such method", and the tab draws the absence sentence it already
 	// drew for an engine with no door.
+	MethodOpenPlanTaskWork  = "OpenPlanTaskWork"  // PlanTaskArgs → PlanTaskWorkResult; explicit storage reopen
 	MethodPlanTaskWork      = "PlanTaskWork"      // PlanTaskArgs → PlanTaskWorkResult
 	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
 	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
@@ -898,6 +901,12 @@ func (l *LaunchShape) Same(other *LaunchShape) bool {
 		theirs = *other
 	}
 	return mine == theirs
+}
+
+// DetachArgs lets a coordinating terminal join its idle chat releases before
+// stopping its member. Ordinary windows retain their asynchronous departure.
+type DetachArgs struct {
+	WaitRelease bool `json:"wait_release,omitempty"`
 }
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -1287,8 +1296,9 @@ type Welcome struct {
 	SteerOwner bool `json:"steerOwner,omitempty"`
 	// TaskSetup advertises task-scoped model and thinking controls.
 	// TaskRetry advertises retrying incomplete tasks in place.
-	TaskRetry bool `json:"taskRetry,omitempty"`
-	TaskSetup bool `json:"taskSetup,omitempty"`
+	TaskRetry     bool `json:"taskRetry,omitempty"`
+	TaskWorkspace bool `json:"taskWorkspace,omitempty"`
+	TaskSetup     bool `json:"taskSetup,omitempty"`
 	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
 	// right, one more merge round, the hand-over and the take-back
 	// ([MethodTaskSettle]).

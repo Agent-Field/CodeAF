@@ -33,6 +33,8 @@ type VaultFile interface {
 	PutAt(id string, e keys.Entry, at time.Time) error
 	Delete(id string) error
 	Deleted(id string) (bool, error)
+	// Removed lists the tombstoned slot ids under a prefix, in one read.
+	Removed(prefix string) ([]string, error)
 }
 
 // ErrTampered reports a vault object whose bytes do not hash to its id.
@@ -126,18 +128,34 @@ func (s Syncer) pull(ctx context.Context) (string, error) {
 	if err != nil || rid == "" {
 		return "", err
 	}
+	return rid, s.pullAt(ctx, rid)
+}
+
+// PullAt merges the content named by the learner's durable applied state. The
+// caller uses this only as a change hint; it grants no coordination authority.
+func (s Syncer) PullAt(ctx context.Context, rid string) error {
+	if err := s.each(Carrier.captureEdits); err != nil {
+		return err
+	}
+	if rid == "" {
+		return nil
+	}
+	return s.pullAt(ctx, rid)
+}
+
+func (s Syncer) pullAt(ctx context.Context, rid string) error {
 	obj, err := s.Store.Get(ctx, rid)
 	if err != nil {
-		return "", err
+		return err
 	}
 	enc, err := verified(rid, obj)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if err := s.Vault.Merge(enc); err != nil {
-		return "", err
+		return err
 	}
-	return rid, s.restoreCarried()
+	return s.restoreCarried()
 }
 
 // verified returns the vault.enc inside obj when obj hashes to rid.

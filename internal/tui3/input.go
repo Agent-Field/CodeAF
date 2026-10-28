@@ -1543,9 +1543,6 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 	// asking for a provider connection or a model. The move may bring the
 	// saved connection this computer needs along with the chat.
 	if !strings.HasPrefix(line, "/") && (line != "" || held) {
-		if door, shown := a.heldElsewhereDoor(); shown {
-			return door
-		}
 		if !ownershipRead && a.watchesConversation() {
 			return a.checkBeforeSend()
 		}

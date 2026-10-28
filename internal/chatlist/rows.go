@@ -28,6 +28,7 @@ const (
 // Row is one chat as the list shows it.
 type Row struct {
 	Cell, Title, Device, DeviceID, Parent string
+	Head                                  string
 	Status                                Status
 	DurableAgo                            time.Duration // Listing.Now - DurableAt, directory clock only
 	DurableAt                             int64         // directory ms of the last durable turn: the fact DurableAgo is read from
@@ -66,6 +67,20 @@ type Source interface {
 type Versioned interface {
 	Source
 	RowsAt(ctx context.Context) ([]Row, uint64, error)
+}
+
+// SendSource reads ownership for a submitted message independently of display
+// hints. The context bounds any wait for a first directory reading.
+type SendSource interface {
+	RowsForSend(context.Context) ([]Row, uint64, error)
+}
+
+// RowsForSend uses the source's ownership door when it has one.
+func RowsForSend(ctx context.Context, src Source) ([]Row, uint64, error) {
+	if fresh, ok := src.(SendSource); ok {
+		return fresh.RowsForSend(ctx)
+	}
+	return RowsAt(ctx, src)
 }
 
 // RowsAt reads src and reports the version it was read at, or 0 when the
@@ -115,6 +130,7 @@ func newer(a, b Row) bool {
 func rowOf(id string, c directory.Cell, l directory.Listing, self string, open Opener) Row {
 	return Row{
 		Cell:        id,
+		Head:        c.Head,
 		Title:       nameOr(open, c.Title, untitled),
 		Device:      deviceName(l.Devices, c.Lease.Device, open),
 		DeviceID:    c.Lease.Device,

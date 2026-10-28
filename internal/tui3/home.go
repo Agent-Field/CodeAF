@@ -1233,7 +1233,10 @@ func (a *app) dropHome() {
 // way. So there is one constructor, and a field added to the view is a field
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
+	draft := a.openingHomeDraft
+	a.openingHomeDraft = composerState{}
 	return homeView{
+		box: draft.box, chips: draft.chips, carrying: len(draft.chips) > 0,
 		msg:        a.homeAccountNotice,
 		tabs:       a.tabList,
 		holding:    a.holding,
@@ -3985,6 +3988,9 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	}
 	width, height := a.size()
 	lines, hits, _, _ := a.homeFrame(width, height)
+	if cmd, took := a.addMachinePress(x, y, width); took {
+		return cmd
+	}
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
@@ -4274,6 +4280,8 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		a.home.build()
 	}
 	if a.home.phone {
+		a.addMachine.targets = nil
+		a.addMachine.focused = false
 		// THE PHONE FRAME IS HOME'S OWN SHAPE AND NOT THE ROUTER'S, so the box
 		// span the router keeps for the pointer is not written by it — and a
 		// span left standing from the wide frame would be a press resolved
@@ -4306,8 +4314,15 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// cuts rows cuts both of them the same way.
 	marks := placeHitsOf(hits, homeMark{line: -1, pane: -1})
 	rows, panes := make([]int, len(marks)), make([]int, len(marks))
+	a.addMachine.targets = make([]addMachineTarget, len(marks))
+	inputVisible := false
 	for i, mark := range marks {
 		rows[i], panes[i] = mark.line, mark.pane
+		a.addMachine.targets[i] = mark.addMachine
+		inputVisible = inputVisible || mark.addMachine == addMachineInput
+	}
+	if !inputVisible {
+		a.addMachine.focused = false
 	}
 	a.home.pane = panes
 	a.home.gridMarks = nil
@@ -4340,8 +4355,9 @@ type homePainted struct {
 // It is named apart from [homeHit], which is a PROJECT that survived the box and
 // has nothing to do with the pointer.
 type homeMark struct {
-	line int
-	pane int
+	addMachine addMachineTarget // 1 opens the instructions; 2 focuses the link input.
+	line       int
+	pane       int
 	// grid says the row is the resting grid's, where one screen row holds a line
 	// of EVERY column and the x of the press says which (homecell.go's
 	// [homeGridZip]); cells is those lines, -1 where a column drew nothing.

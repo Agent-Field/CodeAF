@@ -37,10 +37,10 @@ type workAdmission struct {
 	checking chan struct{}
 }
 
-func newAdmissionDrive(start func() (*syncsetup.Drive, error)) *liveDrive {
+func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
 	check := &workAdmission{}
-	d := newLiveDrive(func() (*syncsetup.Drive, error) {
-		drive, err := start()
+	d := newLiveDrive(func(changed func()) (*syncsetup.Drive, error) {
+		drive, err := start(changed)
 		if err == nil && drive != nil && drive.Gate() == nil {
 			check.mu.Lock()
 			check.fresh = time.Now().Add(driveWorkFreshFor)

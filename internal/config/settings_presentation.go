@@ -152,7 +152,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Label, p.Advanced = "working context limit", true
 	case KeyContextReuse:
 		p.Label, p.Advanced = "context reuse limit", true
-	case KeyRouting, KeyPromptProfile, KeyLaneGuard, KeyModelRoles, KeyTierReflexModel, KeyTierLowModel, KeyTierWorkerModel, KeyTierHighModel, KeyTierMastermindModel, KeyReplyGuard:
+	case KeyRouting, KeyPromptProfile, KeyLaneGuard, KeyKnowledgeModel, KeyModelRoles, KeyTierReflexModel, KeyTierLowModel, KeyTierWorkerModel, KeyTierHighModel, KeyTierMastermindModel, KeyReplyGuard:
 		p.Advanced = true
 	}
 	// Preserve the former navigation names as search aliases for people who

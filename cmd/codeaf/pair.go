@@ -121,7 +121,7 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	if err := d.naming(ctx, *name, flags.Args(), *code); err != nil {
 		return err
 	}
-	return d.dispatch(ctx, flags.Args(), *via, *replace, *code)
+	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code), *via)
 }
 
 // naming settles what this computer is called before a join starts, because the
@@ -232,7 +232,7 @@ func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
 // endedByPerson turns the end a person chose with ctrl+c into a clean exit that
 // says nothing was paired, and leaves every other failure as the sentence it already is.
 func (d pairDoor) endedByPerson(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
+	if errors.Is(ctx.Err(), context.Canceled) {
 		// The terminal echoes ^C on the prompt's own line, so start a fresh one.
 		fmt.Fprintln(d.term.out)
 		d.term.say(pair.CancelledLine)

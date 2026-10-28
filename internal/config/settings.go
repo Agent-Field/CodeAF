@@ -187,6 +187,8 @@ const (
 	// it, in the same words [EnvPromptProfile] takes.
 	KeyPromptProfile = "prompt.profile"
 
+	KeyKnowledgeModel = "knowledge.model"
+
 	KeyTierLowModel  = "models.tiers.low"
 	KeyTierHighModel = "models.tiers.high"
 	// KeyTierWorkerModel is the seat that does the work — the worker of every
@@ -1049,6 +1051,15 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"CODEAF_HOME",
+	// The harness supplies the admitted working-root identity to each execution.
+	// This runtime association is not an editable placement preference.
+	"CODEAF_WORKSPACE_URI",
+	// These switches select unfinished ownership and archive lifecycles in an
+	// explicit prototype profile; they are not persisted settings. The archive
+	// executable path is operator plumbing, like CODEAF_FURROW below.
+	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
+	"CODEAF_PROTOTYPE_TASK_STORAGE",
+	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// CODEAF_BASE_URL is.
@@ -2462,6 +2473,15 @@ func (s *Settings) build() []Setting {
 				"`:high` to ask it to think that hard: `moonshotai/kimi-k3:high`.",
 			read:  func() string { return crewSeatRow(dir, crewroute.Planner) },
 			write: func(raw string) error { return SetCrewPin(dir, crewroute.Planner, raw) },
+		},
+		Setting{
+			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
+			Label: "knowledge", EmptyLabel: DefaultKnowledgeModel,
+			Hint: "the OpenRouter model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default.",
+			read: func() string { return KnowledgeModelAt(dir) },
+			write: func(raw string) error {
+				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
+			},
 		},
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,

@@ -404,7 +404,7 @@ func TestAppInboxPermissionScopesOnTheWire(t *testing.T) {
 			profile := t.TempDir()
 			t.Setenv(config.ProfileDirEnv, profile)
 			conv := &fakeConversation{}
-			backend, _, agent := workBackend(t, conv)
+			backend, rec, agent := workBackend(t, conv)
 			a, _ := backend.find(agent.ID)
 			live := backend.liveOf(a)
 			done := make(chan struct{})
@@ -414,7 +414,14 @@ func TestAppInboxPermissionScopesOnTheWire(t *testing.T) {
 				args, _ := json.Marshal(map[string]string{"command": command})
 				backend.locked(func() { live.consents[id] = appConsentCall{Tool: tool, Args: string(args)} })
 				backend.questionEvent(a, agent.ID, live, session.Event{Kind: session.EventQuestion, Question: &q})
-				return "consent:" + strconv.FormatUint(id, 10)
+				askID := "consent:" + strconv.FormatUint(id, 10)
+				// A client can answer only after the asynchronous outbox has
+				// delivered the Inbox item that contains the answer's id.
+				rec.waitFor(t, 10*time.Second, func(event string, data any) bool {
+					added, ok := data.(appwire.InboxAddedEvent)
+					return event == appwire.EventInboxAdded && ok && added.Item.ID == appInboxID(agent.ID, askID)
+				})
+				return askID
 			}
 			batch := ""
 			if tc.batch {

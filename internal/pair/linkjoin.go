@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"net"
 	"time"
 
 	"golang.org/x/crypto/nacl/box"
@@ -204,7 +205,10 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 
 // phraseLink turns what the directory said into the one sentence for it.
 func phraseLink(err error, host string) error {
+	var network net.Error
 	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &network) && network.Timeout():
+		return ServiceTimeout(err, host)
 	case errors.Is(err, directory.ErrRequestGone):
 		return ErrLinkExpired
 	case errors.Is(err, directory.ErrRateLimited):

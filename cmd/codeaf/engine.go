@@ -1264,8 +1264,13 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		Closed: func(closed remote.WrappedAgent) {
 			if built, ok := closed.(*session.Agent); ok {
 				proc.forget(built)
-				syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID())
 			}
+		},
+		FinishSaving: func(closed remote.WrappedAgent) error {
+			if built, ok := closed.(*session.Agent); ok {
+				return session.SavingError(built.SessionPath(), syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID()))
+			}
+			return nil
 		},
 		// A linked-local surface writes a banked approval into this profile and
 		// carries ConsentRule on the answer already crossing the wire. Rebuild

@@ -170,7 +170,7 @@ func classify(method string) callClass {
 		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
 		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
-	case MethodClaimChatStart, MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold, MethodQuestionClock,
+	case MethodTaskWorkspaceCancel, MethodClaimChatStart, MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold, MethodQuestionClock,
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
@@ -188,7 +188,7 @@ func classify(method string) callClass {
 		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
 		MethodAutomationsClaim:
 		return classAct
-	case MethodCompact,
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodOpenPlanTaskWork, MethodCompact,
 		// A side ask is a model call of up to two minutes that writes nothing
 		// into the conversation, so it owes a turn no order and a turn owes it
 		// none (sideask.go).

@@ -66,9 +66,12 @@ package session
 // model reads one grammar for one kind of news.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"log"
 	"os"
 	"path/filepath"
@@ -84,12 +87,14 @@ import (
 )
 
 const (
-	// taskFileVersion is the schema of <journal>.tasks.json. A file carrying any
-	// other version is IGNORED rather than migrated, for state.go's reason: the
+	// taskFileVersion names the checkpoint schema. Unsupported versions are
+	// ignored rather than migrated because the
 	// graph is a record of work that has already happened, and guessing at an
 	// older shape risks rehydrating a report into a field that no longer means
 	// what it meant — which here would mean briefing a dependent with it.
 	taskFileVersion = 1
+	// Set-bearing documents require V2 so older singleton readers fail closed.
+	taskWorkspaceSetFileVersion = 2
 
 	// taskDocumentType is the type tag. A file that is JSON, parses, and is not
 	// this is not this store's file.
@@ -150,6 +155,9 @@ type taskRecord struct {
 	ID           uint64             `json:"id"`
 	Title        string             `json:"title"`
 	Summary      string             `json:"summary,omitempty"`
+	// StorageBlocked is conservative launch uncertainty; a clean later attempt
+	// does not establish that an older writer or detached descendant has exited.
+	StorageBlocked bool `json:"storage_blocked,omitempty"`
 	// Request is the person's own message, kept because a node that resumes
 	// without it would be re-opened on the model's paraphrase alone — the one
 	// part of what it was told that nothing downstream could reconstruct
@@ -341,10 +349,15 @@ type taskRecord struct {
 	// back to the report exactly as it did then.
 	Result *taskResultRecord `json:"result,omitempty"`
 
-	Changed  []string `json:"changed,omitempty"`
-	Branch   string   `json:"branch,omitempty"`
-	Worktree string   `json:"worktree,omitempty"`
-	Merge    string   `json:"merge,omitempty"`
+	Changed      []string `json:"changed,omitempty"`
+	Branch       string   `json:"branch,omitempty"`
+	Worktree     string   `json:"worktree,omitempty"`
+	WorkspaceURI string   `json:"workspace_uri,omitempty"`
+	ChatURI      string   `json:"chat_uri,omitempty"`
+	ProjectURI   string   `json:"project_uri,omitempty"`
+	GroundURI    string   `json:"ground_uri,omitempty"`
+	RootURI      string   `json:"root_uri,omitempty"`
+	Merge        string   `json:"merge,omitempty"`
 
 	// Wrote is what a node's own hands have written SO FAR, kept while it runs
 	// rather than only when it lands ([TaskNode.noteWrote]).
@@ -802,8 +815,9 @@ type runRecord struct {
 	// saved before this field existed decodes with nil, and a run with no copy
 	// recorded is one that cannot be carried on — which [runCopyTree] says out
 	// loud rather than repairing.
-	Copy       *TaskCopyRecord   `json:"copy,omitempty"`
-	PendingRun *PendingRunRecord `json:"pendingRun,omitempty"`
+	WorkspaceSet *WorkspaceSet     `json:"workspaceSet,omitempty"`
+	Copy         *TaskCopyRecord   `json:"copy,omitempty"`
+	PendingRun   *PendingRunRecord `json:"pendingRun,omitempty"`
 	// Park is A HAND-OFF WAITING ON A MODEL (taskrouting.go): why no role
 	// could be seated and what starting it again needs. A queued row that
 	// carries it comes back waiting, its Ask standing, rather than interrupted;
@@ -859,11 +873,12 @@ type runRecord struct {
 // with no runs in it and resumes precisely as it always did, and this code's own
 // files are still version 1 documents that older builds can read.
 type taskDocument struct {
-	Type    string       `json:"type"`
-	Version int          `json:"version"`
-	Seq     uint64       `json:"seq"`
-	Nodes   []taskRecord `json:"nodes"`
-	Runs    []runRecord  `json:"runs,omitempty"`
+	WorkspaceTransfer *taskcopy.WorkspacePlan `json:"workspace_transfer,omitempty"`
+	Type              string                  `json:"type"`
+	Version           int                     `json:"version"`
+	Seq               uint64                  `json:"seq"`
+	Nodes             []taskRecord            `json:"nodes"`
+	Runs              []runRecord             `json:"runs,omitempty"`
 	// Dismissed names the tasks the person hid, by app id (task_dismiss.go). An
 	// added, omitted-when-empty field, so version-1 files stay version-1 files.
 	Dismissed []string `json:"dismissed,omitempty"`
@@ -958,14 +973,26 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if s.duringWrite != nil {
 		s.duringWrite()
 	}
-	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(s.path), placeTranscript)))
-	if codec, sealed := checkpointCodec(s.path); sealed {
-		document = document.mapPaths(codec.encode)
+	root := filepath.Dir(s.path)
+	if filepath.Base(root) == cellStateDir {
+		root = filepath.Dir(root)
 	}
-	encoded, err := json.MarshalIndent(document, "", "  ")
+	if err := workspaceFinalizationPending(Place{Dir: root}); err != nil {
+		return err
+	}
+	release, err := taskcopy.LockWorkspaceCheckpoint(context.Background(), cell.Cell{Root: root})
 	if err != nil {
 		return err
 	}
+	defer release()
+	if err := workspaceFinalizationPending(Place{Dir: root}); err != nil {
+		return err
+	}
+	encoded, err := encodeTaskCheckpoint(document, s.path)
+	if err != nil {
+		return err
+	}
+
 	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
@@ -1152,6 +1179,9 @@ func (g *TaskGraph) documentLocked() taskDocument {
 	// a record.
 	for _, notice := range g.runRowsLocked() {
 		document.Runs = append(document.Runs, runRowRecord(notice))
+		if notice.WorkspaceSet != nil || notice.PendingRun != nil && notice.PendingRun.WorkspaceSet != nil {
+			document.Version = taskWorkspaceSetFileVersion
+		}
 	}
 	for id, hidden := range g.dismissed {
 		if hidden {
@@ -1196,6 +1226,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		StartedAt:           notice.StartedAt,
 		EndedAt:             notice.EndedAt,
 		Copy:                notice.Copy,
+		WorkspaceSet:        cloneWorkspaceSet(notice.WorkspaceSet),
 		PendingRun:          notice.PendingRun,
 		Park:                notice.park.bounded(),
 		Ending:              notice.Ending,
@@ -1247,6 +1278,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		StartedAt:           record.StartedAt,
 		EndedAt:             record.EndedAt,
 		Copy:                record.Copy,
+		WorkspaceSet:        cloneWorkspaceSet(record.WorkspaceSet),
 		PendingRun:          record.PendingRun,
 		Ending:              record.Ending,
 		Branch:              record.Branch,
@@ -1381,6 +1413,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Wrote:          wrote,
 		Branch:         n.branch,
 		Worktree:       n.worktree,
+		WorkspaceURI:   n.WorkspaceURI,
+		ChatURI:        n.ChatURI,
+		ProjectURI:     n.ProjectURI,
+		GroundURI:      n.GroundURI,
+		RootURI:        n.RootURI,
 		Merge:          n.merge,
 		Journal:        n.journal,
 		Beat:           beat,
@@ -1403,6 +1440,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		NotedState:     n.notedState,
 		Attempt:        n.attempt,
 		Interrupted:    n.interrupted,
+		StorageBlocked: n.storageBlocked,
 		Decider:        n.decider,
 		Clashing:       n.clashing,
 		Shifted:        n.shifted,
@@ -1494,8 +1532,8 @@ func decodeTasks(content []byte) (taskDocument, error) {
 	if document.Type != taskDocumentType {
 		return taskDocument{}, fmt.Errorf("type is %q, want %q", document.Type, taskDocumentType)
 	}
-	if document.Version != taskFileVersion {
-		return taskDocument{}, fmt.Errorf("version %d, want %d", document.Version, taskFileVersion)
+	if err := validateTaskDocumentVersion(document); err != nil {
+		return taskDocument{}, err
 	}
 	seen := make(map[uint64]bool, len(document.Nodes))
 	var highest uint64
@@ -1842,6 +1880,10 @@ func (a *Agent) recoverTasks() {
 	document, found := loadTaskCheckpoint(a.config.checkpointFile())
 	if !found {
 		a.setAsideRefusedCheckpoint()
+	}
+	var recoveredPreparation bool
+	document, recoveredPreparation = recoverWorkspaceSetPreparations(a.config.Place, document)
+	if !found && !recoveredPreparation {
 		return
 	}
 	if len(document.Nodes) == 0 && len(document.Runs) == 0 {
@@ -1853,6 +1895,7 @@ func (a *Agent) recoverTasks() {
 	// one already on the column — and would write its journal into that run's
 	// folder (orchestrate.go's orchestrateJournalPath).
 	a.reserveRunNames(document.Runs)
+	a.restoreWorkerHistory(&document)
 
 	graph := a.graph()
 	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())
@@ -2306,30 +2349,36 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		ending:         record.Ending,
 		// The ending already persists a person's cancellation. Rebuild the
 		// runtime flag so restored results retain the same routing protection.
-		stopped:     record.Ending == TaskEndingStopped,
-		kind:        record.Kind,
-		claim:       record.Claim,
-		checkedOn:   record.CheckedOn,
-		produced:    resultFromRecord(record.Result),
-		changed:     record.Changed,
-		wrote:       record.Wrote,
-		branch:      record.Branch,
-		worktree:    record.Worktree,
-		merge:       record.Merge,
-		journal:     record.Journal,
-		elapsed:     time.Duration(record.ElapsedMS) * time.Millisecond,
-		started:     record.StartedAt,
-		ended:       record.EndedAt,
-		cost:        record.CostUSD,
-		input:       record.Input,
-		output:      record.Output,
-		cacheRead:   record.CacheRead,
-		cacheWrite:  record.CacheWrite,
-		noted:       record.Noted,
-		notedRead:   record.Noted,
-		notedState:  record.NotedState,
-		attempt:     record.Attempt,
-		interrupted: record.Interrupted,
+		stopped:        record.Ending == TaskEndingStopped,
+		kind:           record.Kind,
+		claim:          record.Claim,
+		checkedOn:      record.CheckedOn,
+		produced:       resultFromRecord(record.Result),
+		changed:        record.Changed,
+		wrote:          record.Wrote,
+		branch:         record.Branch,
+		worktree:       record.Worktree,
+		WorkspaceURI:   record.WorkspaceURI,
+		ChatURI:        record.ChatURI,
+		ProjectURI:     record.ProjectURI,
+		GroundURI:      record.GroundURI,
+		RootURI:        record.RootURI,
+		merge:          record.Merge,
+		journal:        record.Journal,
+		elapsed:        time.Duration(record.ElapsedMS) * time.Millisecond,
+		started:        record.StartedAt,
+		ended:          record.EndedAt,
+		cost:           record.CostUSD,
+		input:          record.Input,
+		output:         record.Output,
+		cacheRead:      record.CacheRead,
+		cacheWrite:     record.CacheWrite,
+		noted:          record.Noted,
+		notedRead:      record.Noted,
+		notedState:     record.NotedState,
+		attempt:        record.Attempt,
+		interrupted:    record.Interrupted,
+		storageBlocked: record.StorageBlocked,
 		// AND WHO WAS HOLDING ITS DECISION, which is read back exactly as it was
 		// written and then put right by the floor a few lines above this node's
 		// arrival ([TaskGraph.handBackOnLoad], called out of [TaskGraph.rehydrate]).
@@ -2591,4 +2640,41 @@ func LoadLandedForJudge(tasksPath string) ([]TaskLanding, error) {
 		})
 	}
 	return landed, nil
+}
+
+func encodeTaskCheckpoint(document taskDocument, path string) ([]byte, error) {
+	root := filepath.Dir(path)
+	if filepath.Base(root) == cellStateDir {
+		root = filepath.Dir(root)
+	}
+	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(path), placeTranscript)))
+	projection, err := workspaceTransferProjection(document, Place{Dir: root})
+	if err != nil {
+		return nil, err
+	}
+	document.WorkspaceTransfer = projection
+	if projection != nil {
+		document.Version = taskWorkspaceSetFileVersion
+	} else if document.Version == taskWorkspaceSetFileVersion {
+		document.Version = taskFileVersion
+	}
+
+	if codec, sealed := checkpointCodec(path); sealed {
+		document = document.mapPaths(codec.encode)
+	}
+	return json.MarshalIndent(document, "", "  ")
+}
+
+func validateTaskDocumentVersion(document taskDocument) error {
+	if document.Version != taskFileVersion && document.Version != taskWorkspaceSetFileVersion {
+		return fmt.Errorf("version %d, want %d", document.Version, taskFileVersion)
+	}
+	if document.Version == taskFileVersion {
+		for _, run := range document.Runs {
+			if run.WorkspaceSet != nil || run.PendingRun != nil && run.PendingRun.WorkspaceSet != nil {
+				return errors.New("workspace-set checkpoint requires version 2; version 1 would silently discard required roots in older builds")
+			}
+		}
+	}
+	return nil
 }

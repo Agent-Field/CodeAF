@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +142,7 @@ func TestTheGroomLeavesEveryConversationAlone(t *testing.T) {
 // own id with meta.json already in it — so a second window sees the session
 // before anybody has spoken in it.
 func TestAFirstLaunchMintsAFolderThatNamesItself(t *testing.T) {
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 
@@ -153,6 +156,20 @@ func TestAFirstLaunchMintsAFolderThatNamesItself(t *testing.T) {
 	meta, err := session.LoadMeta(found.Place.Dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(found.Place.MetaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["workspace_policy"]; exists {
+		t.Fatalf("ordinary conversation persisted a workspace policy: %s", raw)
+	}
+	if meta.WorkspacePolicy != nil {
+		t.Fatal("ordinary conversation enabled private task copies")
 	}
 	if meta.ID != filepath.Base(found.Place.Dir) {
 		t.Fatalf("the folder is called %s and the session %s", filepath.Base(found.Place.Dir), meta.ID)
@@ -475,5 +492,29 @@ func TestUnreadableTeamsNeverAuthorizeEmptyCleanupOrReuse(t *testing.T) {
 	v3ReapEmpty([]v3Folder{{dir: dir}}, "")
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatal("unknown membership was removed")
+	}
+}
+
+func TestNewConversationPersistsPrivateTaskPolicyOnlyWithExperiment(t *testing.T) {
+	for _, flag := range []string{"", "1"} {
+		t.Run("switch="+flag, func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", flag)
+			place, err := v3MintSession(t.TempDir(), t.TempDir(), "", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			meta, err := session.LoadMeta(place.Dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := flag == "1" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin")
+			if (meta.WorkspacePolicy != nil) != want {
+				t.Fatalf("policy=%+v, want enabled=%v", meta.WorkspacePolicy, want)
+			}
+			if want && (meta.WorkspacePolicy.Version != 1 || meta.WorkspacePolicy.Mode != "private-tasks") {
+				t.Fatalf("wrong policy: %+v", meta.WorkspacePolicy)
+			}
+		})
 	}
 }

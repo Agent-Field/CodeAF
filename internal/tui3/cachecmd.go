@@ -46,7 +46,7 @@ func (a *app) runCacheCommand(rest string) tea.Cmd {
 	case "":
 		return func() tea.Msg {
 			size := cachedir.Size()
-			place := shortPath(cachedir.Root(), tilde, 0)
+			place := cacheLocations(tilde)
 			if size == 0 {
 				return cacheNoteMsg{line: "the cache is empty · " + place}
 			}
@@ -60,7 +60,7 @@ func (a *app) runCacheCommand(rest string) tea.Cmd {
 				return cacheNoteMsg{line: cacheEmptyWord}
 			}
 			return cacheNoteMsg{line: "this deletes the shared build cache — " + cachedir.Human(size) +
-				" at " + shortPath(cachedir.Root(), tilde, 0) +
+				" at " + cacheLocations(tilde) +
 				". builds start cold afterwards; conversations and settings are not touched. type /cache clean now to go ahead."}
 		}
 	case "clean now":
@@ -85,3 +85,11 @@ func (a *app) runCacheCommand(rest string) tea.Cmd {
 // cacheEmptyWord answers both the clean that found nothing and the clean that
 // arrived second: one fact, one sentence, wherever it comes up.
 const cacheEmptyWord = "the cache is already empty — nothing to delete."
+
+func cacheLocations(tilde string) string {
+	locations := cachedir.Locations()
+	for index, path := range locations {
+		locations[index] = shortPath(path, tilde, 0)
+	}
+	return strings.Join(locations, ", ")
+}

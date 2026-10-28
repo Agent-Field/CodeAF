@@ -64,8 +64,9 @@ type v3Process struct {
 	Models *catalog.Catalog
 	// processCtx is the lifetime shared by background work owned by this process.
 	// processStop closes that lifetime before closeAll joins each owned worker.
-	processCtx  context.Context
-	processStop context.CancelFunc
+	processCtx    context.Context
+	processStop   context.CancelFunc
+	knowledgeDone chan struct{}
 	// Shelf holds Models until somebody asks /model for today's list, and the
 	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
 	// session readers that answer about a model somebody may have just picked
@@ -296,6 +297,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	v3RehomeLegacyMemories(memory)
 	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
+	process.startKnowledge()
 	return process, nil
 }
 
@@ -625,6 +627,9 @@ func (p *v3Process) closeAll() {
 	if p.processStop != nil {
 		p.processStop()
 	}
+	if p.knowledgeDone != nil {
+		<-p.knowledgeDone
+	}
 	if p.creditWatcher != nil {
 		p.creditWatcher.close()
 	}
@@ -926,7 +931,7 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 	draft := ""
 	if keepDraft {
 		if dir, err := v3Dir(); err == nil {
-			draft = tui3.DraftFile(dir, workspace)
+			draft = tui3.ChatDraftFile(dir, "", workspace, cfg.SessionFile)
 		}
 	}
 	var recall tui3.History
@@ -1083,6 +1088,6 @@ func v3RehomeLegacyMemories(brain *store.Store) {
 // closed. A bounded drain must never silently acknowledge a pending save (D3).
 func closeV3Agent(agent interface{ Close() error }) {
 	if err := agent.Close(); err != nil {
-		fmt.Fprintln(os.Stderr, "codeaf: "+err.Error())
+		recordFinalSaveFailure(err)
 	}
 }

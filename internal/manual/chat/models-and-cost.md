@@ -4368,6 +4368,10 @@ reservation. A monthly cap is not available yet. Provider charges already in
 flight can exceed a limit. If startup could not establish the limit, repair it
 and reopen the app before standing orders can start.
 
+## Why is my conversation blocked
+
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. A turn already running may finish above its limit.
+
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when

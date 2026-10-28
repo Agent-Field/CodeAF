@@ -47,6 +47,13 @@ func appSyncBackend(t *testing.T) (*appBackend, *appRecorder, *recordingModel, s
 	t.Cleanup(func() {
 		_ = b.Close()
 		syncDrives.closeAll()
+		// Match the app process's exit before TempDir removes its machine.
+		// Otherwise a deferred durability request can restart its daemon there.
+		closeEngineProcess()
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		_ = cellstore.Flush(ctx)
+		cancel()
+		cellstore.StopSpawned()
 		syncDrives = previous
 	})
 	return b, rec, model, workspace
@@ -100,7 +107,9 @@ func appSyncHoldReply(t *testing.T, model *recordingModel) (func(), <-chan struc
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 			var request recordedRequest
 			_ = json.Unmarshal(raw, &request)
-			if request.Stream {
+			// Background naming and memory requests also stream. Hold only the
+			// conversation turn, identified by the tools it can call.
+			if request.Stream && len(request.Tools) > 0 {
 				startedOnce.Do(func() { close(started) })
 				select {
 				case <-release:
@@ -135,7 +144,7 @@ func TestC1C2AppViewerRefusesWorkBeforeSubmission(t *testing.T) {
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 			var request recordedRequest
 			_ = json.Unmarshal(raw, &request)
-			if request.Stream {
+			if request.Stream && len(request.Tools) > 0 {
 				modelCalls.Add(1)
 			}
 		}
@@ -206,7 +215,11 @@ func TestC1C2AppViewerRefusesWorkBeforeSubmission(t *testing.T) {
 	if err := syncsetup.PutOwnDevice(context.Background(), other.Dir, other.Identity, other.Device, "laptop"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := other.Dir.Acquire(context.Background(), place.ID(), directory.AcquireOpts{Force: true}); err != nil {
+	seen, err := other.Dir.Cell(context.Background(), place.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Dir.Acquire(context.Background(), place.ID(), directory.AcquireOpts{Force: true, RequireConditional: true, Expect: &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence}}); err != nil {
 		t.Fatal(err)
 	}
 	// This is the same drive the real seat holds; checking it closes the gap

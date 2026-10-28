@@ -168,6 +168,9 @@ func (r *automationRunner) Look(ctx context.Context, item automation.Automation)
 // it replaces did not do. A failing command is evidence, not an error: "is CI
 // red" is often answered by an exit status.
 func automationLookCommand(ctx context.Context, workspace, command string) (automation.Sight, error) {
+	if err := markTaskStorageUncertain(workspace); err != nil {
+		return automation.Sight{}, err
+	}
 	shell, args, shellErr := jobShell()
 	if shellErr != nil {
 		return automation.Sight{}, shellErr
@@ -849,7 +852,7 @@ func automationWorktree(cfg Config, item automation.Automation) (taskTree, error
 			Folder: item.Workspace, Dir: tree.dir, Branch: tree.branch, Root: tree.root,
 			Home: tree.home, HomeSha: tree.homeSha, Mode: TaskModeWorktree, Cut: time.Now(),
 		})
-		return SaveMeta(cfg.Place.Dir, meta)
+		return saveMetaLocked(cfg.Place.Dir, meta)
 	})
 	if err != nil {
 		return taskTree{}, fmt.Errorf("record the worktree %s on %s: %w", tree.dir, tree.branch, err)

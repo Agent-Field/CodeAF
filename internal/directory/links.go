@@ -52,10 +52,12 @@ type Links struct {
 // entry is a request, the moment it stops being readable, and a channel that
 // closes when it is decided.
 type entry struct {
-	rec   Request
-	peer  string
-	until int64
-	done  chan struct{}
+	rec      Request
+	peer     string
+	until    int64
+	cluster  string
+	delivery string
+	done     chan struct{}
 }
 
 // NewLinks returns an empty store that reads time from clock.
@@ -184,6 +186,9 @@ func (l *Links) Decide(code string, d Decision, apply func(Request) error) error
 	if !ok {
 		return ErrRequestGone
 	}
+	if e.cluster != "" {
+		return ErrAlreadyDecided
+	}
 	switch err := Settle(e.rec, d); err {
 	case errRepeat:
 		return nil
@@ -299,3 +304,7 @@ func slow(d time.Duration) error {
 	secs := int((d + time.Second - 1) / time.Second)
 	return wireauth.Wait(ErrRateLimited, http.Header{"Retry-After": {strconv.Itoa(max(secs, 1))}})
 }
+
+// WithLegacyGate finishes any admitted pairing decision before the source
+// freezes. A later legacy callback must recheck the durable source gate.
+func (l *Links) WithLegacyGate(fn func() error) error { l.mu.Lock(); defer l.mu.Unlock(); return fn() }

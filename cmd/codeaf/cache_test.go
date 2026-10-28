@@ -156,3 +156,32 @@ func TestBothSurfacesConfirmTheCacheDeletionWithTheSameWord(t *testing.T) {
 		t.Fatalf("a word that is not %q did not keep the cache:\n%s", cacheCleanWord, answer.String())
 	}
 }
+
+func TestCacheQuestionNamesRetainedLegacyLocation(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	path := home.Join("workspace-caches", "legacy", "cache")
+	if err := os.MkdirAll(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "compiler"), []byte("cache"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var shown strings.Builder
+	if err := runCacheWith(nil, strings.NewReader(""), &shown); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(shown.String(), home.Join("workspace-caches")) {
+		t.Fatalf("cache display omitted affected old location: %s", shown.String())
+	}
+	commentary := captureAside(t)
+	var output strings.Builder
+	if err := runCacheWith([]string{"clean"}, strings.NewReader("no\n"), &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(commentary.String(), home.Join("workspace-caches")) {
+		t.Fatalf("cleanup confirmation omitted affected old location: %s", commentary.String())
+	}
+	if _, err := os.Stat(filepath.Join(path, "compiler")); err != nil {
+		t.Fatal("confirmation cleaned cache without authorization")
+	}
+}

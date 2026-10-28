@@ -536,7 +536,7 @@ func (b *appBackend) takeBack(transcript string) {
 }
 
 // appUnmint removes a minted conversation folder, and only that: it must sit
-// under root and hold nothing but the lookup file mint wrote. A folder with
+// under root and hold only the lookup and empty metadata lock mint wrote. A folder with
 // anything else in it is somebody's, and stays.
 func appUnmint(root, transcript string) {
 	dir := session.DirOf(filepath.Clean(transcript))
@@ -549,7 +549,14 @@ func appUnmint(root, transcript string) {
 		return
 	}
 	for _, e := range entries {
-		if e.Name() != "meta.json" {
+		if e.Name() == "meta.json" {
+			continue
+		}
+		if e.Name() != session.MetaLockName {
+			return
+		}
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
 			return
 		}
 	}

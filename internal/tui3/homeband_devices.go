@@ -85,6 +85,7 @@ func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 	a.devRow.asking = false
 	if msg.err == nil {
 		a.devRow.devices = msg.devices
+		a.considerResume()
 		a.touch()
 	}
 	return a.finishBring()
@@ -139,6 +140,9 @@ func drawDevicesBand(a *app, ctx bandContext) []string {
 // devicePicks are the chats an online device offers: for each, the newest one it
 // holds that can be brought here, in the roster's order.
 func (a *app) devicePicks() []chatlist.Row {
+	if a.machineRead.computerRemoved {
+		return nil
+	}
 	online, known := a.presence()
 	if !known {
 		return nil

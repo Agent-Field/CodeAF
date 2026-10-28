@@ -1,5 +1,77 @@
 # Keys, typing, and the mouse — what all the keys do
 
+## Typing while a new chat opens — /new, paste, Enter and Escape
+
+Words typed or pasted while `/new` opens belong to the new chat. Backspace
+edits those words. Enter during the opening leaves them unsent in the new
+chat's composer; press Enter after it opens to send them.
+
+Escape cancels the opening. If you typed words meanwhile, they return to the
+chat you were leaving, unsent, with
+`opening cancelled; your words are back in this chat, unsent`.
+Typing when no chat is opening works as usual.
+
+Closing the terminal or quitting during opening also keeps those words,
+including an unfinished paste. They return unsent on the next start.
+
+## Closing a chat when the engine is unreachable — window frozen, queued keys
+
+`/quit` closes the current chat when another chat is open. The next chat
+appears immediately while closing finishes in the background. The keyboard
+waits for that close for at most one second; keys and pastes during that wait
+are discarded, so they cannot send the next chat's draft. The window keeps
+drawing and resizing throughout.
+
+If closing fails, it says
+`this chat could not be saved; its unsaved turns stay on this computer for the next start`.
+
+A close still running after that second says
+`this chat is still finishing in the background`.
+A slow close alone does not mean saving failed. An unanswered final saving
+reply also keeps the finishing notice.
+If that background close later fails, the active chat shows the closed chat's
+name followed by the same saving-failure sentence, once.
+
+## Could not save on quit — where are the unsaved turns kept
+
+If the final save fails and the transcript location is known, the restored terminal says
+`codeaf could not save this chat; unsaved turns are kept in <transcript path> and return on the next start if this computer still holds the chat.`
+The path names the transcript on the computer running the chat, including over
+`--host`. When the location is unknown, it says
+`codeaf could not save this chat; unsaved turns stay on this computer and return on the next start if this computer still holds the chat.`
+The command exits with a failure status. One sentence stays visible after
+the full-screen chat closes, including when error output goes to a log. On the
+next start, retained turns are published if this computer still holds the chat.
+If another computer has continued it, take the chat back to see its newest history;
+local accounting alone does not create a separate chat.
+
+A computer removed from your paired devices keeps saving this chat locally.
+Quitting stays quiet and does not try a final relay save; the removal notice
+already explains that the chat stays on this computer until you pair it again.
+
+The screen closes after at most one second while a slow close finishes. The
+launcher keeps its connection open for the final publish and release before it exits.
+A successful quit stays quiet, including while late usage, task cost, naming or
+memory records finish saving. The launcher waits up to 30 seconds for the final
+saving reply. If that reply is still outstanding at the ceiling, it says
+`codeaf is still saving this chat in the background; unsaved turns stay on this computer.`
+A save still running is not reported as a failure. A
+second ctrl+c while quitting restores the terminal and exits immediately;
+unfinished turns stay on the computer running the chat for the next start.
+
+## One Enter sends — checking which computer holds this chat
+
+A chat held here, or one never shared, sends with one Enter using its local
+hold. Sending does not wait for the sync service to answer. An established
+outage does not add another network wait to every send.
+
+A copy with no current hold gets one fresh check, bounded to five seconds.
+It sends, offers `Continue this chat here?`, or explains why the words remain
+unsent. If you change chats meanwhile, it says
+`chat changed before sending; your words are still unsent`.
+If you edit the draft meanwhile, it says
+`draft changed before sending; press enter to send your current words`.
+
 ## How do I make this one chat think harder — can I click the thinking level — effort keys
 
 `alt+e` walks this conversation's thinking rung; `/effort` opens the ladder and
@@ -529,7 +601,7 @@ letting-go, so the deadline only fires on a turn that was genuinely not going to
 something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
 
-## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
+## How do I quit — quitting codeaf, exit, close, or why ctrl+c did not quit
 
 To exit or close codeaf, press `ctrl+c` once. That is the whole gesture: no second press,
 no window to beat, nothing to confirm — with one exception, a running automation, below.
@@ -1160,16 +1232,21 @@ that has moved on. There is nothing to press; it is automatic.
   as `ctrl+j` on some terminals; only the latter opens a blank line, and nothing on the frame draws them. One kept on disk used
   to be adopted by the next window in the directory, which then opened with a box that
   looked empty, was not, and refused `space space` for home.
-- The file is keyed by the directory plus this process's id, and is written with mode
-  0600.
-- At startup, if this window's own draft file is missing, codeaf takes the newest
-  draft in the same directory whose process is no longer running, moves it into this
-  window's name, and loads it. Files belonging to a process that is still alive are
-  never touched, and older orphans are left where they are. An empty orphan is
-  deleted. A process id that cannot be checked is treated as still alive — codeaf
-  errs toward leaving your sentence on disk.
+- The file is keyed by the chat and this window, and is written with mode 0600.
+  Copied chats have separate keys across projects, and the same chat keeps its
+  identity when its copy moves to another folder.
+- At startup, codeaf restores that chat's newest saved draft from a window whose
+  process is no longer running. Another chat's saved words are never adopted.
+  Older plain drafts without a recorded chat can still be recovered for older
+  conversations in the same project. Files belonging to a process that is still
+  alive are never touched, and older drafts are left where they are. A process id
+  that cannot be checked is treated as still alive.
 - CR and CRLF in a restored draft are normalised to LF.
 - No draft is kept at all if codeaf was started without a draft file.
+
+## Continue here keeps my typed message, pasted text and attachments
+
+If sending from an older window opens `Continue this chat here?`, choosing `continue here` puts your exact draft in the arrived chat's message box, including spaces, newlines, pasted text and attachments. This also works when the chat reopens in a different folder. It stays unsent until you press enter again. Choosing `leave it there`, or a move that fails, keeps the draft too.
 
 ## What a crash does to your draft — what is saved, what comes back, what it will not send
 

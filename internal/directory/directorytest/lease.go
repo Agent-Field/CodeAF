@@ -211,7 +211,9 @@ func takeoverSilencesOldSocket(w watchEnv) {
 	tl := w.timeline()
 	tl.to(leaseAge)
 	old.ping()
-	_, err := w.dirAs(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
+	seen, err := w.dirAs(devB).Cell(ctx, cell)
+	must(w.t, err)
+	_, err = w.dirAs(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true, Expect: &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence}})
 	must(w.t, err)
 	tl.to(leasePast)
 	old.ping()
@@ -347,11 +349,17 @@ func (w watchEnv) wantHoldQuery(query string, status int) {
 	wantRefusal(w.t, conn, resp, err, status, "bad_request")
 }
 
+// Committed receipts replace the old socket-authority advertisement on consensus routes.
+// The same suite still exercises the original legacy directory protocol.
 func upgradeAnnouncesVouching(w watchEnv) {
+	want := "1"
+	if w.rig.Committed {
+		want = ""
+	}
 	for _, holds := range [][]directory.Hold{nil, {hold(cell, 1)}} {
 		s := w.dialHolding(devA, holds)
-		if got := s.resp.Header.Get(directory.VouchHeader); got != "1" {
-			w.t.Fatalf("101 answer has %s=%q with holds %v, want 1", directory.VouchHeader, got, holds)
+		if got := s.resp.Header.Get(directory.VouchHeader); got != want {
+			w.t.Fatalf("101 answer has %s=%q with holds %v, want %q", directory.VouchHeader, got, holds, want)
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
@@ -39,8 +40,9 @@ func wireSync(o *tui3.Options) {
 		return
 	}
 	if o.Machines == nil {
-		o.Machines = s
+		o.Machines = surfaceMachines{s}
 	}
+	o.DeviceID = s.Device.ID()
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
@@ -61,6 +63,68 @@ func wireSync(o *tui3.Options) {
 	}
 	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayHomeOnce) })
 	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayHomeOnce) })
+}
+
+// surfaceMachines keeps display hints out of the decision to send a message.
+type surfaceMachines struct{ *syncsetup.Sync }
+
+// RowsForChatSend uses a live writer's receipt or a never-shared chat before asking the relay.
+// A known outage keeps unknown copies unsent without repeating the network wait.
+func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offline, holding bool) ([]chatlist.Row, uint64, bool, error) {
+	root := session.DirOf(file)
+	id := filepath.Base(root)
+	if s.Removed() {
+		if c, err := cell.OpenAt(root, id); err == nil {
+			if shared, err := cellstore.Shared(c); err == nil && !shared {
+				return nil, 0, true, directory.ErrRevoked
+			}
+		}
+		return nil, 0, false, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, true, nil
+	}
+	remote, fence, leaseErr := s.SendLease(id)
+	if holding && leaseErr == nil && fence != 0 {
+		return []chatlist.Row{{Cell: remote, Status: chatlist.Here, Mine: true, Fence: fence}}, 0, true, nil
+	}
+	if c, err := cell.OpenAt(root, id); err == nil && (leaseErr != nil || fence == 0) {
+		shared, err := cellstore.Shared(c)
+		if err == nil && !shared {
+			return nil, 0, true, nil
+		}
+	}
+	if offline {
+		return nil, 0, false, directory.ErrUnreachable
+	}
+	rows, version, err := s.RowsForSend(ctx)
+	return rows, version, false, err
+}
+
+func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if s.Relay != "" {
+		current, ok, err := syncsetup.Open(s.Home)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !ok {
+			return nil, 0, nil
+		}
+		s.Sync = current
+	}
+	if s.Removed() {
+		return nil, 0, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, nil
+	}
+	l, err := s.Dir.List(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	key := directory.MetadataKey(s.Identity.CellKey())
+	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
+	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.
@@ -146,6 +210,15 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	return surfaceTaken(got, elapsed), nil
 }
 
+func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
+	began := time.Now()
+	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
+	if err != nil {
+		return tui3.Taken{}, err
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
 func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error) {
 	began := time.Now()
 	got, err := t.c.OpenBranch(ctx, id)
@@ -156,7 +229,7 @@ func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error)
 }
 
 func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
+	return tui3.Taken{Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head, AlreadyHere: got.AlreadyHere, Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

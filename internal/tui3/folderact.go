@@ -150,6 +150,10 @@ func (f *folderPick) hereKind() (string, bool, bool) {
 		}
 		return f.all[f.hits[f.cursor]].path, true, true
 	}
+	// A pending read is not an empty directory and cannot authorize its parent.
+	if !f.cols.here.done {
+		return "", false, false
+	}
 	at := f.cols.cursor
 	if at >= 0 && at < f.cols.here.rows() {
 		return filepath.Join(f.cols.dir, f.cols.here.rowName(at)), f.cols.here.isDir(at), true
@@ -226,6 +230,16 @@ type folderAdded struct {
 // what it would do. It is one function because the key and the row must not be
 // able to drift into meaning two different things.
 func (a *app) folderConfirm() tea.Cmd {
+	if choose := a.folder.chooseFolder; choose != nil {
+		path, dir, ok := a.folder.hereKind()
+		if !ok || !dir {
+			a.note("choose an existing local folder")
+			return nil
+		}
+		a.folder.chooseFolder, a.folder.cancelChoose = nil, nil
+		closed := a.closeFolderSheet()
+		return tea.Batch(closed, choose(path))
+	}
 	if a.folder.forWorkspace {
 		path, dir, ok := a.folder.hereKind()
 		if !ok || !dir {

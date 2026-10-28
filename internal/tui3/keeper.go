@@ -1185,6 +1185,7 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 // takeBeside is the two lines both doors above end in: the conversation on
 // screen steps aside and goes on running, and the new one takes the surface.
 func (a *app) takeBeside(conv Conversation) tea.Cmd {
+	a.moveTakeDraft(conv)
 	// The name of what is being left, read while it is still in front, and said
 	// afterwards on a door that could not keep it (below). Notes are cleared by
 	// the detach, so this is remembered rather than written now.
@@ -1205,7 +1206,7 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 		}
 	}
 	cmd := tea.Batch(parked, a.attachConversation(conv, nil))
-	if a.shared {
+	if a.shared && a.homeTakenSaid == nil {
 		a.restoreDraft()
 	}
 	if key := a.convKey(conv.SessionFile); key != "" {
@@ -1268,7 +1269,20 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // arrived, and "you closed this conversation" and "another window took it" are
 // two different sentences to be owed (internal/session's stopcause.go).
 func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
-	return a.leaveFront(func(agent Agent) { a.endAgentFor(agent, door) }, true)
+	name := a.sessionName()
+	if name == "" {
+		name = a.place
+	}
+	var leaving Agent
+	cmd, more := a.leaveFront(func(agent Agent) { leaving = agent }, true)
+	if !more || leaving == nil {
+		return cmd, more
+	}
+	a.conversationClosing = true
+	desk := a.outsideDesk
+	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func() {
+		desk.Say(name + ": " + closeSaveFailedWord)
+	})), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -1298,8 +1312,7 @@ func (a *app) endAgent(agent Agent) { a.endAgentFor(agent, session.StopByLeaving
 // CONVERSATION to go, not for the reply to be thrown away — so the engine owes
 // them a sentence about the answer that never came.
 func (a *app) endAgentFor(agent Agent, door session.StopDoor) {
-	agent.InterruptFor(door)
-	if err := agent.Close(); err != nil {
+	if err := leaveAgentFor(agent, door); err != nil {
 		a.note("close failed: " + err.Error())
 	}
 }
@@ -1374,6 +1387,12 @@ func (a *app) leaveFront(let func(Agent), say bool) (tea.Cmd, bool) {
 // serial quit would get slower the more of them somebody had open; this one
 // does not.
 func (a *app) leaveEverything() {
+	a.leavingWork()()
+}
+
+// leavingWork captures surface state before any engine work leaves the loop.
+// The returned work owns only the captured agents and thread-safe callbacks.
+func (a *app) leavingWork() func() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
 		agents = append(agents, a.agent)
@@ -1386,31 +1405,73 @@ func (a *app) leaveEverything() {
 		delete(a.behind, key)
 	}
 	a.prev = nil
-	var wg sync.WaitGroup
-	for _, agent := range agents {
-		wg.Add(1)
-		go func(agent Agent) {
-			defer wg.Done()
-			leaveAgent(agent)
-		}(agent)
+	type errandClose struct {
+		agent   Agent
+		working bool
 	}
-	wg.Wait()
+	var errands []errandClose
+	for _, ex := range a.exchanges {
+		if ex != nil && !ex.filed {
+			ex.filed = true
+			errands = append(errands, errandClose{agent: ex.agent, working: ex.working})
+		}
+	}
+	a.exchanges, a.home.exchanges = nil, nil
+	waitForRelease, report := a.waitForRelease, a.saveFailure
+	return func() {
+		waitRelease := waitForRelease != nil && waitForRelease()
+		var wg sync.WaitGroup
+		for _, agent := range agents {
+			wg.Add(1)
+			go func(agent Agent) {
+				defer wg.Done()
+				if waitRelease {
+					if hosted, ok := agent.(interface{ DetachAndWait() error }); ok {
+						if err := hosted.DetachAndWait(); err != nil && report != nil {
+							report(err)
+						}
+						return
+					}
+				}
+				if err := leaveAgentError(agent); err != nil && report != nil {
+					report(err)
+				}
+			}(agent)
+		}
+		for _, ex := range errands {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if ex.working {
+					ex.agent.InterruptFor(session.StopByLeaving)
+				}
+				if err := ex.agent.Close(); err != nil && report != nil {
+					report(err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
 }
 
 // leaveAgent takes this terminal off one conversation: a detach where the work
 // outlives the window, and the ordinary interrupt-and-close where it does not.
 func leaveAgent(agent Agent) {
+	_ = leaveAgentError(agent)
+}
+
+func leaveAgentError(agent Agent) error {
 	if hosted, ok := agent.(detachable); ok {
-		_ = hosted.Detach()
-		return
+		return hosted.Detach()
 	}
-	leaveAgentFor(agent, session.StopByLeaving)
+	agent.InterruptFor(session.StopByLeaving)
+	return agent.Close()
 }
 
 // Permanent deletion closes the owner rather than detaching its view.
-func leaveAgentFor(agent Agent, door session.StopDoor) {
+func leaveAgentFor(agent Agent, door session.StopDoor) error {
 	agent.InterruptFor(door)
-	_ = agent.Close()
+	return agent.Close()
 }
 
 // leaveOffFrame is [leaveAgent] started away from the caller. Detach and

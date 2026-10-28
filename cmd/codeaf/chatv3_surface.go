@@ -24,6 +24,7 @@ var (
 	surfaceRunningExecutable = os.Executable
 	surfaceRevision          = buildinfo.Revision
 	surfaceArguments         = func() []string { return append([]string(nil), os.Args[1:]...) }
+	surfaceForceExit         = os.Exit
 )
 
 // ── THE ONE WAY THE v3 SURFACE IS RUN ───────────────────────────────────────
@@ -47,6 +48,27 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	forced := armFinalSaving()
+	previousSaveFailure := options.SaveFailure
+	options.SaveFailure = func(err error) {
+		recordFinalSaveFailure(err)
+		if previousSaveFailure != nil {
+			previousSaveFailure(err)
+		}
+	}
+	previousClosing, previousForce := options.ClosingStarted, options.ForceQuit
+	options.ClosingStarted = func(done <-chan struct{}) {
+		retainFinalClose(done)
+		if previousClosing != nil {
+			previousClosing(done)
+		}
+	}
+	options.ForceQuit = func() {
+		forceFinalClose()
+		if previousForce != nil {
+			previousForce()
+		}
+	}
 	revision := surfaceRevision()
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand
@@ -62,6 +84,10 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	options.CellsUnavailable = cell.UnavailableReason()
 	if options.CellsUnavailable == "" {
 		wireSync(&options)
+		options.WaitForRelease = func() bool {
+			s, err := syncOf()
+			return err == nil && s.Coordinating()
+		}
 		stateCtx, stopState := context.WithCancel(ctx)
 		stateDone := make(chan struct{})
 		guard.Go("sync/home-state", func() {
@@ -72,7 +98,14 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		})
 		copiesDone := make(chan struct{})
 		guard.Go("sync/older-chats", func() { defer close(copiesDone); runOlderChats(stateCtx) })
-		defer func() { stopState(); <-stateDone; <-copiesDone }()
+		defer func() {
+			if s, err := syncOf(); err == nil {
+				_ = s.HandBack(ctx)
+			}
+			stopState()
+			<-stateDone
+			<-copiesDone
+		}()
 		options.Pairing = chatPairDoor{}
 		options.Approvals = newApprovalsDoor(home.Dir())
 	}
@@ -151,7 +184,15 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	defer closeWire()
 	options.Output = wire
 	return withSurfaceLogger(options.ProfileDir, func() error {
-		return runSurfaceProgram(ctx, options)
+		err := runSurfaceProgram(ctx, options)
+		select {
+		case <-forced:
+			// The screen is restored before the forced exit skips stuck cleanup.
+			surfaceForceExit(130)
+		default:
+		}
+		awaitFinalCloses(ctx)
+		return err
 	})
 }
 
