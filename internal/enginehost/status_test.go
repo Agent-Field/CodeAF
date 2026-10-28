@@ -6,6 +6,7 @@ package enginehost
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A HOST NAMES ITSELF: the process, the file it runs from, when it started,
@@ -117,6 +119,67 @@ func TestStopNeverSignalsTheProcessAsking(t *testing.T) {
 	if went || err == nil {
 		t.Fatalf("stop of a socket this process holds answered (%v, %v), want a refusal", went, err)
 	}
+}
+
+// THE STATUS READING AND THE TAKEOVER READING ARE TWO QUESTIONS. A window
+// attached to a conversation with nothing running keeps the host busy — a
+// takeover may not stand it down under the window — but the status line must
+// not call that "a turn, a task or a question is in flight". This is the
+// issue's symptom: one idle terminal read as two windows and as work a
+// `codeaf engine --stop` would cut.
+func TestAStatusProbeSeparatesAnAttachedWindowFromWorkInFlight(t *testing.T) {
+	far := &workingAgent{}
+	workspace := hostHolding(t, far)
+	first := dialHost(t, workspace)
+
+	// One window attached, nothing running: the window counts once, Busy stays
+	// true for the takeover door, and Working stays false for the status line.
+	self, err := Ask(workspace, remote.WhoIs{})
+	if err != nil {
+		t.Fatalf("ask the host: %v", err)
+	}
+	if self.Surfaces != 1 {
+		t.Fatalf("one attached window read as %d windows", self.Surfaces)
+	}
+	if self.Working {
+		t.Fatal("an idle conversation read as a turn, task or question in flight")
+	}
+	if !self.Busy {
+		t.Fatal("an attached window stopped reading as busy — a takeover would stand the host down under it")
+	}
+
+	// HANDED-OFF WORK WITHOUT A STREAM is its own working reading, and it is
+	// the only one here: the agent answers the walk with a live root.
+	far.setWork([]session.WorkNode{{ID: "task:1", Title: "still going", State: session.WorkRunning}})
+	self, err = Ask(workspace, remote.WhoIs{})
+	if err != nil {
+		t.Fatalf("ask the host: %v", err)
+	}
+	if !self.Working {
+		t.Fatal("handed-off work did not read as work in flight")
+	}
+
+	// A TURN STREAMING is the other working reading, again the only one: the
+	// handed-off work is cleared and the ring is open.
+	far.setWork(nil)
+	if _, err := first.Agent().Submit(context.Background(), "work in the window"); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	self, err = Ask(workspace, remote.WhoIs{})
+	if err != nil {
+		t.Fatalf("ask the host: %v", err)
+	}
+	if !self.Working {
+		t.Fatal("a streaming turn did not read as work in flight")
+	}
+	if !self.Busy {
+		t.Fatal("a streaming turn stopped reading as busy")
+	}
+
+	if err := first.Agent().Detach(); err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	_ = first.Close()
 }
 
 // askedAgent is a conversation another window has asked for: the flag is what

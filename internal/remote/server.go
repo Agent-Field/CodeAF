@@ -656,10 +656,49 @@ func (sess *Session) idleSinceLocked() time.Time {
 }
 
 func (sess *Session) idleSinceWithWatchGraceLocked(ignoreWatchGrace bool) time.Time {
-	if len(sess.surfaces) > 0 || (!ignoreWatchGrace && sess.watchedLocked()) || len(sess.rings) > 0 || sess.heldOutstandingLocked() > 0 {
+	if len(sess.surfaces) > 0 || (!ignoreWatchGrace && sess.watchedLocked()) || sess.workingLocked() {
 		return time.Time{}
 	}
 	return sess.empty
+}
+
+// Working is whether a turn, a task or a question is in flight in this
+// conversation right now: a stream still open, a question waiting to be
+// answered, or work the conversation handed off. It is the status line's
+// reading ([HostSelf.Working]) and deliberately a different question from
+// [Session.IdleSince]'s: an attached window with nothing running is busy to
+// the latter — the window is why the host must stay — and NOT working to the
+// former.
+func (sess *Session) Working() bool {
+	sess.mu.Lock()
+	agent, generation := sess.agent, sess.generation
+	working := sess.workingLocked()
+	sess.mu.Unlock()
+	if working || agent == nil {
+		return working
+	}
+	if workingNow(agent) {
+		return true
+	}
+	// The re-check of [Session.IdleSince], for the same reason: the agent is
+	// asked off this lock, and a conversation that changed under the reading is
+	// reported working for this pass. One status line over-reporting costs a
+	// glance; one under-reporting tells somebody `engine --stop` cuts nothing
+	// when it would cut a turn that just opened.
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if sess.agent != agent || sess.generation != generation {
+		return true
+	}
+	return sess.workingLocked()
+}
+
+// workingLocked is the half of the working reading this package can answer
+// itself: a turn still streaming or a question waiting to be answered. Work the
+// conversation handed off is added off the lock, exactly as [Session.IdleSince]
+// adds it, because that walk takes locks of its own.
+func (sess *Session) workingLocked() bool {
+	return len(sess.rings) > 0 || sess.heldOutstandingLocked() > 0
 }
 
 // watchedLocked is somebody being in the room, and it is the one reading the

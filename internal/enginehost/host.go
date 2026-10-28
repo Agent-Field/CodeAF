@@ -524,7 +524,7 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 	// This connection is the question and not the work — counted before
 	// anything is measured, so that the measurement is right.
 	h.probes++
-	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleWithWatchGraceLocked(ask.StandDown && ask.IgnoreWatchGrace)}
+	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleWithWatchGraceLocked(ask.StandDown && ask.IgnoreWatchGrace), Working: h.workingLocked()}
 	// Recorded under the lock that is about to measure whether this host may
 	// go. It is a note and never a verdict: nothing about the work in flight
 	// changes, and the answer acknowledges it so the asker can tell this host
@@ -594,6 +594,24 @@ func (h *Host) idleWithWatchGraceLocked(ignoreWatchGrace bool) bool {
 		}
 	}
 	return true
+}
+
+// workingLocked is whether a turn, a task or a question is in flight in any
+// conversation this host holds — the status line's working reading
+// ([remote.HostSelf.Working]). It walks the sessions the way the idle reading
+// does, and differs from the conversation count in the same way: a conversation
+// whose journal was deleted is NOT skipped, because `--stop` still cuts a turn
+// running in one and the working line exists to say so.
+func (h *Host) workingLocked() bool {
+	for _, sess := range h.sessions {
+		if sess == nil || sess.Ended() {
+			continue
+		}
+		if sess.Working() {
+			return true
+		}
+	}
+	return false
 }
 
 // standDown ends the host once the connections it is talking to have gone.

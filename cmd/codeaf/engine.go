@@ -773,8 +773,8 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 	if held.Answered {
 		fmt.Fprintf(out, "  chat moves %s\n", cellsStatus(host.Cells))
 		fmt.Fprintf(out, "  windows    %d attached · %s open\n", host.Surfaces, countWord(host.Conversations, "conversation", "conversations"))
-		if host.Busy {
-			fmt.Fprintln(out, "  in use     yes — an attached window, turn, task or question keeps it running")
+		if host.Working {
+			fmt.Fprintln(out, "  working    yes — a turn, a task or a question is in flight")
 		} else if host.Conversations > 0 {
 			fmt.Fprintf(out, "  holding    idle chats keep their lock for %s after the last window closes, then the engine lets go\n", roughAge(enginehost.SessionIdleAfter()))
 		}

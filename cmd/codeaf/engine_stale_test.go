@@ -848,3 +848,41 @@ func TestEngineStatusUpgradeGuidanceMatchesAdmission(t *testing.T) {
 		})
 	}
 }
+
+// THE WORKING LINE IS WORK IN FLIGHT AND NEVER AN ATTACHED WINDOW: the windows
+// line already counts the attachment, and a takeover still reads Busy. This is
+// the status half of the issue — an idle window read as "working … in flight"
+// and the old in-use line that said the same conflation.
+func TestStatusWorkingLineIsWorkInFlightAndNeverAnAttachedWindow(t *testing.T) {
+	shortEngineHome(t)
+	for _, tc := range []struct {
+		name          string
+		working       bool
+		surfaces      int
+		conversations int
+		wantWorking   bool
+		wantHolding   bool
+	}{
+		{"a turn, a task or a question is in flight", true, 1, 1, true, false},
+		{"an idle window attached", false, 1, 1, false, true},
+		{"nothing at all", false, 0, 0, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			writeEngineStatus(&out, "/work/with space", enginehost.Holder{Answered: true, Self: remote.HostSelf{
+				Version: remote.Version, BuiltAt: earlier, Busy: tc.surfaces > 0, Working: tc.working,
+				Surfaces: tc.surfaces, Conversations: tc.conversations,
+			}}, window("today", later), time.Now())
+			said := out.String()
+			if got := strings.Contains(said, "working    yes — a turn, a task or a question is in flight"); got != tc.wantWorking {
+				t.Fatalf("the working line presence was %v, want %v:\n%s", got, tc.wantWorking, said)
+			}
+			if strings.Contains(said, "in use     yes") {
+				t.Fatalf("the old in-use line still appears, conflation back:\n%s", said)
+			}
+			if got := strings.Contains(said, "holding    idle chats keep their lock"); got != tc.wantHolding {
+				t.Fatalf("the holding line presence was %v, want %v:\n%s", got, tc.wantHolding, said)
+			}
+		})
+	}
+}

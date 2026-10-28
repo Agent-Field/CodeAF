@@ -465,8 +465,12 @@ It asks the engine holding that workspace what it is, and stops nothing:
 The first line is the answer — `this build`, `an older build`, or `a newer build than this
 binary` — and each line under it is left off when the engine did not say it; an engine too
 old to answer the question at all is named by its pid and binary alone. `chat moves` reports
-whether that engine can move new chats. Older chats keep their original layout. When no window is attached and nothing is running, a `holding` line says how
-long the engine keeps the conversations it still has open before it lets go of them. With nothing there
+whether that engine can move new chats. Older chats keep their original layout. While a turn,
+a task or a question is in flight, a `working` line says so:
+`working    yes — a turn, a task or a question is in flight`. The `windows` line above it is
+only how many terminals are attached: an attached window whose reply has finished shows no
+`working` line, because `working` is what `engine --stop` would cut. An attached window still
+counts as in use for a takeover (below). When no window is attached and nothing is running, a `holding` line says how long the engine keeps the conversations it still has open before it lets go of them. With nothing there
 it says `no engine is holding /home/you/api on this machine`. `--status-all` does every
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.

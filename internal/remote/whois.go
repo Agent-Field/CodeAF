@@ -39,6 +39,13 @@ package remote
 // [Host.whois] and [Host.open]), so a host that agreed to go refuses the
 // conversation arriving a moment later and one that admitted a conversation
 // refuses to go.
+//
+// What a person reads on `codeaf engine --status` is a separate field:
+// [HostSelf.Working] is whether a turn, a task or a question is in flight, and
+// it stays false for an attached window with nothing running, where
+// [HostSelf.Busy] stays true. A takeover keeps reading Busy, because a window
+// on the machine is why the host must not go — a different question, answered
+// in [HostSelf.Working]'s own comment.
 
 import (
 	"bufio"
@@ -140,6 +147,13 @@ type HostSelf struct {
 	Surfaces int `json:"surfaces,omitempty"`
 	// Conversations is how many conversations the host is holding open.
 	Conversations int `json:"conversations,omitempty"`
+	// Working is whether a turn, a task or a question is in flight right now:
+	// a stream still open, a question waiting to be answered, or work the
+	// conversation handed off. It is the status line's WORKING reading, and
+	// deliberately not [HostSelf.Busy]: an attached window with nothing
+	// running keeps Busy true — a takeover may not stand the host down under
+	// it — and Working false.
+	Working bool `json:"working,omitempty"`
 	// Cells is the cells mode the host STARTED with. A host reads its
 	// environment once, so a door whose own mode differs must not attach to it
 	// silently: the chats it opened would be in the other mode.
