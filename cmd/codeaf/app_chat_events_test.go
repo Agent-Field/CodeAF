@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -95,6 +96,12 @@ func TestAppChatEventsR4F4UnknownPresenceAndSilentLists(t *testing.T) {
 	s := appDeviceSync(t, aHome)
 	peerID = s.Device.ID()
 	if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, "Mac"); err != nil {
+		t.Fatal(err)
+	}
+	// Both paired computers already have records, so startup publication does
+	// not add a directory mutation to this controlled chat-version fixture.
+	other := appDeviceSync(t, bHome)
+	if err := syncsetup.PutOwnDevice(t.Context(), other.Dir, other.Identity, other.Device, devname.Name(bHome)); err != nil {
 		t.Fatal(err)
 	}
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})

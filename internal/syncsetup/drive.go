@@ -233,15 +233,33 @@ func (s *Sync) putDevice(ctx context.Context, name string) error {
 	return PutOwnDevice(ctx, s.Dir, s.Identity, s.Device, name)
 }
 
+var ownDeviceWrites sync.Map
+
 // PutOwnDevice upserts a device's own directory record at dir: the same sealed
 // name and capability row every chat start makes ([Sync.putDevice]), exposed so
 // the doors that finish a pairing can make it too. A device may only ever write
 // its own record, the name travels sealed under the identity's key, and the
 // relay never learns it.
 func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identity, dev identity.Dev, name string) error {
+	// Chat starts, pairing and the app publisher can arrive together. Compare
+	// and write under one device lock so they cannot publish duplicate rows.
+	value, _ := ownDeviceWrites.LoadOrStore(dev.ID(), &sync.Mutex{})
+	mu := value.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
 	rec, err := deviceRecord(id, name)
 	if err != nil {
 		return err
+	}
+	listing, err := dir.List(ctx)
+	if err != nil {
+		return err
+	}
+	if old, ok := listing.Devices[dev.ID()]; ok {
+		opened, err := directory.OpenName(directory.MetadataKey(id.CellKey()), old.Name)
+		if err == nil && opened == name && old.V == rec.V && old.Platform == rec.Platform && old.Caps == rec.Caps && old.AddedBy == rec.AddedBy {
+			return nil
+		}
 	}
 	return dir.PutDevice(ctx, dev.ID(), rec)
 }

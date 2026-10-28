@@ -45,8 +45,8 @@ type appLocalChat struct {
 	copyable bool
 }
 
-// Startup offers local cells without subscribing to directory events. Device
-// management stays passive until the desktop asks for the chat inventory.
+// Startup offers local cells without starting a chat-inventory subscriber.
+// Device publication owns the paired engine's shared directory follower.
 func (b *appBackend) startLocalChatPublication() {
 	guard.Go("app/existing-chats", func() {
 		c := &b.chats

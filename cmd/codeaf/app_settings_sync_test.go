@@ -82,7 +82,7 @@ func TestAppDevicesF3CompleteStartupAndNoDuplicates(t *testing.T) {
 		t.Fatal(err)
 	}
 	backend, rec, wire := appDeviceBackend(t, a)
-	// Chat startup upserts self before its first full directory read.
+	// Chat startup and device publication both compare the existing self record.
 	if err = sa.Rename(t.Context(), "desk"); err != nil {
 		t.Fatal(err)
 	}
@@ -101,16 +101,24 @@ func TestAppDevicesF3CompleteStartupAndNoDuplicates(t *testing.T) {
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	n := 0
+	var previous *appwire.DevicesResult
 	for i, event := range rec.events {
 		if event == appwire.EventDevicesChanged {
 			n++
-			if len(rec.data[i].(appwire.DevicesResult).Devices.Devices) != 2 {
+			next := rec.data[i].(appwire.DevicesResult)
+			if len(next.Devices.Devices) != 2 {
 				t.Fatal("F3 emitted a partial roster")
 			}
+			if previous != nil && reflect.DeepEqual(*previous, next) {
+				t.Fatal("A1/F3 repeated an unchanged roster")
+			}
+			previous = &next
 		}
 	}
-	if n != 1 {
-		t.Fatalf("F3 startup emitted %d lists, want one", n)
+	// The engine now opens its shared watch at startup. Learning self presence
+	// is a real change; both its initial roster and that change stay complete.
+	if n < 1 {
+		t.Fatal("A1/F3 startup did not emit its complete roster")
 	}
 }
 

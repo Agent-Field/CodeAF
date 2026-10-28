@@ -208,6 +208,7 @@ func (d *deviceDirectory) Presence(ctx context.Context) (directory.PresenceView,
 	d.refusal(err)
 	rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
 		if err != nil {
+			s.Online = nil
 			return
 		}
 		if s.Online == nil {

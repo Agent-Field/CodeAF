@@ -32,8 +32,8 @@ const appDevicesQuiet = "Only this computer is here so far."
 // off in its Relay settings, so the terminal's environment-variable advice does not apply.
 const appSyncOff = "Sync is off on this computer."
 
-// appDevices observes traffic already owned by the engine. Opening Settings
-// does not start a follower; only a person's list request reads the relay.
+// appDevices owns the paired engine's device publication and shares its
+// directory follower with chat inventory. Opening Settings adds no follower.
 type appDevices struct {
 	home     string
 	watch    *syncsetup.DeviceObserver
@@ -41,10 +41,14 @@ type appDevices struct {
 	done     chan struct{}
 	emitMu   sync.Mutex
 	lastWire string
+	cancel   context.CancelFunc
+	wake     chan struct{}
+	owned    chan struct{}
 }
 
 func (b *appBackend) listenDevices() *appDevices {
-	d := &appDevices{home: home.Dir(), done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	d := &appDevices{home: home.Dir(), done: make(chan struct{}), cancel: cancel, wake: make(chan struct{}, 1), owned: make(chan struct{})}
 	d.watch = syncsetup.ObserveDevices(d.home)
 	publishChange := func() {
 		d.op.Lock()
@@ -57,6 +61,7 @@ func (b *appBackend) listenDevices() *appDevices {
 			publishChange()
 		}
 	})
+	guard.Go("app/own-device", func() { defer close(d.owned); d.publishOwn(ctx) })
 	return d
 }
 
@@ -85,6 +90,8 @@ func (d *appDevices) publish(emit appwire.Emitter) {
 }
 
 func (d *appDevices) close() {
+	d.cancel()
+	<-d.owned
 	d.watch.Close()
 	<-d.done
 }
@@ -179,8 +186,12 @@ func (b *appBackend) ListDevices() (appwire.Devices, error) {
 	if _, err := s.Dir.List(ctx); err != nil {
 		return appwire.Devices{}, deviceError(err)
 	}
-	if _, err := s.Dir.Presence(ctx); err != nil && !errors.Is(err, directory.ErrTooOld) {
-		return appwire.Devices{}, deviceError(err)
+	if _, err := s.Dir.Presence(ctx); err != nil {
+		// The successful roster establishes reachability. Presence is advisory
+		// and can fail independently; only an authority refusal invalidates it.
+		if errors.Is(err, directory.ErrRevoked) || errors.Is(err, directory.ErrRotated) {
+			return appwire.Devices{}, deviceError(err)
+		}
 	}
 	return d.snapshot()
 }
@@ -199,6 +210,7 @@ func (b *appBackend) RenameDevice(typed string) (appwire.DeviceRenameResult, err
 	if err != nil {
 		return appwire.DeviceRenameResult{}, err
 	}
+	d.wakePublication()
 	view, err := d.snapshot()
 	if err != nil {
 		return appwire.DeviceRenameResult{}, err

@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -131,7 +132,11 @@ func TestAppChatsEC1(t *testing.T) {
 	a := appDeviceSync(t, dirA)
 	b := appDeviceSync(t, dirB)
 	for _, s := range []*syncsetup.Sync{a, b} {
-		if err := syncsetup.PutOwnDevice(context.Background(), s.Dir, s.Identity, s.Device, map[string]string{dirA: "A", dirB: "B"}[s.Home]); err != nil {
+		name := map[string]string{dirA: "A", dirB: "B"}[s.Home]
+		if _, err := devname.Set(s.Home, name); err != nil {
+			t.Fatal(err)
+		}
+		if err := syncsetup.PutOwnDevice(context.Background(), s.Dir, s.Identity, s.Device, name); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -272,7 +277,7 @@ func TestAppPairEP1EP2L3(t *testing.T) {
 
 func assertAppPairCopyL3(t *testing.T, rec *appRecorder) {
 	t.Helper()
-	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Join another computer and enter [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. This computer now shares your chats\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Replace this computer's chats\?|This computer already has its own chats\. Pairing replaces them with the chats from your other computer\.|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Replace this computer's chats|Not now|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. This computer now shares your chats\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Replace this computer's chats\?|This computer already has its own chats\. Pairing replaces them with the chats from your other computer\.|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Replace this computer's chats|Not now|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {

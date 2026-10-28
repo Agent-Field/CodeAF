@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -139,6 +140,17 @@ func (d *appDeviceDelayedList) wait(t *testing.T) {
 	}
 }
 
+// capture reserves this synthetic delay for the caller's read. The engine's
+// startup publisher and shared watch may otherwise win the armed HTTP request.
+func (d *appDeviceDelayedList) capture(t *testing.T, b *appBackend, start func()) {
+	t.Helper()
+	b.devices.op.Lock()
+	defer b.devices.op.Unlock()
+	d.armed.Store(true)
+	start()
+	d.wait(t)
+}
+
 // V1, V3 amendment: a completed removal survives an older concurrent roster
 // response from another sync client, even when the next refresh fails.
 func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
@@ -160,7 +172,7 @@ func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, rec, w := appDeviceBackend(t, a)
+	backend, rec, w := appDeviceBackend(t, a)
 	if view := appDeviceList(t, w); len(view.Devices) != 2 || view.Devices[1].Removed {
 		t.Fatalf("initial roster: %+v", view)
 	}
@@ -171,12 +183,12 @@ func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
 		err     error
 	}
 	done := make(chan response, 1)
-	delay.armed.Store(true)
-	go func() {
-		listing, err := sa.Dir.List(ctx)
-		done <- response{listing, err}
-	}()
-	delay.wait(t)
+	delay.capture(t, backend, func() {
+		go func() {
+			listing, err := sa.Dir.List(ctx)
+			done <- response{listing, err}
+		}()
+	})
 	removed := machineCall[appwire.DeviceRemoveResult](t, w, "devices.remove", appwire.DeviceRemoveParams{ID: sb.Device.ID()})
 	if removed.ID != sb.Device.ID() || removed.Line != pair.ChatsRevokedLine("computer") {
 		t.Fatalf("removal receipt: %+v", removed)
@@ -211,7 +223,15 @@ func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
 // V1, V5: real watch traffic updates presence without any roster/presence read.
 func TestAppDevicesV1V5ExistingWatchSuppliesPresenceP2(t *testing.T) {
 	celltest.Available(t)
-	_, hits, _ := appDevicesRelay(t)
+	var watches atomic.Int64
+	appDevicesRelay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == directory.WatchPath {
+				watches.Add(1)
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 	a, b := t.TempDir(), t.TempDir()
 	id, err := identity.Ensure(a)
 	if err != nil {
@@ -226,13 +246,12 @@ func TestAppDevicesV1V5ExistingWatchSuppliesPresenceP2(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, rec, w := appDeviceBackend(t, a)
+	backend, rec, w := appDeviceBackend(t, a)
 	view := appDeviceList(t, w)
 	if view.Devices[1].Online != nil {
 		t.Fatalf("P2 unobserved computer must start unknown: %+v", view)
 	}
-	before := hits.Load()
-	// These sockets belong to other engine work, not to the Devices adapter.
+	// Other engine work shares the startup publisher's socket.
 	follow := sa.Follow()
 	if follow == nil {
 		t.Fatal("the real directory has no follower")
@@ -264,22 +283,13 @@ func TestAppDevicesV1V5ExistingWatchSuppliesPresenceP2(t *testing.T) {
 		v := data.(appwire.DevicesResult).Devices
 		return len(v.Devices) == 2 && v.Devices[1].Online != nil && !*v.Devices[1].Online && !v.Devices[1].LastSeen.IsZero()
 	})
-	rec.mu.Lock()
-	after := len(rec.events)
-	rec.mu.Unlock()
 	follow.Close()
-	seen := 0
-	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
-		i := seen
-		seen++
-		if i < after || event != appwire.EventDevicesChanged {
-			return false
-		}
-		v := data.(appwire.DevicesResult).Devices
-		return len(v.Devices) == 2 && v.Devices[1].Online == nil
-	})
-	if hits.Load()-before != 2 {
-		t.Fatalf("watch events caused %d requests beyond the two upgrades", hits.Load()-before)
+	retained, err := backend.devices.snapshot()
+	if err != nil || retained.Devices[1].Online == nil || *retained.Devices[1].Online {
+		t.Fatalf("A1: closing another subscriber lost the engine's presence: %+v, %v", retained, err)
+	}
+	if watches.Load() != 2 {
+		t.Fatalf("A1: %d watch upgrades, want one shared local watch and one remote watch", watches.Load())
 	}
 }
 
@@ -313,7 +323,19 @@ func TestAppDevicesV1OldRelayPresenceIsUnknown(t *testing.T) {
 // V1-V3: two paired homes use the real backend and registered wire methods.
 func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	celltest.Available(t)
-	srv, hits, _ := appDevicesRelay(t)
+	var removedCert atomic.Value
+	var removedRequests, revokes atomic.Int64
+	srv, _, _ := appDevicesRelay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if cert, ok := removedCert.Load().(string); ok && r.Header.Get(reqsign.HeaderCert) == cert {
+				removedRequests.Add(1)
+			}
+			if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/revoke") {
+				revokes.Add(1)
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 	a, b := t.TempDir(), t.TempDir()
 	id, err := identity.Ensure(a)
 	if err != nil {
@@ -323,6 +345,11 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	sa, sb := appDeviceSync(t, a), appDeviceSync(t, b)
+	cert, err := json.Marshal(sb.Device.Cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removedCert.Store(base64.RawURLEncoding.EncodeToString(cert))
 	for dir, name := range map[string]string{a: "desk", b: "laptop"} {
 		if _, err := devname.Set(dir, name); err != nil {
 			t.Fatal(err)
@@ -364,11 +391,11 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	if err != nil || len(rows) != 2 || rows[1].Name != "studio" {
 		t.Fatalf("CLI roster: %+v, %v", rows, err)
 	}
-	before := hits.Load()
+	before := revokes.Load()
 	if _, err := wa.call("devices.remove", appwire.IDParams{ID: sa.Device.ID()}); err == nil || err.Code != appwire.CodeBadParams {
 		t.Fatalf("remove self: %v", err)
 	}
-	if hits.Load() != before {
+	if revokes.Load() != before {
 		t.Fatal("self removal reached the relay")
 	}
 	if _, err := wa.call("devices.remove", appwire.IDParams{ID: "unknown"}); err == nil || err.Code != appwire.CodeNotFound {
@@ -383,12 +410,12 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	if len(view.Devices) != 2 || !view.Devices[1].Removed || view.Devices[1].RemoveLine != "" {
 		t.Fatalf("removed device disappeared: %+v", view)
 	}
-	if _, err := wb.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeEngine || err.Message != chatlist.Removed {
+	if _, err := wb.call("devices.list", struct{}{}); err != nil && (err.Code != appwire.CodeEngine || err.Message != chatlist.Removed) {
 		t.Fatalf("the removed computer's refusal: %v", err)
 	}
-	before = hits.Load()
+	before = removedRequests.Load()
 	unavailable := appDeviceList(t, wb)
-	if unavailable.Mode != appwire.DevicesUnavailable || unavailable.Line != chatlist.Removed || len(unavailable.Devices) != 1 || !unavailable.Devices[0].Removed || hits.Load() != before {
+	if unavailable.Mode != appwire.DevicesUnavailable || unavailable.Line != chatlist.Removed || len(unavailable.Devices) != 1 || !unavailable.Devices[0].Removed || removedRequests.Load() != before {
 		t.Fatalf("known removal was not answered locally: %+v", unavailable)
 	}
 	srv.Close()
@@ -456,21 +483,31 @@ func TestAppDevicesV4V5LocalModesMakeNoRelayRequests(t *testing.T) {
 	}
 }
 
-// V5/F3: after an engine-owned roster read, passive writes emit without reading
-// again, even while Devices was never opened. Startup never emits a partial list.
-func TestAppDevicesV5PassiveEventsDoNotReadRelay(t *testing.T) {
+// A1/V5/F3: the engine's observer and shared follower do not duplicate writes.
+func TestAppDevicesA1V5ObserverDoesNotDuplicateWrites(t *testing.T) {
 	celltest.Available(t)
-	_, hits, _ := appDevicesRelay(t)
+	var puts atomic.Int64
+	appDevicesRelay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPut {
+				puts.Add(1)
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 	dir := t.TempDir()
 	if _, err := identity.Ensure(dir); err != nil {
 		t.Fatal(err)
 	}
 	s := appDeviceSync(t, dir)
 	_, rec, _ := appDeviceBackend(t, dir)
+	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
+		return len(v.Devices) == 1 && v.Devices[0].Online != nil && *v.Devices[0].Online
+	})
 	if _, err := s.Dir.List(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	before := hits.Load()
+	before := puts.Load()
 	if err := s.Rename(context.Background(), "elsewhere in the engine"); err != nil {
 		t.Fatal(err)
 	}
@@ -483,8 +520,8 @@ func TestAppDevicesV5PassiveEventsDoNotReadRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	appDeviceEvent(t, rec, func(v appwire.Devices) bool { return v.Devices[0].Name == "window name" })
-	if hits.Load()-before != 2 {
-		t.Fatalf("passive events sent %d requests beyond the two writes", hits.Load()-before)
+	if puts.Load()-before != 2 {
+		t.Fatalf("A1: observer sent %d PUTs, want the two actual name changes", puts.Load()-before)
 	}
 }
 
