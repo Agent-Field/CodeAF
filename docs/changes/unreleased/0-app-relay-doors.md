@@ -7,7 +7,9 @@ invalidates:
   - "The desktop engine previously required terminal pairing; it now serves all four pairing modes with explicit questions and cancellation."
   - "The app engine previously exposed only held-chat location; it now lists chats on other computers and conditionally continues them here."
   - "Finished cell chats previously waited for another turn before desktop publication; paired app starts and pairing completion now offer them through the shared background publisher."
-  - "Desktop inventory previously changed relative save-age sentences on unrelated version bumps; fixed save timestamps now leave unchanged rows quiet."
+  - "Desktop inventory previously inferred offline from an expired chat hold; offline wording now requires an explicit offline presence fact."
+  - "Desktop saved times previously came from relay publication; new publications carry the sealed head's turn time, and takeover text leaves dates and ages to the desktop."
+  - "Desktop inventory reads previously emitted chat changes; list calls now stay silent and the follower compares actual last-emitted content."
 ---
 The additive app wire reports the resolved Relay address and source, retains the
 last pairing operation, and sends device and sync changes after pairing. Joining
@@ -35,3 +37,10 @@ thinking refusal gets one immediate repair without reasoning, remembered for the
 process; a permanent capability refusal does not retain a retryable app turn.
 Private takeover staging folders are excluded from app listing and automatic
 recovery, preventing copied working presence from opening them before installation.
+
+Startup publication preserves its signed quiet release through the native relay's
+presence wrapper, leaving no live lease or unauthorized release. Unknown computer
+presence and unknown saved-turn times are omitted. A closed chat makes no claim
+that its computer is offline; unchanged chat rows stay quiet across inventory reads.
+Turn-time metadata is sent only when the relay advertises support, preserving
+publication on older relays. Historical records are not backfilled at startup.

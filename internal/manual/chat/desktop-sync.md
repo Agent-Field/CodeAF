@@ -101,7 +101,12 @@ computer's name. An online dot appears only when the engine knows its presence.
 Finished movable chats saved before pairing are shared after pairing and when
 the paired app engine starts. This does not open the chat or start a new turn.
 An open, idle chat says `open on <name>`; this describes where it is open and
-does not mean a reply is running. Saved-time sentences use a fixed date and time.
+does not mean a reply is running. Closing a chat does not make its computer
+offline. `<name> offline` appears only when that computer is known to be offline;
+unknown presence has no online dot or offline claim. The saved time is the time
+of the newest shared saved turn, shown in your local time, rather than the time
+it was copied to the relay. An unknown saved time is left out. The engine's
+takeover sentence adds holder or pending-work facts without repeating a date or age.
 Select a chat to preview its title, saved time and engine sentence. Continue
 here moves it through the engine, then opens the returned local chat. Its
 history and working copies use the same continuation path as the terminal.
