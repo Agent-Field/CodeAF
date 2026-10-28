@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"runtime"
 	"slices"
@@ -23,50 +24,99 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
-// appDevices observes traffic already owned by the engine. Opening Settings
-// does not start a follower; only a person's list request reads the relay.
+// appDevicesQuiet is the desktop's line for a home that has not paired yet: the
+// desktop pairs by itself (devices.pair), so it never sends people to a terminal.
+const appDevicesQuiet = "Only this computer is here so far."
+
+// appSyncOff is the desktop's line when sync is off: the desktop turns it on and
+// off in its Relay settings, so the terminal's environment-variable advice does not apply.
+const appSyncOff = "Sync is off on this computer."
+
+// appDevices owns the paired engine's device publication and shares its
+// directory follower with chat inventory. Opening Settings adds no follower.
 type appDevices struct {
-	home  string
-	watch *syncsetup.DeviceObserver
-	op    sync.Mutex
-	done  chan struct{}
+	home     string
+	watch    *syncsetup.DeviceObserver
+	op       sync.Mutex
+	done     chan struct{}
+	emitMu   sync.Mutex
+	lastWire string
+	cancel   context.CancelFunc
+	wake     chan struct{}
+	owned    chan struct{}
 }
 
 func (b *appBackend) listenDevices() *appDevices {
-	d := &appDevices{home: home.Dir(), done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	d := &appDevices{home: home.Dir(), done: make(chan struct{}), cancel: cancel, wake: make(chan struct{}, 1), owned: make(chan struct{})}
 	d.watch = syncsetup.ObserveDevices(d.home)
+	publishChange := func() {
+		d.op.Lock()
+		defer d.op.Unlock()
+		d.publish(b.emit)
+	}
 	guard.Go("app/devices", func() {
 		defer close(d.done)
 		for range d.watch.Changes() {
-			if view, err := d.snapshot(); err == nil {
-				b.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
-			}
+			publishChange()
 		}
 	})
+	guard.Go("app/own-device", func() { defer close(d.owned); d.publishOwn(ctx) })
 	return d
 }
 
+// publishDevices compares the wire value because observer hints can describe
+// unrelated directory changes, and explicit actions also publish their result.
+func (b *appBackend) publishDevices() {
+	d := b.devices
+	d.op.Lock()
+	defer d.op.Unlock()
+	d.publish(b.emit)
+}
+
+func (d *appDevices) publish(emit appwire.Emitter) {
+	d.emitMu.Lock()
+	defer d.emitMu.Unlock()
+	view, complete, err := d.snapshotState()
+	if err != nil || view.Mode == appwire.DevicesOn && !complete {
+		return
+	}
+	encoded, err := json.Marshal(appwire.DevicesResult{Devices: view})
+	if err != nil || string(encoded) == d.lastWire {
+		return
+	}
+	d.lastWire = string(encoded)
+	emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+}
+
 func (d *appDevices) close() {
+	d.cancel()
+	<-d.owned
 	d.watch.Close()
 	<-d.done
 }
 
 func (d *appDevices) snapshot() (appwire.Devices, error) {
+	view, _, err := d.snapshotState()
+	return view, err
+}
+
+func (d *appDevices) snapshotState() (appwire.Devices, bool, error) {
 	// A first read needs a stable local device id without turning a fresh
 	// identity into a fleet that is allowed to contact the relay.
 	id, err := identity.EnsureSolo(d.home)
 	if err != nil {
-		return appwire.Devices{}, err
+		return appwire.Devices{}, false, err
 	}
 	self, err := identity.Device(d.home)
 	if err != nil {
-		return appwire.Devices{}, err
+		return appwire.Devices{}, false, err
 	}
 	view := appwire.Devices{Mode: appwire.DevicesOn}
 	known := d.watch.Snapshot(id, self)
 	switch {
 	case !syncsetup.Resolve(d.home).On():
-		view.Mode, view.Line = appwire.DevicesOff, chatlist.SyncOff
+		view.Mode, view.Line = appwire.DevicesOff, appSyncOff
 	case !cell.Available():
 		view.Mode, view.Line = appwire.DevicesUnavailable, cell.UnavailableReason()
 	case errors.Is(known.Refused, dirwatch.ErrRevoked):
@@ -74,7 +124,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	case errors.Is(known.Refused, dirwatch.ErrRotated):
 		view.Mode, view.Line = appwire.DevicesUnavailable, chatlist.Replaced
 	case !syncsetup.MayTalk(d.home):
-		view.Mode, view.Line = appwire.DevicesQuiet, chatlist.DevicesQuiet
+		view.Mode, view.Line = appwire.DevicesQuiet, appDevicesQuiet
 	}
 	if view.Mode != appwire.DevicesOn {
 		if rec, ok := known.Devices[self.ID()]; ok {
@@ -110,7 +160,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	slices.SortFunc(view.Devices, func(a, b appwire.Device) int {
 		return cmp.Or(-cmp.Compare(rank(a.Self), rank(b.Self)), cmp.Compare(rank(a.Removed), rank(b.Removed)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
 	})
-	return view, nil
+	return view, known.Complete, nil
 }
 
 func (b *appBackend) ListDevices() (appwire.Devices, error) {
@@ -125,7 +175,7 @@ func (b *appBackend) ListDevices() (appwire.Devices, error) {
 	if err != nil || !ok {
 		view.Devices, view.Mode = view.Devices[:1], appwire.DevicesUnavailable
 		view.Devices[0].Online = nil
-		view.Line = chatlist.SyncOff
+		view.Line = appSyncOff
 		if err != nil {
 			view.Line = err.Error()
 		}
@@ -136,8 +186,12 @@ func (b *appBackend) ListDevices() (appwire.Devices, error) {
 	if _, err := s.Dir.List(ctx); err != nil {
 		return appwire.Devices{}, deviceError(err)
 	}
-	if _, err := s.Dir.Presence(ctx); err != nil && !errors.Is(err, directory.ErrTooOld) {
-		return appwire.Devices{}, deviceError(err)
+	if _, err := s.Dir.Presence(ctx); err != nil {
+		// The successful roster establishes reachability. Presence is advisory
+		// and can fail independently; only an authority refusal invalidates it.
+		if errors.Is(err, directory.ErrRevoked) || errors.Is(err, directory.ErrRotated) {
+			return appwire.Devices{}, deviceError(err)
+		}
 	}
 	return d.snapshot()
 }
@@ -156,11 +210,12 @@ func (b *appBackend) RenameDevice(typed string) (appwire.DeviceRenameResult, err
 	if err != nil {
 		return appwire.DeviceRenameResult{}, err
 	}
+	d.wakePublication()
 	view, err := d.snapshot()
 	if err != nil {
 		return appwire.DeviceRenameResult{}, err
 	}
-	b.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+	d.publish(b.emit)
 	return appwire.DeviceRenameResult{Device: view.Devices[0], Line: line}, nil
 }
 
@@ -183,7 +238,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 		return appwire.DeviceRemoveResult{}, deviceError(err)
 	}
 	if !ok {
-		return appwire.DeviceRemoveResult{}, appwire.Errorf(appwire.CodeEngine, "%s", chatlist.SyncOff)
+		return appwire.DeviceRemoveResult{}, appwire.Errorf(appwire.CodeEngine, "%s", appSyncOff)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), syncsetup.DeviceRequestWithin)
 	defer cancel()
@@ -210,7 +265,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 	// the relay. The revoke already updated this process's remembered record.
 	view, err = d.snapshot()
 	if err == nil {
-		b.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+		d.publish(b.emit)
 	}
 	return appwire.DeviceRemoveResult{ID: deviceID, Line: line}, nil
 }

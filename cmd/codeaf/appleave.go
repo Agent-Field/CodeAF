@@ -31,6 +31,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
 const (
@@ -40,7 +42,9 @@ const (
 	// appLeaveWait is how long the careful wrap-up may take before the process
 	// ends regardless: the factory's runner and its service each get their own
 	// stop wait, the conversations theirs, and a running process its grace.
-	appLeaveWait = 2*appLocalStopWait + appReleaseWait + appQuitGraceS*time.Second
+	// Local sealing, final publication and the grouped disk flush each retain
+	// their complete saving bound before a forced exit can cut them off.
+	appLeaveWait = 2*appLocalStopWait + appReleaseWait + appQuitGraceS*time.Second + 3*cellstore.SealWithin
 )
 
 // watchAppParent calls gone once the process that started this one has ended,

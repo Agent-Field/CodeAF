@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const (
@@ -18,6 +19,9 @@ const (
 	DefaultInterval = 5 * time.Second
 	// MaxBackoff caps the wait between flushes after failures.
 	MaxBackoff = 60 * time.Second
+	// ReleaseRetryEvery absorbs a brief coordinator change inside the close
+	// deadline without delaying a successful release or a definitive refusal.
+	ReleaseRetryEvery = 50 * time.Millisecond
 )
 
 // Publishing wraps the Stage 0 store: seal exactly as before, then note the
@@ -38,22 +42,31 @@ type Batcher struct {
 	Info         func() PublishInfo
 	OnFlush      func(Flush)      // telemetry hook
 	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
-	OnError      func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
-	Now          func() time.Time // default time.Now; tests inject a fake clock
+	// OnLost refuses new work before keeping pending work can fail.
+	OnLost  func()
+	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
+	Now     func() time.Time // default time.Now; tests inject a fake clock
+	// OnRenewalChange wakes local readers when renewal health or ownership changes.
+	OnRenewalChange func()
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
 	// the heartbeat is sent only while it cannot. Nil beats every tick.
 	Liveness Liveness
 	// Sleep waits d or until ctx ends; tests inject a fake. Default is real time.
 	Sleep func(ctx context.Context, d time.Duration) error
 
-	mu        sync.Mutex // guards Driving, noted, stale, published, refusedSince and told; never held over the network
+	mu        sync.Mutex // guards driving and renewal state; never held over the network
 	noted     []string   // heads of sealed turns not yet durable, oldest first
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
+	closing   bool       // The closing caller owns subsequent publishes and release.
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once
+	// renewalSince retains the first unreachable renewal for the current hold.
+	renewalSince time.Time
+	// renewalEnded prevents a displaced or removed writer from claiming a hold.
+	renewalEnded bool
 
 	work  wakeup // tells the flush loop a turn was noted, so an upload can start at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
@@ -357,12 +370,20 @@ func realSleep(ctx context.Context, d time.Duration) error {
 
 // Close is the quit and lid-close path: flush, publish, release.
 func (b *Batcher) Close(ctx context.Context) error {
+	b.mu.Lock()
+	b.closing = true
+	b.mu.Unlock()
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
 	// A release is the cross-computer clean-quit signal. Publishing must finish
 	// first; otherwise another home could automatically open an older head.
-	if err := b.drain(ctx); err != nil {
-		return err
+	for b.Pending() > 0 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := b.drain(ctx); err != nil {
+			return err
+		}
 	}
 	return b.release(ctx)
 }
@@ -374,11 +395,27 @@ func (b *Batcher) release(ctx context.Context) error {
 	if d.Fence == 0 || stale {
 		return nil
 	}
-	err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
-	if errors.Is(err, directory.ErrFenceStale) {
-		return nil
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
+		if err == nil || errors.Is(err, directory.ErrFenceStale) {
+			b.endRenewals()
+		}
+		if errors.Is(err, directory.ErrFenceStale) {
+			return nil
+		}
+		if !errors.Is(err, directory.ErrUnreachable) && !errors.Is(err, wireauth.ErrUnavailable) {
+			return err
+		}
+		if _, bounded := ctx.Deadline(); !bounded {
+			return err
+		}
+		if err := b.sleeper()(ctx, ReleaseRetryEvery); err != nil {
+			return err
+		}
 	}
-	return err
 }
 
 // flush publishes the newest noted turn and says how long to rest before the
@@ -386,7 +423,16 @@ func (b *Batcher) release(ctx context.Context) error {
 func (b *Batcher) flush(ctx context.Context) time.Duration {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
+	if b.isClosing() {
+		return b.interval()
+	}
 	return b.after(b.drain(ctx))
+}
+
+func (b *Batcher) isClosing() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.closing
 }
 
 // after turns a flush's outcome into the next wait. A success needs none: the
@@ -428,8 +474,12 @@ func (b *Batcher) drain(ctx context.Context) error {
 func (b *Batcher) publish(ctx context.Context, head string) error {
 	d, _, _ := b.view()
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
+	b.renewalResult(d, err)
 	if errors.Is(err, ErrSuperseded) {
 		b.setStale()
+		if b.OnLost != nil {
+			b.OnLost()
+		}
 		return b.resolve(ctx)
 	}
 	if err != nil {
@@ -446,11 +496,15 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 
 // beat renews the lease and reports how many turns are not durable yet.
 func (b *Batcher) beat(ctx context.Context) {
+	if b.isClosing() {
+		return
+	}
 	d, pending, stale := b.view()
 	if d.Fence == 0 || stale {
 		return
 	}
 	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending})
+	b.renewalResult(d, err)
 	switch {
 	case err == nil:
 		b.tell(pending)
@@ -468,10 +522,16 @@ func (b *Batcher) beat(ctx context.Context) {
 func (b *Batcher) lost(ctx context.Context, seen Driving) {
 	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
+	if b.isClosing() {
+		return
+	}
 	if now, _, _ := b.view(); now.ID() != seen.ID() || now.Fence != seen.Fence {
 		return
 	}
 	b.setStale()
+	if b.OnLost != nil {
+		b.OnLost()
+	}
 	_ = b.resolve(ctx)
 }
 
@@ -480,6 +540,21 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 func (b *Batcher) resolve(ctx context.Context) error {
 	head, n := b.newest()
 	by := b.holder(ctx)
+	if local, ok := b.Publisher.Engine.(interface {
+		LocalWork(context.Context, cell.Cell) (bool, error)
+	}); ok && n > 0 {
+		driving, _, _ := b.view()
+		work, err := local.LocalWork(ctx, driving.Cell)
+		if err != nil {
+			return err
+		}
+		if !work {
+			// Retirement can seal late accounting after the shared reply.
+			// Forget that pending save without creating a kept-work branch.
+			b.durable(head)
+			n = 0
+		}
+	}
 	if n == 0 {
 		b.superseded(Superseded{By: by})
 		return nil
@@ -561,11 +636,21 @@ func (b *Batcher) view() (Driving, uint32, bool) {
 
 func (b *Batcher) adopt(d Driving) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	changed := b.Driving.ID() != d.ID() || b.Driving.Fence != d.Fence
+	if changed {
+		b.renewalSince = time.Time{}
+	}
 	*b.Driving = d
+	b.mu.Unlock()
+	if changed {
+		b.renewalChanged()
+	}
 }
 
-func (b *Batcher) setStale()   { b.setFlag(&b.stale, true) }
+func (b *Batcher) setStale() {
+	b.setFlag(&b.stale, true)
+	b.endRenewals()
+}
 func (b *Batcher) clearStale() { b.setFlag(&b.stale, false) }
 
 func (b *Batcher) setFlag(flag *bool, v bool) {

@@ -50,6 +50,34 @@ func doorChat(t *testing.T) (session.Config, cell.Cell) {
 	return session.Config{Place: session.Place{Dir: c.Root, Workspace: t.TempDir()}}, c
 }
 
+// spokenDoorChat records a person's command through the ordinary session input.
+// Publication fixtures need conversation work rather than an unused startup chat.
+func spokenDoorChat(t *testing.T) (session.Config, cell.Cell) {
+	t.Helper()
+	cfg, c := doorChat(t)
+	cfg.Workspace, cfg.SessionFile = cfg.Place.Workspace, cfg.Place.Transcript()
+	cfg.Model, cfg.APIKey, cfg.BaseURL = "stub/chat", "stub", "http://127.0.0.1:1"
+	agent, err := session.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := agent.SubmitBash(t.Context(), "! printf fixture")
+	if err != nil {
+		agent.Close()
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			agent.Close()
+			t.Fatal(event.Text)
+		}
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return cfg, c
+}
+
 // toolCallOn completes the call and its D4 capture boundary before callers
 // inspect the sealed turn or release the fixture's files.
 func toolCallOn(t *testing.T, seat executor.Seat, workspace string) error {
@@ -90,7 +118,7 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 // With a relay set the door notes every sealed turn for it, and closing the
 // door gives the lease back after publishing what was sealed.
 func TestDriveSideDoorPublishesAndReleases(t *testing.T) {
-	cfg, c := doorChat(t)
+	cfg, c := spokenDoorChat(t)
 	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
 	t.Cleanup(srv.Close)
 	if _, err := identity.Ensure(home.Dir()); err != nil {
@@ -135,7 +163,7 @@ func TestSayRefusalOnlyForRefusals(t *testing.T) {
 // closing the chat gives the lease back, exactly as for a chat that was paired
 // from the start.
 func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
-	cfg, c := doorChat(t)
+	cfg, c := spokenDoorChat(t)
 	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
 	t.Cleanup(srv.Close)
 	t.Setenv(syncsetup.URLVar, srv.URL)
@@ -167,7 +195,7 @@ func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
 // A chat open while its computer is solo uploads its next turns the moment the
 // computer is approved, with no reopen.
 func TestDriveSideStartsWhenTheSoloMarkerEnds(t *testing.T) {
-	cfg, c := doorChat(t)
+	cfg, c := spokenDoorChat(t)
 	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
 	t.Cleanup(srv.Close)
 	t.Setenv(syncsetup.URLVar, srv.URL)
@@ -257,7 +285,7 @@ func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
 // its own. The drive side kept from before the move only shows the chat, so reusing it would
 // refuse every tool call in the chat that was moved back.
 func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
-	cfg, c := doorChat(t)
+	cfg, c := spokenDoorChat(t)
 	srv, published, closeRelay := driveRelayWithPublication(t, c.ID)
 	defer closeRelay()
 	t.Setenv(syncsetup.URLVar, srv.URL)
@@ -326,7 +354,7 @@ func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 // drive side this window kept, opens with a drive side of its own: the old one publishes under a
 // lease that is gone, so reusing it would refuse every tool call in the chat that came back.
 func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
-	cfg, c := doorChat(t)
+	cfg, c := spokenDoorChat(t)
 	srv, published, closeRelay := driveRelayWithPublication(t, c.ID)
 	defer closeRelay()
 	t.Setenv(syncsetup.URLVar, srv.URL)
@@ -365,7 +393,12 @@ func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("Open(%s) = %v, %v", dir, ok, err)
 		}
-		if _, err := s.Dir.Acquire(context.Background(), c.ID, directory.AcquireOpts{Force: true}); err != nil {
+		// R25/C7 require the tuple the person observed; blind force is refused.
+		view, err := s.Dir.Cell(context.Background(), c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Dir.Acquire(context.Background(), c.ID, directory.AcquireOpts{Force: true, Expect: &directory.LeaseExpectation{Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence}}); err != nil {
 			t.Fatal(err)
 		}
 	}

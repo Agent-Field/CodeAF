@@ -84,7 +84,7 @@ func Device(home string) (Dev, error) {
 // deviceFor returns the stored device when its cert verifies under id, else a
 // fresh device. A replaced identity therefore never keeps a stale device.
 func deviceFor(home string, id Identity) (Dev, error) {
-	if d, err := loadDevice(home); err == nil && d.Cert.Verify(id.PublicKey()) == nil {
+	if d, err := LoadDevice(home); err == nil && d.Cert.Verify(id.PublicKey()) == nil {
 		return d, nil
 	}
 	d, err := newDevice(id)
@@ -106,7 +106,9 @@ func (d Dev) document() deviceDocument {
 	return deviceDocument{V: version, Seed: hex.EncodeToString(d.seed[:]), Cert: d.Cert}
 }
 
-func loadDevice(home string) (Dev, error) {
+// LoadDevice reads an existing device without creating an identity or keys.
+// A missing device is returned as a file error, so authority checks stay reads.
+func LoadDevice(home string) (Dev, error) {
 	raw, err := os.ReadFile(filepath.Join(home, DeviceFile))
 	if err != nil {
 		return Dev{}, err

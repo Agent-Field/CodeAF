@@ -247,16 +247,20 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 // on the same Config.mayDelegate predicate that controls the prompt.
 var taskSchemaWithoutViaJSON = strings.Replace(taskSchemaJSON, taskViaSchemaJSON, "", 1)
 
+// A model may select private working roots, but cannot grant landing authority.
+const workspaceSetTaskSchema = `"workspace_set":{"type":"object","description":"Optional private sibling working roots. Use when a task needs several explicitly selected folders. Each root is copied privately; this does not authorize source writes. Omit ground and where when using this field.","properties":{"primary":{"type":"string"},"roots":{"type":"array","items":{"type":"object","properties":{"source":{"type":"string"},"source_uri":{"type":"string"},"slot":{"type":"string"},"access":{"type":"string","enum":["read","write"]}},"required":["slot","access"],"additionalProperties":false}}},"required":["primary","roots"],"additionalProperties":false}`
+
 // taskArguments is the wire form.
 type taskArguments struct {
-	Irreversible bool   `json:"irreversible,omitempty"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	Brief        string `json:"brief"`
-	Deliverable  string `json:"deliverable"`
-	Where        string `json:"where"`
-	Ground       string `json:"ground"`
-	Acceptance   string `json:"acceptance"`
+	Irreversible bool                 `json:"irreversible,omitempty"`
+	Title        string               `json:"title"`
+	Summary      string               `json:"summary"`
+	Brief        string               `json:"brief"`
+	Deliverable  string               `json:"deliverable"`
+	Where        string               `json:"where"`
+	Ground       string               `json:"ground"`
+	WorkspaceSet *WorkspaceSetRequest `json:"workspace_set,omitempty"`
+	Acceptance   string               `json:"acceptance"`
 	// Expects is what this brief assumes is already true of the folder the
 	// worker will get, checked before it is allowed to spend anything
 	// (handoffcontract.go). It is optional and the harness never writes one.
@@ -291,6 +295,7 @@ type taskArguments struct {
 type taskSpec struct {
 	// Irreversible work always waits for an explicit answer.
 	irreversible bool
+	workspaceSet *WorkspaceSetRequest
 	title        string
 	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
 	// door cutting one out of a sentence it had to hand. It is the whole of what
@@ -610,6 +615,9 @@ func (a *Agent) taskTools() []bare.Tool {
 	schema := taskSchemaWithoutViaJSON
 	if a.config.mayDelegate() {
 		schema = taskSchemaJSON
+	}
+	if WorkspaceOwnershipEnabled(a.config.Place) {
+		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+workspaceSetTaskSchema+`,`, 1)
 	}
 	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(schema), a.stageTask)}
 }
@@ -970,6 +978,9 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 // answered as a refusal.
 func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
 	if !a.runRoadOwns(spec) {
+		if _, err := a.admitWorkspaceProposal(ctx, p.stand, spec); err != nil {
+			return runDidNotStart(p.id, err), true, true
+		}
 		return "", false, false
 	}
 	a.mu.Lock()
@@ -1020,13 +1031,14 @@ func (a *Agent) handoffDelegate(spec taskSpec) (*delegate.Delegate, error) {
 // person's stop or the room closing. Whether it joined a run already underway
 // is this door's answer, decided under the start lock.
 func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (bool, taskStand, []string, error) {
-	stand := p.stand
-	if via != nil {
-		stand = delegateStand(stand.dir)
+	stand, err := a.admitWorkspaceProposal(ctx, p.stand, spec)
+	if err != nil {
+		return false, stand, nil, err
 	}
 	asked := programAsked(spec)
 	var prior *programOutcome
 	if via != nil {
+		stand = delegateStand(stand.dir)
 		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
@@ -1058,7 +1070,7 @@ func (a *Agent) handoffAnswer(p *stagedProposal, spec taskSpec, elsewhere string
 	if via != nil {
 		return via.Name + " could not start: " + err.Error(), true, true
 	}
-	if !errors.Is(err, errRunRoadUnavailable) {
+	if !singletonRunFallback(err, stand) {
 		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
 	}
 	return "", false, false
@@ -1213,14 +1225,15 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		irreversible: parsed.Irreversible,
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
-		named:       strings.TrimSpace(parsed.Title) != "",
-		summary:     strings.TrimSpace(parsed.Summary),
-		brief:       strings.TrimSpace(parsed.Brief),
-		deliverable: strings.TrimSpace(parsed.Deliverable),
-		where:       strings.TrimSpace(parsed.Where),
-		ground:      strings.TrimSpace(parsed.Ground),
-		acceptance:  strings.TrimSpace(parsed.Acceptance),
-		dependsOn:   parsed.DependsOn,
+		named:        strings.TrimSpace(parsed.Title) != "",
+		workspaceSet: cloneWorkspaceSetRequest(parsed.WorkspaceSet),
+		summary:      strings.TrimSpace(parsed.Summary),
+		brief:        strings.TrimSpace(parsed.Brief),
+		deliverable:  strings.TrimSpace(parsed.Deliverable),
+		where:        strings.TrimSpace(parsed.Where),
+		ground:       strings.TrimSpace(parsed.Ground),
+		acceptance:   strings.TrimSpace(parsed.Acceptance),
+		dependsOn:    parsed.DependsOn,
 		// THE MODEL'S OWN "THIS IS WIDE", carried to [TaskGraph.admit] where the
 		// road is armed. Absent is false, which is the honest default: a model
 		// that has never heard of this argument proposes exactly the task it
@@ -1230,6 +1243,9 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		via:        strings.TrimSpace(parsed.Via),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
+	}
+	if problem := validateTaskWorkspaceProposal(spec); problem != "" {
+		return spec, problem
 	}
 	if word := strings.TrimSpace(parsed.Effort); word != "" {
 		effort, ok := crewroute.ParseEffort(word)
@@ -1748,7 +1764,7 @@ func taskWhereNotice(place Place, workspace string, id uint64, where string, mod
 	if strings.EqualFold(where, "in place") {
 		_, redirectedInPlace = whereInsideRepository(where, workspace)
 	}
-	if where != "" && (mode == TaskModeWorktree || strings.EqualFold(where, "in place") && redirectedInPlace) {
+	if where != "" && (mode == TaskModeWorktree || mode == TaskModeMirror || strings.EqualFold(where, "in place") && redirectedInPlace) {
 		if trees := place.Trees(); trees != "" {
 			return filepath.Join(trees, strconv.FormatUint(id, 10))
 		}
@@ -1880,4 +1896,41 @@ func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
 	for _, watcher := range watchers {
 		watcher.send(event)
 	}
+}
+
+func validateTaskWorkspaceProposal(spec taskSpec) string {
+	if spec.workspaceSet != nil {
+		if !bashBeltAsked() {
+			return "workspace_set requires the Bash task engine"
+		}
+		if spec.via != "" || spec.ground != "" || spec.where != "" {
+			return "workspace_set cannot be combined with via, ground, or where; declare each selected root explicitly"
+		}
+		for _, root := range spec.workspaceSet.Roots {
+			if root.Landing != "" || root.LandingURI != "" {
+				return "workspace_set proposals cannot authorize landing; work stays in private copies"
+			}
+		}
+	}
+	return ""
+}
+
+func (a *Agent) admitWorkspaceProposal(ctx context.Context, stand taskStand, spec taskSpec) (taskStand, error) {
+	if spec.workspaceSet != nil && !WorkspaceOwnershipEnabled(a.config.Place) {
+		return stand, errors.New("workspace_set requires private task placement for this conversation")
+	}
+	if spec.workspaceSet != nil && (chatRunEngine == nil || a.config.InTask) {
+		return stand, errors.New("workspace_set requires the linked conversation run engine")
+	}
+	if stand.workspaceSet != nil {
+		request := cloneWorkspaceSetRequest(stand.workspaceSet)
+		if err := admitWorkspaceSetRequest(ctx, a.config.Place, request); err != nil {
+			return stand, err
+		}
+		stand.workspaceSet = request
+	}
+	return stand, nil
+}
+func singletonRunFallback(err error, stand taskStand) bool {
+	return stand.workspaceSet == nil && errors.Is(err, errRunRoadUnavailable)
 }

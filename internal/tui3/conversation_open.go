@@ -5,57 +5,107 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/Agent-Field/codeaf/internal/sanitize"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/charmbracelet/x/ansi"
 )
 
 const conversationOpeningWord = "opening conversation… · esc cancels"
+const conversationOpeningState = "opening chat"
+const openingCancelledDraftWord = "opening cancelled; your words are back in this chat, unsent"
 
 // A first message gets its own screen before the engine has opened its journal.
 // The old conversation and both composers remain intact until opening succeeds.
 // This is a receipt of the gesture, not a claim that the model has accepted it.
 type conversationPreview struct {
-	text string
+	view             *app
+	ownershipPending bool
 }
 
-func (a *app) previewConversation(text string) {
-	if a.conversationOpening {
-		a.conversationPreview = &conversationPreview{text: text}
-		a.touch()
+func (a *app) previewConversation(text string) tea.Cmd {
+	if !a.conversationOpening {
+		return nil
 	}
+	// This view owns no engine, previous transcript or saved composer. It uses
+	// the ordinary chat layout while the new conversation opens off the loop.
+	view := &app{
+		ctx: a.ctx, pal: a.pal, mdBase: a.mdBase, model: a.model,
+		place: a.place, workspace: a.workspace, host: a.host, machine: a.machine,
+		chords: a.chords, linear: a.linear, clock: a.clock,
+		welcome: welcome{spent: true}, stick: true, sel: -1, echoAt: -1,
+		state: stateWorking, turnBegan: a.now(), railAway: a.railAway,
+		conversationOpening: true,
+		feed:                feed{live: -1, think: -1, entries: []entry{{kind: entryUser, text: text, pending: true}}},
+	}
+	a.conversationPreview = &conversationPreview{view: view}
+	if text == "" {
+		view.entries = nil
+	}
+	a.touch()
+	return a.wake()
 }
 
 func (a *app) conversationPreviewFrame(width, height int) (string, int, int) {
-	a.caret = false
-	rows := a.headRows(width, a.tabsRow(width), a.pal)
-	rows = append(rows, "", a.pal.dim("new chat"), "")
-	if text := a.conversationPreview.text; text != "" {
-		// Only a viewport can be shown while opening. Bound the work before
-		// sanitizing and wrapping a potentially very large pasted message.
-		text = text[:min(len(text), max(width, 1)*max(height, 1)*4)]
-		body := strings.Split(ansi.Hardwrap(sanitize.Text(text), max(width-4, 1), true), "\n")
-		for i, line := range body {
-			lead := userLead
-			if i == 0 {
-				lead = a.pal.youGlyph()
-			}
-			rows = append(rows, a.pal.muted(lead+line))
+	view := a.conversationPreview.view
+	view.width, view.height, view.paints = width, height, a.paints
+	rows, x, y := view.chatFrameLines(width, height)
+	// Navigation belongs to the real window, including its existing tabs and
+	// the hit targets that will answer a click while opening is pending.
+	head := a.headRows(width, a.tabsRow(width), a.pal)
+	copy(rows, head)
+	a.caret = true
+	return strings.Join(rows, "\n"), x, y
+}
+
+// Drafting a follow-up does not withdraw the first send. Navigation still
+// cancels through the existing door, preserving both unsent sentences.
+func (a *app) openingDraftKey(msg tea.KeyPressMsg) bool {
+	if a.conversationPreview == nil {
+		return false
+	}
+	view := a.conversationPreview.view
+	if _, taken := view.pasteKey(msg); taken {
+		a.touch()
+		return true
+	}
+	if msg.Key().Text == "" {
+		switch msg.String() {
+		case "backspace", "delete", "left", "right", "up", "down", "home", "end",
+			"ctrl+a", "ctrl+e", "ctrl+u", "super+backspace", "ctrl+k",
+			"alt+backspace", "ctrl+backspace", "ctrl+z", "ctrl+shift+z",
+			"super+left", "super+right", "meta+left", "meta+right",
+			"shift+left", "shift+right", "super+a", "meta+a",
+			"shift+enter", "alt+enter", "ctrl+j":
+		default:
+			return false
 		}
-		rows = append(rows, "")
 	}
-	rows = append(rows, a.pal.dim(conversationOpeningWord))
-	// The acknowledgement stays visible even when a pasted prompt fills the pane.
-	if len(rows) > height && height > 0 {
-		rows = append(rows[:height-1], a.pal.dim(conversationOpeningWord))
+	view.key(msg)
+	view.touch()
+	a.touch()
+	return true
+}
+
+func (a *app) restoreOpeningDraft(preview *conversationPreview) {
+	if preview == nil {
+		return
 	}
-	for len(rows) < height {
-		rows = append(rows, "")
+	view := preview.view
+	if view.pasting {
+		view.pasting = false
+		view.paste(string(view.pasted))
+		view.pasted = nil
 	}
-	for i := range rows {
-		rows[i] = fit(rows[i], width)
+	if view.input.empty() {
+		return
 	}
-	return strings.Join(rows, "\n"), 0, 0
+	box := &a.input
+	if a.at(pageHome) {
+		box = &a.home.box
+	}
+	text := preview.view.pastesUnfolded(preview.view.input.String())
+	if !box.empty() {
+		text = box.String() + "\n" + text
+	}
+	box.setText(text)
 }
 
 // conversationLater separates preparing a conversation from committing its
@@ -80,6 +130,7 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 			return nil
 		}
 		return func(here bool) tea.Cmd {
+			preview := a.conversationPreview
 			current := a.conversationOpening && request == a.conversationRequest
 			if current {
 				a.conversationOpening = false
@@ -93,25 +144,59 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 			}
 			a.touch()
 			if err != nil {
+				a.restoreOpeningDraft(preview)
 				if len(onError) > 0 {
 					return onError[0](err)
 				}
 				say(err.Error())
 				return nil
 			}
-			return take(conv)
+			// The ownership door captures the first submission separately from the
+			// editable follow-up before it waits for the directory reading.
+			a.conversationPreview = preview
+			cmd := take(conv)
+			a.conversationPreview = nil
+			if preview != nil {
+				if !a.liveComposer().empty() && !preview.ownershipPending {
+					a.restoreOpeningDraft(preview)
+				} else {
+					a.putComposer(preview.view.liveComposer())
+				}
+				if preview.view.pasting {
+					a.pasting, a.pasteAt = true, preview.view.pasteAt
+					a.pasted = append([]rune(nil), preview.view.pasted...)
+				}
+			}
+			return cmd
 		}
 	})
 }
 
 func (a *app) cancelConversationOpening() {
+	if a.homeTakeDraft != nil {
+		a.restoreTakeDraft(*a.homeTakeDraft)
+		a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
+	}
+	hadDraft := a.conversationPreview != nil && (!a.conversationPreview.view.input.empty() || len(a.conversationPreview.view.pasted) > 0)
+	if a.conversationPreview == nil {
+		defer a.tabSettleTeam()
+	}
+	a.restoreOpeningDraft(a.conversationPreview)
 	a.conversationOpening = false
 	a.conversationPreview = nil
 	a.conversationRequest++
 	if a.at(pageHome) {
-		a.home.say("", "")
+		if hadDraft {
+			a.home.say(openingCancelledDraftWord, "")
+		} else {
+			a.home.say("", "")
+		}
 	} else {
-		a.note("opening cancelled")
+		if hadDraft {
+			a.note(openingCancelledDraftWord)
+		} else {
+			a.note("opening cancelled")
+		}
 	}
 	a.touch()
 }
@@ -144,13 +229,14 @@ func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
 	}
 	replacing := a.renewReplaces()
 	ask, whole := a.startDoor("")
-	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
+	cmd := a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
 		cmd := a.finishRenew(conv, whole, replacing)
 		if after != nil {
 			return tea.Batch(cmd, after())
 		}
 		return cmd
 	})
+	return tea.Batch(cmd, a.previewConversation(""))
 }
 
 func (a *app) homeStartLater(text, place string) tea.Cmd {
@@ -210,8 +296,7 @@ func (a *app) homeStartLater(text, place string) tea.Cmd {
 		}
 		return tea.Batch(started, pins, a.submit(text))
 	})
-	a.previewConversation(text)
-	return cmd
+	return tea.Batch(cmd, a.previewConversation(text))
 }
 
 func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
@@ -245,6 +330,10 @@ func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
 		}
 		return tea.Batch(opened, a.homeLandOnTask(line), said)
 	}, func(err error) tea.Cmd {
+		if a.homeTakeDraft != nil {
+			a.restoreTakeDraft(*a.homeTakeDraft)
+			a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
+		}
 		if errors.Is(err, session.ErrSessionLocked) || err.Error() == sessionBusyWord {
 			if takeover {
 				return a.homeTakeoverEnter(line)

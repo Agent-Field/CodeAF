@@ -140,6 +140,12 @@ func waitPlain(r *rig, within time.Duration, want ...string) (string, bool) {
 
 // startRelay runs the local sync service this repository ships and returns its address.
 func startRelay(t *testing.T) string {
+	return startRelayAt(t, filepath.Join(t.TempDir(), "store"))
+}
+
+// startRelayAt leaves the owned data directory visible to acceptance tests that
+// measure total storage across both computers and the transfer service.
+func startRelayAt(t *testing.T, store string) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "relay")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/relay")
@@ -153,7 +159,7 @@ func startRelay(t *testing.T) string {
 	}
 	addr := ln.Addr().String()
 	_ = ln.Close()
-	cmd := guardedCommand(t, context.Background(), t.TempDir(), nil, bin, "--listen", addr, "--store", filepath.Join(t.TempDir(), "store"), "--quiet")
+	cmd := guardedCommand(t, context.Background(), t.TempDir(), nil, bin, "--listen", addr, "--store", store, "--quiet")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -229,8 +235,21 @@ func runPairJourney(t *testing.T, key, mode string, online bool) {
 	// it also ends the fresh-install probe's.
 	testRoot := filepath.Dir(filepath.Dir(homeA))
 	t.Cleanup(func() {
-		for _, pid := range engineDaemonsUnder(testRoot) {
+		// C28: signaling an owned engine does not wait for its last filesystem
+		// operation to finish. Wait for exit before TempDir cleanup,
+		// or a successful journey races a daemon recreating its shared store.
+		pids := engineDaemonsUnder(testRoot)
+		for _, pid := range pids {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		deadline := time.Now().Add(10 * time.Second)
+		for _, pid := range pids {
+			for !terminalProcessExited(pid) && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if !terminalProcessExited(pid) {
+				t.Errorf("the journey engine process %d did not exit before home cleanup", pid)
+			}
 		}
 	})
 	if err := os.WriteFile(filepath.Join(wsB, "Makefile"), []byte("test:\n\t@echo 3 passed\n"), 0o644); err != nil {

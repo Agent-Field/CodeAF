@@ -381,6 +381,7 @@ func (b *appBackend) dress(view *appwire.Agent) {
 		}
 		view.Line = agentLineLocked(a, view.State)
 	})
+	b.dressChatLocation(view)
 }
 
 // agentLineLocked is an agent's live one-liner for its state: the step it is

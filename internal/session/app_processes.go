@@ -397,6 +397,68 @@ func (a *Agent) finishProcessRecords() {
 	}
 }
 
+// reconcileProcessRecords carries known job endings into their process files.
+// The caller holds the journal claim. Unfinished checkpoints and reused job
+// numbers cannot turn an unknown process into an invented ending.
+func reconcileProcessRecords(file string, document taskDocument) error {
+	processRecordMu.Lock()
+	defer processRecordMu.Unlock()
+	s := processStore{dir: filepath.Dir(file)}
+	root, err := s.openRoot(false)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	head, found, err := readHead(root)
+	if err != nil || !found {
+		return err
+	}
+	for _, n := range knownJobEndings(document) {
+		old, found, err := readRecord(root, n.ID)
+		if err != nil {
+			return err
+		}
+		if !found || old.Over() || !sameJobRun(old, n) {
+			continue
+		}
+		// The process record owns its command, name, kind and workspace. Only
+		// the ending comes from the checkpoint that observed this same run.
+		old.State, old.Ended = n.State, n.Ended
+		if n.Elapsed > 0 {
+			old.Elapsed = n.Elapsed
+		}
+		old.ExitCode, old.ExitCodeUnknown = n.ExitCode, n.ExitCodeUnknown
+		if _, err := s.put(root, &head, old, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// knownJobEndings is each settled, unparked job run of a checkpoint, by job
+// number: the endings a checkpoint observed for itself.
+func knownJobEndings(document taskDocument) map[int]JobNotice {
+	ended := map[int]JobNotice{}
+	for _, record := range document.Runs {
+		if record.Kind != TaskKindJob || !record.State.settled() || record.Park != nil {
+			continue
+		}
+		if n, ok := jobNoticeFromRow(runRowNotice(record)); ok {
+			ended[n.ID] = n
+		}
+	}
+	return ended
+}
+
+// sameJobRun says a process record and a checkpoint ending describe the same
+// run, so a reused job number never borrows another run's ending.
+func sameJobRun(record, ending JobNotice) bool {
+	return !record.Started.IsZero() && !ending.Started.IsZero() && record.Started.Equal(ending.Started) && record.ToolCallID == ending.ToolCallID
+}
+
 // mergeKeptJobs fills gaps left by engines that kept jobs only in the roster.
 // The process shelf owns any job it already knows, including a reused number.
 func mergeKeptJobs(rows, kept []JobNotice) []JobNotice {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 )
 
 // Stream is one open socket, as the feed needs it.
@@ -22,8 +24,22 @@ type Stream interface {
 	Close()
 }
 
+// HoldReceipt is a committed renewal receipt for one exact lease: its cell,
+// fence and log index, with its validity window.
+type HoldReceipt struct {
+	Cell  string `json:"cell"`
+	Fence uint64 `json:"fence,string"`
+	Index uint64 `json:"index,string"`
+	At    int64  `json:"at"`
+	Until int64  `json:"until"`
+}
+
+// HoldIdentity identifies the exact lease named by a committed receipt.
+type HoldIdentity interface{ HoldIdentity() (string, uint64) }
+
 // Frame is what arrived: the directory's version, an event, or only a pong.
 type Frame struct {
+	Holds   []HoldReceipt
 	Version uint64
 	Pong    bool
 	// Event is set for an event frame (it has no version); nil otherwise.
@@ -65,7 +81,7 @@ const (
 	// two halves cannot drift. The relay answers a ping without waking
 	// anything, so it costs nothing, and it keeps a middlebox that drops idle
 	// connections from dropping this one.
-	KeepEvery = 10 * time.Second
+	KeepEvery = time.Duration(clusterstate.PresenceEveryMillis) * time.Millisecond
 	// DeadAfter is how long a socket may stay silent before it is dead: 2.5
 	// beats, 25 s. That tolerates one lost pong and a late second one, the
 	// same factor the relay uses for its presence window.

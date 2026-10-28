@@ -1,12 +1,16 @@
 package cellstore
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -14,7 +18,7 @@ import (
 
 // LocalWork says whether continuing a remote chat needs a local-work choice.
 // Startup can seal unchanged files with fresh bookkeeping, which is a local
-// save but not something a person needs to keep as a branch (C31.2). Compare
+// save but not something a person needs to keep as a branch. Compare
 // against the shared boundary as well as the current head, so an editor's work
 // captured by that startup save is never mistaken for mere bookkeeping.
 func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
@@ -37,9 +41,8 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil || head == nil {
 		return head == nil, err
 	}
-	if sizeOf(rel(c, cell.TranscriptPath)) != head.Receipt.Transcript.End {
-		log.Printf("continuation needs a choice: conversation bytes %d, last saved %d", sizeOf(rel(c, cell.TranscriptPath)), head.Receipt.Transcript.End)
-		return true, nil
+	if work, err := transcriptWork(c, head.Receipt.Transcript.End, sizeOf(rel(c, cell.TranscriptPath))); err != nil || work {
+		return work, err
 	}
 	if head.Turn.ID != base {
 		work, err := unsharedCalls(c, base)
@@ -52,11 +55,16 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	}
 	// The shared snapshot belongs to this chat. A workspace's latest head can
 	// belong to another chat that opened in the same working folder.
-	out, err := (Spawn{Binary: e.Binary}).Do(ctx, e.target(c), planOp{Snapshot: base})
+	out, err := e.plan(ctx, c, base)
 	if err != nil {
 		return false, err
 	}
-	return e.workInPlan(ctx, c, base, out)
+	work, err := e.workInPlan(ctx, c, base, out)
+	if err != nil || work {
+		return work, err
+	}
+	same, err := e.sameTranscriptPrefix(ctx, c, base)
+	return !same, err
 }
 
 // workInPlan asks Git about semantic index entries only when the engine found
@@ -105,14 +113,64 @@ func unsharedCalls(c cell.Cell, base string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if len(receipt.Calls) > 0 || len(receipt.ModelCalls) > 0 || receipt.Transcript.Start != receipt.Transcript.End {
+		if len(receipt.Calls) > 0 {
 			return true, nil
+		}
+		if work, err := transcriptWork(c, receipt.Transcript.Start, receipt.Transcript.End); err != nil || work {
+			return work, err
 		}
 		if turn.Parent == base {
 			return false, nil
 		}
 	}
 	return true, nil
+}
+
+// transcriptWork distinguishes a conversation change from the timing and
+// auxiliary accounting appended after a reply's shared seal. Unknown records
+// and a shortened journal remain work, so a failed reading never loses edits.
+func transcriptWork(c cell.Cell, start, end int64) (bool, error) {
+	if start == end {
+		return false, nil
+	}
+	if end < start {
+		return true, nil
+	}
+	file, err := os.Open(rel(c, cell.TranscriptPath))
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	scan := bufio.NewScanner(io.NewSectionReader(file, start, end-start))
+	scan.Buffer(make([]byte, 4096), 8<<20)
+	for scan.Scan() {
+		var record struct {
+			Type  string `json:"type"`
+			Error struct {
+				Role string `json:"role"`
+			} `json:"error"`
+			Failure struct {
+				Role string `json:"role"`
+			} `json:"failure"`
+		}
+		if json.Unmarshal(scan.Bytes(), &record) != nil {
+			return true, nil
+		}
+		switch {
+		case record.Type == "pace":
+		case record.Type == "usage":
+		case record.Type == "call", record.Type == "title":
+		case record.Type == "error" && auxiliaryRole(record.Error.Role):
+		case record.Type == "failure" && auxiliaryRole(record.Failure.Role):
+		default:
+			return true, nil
+		}
+	}
+	return false, scan.Err()
+}
+
+func auxiliaryRole(role string) bool {
+	return role == "title" || role == "memory" || role == "reflex"
 }
 
 // localPlanWork ignores only reproducible capture bookkeeping. Conversation
@@ -135,6 +193,11 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 		switch name {
 		case TurnsPath, publishedPath, adoptedPath, cell.CopyOfferedPath, cell.StateDir + "/copy-ready":
 			continue
+		case cell.TranscriptPath:
+			// The shared prefix is checked before a changed journal is discarded.
+			continue
+		case cell.StateDir + "/memories.jsonl":
+			continue
 		}
 		if name == ".git" || name == ".git/index" {
 			indexOnly = true
@@ -144,4 +207,40 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 		return true, false, nil
 	}
 	return indexOnly, indexOnly, nil
+}
+
+// sameTranscriptPrefix reads the shared journal into private scratch. Only an
+// unchanged prefix followed by accounting can be discarded as bookkeeping.
+func (e Engine) sameTranscriptPrefix(ctx context.Context, c cell.Cell, base string) (bool, error) {
+	scratch, err := os.MkdirTemp("", "codeaf-journal-")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(scratch)
+	target := e.target(c)
+	target.Tree, target.CellDir, target.Timeline = scratch, "", filepath.Base(scratch)
+	transport := Spawn{Binary: e.Binary}
+	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
+		return false, err
+	}
+	defer func() { _, _ = transport.Do(ctx, target, indexScratchOp{forget: true}) }()
+	if _, err := transport.Do(ctx, target, restoreOp{Snapshot: base, Paths: []string{cell.TranscriptPath}}); err != nil {
+		return false, err
+	}
+	saved, err := os.ReadFile(filepath.Join(scratch, cell.TranscriptPath))
+	if err != nil {
+		return false, err
+	}
+	file, err := os.Open(rel(c, cell.TranscriptPath))
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	current := make([]byte, len(saved))
+	if _, err := io.ReadFull(file, current); errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return bytes.Equal(saved, current), nil
 }

@@ -240,7 +240,7 @@ changed code, CI or feedback cannot reuse stale readiness approval. Marking read
 never grants merge authority. The repository's separate auto-merge setting is
 the explicit opt-in for automatic merge.
 
-## merge a job's pull request — Merge, auto-merge, why it will not merge
+## merge a job's pull request — factory auto-merge when checks pass, or why it will not merge
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
 

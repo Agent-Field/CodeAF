@@ -37,7 +37,7 @@ const (
 // SealState is what a session's seat knows about whether its last seal held.
 // cellstore.SealWatch is the one implementation.
 type SealState interface {
-	// Failing reports whether the most recent seal failed.
+	// Failing reports whether this chat still has a saving failure.
 	Failing() bool
 	// Take hands over the next sentence worth saying, and "" when there is none.
 	Take() string

@@ -26,6 +26,7 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		kind, stop, join, owner string
 	}
 	want := map[string]class{
+		"knowledge/background":    {kind: "joined writer", stop: "v3Process.processStop cancels the knowledge worker and its provider requests", join: "v3Process.closeAll waits on knowledgeDone before closing process stores"},
 		"pool/judge-sweep":        {kind: "joined writer", stop: "pool errand context", join: "v3Process.closeAll calls stopPoolErrands"},
 		"chatv3/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},
 		"engine/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},

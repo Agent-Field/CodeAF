@@ -128,6 +128,22 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 		return
 	}
 	pending := kept.PendingRun
+	if pending.WorkspaceSet != nil {
+		copied := *pending
+		request := *pending.WorkspaceSet
+		if err := validateWorkspaceSetRequest(&request); err != nil {
+			a.interruptUnrecoverableRun(g, kept, err.Error())
+			return
+		}
+		copied.WorkspaceSet = &request
+		for _, root := range request.Roots {
+			if root.Slot == request.Primary {
+				copied.Ground = root.Source
+			}
+		}
+		pending = &copied
+		kept.PendingRun = pending
+	}
 	if reason := invalidPendingRun(pending); reason != "" {
 		a.interruptUnrecoverableRun(g, kept, reason)
 		return
@@ -149,7 +165,7 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 	ctx, cut := context.WithCancel(a.rootContext())
 	run := &beltRun{plan: plan, store: reopened, root: reopened.RootID(), row: id,
 		title: kept.Title, brief: pending.Brief, crew: crew, recoveredCrew: kept.CrewState, ground: canonicalPath(pending.Ground),
-		stand: taskStand{dir: pending.Ground, mode: pending.Mode}, pending: true,
+		stand: taskStand{dir: pending.Ground, mode: pending.Mode, workspaceSet: pending.WorkspaceSet}, pending: true,
 		delegate: via, asked: pending.Asked, cut: cut, born: a.taskClockNow(), over: make(chan struct{}),
 		joined:      recoveredJoinedRows(g, id),
 		admission:   newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, g.lanes),

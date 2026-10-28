@@ -55,6 +55,13 @@ func idleAdmissionChat(t *testing.T) *idleAdmissionFixture {
 	f := &idleAdmissionFixture{}
 	svc := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Admission must still learn a takeover when its notification stream
+		// is unavailable. Hold only the Home event watch, preserving the
+		// lease-receipt socket, so reads below measure foreground admission.
+		if strings.HasSuffix(r.URL.Path, "/watch") && r.URL.Query().Get("events") == "1" {
+			<-r.Context().Done()
+			return
+		}
 		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/cells/") {
 			f.reads.Add(1)
 			if f.slow.Load() {
@@ -143,7 +150,11 @@ func TestI1I2IdleAppRefusesWorkAfterTakeover(t *testing.T) {
 	if err := syncsetup.PutOwnDevice(t.Context(), other.Dir, other.Identity, other.Device, "laptop"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := other.Dir.Acquire(t.Context(), f.cellID, directory.AcquireOpts{Force: true}); err != nil {
+	seen, err := other.Dir.Cell(t.Context(), f.cellID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Dir.Acquire(t.Context(), f.cellID, directory.AcquireOpts{Force: true, RequireConditional: true, Expect: &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence}}); err != nil {
 		t.Fatal(err)
 	}
 	journal := appTranscriptOf(f.b, f.agent.ID)

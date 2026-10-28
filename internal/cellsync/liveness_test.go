@@ -151,14 +151,15 @@ func TestBeatsOnRelayWithoutVouching(t *testing.T) {
 
 // vouchingStream is a socket that vouches, speaks once and then stays quiet.
 type vouchingStream struct {
-	spoke bool
-	done  chan struct{}
+	receipts []dirwatch.HoldReceipt
+	spoke    bool
+	done     chan struct{}
 }
 
 func (s *vouchingStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 	if !s.spoke {
 		s.spoke = true
-		return dirwatch.Frame{Version: 1}, nil
+		return dirwatch.Frame{Version: 1, Holds: s.receipts}, nil
 	}
 	select {
 	case <-ctx.Done():
@@ -187,21 +188,30 @@ func TestBeatsForCellsBeyondMaxHolds(t *testing.T) {
 	}
 }
 
-// The same socket with room left vouches, and the heartbeats stop.
-func TestBeatsStopForCellsWithinMaxHolds(t *testing.T) {
-	holder := dirwatch.Hold("within-max-holds", 2, vouchingDial)
+// R22 suppresses a normal heartbeat only after the socket carries a committed
+// exact-fence receipt. Socket openness alone has its separate negative case.
+func TestR22BeatsStopForCommittedHoldsWithinCap(t *testing.T) {
+	dial := func(_ context.Context, holds []directory.Hold) (dirwatch.Stream, error) {
+		now := time.Now().UnixMilli()
+		receipts := []dirwatch.HoldReceipt{}
+		for _, h := range holds {
+			receipts = append(receipts, dirwatch.HoldReceipt{Cell: h.Cell, Fence: h.Fence, Index: 1, At: now, Until: now + 90_000})
+		}
+		return &vouchingStream{done: make(chan struct{}), receipts: receipts}, nil
+	}
+	holder := dirwatch.Hold("within-max-holds-committed", 2, dial)
 	h := runHeld(t, holdSocket{holder})
 	probe := holder.Take(directory.Hold{Cell: cellID, Fence: h.drv.Fence})
 	defer probe.Release()
 	for deadline := time.Now().Add(time.Second); !probe.Healthy(); time.Sleep(time.Millisecond) {
 		if time.Now().After(deadline) {
-			t.Fatal("the socket never vouched")
+			t.Fatal("R22 the socket never delivered its committed receipt")
 		}
 	}
 	before := h.dirA.beats.Load()
-	h.ticks(10)
+	h.ticks(1)
 	if got := h.dirA.beats.Load() - before; got != 0 {
-		t.Fatalf("%d heartbeats with the socket vouching, want none", got)
+		t.Fatalf("%d heartbeats covered by a committed receipt, want none", got)
 	}
 }
 
@@ -212,4 +222,14 @@ type holdSocket struct {
 
 func (s holdSocket) Keep(cell string, fence uint64) Keeping {
 	return s.h.Take(directory.Hold{Cell: cell, Fence: fence})
+}
+
+// R22 keeps ordinary beats on a healthy legacy socket with no committed receipt.
+func TestR22BeatsContinueWithoutCommittedReceipt(t *testing.T) {
+	holder := dirwatch.Hold("within-max-holds-no-receipt", 2, vouchingDial)
+	h := runHeld(t, holdSocket{holder})
+	h.ticks(4)
+	if got := h.dirA.beats.Load(); got != 4 {
+		t.Fatalf("R22 %d heartbeats without a committed receipt, want 4", got)
+	}
 }

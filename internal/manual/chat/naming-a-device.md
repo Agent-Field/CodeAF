@@ -20,6 +20,9 @@ Your other devices will call this computer "tower". Press Enter to keep that, or
 
 Press Enter to keep the host name, or type a name and press Enter. To say it without being asked, type `codeaf pair --name "atlas"`. It works with a typed code too: `codeaf pair 42-715-302 --name "atlas"`. The device that approves shows that name when it asks you to approve.
 
+Current computers include the platform during approval, such as `Abir (Windows)`,
+so two computers named Abir can be distinguished.
+
 ## How do I rename a device later — codeaf devices rename and the n key
 
 Type this on the device you mean:
@@ -40,16 +43,18 @@ Edit it and press enter to save, ctrl+u to clear it, esc to leave it as it was. 
 After a rename it says:
 
 ```
-This computer is now called atlas on all your devices.
+This computer is now called atlas.
 ```
 
 Your other devices show the new name the next time they list devices or draw a home row. If the sync service cannot be reached at that moment, the device keeps the name and says:
 
 ```
-This computer is now called atlas. Your other devices will show it after this one next connects.
+This computer is now called atlas. Your other computers will see it once this computer is back online.
 ```
 
-You do not type it again. A device that is not paired with anything yet says `This computer is now called atlas.`
+You do not type it again. A running paired desktop engine retries automatically,
+even without a chat. A device that is not paired with anything yet says
+`This computer is now called atlas.`
 
 ## What can a device name be — length, spaces, control characters and duplicates
 

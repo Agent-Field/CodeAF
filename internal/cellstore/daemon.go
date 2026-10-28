@@ -134,7 +134,7 @@ func (d Daemon) Stop(ctx context.Context) error {
 	return nil
 }
 
-func unavailable(err error) error { return fmt.Errorf("%w: %v", ErrUnavailable, err) }
+func unavailable(err error) error { return fmt.Errorf("%w: %w", ErrUnavailable, err) }
 
 func newRequest(t Target, op Op) wireRequest {
 	args, _ := json.Marshal(op) // an Op is plain data

@@ -275,6 +275,14 @@ func (n *TaskNode) resumeContinuedTree(place Place, workspace string) (taskTree,
 			return taskTree{}, false
 		}
 	}
+	if _, enabled := taskStorage(place); enabled {
+		kept := taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}
+		if restored, back, problem := kept.reopenReleased(); back {
+			return n.ladderRecord(restored), true
+		} else if problem != "" {
+			return taskTree{}, false
+		}
+	}
 	tree, ok := reattachKeptWorktree(place, root, dir, branch, ground, mode)
 	if !ok {
 		return taskTree{}, false

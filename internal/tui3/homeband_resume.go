@@ -80,6 +80,7 @@ func (r *resumeOffer) answer() {
 // resumeState is what the offer needs to know about the fleet, so the choice of
 // chat is a pure function of it.
 type resumeState struct {
+	self     string
 	rows     []chatlist.Row
 	online   []string
 	feedUp   bool
@@ -101,7 +102,7 @@ func (s resumeState) pick() *chatlist.Row {
 // offered says a row is a chat to rescue.
 func (s resumeState) offered(row chatlist.Row) bool {
 	live := row.Status == chatlist.Running || row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine)
-	return live && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
+	return live && !row.Mine && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
 // away says the chat's device has let go of it or is gone: its lease lapsed,
@@ -120,7 +121,7 @@ func (s resumeState) away(row chatlist.Row) bool {
 func (a *app) considerResume() {
 	r := &a.leftOff
 	var row *chatlist.Row
-	if a.taker != nil {
+	if a.taker != nil && !a.machineRead.computerRemoved {
 		row = a.resumeState().pick()
 	}
 	if !sameOffer(r.row, row) {
@@ -132,6 +133,13 @@ func (a *app) considerResume() {
 // resumeState is the fleet as the newest good listing and the feed show it.
 func (a *app) resumeState() resumeState {
 	state := resumeState{rows: a.machineRead.rows, answered: a.leftOff.answered}
+	state.self = a.deviceID
+	for _, device := range a.devRow.devices {
+		if device.Self {
+			state.self = device.ID
+			break
+		}
+	}
 	if a.dirFeed != nil {
 		st := a.dirFeed.State()
 		state.feedUp, state.online = st.Up, st.Online
@@ -149,6 +157,9 @@ func sameOffer(x, y *chatlist.Row) bool {
 
 // resumeKeyHandler claims the card's two chords where the card stands.
 func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
+	if a.machineRead.computerRemoved {
+		return nil, false
+	}
 	row := a.leftOff.row
 	if row == nil {
 		return nil, false
@@ -170,6 +181,9 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 }
 
 func drawResumeBand(a *app, ctx bandContext) []string {
+	if a.machineRead.computerRemoved {
+		return nil
+	}
 	row := a.leftOff.row
 	if row == nil {
 		return nil
@@ -222,9 +236,10 @@ func (a *app) continueAfterQuit(err error) tea.Cmd {
 		return nil
 	}
 	var best *chatlist.Row
+	self := a.resumeState().self
 	for i := range a.machineRead.rows {
 		r := &a.machineRead.rows[i]
-		if r.Status == chatlist.Idle && r.Released && !r.Mine && r.DeviceID != "" && r.ReleasedAgo >= 0 && r.ReleasedAgo <= resumeRecent && (best == nil || r.ReleasedAgo < best.ReleasedAgo) {
+		if r.Status == chatlist.Idle && r.Released && !r.Mine && r.DeviceID != "" && r.DeviceID != self && r.ReleasedAgo >= 0 && r.ReleasedAgo <= resumeRecent && (best == nil || r.ReleasedAgo < best.ReleasedAgo) {
 			best = r
 		}
 	}
@@ -240,6 +255,9 @@ func (a *app) continueAfterQuit(err error) tea.Cmd {
 }
 
 func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
+	if a.machineRead.computerRemoved {
+		return nil
+	}
 	if msg.automatic && msg.generation != a.continueGeneration {
 		return nil
 	}
@@ -252,17 +270,19 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		}
 	}
 
+	var opened tea.Cmd
 	if msg.automatic && !a.at(pageHome) {
-		_ = a.openHome()
+		// Home starts reads and a clock even when the chat opens immediately.
+		opened = a.openHome()
 	}
 	if msg.err != nil {
-		return a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err})
+		return tea.Batch(opened, a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err}))
 	}
 	if !msg.clean {
 		if msg.automatic {
-			return nil
+			return opened
 		}
 		return a.raiseContinue(msg.row, continueYesAt)
 	}
-	return a.takeRemote(msg.row)
+	return tea.Batch(opened, a.takeRemote(msg.row))
 }

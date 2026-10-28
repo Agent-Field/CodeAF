@@ -25,6 +25,23 @@ test('create makes a held cell, and a second create is refused', () => {
   assert.equal(code(() => dir.create('c1', init(), 'dev_b')), 'exists');
 });
 
+test('R2 saved_at follows the sealed head independently of publication and release', () => {
+  const { dir, clock } = open();
+  dir.create('c1', { ...init(), saved_at: 700_000 }, 'dev_a');
+  assert.equal(dir.cell('c1').cell.saved_at, 700_000);
+  clock.now += 10_000;
+  const p = { fence: 1, old_head: 'h0', head: 'h1', size: 1, class: 'work', pending: 0, saved_at: 800_000 };
+  dir.publish('c1', 'dev_a', p);
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  assert.equal(dir.cell('c1').cell.durable_at, 1_010_000);
+  dir.release('c1', 'dev_a', 1);
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', saved_at: undefined });
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', head: 'h2', saved_at: undefined });
+  assert.equal(dir.cell('c1').cell.saved_at, undefined);
+});
+
 test('a live lease refuses another device, an expired one does not, force takes a live one', () => {
   const { dir, clock } = open();
   dir.create('c1', init(), 'dev_a');
@@ -143,4 +160,21 @@ test('C31 released time records a quit but background preparation stays quiet', 
   const acquired=dir.acquire(id,'dev_a');
   dir.release(id,'dev_a',acquired.cell.lease.fence,true);
   assert.equal(dir.cell(id).cell.lease.released_at,0);
+});
+
+
+ test('latest frame hints clear on old-client publish and never enter lists', () => {
+ const {dir}=open();
+ const frame_hints=[{id:'a'.repeat(64),bytes:42}];
+ const {cell}=dir.create('hints',{...init(),frame_hints},'dev_a');
+ assert.deepEqual(cell.frame_hints,frame_hints);
+ assert.equal(dir.list().cells.hints.frame_hints,undefined);
+ const next=dir.publish('hints','dev_a',{fence:1,old_head:cell.head,head:'new',size:1,class:'work',pending:0});
+ assert.equal(next.cell.frame_hints,undefined);
+ });
+
+test('frame hints reject duplicate, unsafe integer and over-budget metadata', () => {
+ for(const hints of [[{id:'a'.repeat(64),bytes:65536}],[{id:'a'.repeat(64),bytes:Number.MAX_SAFE_INTEGER+1}],[{id:'a'.repeat(64),bytes:1},{id:'a'.repeat(64),bytes:1}]]) {
+  const {dir}=open();const {cell}=dir.create('bad-hints',{...init(),frame_hints:hints},'dev_a');assert.equal(cell.frame_hints,undefined);
+ }
 });

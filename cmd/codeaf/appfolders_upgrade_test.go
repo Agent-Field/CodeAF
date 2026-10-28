@@ -593,3 +593,35 @@ func appFolderSnapshot(t *testing.T, dir string) map[string]string {
 	}
 	return files
 }
+
+// Only the empty lock produced by SaveMeta belongs to an unused mint. A lock
+// holding bytes or naming a directory is unknown state and must remain.
+func TestAppFolderTakeBackKeepsUnknownMetadataLockState(t *testing.T) {
+	for _, kind := range []string{"contents", "directory"} {
+		t.Run(kind, func(t *testing.T) {
+			eachAppFolder(t, func(t *testing.T, f appFolderFixture) {
+				for _, path := range []string{filepath.Join(f.dir, "work"), f.artifacts, f.transcript} {
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+				}
+				lock := filepath.Join(f.dir, session.MetaLockName)
+				if kind == "directory" {
+					if err := os.Remove(lock); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Mkdir(lock, 0700); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.WriteFile(lock, []byte("retained state"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				before := appFolderSnapshot(t, f.dir)
+				f.b.takeBack(f.transcript)
+				if after := appFolderSnapshot(t, f.dir); !reflect.DeepEqual(before, after) {
+					t.Fatal("takeBack removed unknown metadata lock state")
+				}
+			}, "legacy")
+		})
+	}
+}

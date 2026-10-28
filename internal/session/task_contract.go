@@ -519,6 +519,8 @@ type TaskNotice struct {
 	// Where says where the task will work. A proposal carries the resolved task
 	// folder or explicit path; later notices carry the worker's actual directory.
 	Where string
+	// Workspace identities name legacy task placement without run-copy UI semantics.
+	WorkspaceURI, ChatURI, ProjectURI, GroundURI, RootURI string
 	// Ground is the repository or folder THE WORK IS ABOUT, absolute, and Mode is
 	// how the task stands on it (taskstands.go resolves both). Where says which
 	// directory the worker types in; these two say which project that directory is
@@ -651,7 +653,8 @@ type TaskNotice struct {
 	// RUN's row and nowhere else: a node of the session's own graph already
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
-	Copy *TaskCopyRecord
+	Copy         *TaskCopyRecord
+	WorkspaceSet *WorkspaceSet
 	// RecoveredCompletion identifies a completed plan recovered before its final landing receipt.
 	RecoveredCompletion bool
 	// PendingRun keeps an admitted request before it owns a working copy.
@@ -1013,8 +1016,9 @@ func (c *TaskCall) Received() int {
 // PendingRunRecord is the accepted work needed to rejoin machine admission after
 // restart. It is cleared once the working copy is recorded, before workers start.
 type PendingRunRecord struct {
-	Brief  string   `json:"brief"`
-	Ground string   `json:"ground"`
-	Mode   TaskMode `json:"mode"`
-	Asked  []string `json:"asked,omitempty"`
+	WorkspaceSet *WorkspaceSetRequest `json:"workspaceSet,omitempty"`
+	Brief        string               `json:"brief"`
+	Ground       string               `json:"ground"`
+	Mode         TaskMode             `json:"mode"`
+	Asked        []string             `json:"asked,omitempty"`
 }

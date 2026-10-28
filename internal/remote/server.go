@@ -157,6 +157,8 @@ type Engine struct {
 	// conversation in it. Nil for a door that retains nothing. It changes no
 	// wire shape — a conversation ending is already the end of its stream.
 	Closed func(agent WrappedAgent)
+	// FinishSaving publishes and releases a closed writer before its reply is sent.
+	FinishSaving func(agent WrappedAgent) error
 	// ReleaseOnLeave enables immediate idle retirement after the last deliberate
 	// detach for a paired movable chat. Torn links retain their existing grace.
 	ReleaseOnLeave func(WrappedAgent) bool
@@ -413,6 +415,11 @@ type Session struct {
 	// stream finishes. A new attached window cancels that departure (C31.1).
 	releaseOnIdle bool
 	instance      string
+	closeDone     chan struct{}
+	// closeErr retains the completed saving result for concurrent and repeated departures.
+	closeErr error
+	// renewalStop ends idle health forwarding when this conversation changes or closes.
+	renewalStop chan struct{}
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -538,6 +545,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		agent:      engine.Agent,
 		persistent: persistent,
 		instance:   rand.Text(),
+		closeDone:  make(chan struct{}),
 		rings:      map[uint64]*ring{},
 		follows:    map[uint64]followQueued{},
 		held:       newHeldSet(),
@@ -552,6 +560,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 	// arriving surface reads in its welcome — and the turn itself is journalled
 	// either way, because the engine is the only writer of the session file.
 	sess.watchOwnTurns()
+	sess.watchRenewals()
 	// AND THE CONVERSATION IS FILED UNDER THE NAME ITS OWN NEWS ARRIVES UNDER,
 	// from the moment it exists, so the phase of a wake that runs before
 	// anybody attaches has somewhere to be steered to (news.go).
@@ -773,31 +782,53 @@ func (sess *Session) lastWatched() string {
 // interrupted with its journal flushed, exactly as a person's own /quit would.
 // The window is that walk, not the whole idle span.
 func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
+	retired, _ := sess.retireIfIdle(olderThan)
+	return retired
+}
+
+func (sess *Session) retireIfIdle(olderThan time.Duration) (bool, error) {
 	if sess.releasePending() {
 		olderThan = 0
 	}
 	idle := sess.IdleSince()
 	if idle.IsZero() || time.Since(idle) <= olderThan {
-		return false
+		return false, nil
 	}
 	sess.mu.Lock()
 	if again := sess.idleSinceLocked(); again.IsZero() || time.Since(again) <= olderThan {
 		// Somebody came back, a turn opened, or a card was raised while the
 		// question was being asked. The conversation stays.
 		sess.mu.Unlock()
-		return false
+		return false, nil
 	}
 	agent, already := sess.agent, sess.closed
 	name := sess.lastWatch
 	sess.closed = true
 	sess.mu.Unlock()
-	_ = sess.shutDown(agent, already, session.StopByRetired, name)
-	return true
+	return true, sess.shutDown(agent, already, session.StopByRetired, name)
 }
 
 // shutDown is what ending a conversation does once the caller has won the
 // closed flag: every lane left, the turn interrupted, the journal flushed.
-func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) error {
+func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) (saveErr error) {
+	if already {
+		// A concurrent final stream may already be releasing this chat. Its
+		// closed flag cannot acknowledge a departure before that release ends.
+		if sess.closeDone != nil {
+			<-sess.closeDone
+		}
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		return sess.closeErr
+	}
+	defer func() {
+		sess.mu.Lock()
+		sess.closeErr = saveErr
+		sess.mu.Unlock()
+		if sess.closeDone != nil {
+			close(sess.closeDone)
+		}
+	}()
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
 	// a conversation that is being flushed and shut (tasklane.go), and version
 	// 11's subscription goes the same way (standinglane.go).
@@ -807,13 +838,14 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 	// a rail left open on a conversation being flushed is a subscription the
 	// sweep has already decided is over (wakelane.go).
 	sess.stopWakeLane()
+	sess.stopRenewals()
 	// AND THE NEWSROOM LOSES THIS CONVERSATION, which is what puts the two
 	// global readers back when the last one on this process goes: a host
 	// holding nothing has to read as a build with nobody watching, because that
 	// is what decides whether a stalled pinned lane is asked about or quietly
 	// borrowed against (news.go).
 	sess.dropNews()
-	if agent == nil || already {
+	if agent == nil {
 		return nil
 	}
 	// THE DOOR IS THE ONE THIS ENDING CAME THROUGH, not a single sentence
@@ -828,8 +860,7 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 		agent.InterruptFor(door)
 	}
 	err := agent.Close()
-	sess.noteClosed(agent)
-	return err
+	return errors.Join(err, sess.noteClosed(agent))
 }
 
 // noteClosed tells the door that built this agent that its conversation is
@@ -841,11 +872,18 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 // It is read off the engine rather than captured at construction for the reason
 // [Session.folder] gives about its own reading — the engine behind a session
 // can be swapped under it.
-func (sess *Session) noteClosed(agent WrappedAgent) {
-	if agent == nil || sess.engine == nil || sess.engine.Closed == nil {
-		return
+func (sess *Session) noteClosed(agent WrappedAgent) error {
+	if agent == nil || sess.engine == nil {
+		return nil
 	}
-	sess.engine.Closed(agent)
+	var err error
+	if sess.engine.FinishSaving != nil {
+		err = sess.engine.FinishSaving(agent)
+	}
+	if sess.engine.Closed != nil {
+		sess.engine.Closed(agent)
+	}
+	return err
 }
 
 // folder is where a picture arriving on this wire gets written down: the
@@ -1343,9 +1381,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		ReplySuggestion: replySuggestionKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
-		SteerOwner: true,
-		TaskSetup:  taskSetupKnown(sess.agent),
-		TaskRetry:  taskRetryKnown(sess.agent),
+		SteerOwner:    true,
+		TaskSetup:     taskSetupKnown(sess.agent),
+		TaskRetry:     taskRetryKnown(sess.agent),
+		TaskWorkspace: taskWorkspaceKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
@@ -1725,6 +1764,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.retakeTaskLanes()
 	sess.retakeLanes()
 	sess.retakeWakeLane()
+	sess.watchRenewals()
 	// AND THE NEWSROOM IS TOLD THE ROOM'S NAME HAS CHANGED. /new and /resume
 	// mint a whole new agent, whose news arrives under a name of its own, and a
 	// conversation still filed under the old one would draw a status row that
@@ -1795,8 +1835,9 @@ type server struct {
 	// running does not write into a session that has already been closed.
 	side sync.WaitGroup
 	// Observers leave with the view, independently of the durable turn pump.
-	observersMu sync.Mutex
-	observers   map[uint64]*taskFeed
+	workspaceCalls sync.Map
+	observersMu    sync.Mutex
+	observers      map[uint64]*taskFeed
 
 	// leaving records how this connection ends, and it is the whole of version
 	// 2's three-roads-out. detached is [MethodDetach] — the surface is going and
@@ -1811,6 +1852,7 @@ type server struct {
 	// happens after the lane has drained.
 	detached atomic.Bool
 	goodbye  atomic.Bool
+	left     atomic.Bool
 
 	// window releases the automations presence this connection holds on this
 	// machine because its hello said it is a window ([Hello.Window]), and nil
@@ -1951,10 +1993,13 @@ func (s *server) serve(in io.Reader) (err error) {
 //     money into a journal nobody will reopen. The interrupt goes first so the
 //     turn stops where it is and keeps its partial reply — exactly what ctrl+c
 //     does locally — and then the agent is closed, which flushes the file.
-func (s *server) leave() {
+func (s *server) leave() error {
+	if s.left.Swap(true) {
+		return nil
+	}
 	sess := s.session
 	if sess == nil {
-		return
+		return nil
 	}
 	sess.detach(s, s.detached.Load())
 	if s.detached.Load() {
@@ -1962,12 +2007,11 @@ func (s *server) leave() {
 		engine, agent := sess.engine, sess.agent
 		sess.mu.Unlock()
 		if engine != nil && engine.ReleaseOnLeave != nil && engine.ReleaseOnLeave(agent) {
-			sess.releaseAfterLeave()
+			return sess.releaseAfterLeave()
 		}
 	}
 	if s.goodbye.Load() {
-		_ = sess.closeLeaving()
-		return
+		return sess.closeLeaving()
 	}
 	if !sess.persistent {
 		// AND THIS ONE IS THE UNATTENDED DOOR BY CONSTRUCTION, whatever the
@@ -1975,8 +2019,9 @@ func (s *server) leave() {
 		// conversation's whole life, so nothing is ever going to attach to it
 		// again and there is no window left to come back. It names the one it
 		// had, which is the last thing anybody reading the journal can use.
-		_ = sess.closeFor(session.StopByRetired, sess.lastWatched())
+		return sess.closeFor(session.StopByRetired, sess.lastWatched())
 	}
+	return nil
 }
 
 // handshake reads the first line and answers it. A version mismatch and a line
@@ -2141,6 +2186,10 @@ func (s *server) dispatch(call Frame) {
 		if errors.As(err, &refusal) {
 			result.WorkRefusal = refusal
 		}
+		var unsaved *session.UnsavedChatError
+		if errors.As(err, &unsaved) {
+			result.UnsavedTranscript = unsaved.Transcript
+		}
 	}
 	_ = s.send(result)
 	// And only now does a turn opened by that call begin to speak.
@@ -2204,7 +2253,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	switch call.Method {
 	case MethodRunHarness, MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
-		MethodAppTaskRoutingAct:
+		MethodAppTaskRoutingAct, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
@@ -2222,6 +2271,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodAppTasks, MethodAppTask, MethodAppTaskAction, MethodAppQuickTasks, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
 		MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions, MethodAppProgramActions:
 		return dispatchAppTask(agent, call)
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskWorkspaceCancel:
+		args, err := arg[taskWorkspaceArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return s.taskWorkspaceInvoke(call.Method, args)
 	case MethodTaskRetry:
 		args, err := arg[TaskSetupArgs](call)
 		if err != nil {
@@ -2959,12 +3014,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, sess.closeLeaving()
 
 	case MethodDetach:
-		// THE ONE METHOD WHOSE VALUE IS THE DIFFERENCE BETWEEN IT AND SILENCE.
-		// Nothing is interrupted and nothing is closed; the reader loop sees
-		// this flag on its next pass and ends the connection, leaving the turn
-		// to finish (wire.go's MethodDetach states the whole case).
+		_, err := arg[DetachArgs](call)
+		if err != nil {
+			return nil, err
+		}
 		s.detached.Store(true)
-		return nil, nil
+		// An idle writer's final save belongs in the departure reply while
+		// somebody can still hear its failure. Running work stays hosted.
+		return nil, s.leave()
 
 	case MethodHeldQuestions:
 		sess.mu.Lock()
@@ -3245,6 +3302,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
+
+	case MethodOpenPlanTaskWork:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(session.PlanWorkOpener)
+		if !ok {
+			return json.Marshal(PlanTaskWorkResult{Work: session.PlanTaskWork{NoDoor: true}})
+		}
+		work, found := door.OpenPlanTaskWork(args.ID)
+		return json.Marshal(PlanTaskWorkResult{Work: work, OK: found})
 
 	case MethodPlanTaskWork:
 		args, err := arg[PlanTaskArgs](call)
@@ -3708,13 +3777,14 @@ func mustJSON(value any) json.RawMessage {
 
 // releaseAfterLeave retains a clean departure until the final stream ends.
 // The idle decision still checks attached windows and unfinished work together.
-func (sess *Session) releaseAfterLeave() {
+func (sess *Session) releaseAfterLeave() error {
 	func() {
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
 		sess.releaseOnIdle = len(sess.surfaces) == 0
 	}()
-	sess.RetireIfIdle(0)
+	_, err := sess.retireIfIdle(0)
+	return err
 }
 
 func (sess *Session) releasePending() bool {

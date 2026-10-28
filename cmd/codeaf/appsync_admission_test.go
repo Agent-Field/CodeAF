@@ -299,7 +299,11 @@ func TestC1AppViewerAcceptsRealPendingConsent(t *testing.T) {
 			if err := syncsetup.PutOwnDevice(context.Background(), other.Dir, other.Identity, other.Device, "laptop"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := other.Dir.Acquire(context.Background(), place.ID(), directory.AcquireOpts{Force: true}); err != nil {
+			seen, err := other.Dir.Cell(context.Background(), place.ID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := other.Dir.Acquire(context.Background(), place.ID(), directory.AcquireOpts{Force: true, RequireConditional: true, Expect: &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence}}); err != nil {
 				t.Fatal(err)
 			}
 			b.drives.mu.Lock()

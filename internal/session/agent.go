@@ -98,6 +98,7 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 		config.ConversationModels = &pair
 	}
 	config.JobBudget = a.jobBudgetOf()
+	config.knowledgeReadVault = a.Knowledge()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err
@@ -124,6 +125,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
+	if err := configureOwnedChat(&config); err != nil {
+		return nil, fmt.Errorf("prepare conversation storage: %w", err)
+	}
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
@@ -141,6 +145,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
+	}
+	if config.WorkspaceURI != "" {
+		system += "\n\nWORKSPACE STORAGE\nUse mktemp or $TMPDIR for temporary files and $XDG_CACHE_HOME for ordinary caches. These locations are outside the files that a task lands. Keep task deliverables in the assigned working directory. The directory is an assignment, not a shell sandbox; external and remote writes still need an explicit purpose."
+	}
+	if watch, ok := config.Seals.(interface{ TrackTurn(string) }); ok && config.Place.Dir != "" && !config.InTask && !config.Errand {
+		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
 		config: config,
@@ -264,6 +274,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
+	agent.initKnowledge()
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -498,6 +509,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// is why it is the thing most carefully gated: see [Agent.startLaneBeat] for
 	// the three sessions that run no beat at all.
 	agent.startLaneBeat()
+	// AND FURROW IS ASKED ABOUT THIS FOLDER, from the background. Opening the
+	// conversation must not wait on a subprocess, so the answer is started here
+	// and read later by the belt (tools_workspace.go).
+	agent.askFurrow()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
@@ -524,6 +539,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.mu.Lock()
 	agent.startPendingIntentNamesLocked()
 	agent.mu.Unlock()
+	agent.startKnowledge()
 	return agent, nil
 }
 
@@ -2050,13 +2066,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the transcript on the line above; a shell opening additionally waits
 		// for an ordinary reply to explain its output. Naming is started under
 		// this lock so two Submits racing to be first cannot buy two names.
-		if user.bash == "" {
+		if user.bash == "" && a.config.PrepareModel == nil {
 			a.startTitleLocked()
 		}
 		// A DESKTOP CONVERSATION IS NAMED FROM WHAT THE PERSON OPENED WITH, and
 		// the shell opening is one of the things that decides it too
 		// (intentname.go).
-		a.startIntentNameLocked(user)
+		// A continued chat may still need model setup. Its turn checks readiness
+		// before starting either naming errand, which also calls a provider.
+		if a.config.PrepareModel == nil {
+			a.startIntentNameLocked(user)
+		}
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
@@ -2654,7 +2674,8 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // bounded because Close is what the person's quit reaches: a turn wedged
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
-func (a *Agent) Close() error {
+func (a *Agent) Close() (saveErr error) {
+	defer func() { saveErr = SavingError(a.config.SessionFile, saveErr) }()
 	forgetLiveJournal(a)
 	// A pass a surface asked for outside any turn ends with the conversation.
 	a.mu.Lock()
@@ -2731,6 +2752,7 @@ func (a *Agent) Close() error {
 	// road out of this function goes through it, which is the reason it is a
 	// defer and not a line at the end.
 	defer close(a.closeDone)
+	defer a.stopKnowledge()
 	// No memory pass outlives the session. The cancel is what stops one waiting
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).
@@ -2792,6 +2814,7 @@ func (a *Agent) Close() error {
 	// its fetch and join any cache write before the state directory can be
 	// handed back to the caller.
 	a.stopLaneBeat()
+	a.furrow.close()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
 	// the only thing that can reach it. A RUN'S LIFE IS THE CONVERSATION'S. Until

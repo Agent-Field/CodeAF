@@ -1205,6 +1205,9 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 	if r.runningProcesses() >= jobProcessCap {
 		return nil, errJobProcessCap
 	}
+	if err := markTaskStorageUncertain(r.workspace); err != nil {
+		return nil, err
+	}
 	program, shellArgs, shellErr := bare.StreamingShell(command)
 	if shellErr != nil {
 		return nil, shellErr

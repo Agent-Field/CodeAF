@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -61,12 +62,8 @@ type AcquireOpts struct {
 	Expect *LeaseExpectation `json:"expect,omitempty"`
 }
 
-// LeaseExpectation binds a continuation to the lease the taking device read,
-// so another continuation during its fetch wins rather than being displaced.
-type LeaseExpectation struct {
-	Device string `json:"device"`
-	Fence  uint64 `json:"fence"`
-}
+// LeaseExpectation retains the conditional-take tuple shared by every runtime.
+type LeaseExpectation = clusterstate.LeaseExpectation
 
 // Directory is one identity's shared directory; For gives each device its own
 // Client. The relay handler calls For(deviceFromSignature) once per request.
@@ -79,20 +76,20 @@ type Directory interface {
 // relay sees one request per HeartbeatEvery at most and the TTL still covers
 // two missed beats.
 const (
-	LeaseTTL       = 90 * time.Second
-	HeartbeatEvery = 30 * time.Second
+	LeaseTTL       = time.Duration(clusterstate.LeaseTTLMillis) * time.Millisecond
+	HeartbeatEvery = time.Duration(clusterstate.RenewEveryMillis) * time.Millisecond
 )
 
 // The errors a Client returns. Callers compare with errors.Is.
 var (
-	ErrNotFound     = errors.New("directory: not found")
-	ErrExists       = errors.New("directory: exists")
-	ErrLeaseHeld    = errors.New("directory: lease held by another device")
-	ErrFenceStale   = errors.New("directory: fence superseded") // L7
-	ErrHeadMoved    = errors.New("directory: head moved")
-	ErrCAS          = errors.New("directory: compare-and-swap failed")
+	ErrNotFound     = clusterstate.ErrNotFound
+	ErrExists       = clusterstate.ErrExists
+	ErrLeaseHeld    = clusterstate.ErrLeaseHeld
+	ErrFenceStale   = clusterstate.ErrFenceStale
+	ErrHeadMoved    = clusterstate.ErrHeadMoved
+	ErrCAS          = clusterstate.ErrCAS
 	ErrRevoked      = wireauth.ErrRevoked // every verb of a revoked device; the wires share this one sentinel
-	ErrSelfRevoke   = errors.New("directory: a device cannot revoke itself")
+	ErrSelfRevoke   = clusterstate.ErrSelfRevoke
 	ErrUnauthorized = errors.New("directory: unauthorized")
 	ErrUnreachable  = errors.New("directory: unreachable") // transport; callers degrade
 	ErrTooOld       = errors.New("directory: this relay is too old for that")

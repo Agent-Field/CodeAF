@@ -84,11 +84,23 @@ type BashWorker struct {
 	dailyBudgetUSD     float64
 	spendPreauthorized bool
 	// seat carries the cell execution boundary into every worker call.
-	seat procexec.Seat
+	seat         procexec.Seat
+	workspaceURI string
+	workspaceSet *session.WorkspaceSet
 }
 
 // WorkerOption changes how a worker is built; the zero set is the host worker.
 type WorkerOption func(*BashWorker)
+
+// WithWorkspaceURI carries the admitted identity without deriving it from a path.
+func WithWorkspaceURI(uri string) WorkerOption {
+	return func(w *BashWorker) { w.workspaceURI = uri }
+}
+
+// WithWorkspaceSet carries the prototype's explicitly admitted root routes.
+func WithWorkspaceSet(set *session.WorkspaceSet) WorkerOption {
+	return func(w *BashWorker) { w.workspaceSet = set.Clone() }
+}
 
 // WithSeat runs the worker's tool calls on seat.
 func WithSeat(seat procexec.Seat) WorkerOption {
@@ -145,6 +157,8 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Workspace:        w.workspace,
+		WorkspaceURI:     w.workspaceURI,
+		WorkspaceSet:     w.workspaceSet.Clone(),
 		Model:            w.model,
 		Seat:             w.seat,
 		WaitForBeltSteps: true,
@@ -164,6 +178,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	var receipts workerReceipts
 	defer func() {
 		used := settledWorkerUsage(agent, &receipts)
+		observeStorageProof(ctx, agent.TaskStorageQuiescent())
 		rep.USD, rep.TokensIn, rep.TokensOut = used.CostUSD, used.Input, used.Output
 		w.recordSpend(task.ID, used, agent.AnsweredUsage(), agent.Answers())
 	}()
@@ -182,6 +197,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// on the harness's own note, because a round only begins again when the last
 	// one ended on words with no action.
 	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.always, w.workspace)
+	if w.workspaceSet != nil {
+		brief += "\n\n" + w.workspaceSet.WorkerInstructions()
+	}
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.

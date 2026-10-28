@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
 // THE APP'S PROCESS ENDING IS THE APP LEAVING. The parent is the one the
@@ -140,7 +142,7 @@ func TestADoorThatReturnedIsNotEndedByItsBound(t *testing.T) {
 // The bound is built from the stop waits it has to cover, so changing one of
 // them cannot leave the bound shorter than the wrap-up it ends.
 func TestTheLeavingBoundCoversEveryStopWait(t *testing.T) {
-	if appLeaveWait < 2*appLocalStopWait+appReleaseWait+appQuitGraceS*time.Second {
+	if appLeaveWait < 2*appLocalStopWait+appReleaseWait+appQuitGraceS*time.Second+3*cellstore.SealWithin {
 		t.Fatalf("appLeaveWait %s is shorter than the wrap-up it bounds", appLeaveWait)
 	}
 }

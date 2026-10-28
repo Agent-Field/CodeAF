@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -15,7 +16,7 @@ func PreferenceKey(key string) bool {
 		KeyQuickSwitch, KeyHints, KeyWork, KeyIcons, KeyHistoryEnabled, KeyDraftPersist,
 		KeyTaskAudit, KeyReplyGuard, KeyTaskStart, KeyMemoryEnabled, KeyPromptProfile,
 		KeyTierLowModel, KeyTierHighModel, KeyTierWorkerModel, KeyTierReflexModel,
-		KeyTierMastermindModel, KeyModelRoles, KeyModelFallbacks, KeyRouting,
+		KeyTierMastermindModel, KeyKnowledgeModel, KeyModelRoles, KeyModelFallbacks, KeyRouting,
 		KeyVisionModel, KeyDocumentEngine, KeyAttributionModel, KeyContextFill,
 		KeyCompletionReserve, KeyWorkingSet, KeyContextReuse:
 		return true
@@ -53,7 +54,8 @@ func ApplyPreferences(dir string, changes map[string]string) error {
 // ApplyPreferencesIf preserves a setting changed after the sync reader took
 // its snapshot. The next round captures that newer local edit (C30.3).
 func ApplyPreferencesIf(dir string, changes, expected map[string]string) error {
-	return editProfile(dir, "preferences", func(held map[string]json.RawMessage) (profileChange, error) {
+	var applied []string
+	err := editProfile(dir, "preferences", func(held map[string]json.RawMessage) (profileChange, error) {
 		change := profileChange{set: map[string]json.RawMessage{}}
 		for k, v := range changes {
 			if expected != nil && string(held[k]) != expected[k] {
@@ -75,8 +77,54 @@ func ApplyPreferencesIf(dir string, changes, expected map[string]string) error {
 				change.set[k] = json.RawMessage(v)
 			}
 		}
+		for k := range change.set {
+			applied = append(applied, k)
+		}
+		applied = append(applied, change.removed...)
 		return change, nil
 	})
+	if err == nil && len(applied) > 0 {
+		preferenceListeners.Lock()
+		var listeners []func([]string)
+		for _, listener := range preferenceListeners.byPath[BudgetConfigPath(dir)] {
+			listeners = append(listeners, listener)
+		}
+		preferenceListeners.Unlock()
+		// Readers may take the profile lock, so notify after the transaction ends.
+		for _, listener := range listeners {
+			listener(applied)
+		}
+	}
+	return err
+}
+
+var preferenceListeners = struct {
+	sync.Mutex
+	next   uint64
+	byPath map[string]map[uint64]func([]string)
+}{byPath: map[string]map[uint64]func([]string){}}
+
+// ObserveSyncedPreferences hears successful preference restores in this process.
+// Local setting writers keep their existing surface events. Closing stops future
+// notifications; a notification already copied for delivery may finish.
+func ObserveSyncedPreferences(dir string, changed func([]string)) func() {
+	path := BudgetConfigPath(dir)
+	preferenceListeners.Lock()
+	preferenceListeners.next++
+	id := preferenceListeners.next
+	if preferenceListeners.byPath[path] == nil {
+		preferenceListeners.byPath[path] = map[uint64]func([]string){}
+	}
+	preferenceListeners.byPath[path][id] = changed
+	preferenceListeners.Unlock()
+	return func() {
+		preferenceListeners.Lock()
+		defer preferenceListeners.Unlock()
+		delete(preferenceListeners.byPath[path], id)
+		if len(preferenceListeners.byPath[path]) == 0 {
+			delete(preferenceListeners.byPath, path)
+		}
+	}
 }
 
 // PreferenceTime reads the setting's edit clock, including a removal. Older

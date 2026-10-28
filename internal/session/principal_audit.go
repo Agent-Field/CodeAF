@@ -244,6 +244,9 @@ func (a *Agent) wallBoundedWindow(window time.Duration) time.Duration {
 // runOneCheck also serves task-baseline callers, whose context already carries
 // their checking deadline. Session callers supply the smaller wall-sized window.
 func runOneCheck(ctx context.Context, tree, check string, windows ...time.Duration) CheckRun {
+	if err := markTaskStorageUncertain(tree); err != nil {
+		return CheckRun{Command: check, Tail: err.Error()}
+	}
 	window := sessionCheckWindow
 	if len(windows) > 0 {
 		window = windows[0]

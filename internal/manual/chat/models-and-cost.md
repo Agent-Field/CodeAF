@@ -1672,6 +1672,10 @@ answer: it cannot think harder than its own ceiling.
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
+- If an unlisted endpoint says its model does not support thinking or reasoning,
+  codeaf retries the request once without the knob and remembers that capability
+  for the model until this process exits. That capability refusal is permanent;
+  it does not schedule the same failed turn again later.
 - On a small context window the budget shrinks to the room the conversation leaves beside
   an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
   the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the
@@ -4367,6 +4371,10 @@ turn can finish after crossing it, and native media has no shared dispatch
 reservation. A monthly cap is not available yet. Provider charges already in
 flight can exceed a limit. If startup could not establish the limit, repair it
 and reopen the app before standing orders can start.
+
+## Why is my conversation blocked
+
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. A turn already running may finish above its limit.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 

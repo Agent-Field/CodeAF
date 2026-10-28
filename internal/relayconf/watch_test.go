@@ -27,6 +27,7 @@ func TestWatchConformance(t *testing.T) {
 		}
 		acct := newAccount(t)
 		return directorytest.WatchRig{
+			Committed: true,
 			Rig: directorytest.Rig{
 				Clock: relayClock{t, service},
 				Devices: func(name string) directory.Client {
@@ -48,6 +49,7 @@ func TestLeaseConformance(t *testing.T) {
 	directorytest.RunLease(t, func(t *testing.T) directorytest.WatchRig {
 		acct := newAccount(t)
 		return directorytest.WatchRig{
+			Committed: true,
 			Rig: directorytest.Rig{
 				Clock: relayClock{t, base},
 				Devices: func(name string) directory.Client {
@@ -69,6 +71,7 @@ func TestPresenceConformance(t *testing.T) {
 	directorytest.RunPresence(t, func(t *testing.T) directorytest.WatchRig {
 		acct := newAccount(t)
 		return directorytest.WatchRig{
+			Committed: true,
 			Rig: directorytest.Rig{
 				Clock: relayClock{t, base},
 				Devices: func(name string) directory.Client {

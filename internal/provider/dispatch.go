@@ -846,8 +846,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// A context refusal needs a smaller request, even when the router names
 		// the machine that refused it. Return it to the conversation before an
-		// endpoint walk can resend the same oversized bytes.
-		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow {
+		// endpoint walk can resend the same oversized bytes. A model capability
+		// refusal also belongs to its one repair rather than an endpoint walk.
+		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && (failure.Overflow || failure.ReasoningUnsupported) {
 			response.Body = rewound(peek, response.Body)
 			sharedLimiter.release(false, 0)
 			return response, nil

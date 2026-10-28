@@ -1,5 +1,5 @@
 name = "codeaf-hosted-relay"
-main = "src/worker.js"
+main = "src/raft-worker.js"
 compatibility_date = "2026-09-01"
 
 # Local development and the base of every deployment: `wrangler dev --local` runs this in workerd
@@ -41,6 +41,17 @@ new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
 tag = "v2"
 new_sqlite_classes = ["LinkGate", "LinkRequest"]
 
+[build]
+command = "sh ../../scripts/raft-hosted-build.sh"
+
 [vars]
 # "amended": 90-second leases, renewed by publish; "stage1": 30-second leases.
 LEASE_POLICY = "amended"
+
+[[durable_objects.bindings]]
+name = "RAFT_MEMBERS"
+class_name = "RaftMemberDO"
+
+[[migrations]]
+tag = "v3-raft-members"
+new_sqlite_classes = ["RaftMemberDO"]

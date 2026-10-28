@@ -70,6 +70,7 @@ func (a *Agent) stampUserLocked(text string) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
@@ -276,6 +277,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		if meta.ID == "" {
 			meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
 		}
+		if meta.ChatURI == "" {
+			meta.ChatURI = snapshot.ChatURI
+		}
 		if meta.Workspace == "" {
 			meta.Workspace = snapshot.Workspace
 		}
@@ -286,6 +290,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 		}
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
@@ -294,7 +299,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Trees = snapshot.Trees
 		}
 		patch(&meta)
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -303,6 +308,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 // comes back whole rather than half-filled. The agent lock is held for the
 // model, which /model moves.
 func (a *Agent) fillMetaLocked(meta Meta) Meta {
+	if !a.config.InTask && a.config.WorkspaceURI != "" {
+		meta.ChatURI = a.config.WorkspaceURI
+	}
 	if strings.TrimSpace(meta.ID) == "" {
 		meta.ID = a.config.Place.ID()
 	}
@@ -322,6 +330,7 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	}
 	if model := strings.TrimSpace(a.model); model != "" {
 		meta.Model = model
+		meta.ModelProvider = a.config.serviceFor(model).Source.ID
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
@@ -385,6 +394,7 @@ func (a *Agent) stampMeta() {
 		meta.AutomaticModels = snapshot.AutomaticModels
 		meta.ModelIdentity = snapshot.ModelIdentity
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+		meta.ModelProvider = snapshot.ModelProvider
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }

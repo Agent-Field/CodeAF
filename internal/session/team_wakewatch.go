@@ -213,7 +213,9 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 				teamFinishedAfterReply(profile, role.id, entry) {
 				continue
 			}
-			if teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
+			// Membership can arrive after the fresh-session watch expires.
+			// Its own start still owes this member its first turn.
+			if a.teamOwnStart(role, entry) || teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
 				waking = append(waking, entry)
 			}
 		}

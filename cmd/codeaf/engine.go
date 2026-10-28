@@ -1228,7 +1228,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
-	if notice != "" || hello.New {
+	if cfg.SessionFile != launch.SessionFile || hello.New {
 		// The session file moved under us, so the welcome has to name the new
 		// one — everything the surface prints about this conversation comes off
 		// that frame. A minted conversation is the same fact said on purpose: it
@@ -1264,8 +1264,13 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		Closed: func(closed remote.WrappedAgent) {
 			if built, ok := closed.(*session.Agent); ok {
 				proc.forget(built)
-				syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID())
 			}
+		},
+		FinishSaving: func(closed remote.WrappedAgent) error {
+			if built, ok := closed.(*session.Agent); ok {
+				return session.SavingError(built.SessionPath(), syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID()))
+			}
+			return nil
 		},
 		// A linked-local surface writes a banked approval into this profile and
 		// carries ConsentRule on the answer already crossing the wire. Rebuild

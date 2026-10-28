@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -18,9 +19,11 @@ var ErrSuperseded = fmt.Errorf("cellsync: another device continued this chat: %w
 // Publisher makes turns durable: objects into the store first, the head in the
 // directory last. Dir is already bound to this device.
 type Publisher struct {
-	Engine Engine
-	Store  blobstore.Store
-	Dir    directory.Client
+	// WarmFrameHints opts into the bounded existing-frame prototype.
+	WarmFrameHints bool
+	Engine         Engine
+	Store          blobstore.Store
+	Dir            directory.Client
 }
 
 // Driving is the state of one cell this device is driving.
@@ -47,6 +50,8 @@ func (d Driving) ID() string {
 
 // PublishInfo is what a publish tells the directory about the cell.
 type PublishInfo struct {
+	hints        []directory.FrameHint
+	savedAt      int64
 	Class, Title string
 	Size         uint64
 	Pending      uint32
@@ -63,9 +68,17 @@ func (p *Publisher) Publish(ctx context.Context, d *Driving, head string, in Pub
 
 // publish is Publish that also reports what was uploaded.
 func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in PublishInfo) (Export, error) {
+	var err error
+	in.savedAt, err = cellstore.SavedAt(d.Cell, head)
+	if err != nil {
+		return Export{}, err
+	}
 	ex, frames, err := p.uploadPlan(ctx, d.Cell, head)
 	if err != nil {
 		return Export{}, err
+	}
+	if p.WarmFrameHints {
+		in.hints = latestFrameHints(ex.Frames, frames)
 	}
 	frames = unionFrames(d.Frames, frames)
 	fence, err := p.advance(ctx, *d, head, in, frames)
@@ -112,10 +125,11 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (E
 	ids := make([]string, 0, len(ex.Frames))
 	paths := make([]string, len(ex.Frames))
 	for i, f := range ex.Frames {
-		id, err := p.put(ctx, f)
+		id, actualBytes, err := p.put(ctx, f)
 		if err != nil {
 			return Export{}, nil, err
 		}
+		ex.Frames[i].Bytes = actualBytes
 		ids = append(ids, id)
 		paths[i] = f.Path
 	}
@@ -127,12 +141,13 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (E
 
 // put stores one frame and answers the id the store named it, which is what
 // the plan records: the store's own name for the frame, not a local guess.
-func (p *Publisher) put(ctx context.Context, f FrameFile) (string, error) {
+func (p *Publisher) put(ctx context.Context, f FrameFile) (string, int64, error) {
 	frame, err := os.ReadFile(f.Path)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	return p.Store.PutFrame(ctx, frame)
+	id, err := p.Store.PutFrame(ctx, frame)
+	return id, int64(len(frame)), err
 }
 
 // advance moves the directory head and answers the fence now held.
@@ -151,8 +166,9 @@ func (p *Publisher) advance(ctx context.Context, d Driving, head string, in Publ
 func (p *Publisher) move(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	_, err := p.Dir.Publish(ctx, d.ID(), directory.Publish{
 		Fence: d.Fence, OldHead: d.Head, Head: head,
-		Size: in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
-		Frames: frames,
+		SavedAt: in.savedAt,
+		Size:    in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
+		Frames: frames, FrameHints: in.hints,
 	})
 	return d.Fence, refusal(err)
 }
@@ -179,7 +195,8 @@ func (p *Publisher) resume(ctx context.Context, d Driving, head string, in Publi
 func (p *Publisher) create(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	v, err := p.Dir.Create(ctx, d.ID(), directory.CellInit{
 		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
-		Frames: frames,
+		SavedAt: in.savedAt,
+		Frames:  frames, FrameHints: in.hints,
 	})
 	return v.Cell.Lease.Fence, err
 }

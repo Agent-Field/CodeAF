@@ -8,6 +8,7 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -28,13 +29,17 @@ const pairPollTimeout = pairbox.MaxWait + 10*time.Second
 // relay this computer syncs through. A relay named by flag is the one the other
 // device is told to pass, so it is `Shown`; the default needs no telling.
 func pairMailbox(relayFlag string) (pair.Mailbox, error) {
-	if syncsetup.Resolve(home.Dir()).Off {
+	return pairMailboxAt(home.Dir(), relayFlag)
+}
+
+func pairMailboxAt(dir, relayFlag string) (pair.Mailbox, error) {
+	if syncsetup.Resolve(dir).Off {
 		return pair.Mailbox{}, pair.ErrSyncOff
 	}
 	flag := strings.TrimSpace(relayFlag)
 	base := flag
 	if flag == "" {
-		relay := syncsetup.Resolve(home.Dir())
+		relay := syncsetup.Resolve(dir)
 		if relay.Off {
 			return pair.Mailbox{}, pair.ErrSyncOff
 		}
@@ -63,14 +68,18 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 // It also names the identities this one replaced by rotation, so a computer
 // still on one of them may follow instead of being refused.
 func pairGrant(route pair.Mailbox) (pair.Grant, error) {
-	id, err := identity.Ensure(home.Dir())
+	return pairGrantAt(home.Dir(), route)
+}
+
+func pairGrantAt(dir string, route pair.Mailbox) (pair.Grant, error) {
+	id, err := identity.Ensure(dir)
 	if err != nil {
 		return pair.Grant{}, err
 	}
-	if err := identity.EndSolo(home.Dir()); err != nil { // offering the identity is starting a fleet
+	if err := identity.EndSolo(dir); err != nil { // offering the identity is starting a fleet
 		return pair.Grant{}, err
 	}
-	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(home.Dir())}, nil
+	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir)}, nil
 }
 
 // pairJoining is this computer as the device that types the code.
@@ -83,6 +92,7 @@ func pairJoiningAt(dir string) func(replace bool) pair.Joining {
 			Home:        dir,
 			ProfileDir:  config.ProfileDir(),
 			Label:       devname.Name(dir),
+			Platform:    runtime.GOOS,
 			Replace:     replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
 		}

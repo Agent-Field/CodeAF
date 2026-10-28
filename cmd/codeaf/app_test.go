@@ -36,6 +36,16 @@ import (
 // their members named by agent id, an unknown method is refused, and the
 // process leaves when its input ends.
 func TestAppCommandAnswersHelloPingCrewsAndUnknownMethod(t *testing.T) {
+	oldFlush := flushFinalSaves
+	var flushed atomic.Int32
+	flushFinalSaves = func(ctx context.Context) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		flushed.Add(1)
+		return nil
+	}
+	t.Cleanup(func() { flushFinalSaves = oldFlush })
 	root := resolvedTempDir(t)
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv(home.EnvVar, filepath.Join(root, "unused"))
@@ -129,6 +139,9 @@ func TestAppCommandAnswersHelloPingCrewsAndUnknownMethod(t *testing.T) {
 	case err := <-done:
 		if err != nil {
 			t.Fatalf("the app left with %v", err)
+		}
+		if flushed.Load() != 1 {
+			t.Fatalf("app returned before final durability: flushes = %d", flushed.Load())
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the app did not leave when its input ended")

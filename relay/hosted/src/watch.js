@@ -1,4 +1,4 @@
-// The directory watch socket of one identity (contract 21). It is the server half of a push that costs
+// The directory watch socket of one identity. It is the server half of a push that costs
 // nothing while idle: the object accepts sockets with the hibernation API, so a socket that is open and
 // quiet holds no memory and bills no time, and it sets no timer and opens no connection for any socket.
 // A socket carries one number, the directory's version, and never a record. The list of sockets is the
@@ -11,14 +11,15 @@ import { Wire } from './wire.js';
 /** The close codes a client acts on: a revoked device stops for good; a rotation stops the watching. */
 export const CLOSE_REVOKED = 4401;
 export const CLOSE_ROTATED = 4410;
-/** A socket that stopped answering is closed with this code; a client that reads it redials at once (contract 21.12.4). */
+/** A socket that stopped answering is closed with this code; a client that reads it redials at once. */
 export const CLOSE_SILENT = 4408;
 
-/** The answer headers that tell a client this relay counts its socket as proof of life, and judges presence by it (contract 21.11.1, 21.12.3). */
+/** The answer headers that tell a client this relay counts its socket as proof of life, and judges presence by it. */
 const ANSWER_HEADERS = { 'Codeaf-Vouch': '1', 'Codeaf-Presence': '1' };
 
 /** What a socket carries through hibernation; an attachment from before a field existed reads as its default. */
-const FRESH = { at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false };
+const FRESH = { receipts: false, at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false };
+const watchSockets=ctx=>ctx.getWebSockets().filter(ws=>ws.deserializeAttachment?.()?.clusterPeer!==true);
 const attachmentOf = (ws) => ({ ...FRESH, ...ws.deserializeAttachment() });
 
 /**
@@ -58,6 +59,15 @@ const frame = (version) => `{"v":${version}}`;
 /** NOBODY hears nothing: what a directory uses when no socket can ever be open (tests, the pure rules). */
 export const NOBODY = { broadcast() {}, closeDevice() {}, closeAll() {}, vouchedUntil: () => 0, announce() {} };
 
+// The hibernation API keeps accepted watch and protocol sockets passive between
+// frames. Attachments and tags are installed together before either can send.
+export function acceptHibernatingSocket(ctx, tags, attachment) {
+  const { 0: client, 1: server } = new WebSocketPair();
+  ctx.acceptWebSocket(server, tags);
+  server.serializeAttachment(attachment);
+  return { client, server };
+}
+
 export class Watchers {
   constructor(ctx, cap, ttlMs, arm = () => {}, seen = () => {}) {
     this.ctx = ctx;
@@ -77,16 +87,15 @@ export class Watchers {
   /**
    * accept opens a socket for `device`, tells it `version` at once, and answers the 101 that completes the upgrade.
    * The holds the socket names and the time it was accepted travel in its attachment, which the platform keeps
-   * with the socket through hibernation, so vouching for a lease costs no storage write (contract 21.11).
+   * with the socket through hibernation, so vouching for a lease costs no storage write.
    * A socket opened with `events` also hears the event frames (presence, joined, revoked) and, at once, who is online;
-   * it is also the viewer that makes the presence sweep worth arming (contract 21.12.4). `beat` is the ping period the
+   * it is also the viewer that makes the presence sweep worth arming. `beat` is the ping period the
    * client declared, from which the socket's window follows.
    */
-  accept(device, version, now, { holds, beat, events = false }) {
-    if (this.ctx.getWebSockets().length >= this.cap) throw new Wire('too_many_watchers', 429);
-    const { 0: client, 1: server } = new WebSocketPair();
-    this.ctx.acceptWebSocket(server, [device]);
-    server.serializeAttachment({ ...FRESH, at: now, holds, events, beat });
+  accept(device, version, now, { holds, beat, events = false, receipts = false, certificate = undefined }) {
+    if (watchSockets(this.ctx).length >= this.cap) throw new Wire('too_many_watchers', 429);
+    const { client, server } = acceptHibernatingSocket(this.ctx, [device],
+      { ...FRESH, at: now, holds, events, beat, receipts, ...(certificate?{certificate}:{}) });
     server.send(frame(version));
     if (events) for (const text of this.liveness.snapshot(device)) server.send(text);
     this.liveness.opened(device);
@@ -104,10 +113,25 @@ export class Watchers {
     return vouchedUntil(sockets, cell, fence, this.ttlMs);
   }
 
+  // Only the committed-renewal bridge consumes this snapshot. The platform's
+  // hibernating ping timestamp remains advisory until its exact holds commit.
+  holdEvidence(now) {
+    return watchSockets(this.ctx).map(ws => {
+      const att = attachmentOf(ws);
+      // Presence may forgive a closing socket, but renewal evidence must
+      // fail closed when the platform cannot supply its timestamp.
+      let seenAt=0;
+      try {seenAt=Math.max(att.at,this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime()??0);} catch {}
+      return {device:this.ctx.getTags(ws)[0],holds:att.lapsed ? [] : att.holds.map(([cell,fence])=>({cell,fence:String(fence)})),
+        seenAt,certificate:att.certificate,
+        send:text=>{if(att.receipts)attempt(()=>ws.send(text));},failed:()=>attempt(()=>ws.close(1013,'retry'))};
+    });
+  }
+
   /** broadcast tells every socket of the identity the new version. */
   broadcast(version) {
     const text = frame(version);
-    for (const ws of this.ctx.getWebSockets()) attempt(() => ws.send(text));
+    for (const ws of watchSockets(this.ctx)) attempt(() => ws.send(text));
   }
 
   /** #evidence is what a socket names and when it last showed life, which is all a lease needs of it. */
@@ -133,7 +157,7 @@ export class Watchers {
   }
 
   #peers() {
-    return this.ctx.getWebSockets().map((ws) => this.#peer(ws));
+    return watchSockets(this.ctx).map((ws) => this.#peer(ws));
   }
 
   /** left runs when a socket has closed. It answers the device that now holds no live socket, or undefined: a socket that was already silent leaves nothing to tell. */
@@ -147,12 +171,21 @@ export class Watchers {
     this.liveness.expire();
   }
 
-  /** online is the set of devices that hold a live watch socket now: one inside its window (contract 21.12.2). */
+  /** online is the set of devices that hold a live watch socket now: one inside its window. */
   online() {
     return this.liveness.online();
   }
 
-  /** announce sends an event frame (contract 5) to every event socket except the sockets of `except`. */
+  /** present agrees with presence events while a computer reconnects. */
+  present() {
+    return this.liveness.present();
+  }
+
+  presence(devices, now) {
+    return this.liveness.presence(devices, now);
+  }
+
+  /** announce sends an event frame to every event socket except the sockets of `except`. */
   announce(frame, except) {
     this.liveness.tell(frame, except);
   }
@@ -162,7 +195,7 @@ export class Watchers {
   }
 
   closeAll(code, reason) {
-    for (const ws of this.ctx.getWebSockets()) attempt(() => ws.close(code, reason));
+    for (const ws of watchSockets(this.ctx)) attempt(() => ws.close(code, reason));
   }
 }
 
@@ -180,5 +213,16 @@ function attempt(fn) {
     fn();
   } catch {
     /* already closing */
+  }
+}
+
+// Consensus watches never derive a lease from a socket. V1 callers keep normal
+// beats; updated callers may suppress them only after a committed hold receipt.
+export class CommittedWatchers extends Watchers {
+  vouchedUntil() { return 0; }
+  accept(...args) {
+    const reply=super.accept(...args);
+    const headers=new Headers(reply.headers);headers.delete('Codeaf-Vouch');
+    return new Response(null,{status:101,webSocket:reply.webSocket,headers});
   }
 }

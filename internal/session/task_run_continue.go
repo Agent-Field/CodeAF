@@ -98,7 +98,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	// record exists for: the road that MAKES a copy clears the directory it is
 	// handed, so reaching for it here would delete the work this door is meant
 	// to resume (task_run_copy.go says it at length).
-	tree, err := runCopyTree(kept.Copy, a.config.Place)
+	tree, err := reopenWorkspaceSet(kept.Copy, kept.WorkspaceSet, a.config.Place)
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +118,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	runCtx, cut := context.WithCancel(context.WithoutCancel(ctx))
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: row, title: kept.Title,
-		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut, crew: crew, recoveredCrew: kept.CrewState,
+		workspace: tree.dir, ground: tree.ground, tree: tree, stand: taskStand{dir: tree.ground, mode: tree.mode, workspaceSet: workspaceSetRequestOf(tree.workspaceSet)}, cut: cut, crew: crew, recoveredCrew: kept.CrewState,
 		born: a.taskClockNow(), over: make(chan struct{}),
 		joined: recoveredJoinedRows(g, row),
 	}
@@ -126,9 +126,13 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	// THE ROW GOES BACK TO RUNNING AND KEEPS THE COPY IT NAMED. Publishing
 	// without it would make the run one nobody can carry on a second time, which
 	// is the defect this door exists on the other side of.
+	primaryCopy := kept.Copy
+	if tree.workspaceSet != nil {
+		primaryCopy = runCopyOf(tree)
+	}
 	a.publishRunRow(g, TaskNotice{
 		ID: row, Title: kept.Title, State: TaskRunning,
-		StartedAt: kept.StartedAt, Parent: kept.Parent, Copy: kept.Copy,
+		StartedAt: kept.StartedAt, Parent: kept.Parent, Copy: primaryCopy, WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet),
 	})
 
 	// THE SAME SPEC THE RUN WOULD HAVE HAD ([Agent.beltRunSpec]). A continued

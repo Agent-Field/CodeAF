@@ -527,6 +527,22 @@ func (b *appBackend) settingsMoved() {
 	}
 }
 
+// listenSyncedSettings uses the restore transaction's notification rather than
+// another file watcher or clock. One restore can change several settings.
+func (b *appBackend) listenSyncedSettings() func() {
+	return config.ObserveSyncedPreferences(config.ProfileDir(), func(keys []string) {
+		for _, key := range keys {
+			switch key {
+			case config.KeyChatModel, config.KeyToolApprovalMode, config.KeySpendRail,
+				config.KeyDailyBudget, config.KeyCrewTaskCap, config.KeyEffort,
+				config.KeyTierHighModel, config.KeyTierMastermindModel, config.KeyModelFallbacks:
+				b.settingsMoved()
+				return
+			}
+		}
+	})
+}
+
 // appDollars writes a figure the way the profile's money writers read one.
 func appDollars(usd float64) string {
 	return strconv.FormatFloat(usd, 'f', -1, 64)

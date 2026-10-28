@@ -411,7 +411,13 @@ func TestEveryAgentThisPackageBuildsSaysWhereItsDroppingsGo(t *testing.T) {
 	fset, files := packageSources(t)
 	var silent []string
 	seen := 0
-	for path, file := range files {
+	for path := range files {
+		// Resolve local identifiers so a named Config is inspected just as a
+		// literal passed directly to the constructor is.
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
 			if !ok {
@@ -430,8 +436,8 @@ func TestEveryAgentThisPackageBuildsSaysWhereItsDroppingsGo(t *testing.T) {
 			// A caller handing over a whole Config — [New], which forwards the
 			// door's own — is not a construction site: the door's Place is the
 			// session's and the question does not arise.
-			literal, ok := call.Args[0].(*ast.CompositeLit)
-			if !ok {
+			literal := constructedConfigLiteral(call.Args[0])
+			if literal == nil {
 				return true
 			}
 			seen++
@@ -462,6 +468,35 @@ func TestEveryAgentThisPackageBuildsSaysWhereItsDroppingsGo(t *testing.T) {
 			"or Place: if this agent really is a session of its own (landing.go).",
 			strings.Join(silent, "\n\t"))
 	}
+}
+
+// constructedConfigLiteral follows only a lexical declaration, not a Config
+// forwarded from a parameter or another function's return value.
+func constructedConfigLiteral(expression ast.Expr) *ast.CompositeLit {
+	if literal, ok := expression.(*ast.CompositeLit); ok {
+		return literal
+	}
+	ident, ok := expression.(*ast.Ident)
+	if !ok || ident.Obj == nil {
+		return nil
+	}
+	switch declaration := ident.Obj.Decl.(type) {
+	case *ast.AssignStmt:
+		for i, lhs := range declaration.Lhs {
+			if name, ok := lhs.(*ast.Ident); ok && name.Obj == ident.Obj && i < len(declaration.Rhs) {
+				literal, _ := declaration.Rhs[i].(*ast.CompositeLit)
+				return literal
+			}
+		}
+	case *ast.ValueSpec:
+		for i, name := range declaration.Names {
+			if name.Obj == ident.Obj && i < len(declaration.Values) {
+				literal, _ := declaration.Values[i].(*ast.CompositeLit)
+				return literal
+			}
+		}
+	}
+	return nil
 }
 
 // ── deliverables ────────────────────────────────────────────────────────────

@@ -288,7 +288,7 @@ If something reaches for the relay while quiet, it gets the word `sync is waitin
 
 The first-run line about the hosted relay is said once, when chats are first copied, after pairing or offering a code. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
 
-## Where your chats are stored — the hosted relay, turning it off, your own relay, is my code private
+## Where your chats are stored — the hosted relay, turning it off, self-host your own relay, is my code private
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -358,7 +358,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Other things the relay can say while you pair:
 
-The relay does not answer. The name is the host you used:
+The relay cannot be reached. The name is the host you used:
 
 ```
 cannot reach relay.example.com — check your internet connection and try again
@@ -375,6 +375,17 @@ The relay is an old one that does not know pairing:
 ```
 that sync service is too old for pairing
 ```
+
+## Pairing timed out — the sync service did not answer in time
+
+A request that runs out of time does not diagnose a network fault. It says:
+
+```
+the sync service at https://relay.example.com did not answer in time — try again
+```
+
+The address is the service you used. Try pairing again; a busy service or disk
+can also delay its answer.
 
 ## I lost my laptop — what to do
 
@@ -402,6 +413,8 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
 
 Native Windows moves chats with the native engine, just like Linux and macOS.
+Continue here installs the saved chat while other chats stay open. You can send
+from the installed copy and continue it back on your other computer.
 Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
 A build with no compatible engine keeps moving chats absent and says
 `moving chats needs a newer furrow engine than this build carries`.
@@ -413,6 +426,10 @@ or mixed line endings even when the receiving Git uses another checkout setting.
 links; links that cannot be created are reported on the same line. Hard-linked names
 currently arrive on Windows as separate files with identical bytes. The chat works
 in its folder on this computer, with old absolute workspace paths remapped there.
+An empty workspace is created here too. Continuing a chat follows its installed
+folder even when the copy's full path exceeds Windows' process-directory limit.
+Taking a project chat back also restores its saved turn receipts when their
+paths exceed Windows' usual file-path limit.
 
 The encrypted vault and withheld secrets live under your codeaf home in your user profile. Windows protects that profile with its account permissions; Unix file
 mode bits are recorded for later moves, but do not provide Windows access control.
@@ -433,3 +450,11 @@ and existing remote access still work. Use a build carrying the newer engine, or
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A PEM certificate bundle containing only `BEGIN CERTIFICATE` blocks is kept in saved history and can move with the workspace. A `.pem` suffix alone does not make it a private key. Files containing PEM private-key headers (including encrypted keys and OpenSSH keys), PuTTY private keys, and PKCS#12 key containers are withheld; a PEM containing both certificates and a private key is withheld too. The same folder exclusions still apply: a certificate inside an install folder left behind for rebuilding is rebuilt with that folder.
+
+## My computer was removed — can I still send in my own chats
+
+A removed computer keeps working locally in a new chat and in a chat it held when it was removed. Those turns stay on this computer and do not sync. A chat another computer had already taken stays unsent here. Removal offers no way to take that chat back; pair the computer again to bring syncing back.
+
+## Why does codeaf devices fail when the sync service is down
+
+If your devices cannot be listed, `codeaf devices` exits with an error explaining that the sync service cannot be reached. It does not say nothing is paired when the listing is unavailable. A connection that times out says the service did not answer in time.

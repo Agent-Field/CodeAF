@@ -2,12 +2,16 @@ package tui3
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"sort"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── CHATS ON OTHER MACHINES, IN THE SESSIONS PANEL ──────────────────────────
@@ -27,10 +31,13 @@ import (
 // [homeCellTitleFloor] cells does the sentence go whole.
 
 // machineReading is the last listing the other machines gave, and whether the
-// last ask failed. A failed ask keeps the rows: the list stays on screen, dim,
-// under `other machines unreachable`.
+// last ask failed. A failed ask keeps the rows and explains whether the reading
+// reached its deadline or the connection could not be made.
 type machineReading struct {
-	rows []chatlist.Row
+	err             error
+	sendHolds       map[string]sendHold
+	computerRemoved bool
+	rows            []chatlist.Row
 	// at is when the listing was read. Each row's age is counted from it, so a
 	// row keeps ageing on the clock between two asks instead of standing still.
 	at   time.Time
@@ -50,13 +57,14 @@ type machineReading struct {
 
 // homeMachinesMsg is one listing, coming BACK from the source.
 type homeMachinesMsg struct {
-	rows    []chatlist.Row
-	version uint64
-	err     error
+	rows      []chatlist.Row
+	version   uint64
+	err       error
+	holdCell  string
+	holdFence uint64
 }
 
-// machinesAskTimeout bounds one ask, so a silent relay is unreachable rather
-// than an ask that never returns.
+// machinesAskTimeout bounds one ask without treating silence as a network failure.
 const machinesAskTimeout = 5 * time.Second
 
 // askMachines lists the other machines, off the update loop for the reason a
@@ -72,30 +80,62 @@ func (a *app) askChats() tea.Cmd {
 		return nil
 	}
 	a.machinesAsking = true
-	src := a.machines
+	src, file := a.machines, a.file
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
 		rows, version, err := chatlist.RowsAt(ctx, src)
-		return homeMachinesMsg{rows: rows, version: version, err: err}
+		msg := homeMachinesMsg{rows: rows, version: version, err: err}
+		if local, ok := src.(sendLeaseSource); ok && file != "" {
+			msg.holdCell = filepath.Base(session.DirOf(file))
+			_, msg.holdFence, _ = local.SendLease(msg.holdCell)
+		}
+		return msg
 	}
 }
 
 // tookMachines files the answer. An error keeps the last rows and only marks
 // them stale.
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
-	before, wasElsewhere := a.heldElsewhere()
 	a.machinesAsking = false
-	a.fileMachines(msg)
-	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
-		a.note(chatlist.Superseded(row.Device))
+	if a.machinesRetaken {
+		a.machinesRetaken = false
+		return a.askMachines()
 	}
-	a.machineRead.down = msg.err != nil
+	return a.recordMachines(msg)
+}
+
+// recordMachines also accepts a send's independent read without ending an
+// outstanding listing request that still owes its own answer.
+func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
+	if errors.Is(msg.err, directory.ErrRevoked) {
+		a.removedComputer()
+	}
+	if msg.err == nil && a.machineRead.computerRemoved {
+		if source, ok := a.machines.(interface{ Removed() bool }); ok && !source.Removed() {
+			a.machineRead.computerRemoved = false
+			a.homeAccountNotice = ""
+		}
+	}
+	if msg.err == nil {
+		a.rememberSendHolds(msg)
+	}
+	before, wasElsewhere := a.heldElsewhere()
+	a.fileMachines(msg)
+	a.machineRead.err = msg.err
+	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
+		a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
+	}
+	a.machineRead.down = msg.err != nil && !a.machineRead.computerRemoved
 	a.machineRead.merge = a.branches.Merge != nil
 	a.machineRead.separate = a.branches.Open != nil
 	a.considerResume()
 	a.rebuildMachines()
-	return tea.Batch(a.readOwedByFrames(msg.err == nil), a.finishBring(), a.continueAfterQuit(msg.err))
+	var owed tea.Cmd
+	if !a.machinesAsking {
+		owed = a.readOwedByFrames(msg.err == nil)
+	}
+	return tea.Batch(owed, a.finishBring(), a.continueAfterQuit(msg.err))
 }
 
 // into merges the other machines' chats into the panel's own lines, newest
@@ -106,9 +146,18 @@ func (m machineReading) into(in *homeGridInput, own []homeLine) homePanelRows {
 	rows := homePanelCut(in, panelSessions, lines)
 	if m.down {
 		rows.lines = append(rows.lines, homeLine{kind: homeMachineRow, cell: &homeCell{
-			kind: cellWhisper, panel: panelSessions, title: chatlist.Unreachable}})
+			kind: cellWhisper, panel: panelSessions, title: m.unavailableWord()}})
 	}
 	return rows
+}
+
+// unavailableWord preserves the distinction between a deadline and a failed connection.
+func (m machineReading) unavailableWord() string {
+	var timeout interface{ Timeout() bool }
+	if errors.Is(m.err, context.DeadlineExceeded) || errors.As(m.err, &timeout) && timeout.Timeout() {
+		return chatlist.ReadTimedOut
+	}
+	return chatlist.Unreachable
 }
 
 // lines are the rows to draw: none of the kind that only this machine can hold,

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -21,6 +22,8 @@ import (
 // is the identity, and goes on with the real drive from the call that finds it.
 type liveDrive struct {
 	start func() (*syncsetup.Drive, error)
+	// transcript identifies the retained turns if this writer's final publish fails.
+	transcript string
 
 	mu        sync.Mutex
 	drive     *syncsetup.Drive
@@ -28,12 +31,17 @@ type liveDrive struct {
 	ready     chan struct{}
 	attempted bool
 	closed    bool
+	retry     *time.Timer
+	retryWait time.Duration
+	// changes coalesces local health updates for the host's cached surface state.
+	changes chan struct{}
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
-// seals do not wait for the relay; new tool work waits for its ownership check.
-func newLiveDrive(start func() (*syncsetup.Drive, error)) *liveDrive {
-	l := &liveDrive{start: start}
+// screening stays off the surface loop; saving and new tools wait for ownership.
+func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
+	l := &liveDrive{changes: make(chan struct{}, 1)}
+	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
 	l.try()
 	return l
 }
@@ -65,8 +73,8 @@ func (l *liveDrive) try() {
 	})
 }
 
-// install joins the startup seals under the same lock lateStore seals through,
-// so a turn cannot fall between catch-up and installing the drive.
+// install publishes any earlier local seals before making the drive available.
+// Completed seals use the same lock when deciding whether catch-up is still owed.
 func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -75,8 +83,72 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet), true
 	if d != nil {
 		d.CatchUp()
+		l.retryWait = 0
+	} else if !l.closed && cellsync.Unreachable(err) {
+		l.retryStartup()
 	}
+	l.renewalChanged()
 	return l.closed
+}
+
+// retryStartup owns the next attempt after a transport failure. It runs under
+// mu; gates and seals remain local until the single startup attempt succeeds.
+func (l *liveDrive) retryStartup() {
+	if l.retryWait == 0 {
+		l.retryWait = cellsync.DefaultInterval
+	} else {
+		l.retryWait = min(2*l.retryWait, cellsync.MaxBackoff)
+	}
+	resetAttempt := func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.retry = nil
+		if !l.closed {
+			l.attempted = false
+		}
+	}
+	l.retry = time.AfterFunc(l.retryWait, func() {
+		resetAttempt()
+		l.try()
+	})
+}
+
+// openDrive is the started drive, or nil when none has started or this writer
+// has closed. It never starts one.
+func (l *liveDrive) openDrive() *syncsetup.Drive {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil
+	}
+	return l.drive
+}
+
+// RenewalStatus reads an already-started drive without starting one or waiting.
+func (l *liveDrive) RenewalStatus() (time.Time, time.Duration, bool) {
+	if l == nil {
+		return time.Time{}, 0, false
+	}
+	d := l.openDrive()
+	if d == nil {
+		return time.Time{}, 0, false
+	}
+	return d.RenewalStatus()
+}
+
+// RenewalChanges lets the host hear health changes even when no turn is running.
+func (l *liveDrive) RenewalChanges() <-chan struct{} {
+	if l == nil {
+		return nil
+	}
+	return l.changes
+}
+
+func (l *liveDrive) renewalChanged() {
+	select {
+	case l.changes <- struct{}{}:
+	default:
+	}
 }
 
 // pending reads the startup boundary without holding the mutex while waiting
@@ -123,9 +195,9 @@ func (l *liveDrive) Idle() {
 	}
 }
 
-// Store is the store a seal goes through: the engine itself until a drive side
-// exists, then the drive side's. A turn sealed before it started is noted by the
-// drive side's own catch-up, so nothing sealed in between is left behind.
+// Store waits for the initial ownership decision before choosing a writer.
+// A computer without an identity still saves locally; an installed drive stamps
+// and publishes its turns, while a viewer leaves the history alone.
 func (l *liveDrive) Store(e cellstore.Engine) cellstore.Store {
 	return lateStore{live: l, engine: e}
 }
@@ -136,6 +208,10 @@ func (l *liveDrive) Close(ctx context.Context) error {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.closed = true
+		if l.retry != nil {
+			l.retry.Stop()
+			l.retry = nil
+		}
 		return l.ready
 	}()
 	if ready != nil {
@@ -182,13 +258,40 @@ type lateStore struct {
 
 var _ cellstore.Store = lateStore{}
 
+// readyStore waits for startup ownership before touching the history.
+// A new local chat can still save while its computer has no identity.
+func (s lateStore) readyStore(ctx context.Context) (cellstore.Store, *syncsetup.Drive, error) {
+	s.live.try()
+	if ready := s.live.pending(); ready != nil {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
+	}
+	used := s.live.started()
+	if used != nil {
+		return used.Store(s.engine), used, nil
+	}
+	return s.engine, nil, nil
+}
+
+// Prepare warms only the store permitted to write this chat.
+func (s lateStore) Prepare(ctx context.Context, c cell.Cell) error {
+	store, _, err := s.readyStore(ctx)
+	if err != nil {
+		return err
+	}
+	return store.(interface {
+		Prepare(context.Context, cell.Cell) error
+	}).Prepare(ctx, c)
+}
+
 // Seal implements cellstore.Store.
 func (s lateStore) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
-	s.live.try()
-	used := s.live.started()
-	var store cellstore.Store = s.engine
-	if used != nil {
-		store = used.Store(s.engine)
+	store, used, err := s.readyStore(ctx)
+	if err != nil {
+		return cellstore.Sealed{}, err
 	}
 	sealed, err := store.Seal(ctx, c, info)
 	if err == nil {

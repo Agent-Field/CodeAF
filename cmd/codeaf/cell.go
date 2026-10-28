@@ -104,15 +104,19 @@ func openCellNamed(name, cwd string) (cell.Cell, error) {
 // openCellByID finds a cell by id where a chat keeps it: in the project bucket
 // its workspace names, or in the flat cells directory of cell.Create.
 func openCellByID(id string) (cell.Cell, error) {
-	buckets, _ := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", id))
-	copies, _ := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", ".moving", id))
+	return openCellByIDAt(home.Dir(), id)
+}
+
+func openCellByIDAt(dir, id string) (cell.Cell, error) {
+	buckets, _ := filepath.Glob(filepath.Join(filepath.Join(dir, "v3", "projects"), "*", id))
+	copies, _ := filepath.Glob(filepath.Join(filepath.Join(dir, "v3", "projects"), "*", ".moving", id))
 	buckets = append(buckets, copies...)
-	for _, dir := range append(buckets, filepath.Join(cell.Dir(home.Dir()), id)) {
+	for _, dir := range append(buckets, filepath.Join(cell.Dir(dir), id)) {
 		if c, err := cell.OpenAt(dir, id); err == nil {
 			return c, nil
 		}
 	}
-	return cell.Open(home.Dir(), id)
+	return cell.Open(dir, id)
 }
 
 func openCellAbove(dir string) (cell.Cell, error) {

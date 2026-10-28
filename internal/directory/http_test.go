@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,6 +86,59 @@ func TestHTTPConformance(t *testing.T) {
 		g := newRig(t, clock, fakeAuth)
 		return func(device string) directory.Client { return g.as("id_one", device) }
 	})
+}
+
+func TestHTTPChatR2OlderRelayStillPublishes(t *testing.T) {
+	clock := directorytest.NewFakeClock()
+	next := directory.Handler(fakeAuth, newNamespaces(clock).open)
+	var supported atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		// Older relays strictly decode signed create/publish bodies.
+		if !supported.Load() && bytes.Contains(raw, []byte(`"saved_at"`)) {
+			t.Error("R2 old relay received an unsupported saved_at field")
+			http.Error(w, `{"err":"bad_request"}`, http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		reply := httptest.NewRecorder()
+		next.ServeHTTP(reply, r)
+		for key, values := range reply.Header() {
+			if supported.Load() || !strings.EqualFold(key, directory.SavedTurnTimeHeader) {
+				w.Header()[key] = values
+			}
+		}
+		w.WriteHeader(reply.Code)
+		_, _ = w.Write(reply.Body.Bytes())
+	}))
+	defer srv.Close()
+	client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
+	v, err := client.Create(t.Context(), cellX, directory.CellInit{Head: head1, SavedAt: 700_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Cell.SavedAt != 0 {
+		t.Fatal("R2 old relay invented a sealed-turn time")
+	}
+	if _, err := client.Publish(t.Context(), cellX, directory.Publish{Fence: v.Cell.Lease.Fence, OldHead: head1, Head: head2, SavedAt: 800_000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Release(t.Context(), cellX, v.Cell.Lease.Fence); err != nil {
+		t.Fatal(err)
+	}
+	// A subsequent response learns an upgraded service without restarting.
+	supported.Store(true)
+	if _, err := client.Cell(t.Context(), cellX); err != nil {
+		t.Fatal(err)
+	}
+	v, err = client.Publish(t.Context(), cellX, directory.Publish{Fence: v.Cell.Lease.Fence, OldHead: head2, Head: head1, SavedAt: 900_000})
+	if err != nil || v.Cell.SavedAt != 900_000 {
+		t.Fatalf("R2 upgraded relay lost turn time: %+v, %v", v, err)
+	}
 }
 
 func TestHandlerTakesDeviceFromSignature(t *testing.T) {

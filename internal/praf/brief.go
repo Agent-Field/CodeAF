@@ -162,7 +162,7 @@ func folderGit(ctx context.Context, dir string, args ...string) (string, bool) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+	out, err := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "-C", dir}, args...)...).Output()
 	if err != nil {
 		return "", false
 	}

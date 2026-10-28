@@ -1,31 +1,31 @@
 {
   "repository": "Agent-Field/furrow",
-  "tag": "v0.2.0",
-  "version": "0.2.0",
+  "tag": "v0.3.5",
+  "version": "0.3.5",
   "artifacts": {
     "darwin-amd64": {
       "asset": "furrow-darwin-amd64",
-      "sha256": "fc9ead1c78582086d05f859f354fac2ade8b28b43ea54a4e04f9f03a3fb92ed1"
+      "sha256": "afd6c5627909185f6ea7c284526937d1c709ee9b7ab3d6e8fc12b807c487af66"
     },
     "darwin-arm64": {
       "asset": "furrow-darwin-arm64",
-      "sha256": "23c713db4544de5e169a902d6d42e581c205d7c85e3605fb28bbf1250bdd0c86"
+      "sha256": "18a6afdf75aac9ae738ea5a75c3ecc7e6096fa915b72c2916fbdefd0f45a3396"
     },
     "linux-amd64": {
       "asset": "furrow-linux-amd64",
-      "sha256": "be982dc8e991192d338b6daaa4f9a5765e7598eb3664b3dafd2f8e4834c4b508"
+      "sha256": "647c57a521637eb6930f77c1c29797bf15c34f598751756c70a19cea90d91827"
     },
     "linux-arm64": {
       "asset": "furrow-linux-arm64",
-      "sha256": "b9cecb657ee253116ebd7c1969e920d9b95cdd99267b2068e8e78b07277b1e2c"
+      "sha256": "da87e1067bbb5eee27dbd034a5274d6ae8c48b938d05c791ea0e5503932c78d8"
     },
     "windows-amd64": {
       "asset": "furrow-windows-amd64.exe",
-      "sha256": "327cc31320544e4c24f101cecc71ec7f68feae68921f7bb1ab1a6d165d0e01c7"
+      "sha256": "bf4c60bacaea42b1a0cdb3c97279562fbadc73fea5bf69ca04d55f048d1a2cf1"
     },
     "windows-arm64": {
       "asset": "furrow-windows-arm64.exe",
-      "sha256": "f5435d6d38c87d001a008fd19db399dd8e722ca3044c2f236c3174b0a7827e77"
+      "sha256": "fedfab37475ab17bb3be4c8bdadaffcf77756aa3679815068d57ff3dd9e30861"
     }
   }
 }
