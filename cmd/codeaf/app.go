@@ -462,7 +462,8 @@ type appBackend struct {
 	syncPending map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
-	devices *appDevices
+	devices            *appDevices
+	stopSyncedSettings func()
 
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
@@ -875,6 +876,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		mint:      appMint,
 	}
 	b.emit = b.newAppInbox(emit)
+	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
 	b.stopProgress = b.listenProgress()
@@ -4114,6 +4116,9 @@ func (b *appBackend) Close() error {
 		return nil
 	}
 	b.closePair()
+	if b.stopSyncedSettings != nil {
+		b.stopSyncedSettings()
+	}
 	b.closeChats()
 	if b.devices != nil {
 		b.devices.close()

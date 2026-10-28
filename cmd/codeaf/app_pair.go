@@ -245,7 +245,7 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 		}
 		// These events precede done: a desktop may immediately restart on done.
 		if view, e := o.backend.devices.snapshot(); e == nil {
-			o.backend.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+			o.backend.publishDevices(view)
 		}
 		sync, _ := o.backend.SyncStatus()
 		o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})

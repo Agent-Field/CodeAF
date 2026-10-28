@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"runtime"
 	"slices"
@@ -34,10 +35,12 @@ const appSyncOff = "Sync is off on this computer."
 // appDevices observes traffic already owned by the engine. Opening Settings
 // does not start a follower; only a person's list request reads the relay.
 type appDevices struct {
-	home  string
-	watch *syncsetup.DeviceObserver
-	op    sync.Mutex
-	done  chan struct{}
+	home     string
+	watch    *syncsetup.DeviceObserver
+	op       sync.Mutex
+	done     chan struct{}
+	emitMu   sync.Mutex
+	lastWire string
 }
 
 func (b *appBackend) listenDevices() *appDevices {
@@ -47,11 +50,28 @@ func (b *appBackend) listenDevices() *appDevices {
 		defer close(d.done)
 		for range d.watch.Changes() {
 			if view, err := d.snapshot(); err == nil {
-				b.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+				d.publish(b.emit, view)
 			}
 		}
 	})
 	return d
+}
+
+// publishDevices compares the wire value because observer hints can describe
+// unrelated directory changes, and explicit actions also publish their result.
+func (b *appBackend) publishDevices(view appwire.Devices) {
+	b.devices.publish(b.emit, view)
+}
+
+func (d *appDevices) publish(emit appwire.Emitter, view appwire.Devices) {
+	d.emitMu.Lock()
+	defer d.emitMu.Unlock()
+	encoded, err := json.Marshal(appwire.DevicesResult{Devices: view})
+	if err != nil || string(encoded) == d.lastWire {
+		return
+	}
+	d.lastWire = string(encoded)
+	emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
 }
 
 func (d *appDevices) close() {
@@ -168,7 +188,7 @@ func (b *appBackend) RenameDevice(typed string) (appwire.DeviceRenameResult, err
 	if err != nil {
 		return appwire.DeviceRenameResult{}, err
 	}
-	b.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+	b.publishDevices(view)
 	return appwire.DeviceRenameResult{Device: view.Devices[0], Line: line}, nil
 }
 
@@ -218,7 +238,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 	// the relay. The revoke already updated this process's remembered record.
 	view, err = d.snapshot()
 	if err == nil {
-		b.emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+		b.publishDevices(view)
 	}
 	return appwire.DeviceRemoveResult{ID: deviceID, Line: line}, nil
 }
