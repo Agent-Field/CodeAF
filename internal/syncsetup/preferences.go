@@ -46,25 +46,8 @@ func (p preferenceKeys) Accept(key, value, providerID string) bool {
 	if model == "" {
 		return true
 	}
-	model, _ = roles.SplitEffort(model)
 	sources := config.ResolveSources(p.dir, config.APIKeyAt(p.dir), config.DefaultBaseURL)
-	written := sources.Written()
-	for _, source := range modelsource.Vendored() {
-		// Cloud vendor names can also be OpenRouter author prefixes.
-		// Local runners and the sign-in transport cannot use that fallback.
-		if source.KeyOptional || source.ID == "codex" {
-			written = append(written, source.Written)
-		}
-	}
-	qualifier, _ := modelsource.Split(model, written)
-	service, _ := sources.For(model)
-	if providerID != "" && service.Source.ID != providerID && !(modelsource.IsCustomID(providerID) && modelsource.IsCustomID(service.Source.ID)) {
-		return false
-	}
-	if qualifier != "" && !strings.EqualFold(qualifier, service.Source.Written) {
-		return false
-	}
-	return service.HasCredentials()
+	return config.ModelUsable(sources, model, providerID)
 }
 
 // Metadata records the provider actually selected on the sending computer.

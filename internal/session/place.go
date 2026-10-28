@@ -269,6 +269,9 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// ModelProvider identifies the selected model's service even before its
+	// first call, when execution history cannot identify a custom alias.
+	ModelProvider string `json:"modelProvider,omitempty"`
 	// Build names the codeaf that most recently wrote this identity.
 	Build string `json:"build,omitempty"`
 	// Effort is the rung on the effort ladder this conversation was set to —

@@ -430,7 +430,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which is the safe direction and not the useful one ([beltWatch] states the
 	// ordering problem this closes).
 	launch.Subharnesses.Belt.watch(agent.ToolOnBelt)
-	if notice != "" {
+	if cfg.SessionFile != launch.SessionFile {
 		// The session file moved under us, so everything downstream that names
 		// it — /help, /new, the resumed line — has to name the new one.
 		transcript, resumed = cfg.SessionFile, false
@@ -1460,6 +1460,13 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if handoff.Arriving(cfg.Place.Dir) {
 		return nil, cfg, "", errors.New(chatArrivingSentence)
 	}
+	model, modelNotice, err := continuedModel(cfg)
+	if err != nil {
+		return nil, cfg, "", err
+	}
+	if model != "" {
+		cfg.Model = model
+	}
 	cfg = v3Seated(v3Migrated(cfg))
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
@@ -1492,6 +1499,20 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	agent, err := open(restored)
 	if err == nil {
+		if model != "" {
+			if pair, ok := agent.ConversationModelPair(); ok {
+				pair.Main = model
+				if pair.Fallback == model {
+					pair.Fallback = ""
+				}
+				if _, err := agent.SetConversationModels(pair); err != nil {
+					closeV3Agent(agent)
+					return nil, cfg, "", err
+				}
+			} else {
+				agent.SetModel(model)
+			}
+		}
 		if restoredPosture != "" {
 			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
 				closeV3Agent(agent)
@@ -1501,7 +1522,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		if savedEffort != "" {
 			agent.SetConversationEffort(savedEffort)
 		}
-		return agent, cfg, "", nil
+		return agent, cfg, modelNotice, nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {
 		return nil, cfg, "", err
