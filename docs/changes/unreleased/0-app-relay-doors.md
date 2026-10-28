@@ -4,6 +4,9 @@ title: Desktop engines pair computers and continue chats from other computers
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
+  - "Recovered job checkpoints previously left stale process files running and reopened background chats; a running record whose ending the checkpoint already holds no longer counts as unfinished, and the next held recovery writes that ending."
+  - "Conversation model identities previously stayed in a local index, letting a take back reuse older model slots; the saved main and fallback now travel with the chat."
+  - "Preparing an unavailable incoming main model previously recorded a generic change and its specific reason; the change now records and publishes only the specific reason."
   - "A missing local default previously refused a take after acquiring and installing the chat; taking now completes and the first send explains model setup without a provider call."
   - "A restarted relay previously reported unobserved paired computers offline immediately; presence now remains unknown for one default presence window unless an observed connection actually lapses."
   - "An open desktop view previously lost its writer to the idle sweep and read calls acquired a new fence; explicitly open views now renew the same hold until closed."
@@ -113,3 +116,15 @@ into the source tree. The stale-drive refusal fixture now uses a temporary home.
 Desktop relay cancellation goroutines now use the shared panic guard. Inventory,
 pairing, continuation, device publication and drive retry critical sections defer
 their unlocks while retaining their existing lock order and work boundaries.
+
+A running process record whose ending the task checkpoint already holds no longer
+counts as unfinished; that check only reads, so a chat held elsewhere is never
+written to. Unfinished or ambiguous work still enters recovery, which durably settles
+both the task checkpoint and process history. Idle release no longer triggers a
+spurious conversation open, watch reconnect, presence update or settled-vault send.
+
+Taking a chat back replaces its remembered local model with the installed saved
+choice. Main and fallback travel together; a usable main stays selected silently,
+an unavailable main uses the receiver's usable default with one explanation, and
+a missing usable default retains the existing setup sentence. Index rebuilding
+preserves the saved choice instead of reinstating the journal's original model.

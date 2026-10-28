@@ -141,6 +141,12 @@ turns, unanswered questions, held crew members and kept services retain their
 conversations. If another computer continues a chat, the existing Continue here
 and kept-work rules still apply.
 
+Stopped processes, finished tasks and settled jobs do not reopen a background
+chat at startup or after release. Recovery repairs a stale running process
+record when the matching task checkpoint already knows it ended. Unfinished
+work still recovers normally. Releasing the last background chat does not restart
+sync or repeat settled preferences.
+
 ## Relay outages, local turns and automatic recovery
 
 While the relay is unreachable, an open chat continues to run and save on this
@@ -161,6 +167,10 @@ shared model settings. An unavailable model continues with this computer's usabl
 default. One line in the chat explains which model was unavailable and which
 model is used here. The existing conversation model-switch rules save that choice;
 continuing back on a computer without that provider checks its own default again.
+Every continuation uses the saved chat's latest main and fallback choices,
+including when this computer already has an older copy. A usable saved model
+stays selected without a change notice. An unavailable main model gets one
+specific explanation; a separate fallback change may have its own line.
 Continue here completes even when the default is also unavailable: the chat is
 here, and its row opens the returned local agent. Its first send fails locally
 with a setup sentence, such as `This chat used llama3.2 (Ollama), which isn't set up on this computer. Set up a model in Settings, then send again.`
