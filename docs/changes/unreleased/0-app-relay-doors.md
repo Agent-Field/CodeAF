@@ -4,6 +4,9 @@ title: Desktop engines pair computers and continue chats from other computers
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
+  - "An expired own hold previously rejected newer locally saved work after a relay outage; unchanged ownership now renews and publishes that work."
+  - "A failed renewal of an expired own hold previously blocked local work; unreachable renewals now leave outage turns writable and saved for retry."
+  - "A taken chat previously sent an unavailable provider model to the receiver's router; it now checks provider readiness and explains its usable local default."
   - "The desktop engine previously required terminal pairing; it now serves all four pairing modes with explicit questions and cancellation."
   - "The app engine previously exposed only held-chat location; it now lists chats on other computers and conditionally continues them here."
   - "Finished cell chats previously waited for another turn before desktop publication; paired app starts and pairing completion now offer them through the shared background publisher."
@@ -74,3 +77,14 @@ empty workspaces are created before binding; incoming chats use their receiver
 workspace instead of an unavailable absolute path recorded on the sender.
 Taking a project chat back on Windows also restores composed turn receipts whose
 full paths exceed MAX_PATH, using the native extended-length path spelling.
+
+Relay recovery renews an unchanged own hold even when locally saved work is newer
+than the relay's head. Failed uploads retain the existing bounded, single-flight
+retry loop; neither a failed renewal nor an expired own lease says this computer
+continued the chat elsewhere. Another computer's successful continuation still
+fences this window and preserves its pending work.
+Incoming chats reuse the shared provider-readiness check before choosing a local
+default, explain the change once, and apply the existing conversation model-switch
+rules. A computer without a usable default gets a plain setup reason.
+The saved model choice also identifies its provider before any call, so a newly
+selected custom alias cannot fall through to a different computer's router.

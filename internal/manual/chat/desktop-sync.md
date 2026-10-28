@@ -123,6 +123,29 @@ Continue here still works after a reconnect when the same computer holds the
 same saved turn. A different holder or a newer saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
 
+## Relay outages, local turns and automatic recovery
+
+While the relay is unreachable, an open chat continues to run and save on this
+computer. Unpublished turns retry automatically with waits capped at 60 seconds, without
+another send, quit or restart. A lapsed hold that still belongs to this computer
+is renewed when the relay returns; its saved work is then shared. The chat stays
+writable and never names this computer as having continued it elsewhere.
+
+If another computer continued the chat meanwhile, this window becomes read-only
+and names that computer. Work saved here during the outage is kept through the
+usual kept-work path. Use Continue here to bring the current shared chat back.
+
+## Continue here when this computer cannot use the chat's model
+
+A chat saved on another computer can name a provider that is not set up here.
+When it opens here, codeaf checks the same local provider readiness used for
+shared model settings. An unavailable model continues with this computer's usable
+default. One line in the chat explains which model was unavailable and which
+model is used here. The existing conversation model-switch rules save that choice;
+continuing back on a computer without that provider checks its own default again.
+If the default is also unavailable, the chat asks you to set up a model in Settings
+before sending instead of passing the unavailable model to another provider.
+
 ## If Continue here fails while moving a chat
 
 If moving the chat fails, the app says
