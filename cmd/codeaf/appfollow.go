@@ -10,25 +10,45 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+const (
+	appFollowQuietFirst = time.Second
+	appFollowQuietNext  = 2 * time.Second
+	appFollowQuietMax   = 5 * time.Second
+)
+
+func (f *appFollow) processState(state session.JobState) {
+	f.ended.Store(state == session.JobDone || state == session.JobFailed || state == session.JobStopped)
+}
 
 // appFollowReader retains byte progress and an unfinished line across reads.
 // The public output door keeps its separate line cursor.
 type appFollowReader struct {
-	file    *os.File
-	reader  *bufio.Reader
-	info    os.FileInfo
-	offset  int64
-	pending string
+	info     os.FileInfo
+	offset   int64
+	pending  string
+	active   bool
+	openFile func(string) (appFollowFile, error)
+	stat     func(string) (os.FileInfo, error)
+}
+
+type appFollowFile interface {
+	io.ReadSeekCloser
+	Stat() (os.FileInfo, error)
 }
 
 // start skips the complete lines already present, retaining a partial suffix.
 func (r *appFollowReader) start(path string) error {
-	if err := r.open(path); err != nil {
+	file, err := r.open(path)
+	if err != nil {
 		return err
 	}
+	defer file.Close()
+	reader := bufio.NewReaderSize(file, 64<<10)
 	for {
-		line, err := r.reader.ReadString('\n')
+		line, err := reader.ReadString('\n')
 		r.offset += int64(len(line))
 		if err != nil {
 			r.pending = line
@@ -40,31 +60,46 @@ func (r *appFollowReader) start(path string) error {
 	}
 }
 
-func (r *appFollowReader) open(path string) error {
-	r.close()
-	file, err := os.Open(path)
+func (r *appFollowReader) open(path string) (appFollowFile, error) {
+	var file appFollowFile
+	var err error
+	if r.openFile != nil {
+		file, err = r.openFile(path)
+	} else {
+		file, err = os.Open(path)
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	info, err := file.Stat()
 	if err != nil {
 		_ = file.Close()
-		return err
+		return nil, err
 	}
-	r.file, r.info = file, info
-	r.reader = bufio.NewReaderSize(file, 64<<10)
-	return nil
+	// Handle-derived identity survives closing the file, including on Windows.
+	if r.changed(info) {
+		r.close()
+	}
+	r.info = info
+	return file, nil
 }
 
 func (r *appFollowReader) close() {
-	if r.file != nil {
-		_ = r.file.Close()
-	}
-	*r = appFollowReader{}
+	r.info, r.offset, r.pending = nil, 0, ""
+}
+
+func (r *appFollowReader) changed(info os.FileInfo) bool {
+	return r.info == nil || !os.SameFile(r.info, info) || info.Size() < r.info.Size() || info.Size() < r.offset ||
+		(info.Size() == r.info.Size() && !info.ModTime().Equal(r.info.ModTime()))
 }
 
 func (r *appFollowReader) read(path string, limit int) ([]string, error) {
-	info, err := os.Stat(path)
+	r.active = false
+	stat := r.stat
+	if stat == nil {
+		stat = os.Stat
+	}
+	info, err := stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		r.close()
 		return nil, nil
@@ -72,21 +107,24 @@ func (r *appFollowReader) read(path string, limit int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A size-preserving rewrite can leave the cursor at EOF on the same inode.
-	rewritten := r.info != nil && info.Size() == r.info.Size() && !info.ModTime().Equal(r.info.ModTime())
-	if r.file == nil || !os.SameFile(r.info, info) || rewritten || info.Size() < r.info.Size() || info.Size() < r.offset+int64(r.reader.Buffered()) {
-		if err := r.open(path); err != nil {
-			return nil, err
-		}
-		info = r.info
-	}
-	r.info = info
-	if info.Size() <= r.offset {
+	if r.changed(info) {
+		r.close()
+	} else if info.Size() <= r.offset {
 		return nil, nil
 	}
+	r.active = true
+	file, err := r.open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if _, err := file.Seek(r.offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReaderSize(file, 64<<10)
 	var lines []string
 	for len(lines) < limit {
-		line, err := r.reader.ReadString('\n')
+		line, err := reader.ReadString('\n')
 		r.offset += int64(len(line))
 		r.pending += line
 		if errors.Is(err, io.EOF) {
@@ -101,22 +139,34 @@ func (r *appFollowReader) read(path string, limit int) ([]string, error) {
 	return lines, nil
 }
 
-// follow tails one spool until it is unfollowed or the backend closes. At a
-// drained EOF a tick costs one stat; bytes are read only once the file grows,
-// shrinks or is replaced. No watcher: on macOS a directory watch holds a
-// descriptor for every spool beside this one.
+// follow tails one spool until it is unfollowed or the backend closes. Only a
+// known ended, drained spool backs off; running output keeps its fast schedule.
 func (b *appBackend) follow(id, path string, reader *appFollowReader, f *appFollow) {
 	defer close(f.done)
 	defer reader.close()
-	ticker := time.NewTicker(appFollowEvery)
-	defer ticker.Stop()
+	delay := appFollowEvery
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
 	for {
 		select {
 		case <-f.stop:
 			return
-		case <-ticker.C:
+		case <-timer.C:
 		}
 		lines, err := reader.read(path, appOutputLines)
+		if err == nil && f.ended.Load() && !reader.active && reader.info != nil && reader.offset >= reader.info.Size() && reader.pending == "" {
+			switch delay {
+			case appFollowEvery:
+				delay = appFollowQuietFirst
+			case appFollowQuietFirst:
+				delay = appFollowQuietNext
+			default:
+				delay = appFollowQuietMax
+			}
+		} else {
+			delay = appFollowEvery
+		}
+		timer.Reset(delay)
 		if err != nil || len(lines) == 0 {
 			continue
 		}

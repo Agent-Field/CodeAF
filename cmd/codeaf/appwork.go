@@ -1192,8 +1192,9 @@ func (b *appBackend) PromoteQuick(id string) (appwire.Task, error) {
 
 // appFollow is one process the app is following, and how to stop following.
 type appFollow struct {
-	stop chan struct{}
-	done chan struct{}
+	stop  chan struct{}
+	done  chan struct{}
+	ended atomic.Bool
 }
 
 // appProcessOf is one job notice on the wire.
@@ -1283,6 +1284,9 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 		same = known && reflect.DeepEqual(before, process)
 		finished = known && before.State == appwire.ProcessRunning && (process.State == appwire.ProcessEnded || process.State == appwire.ProcessFailed)
 		live.logs[process.ID] = job.LogPath
+		if f := b.follows[process.ID]; f != nil {
+			f.processState(recovered.State)
+		}
 	})
 	if !same {
 		live.box.Event(appwire.EventProcessChanged, appwire.ProcessChanged{Process: process})
@@ -1428,10 +1432,11 @@ func (b *appBackend) FollowProcess(id string, follow bool) error {
 	if _, _, ok := appServiceID(id); ok {
 		return b.serviceFollow(id, follow)
 	}
-	path, err := b.processLog(id)
+	_, row, err := b.processRow(id)
 	if err != nil {
 		return err
 	}
+	path := row.LogPath
 	var stop *appFollow
 	start := false
 	b.locked(func() {
@@ -1441,7 +1446,9 @@ func (b *appBackend) FollowProcess(id string, follow bool) error {
 			stop = current
 			delete(b.follows, id)
 		case follow && current == nil && !b.closing:
-			b.follows[id] = &appFollow{stop: make(chan struct{}), done: make(chan struct{})}
+			f := &appFollow{stop: make(chan struct{}), done: make(chan struct{})}
+			f.processState(row.State)
+			b.follows[id] = f
 			start = true
 		}
 	})
