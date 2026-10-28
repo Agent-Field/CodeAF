@@ -743,6 +743,21 @@ without a directory read. No inventory polling timer runs. Kept branches are
 outside this v1 inventory. Crew is omitted because relay rows carry no crew
 membership; the local Agent keeps its existing crews.
 
+`chats.list` returns a fresh inventory without emitting `chat.changed` or
+`chat.removed`. The follower compares with its last emitted rows, including
+when a list has already read a newer version. Identical content at the same
+version is never emitted again; changed presence can update that version.
+An unset presence reading omits `online`, rather than implying `false`.
+The `off` status describes an expired chat hold, independently of computer
+presence. Only a known `online:false` permits an offline sentence.
+`saved_at`, when known, is the sealed head's turn time. The directory stores
+that fact separately from its `durable_at` publication clock; older records
+without a known turn time omit it. The desktop formats it locally. The
+`takeover_line` contains only holder or pending-work facts, with no date or age.
+Directory clients send the optional turn time only after the relay advertises
+`Codeaf-Saved-Turn-Times: 1`; older relays keep the compatible publication wire
+and rows omit the unknown time. Existing records are not backfilled by startup.
+
 `local_agent` is the app's saved/open folder id, resolved independently from
 `cell`. Remote-only chats have no local agent. Cell locations include the
 observed computer and fence in opaque `seen`, plus `can_take` and the engine's

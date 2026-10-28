@@ -32,6 +32,7 @@ type Row struct {
 	Status                                Status
 	DurableAgo                            time.Duration // Listing.Now - DurableAt, directory clock only
 	DurableAt                             int64         // directory ms of the last durable turn: the fact DurableAgo is read from
+	SavedAt                               int64         // sealed head's time, or zero when unknown
 	Pending, OrphanTurns                  uint32
 	// Fence binds the continuation card to the holder the person saw.
 	Fence uint64
@@ -142,6 +143,7 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		ReleasedAgo: time.Duration(l.Now-c.Lease.ReleasedAt) * time.Millisecond,
 		DurableAgo:  time.Duration(l.Now-c.DurableAt) * time.Millisecond,
 		DurableAt:   c.DurableAt,
+		SavedAt:     c.SavedAt,
 		Pending:     c.Lease.Pending,
 		OrphanTurns: c.OrphanTurns,
 	}

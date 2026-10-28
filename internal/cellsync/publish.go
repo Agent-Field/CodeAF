@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -50,6 +51,7 @@ func (d Driving) ID() string {
 // PublishInfo is what a publish tells the directory about the cell.
 type PublishInfo struct {
 	hints        []directory.FrameHint
+	savedAt      int64
 	Class, Title string
 	Size         uint64
 	Pending      uint32
@@ -66,6 +68,11 @@ func (p *Publisher) Publish(ctx context.Context, d *Driving, head string, in Pub
 
 // publish is Publish that also reports what was uploaded.
 func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in PublishInfo) (Export, error) {
+	var err error
+	in.savedAt, err = cellstore.SavedAt(d.Cell, head)
+	if err != nil {
+		return Export{}, err
+	}
 	ex, frames, err := p.uploadPlan(ctx, d.Cell, head)
 	if err != nil {
 		return Export{}, err
@@ -159,7 +166,8 @@ func (p *Publisher) advance(ctx context.Context, d Driving, head string, in Publ
 func (p *Publisher) move(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	_, err := p.Dir.Publish(ctx, d.ID(), directory.Publish{
 		Fence: d.Fence, OldHead: d.Head, Head: head,
-		Size: in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
+		SavedAt: in.savedAt,
+		Size:    in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
 		Frames: frames, FrameHints: in.hints,
 	})
 	return d.Fence, refusal(err)
@@ -187,7 +195,8 @@ func (p *Publisher) resume(ctx context.Context, d Driving, head string, in Publi
 func (p *Publisher) create(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	v, err := p.Dir.Create(ctx, d.ID(), directory.CellInit{
 		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
-		Frames: frames, FrameHints: in.hints,
+		SavedAt: in.savedAt,
+		Frames:  frames, FrameHints: in.hints,
 	})
 	return v.Cell.Lease.Fence, err
 }

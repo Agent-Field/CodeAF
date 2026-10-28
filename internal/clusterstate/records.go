@@ -74,8 +74,9 @@ type Cell struct {
 	// FrameHints is optional and absent by default; every cluster member must understand it before a device sends it.
 	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
 	V           uint16                       `json:"V"`
-	Head        string                       `json:"head"`       // last durable turn id (hex64)
-	DurableAt   int64                        `json:"durable_at"` // directory ms
+	Head        string                       `json:"head"`               // last durable turn id (hex64)
+	DurableAt   int64                        `json:"durable_at"`         // directory ms
+	SavedAt     int64                        `json:"saved_at,omitempty"` // sealed head's time, independent of publication
 	Class       string                       `json:"class"`
 	Size        uint64                       `json:"size"`
 	ParentCell  string                       `json:"parent_cell,omitempty"`
@@ -106,6 +107,7 @@ type CellView struct {
 
 // CellInit creates a cell. The calling device holds the new lease at fence 1.
 type CellInit struct {
+	SavedAt     int64                        `json:"saved_at,omitempty"`
 	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
 	Head        string                       `json:"head"`
 	Class       string                       `json:"class"`
@@ -125,6 +127,7 @@ type Beat struct {
 
 // Publish moves a cell's durable head under a lease the caller holds.
 type Publish struct {
+	SavedAt    int64       `json:"saved_at,omitempty"`
 	FrameHints []FrameHint `json:"frame_hints,omitempty"`
 	Fence      uint64      `json:"fence"`
 	OldHead    string      `json:"old_head"`

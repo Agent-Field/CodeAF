@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -33,6 +34,10 @@ type Brancher struct {
 // not. What an earlier refused publish already uploaded is reused, because
 // objects are content-addressed.
 func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns uint32, in PublishInfo) (string, error) {
+	savedAt, err := cellstore.SavedAt(from.Cell, head)
+	if err != nil {
+		return "", err
+	}
 	_, frames, err := b.Publisher.uploadPlan(ctx, from.Cell, head)
 	if err != nil {
 		return "", err
@@ -47,6 +52,7 @@ func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns 
 	}
 	_, err = b.Dir.Create(ctx, id, directory.CellInit{
 		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
+		SavedAt:    savedAt,
 		ParentCell: from.ID(), OrphanTurns: turns, Frames: plan,
 	})
 	if err != nil {

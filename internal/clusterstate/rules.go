@@ -64,6 +64,9 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	c.Frames = p.Frames
 	c.FrameHints = boundedFrameHints(p.FrameHints)
 	c.Lease.Pending, c.DurableAt = p.Pending, now
+	if p.Head != p.OldHead || p.SavedAt > 0 {
+		c.SavedAt = p.SavedAt
+	}
 	c.Lease.Expires = now + ttlMs
 	c.Title = keepIfEmpty(p.Title, c.Title)
 	return c, nil
@@ -86,7 +89,7 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 // at fence 1. The caller has already checked that the id is free.
 func Created(in CellInit, device string, now int64) Cell {
 	return Cell{
-		V: 1, Head: in.Head, DurableAt: now, Class: in.Class, Size: in.Size,
+		V: 1, Head: in.Head, DurableAt: now, SavedAt: in.SavedAt, Class: in.Class, Size: in.Size,
 		ParentCell: in.ParentCell, Title: in.Title, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
 		Frames: in.Frames, FrameHints: boundedFrameHints(in.FrameHints),
 		Lease: Lease{Device: device, Fence: 1, Expires: now + ttlMs},

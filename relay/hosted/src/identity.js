@@ -52,7 +52,10 @@ export class IdentityDO extends DurableObject {
   }
 
   fetch(request) {
-    return respond(() => this.#serve(request));
+    return respond(() => this.#serve(request)).then(reply => {
+      if (new URL(request.url).pathname.startsWith('/v1/dir/')) reply.headers.set('Codeaf-Saved-Turn-Times', '1');
+      return reply;
+    });
   }
 
   /** Peer frames drive replication; the platform answers watch keepalives without waking this object. */

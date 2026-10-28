@@ -62,6 +62,7 @@ type handler struct {
 
 func (h *handler) serve(rt route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(SavedTurnTimeHeader, "1")
 		c, err := h.admit(w, r)
 		if err != nil {
 			refuse(w, err)

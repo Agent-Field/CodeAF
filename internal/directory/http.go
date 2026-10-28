@@ -70,6 +70,9 @@ func (h *HTTP) SetVault(ctx context.Context, old, next string) error {
 }
 
 func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, err error) {
+	if in.SavedAt != 0 && !h.savedTurnTimes(ctx, id) {
+		in.SavedAt = 0
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, ""), in, &v)
 }
 
@@ -93,6 +96,23 @@ const ConditionalTakeHeader = "codeaf-conditional-takes"
 // codeaf runs moves chats at the next attempt instead of after a restart.
 var conditionalServices sync.Map
 
+// SavedTurnTimeHeader advertises optional sealed-head timestamps. Older
+// relays strictly decode signed bodies, so clients omit the field without it.
+const SavedTurnTimeHeader = "Codeaf-Saved-Turn-Times"
+
+var savedTimeServices sync.Map
+
+func (h *HTTP) savedTurnTimes(ctx context.Context, id string) bool {
+	if known, ok := savedTimeServices.Load(h.serviceKey()); ok {
+		return known == true
+	}
+	// Ordinary startup and drive reads already teach the capability. A direct
+	// first publish probes once; inability to learn it keeps the older wire.
+	_, _ = h.Cell(ctx, id)
+	known, _ := savedTimeServices.Load(h.serviceKey())
+	return known == true
+}
+
 func (h *HTTP) serviceKey() string { return strings.TrimRight(h.base, "/") }
 
 func (h *HTTP) requireConditionalTake(ctx context.Context, id string) error {
@@ -113,6 +133,9 @@ func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, er
 }
 
 func (h *HTTP) Publish(ctx context.Context, id string, p Publish) (v CellView, err error) {
+	if p.SavedAt != 0 && !h.savedTurnTimes(ctx, id) {
+		p.SavedAt = 0
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "publish"), p, &v)
 }
 
@@ -167,6 +190,9 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 		return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusInternalServerError {
+		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
+	}
 	if resp.StatusCode >= 300 {
 		return resp.Header, refusal(resp)
 	}
