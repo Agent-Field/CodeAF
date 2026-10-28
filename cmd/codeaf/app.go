@@ -24,8 +24,8 @@ package main
 // AND IT IS LAZY BY LAW. Startup opens agents with work or recovery to settle;
 // idle conversations stay as indexed records, crew members included. Viewing,
 // sending or waking opens one through the same per-agent gate. Listing agents,
-// tasks and crews reads the disk, and a conversation left alone for
-// [appAgentIdle] is let go and rebuilt transparently on demand.
+// tasks and crews reads the disk. A conversation left alone for [appAgentIdle]
+// without an open view is let go and rebuilt transparently on demand.
 
 import (
 	"cmp"
@@ -67,9 +67,9 @@ import (
 )
 
 // appAgentIdle is how long a conversation the app holds may sit with no turn
-// running, no question waiting and nothing sent before it is let go. Letting go
-// closes the conversation in this process and nothing else: its journal is on
-// disk, its state still reads idle, and the next send opens it again.
+// running, no question waiting and no open view before it is let go. Its
+// journal stays on disk, its state still reads idle, and the next send opens
+// it again. An explicitly open view keeps the conversation and its hold.
 const appAgentIdle = 10 * time.Minute
 
 // appSweepEvery is how often the idle rule above is asked.
@@ -621,6 +621,9 @@ type appAgent struct {
 	syncGate     sync.Mutex
 	localNotices map[string]bool
 	windowMoved  bool
+	// viewOpen preserves the person's open view through idle sweeps. Retiring
+	// it would let its next read immediately take back the released hold.
+	viewOpen bool
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
 
@@ -1510,11 +1513,19 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	// workspace is many seconds, and its own agent.changed says the rest.
 	var view appwire.Agent
 	busy := false
-	b.locked(func() { view, busy = a.view, a.live == nil && (a.opening || a.starting) })
+	b.locked(func() {
+		view, busy = a.view, a.live == nil && (a.opening || a.starting)
+		if busy {
+			a.viewOpen = true
+		}
+	})
 	if busy {
 		return view, nil
 	}
-	view, opened, err := b.ensure(a)
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	b.locked(func() { a.viewOpen = true })
+	view, opened, err := b.ensureLocked(a)
 	if err != nil {
 		return appwire.Agent{}, err
 	}
@@ -2990,7 +3001,7 @@ func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
 // hold a.gate.
 func (b *appBackend) release(a *appAgent) {
 	var live *appLive
-	b.locked(func() { live, a.live = a.live, nil })
+	b.locked(func() { live, a.live, a.viewOpen = a.live, nil, false })
 	if live == nil {
 		return
 	}
@@ -4221,7 +4232,7 @@ func (b *appBackend) sweep() {
 }
 
 // sweepOnce is one look at the idle rule. A conversation is kept while a turn
-// runs or a question waits for the person, whatever the clock says.
+// runs, a question waits for the person or a view stays open, whatever the clock says.
 func (b *appBackend) sweepOnce() {
 	var syncing bool
 	b.locked(func() { syncing = b.drives != nil })
@@ -4232,7 +4243,7 @@ func (b *appBackend) sweepOnce() {
 	var idle []*appAgent
 	b.locked(func() {
 		for _, a := range b.agents {
-			if live := a.live; live != nil && !live.running && now.Sub(live.lastUse) >= appAgentIdle {
+			if live := a.live; live != nil && !a.viewOpen && !live.running && now.Sub(live.lastUse) >= appAgentIdle {
 				idle = append(idle, a)
 			}
 		}
@@ -4253,7 +4264,7 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 	keep := true
 	b.locked(func() {
 		live = a.live
-		keep = live == nil || live.running || now.Sub(live.lastUse) < appAgentIdle
+		keep = live == nil || a.viewOpen || live.running || now.Sub(live.lastUse) < appAgentIdle
 	})
 	// A member of an open crew stays held while the crew is open.
 	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) && !b.serviceKeeps(a.view.ID) {
