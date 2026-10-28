@@ -50,6 +50,7 @@ decides which combinations are accepted.
 | `agents.manual` | `{client_id, id, question}` | `TurnResult` |
 | `agents.move_to_closed` | `in.tidyIDs` | `Empty` |
 | `agents.move_to_task` | `{id, turn}` | `MoveResult` |
+| `agents.take` | `in.TakeParams` | `TakeResult` |
 | `agents.open` | `in.IDParams` | `agentResult` |
 | `agents.queue` | `in.sayTo` | `queueResult` |
 | `agents.rename` | `{id, title}` | `agentResult` |
@@ -185,6 +186,21 @@ decides which combinations are accepted.
 | `deliverables.read` | `{agent, id, max_bytes, version}` | `DeliverableText` |
 | `deliverables.remove` | `{agent, id}` | `Empty` |
 | `deliverables.snapshot` | `{agent, path, process, url}` | `Deliverable` |
+
+## chats methods
+
+| method | params | result |
+|---|---|---|
+| `chats.list` | `{}` | `ChatsResult` |
+
+## pair methods
+
+| method | params | result |
+|---|---|---|
+| `pair.start` | `in.PairStartParams` | `PairResult` |
+| `pair.get` | `in.PairGetParams` | `PairGetResult` |
+| `pair.answer` | `in.PairAnswerParams` | `PairResult` |
+| `pair.cancel` | `in.IDParams` | `PairResult` |
 
 ## devices methods
 
@@ -587,6 +603,9 @@ decides which combinations are accepted.
 | `agent.changed` | `AgentChanged` |
 | `ask.closed` | `AskClosed` |
 | `ask.opened` | `AskOpened` |
+| `chat.changed` | `ChatChanged` |
+| `chat.removed` | `ChatRemoved` |
+| `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `compaction.ended` | `CompactionEnded` |
 | `crew.changed` | `CrewChanged` |
@@ -697,3 +716,39 @@ programs. A client uses the available engine methods for its own actions.
 | `/update` | `/upgrade` | `/update`; `/update <channel or tag>` |
 | `/wall` | none | `/wall` |
 | `/workspace` | none | `/workspace`; `/workspace <path>` |
+
+## Relay, pairing and cross-computer chats
+
+`devices.pair` advertises all four pairing modes: `offer_code`, `use_code`,
+`request_link` and `approve_link`. It is absent when the native engine is
+unavailable. `pair.start` starts one operation; a concurrent start is `busy`.
+Questions carry engine text and explicit options; copy their ids to
+`pair.answer`. `pair.cancel` waits for cleanup. `pair.get` without an id returns
+this process's current or last finished operation. Every snapshot has a lines
+array, including when empty. Final states emit exactly once. Joining with local
+chats first asks `replace_own_chats`; joining with live work is `busy`. A join
+that changes this computer's shared keys finishes with `restart:true`: restart
+the engine before sending work. Device and sync snapshots precede done.
+
+`sync.relay` advertises `Sync.relay`: resolved URL, source (`environment`,
+`paired`, `default`, `none`) and `off`. The source follows CODEAF_SYNC_URL, the
+saved pairing URL, then the hosted default. Off omits the URL.
+
+`chats.take` advertises inventory, events and conditional continuation even
+when sync is off or unavailable; in those modes `chats.list` returns `[]`.
+Never-paired homes also return `[]` without contacting a relay. The first
+inventory read starts one shared Sync.Follow subscription; later version
+changes reread and diff rows. Presence changes update cached online facts
+without a directory read. No inventory polling timer runs. Kept branches are
+outside this v1 inventory. Crew is omitted because relay rows carry no crew
+membership; the local Agent keeps its existing crews.
+
+`local_agent` is the app's saved/open folder id, resolved independently from
+`cell`. Remote-only chats have no local agent. Cell locations include the
+observed computer and fence in opaque `seen`, plus `can_take` and the engine's
+`takeover_line` when known. Older chats working in the home folder stay local.
+Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
+remote cell id. It returns the adopted local Agent through the normal open path.
+Stale observations answer `conflict`, `detail:{kind:"holder_changed"}` and the
+engine's lost-race sentence; there is no automatic retry. Ownership changes
+also update an idle open agent's location. Unknown online facts are absent.

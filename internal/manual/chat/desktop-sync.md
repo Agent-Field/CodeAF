@@ -65,3 +65,44 @@ When the app opens a chat with unfinished command records, each command is named
 in a visible notice:
 `<tool[: brief]> — stopped when codeaf was killed — not run again. Ask me to run it again if you still want it.`
 The warning does not run the command again or claim that it succeeded.
+
+
+## Relay in desktop Settings and Devices — address, default, off and pairing
+
+With a compatible engine, Settings → Devices shows Relay and where its address
+came from: set here, from pairing, default or off. An address set here wins over
+one saved by pairing. Clearing it uses the paired address, or the hosted default
+when none was saved. Off stops sync. Saving a desktop relay setting restarts its
+engine; working agents require confirmation first. Cancelling keeps the setting.
+A computer that has never paired remains quiet even with a relay address set.
+
+## Add a computer or join another computer from the desktop
+
+Devices offers Add a computer to show a code, and Join another computer to type
+one. Setup also offers joining. A link can request or approve pairing instead.
+Compare the engine's three words or check number on both computers, then answer
+its explicit question. Nothing is approved by pressing Enter without a choice.
+Cancel takes back the waiting code or ends the request. A wrong code shows the
+engine's sentence and does not add a computer.
+
+A computer that already has chats asks before replacing them. Choose the option
+to keep them to cancel without changing them. Finish any live work before
+joining another computer. After joining changes what this computer shares, the
+desktop restarts its engine and reads setup, devices and sync again.
+These actions appear only when the engine advertises pairing support.
+
+## Chats on your other computers and Continue here in the desktop
+
+Chats from other computers appear under On your other computers, with the
+computer's name. An online dot appears only when the engine knows its presence.
+Select a chat to preview its title, saved time and engine sentence. Continue
+here moves it through the engine, then opens the returned local chat. Its
+history and working copies use the same continuation path as the terminal.
+
+An already local chat that moved away keeps its place and becomes read-only.
+Continue here is available when the engine says it can move. Continuing here
+stops new work on the other computer. If another computer moved it after the
+preview was read, the engine says `another device continued this chat first`;
+refresh the row and choose again. There is no automatic retry. Unsent drafts
+and attachments remain yours. Changes arrive as engine events without desktop
+polling. An older chat that works in the home folder stays on that computer.
