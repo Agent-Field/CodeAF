@@ -243,8 +243,8 @@ shows, one clause for each change and the reason last:
 `manager set review: thorough on security, code and architecture · added arch after review ·
 skipped neaten · why: touches the call row`. It also removes a step from the job (`removed
 pretest`; skipping only switches a step off) and moves one (`moved docs after write`, `moved
-docs first`) when you ask; proof, a fixed step, a step a rule names, a step that has run and
-your approvals stay where they are. A change the bounds refuse is answered
+docs first`) when you ask; proof, a fixed step, a step a rule names, a step that has run,
+your approvals and your posts stay where they are. A change the bounds refuse is answered
 `nothing changed: <why>`, for instance `a stage is one word · "do through" is two` or
 `the run has nine stages already`, and the steps stay as they were.
 

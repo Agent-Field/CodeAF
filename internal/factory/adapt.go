@@ -197,11 +197,15 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //     places the run holds for you. A conversation may be moved across one,
 //     as the repository's pipeline editor allows
 //     (internal/factory/pipeline/edit_structure.go);
+//   - only you remove or move a post, which posts outward, as that editor
+//     locks one; and a post is never moved before the proof or the approve
+//     step it stood after, so nothing posts before what holds it;
 //   - a stage that is done or running (or waiting on the person, or failed)
 //     is never changed, removed or moved, and nothing is added or moved
 //     before one;
 //   - nothing is moved after proof but a person's approve step, which does no
-//     work, for the reason nothing is added there: proof has to see it;
+//     work, and a post, which publishes what proof saw, for the reason
+//     nothing is added there: proof has to see it;
 //   - a stage the edit removes is not also changed, placed after, or moved by
 //     the same edit, a stage is moved once in one edit, a step does not go
 //     after itself, and a job keeps at least one step;
@@ -509,6 +513,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			refuse("%s may not remove %s; proof vouches for the work before it", who, st.Name)
 		case IsApprove(st) && who != ByYou:
 			refuse("only you may remove %s, where the run holds for you", st.Name)
+		case st.Kind == StagePost && who != ByYou:
+			refuse("only you may remove %s, which posts outward", st.Name)
 		case policyNames(recipe.Policy, st.Name):
 			refuse("%s may not remove %s; the policy names it", who, st.Name)
 		case started[st.Name]:
@@ -555,6 +561,9 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		case IsApprove(st) && who != ByYou:
 			refuse("only you may move %s, where the run holds for you", st.Name)
 			continue
+		case st.Kind == StagePost && who != ByYou:
+			refuse("only you may move %s, which posts outward", st.Name)
+			continue
 		case policyNames(recipe.Policy, st.Name):
 			refuse("%s may not move %s; the policy names it", who, st.Name)
 			continue
@@ -576,7 +585,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			continue
 		}
 		next := insertStage(rest, at, st)
-		if p := firstProof(next); p >= 0 && at > p && !IsApprove(st) {
+		// A POST STANDS AFTER PROOF, where a proved change is published, so it
+		// is not refused there; it is never moved before the proof or the
+		// approve step it stood after: nothing posts before what holds it.
+		if p := firstProof(next); p >= 0 && at > p && !IsApprove(st) && st.Kind != StagePost {
 			refuse("%s may not move %s after proof; proof has to see it", who, st.Name)
 			continue
 		}
@@ -584,6 +596,11 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		for _, later := range next[at+1:] {
 			if started[later.Name] {
 				refuse("%s may not move %s before %s, which has already run", who, st.Name, later.Name)
+				blocked = true
+				break
+			}
+			if st.Kind == StagePost && (IsProofStage(later) || IsApprove(later)) && StageIndex(stages[:i], later.Name) >= 0 {
+				refuse("%s may not move %s before %s; nothing posts before what holds it", who, st.Name, later.Name)
 				blocked = true
 				break
 			}

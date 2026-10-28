@@ -252,3 +252,40 @@ func TestPlanEditCarriesRemoveAndMove(t *testing.T) {
 		t.Fatalf("run edit = %+v", r)
 	}
 }
+
+// A POST IS THE PERSON'S, as the repository's pipeline editor locks one: only
+// they remove or move it, and nobody moves it before the proof or the approve
+// step it stood after, because nothing posts before what holds it. After proof
+// it may stand anywhere: that is where a proved change is published.
+func TestEditOnlyThePersonRemovesOrMovesAPost(t *testing.T) {
+	posting := func() factory.Item {
+		it := structureItem()
+		it.Stages = append(it.Stages, factory.Stage{Name: "label", Kind: factory.StagePost, Ask: "label: ready", On: true}, factory.Stage{Name: "pr", Kind: factory.StagePost, Ask: "pr", On: true})
+		return it
+	}
+	for _, c := range []struct {
+		name string
+		e    factory.RunEdit
+		want string
+	}{
+		{"the manager removes a post", factory.RunEdit{By: factory.ByManager, Remove: []string{"pr"}}, "only you may remove pr, which posts outward"},
+		{"the plan moves a post", factory.RunEdit{By: factory.ByPlan, Move: []factory.Moved{{Stage: "pr", After: "label"}}}, "only you may move pr, which posts outward"},
+		{"a post before proof", factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "pr", After: "neaten"}}}, "you may not move pr before sign; nothing posts before what holds it"},
+		{"a post first", factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "label"}}}, "you may not move label before sign; nothing posts before what holds it"},
+	} {
+		it := posting()
+		got, lines, err := factory.Edit(it, c.e, factory.Recipe{}, factory.EditBeforeRun)
+		if err == nil || err.Error() != c.want || lines != nil || !reflect.DeepEqual(got, it) {
+			t.Errorf("%s = %v (lines %q), want %q", c.name, err, lines, c.want)
+		}
+	}
+	it := posting()
+	got, lines, err := factory.Edit(it, factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "pr", After: "proof"}}}, factory.Recipe{}, factory.EditBeforeRun)
+	if err != nil || stepOrder(got.Stages) != "plan write pretest test review neaten security sign proof pr label" || strings.Join(lines, "|") != "you moved pr after proof" {
+		t.Fatalf("the person's own move = %s %q %v", stepOrder(got.Stages), lines, err)
+	}
+	got, lines, err = factory.Edit(it, factory.RunEdit{By: factory.ByYou, Remove: []string{"label"}}, factory.Recipe{}, factory.EditBeforeRun)
+	if err != nil || stepOrder(got.Stages) != "plan write pretest test review neaten security sign proof pr" || strings.Join(lines, "|") != "you removed label" {
+		t.Fatalf("the person's own removal = %s %q %v", stepOrder(got.Stages), lines, err)
+	}
+}
