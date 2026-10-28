@@ -36,6 +36,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -161,23 +162,29 @@ func recipeLineName(line string) string {
 }
 
 // recipeAfter is the stage names after a yes: the new stage replaces one of
-// the same name where it stands, or goes on the end, as the door banks it —
-// and is marked `+` either way, because it is the line being decided.
+// the same name where it stands, or goes in before proof (on the end when
+// there is none), as the door banks it — and is marked `+` either way,
+// because it is the line being decided.
 func recipeAfter(now []string, name string) []string {
 	out := make([]string, 0, len(now)+1)
-	placed := false
 	for _, s := range now {
 		if s == name {
 			out = append(out, itemAddedMark+s)
-			placed = true
-			continue
+		} else {
+			out = append(out, s)
 		}
-		out = append(out, s)
 	}
-	if !placed {
-		out = append(out, itemAddedMark+name)
+	if len(out) > 0 && slices.Contains(out, itemAddedMark+name) {
+		return out
 	}
-	return out
+	at := len(out)
+	for i, s := range out {
+		if strings.EqualFold(s, "proof") {
+			at = i
+			break
+		}
+	}
+	return slices.Insert(out, at, itemAddedMark+name)
 }
 
 // recipeBanked is the sentence a yes returns.

@@ -258,6 +258,10 @@ type StepDef struct {
 	Proof         []string `json:"proof,omitempty"`  // desk
 	Why           string   `json:"why,omitempty"`    // desk
 	By            string   `json:"by,omitempty"`     // desk
+	// Who is who an approve step waits on: absent for the job's person,
+	// "@handle" for a named person, operator for any of the factory's
+	// operators (factory.ApproverWord).
+	Who string `json:"who,omitempty"`
 }
 
 // Job states, as the API says them (ARCHITECTURE §2).
@@ -379,8 +383,11 @@ type Job struct {
 	// (factory.HouseRules); absent before it was first queued.
 	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
 	// StartRules are the ask-first and never lines the job was started under
-	// (factory.StartRules); RuleHold is the rule its plan matched, which makes
-	// the approval after the plan a person's (factory.Item.RuleHold).
+	// (factory.StartRules); RuleHold is the rule and file that make its
+	// approval a person's (factory.Item.RuleHold): the plan's, by a planned
+	// file, or a landed job's publication, by a file its change touches. A
+	// client shows it on the approval whatever the job's mode, since in Auto
+	// it also reaches AutonomyWhy but in Manual nothing else names it.
 	StartRules *factory.StartRules `json:"start_rules,omitempty"`
 	RuleHold   string              `json:"rule_hold,omitempty"`
 	AssignedTo string              `json:"assigned_to,omitempty"`
@@ -421,10 +428,14 @@ type Job struct {
 // NeedsYou is why a job is waiting, and since when. question is set for a
 // free question and for out of attempts. The other kinds carry no question.
 type NeedsYou struct {
-	Kind         string         `json:"kind"`
-	Since        time.Time      `json:"since"`
-	WhoCanAnswer string         `json:"who_can_answer,omitempty"`
-	Question     *NeedsQuestion `json:"question,omitempty"`
+	Kind         string    `json:"kind"`
+	Since        time.Time `json:"since"`
+	WhoCanAnswer string    `json:"who_can_answer,omitempty"`
+	// Approver is, on an approval that names who it waits on, that person
+	// ("@handle") or operator; who_can_answer is then approver. Absent when
+	// the approval is the job's person's.
+	Approver string         `json:"approver,omitempty"`
+	Question *NeedsQuestion `json:"question,omitempty"`
 	// BackTo is, on an approve_plan wait, the finished step a plan sent back
 	// runs again (factory.PlanSendsBack). It is left out when there is none,
 	// and also when an old document's step carries no name; can.reject_plan,

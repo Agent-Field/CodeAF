@@ -603,7 +603,11 @@ func landItem(it *factory.Item, now time.Time) bool {
 			it.Stream.Cur = n - 2
 		}
 	}
-	if it.FollowUp == nil && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
+	// THE CHANGE IS CHECKED AGAINST THE RULES BEFORE ANYTHING IS PUBLISHED: a
+	// changed file an ask-first or never path names waits for the person, in
+	// Auto ([factory.AutonomyBlockReason]) and as a habit alike.
+	it.RuleHold = ChangeRuleHold(*it)
+	if it.FollowUp == nil && it.RuleHold == "" && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
 		it.State = factory.StateShipped
 		loopSay(it, now, "ok", logShippedHabit)
 		return true
@@ -661,15 +665,30 @@ func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 }
 
 // PlanRuleHold is why the approval it waits on is a person's by the rules the
-// job started under ([pipeline.PlanHold]), or "": only an approve question
-// right after the plan step can be held, and only by that plan's files.
+// job started under ([pipeline.PlanHold]), or "": only an approve question at
+// the plan's approve step ([factory.PlanGate]) can be held, and only by that
+// plan's files. A landed job is held by its change instead ([landItem]).
 func PlanRuleHold(it factory.Item) string {
 	if it.QKind != factory.QKindApprove {
 		return ""
 	}
 	gate, prev := factory.ApproveBackTarget(it.Stream)
-	if gate < 0 || prev < 0 || !strings.EqualFold(strings.TrimSpace(it.Stream.Phases[prev].Name), "plan") {
+	if gate < 0 || prev < 0 || factory.PlanGate(it.Stream.Phases) != gate {
 		return ""
 	}
 	return pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
+}
+
+// ChangeRuleHold is why a landed job's publication is a person's by the rules
+// it started under ([pipeline.ChangeHold]): the files its change really
+// touches, read from the diff, not from what the plan said it would touch.
+func ChangeRuleHold(it factory.Item) string {
+	if it.Change == nil {
+		return ""
+	}
+	files := make([]string, 0, len(it.Change.Files))
+	for _, f := range it.Change.Files {
+		files = append(files, f.Path)
+	}
+	return pipeline.ChangeHold(it.StartRules, files)
 }

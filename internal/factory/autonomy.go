@@ -46,10 +46,18 @@ func AutonomyBlockReason(it Item) string {
 	if it.QKind != "" && it.QKind != QKindApprove && it.QKind != "cap" {
 		return it.Question
 	}
+	// AN APPROVAL THAT NAMES SOMEONE ELSE IS THEIRS: Auto never answers for
+	// the person the pipeline asked by name.
+	if NamesOtherApprover(it) {
+		return "This approval waits on " + WaitingApprover(it) + ", whom the pipeline names."
+	}
 	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
 	// to be asked, so Auto asks.
 	if it.QKind == QKindApprove && it.RuleHold != "" {
 		return "A rule asks first: " + it.RuleHold + ". Review the plan, then press Approve."
+	}
+	if it.State == StateLanded && it.RuleHold != "" {
+		return "A rule asks first: " + it.RuleHold + ". Review the changes, then press Approve."
 	}
 	if it.Approval != nil && it.Approval.Error != "" {
 		return "Automatic approval failed: " + it.Approval.Error + ". Review the problem before trying again."

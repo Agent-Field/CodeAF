@@ -119,6 +119,14 @@ type EditOp struct {
 	Value    *float64
 	List     string
 	Lines    []string
+	// Adapt belongs to set_adapt, Fixed (with Name) to set_fixed, and MaxSize
+	// and MaxCost to set_start (edit_settings.go).
+	Adapt   *string
+	Fixed   *bool
+	MaxSize *string
+	MaxCost *float64
+	// Who belongs to set_approver, with Name.
+	Who *string
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -126,8 +134,10 @@ type EditOp struct {
 // step whose kind is check, gate or post, and any name the file lists under fixed. InFile is false for a step the file does not
 // define itself, whose wording is a shipped default.
 type StepView struct {
-	Name   string
-	Gate   bool
+	Name string
+	Gate bool
+	// Who is who a person step waits on; "" the job's person.
+	Who    string
 	Prompt string
 	Kind   string
 	When   string
@@ -161,6 +171,13 @@ type Source struct {
 	Rules        []string
 	AskFirst     []string
 	Never        []string
+	// Adapt is the file's adapt word ("" when it says none, which is adapt),
+	// Labels its start labels, and MaxSize and MaxCost its start limits as the
+	// parser reads them (the defaults when the file says none).
+	Adapt   string
+	Labels  []string
+	MaxSize string
+	MaxCost float64
 }
 
 // StepChange is one step an edit really changed. Fields names what changed, in
@@ -214,6 +231,12 @@ type Edited struct {
 
 	Listed bool
 	Lists  []ListChange
+
+	// SettingsEdited is true when any edit was set_adapt, set_fixed or
+	// set_start, and only then is Settings set (non-nil, empty when nothing
+	// changed): every setting whose words changed (edit_settings.go).
+	SettingsEdited bool
+	Settings       []SettingChange
 }
 
 // Inspect reads a repository file for editing. ok is false, with the reasons,
@@ -334,15 +357,16 @@ func runtimeDrops(f File) []string {
 // readable and are written back as they were; until a preview carries the
 // kind, they are changed in the file itself.
 func lockedStep(f File, name string) bool {
-	return factory.ApproveWord(name) || listed(f.Fixed, name) || f.Steps[name].Kind != ""
+	k := f.Steps[name].Kind
+	return factory.ApproveWord(name) || listed(f.Fixed, name) || (k != "" && k != string(factory.StageCheck))
 }
 
 func stepView(f File, name string) StepView {
 	if factory.ApproveWord(name) {
-		return StepView{Name: name, Gate: true, Locked: true, InFile: true}
+		return StepView{Name: name, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
 	}
 	s := f.Steps[name]
-	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout,
+	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
 		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
 		InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
@@ -369,6 +393,9 @@ func describe(f File) Source {
 	src.Rules = append([]string{}, f.Rules...)
 	src.AskFirst = append([]string{}, f.Start.AskFirst...)
 	src.Never = append([]string{}, f.Start.Never...)
+	src.Adapt = string(f.Adapt)
+	src.Labels = append([]string{}, f.Start.Labels...)
+	src.MaxSize, src.MaxCost = normOr(f.Start.MaxSize, DefaultMaxSize), f.Start.MaxCost
 	return src
 }
 
@@ -468,11 +495,15 @@ type editState struct {
 	// listSeen is every list a set_list replaced, and listed says one did.
 	listSeen map[string]bool
 	listed   bool
+	// settingSeen is every setting (and each step's required mark) a settings
+	// edit set, and settingsEdited says one did.
+	settingSeen    map[string]bool
+	settingsEdited bool
 }
 
 func newEditState(f File) *editState {
 	st := &editState{base: f, out: f, inPipeline: map[string]bool{}, named: map[string]bool{}, added: map[string]bool{}, placed: map[string]bool{},
-		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}, listSeen: map[string]bool{}}
+		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}, listSeen: map[string]bool{}, settingSeen: map[string]bool{}}
 	st.out.Steps = make(map[string]Step, len(f.Steps))
 	for name, s := range f.Steps {
 		st.out.Steps[name] = s
@@ -500,6 +531,8 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return st.setStep(i, op)
 	case OpSetList:
 		return st.setList(i, op)
+	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
+		return st.settings(i, op)
 	}
 	return st.structure(i, op)
 }
@@ -516,8 +549,20 @@ func (st *editState) setStep(i int, op EditOp) *EditError {
 	if !st.inPipeline[op.Name] {
 		return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
 	}
-	if k := st.base.Steps[op.Name].Kind; k != "" && !factory.ApproveWord(op.Name) {
+	k := st.base.Steps[op.Name].Kind
+	if k != "" && k != string(factory.StageCheck) && !factory.ApproveWord(op.Name) {
 		return refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
+	}
+	// A CHECK'S PROMPT IS ITS COMMAND, edited like any prompt; it keeps its kind.
+	if k == string(factory.StageCheck) {
+		if op.Kind != nil && *op.Kind != k {
+			return refuseEdit(EditLocked, i, "%s is a check; a step's kind is changed only in the file itself", op.Name)
+		}
+		check := op
+		check.Kind = &k
+		if bad := checkCheckWords(i, check); bad != nil {
+			return bad
+		}
 	}
 	if lockedStep(st.base, op.Name) {
 		return refuseEdit(EditLocked, i, "%s is locked and cannot be edited", op.Name)
@@ -570,6 +615,9 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 	}
 	if st.listed {
 		st.listFacts(&res)
+	}
+	if st.settingsEdited {
+		st.settingsFacts(&res)
 	}
 	if bytes.Equal(text, canonical) {
 		return res, nil
@@ -628,7 +676,12 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 	if op.Op != OpSetList && (op.List != "" || op.Lines != nil) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}
+	if !settingsOp(op.Op) && settingFieldsNamed(op) {
+		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size or max_cost", op.Op)
+	}
 	switch op.Op {
+	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
+		return checkSettings(i, op)
 	case OpSetList:
 		return checkSetList(i, op)
 	case OpAddStep, OpRemoveStep, OpMoveStep:
@@ -638,7 +691,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step and set_list")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start and set_approver")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)
@@ -752,6 +805,9 @@ func notRoundTrip(text []byte, want File) string {
 		return why
 	}
 	if why := listsDiffer(back, want); why != "" {
+		return why
+	}
+	if why := settingsDiffer(back, want); why != "" {
 		return why
 	}
 	return stepsDiffer(back, want)

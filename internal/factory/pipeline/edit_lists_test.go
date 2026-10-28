@@ -117,7 +117,7 @@ func TestSetListRefusals(t *testing.T) {
 		code string
 		op   int
 	}{
-		"an unknown list":          {[]EditOp{setList("labels", "codeaf")}, EditBadValue, 0},
+		"an unknown list":          {[]EditOp{setList("merge", "codeaf")}, EditBadValue, 0},
 		"no list":                  {[]EditOp{{Op: OpSetList, Lines: []string{"x"}}}, EditBadValue, 0},
 		"no lines":                 {[]EditOp{{Op: OpSetList, List: ListRules}}, EditBadValue, 0},
 		"a blank line":             {[]EditOp{setList(ListRules, "a", "   ")}, EditBadValue, 0},
@@ -267,7 +267,7 @@ func TestAnEmptyBaseStillRefusesABadEdit(t *testing.T) {
 		"no pipeline":    {remove("pr", "review"), EditUnknownStep},
 		"remove proof":   {remove("issue", "proof"), EditLocked},
 		"a bad budget":   {EditOp{Op: OpSetBudget, Value: f(-1)}, EditBadValue},
-		"a bad list":     {setList("labels", "x"), EditBadValue},
+		"a bad list":     {setList("merge", "x"), EditBadValue},
 		"a blank line":   {setList(ListNever, " "), EditBadValue},
 		"no edit at all": {EditOp{Op: "reorder"}, EditBadOp},
 	} {

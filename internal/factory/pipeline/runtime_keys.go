@@ -54,7 +54,7 @@ func stepSpellsRuntimeKey(n *yaml.Node) bool {
 			continue
 		}
 		switch strings.TrimSpace(n.Content[i].Value) {
-		case "kind", "when", "effort", "fanout":
+		case "kind", "when", "effort", "fanout", "who":
 			return true
 		}
 	}

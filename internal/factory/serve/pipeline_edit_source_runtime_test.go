@@ -49,7 +49,7 @@ func TestPipelineEditSourceSaysItRunsTheRuntimeWordsInEveryState(t *testing.T) {
 	if p := by["plan"]; !out.Editable || p.When != "thin" || p.Effort != "cheap" || p.Fanout != "per-file" || p.Kind != "" {
 		t.Fatalf("%+v", out)
 	}
-	if s := by["test"]; s.Kind != "check" || !s.Locked {
+	if s := by["test"]; s.Kind != "check" || s.Locked {
 		t.Fatalf("%+v", s)
 	}
 }

@@ -60,7 +60,7 @@ func TestJobStepEditMethodsAreRegisteredAndAbsentWithoutTheEditor(t *testing.T) 
 		t.Fatalf("a non-factory engine announced %v", h.Features)
 	}
 	h := withFactoryJobStepEditFeature(Hello{}, &stepEditEngine{})
-	if len(h.Features) != 1 || h.Features[0] != FeatureFactoryJobStepEdit {
+	if len(h.Features) != 2 || h.Features[0] != FeatureFactoryJobStepEdit || h.Features[1] != FeatureFactoryJobStepEditChecks {
 		t.Fatalf("an editor announced %v", h.Features)
 	}
 	// The feature is independent of factory.job_actions.
@@ -113,7 +113,8 @@ func TestJobStepEditRefusesBadRequestsBeforeTheEngine(t *testing.T) {
 		// The engine's own bounds.
 		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"two words","ask":"x"}}]}`)},
 		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"a","ask":"x"}}]}`)},
-		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"lint","kind":"check","ask":"x"}}]}`)},
+		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"lint","kind":"post","ask":"x"}}]}`)},
+		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"lint","kind":"check","ask":"x","max":10}}]}`)},
 		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"lint","ask":"x","effort":"max"}}]}`)},
 		{"factory.job_step_edit", w(`{"add":[{"step":{"until":"done"}}]}`)},
 		{"factory.job_step_edit", w(`{"add":[{"step":{"name":"lint","ask":"` + long + `"}}]}`)},
