@@ -66,9 +66,12 @@ func (k Keyed) id(name string) string { return k.scope + "/" + name }
 // ledger as it is being updated.
 type keyedRun struct {
 	Keyed
-	v       VaultFile
-	held    map[string]string
-	digests map[string]string
+	v         VaultFile
+	held      map[string]string
+	digests   map[string]string
+	skipped   map[string]int64
+	metadata  map[string]string
+	revisions map[string]keys.Revision
 }
 
 func (k Keyed) begin(v VaultFile) (*keyedRun, error) {
@@ -76,8 +79,8 @@ func (k Keyed) begin(v VaultFile) (*keyedRun, error) {
 	if err != nil {
 		return nil, err
 	}
-	digests, err := readLedger(k.ledger)
-	return &keyedRun{Keyed: k, v: v, held: held, digests: digests}, err
+	ledger, err := readLedger(k.ledger)
+	return &keyedRun{Keyed: k, v: v, held: held, digests: ledger.Digests, skipped: ledger.Skipped}, err
 }
 
 func (k Keyed) capture(v VaultFile) error {
@@ -112,12 +115,31 @@ func (r *keyedRun) finish(err error) error {
 	if err != nil {
 		return err
 	}
-	return writeLedger(r.ledger, r.digests)
+	return writeLedger(r.ledger, keyedLedger{Digests: r.digests, Skipped: r.skipped})
 }
 
 // captureAll stores each key whose value changed since it was last seen, and
 // tombstones each key the ledger knew that is no longer held.
 func (r *keyedRun) captureAll() error {
+	if described, ok := r.set.(interface{ Metadata(string, string) string }); ok {
+		r.metadata = map[string]string{}
+		for name, value := range r.held {
+			if metadata := described.Metadata(name, value); metadata != "" {
+				r.metadata[name] = metadata
+			}
+		}
+		if len(r.metadata) > 0 {
+			if revised, ok := r.v.(interface {
+				Revisions(string) (map[string]keys.Revision, error)
+			}); ok {
+				var err error
+				r.revisions, err = revised.Revisions(r.scope)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 	for name, value := range r.held {
 		if err := r.captureKey(name, value); err != nil {
 			return err
@@ -142,20 +164,51 @@ func (r *keyedRun) captureAll() error {
 
 func (r *keyedRun) captureKey(name, value string) error {
 	if r.digests[name] == digest(value) {
-		return nil
+		return r.annotateKey(name, value)
 	}
-	if e, err := r.v.Get(r.id(name)); err != nil || e.Value != value {
+	if e, err := r.v.Get(r.id(name)); err == nil && e.Value == value {
+		r.digests[name] = digest(value)
+		return r.annotateKey(name, value)
+	} else {
 		at := time.Now()
 		if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
 			if known := timed.KeyTime(name); !known.IsZero() {
 				at = known
 			}
 		}
-		if err := r.v.PutAt(r.id(name), keys.Entry{Name: name, Value: value, Scope: r.scope}, at); err != nil {
+		entry := keys.Entry{Name: name, Value: value, Scope: r.scope}
+		put := func() error { return r.v.PutAt(r.id(name), entry, at) }
+		if metadata := r.metadata[name]; metadata != "" {
+			if annotated, ok := r.v.(interface {
+				PutMetadataAt(string, keys.Entry, time.Time, string) error
+			}); ok {
+				put = func() error { return annotated.PutMetadataAt(r.id(name), entry, at, metadata) }
+			}
+		}
+		if err := put(); err != nil {
 			return err
 		}
 	}
 	r.digests[name] = digest(value)
+	return nil
+}
+
+func (r *keyedRun) annotateKey(name, value string) error {
+	metadata := r.metadata[name]
+	if metadata == "" || r.revisions[name].Metadata != "" {
+		return nil
+	}
+	owner, ok := r.set.(interface {
+		MayAnnotate(string, string, int64) bool
+	})
+	if !ok || !owner.MayAnnotate(name, value, r.revisions[name].Stamp) {
+		return nil
+	}
+	if annotated, ok := r.v.(interface {
+		Annotate(string, keys.Entry, string) error
+	}); ok {
+		return annotated.Annotate(r.id(name), keys.Entry{Name: name, Value: value, Scope: r.scope}, metadata)
+	}
 	return nil
 }
 
@@ -170,6 +223,35 @@ func (r *keyedRun) restoreAll() error {
 	changes, err := r.changes(live)
 	if err != nil {
 		return err
+	}
+	if accept, ok := r.set.(interface {
+		Accept(string, string, string) bool
+	}); ok && len(changes) > 0 {
+		stamped, ok := r.v.(interface {
+			Revisions(string) (map[string]keys.Revision, error)
+		})
+		if !ok {
+			return errors.New("vaultsync: selective restore needs slot revisions")
+		}
+		revisions, err := stamped.Revisions(r.scope)
+		if err != nil {
+			return err
+		}
+		for name, value := range changes {
+			if value == "" {
+				continue
+			}
+			revision := revisions[name]
+			if revision.Stamp <= r.skipped[name] || !accept.Accept(name, value, revision.Metadata) {
+				r.skipped[name] = max(r.skipped[name], revision.Stamp)
+				// Keep the local digest, so rejecting a remote value never
+				// masquerades as a new edit on the next capture.
+				if held, ok := r.held[name]; ok {
+					r.digests[name] = digest(held)
+				}
+				delete(changes, name)
+			}
+		}
 	}
 	if len(changes) > 0 {
 		apply := func() error { return r.set.Apply(changes) }
@@ -238,26 +320,41 @@ func digest(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func readLedger(path string) (map[string]string, error) {
+type keyedLedger struct {
+	Digests map[string]string `json:"digests"`
+	Skipped map[string]int64  `json:"skipped,omitempty"`
+}
+
+func readLedger(path string) (keyedLedger, error) {
 	raw, err := os.ReadFile(path)
-	digests := map[string]string{}
+	ledger := keyedLedger{Digests: map[string]string{}, Skipped: map[string]int64{}}
 	if errors.Is(err, os.ErrNotExist) {
-		return digests, nil
+		return ledger, nil
 	}
 	if err != nil {
-		return nil, err
+		return ledger, err
 	}
-	if json.Unmarshal(raw, &digests) != nil {
+	var old map[string]string
+	if json.Unmarshal(raw, &old) == nil {
+		if old != nil {
+			ledger.Digests = old
+		}
+		return ledger, nil
+	}
+	if json.Unmarshal(raw, &ledger) != nil || ledger.Digests == nil {
 		// A damaged ledger only forgets which keys were shared, so a removal is
 		// not passed on; it never loses a key.
-		return map[string]string{}, nil
+		return keyedLedger{Digests: map[string]string{}, Skipped: map[string]int64{}}, nil
 	}
-	return digests, nil
+	if ledger.Skipped == nil {
+		ledger.Skipped = map[string]int64{}
+	}
+	return ledger, nil
 }
 
 // writeLedger replaces the ledger file, at mode 0600 like the vault it sits by.
-func writeLedger(path string, digests map[string]string) error {
-	raw, err := json.Marshal(digests)
+func writeLedger(path string, ledger keyedLedger) error {
+	raw, err := json.Marshal(ledger)
 	if err != nil {
 		return err
 	}
