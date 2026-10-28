@@ -14,8 +14,8 @@ import (
 // own; either half alone is still the answer.
 func JobRules(recipe func(repo string) factory.Recipe, it factory.Item) []string {
 	var repo []string
-	if recipe != nil {
-		repo = recipe(it.Repo).Policy
+	if r, ok := jobRecipe(recipe, it); ok {
+		repo = r.Policy
 	}
 	var house []string
 	if it.House != nil {
@@ -33,6 +33,23 @@ func JobRules(recipe func(repo string) factory.Recipe, it factory.Item) []string
 		out = append(out, line)
 	}
 	return out
+}
+
+// jobRecipe is the recipe a job's rules and a plan's reshaping are bounded by:
+// THE FACTORY'S COPY THE JOB CARRIES ([factory.Item.PipelineCopy]) when it has
+// one, else recipe's read of its repository (main's file, else the built-in
+// steps). ok is false when there is neither. A runner on another machine
+// cannot read the factory's store, so the job is the only place it learns
+// that the factory replaced main's file.
+func jobRecipe(recipe func(repo string) factory.Recipe, it factory.Item) (factory.Recipe, bool) {
+	if it.PipelineCopy != nil {
+		f, _ := pipeline.CopyFile(*it.PipelineCopy)
+		return f.Recipe(), true
+	}
+	if recipe == nil {
+		return factory.Recipe{}, false
+	}
+	return recipe(it.Repo), true
 }
 
 // rulesBrief is the brief's paragraph of rules, the job's [Job.Rules] and

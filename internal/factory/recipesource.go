@@ -18,6 +18,11 @@ const (
 	FromMainBranch  = "main branch"
 	FromWorkingTree = "working tree"
 	FromDefault     = "default"
+	// FromFactoryCopy is a read that used the factory's own copy of the
+	// file ([PipelineCopy]) instead of main's. RecipeSource never answers
+	// it (it reads only git); the factory's pipeline read does
+	// (pipeline.WithFactoryCopy), and logs it the same way.
+	FromFactoryCopy = "factory copy"
 )
 
 // recipeGitWait is how long one git read of the recipe may take.
@@ -41,6 +46,26 @@ const recipeGitWait = 5 * time.Second
 //
 // Which it was is logged the first time, and every time it changes, for a
 // checkout: `recipe from main branch`.
+//
+// ONE DELIBERATE EXCEPTION, decided by the owner on 2026-10-28 knowing it
+// departs from "team law lives in the repository, read from the main branch":
+// a factory may keep ITS OWN COPY of a repository's file ([PipelineCopy]),
+// saved by a person from the app with no push and no pull request, so a solo
+// person's edit runs at once. Who reads what:
+//
+//   - THIS FUNCTION still reads only git, and still answers main's file. It
+//     knows nothing of the copy: the repository's law is unchanged.
+//   - THE FACTORY'S PIPELINE READ (pipeline.WithFactoryCopy, behind every door
+//     that decides or shows what a job runs under) puts the copy in place of
+//     main's file for the jobs that factory starts, and says so: `recipe from
+//     factory copy`.
+//   - A JOB carries the copy it started under ([Item.PipelineCopy]), so a
+//     runner anywhere runs that, not what its own machine reads of main.
+//
+// PRECEDENCE: the factory copy, else main's file, else the built-in steps. The
+// factory's own rules and protected paths apply on top of whichever it is. The
+// copy clears itself once main's file reads the same (its pull request
+// merged), and a person can stop using it; main's file then runs again.
 func RecipeSource(dir string) (text string, from string, err error) {
 	text, from, err = recipeSource(dir)
 	if err == nil {
@@ -111,6 +136,11 @@ func recipeGit(dir string, args ...string) (string, error) {
 // recipeFrom is where each checkout's recipe was last read from, so the log
 // says it once and again only when it changes.
 var recipeFrom sync.Map
+
+// NoteRecipeSource logs where a recipe was read from for where (a checkout or
+// a repository), once and again only when it changes: the pipeline read uses
+// it for [FromFactoryCopy], which [RecipeSource] never answers.
+func NoteRecipeSource(where, from string) { noteRecipeSource(where, from) }
 
 func noteRecipeSource(dir, from string) {
 	if prev, ok := recipeFrom.Swap(dir, from); ok && prev == from {

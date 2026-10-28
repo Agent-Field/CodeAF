@@ -210,7 +210,7 @@ type Pipeline struct {
 	// are also in Policy and Start, so a client can tell which are the
 	// factory's.
 	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
-	Origin     string              `json:"origin,omitempty"` // main, working tree, defaults
+	Origin     string              `json:"origin,omitempty"` // main, working tree, defaults, factory copy
 	Start      *StartBlock         `json:"start,omitempty"`
 	Size       *SizeBlock          `json:"size,omitempty"`
 	// Merge is the file's `merge:` settings; absent is auto-merge off and the
@@ -382,6 +382,12 @@ type Job struct {
 	// HouseRules are the factory's own rules the job was queued under
 	// (factory.HouseRules); absent before it was first queued.
 	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
+	// PipelineCopy is the factory's own copy of the repository's pipeline
+	// file the job was queued under (factory.PipelineCopy): its steps and
+	// rules are that file's, not main's. Absent when the job runs main's
+	// file. It carries the whole file, so a runner on another machine reads
+	// the same rules.
+	PipelineCopy *factory.PipelineCopy `json:"pipeline_copy,omitempty"`
 	// StartRules are the ask-first and never lines the job was started under
 	// (factory.StartRules); RuleHold is the rule and file that make its
 	// approval a person's (factory.Item.RuleHold): the plan's, by a planned

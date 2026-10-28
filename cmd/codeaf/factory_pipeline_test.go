@@ -40,7 +40,7 @@ func TestFactoryRecipeAtAndRunnerReadYAMLFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	dirs := func(string) string { return dir }
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(dirs), factoryPipelineOption())
+	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(dirs), factoryPipelineOption(st))
 	r, problems, _, err := seam.RecipeAt("owner/repo")
 	if err != nil || len(problems) != 0 || len(r.Stages) != 1 || r.Stages[0].Ask != "YAML prompt" {
 		t.Fatalf("recipe %+v, problems %+v, err %v", r, problems, err)
@@ -118,7 +118,7 @@ func TestFactoryRulesFromForgeReachIntakeAndPipeline(t *testing.T) {
 	if len(items) != 1 || items[0].ID != it.ID || items[0].State != factory.StateQueued {
 		t.Fatalf("intake did not queue checkout-free job: %+v", items)
 	}
-	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir))
 	handler := serve.New(seam, serve.Config{})
 	read := func() struct {
 		Source   string

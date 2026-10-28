@@ -21,7 +21,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -81,8 +80,7 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 		return nil
 	}
 	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, repo string) (pipeline.File, error) {
-		f, err := factoryRules().Load(ctx, repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
-		return withFactoryHouseRules(st, f, err)
+		return factoryPipelineRead(ctx, st, repo, st.CheckoutDir(repo))
 	}))
 }
 

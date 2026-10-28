@@ -102,7 +102,7 @@ func (h *Handler) pipelineEditSource(w http.ResponseWriter, r *http.Request) {
 		return
 	case status == 404:
 		out.State = api.PipelineEditMissing
-		h.write(w, http.StatusOK, out)
+		f.answerSource(out)
 		return
 	case status != 200:
 		f.sourceReadFailed(api.PipelineEditStageFile, status, nil)
@@ -115,19 +115,32 @@ func (h *Handler) pipelineEditSource(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(raw) > pipeline.EditTextMax {
 		out.State = api.PipelineEditTooLarge
-		h.write(w, http.StatusOK, out)
+		f.answerSource(out)
 		return
 	}
 	out.Text = string(raw)
 	src, problems, editable := pipeline.Inspect(out.Text)
 	if !editable {
 		out.State, out.Problems = api.PipelineEditInvalid, problems
-		h.write(w, http.StatusOK, out)
+		f.answerSource(out)
 		return
 	}
 	out.State, out.Editable = api.PipelineEditFile, true
 	out.SetParsed(src)
-	h.write(w, http.StatusOK, out)
+	f.answerSource(out)
+}
+
+// answerSource writes a read that found main's file, with THE FACTORY'S OWN
+// COPY of it beside it (pipeline_copy.go) when the factory keeps one: its text,
+// who saved it and when, how main's file compares, the version a save names,
+// and whether the caller may save or stop it. Main's fields stay main's: the
+// pull request is still pinned to main's commit and text.
+func (f *pipelinePRFlow) answerSource(out api.PipelineEditSource) {
+	if err := f.h.withPipelineCopy(f.r, &out); err != nil {
+		f.sourceFail(500, api.PipelineEditStageFile, 0, "the factory's own copy of these steps could not be read")
+		return
+	}
+	f.h.write(f.w, http.StatusOK, out)
 }
 
 // sourceRead is a GET that must answer 200; anything else ends the call.

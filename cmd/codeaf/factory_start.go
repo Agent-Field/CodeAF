@@ -51,7 +51,7 @@ const (
 // same sentence.
 func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
-	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
+	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
 	ref := it.Ref()
 	switch it.State {
 	case factory.StateLanded:

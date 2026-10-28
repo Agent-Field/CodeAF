@@ -21,9 +21,17 @@ import (
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
-func factoryPipelineOption() factory.LocalOption {
+// factoryPipelineOption is the seam's repository recipe: main's file, or the
+// factory's own copy in its place when st keeps one, as every job reads it
+// ([pipeline.WithFactoryCopy]). st is nil for a worker's mirror, which keeps
+// no copy: the jobs it runs carry theirs.
+func factoryPipelineOption(st *store.Store) factory.LocalOption {
 	return factory.WithOptions(pipeline.LocalFiles(), factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
-		f, err := factoryRules().Load(context.Background(), repo, dir, home.Join("factory.yaml"))
+		personal := home.Join("factory.yaml")
+		f, err := factoryRules().Load(context.Background(), repo, dir, personal)
+		if st != nil {
+			f, err = pipeline.WithFactoryCopy(f, err, st, repo, personal)
+		}
 		return f.Recipe(), f.RecipeProblems(), err
 	}))
 }
@@ -82,11 +90,10 @@ func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *in
 			return ctx.Err()
 		},
 		Load: func(repo string) (pipeline.File, error) {
-			f, err := factoryRules().Load(context.Background(), repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
-			return withFactoryHouseRules(st, f, err)
+			return factoryPipelineRead(context.Background(), st, repo, st.CheckoutDir(repo))
 		},
 		Launch: func(id int) error {
-			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
+			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir))
 			if seam.Launch == nil {
 				return errors.New("factory has no worker to start this job")
 			}
@@ -139,6 +146,22 @@ func factoryRules() *factorygithub.PipelineLoader {
 	})
 	factoryRuleCaches.profiles[profile] = loader
 	return loader
+}
+
+// factoryPipelineRead is one repository's pipeline as THIS FACTORY runs it,
+// for every reader that decides or shows what a job runs under: the main
+// branch's file (forge first, the checkout's main branch when offline) with the
+// personal file, then THE FACTORY'S OWN COPY in its place when the store keeps
+// one ([pipeline.WithFactoryCopy]: it clears itself once main says the same),
+// then the factory's own rules on top ([withFactoryHouseRules]). The order is
+// the precedence factory.RecipeSource records: copy, else main, else built-in.
+func factoryPipelineRead(ctx context.Context, st *store.Store, repo, dir string) (pipeline.File, error) {
+	personal := home.Join("factory.yaml")
+	f, err := factoryRules().Load(ctx, repo, dir, personal)
+	if st != nil {
+		f, err = pipeline.WithFactoryCopy(f, err, st, repo, personal)
+	}
+	return withFactoryHouseRules(st, f, err)
 }
 
 // withFactoryHouseRules adds the factory's own rules (the store's, see

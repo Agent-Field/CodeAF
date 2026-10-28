@@ -19,7 +19,7 @@ func factoryServerSeam(st *store.Store, tokensPath string) factory.Seam {
 		token, _, _ := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
 		return token
 	}
-	seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir),
+	seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir),
 		factory.WithRepoLister(func(ctx context.Context) ([]factory.RepoInfo, error) {
 			token, _, err := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
 			if err != nil || token == "" {

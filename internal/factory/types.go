@@ -530,6 +530,12 @@ type Item struct {
 	// machine follows the rules of the factory that handed it the work, not
 	// whatever its own machine keeps. Nil before a job is first queued.
 	House *HouseRules `json:",omitempty"`
+	// PipelineCopy is the factory's own copy of the repository's pipeline
+	// file ([PipelineCopy]) the job was last queued under, when the factory
+	// keeps one: ITS STEPS AND RULES ARE THAT FILE'S, not main's. It travels
+	// with the job as House does, so a runner on another machine reads the
+	// same file. Nil when the job runs main's file (or the built-in steps).
+	PipelineCopy *PipelineCopy `json:",omitempty"`
 	// StartRules are the ask-first and never lines (never kept as an alias of
 	// a protected path) the job was started under
 	// (the repository's and the factory's), so the approval after its plan can

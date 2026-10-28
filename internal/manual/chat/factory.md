@@ -119,7 +119,7 @@ A step that falls short goes round again until its rounds run out, and only then
 
 ## the factory's own rules — rules for every repository, instructions, protected paths, ask first, never, "don't touch auth without checking with me"
 
-A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
+A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. **Use on this factory** runs the edit at once instead (see the next section). The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
 
 They hold three lists:
 
@@ -128,6 +128,18 @@ They hold three lists:
 - **never**: kept so older files still work. A path listed here is a protected path, exactly like `touch <path>` under ask first; it is not held more strictly or briefed differently. Write new ones under ask first.
 
 The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
+
+## use edited steps now — Use on this factory, the factory's own copy of a repository's steps, no pull request, stop using it
+
+A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, so an edit made in the app's Steps tab (Repository view) runs only once its pull request merges. **Use on this factory**, beside **Open pull request**, saves the edited file in the factory itself instead, as **its own copy** of that repository's steps: no push and no pull request. It is checked exactly as a pull request's file is, and the copy is the very file that pull request would write.
+
+- Jobs this factory starts afterwards run the copy instead of main's file. A job already running keeps the steps it started with. The factory's own rules and protected paths still apply on top, as they do on main's file.
+- A job carries the copy it was queued under, so a runner on another machine runs the same steps. Its record says `Runs this factory's copy of .codeaf/factory.yaml, saved <when> by @<who>, not main's`, and the log says `recipe from factory copy`.
+- The page says what is in effect: `This factory uses its own copy of these steps, saved <when> by @<who>.` and whether main has no file yet or a different one. **Open pull request** still shares the steps with the repository.
+- When main's file becomes the same file (the pull request merged), the copy clears itself and main's file runs. **Stop using this copy** goes back to main's file at once.
+- Precedence: the factory's copy, else main's file, else the built-in steps.
+
+Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps.
 
 ## a rule asks first — protected paths, Auto paused at the plan, a plan that touches auth, why a job waits on a rule
 

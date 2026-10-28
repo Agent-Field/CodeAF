@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -373,6 +374,14 @@ func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe
 	dir := ""
 	if dirs != nil {
 		dir = strings.TrimSpace(dirs(it.Repo))
+	}
+	// A JOB THAT CARRIES THE FACTORY'S COPY of its repository's file runs that
+	// file ([factory.Item.PipelineCopy]), so its brief and its bounds are the
+	// copy's, never main's.
+	if it.PipelineCopy != nil {
+		f, err := pipeline.CopyFile(*it.PipelineCopy)
+		f, _ = pipeline.MergePersonal(f, home.Join("factory.yaml"), err)
+		return f.Recipe()
 	}
 	f, _ := factoryRules().Load(context.Background(), it.Repo, dir, home.Join("factory.yaml"))
 	return f.Recipe()
