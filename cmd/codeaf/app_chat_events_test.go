@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -22,13 +23,20 @@ import (
 
 // R4 holds the watch between its version and presence frames. The relay list
 // remains real; its mutations can be read before the watch announces them.
-func TestAppChatEventsR4UnknownPresenceAndSilentLists(t *testing.T) {
+func TestAppChatEventsR4F4UnknownPresenceAndSilentLists(t *testing.T) {
 	celltest.Available(t)
 	frames := make(chan string, 8)
 	startWatch := make(chan struct{})
+	reconnect := make(chan struct{}, 1)
+	connected := make(chan struct{}, 8)
 	var initial atomic.Uint64
+	var peerID string
 	relay := e2WireRelay(t, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/dir/presence" {
+				_ = json.NewEncoder(w).Encode(directory.PresenceView{Now: 3, Devices: map[string]directory.DevicePresence{peerID: {Online: true}}})
+				return
+			}
 			if r.URL.Path != "/v1/dir/watch" {
 				next.ServeHTTP(w, r)
 				return
@@ -38,6 +46,7 @@ func TestAppChatEventsR4UnknownPresenceAndSilentLists(t *testing.T) {
 				return
 			}
 			defer conn.CloseNow()
+			connected <- struct{}{}
 			ctx, cancel := context.WithCancel(r.Context())
 			defer cancel()
 			go func() {
@@ -68,6 +77,8 @@ func TestAppChatEventsR4UnknownPresenceAndSilentLists(t *testing.T) {
 					}
 				case <-ctx.Done():
 					return
+				case <-reconnect:
+					return
 				}
 			}
 		})
@@ -82,6 +93,7 @@ func TestAppChatEventsR4UnknownPresenceAndSilentLists(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := appDeviceSync(t, aHome)
+	peerID = s.Device.ID()
 	if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, "Mac"); err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +139,8 @@ func TestAppChatEventsR4UnknownPresenceAndSilentLists(t *testing.T) {
 		rec.mu.Lock()
 		defer rec.mu.Unlock()
 		n := 0
-		for _, name := range rec.events {
-			if name == appwire.EventChatChanged || name == appwire.EventChatRemoved {
+		for i, name := range rec.events {
+			if name == appwire.EventChatChanged && rec.data[i].(appwire.ChatChanged).Chat.Cell == c.ID {
 				n++
 			}
 		}
@@ -164,11 +176,39 @@ func TestAppChatEventsR4UnknownPresenceAndSilentLists(t *testing.T) {
 	frames <- fmt.Sprintf(`{"t":"presence","device":%q,"online":true,"at":3}`, s.Device.ID())
 	appSyncWait(t, "R4 presence returns online", func() bool { return cursor() >= 5 })
 	machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{})
+	// F4: a watch reconnect repeats the current version, without changing a row.
+	<-connected
+	initial.Store(listed.Version)
+	beforeReconnect := cursor()
+	reconnect <- struct{}{}
+	select {
+	case <-connected:
+	case <-time.After(10 * time.Second):
+		t.Fatal("F4 watch did not reconnect")
+	}
+	marker, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Dir.Create(t.Context(), marker.ID, directory.CellInit{Head: "marker-head"}); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := s.Dir.List(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames <- fmt.Sprintf(`{"v":%d}`, latest.Version)
+	rec.waitFor(t, 5*time.Second, func(name string, data any) bool {
+		return name == appwire.EventChatChanged && data.(appwire.ChatChanged).Chat.Cell == marker.ID
+	})
+	if got := cursor(); got != beforeReconnect {
+		t.Fatalf("F4 reconnect emitted %d extra chat changes", got-beforeReconnect)
+	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	var changed []appwire.ChatChanged
 	for i, name := range rec.events {
-		if name == appwire.EventChatChanged {
+		if name == appwire.EventChatChanged && rec.data[i].(appwire.ChatChanged).Chat.Cell == c.ID {
 			changed = append(changed, rec.data[i].(appwire.ChatChanged))
 		}
 	}

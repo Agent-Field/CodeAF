@@ -49,9 +49,9 @@ func (b *appBackend) listenDevices() *appDevices {
 	guard.Go("app/devices", func() {
 		defer close(d.done)
 		for range d.watch.Changes() {
-			if view, err := d.snapshot(); err == nil {
-				d.publish(b.emit, view)
-			}
+			d.op.Lock()
+			d.publish(b.emit)
+			d.op.Unlock()
 		}
 	})
 	return d
@@ -59,13 +59,20 @@ func (b *appBackend) listenDevices() *appDevices {
 
 // publishDevices compares the wire value because observer hints can describe
 // unrelated directory changes, and explicit actions also publish their result.
-func (b *appBackend) publishDevices(view appwire.Devices) {
-	b.devices.publish(b.emit, view)
+func (b *appBackend) publishDevices() {
+	d := b.devices
+	d.op.Lock()
+	defer d.op.Unlock()
+	d.publish(b.emit)
 }
 
-func (d *appDevices) publish(emit appwire.Emitter, view appwire.Devices) {
+func (d *appDevices) publish(emit appwire.Emitter) {
 	d.emitMu.Lock()
 	defer d.emitMu.Unlock()
+	view, complete, err := d.snapshotState()
+	if err != nil || view.Mode == appwire.DevicesOn && !complete {
+		return
+	}
 	encoded, err := json.Marshal(appwire.DevicesResult{Devices: view})
 	if err != nil || string(encoded) == d.lastWire {
 		return
@@ -80,15 +87,20 @@ func (d *appDevices) close() {
 }
 
 func (d *appDevices) snapshot() (appwire.Devices, error) {
+	view, _, err := d.snapshotState()
+	return view, err
+}
+
+func (d *appDevices) snapshotState() (appwire.Devices, bool, error) {
 	// A first read needs a stable local device id without turning a fresh
 	// identity into a fleet that is allowed to contact the relay.
 	id, err := identity.EnsureSolo(d.home)
 	if err != nil {
-		return appwire.Devices{}, err
+		return appwire.Devices{}, false, err
 	}
 	self, err := identity.Device(d.home)
 	if err != nil {
-		return appwire.Devices{}, err
+		return appwire.Devices{}, false, err
 	}
 	view := appwire.Devices{Mode: appwire.DevicesOn}
 	known := d.watch.Snapshot(id, self)
@@ -138,7 +150,7 @@ func (d *appDevices) snapshot() (appwire.Devices, error) {
 	slices.SortFunc(view.Devices, func(a, b appwire.Device) int {
 		return cmp.Or(-cmp.Compare(rank(a.Self), rank(b.Self)), cmp.Compare(rank(a.Removed), rank(b.Removed)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
 	})
-	return view, nil
+	return view, known.Complete, nil
 }
 
 func (b *appBackend) ListDevices() (appwire.Devices, error) {
@@ -188,7 +200,7 @@ func (b *appBackend) RenameDevice(typed string) (appwire.DeviceRenameResult, err
 	if err != nil {
 		return appwire.DeviceRenameResult{}, err
 	}
-	b.publishDevices(view)
+	d.publish(b.emit)
 	return appwire.DeviceRenameResult{Device: view.Devices[0], Line: line}, nil
 }
 
@@ -238,7 +250,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 	// the relay. The revoke already updated this process's remembered record.
 	view, err = d.snapshot()
 	if err == nil {
-		b.publishDevices(view)
+		d.publish(b.emit)
 	}
 	return appwire.DeviceRemoveResult{ID: deviceID, Line: line}, nil
 }

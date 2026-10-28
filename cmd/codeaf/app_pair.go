@@ -244,9 +244,7 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 			guard.Go("app/paired-chats", func() { _, _ = o.backend.listChats(true) })
 		}
 		// These events precede done: a desktop may immediately restart on done.
-		if view, e := o.backend.devices.snapshot(); e == nil {
-			o.backend.publishDevices(view)
-		}
+		o.backend.publishDevices()
 		sync, _ := o.backend.SyncStatus()
 		o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
 		o.finish("done", "", nil, restart)

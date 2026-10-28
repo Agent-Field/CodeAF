@@ -257,7 +257,10 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		facts[r.Cell] = r
 		_, installed := local[r.Cell]
 		here := r.Mine && (r.Status == chatlist.Here || installed)
-		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !here && r.Head != ""}
+		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence, Head: r.Head}, CanTake: !here && r.Head != ""}
+		if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
+			row.Seen.Head = ""
+		}
 		if r.DeviceID != "" {
 			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
 		}
@@ -283,7 +286,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
 	row.Online = nil
-	if state.Up && fact.DeviceID != "" {
+	if fact.DeviceID != "" {
 		if online, ok := known[fact.DeviceID]; ok {
 			row.Online = &online
 		}

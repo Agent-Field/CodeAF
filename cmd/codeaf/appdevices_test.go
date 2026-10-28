@@ -456,7 +456,8 @@ func TestAppDevicesV4V5LocalModesMakeNoRelayRequests(t *testing.T) {
 	}
 }
 
-// V5: while Devices was never opened, engine-owned writes emit without a read.
+// V5/F3: after an engine-owned roster read, passive writes emit without reading
+// again, even while Devices was never opened. Startup never emits a partial list.
 func TestAppDevicesV5PassiveEventsDoNotReadRelay(t *testing.T) {
 	celltest.Available(t)
 	_, hits, _ := appDevicesRelay(t)
@@ -465,8 +466,11 @@ func TestAppDevicesV5PassiveEventsDoNotReadRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := appDeviceSync(t, dir)
-	before := hits.Load()
 	_, rec, _ := appDeviceBackend(t, dir)
+	if _, err := s.Dir.List(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	before := hits.Load()
 	if err := s.Rename(context.Background(), "elsewhere in the engine"); err != nil {
 		t.Fatal(err)
 	}
@@ -493,6 +497,8 @@ func TestAppDevicesV2OfflineRenameAndUnreachableList(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, rec, w := appDeviceBackend(t, dir)
+	// Offline changes retain the complete roster learned while connected.
+	appDeviceList(t, w)
 	srv.Close()
 	if _, err := w.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeUnreachable || err.Message != chatlist.Unreachable {
 		t.Fatalf("unreachable list: %v", err)
