@@ -10,11 +10,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 	"github.com/Agent-Field/codeaf/internal/raftsnapshot"
 	"go.etcd.io/raft/v3"
@@ -141,13 +144,13 @@ func Open(path string, identity Identity) (*SQLite, error) {
 		var info os.FileInfo
 		info, err = os.Lstat(abs)
 		if err == nil && (!info.Mode().IsRegular() || info.Size() == 0) {
-			err = ErrCorrupt
+			err = fmt.Errorf("%w: %s (regular=%t, bytes=%d)", ErrCorrupt, abs, info.Mode().IsRegular(), info.Size())
 		}
 	}
 	if err != nil {
 		return nil, err
 	}
-	u := url.URL{Scheme: "file", Path: abs}
+	u := sqliteURI(abs)
 	q := url.Values{"_txlock": {"immediate"}, "_pragma": {"busy_timeout(10000)", "journal_mode(WAL)", "synchronous(FULL)"}, "mode": {"rw"}}
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", u.String())
@@ -167,7 +170,7 @@ func Open(path string, identity Identity) (*SQLite, error) {
 	var mode string
 	var synchronous int
 	if err = db.QueryRowContext(ctx, `PRAGMA journal_mode`).Scan(&mode); err != nil {
-		return nil, ErrCorrupt
+		return nil, errors.Join(ErrCorrupt, err)
 	}
 	if err = db.QueryRowContext(ctx, `PRAGMA synchronous`).Scan(&synchronous); err != nil || mode != "wal" || synchronous != 2 {
 		return nil, ErrCorrupt
@@ -197,17 +200,8 @@ func Open(path string, identity Identity) (*SQLite, error) {
 		}
 		// SQLite syncs the WAL before COMMIT returns. Sync the containing
 		// directory too so first creation survives losing power immediately.
-		dir, err := os.Open(filepath.Dir(abs))
-		if err != nil {
+		if err := fsreplace.SyncDir(filepath.Dir(abs)); err != nil {
 			return nil, err
-		}
-		err = dir.Sync()
-		closeErr := dir.Close()
-		if err != nil {
-			return nil, err
-		}
-		if closeErr != nil {
-			return nil, closeErr
 		}
 	}
 	if _, err = s.Recover(ctx); err != nil {
@@ -215,6 +209,17 @@ func Open(path string, identity Identity) (*SQLite, error) {
 	}
 	ok = true
 	return s, nil
+}
+
+// sqliteURI keeps a Windows drive in the absolute path, rather than turning
+// it into a URI authority such as file://C:. SQLite accepts /C:/ as a drive
+// path, with forward slashes even when the native filename uses backslashes.
+func sqliteURI(abs string) url.URL {
+	path := filepath.ToSlash(abs)
+	if len(abs) >= 3 && (abs[0] >= 'A' && abs[0] <= 'Z' || abs[0] >= 'a' && abs[0] <= 'z') && abs[1] == ':' && (abs[2] == '\\' || abs[2] == '/') {
+		path = "/" + strings.ReplaceAll(abs, `\`, "/")
+	}
+	return url.URL{Scheme: "file", Path: path}
 }
 
 func (s *SQLite) Close() error {
