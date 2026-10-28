@@ -23,7 +23,7 @@ import (
 
 // factoryPipelineOption is the seam's recipes: a repository's is main's
 // file, or the factory's own copy in its place when st keeps one
-// ([factoryRepoRead]); a job's is the copy it carries first
+// ([factoryRepoRead]); a job's is the file it was decided on first
 // ([factoryJobFile]). st is nil for a worker's mirror, which keeps no copy:
 // the jobs it runs carry theirs.
 func factoryPipelineOption(st *store.Store) factory.LocalOption {
@@ -93,6 +93,9 @@ func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *in
 		},
 		Load: func(repo string) (pipeline.File, error) {
 			return factoryPipelineRead(context.Background(), st, repo, st.CheckoutDir(repo))
+		},
+		LoadJob: func(it factory.Item) (pipeline.File, error) {
+			return factoryJobRead(context.Background(), st, it, st.CheckoutDir(factory.RepoOf(it)))
 		},
 		Launch: func(id int) error {
 			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir))
@@ -186,12 +189,17 @@ func factoryRepoRead(ctx context.Context, st *store.Store, repo, dir string) (pi
 
 // factoryJobFile is THE ONE RESOLVER of the file a job is bounded by, before
 // the factory's own rules ([pipeline.JobFile]): THE COPY THE JOB CARRIES
-// ([factory.Item.PipelineCopy]) with the personal file, else this factory's
-// read of repo now ([factoryRepoRead]). The edit doors, the manager's brief,
-// the item card and the runner (its rules, its plan's bounds and a post's
-// policy) all read it, so none of them bounds a job by a file it does not run.
+// ([factory.Item.PipelineCopy]) with the personal file; else main's file
+// alone for a job decided on it; else, for a job not decided yet, this
+// factory's read of repo now ([factoryRepoRead]). The edit doors, the
+// manager's brief, the item card, a start and the runner (its rules, its
+// plan's bounds and a post's policy) all read it, so none of them bounds a job
+// by a file it does not run.
 func factoryJobFile(ctx context.Context, st *store.Store, it factory.Item, repo, dir string) (pipeline.File, error) {
-	return pipeline.JobFile(it.PipelineCopy, home.Join("factory.yaml"), func() (pipeline.File, error) {
+	return pipeline.JobFile(it, home.Join("factory.yaml"), func(withCopy bool) (pipeline.File, error) {
+		if !withCopy {
+			return factoryRepoRead(ctx, nil, repo, dir)
+		}
 		return factoryRepoRead(ctx, st, repo, dir)
 	})
 }

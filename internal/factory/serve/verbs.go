@@ -804,6 +804,12 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var selected []factory.Stage
+	// copied is the factory's copy the read of the selected steps used, nil
+	// for main's file: the job's file is decided with them
+	// ([factory.Item.DecidePipeline]), so its start runs the file its steps
+	// came from.
+	var copied *factory.PipelineCopy
+	decided := false
 	if body.Pipeline != "" && body.Pipeline != "default" {
 		if !h.requireVerb(w, h.config.Store != nil && h.seam.RecipeAt != nil) {
 			return
@@ -818,6 +824,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			recipe = f.Recipe()
+			copied, decided = f.Copy, true
 		}
 		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
 		if body.Pipeline == "issue" {
@@ -856,7 +863,13 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.stampAsk(r, id, body)) {
 		return
 	}
-	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error { it.Stages = factory.CopyStages(selected); return nil })) {
+	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error {
+		it.Stages = factory.CopyStages(selected)
+		if decided {
+			it.DecidePipeline(copied, h.clock())
+		}
+		return nil
+	})) {
 		return
 	}
 	if body.Issue && h.failed(w, h.keepIssue(id, issue)) {

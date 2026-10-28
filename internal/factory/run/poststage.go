@@ -20,8 +20,8 @@ type PostOptions struct {
 	Record *record.Record
 	// Source answers the item's source, nil when none.
 	Source func(repo string) factory.Source
-	// Policy answers the policy lines of the recipe the job runs: the
-	// factory's copy it carries first, else its repository's file
+	// Policy answers the policy lines of the recipe the job runs: the file
+	// it was decided on, the factory's copy it carries or main's file
 	// ([Options.Recipe]).
 	Policy func(it factory.Item) []string
 	// Push publishes the item's branch from its folder before a `pr` is

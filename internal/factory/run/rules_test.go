@@ -92,7 +92,7 @@ func TestAHouseRuleCodeKnowsIsAppliedToPosts(t *testing.T) {
 // rules.
 func mainReads(rules ...string) func(factory.Item) factory.Recipe {
 	return func(it factory.Item) factory.Recipe {
-		f, _ := pipeline.JobFile(it.PipelineCopy, "", func() (pipeline.File, error) {
+		f, _ := pipeline.JobFile(it, "", func(bool) (pipeline.File, error) {
 			f := pipeline.Defaults()
 			f.Rules = rules
 			return f, nil

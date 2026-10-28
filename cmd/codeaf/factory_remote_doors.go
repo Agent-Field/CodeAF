@@ -126,7 +126,7 @@ func factoryLocalJobs(floor *store.Store, base, workspace, profileDir string, sn
 			}
 			seam := factory.LocalSeam(mirror, time.Now(), factoryPipelineOption(nil),
 				factory.WithRepoDirs(factoryRepoDirs(floor, workspace)),
-				factory.WithTalk(talkMaker(floor, workspace, profileDir)),
+				factory.WithTalk(talkMakerReading(floor, nil, workspace, profileDir)),
 				factory.WithRefetch(factorygithub.Refetcher(mirror, func(ctx context.Context) *factorygithub.Source {
 					return factoryGitHub(ctx, floor, func(ctx context.Context) string {
 						token, _ := factorygithub.TokenAt(ctx, factoryProfile(profileDir))

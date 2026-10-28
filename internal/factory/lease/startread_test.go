@@ -32,8 +32,8 @@ func TestALaunchRunsTheRepositorysCurrentPipeline(t *testing.T) {
 	if reflect.DeepEqual(want, stageNames(factory.DefaultRecipe().For(factory.KindIssue))) {
 		t.Fatalf("the edited pipeline is the default one: %v", want)
 	}
-	doors := lease.NewDoors(f.desk).WithStartRead(func(_ context.Context, repo string) (pipeline.File, error) {
-		if repo != "acme/api" {
+	doors := lease.NewDoors(f.desk).WithStartRead(func(_ context.Context, it factory.Item) (pipeline.File, error) {
+		if repo := factory.RepoOf(it); repo != "acme/api" {
 			t.Errorf("read %q", repo)
 		}
 		return file, nil
@@ -71,7 +71,7 @@ func TestALaunchRunsTheRepositorysCurrentPipeline(t *testing.T) {
 	}
 
 	// The factory's rules unread: nothing starts.
-	refused := lease.NewDoors(f.desk).WithStartRead(func(context.Context, string) (pipeline.File, error) {
+	refused := lease.NewDoors(f.desk).WithStartRead(func(context.Context, factory.Item) (pipeline.File, error) {
 		return pipeline.Defaults(), pipeline.ErrHouseRulesUnread
 	})
 	held := f.add(t, factory.Item{Kind: factory.KindIssue, State: factory.StateNew, Stages: defaults})
@@ -102,7 +102,7 @@ func TestALaunchStampsTheStartRulesEveryDoorMustCarry(t *testing.T) {
 		t.Fatal(err)
 	}
 	file = pipeline.WithHouseRules(file, house)
-	read := lease.NewDoors(f.desk).WithStartRead(func(context.Context, string) (pipeline.File, error) { return file, nil })
+	read := lease.NewDoors(f.desk).WithStartRead(func(context.Context, factory.Item) (pipeline.File, error) { return file, nil })
 	stages := []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "true", On: true}}
 
 	it := f.add(t, factory.Item{State: factory.StateNew, Stages: stages})
@@ -122,7 +122,7 @@ func TestALaunchStampsTheStartRulesEveryDoorMustCarry(t *testing.T) {
 		t.Fatalf("a door's own stamp was replaced: %+v", got.StartRules)
 	}
 
-	unread := lease.NewDoors(f.desk).WithStartRead(func(context.Context, string) (pipeline.File, error) {
+	unread := lease.NewDoors(f.desk).WithStartRead(func(context.Context, factory.Item) (pipeline.File, error) {
 		return pipeline.Defaults(), errors.New("factory.yaml: github is not connected")
 	})
 	broken := f.add(t, factory.Item{State: factory.StateNew, Stages: stages})

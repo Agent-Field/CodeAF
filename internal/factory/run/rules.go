@@ -36,12 +36,12 @@ func JobRules(recipe func(it factory.Item) factory.Recipe, it factory.Item) []st
 }
 
 // jobRecipe is the recipe a job's rules, a plan's reshaping and a post's
-// policy are bounded by: recipe's answer for the job, which reads THE
-// FACTORY'S COPY THE JOB CARRIES ([factory.Item.PipelineCopy]) first
-// (pipeline.JobFile); with no recipe, that copy alone when the job carries
-// one. ok is false when there is neither. A runner on another machine cannot
-// read the factory's store, so the job is the only place it learns that the
-// factory replaced main's file.
+// policy are bounded by: recipe's answer for the job, which reads THE FILE
+// THE JOB WAS DECIDED ON (pipeline.JobFile: the factory's copy it carries,
+// [factory.Item.PipelineCopy], else main's file); with no recipe, that copy
+// alone when the job carries one. ok is false when there is neither. A runner
+// on another machine cannot read the factory's store, so the job is the only
+// place it learns that the factory replaced main's file.
 func jobRecipe(recipe func(it factory.Item) factory.Recipe, it factory.Item) (factory.Recipe, bool) {
 	if recipe != nil {
 		return recipe(it), true
@@ -49,7 +49,7 @@ func jobRecipe(recipe func(it factory.Item) factory.Recipe, it factory.Item) (fa
 	if it.PipelineCopy == nil {
 		return factory.Recipe{}, false
 	}
-	f, _ := pipeline.JobFile(it.PipelineCopy, "", func() (pipeline.File, error) { return pipeline.Defaults(), nil })
+	f, _ := pipeline.JobFile(it, "", func(bool) (pipeline.File, error) { return pipeline.Defaults(), nil })
 	return f.Recipe(), true
 }
 

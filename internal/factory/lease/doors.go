@@ -27,11 +27,14 @@ type Doors struct {
 	read StartRead
 }
 
-// StartRead is one repository's pipeline read with the factory's own rules in
-// it, as a start decides under it: the same read intake and a person's Start
-// make. An error wrapping [pipeline.ErrHouseRulesUnread] means the factory's
-// rules could not be read; any other error, the repository's file.
-type StartRead func(ctx context.Context, repo string) (pipeline.File, error)
+// StartRead is one job's pipeline read with the factory's own rules in it, as
+// a start decides under it: the same read intake and a person's Start make,
+// of THE JOB'S OWN FILE (pipeline.JobFile: the one its first start decided,
+// else, for a job never started, its repository's as this factory reads it
+// now, its own copy first). An error wrapping [pipeline.ErrHouseRulesUnread]
+// means the factory's rules could not be read; any other error, the
+// repository's file.
+type StartRead func(ctx context.Context, it factory.Item) (pipeline.File, error)
 
 // NewDoors hangs the doors over desk's store.
 func NewDoors(desk *Desk) *Doors { return &Doors{desk: desk} }
@@ -96,9 +99,10 @@ func (d *Doors) Launch(id int) error {
 	// rules unread nothing starts; with only the repository's file unread the
 	// job keeps the steps it has and is marked so its plan waits for a person.
 	var file *pipeline.File
-	unread := false
+	var copied *factory.PipelineCopy
+	unread, decide := false, false
 	if d.read != nil {
-		f, err := d.read(context.Background(), factory.RepoOf(it))
+		f, err := d.read(context.Background(), it)
 		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 			return err
 		}
@@ -106,6 +110,7 @@ func (d *Doors) Launch(id int) error {
 			file = &f
 		}
 		unread = err != nil
+		copied, decide = f.Copy, true
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held != nil {
@@ -124,17 +129,18 @@ func (d *Doors) Launch(id int) error {
 		// these steps just below.
 		if file != nil {
 			pipeline.StampSteps(it, *file)
-			// THE FACTORY'S COPY OF THE REPOSITORY'S FILE GOES WITH THE JOB
-			// ([factory.Item.PipelineCopy]) when the read used it, as the
-			// factory's rules do: a runner on another machine reads its rules
-			// from the job, never from its own read of main. The job's record
-			// says which file it runs whenever that changes. ONLY A JOB THAT
-			// NEVER RAN takes the file this read used (the only kind StampSteps
-			// restamps): a job that ran keeps the file it started under, so its
-			// steps and its rules never come from two files.
-			if it.Stream == nil {
-				carryCopy(it, file.Copy, now)
-			}
+		}
+		// THE JOB'S PIPELINE FILE IS DECIDED AT ITS FIRST START, ONCE
+		// ([factory.Item.DecidePipeline]): the factory's copy this read used
+		// goes with the job ([factory.Item.PipelineCopy]), as the factory's
+		// rules do, so a runner on another machine reads it from the job and
+		// never from its own read of main; no copy decides main's file alone.
+		// A job already decided read its own file above and keeps it, so a
+		// copy saved or stopped since never reaches its steps, rules or
+		// merge. Even a read of main that failed decides: the job runs
+		// main's file, or the copy the read still used.
+		if decide {
+			it.DecidePipeline(copied, now)
 		}
 		// EVERY START CARRIES ITS START RULES ([factory.Item.StartRules]), so
 		// the approval after the plan is checked whichever door started it.
@@ -159,20 +165,6 @@ func (d *Doors) Launch(id int) error {
 		delete(doc.Signals, id)
 		return stale, nil
 	})
-}
-
-// carryCopy puts the factory's copy c on the job in place of the one it
-// carries (nil: main's file), and its record says so when that changes.
-func carryCopy(it *factory.Item, c *factory.PipelineCopy, now time.Time) {
-	if !c.Same(it.PipelineCopy) {
-		switch {
-		case c != nil:
-			it.Note(now, "Runs this factory's copy of "+factory.PipelineFile+", "+c.Saved()+", not main's")
-		default:
-			it.Note(now, "Runs main's "+factory.PipelineFile+" again; this factory no longer keeps its own copy")
-		}
-	}
-	it.PipelineCopy = c.Clone()
 }
 
 // Stop puts the job back to new and takes its lease away: the worker learns

@@ -188,7 +188,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if h.config.Pipeline != nil || h.config.JobPipeline != nil {
-			file, err := h.jobPipeline(r.Context(), it)
+			file, err := h.jobPipeline(r.Context(), it, "")
 			if h.failed(w, err) {
 				return
 			}
@@ -208,19 +208,21 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	h.stepEditsReply(w, r, updated, lines)
 }
 
-// jobPipeline is the pipeline one job's step edits are bounded by: THE
-// FACTORY'S COPY THE JOB CARRIES first, else this factory's read of its
-// repository now ([Config.JobPipeline], pipeline.JobFile), so an edit is
-// bounded by the file the job runs, never by one saved or stopped since.
-func (h *Handler) jobPipeline(ctx context.Context, it factory.Item) (pipeline.File, error) {
+// jobPipeline is the pipeline one job is bounded by, for every door that
+// starts it, edits its steps or merges it: THE FILE ITS FIRST LAUNCH DECIDED
+// ([factory.Item.DecidePipeline]: the factory's copy it carries, else main's
+// file), else, before that, this factory's read of its repository now
+// ([Config.JobPipeline], pipeline.JobFile), so nothing bounds a job by a copy
+// saved or stopped since. dir is its checkout, "" when not known.
+func (h *Handler) jobPipeline(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
 	if h.config.JobPipeline != nil {
-		return h.config.JobPipeline(ctx, it)
+		return h.config.JobPipeline(ctx, it, dir)
 	}
-	return pipeline.JobFile(it.PipelineCopy, "", func() (pipeline.File, error) {
+	return pipeline.JobFile(it, "", func(bool) (pipeline.File, error) {
 		if h.config.Pipeline == nil {
 			return pipeline.Defaults(), nil
 		}
-		return h.config.Pipeline(ctx, itemRepo(it), "")
+		return h.config.Pipeline(ctx, itemRepo(it), dir)
 	})
 }
 

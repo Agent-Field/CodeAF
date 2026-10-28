@@ -142,6 +142,7 @@ func FromItem(it factory.Item) Job {
 		AskedFirstReason: it.AskedFirstReason,
 		HouseRules:       cloneHouse(it.House),
 		PipelineCopy:     copyWithoutText(it.PipelineCopy),
+		PipelineDecided:  it.PipelineDecided,
 		StartRules:       cloneStartRules(it.StartRules),
 		RuleHold:         it.RuleHold,
 		Steps:            steps(it),
@@ -472,6 +473,7 @@ func ToItem(j Job) factory.Item {
 	it.AskedFirstReason = j.AskedFirstReason
 	it.House = cloneHouse(j.HouseRules)
 	it.PipelineCopy = j.PipelineCopy.Clone()
+	it.PipelineDecided = j.PipelineDecided
 	it.StartRules = cloneStartRules(j.StartRules)
 	it.RuleHold = j.RuleHold
 	it.PublishError = j.PublishError

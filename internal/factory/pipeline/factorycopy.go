@@ -69,21 +69,28 @@ func WithFactoryCopy(main File, mainErr error, keep CopyKeeper, repo, personal s
 }
 
 // JobFile is THE ONE READ of the file one job is bounded by, for every door
-// that edits its steps, briefs its manager or checks its rules and posts:
-// THE COPY THE JOB CARRIES ([factory.Item.PipelineCopy]), tightened by the
-// personal file as every read is; else current, the factory's read of its
-// repository now ([WithFactoryCopy]: its own copy, else main's file, else the
-// built-in steps). A job runs the copy it was queued under, not one saved or
-// stopped since, so nothing that bounds it reads another.
+// that starts it, edits its steps, briefs its manager or checks its rules,
+// posts and merges. A JOB'S FILE IS DECIDED ONCE ([factory.Item.DecidePipeline])
+// and read here the same way by all of them:
 //
-// A copy off a reader's job list carries who saved it and when but not the
-// file (api.FromItem); it is not one to read, and current is read instead.
-func JobFile(carried *factory.PipelineCopy, personal string, current func() (File, error)) (File, error) {
-	if carried != nil && strings.TrimSpace(carried.Text) != "" {
-		f, err := CopyFile(*carried)
+//   - THE COPY THE JOB CARRIES ([factory.Item.PipelineCopy]), tightened by
+//     the personal file as every read is;
+//   - else, for a job decided on main's file, MAIN'S FILE ALONE (read with
+//     withCopy false), never a copy the factory saved since;
+//   - else, for a job not decided yet, the factory's read now (withCopy
+//     true: its own copy, else main's file, else the built-in steps), which
+//     its first launch then decides.
+//
+// read is the job's repository read with the personal file and before the
+// factory's own rules. A copy off a reader's job list carries who saved it
+// and when but not the file (api.FromItem); it is not one to read, and the
+// factory's read now (withCopy true) is read instead.
+func JobFile(it factory.Item, personal string, read func(withCopy bool) (File, error)) (File, error) {
+	if c := it.PipelineCopy; c != nil && strings.TrimSpace(c.Text) != "" {
+		f, err := CopyFile(*c)
 		return MergePersonal(f, personal, err)
 	}
-	return current()
+	return read(!it.PipelineIsDecided() || it.PipelineCopy != nil)
 }
 
 // CopyFile is the file a factory copy reads as: Source file, From

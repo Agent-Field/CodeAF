@@ -87,11 +87,13 @@ type Config struct {
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same
-	// limits and the factory's rules: the factory's copy the job carries
-	// ([factory.Item.PipelineCopy]) first, else what Pipeline reads of its
-	// repository (pipeline.JobFile). Nil reads the carried copy alone, else
-	// Pipeline.
-	JobPipeline func(context.Context, factory.Item) (pipeline.File, error)
+	// limits and the factory's rules (pipeline.JobFile): the factory's copy
+	// the job carries ([factory.Item.PipelineCopy]), else main's file alone
+	// for a job decided on it, else, for a job not decided yet, what Pipeline
+	// reads of its repository. dir is its checkout, "" when not known. Nil
+	// reads the carried copy alone, else Pipeline, which a host that keeps
+	// copies must not rely on: it sets JobPipeline.
+	JobPipeline func(ctx context.Context, it factory.Item, dir string) (pipeline.File, error)
 	// Recheck reads how one GitHub item stands right now, in one request
 	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
 	// when it ended. A person's start asks it first, so an issue closed on

@@ -182,24 +182,36 @@ func TestSameFileComparesWhatTheFileSays(t *testing.T) {
 	}
 }
 
-// A JOB IS BOUNDED BY THE COPY IT CARRIES, tightened by the personal file,
-// whatever the factory reads now; one with no copy, or with only who saved a
-// copy and when (a reader's job list), is bounded by the factory's read.
-func TestAJobIsBoundedByTheCopyItCarries(t *testing.T) {
+// A JOB IS BOUNDED BY THE FILE IT WAS DECIDED ON: the copy it carries,
+// tightened by the personal file, whatever the factory reads now; main's file
+// ALONE for a job decided on main, even while the factory keeps a copy; and the
+// factory's read now (its copy first) only for a job not decided yet, or one
+// that carries only who saved a copy and when (a reader's job list).
+func TestAJobIsBoundedByTheFileItWasDecidedOn(t *testing.T) {
 	personal := filepath.Join(t.TempDir(), "factory.yaml")
 	if err := os.WriteFile(personal, []byte("default_budget: 5\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	now := func() (File, error) {
+	read := func(withCopy bool) (File, error) {
+		if withCopy {
+			return mainRead(t, "pipeline:\n  issue: [plan, proof]\nrules:\n  - the store copy's rule\n"), nil
+		}
 		return mainRead(t, "pipeline:\n  issue: [write, proof]\nrules:\n  - main's rule\n"), nil
 	}
 	carried := &factory.PipelineCopy{Repo: "acme/api", Text: copyText, By: "test-owner", At: time.Now()}
-	got, err := JobFile(carried, personal, now)
+	got, err := JobFile(factory.Item{PipelineCopy: carried, PipelineDecided: true}, personal, read)
 	if err != nil || got.From != factory.FromFactoryCopy || strings.Join(got.Rules, "|") != "keep the copy's rule" || got.DefaultBudget != 5 {
 		t.Fatalf("carried: from %q rules %v budget %v (%v)", got.From, got.Rules, got.DefaultBudget, err)
 	}
-	for name, c := range map[string]*factory.PipelineCopy{"no copy": nil, "who and when only": {Repo: "acme/api", By: "test-owner", At: time.Now()}} {
-		if got, err := JobFile(c, personal, now); err != nil || strings.Join(got.Rules, "|") != "main's rule" {
+	for name, c := range map[string]struct {
+		it   factory.Item
+		want string
+	}{
+		"decided on main":   {factory.Item{PipelineDecided: true}, "main's rule"},
+		"not decided":       {factory.Item{}, "the store copy's rule"},
+		"who and when only": {factory.Item{PipelineCopy: &factory.PipelineCopy{Repo: "acme/api", By: "test-owner", At: time.Now()}, PipelineDecided: true}, "the store copy's rule"},
+	} {
+		if got, err := JobFile(c.it, personal, read); err != nil || strings.Join(got.Rules, "|") != c.want {
 			t.Fatalf("%s: rules %v (%v)", name, got.Rules, err)
 		}
 	}

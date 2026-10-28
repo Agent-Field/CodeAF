@@ -305,7 +305,7 @@ func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 // ([lease.Doors.EditSteps]): A WORKER RUNNING THE JOB FROM ITS OWN COPY IS
 // WITHDRAWN in the same change, so it pulls the edited steps, and no report
 // from the old copy can write its steps back. The bounds are the pipeline the
-// job runs (the factory's copy it carries first, [factoryJobRead]) with the
+// job runs (the file it was decided on, [factoryJobRead]) with the
 // factory's rules, as the person's edit is bounded.
 func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
 	return func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {

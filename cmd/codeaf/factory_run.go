@@ -79,8 +79,8 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 	if err != nil {
 		return nil
 	}
-	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, repo string) (pipeline.File, error) {
-		return factoryPipelineRead(ctx, st, repo, st.CheckoutDir(repo))
+	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+		return factoryJobRead(ctx, st, it, st.CheckoutDir(factory.RepoOf(it)))
 	}))
 }
 
@@ -180,9 +180,10 @@ func setFactoryProcess(change func()) {
 // cap, today's rail) and nowhere else.
 func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
-	// EVERY BOUND ON A JOB IS THE FILE IT RUNS: the factory's copy it carries
-	// first, else main's file here ([factoryItemRecipe]). No store copy is
-	// read: a job the factory started under its copy carries it.
+	// EVERY BOUND ON A JOB IS THE FILE IT WAS DECIDED ON at its first start:
+	// the factory's copy it carries, else main's file here
+	// ([factoryItemRecipe]). No store copy is read: the factory that handed
+	// the job over, this machine's or a remote one, decided its file.
 	recipe := func(it factory.Item) factory.Recipe {
 		return factoryItemRecipe(nil, dirs, it)
 	}

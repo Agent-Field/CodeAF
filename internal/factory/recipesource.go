@@ -59,13 +59,16 @@ const recipeGitWait = 5 * time.Second
 //     that decides or shows what a job runs under) puts the copy in place of
 //     main's file for the jobs that factory starts, and says so: `recipe from
 //     factory copy`.
-//   - A JOB carries the copy it started under ([Item.PipelineCopy]), so a
+//   - A JOB carries the copy it was first launched under ([Item.PipelineCopy],
+//     [Item.DecidePipeline]), or is marked as running main's file, so a
 //     runner anywhere runs that, not what its own machine reads of main.
 //
 // PRECEDENCE: the factory copy, else main's file, else the built-in steps. The
 // factory's own rules and protected paths apply on top of whichever it is. The
 // copy clears itself once main's file reads the same (its pull request
-// merged), and a person can stop using it; main's file then runs again.
+// merged), and a person can stop using it; jobs launched afterwards run main's
+// file again. A job's file is decided once, at its first launch, and kept
+// ([Item.DecidePipeline]).
 func RecipeSource(dir string) (text string, from string, err error) {
 	text, from, err = recipeSource(dir)
 	if err == nil {

@@ -383,13 +383,17 @@ type Job struct {
 	// (factory.HouseRules); absent before it was first queued.
 	HouseRules *factory.HouseRules `json:"house_rules,omitempty"`
 	// PipelineCopy is the factory's own copy of the repository's pipeline
-	// file the job was queued under (factory.PipelineCopy): its steps and
+	// file the job was decided on (factory.PipelineCopy): its steps and
 	// rules are that file's, not main's. Absent when the job runs main's
 	// file. A reader's job (the queue, a job read) carries its repo, by and at
 	// only; THE WHOLE FILE GOES ONLY TO THE RUNNER that pulls the job
 	// ([WorkerJob]), so it reads the same rules, and a list of jobs never
 	// carries every file again.
 	PipelineCopy *factory.PipelineCopy `json:"pipeline_copy,omitempty"`
+	// PipelineDecided says the job's pipeline file was decided at its first
+	// start, for its life (factory.Item.DecidePipeline): pipeline_copy, or
+	// main's file alone when that is absent. Absent before its first start.
+	PipelineDecided bool `json:"pipeline_decided,omitempty"`
 	// StartRules are the ask-first and never lines the job was started under
 	// (factory.StartRules); RuleHold is the rule and file that make its
 	// approval a person's (factory.Item.RuleHold): the plan's, by a planned

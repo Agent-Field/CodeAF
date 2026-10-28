@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -102,6 +103,15 @@ const talkItemDoor = "factory_item changes the budget (its field is cap), the th
 // checkout only when it is the repository's, [factoryRepoDirs]), and
 // profileDir the profile whose teams file the item's team is written into.
 func talkMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	return talkMakerReading(st, st, workspace, profileDir)
+}
+
+// talkMakerReading is [talkMaker] whose brief reads the factory copies kept
+// by copies: st for this machine's own floor, whose jobs it decides; NIL FOR A
+// JOB ANOTHER FACTORY HANDED THIS MACHINE (a worker's runner, a job a remote
+// factory runs here), which carries the file it was decided on, so this
+// machine's own copy is never read for it, nor cleared by that read.
+func talkMakerReading(st, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
 		factoryReconcileOnce(profileDir, st)
@@ -122,7 +132,7 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 			return "", err
 		}
 		name := talkTeamName(it)
-		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(st, dirs, it))); err != nil {
+		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(copies, dirs, it))); err != nil {
 			return "", err
 		}
 		if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
@@ -137,8 +147,12 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 // named the lead of the item's team either way, so a conversation `T` made
 // before this build, or before the team had a lead, is the lead from its next
 // run on.
+//
+// THE RUNNER'S JOB WAS HANDED OVER BY A FACTORY, this machine's own or a
+// remote one, and carries the pipeline file it was decided on: its brief
+// reads that file, never st's own copy ([talkMakerReading] with no copies).
 func managerMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
-	mint := talkMaker(st, workspace, profileDir)
+	mint := talkMakerReading(st, nil, workspace, profileDir)
 	dirs := factoryRepoDirs(st, workspace)
 	return func(ctx context.Context, it factory.Item) (string, error) {
 		chat := strings.TrimSpace(it.Talk)
@@ -369,10 +383,11 @@ func talkHandle(it factory.Item) string {
 }
 
 // factoryItemRecipe is the recipe one job is bounded by, as its manager's
-// brief and its item card read it: the factory's copy the job carries first,
-// else st's read of its repository (its copy, else main's file, else the
-// built-in steps), with the personal file ([factoryJobFile]). A nil st keeps
-// no copy, as a worker's runner, whose jobs carry theirs.
+// brief and its item card read it, with the personal file ([factoryJobFile]):
+// the factory's copy the job carries, else main's file for a job decided on
+// it, else, for a job not decided yet, st's read of its repository (its copy,
+// else main's file, else the built-in steps). A nil st keeps no copy, as for a
+// worker's runner, whose jobs carry their file.
 func factoryItemRecipe(st *store.Store, dirs func(string) string, it factory.Item) factory.Recipe {
 	dir := ""
 	if dirs != nil {
@@ -528,9 +543,17 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 // Apply makes the change in one read-modify-write of the item's document,
 // against the item as it is NOW — a stage may have started since the card was
 // raised, and the bounds are asked again — and answers the item as saved.
+//
+// IT GOES THROUGH THE DOOR A PERSON'S STEP EDIT TAKES ([lease.Doors.ChangeSteps]):
+// a step the card removes or moves is laid out of, or into its new place in,
+// the run's phases not yet begun, queued or running, and a worker running the
+// job from its own copy is withdrawn so it pulls the changed steps.
 func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemChange) (factory.Item, error) {
-	var now factory.Item
-	err := d.st.Update(item, func(it *factory.Item) error {
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	_, err = lease.NewDoors(desk).ChangeSteps(item, func(it *factory.Item) error {
 		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.st, d.dirs, *it))
 		if err != nil {
 			return err
@@ -544,10 +567,7 @@ func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemCha
 	if err != nil {
 		return factory.Item{}, err
 	}
-	if now, err = d.st.Get(item); err != nil {
-		return factory.Item{}, err
-	}
-	return now, nil
+	return d.st.Get(item)
 }
 
 // Stages is the stage names kind runs in repo's recipe today, which the recipe

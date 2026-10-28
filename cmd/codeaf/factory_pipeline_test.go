@@ -216,4 +216,51 @@ func TestEveryDoorBoundsAJobByTheCopyItCarries(t *testing.T) {
 	if _, _, err := managerEdit(st, dirs)(context.Background(), plain.ID, remove); err != nil {
 		t.Fatalf("the plain job's removal was refused: %v", err)
 	}
+
+	// A JOB DECIDED ON MAIN'S FILE is bounded by main's file alone, though the
+	// factory keeps a copy now: the doors (which read the store) and the runner
+	// (which reads none) agree.
+	onMain, err := st.Create(factory.Item{Title: "on main", Repo: "owner/repo", Kind: factory.KindIssue, State: factory.StateNew, Stages: factory.CopyStages(stages), PipelineDecided: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, keep := range map[string]*store.Store{"a door": st, "the runner": nil} {
+		if r := factoryItemRecipe(keep, dirs, onMain); strings.Join(r.Policy, "|") != "main's rule" {
+			t.Fatalf("%s bounds the job decided on main by %q", name, r.Policy)
+		}
+	}
+	// A JOB HANDED OVER BY ANOTHER FACTORY (a worker's runner, a remote job) is
+	// briefed with no store: never this machine's copy.
+	if brief := talkBrief(plain, factoryItemRecipe(nil, dirs, plain)); !strings.Contains(brief, "main's rule") || strings.Contains(brief, "the factory copy's rule") {
+		t.Fatalf("a handed-over job's brief reads this machine's copy:\n%s", brief)
+	}
+}
+
+// A RUNNER'S READ NEVER TOUCHES THIS MACHINE'S COPY: with no store, a read of
+// a job whose main's file now says what this machine's copy says leaves the
+// copy standing, where the factory's own read would clear it.
+func TestARunnersReadNeverClearsThisMachinesCopy(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	dir := t.TempDir()
+	text := "pipeline:\n  issue: [write, proof]\nrules:\n  - the merged rule\n"
+	if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.ChangePipelineCopy("owner/repo", func(*factory.PipelineCopy, int) (*factory.PipelineCopy, bool, error) {
+		return &factory.PipelineCopy{Repo: "owner/repo", Text: text, By: "test-owner", At: time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)}, true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dirs := func(string) string { return dir }
+	factoryItemRecipe(nil, dirs, factory.Item{Repo: "owner/repo"})
+	if c, _, err := st.PipelineCopy("owner/repo"); err != nil || c == nil {
+		t.Fatalf("a runner's read cleared this machine's copy: %+v (%v)", c, err)
+	}
 }

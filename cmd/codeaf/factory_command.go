@@ -271,8 +271,8 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryPipelineRead(ctx, st, repo, dir)
 		},
-		JobPipeline: func(ctx context.Context, it factory.Item) (pipeline.File, error) {
-			return factoryJobRead(ctx, st, it, "")
+		JobPipeline: func(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
+			return factoryJobRead(ctx, st, it, dir)
 		},
 	}
 	if servedBy == "factory" && mode == api.FactoryTeam {
