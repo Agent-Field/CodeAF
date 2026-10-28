@@ -592,6 +592,13 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			refuse("%s may not move %s after proof; proof has to see it", who, st.Name)
 			continue
 		}
+		// NOR IS WHAT HOLDS A POST MOVED AFTER IT: an approval (or proof)
+		// moved after a post it stood before lets the post go first as surely
+		// as moving the post would.
+		if post := passedPost(stages[i+1:], next[:at]); post != "" && (IsApprove(st) || IsProofStage(st)) {
+			refuse("%s may not move %s after %s; nothing posts before what holds it", who, st.Name, post)
+			continue
+		}
 		blocked := false
 		for _, later := range next[at+1:] {
 			if started[later.Name] {
@@ -678,6 +685,18 @@ func firstProof(stages []Stage) int {
 		}
 	}
 	return -1
+}
+
+// passedPost is the first post among ahead (the steps a moved step now
+// follows) that stood among after (the steps it followed before), "" when
+// there is none: the post the move would let go before it.
+func passedPost(after, ahead []Stage) string {
+	for _, st := range ahead {
+		if st.Kind == StagePost && StageIndex(after, st.Name) >= 0 {
+			return st.Name
+		}
+	}
+	return ""
 }
 
 // proofStarted says whether any proof phase has begun. A phase counts when its

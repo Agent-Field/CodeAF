@@ -255,8 +255,9 @@ func TestPlanEditCarriesRemoveAndMove(t *testing.T) {
 
 // A POST IS THE PERSON'S, as the repository's pipeline editor locks one: only
 // they remove or move it, and nobody moves it before the proof or the approve
-// step it stood after, because nothing posts before what holds it. After proof
-// it may stand anywhere: that is where a proved change is published.
+// step it stood after, nor moves that proof or approval after it, because
+// nothing posts before what holds it. After proof it may stand anywhere: that
+// is where a proved change is published.
 func TestEditOnlyThePersonRemovesOrMovesAPost(t *testing.T) {
 	posting := func() factory.Item {
 		it := structureItem()
@@ -272,6 +273,10 @@ func TestEditOnlyThePersonRemovesOrMovesAPost(t *testing.T) {
 		{"the plan moves a post", factory.RunEdit{By: factory.ByPlan, Move: []factory.Moved{{Stage: "pr", After: "label"}}}, "only you may move pr, which posts outward"},
 		{"a post before proof", factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "pr", After: "neaten"}}}, "you may not move pr before sign; nothing posts before what holds it"},
 		{"a post first", factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "label"}}}, "you may not move label before sign; nothing posts before what holds it"},
+		// The other way round is the same post going first: the approval
+		// moved after the posts it held.
+		{"an approval after its post", factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "sign", After: "pr"}}}, "you may not move sign after label; nothing posts before what holds it"},
+		{"an approval between its posts", factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "sign", After: "label"}}}, "you may not move sign after label; nothing posts before what holds it"},
 	} {
 		it := posting()
 		got, lines, err := factory.Edit(it, c.e, factory.Recipe{}, factory.EditBeforeRun)
@@ -283,6 +288,11 @@ func TestEditOnlyThePersonRemovesOrMovesAPost(t *testing.T) {
 	got, lines, err := factory.Edit(it, factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "pr", After: "proof"}}}, factory.Recipe{}, factory.EditBeforeRun)
 	if err != nil || stepOrder(got.Stages) != "plan write pretest test review neaten security sign proof pr label" || strings.Join(lines, "|") != "you moved pr after proof" {
 		t.Fatalf("the person's own move = %s %q %v", stepOrder(got.Stages), lines, err)
+	}
+	// An approval moved after proof, still before the posts, holds them yet.
+	got, lines, err = factory.Edit(it, factory.RunEdit{By: factory.ByYou, Move: []factory.Moved{{Stage: "sign", After: "proof"}}}, factory.Recipe{}, factory.EditBeforeRun)
+	if err != nil || stepOrder(got.Stages) != "plan write pretest test review neaten security proof sign label pr" || strings.Join(lines, "|") != "you moved sign after proof" {
+		t.Fatalf("the approval after proof = %s %q %v", stepOrder(got.Stages), lines, err)
 	}
 	got, lines, err = factory.Edit(it, factory.RunEdit{By: factory.ByYou, Remove: []string{"label"}}, factory.Recipe{}, factory.EditBeforeRun)
 	if err != nil || stepOrder(got.Stages) != "plan write pretest test review neaten security sign proof pr" || strings.Join(lines, "|") != "you removed label" {
