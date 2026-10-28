@@ -634,6 +634,12 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	// The reasoning repair has already had its one attempt. A persistent
+	// capability refusal cannot be cured by widening endpoint preferences.
+	if readErr == nil && response.StatusCode == http.StatusBadRequest && refusesReasoning(peek) {
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
 	// WHETHER THE BASE UNDERSTANDS THE `provider` FIELD AT ALL IS ASKED BEFORE
 	// ANYTHING ELSE (#433), because until it is answered nothing below this line
 	// is reading the right refusal. It is a QUESTION here and an answer only
@@ -890,7 +896,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 // adapter knows how to answer. It is asked before the error body is touched, so
 // a 400 that could not be ours costs no extra read.
 func (c *Client) repairable(model string, knobs callKnobs) bool {
-	return c.resolveEffort(model, knobs.effort) == EffortOff ||
+	return c.resolveEffort(model, knobs.effort) != EffortNone ||
 		c.resolveReasoningBudget(model, knobs.effort) > 0 ||
 		c.dialectFor(model) == cacheDialectBreakpoints ||
 		(len(knobs.reasoning) > 0 && !reasoningReplayRefused(model))
@@ -903,6 +909,10 @@ func (c *Client) repairable(model string, knobs callKnobs) bool {
 // first match winning, because a single 400 can name more than one field.
 func (c *Client) learn(model string, knobs callKnobs, payload []byte) []string {
 	var learned []string
+	if c.resolveEffort(model, knobs.effort) != EffortNone && refusesReasoning(payload) {
+		quirks.record(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model, time.Now())
+		learned = append(learned, learnedReasoningUnsupported)
+	}
 	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
 		noteReasoningMandatory(model)
 		learned = append(learned, learnedReasoningMandatory)
@@ -2624,6 +2634,8 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // somebody and the refusal are both in the JSON it sent: `error.metadata`
 // carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
+	// ReasoningUnsupported is a permanent model capability refusal.
+	ReasoningUnsupported bool
 	// Status is the refusal's HTTP status, or the normalized gateway failure
 	// for an in-band error that supplied no status of its own.
 	Status int
@@ -2762,6 +2774,9 @@ func (e *APIError) UpstreamFault() bool {
 func (e *APIError) OurRequest() bool {
 	if e == nil {
 		return false
+	}
+	if e.ReasoningUnsupported {
+		return true
 	}
 	// AN EMPTY ACCOUNT IS OURS TO STOP WHOEVER WAS ASKED, so this is read
 	// before the two "nobody was asked" answers below. A payment refusal is a
@@ -2927,6 +2942,9 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	if status == http.StatusBadRequest && refusesReasoning(payload) {
+		failure.ReasoningUnsupported = true
+	}
 	readContextLimit(failure)
 	return failure
 }

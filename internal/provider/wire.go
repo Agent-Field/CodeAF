@@ -175,6 +175,28 @@ func ReasoningBudgetRefused(model string) bool { return reasoningBudgetRefused(m
 
 func reasoningBudgetRefused(model string) bool { return quirks.knowsNoReasoningBudget(model) }
 
+// refusesReasoning recognizes a model's refusal of the entire reasoning knob.
+// Budget and disabled-reasoning refusals have narrower, independent repairs.
+func refusesReasoning(payload []byte) bool {
+	text := strings.ToLower(string(payload))
+	for _, refusal := range []string{
+		"does not support thinking", "does not support reasoning",
+		"thinking is not supported", "reasoning is not supported",
+		"thinking is unsupported", "reasoning is unsupported",
+	} {
+		if strings.Contains(text, refusal) {
+			return true
+		}
+	}
+	return false
+}
+
+// ReasoningUnsupported identifies the permanent capability refusal after the
+// adapter's one repair, including errors carried over the app's remote wire.
+func ReasoningUnsupported(status int, message string) bool {
+	return status == 400 && refusesReasoning([]byte(message))
+}
+
 // refusesReasoningBudget reads a 400 body for the second complaint this adapter
 // can repair by itself: the thinking budget is not a field this endpoint takes.
 //
@@ -480,6 +502,14 @@ func (c *Client) effortAsked(requested effortRequest) effortRequest {
 
 // resolveEffort decides whether the knob may travel, and in what shape.
 func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
+	if quirks.recorded(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model) {
+		return EffortNone
+	}
+	if c.config.SupportsParameter != nil {
+		if supported, known := c.config.SupportsParameter(model, "reasoning"); known && !supported {
+			return EffortNone
+		}
+	}
 	requested = c.effortAsked(requested)
 	effort := c.requestedEffort(model, requested)
 	// A model that reasons unconditionally answers the disable with a 400, and

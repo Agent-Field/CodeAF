@@ -1672,6 +1672,10 @@ answer: it cannot think harder than its own ceiling.
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
+- If an unlisted endpoint says its model does not support thinking or reasoning,
+  codeaf retries the request once without the knob and remembers that capability
+  for the model until this process exits. That capability refusal is permanent;
+  it does not schedule the same failed turn again later.
 - On a small context window the budget shrinks to the room the conversation leaves beside
   an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
   the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the

@@ -42,6 +42,7 @@ const (
 	learnedCacheControlRefused     = "cache_control_refused"
 	learnedReasoningBudgetRefused  = "reasoning_budget_refused"
 	learnedReasoningReplayRefused  = "reasoning_replay_refused"
+	learnedReasoningUnsupported    = "reasoning_unsupported"
 )
 
 type callTagKey struct{}

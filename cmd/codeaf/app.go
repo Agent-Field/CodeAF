@@ -2406,6 +2406,7 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n int, text string, shown *appSending, events <-chan session.Event) {
 	defer close(live.pumpDone)
 	ok, failure := true, ""
+	retryable := true
 	kind, status := "", 0
 	entry := func(e appwire.Entry) {
 		e.Agent, e.Turn = id, turn
@@ -2646,6 +2647,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		case session.EventError:
 			ok = false
 			kind, status, failure = appTurnFailure(event)
+			retryable = !provider.ReasoningUnsupported(status, failure)
 		case session.EventTurnDone:
 			// A turn the person steered ends once per stretch; the last ending
 			// on the stream is the turn's.
@@ -2677,7 +2679,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		}
 		a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
 		a.view.Retryable = false
-		if !ok {
+		if !ok && retryable {
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
 			a.view.Retryable = text != ""
 		}
