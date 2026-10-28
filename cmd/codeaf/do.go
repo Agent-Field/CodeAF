@@ -360,6 +360,12 @@ func runDo(args []string) error {
 			"(default: your task.parallel setting, which is no limit)")
 	continueID := flags.String("continue", "", "carry on a run that did not finish (or was kept with --keep): "+
 		"its id is on the `record kept at` line; any words after it are this round's finding")
+	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS: this one
+	// says what the run will do when a live resident holds the store, and the
+	// next line names the env spelling without pretending it is the point.
+	noResident := flags.Bool("no-resident", false,
+		"refuse the resident hand-off: a live resident holding the store stops this run "+
+			"with exit 1 instead of taking the task over (CODEAF_NO_RESIDENT=1 is the same switch)")
 	debug := flags.Bool("debug", false, debugFlagHelp())
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
@@ -404,7 +410,8 @@ func runDo(args []string) error {
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
 		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
-		stdout: os.Stdout, stderr: os.Stderr,
+		noResident: *noResident,
+		stdout:     os.Stdout, stderr: os.Stderr,
 	})
 }
 
@@ -464,6 +471,14 @@ type doRequest struct {
 	// holds the lock for its store. Zero is defaultResidentWait; a test names a
 	// shorter one rather than sitting through it.
 	residentWait time.Duration
+	// noResident refuses the resident hand-off. A live resident that holds the
+	// store's lock compiles the brief the way a conversation would — reworded
+	// goal, declared assumptions, a question into a thread nobody reads — which
+	// is the right thing for a person at home and corruption for a script,
+	// whose one guarantee is that the run it measures is the run it asked for.
+	// --no-resident (or CODEAF_NO_RESIDENT=1) says so: probe the lock, don't
+	// fight it, and stop at the door instead of handing the brief over.
+	noResident bool
 	// newClient scripts the provider. Nil is the real one.
 	newClient func(config.Config, string) (*liveClient, error)
 	// callWall is the structuring slots' wall on one completion. Zero is
@@ -804,6 +819,23 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return headlessOutcome{}, fmt.Errorf("create the store directory: %w", err)
+	}
+
+	// THE RESIDENT HAND-OFF IS FOR PEOPLE, NOT SCRIPTS. A resident that picks
+	// the command up compiles it conversationally, and for a harness the
+	// verbatim brief is the one guarantee it has. So --no-resident
+	// (CODEAF_NO_RESIDENT=1) asks for hard isolation and gets it here, at the
+	// door, before the command reaches the journal: probe the lock rather than
+	// fight it, refuse while a live non-stuck holder serves this store, and
+	// leave no command behind for somebody else's resident to apply.
+	if request.noResident || env.Value("CODEAF_NO_RESIDENT") == "1" {
+		holder, err := lease.ProbeResident(path)
+		if err != nil {
+			return headlessOutcome{}, err
+		}
+		if holder != nil && !holder.Stuck {
+			return headlessOutcome{}, noResidentRefusal(holder, path)
+		}
 	}
 
 	session := headlessSessionID()
@@ -1273,6 +1305,17 @@ func residentServesThisStore(holder *lease.Resident, path string) error {
 		"that process will never see this task; give this errand its own store with --db in a separate directory, "+
 		"or stop that process",
 		mine, holder.PID, residentHost(holder), served)
+}
+
+// noResidentRefusal is the whole of `do --no-resident`: a live resident holds
+// the store's role, and this run was told to refuse rather than hand over. The
+// sentence names the holder, the store and the switch, so a script that forgot
+// it set the flag can see both what it refused and how to un-refuse it.
+func noResidentRefusal(holder *lease.Resident, store string) error {
+	return fmt.Errorf("the resident lock for %s is held by pid %d on %s, and --no-resident (CODEAF_NO_RESIDENT=1) "+
+		"says this run must not hand its task to a live resident — drop the flag to let the resident take it, "+
+		"or stop that process",
+		store, holder.PID, residentHost(holder))
 }
 
 // sameStore compares two store paths as plainly as a diagnostic needs to. It is

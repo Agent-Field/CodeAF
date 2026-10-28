@@ -153,6 +153,7 @@ keyboard decides for itself and says on the record that it decided.
 | --- | --- |
 | `--db <path>` | work in this durable store instead of a private one (older engine only) |
 | `--keep` | keep the store instead of deleting it on the way out |
+| `--no-resident` | refuse the resident hand-off: when a live resident already holds this store, the run stops with exit 1 and names the holder instead of handing the task over (`CODEAF_NO_RESIDENT=1` is the same switch). The run you asked for is the run that runs, or the run does not run at all |
 | `-w <dir>` | the directory to work in, edited in place, never committed — the current directory by default |
 | `--timeout` | a hard wall on the whole run |
 | `--json` | print one machine-readable object instead of the deliverable |

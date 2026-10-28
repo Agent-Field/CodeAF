@@ -18,7 +18,7 @@ schema, and a person needs to know which command actually thinks.
 codeaf do "<task>" [--dir dir] [--db path] [--keep] [--timeout D]
                    [--continue id] [--json] [--yes-spend] [--model slug] [--plan-model slug]
                    [--check-model slug] [--best|--cheap] [--pin seat=model[@provider]]
-                   [--context-fill N] [--completion-reserve N]
+                   [--context-fill N] [--completion-reserve N] [--no-resident]
 ```
 
 **Use this one.** `do` is the resident's own brain with the conversation
@@ -39,6 +39,7 @@ work done.
 | `--dir dir` | the current directory | The directory it works in, **edited in place**. Not an output folder — it opens what is there and leaves nothing behind that you did not ask for. `-w` is the shorthand and keeps working forever. |
 | `--db path` | a private temp store, deleted on exit | Work in this durable store instead. This is how state survives across runs. |
 | `--keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
+| `--no-resident` | off | Refuse the resident hand-off: when a live resident already holds this store, the run stops with **exit 1** and names the holder instead of handing the task over. Equivalent to `CODEAF_NO_RESIDENT=1`. For scripts — see the store section below. |
 | `--continue id` | none | Carry on a kept run (one that did not finish, or was kept with `--keep`): `id` is the part of the `record kept at` folder name after `codeaf-do-`, an unambiguous start of it, or the folder path. Words after it are this round's finding; the assignment is unchanged. Works in `--dir`. Run engine only. |
 | `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
@@ -384,6 +385,13 @@ measured campaign: the verbatim law above is a fact about the brain that applies
 the command, not about the command itself. A resident that picks it up compiles
 it the way a conversation would — reworded goal, declared assumptions, and a
 question asked into a thread nobody is reading.
+
+**Scripted consumers set `--no-resident`.** The hand-off is for people: a
+person at home gets a resident that does the work with its own head attached,
+and a harness cannot measure a run it did not ask for. With `--no-resident` (or
+`CODEAF_NO_RESIDENT=1`), a live resident holding this store is a refusal — the
+run stops with **exit 1**, names the holder, and writes nothing to the journal:
+the run you asked for is the run that runs, or the run does not run at all.
 
 For guaranteed isolation from your own resident, give the run its own state
 root with `CODEAF_HOME`.
@@ -778,6 +786,7 @@ The full list is `codeaf help env`. What matters headless:
 | `CODEAF_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
 | `CODEAF_DAILY_BUDGET` | `20.0` | The day's spending limit in dollars; `0` is unlimited. A run that reaches it stops. |
 | `CODEAF_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
+| `CODEAF_NO_RESIDENT` | unset | `1` is `--no-resident` for every `do` run: a live resident holding the store stops the run with exit 1 instead of taking the task over. |
 | `CODEAF_HOME` | `~/.codeaf` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
 | `CODEAF_PROFILE_DIR` | `CODEAF_HOME` | Where measured behaviour is kept. |
 | `CODEAF_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. **Setting it also moves the chat conversation's own fold line**, which otherwise follows the model's window (`/status` says which rule governs); leaving it unset is not the same as setting it to 60. |

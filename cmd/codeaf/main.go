@@ -731,6 +731,10 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_PREAUTHORIZE_SPEND
                        1 spends past the day's limit without stopping a
                        headless run to ask
+  CODEAF_NO_RESIDENT   1 refuses the resident hand-off for ` + "`codeaf do`" + `: when
+                       a live resident holds the store's role, the run stops
+                       with exit 1 instead of handing the task over.
+                       --no-resident is the same switch on the command line.
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.

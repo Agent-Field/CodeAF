@@ -802,13 +802,19 @@ a `--plan-model` says who plans and nothing about who checks.
 session model; with that flag, an explicit media-model pin that cannot handle
 the operation leaves it unavailable rather than switching models.
 
-`codeaf do` takes three more, all for this one task:
+`codeaf do` takes four more, all for this one task:
 
 - **`--best`** — the strongest crew your allowed models make.
 - **`--cheap`** — the cheapest crew your allowed models make.
 - **`--pin seat=model[@provider]`** — pin one seat, `worker=`, `planner=` or `checker=`; say
   it once per seat. `--pin checker=moonshotai/kimi-k3@openrouter` sends the checker through
   that connection. A seat that is not one of the three, or a pin with no model, is refused.
+- **`--no-resident`** — refuse the resident hand-off. When a live resident on this machine
+  already holds the store, the run stops with exit 1 and names the holder instead of handing
+  the task over; `CODEAF_NO_RESIDENT=1` is the same switch from the environment. The hand-off
+  compiles your brief conversationally in the resident's own head — the right thing for a
+  person at home, and unmeasurable for a script, whose one guarantee is that the run it
+  measures is the run it asked for.
 
 Nothing a headless run is told is written to the profile: the pins and the allowed models
 stay what `/crew` last set.
