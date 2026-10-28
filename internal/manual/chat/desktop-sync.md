@@ -82,11 +82,14 @@ Devices offers Add a computer to show a code, and Join another computer to type
 one. Setup also offers joining. A link can request or approve pairing instead.
 Compare the engine's three words or check number on both computers, then answer
 its explicit question. Nothing is approved by pressing Enter without a choice.
+Choose Pair or Don't pair. The code lasts ten minutes; its instructions name
+Join another computer on the other computer.
 Cancel takes back the waiting code or ends the request. A wrong code shows the
 engine's sentence and does not add a computer.
 
 A computer that already has chats asks before replacing them. Choose the option
-to keep them to cancel without changing them. Finish any live work before
+Not now to cancel without changing them, or Replace this computer's chats to
+continue. Finish any live work before
 joining another computer. After joining changes what this computer shares, the
 desktop restarts its engine and reads setup, devices and sync again.
 These actions appear only when the engine advertises pairing support.
@@ -95,6 +98,10 @@ These actions appear only when the engine advertises pairing support.
 
 Chats from other computers appear under On your other computers, with the
 computer's name. An online dot appears only when the engine knows its presence.
+Finished movable chats saved before pairing are shared after pairing and when
+the paired app engine starts. This does not open the chat or start a new turn.
+An open, idle chat says `open on <name>`; this describes where it is open and
+does not mean a reply is running. Saved-time sentences use a fixed date and time.
 Select a chat to preview its title, saved time and engine sentence. Continue
 here moves it through the engine, then opens the returned local chat. Its
 history and working copies use the same continuation path as the terminal.
@@ -106,3 +113,7 @@ preview was read, the engine says `another device continued this chat first`;
 refresh the row and choose again. There is no automatic retry. Unsent drafts
 and attachments remain yours. Changes arrive as engine events without desktop
 polling. An older chat that works in the home folder stays on that computer.
+
+If moving the chat fails, the app says
+`This chat could not be moved to this computer.` Technical causes are kept in
+the error details.
