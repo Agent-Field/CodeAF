@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -67,6 +69,9 @@ func (b *appBackend) localChats(s *syncsetup.Sync) map[string]appLocalChat {
 	type entry struct{ id, file string }
 	var local []entry
 	for _, r := range session.ReadWorld(filepath.Join(b.relayHome(), "v3", "projects")).Sessions() {
+		if appChatStaging(r.Dir) {
+			continue
+		}
 		local = append(local, entry{r.ID, r.Transcript})
 	}
 	b.locked(func() {
@@ -95,6 +100,13 @@ func (b *appBackend) localChats(s *syncsetup.Sync) map[string]appLocalChat {
 		out[remote] = appLocalChat{agent: agent, copyable: copyable}
 	}
 	return out
+}
+
+// appChatStaging excludes private takeover scratch from app agent admission.
+// Opening its copied working presence can attach a journal and directory watch
+// before the taker renames it, preventing installation on native Windows.
+func appChatStaging(dir string) bool {
+	return strings.HasSuffix(filepath.Clean(dir), handoff.StagingSuffix)
 }
 
 // Local list/open responses keep their disk-only latency. The desktop's

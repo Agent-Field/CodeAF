@@ -44,7 +44,7 @@ type e2App struct {
 	log    string
 }
 
-func e2StartApp(t *testing.T, dir string) *e2App {
+func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -52,6 +52,9 @@ func e2StartApp(t *testing.T, dir string) *e2App {
 	}
 	cmd := exec.Command(exe, "app", "--home", dir)
 	cmd.Env = append(env.EnvironWithout(home.EnvVar, config.ProfileDirEnv), carriedChildEnv+"=real", "CODEAF_ENGINE_DAEMON=0")
+	if len(daemon) > 0 && daemon[0] {
+		cmd.Env = append(cmd.Env, "CODEAF_ENGINE_DAEMON=1")
+	}
 	inR, inW := io.Pipe()
 	cmd.Stdin = inR
 	out, err := cmd.StdoutPipe()
@@ -106,6 +109,9 @@ func e2StartApp(t *testing.T, dir string) *e2App {
 				continue
 			}
 			if reply.ID != 0 {
+				if reply.Error != nil && len(daemon) > 0 && daemon[0] {
+					t.Logf("S6 app error envelope: %s", scanner.Bytes())
+				}
 				app.w.mu.Lock()
 				ch := app.w.waiting[reply.ID]
 				delete(app.w.waiting, reply.ID)
@@ -183,9 +189,19 @@ func e2Turn(t *testing.T, a *e2App, id, text string) {
 // E-T1, E-T2, E-Q1: actual app commands, two homes, a scripted model and a
 // loopback relay exercise takeover, idle notification, stale consent and quit.
 func TestAppTakeET1ET2QuitEQ1(t *testing.T) {
+	appTakeRoundTrip(t, false)
+}
+
+// S6 keeps both app processes, their presence watchers and their native-store
+// daemons alive across the same real fetch, install and take-back acceptance.
+func TestAppTakeProcessS6(t *testing.T) {
+	appTakeRoundTrip(t, true)
+}
+
+func appTakeRoundTrip(t *testing.T, daemon bool) {
 	celltest.RequireEngine(t)
 	_, workspace := wakeEnvironment(t, resolvedTempDir(t))
-	model := appTwoMessageSource(t, "printf codeaf-e2")
+	model := appTwoMessageSource(t, "echo codeaf-e2")
 	t.Cleanup(model.Close)
 	t.Setenv("CODEAF_BASE_URL", model.URL)
 
@@ -219,7 +235,7 @@ func TestAppTakeET1ET2QuitEQ1(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a, b := e2StartApp(t, dirA), e2StartApp(t, dirB)
+	a, b := e2StartApp(t, dirA, daemon), e2StartApp(t, dirB, daemon)
 	created := machineCall[struct {
 		Agent appwire.Agent `json:"agent"`
 	}](t, a.w, "agents.create", map[string]any{"workspace": workspace}).Agent
@@ -227,7 +243,7 @@ func TestAppTakeET1ET2QuitEQ1(t *testing.T) {
 	// Start continuation from a chat saved by the real app leaving path. This
 	// exercises a saved chat independently of background first-publication timing.
 	e2Quit(t, a)
-	a = e2StartApp(t, dirA)
+	a = e2StartApp(t, dirA, daemon)
 	machineCall[appwire.TakeResult](t, a.w, "agents.open", appwire.IDParams{ID: created.ID})
 
 	t.Logf("created %s", string(e2JSON(created)))

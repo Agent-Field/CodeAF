@@ -1098,7 +1098,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	seen := map[string]bool{}
 	var agents []appwire.Agent
 	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
-		if row.DeletionPending || factoryOwnedConversation(row.Transcript) || !matches(row.Workspace, row.ProjectDir) {
+		if appChatStaging(row.Dir) || row.DeletionPending || factoryOwnedConversation(row.Transcript) || !matches(row.Workspace, row.ProjectDir) {
 			continue
 		}
 		seen[row.ID] = true
