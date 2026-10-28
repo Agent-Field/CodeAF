@@ -45,10 +45,14 @@ func (b *appBackend) FactoryJobStepEditsRead(ctx context.Context, p appwire.Fact
 
 // FactoryJobStepEdit sends the person's edit once. The body is built field by
 // field from the checked params, so a part the wire does not carry cannot
-// travel. A step is placed only by `after`; there is no reorder or removal.
+// travel. A step is placed by `after`, whether added or moved; a removal names
+// the step only.
 func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJobStepEditParams) (appwire.FactoryJobStepEdited, error) {
 	body := api.StepEditsRequest{
-		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, On: p.Edit.On, Skip: p.Edit.Skip, Why: p.Edit.Why, Expect: p.Expect,
+		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
+	}
+	for _, mv := range p.Edit.Move {
+		body.Move = append(body.Move, api.StepMove{Step: mv.Step, After: mv.After})
 	}
 	for _, a := range p.Edit.Add {
 		body.Add = append(body.Add, api.StepAddition{

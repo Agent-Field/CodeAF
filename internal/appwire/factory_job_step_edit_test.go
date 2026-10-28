@@ -60,7 +60,7 @@ func TestJobStepEditMethodsAreRegisteredAndAbsentWithoutTheEditor(t *testing.T) 
 		t.Fatalf("a non-factory engine announced %v", h.Features)
 	}
 	h := withFactoryJobStepEditFeature(Hello{}, &stepEditEngine{})
-	if len(h.Features) != 2 || h.Features[0] != FeatureFactoryJobStepEdit || h.Features[1] != FeatureFactoryJobStepEditChecks {
+	if len(h.Features) != 3 || h.Features[0] != FeatureFactoryJobStepEdit || h.Features[1] != FeatureFactoryJobStepEditChecks || h.Features[2] != FeatureFactoryJobStepEditStructure {
 		t.Fatalf("an editor announced %v", h.Features)
 	}
 	// The feature is independent of factory.job_actions.
@@ -98,7 +98,8 @@ func TestJobStepEditRefusesBadRequestsBeforeTheEngine(t *testing.T) {
 		{"factory.job_step_edit", w(`{"why":"just because"}`)},
 		// Unknown fields, top level and nested: strict, not ignored.
 		{"factory.job_step_edit", `{"factory":"f","job":2,` + stepGuard + `,"edit":{"skip":["a"]},"path":"/v1/jobs/3/step-edits"}`},
-		{"factory.job_step_edit", `{"factory":"f","job":2,` + stepGuard + `,"edit":{"skip":["a"],"remove":["a"]}}`},
+		{"factory.job_step_edit", `{"factory":"f","job":2,` + stepGuard + `,"edit":{"skip":["a"],"rename":{"a":"b"}}}`},
+		{"factory.job_step_edit", w(`{"move":[{"step":"a","after":"b","before":"c"}]}`)},
 		{"factory.job_step_edit", `{"factory":"f","job":2,` + stepGuard + `,"edit":{"skip":["a"]},"by":"manager"}`},
 		{"factory.job_step_edits_read", `{"factory":"f","job":1,"expect":{"version":1}}`},
 		// Added steps carry name, kind, ask, until, effort and after only.
@@ -124,6 +125,14 @@ func TestJobStepEditRefusesBadRequestsBeforeTheEngine(t *testing.T) {
 		{"factory.job_step_edit", w(`{"skip":[""]}`)},
 		{"factory.job_step_edit", w(`{"on":["a\u0000b"]}`)},
 		{"factory.job_step_edit", w(`{"skip":["a","b","c","d","e","f","g","h","i","j"]}`)},
+		// A removal names a step; a move names a step and where it goes ("" is first).
+		{"factory.job_step_edit", w(`{"remove":[""]}`)},
+		{"factory.job_step_edit", w(`{"remove":["a","b","c","d","e","f","g","h","i","j"]}`)},
+		{"factory.job_step_edit", w(`{"move":[{"step":"docs"}]}`)},
+		{"factory.job_step_edit", w(`{"move":[{"step":"docs","after":null}]}`)},
+		{"factory.job_step_edit", w(`{"move":[{"step":" ","after":"plan"}]}`)},
+		{"factory.job_step_edit", w(`{"move":[{"step":"docs","after":"a\u0000b"}]}`)},
+		{"factory.job_step_edit", w(`{"move":[{"step":"a","after":""},{"step":"b","after":""},{"step":"c","after":""},{"step":"d","after":""},{"step":"e","after":""},{"step":"f","after":""},{"step":"g","after":""},{"step":"h","after":""},{"step":"i","after":""},{"step":"j","after":""}]}`)},
 		{"factory.job_step_edit", w(`{"skip":["a"],"why":"` + strings.Repeat("y", MaxFactoryJobWords+1) + `"}`)},
 	}
 	for _, c := range bad {
@@ -159,6 +168,14 @@ func TestJobStepEditPassesTrimmedTypedArguments(t *testing.T) {
 	}
 	if len(e.On) != 1 || e.On[0] != "review" || e.Skip[0] != "docs" || e.Why != "faster please" {
 		t.Fatalf("lists: %+v", e)
+	}
+	// A removal alone, and a move alone, are each an edit; "" puts a step first.
+	if _, err := methods["factory.job_step_edit"].call(eng, json.RawMessage(`{"factory":"f","job":2,`+stepGuard+`,"edit":{"remove":[" pretest "],"move":[{"step":" docs ","after":" write "},{"step":"review","after":" "}]}}`)); err != nil {
+		t.Fatalf("remove and move: %v", err)
+	}
+	moved := eng.writes[1].Edit
+	if len(moved.Remove) != 1 || moved.Remove[0] != "pretest" || len(moved.Move) != 2 || moved.Move[0].Step != "docs" || *moved.Move[0].After != "write" || moved.Move[1].Step != "review" || *moved.Move[1].After != "" {
+		t.Fatalf("remove and move: %+v", moved)
 	}
 	// A gate (approval) step needs no ask.
 	if _, err := methods["factory.job_step_edit"].call(eng, json.RawMessage(`{"factory":"f","job":2,`+stepGuard+`,"edit":{"add":[{"step":{"name":"signoff","kind":"gate"},"after":"plan"}]}}`)); err != nil {

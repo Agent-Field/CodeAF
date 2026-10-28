@@ -354,3 +354,31 @@ func TestJobScreensLiveEditsRecompileTailAndRevokeOldWorker(t *testing.T) {
 	}
 	f.post(t, it, "step-edits", `{"ask":{"write":"too late"}}`, 409)
 }
+
+// A JOB'S PERSON REMOVES AND MOVES ITS STEPS through the same door and bounds
+// as every other step edit: a move says where it goes, proof stays, and only
+// the job's person edits.
+func TestJobScreensRemoveAndMoveAStepOfOneJob(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.Edit = factory.LocalSeam(f.st, now).Edit
+	reopenJobs(t, f)
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: []factory.Stage{
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "pretest", Kind: factory.StageChat, Ask: "run the old tests", On: false},
+		{Name: "docs", Kind: factory.StageChat, Ask: "say it", On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "prove", Fixed: true, On: true},
+	}})
+	f.post(t, it, "step-edits", `{"move":[{"step":"docs"}]}`, 422)
+	f.post(t, it, "step-edits", `{"remove":["proof"]}`, 409)
+	f.person = "mei"
+	f.post(t, it, "step-edits", `{"remove":["pretest"]}`, 403)
+	f.person = "sam"
+	f.post(t, it, "step-edits", `{"remove":["pretest"],"move":[{"step":"docs","after":""}],"why":"docs first"}`, 200)
+	cur, _ := f.st.Get(it.ID)
+	if len(cur.Stages) != 3 || cur.Stages[0].Name != "docs" || cur.Stages[1].Name != "write" || cur.Stages[0].By != factory.ByYou {
+		t.Fatalf("stages = %+v", cur.Stages)
+	}
+	if strings.Join(cur.Adapted, " · ") != "you removed pretest · you moved docs first · why: docs first" {
+		t.Fatalf("record = %q", cur.Adapted)
+	}
+}

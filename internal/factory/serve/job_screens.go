@@ -149,7 +149,16 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Why: body.Why, By: factory.ByYou}
+	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	for _, mv := range body.Move {
+		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
+		// rather than guessed.
+		if mv.After == nil {
+			h.fail(w, 422, "a moved step names the step it goes after, or \"\" for first")
+			return
+		}
+		edit.Move = append(edit.Move, factory.Moved{Stage: mv.Step, After: *mv.After})
+	}
 	for _, addition := range body.Add {
 		d := addition.Step
 		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.

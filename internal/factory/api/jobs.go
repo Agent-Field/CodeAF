@@ -35,14 +35,26 @@ type AssigneeRequest struct {
 }
 
 // StepEditsRequest uses the same bounded edit language as the job's manager.
+// Remove takes steps out of this job by name; Move puts one after another, or
+// first. Neither touches the repository's pipeline.
 type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
 	On       []string          `json:"on,omitempty"`
 	Skip     []string          `json:"skip,omitempty"`
+	Remove   []string          `json:"remove,omitempty"`
+	Move     []StepMove        `json:"move,omitempty"`
 	Why      string            `json:"why,omitempty"`
 	Expect   *Expect           `json:"expect,omitempty"`
+}
+
+// StepMove is one step moved in one job: Step is its name, and After the step
+// it now goes after. After is required, and "" puts it first, so a move that
+// forgot its place is refused rather than read as first.
+type StepMove struct {
+	Step  string  `json:"step"`
+	After *string `json:"after"`
 }
 
 type StepAddition struct {
