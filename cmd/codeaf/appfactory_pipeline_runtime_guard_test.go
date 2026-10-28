@@ -26,6 +26,9 @@ type guardRemote struct {
 	log   []string
 	posts []string
 	body  string
+	// operator is whether the caller is the factory's operator, who alone
+	// saves its copy of the steps.
+	operator bool
 }
 
 func newGuardRemote(t *testing.T) *guardRemote {
@@ -39,11 +42,11 @@ func newGuardRemote(t *testing.T) *guardRemote {
 			r.Body = io.NopCloser(bytes.NewReader(b))
 			g.posts = append(g.posts, string(b))
 		}
-		body := g.body
+		body, operator := g.body, g.operator
 		g.mu.Unlock()
 		switch {
 		case r.URL.Path == "/v1/me":
-			_ = json.NewEncoder(w).Encode(api.Me{Mode: api.FactoryTeam})
+			_ = json.NewEncoder(w).Encode(api.Me{Mode: api.FactoryTeam, Operator: operator})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pipeline/edit-source"):
 			serveRaw(body)(w, r)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/pipeline/open-pr"):
@@ -449,5 +452,65 @@ func TestPRRefusalDoesNotBecomeASilentFallback(t *testing.T) {
 	}
 	if w.remote.count("POST") != 0 {
 		t.Fatalf("%v", w.remote.log)
+	}
+}
+
+// A FACTORY COPY IS SEALED AS A PULL REQUEST IS: text that spells a runtime key
+// is saved only when the factory attested the file it was edited from and, read
+// again first, still serves and attests it. Nothing unattested is sent.
+func TestPipelineCopyOfRuntimeTextIsSealedAsAPullRequestIs(t *testing.T) {
+	save := func(w *guardWire, text string) error {
+		_, err := w.backend.FactoryPipelineCopySet(context.Background(), appwire.FactoryPipelineCopySetParams{Factory: w.id, Repo: prRepo, Text: text,
+			Expect: &appwire.FactoryPipelineCopyExpect{Version: 1}})
+		return err
+	}
+	operator := func(t *testing.T) *guardWire {
+		w := newGuardWire(t)
+		w.remote.mu.Lock()
+		w.remote.operator = true
+		w.remote.mu.Unlock()
+		return w
+	}
+
+	// Never read as attested: the factory serves the runtime file as an old
+	// factory would, and nothing is saved.
+	w := operator(t)
+	w.remote.serve(t, editSourceFor(prRepo, runtimeSourceFile), oldShape)
+	if err := save(w, runtimeSourceFile); err == nil {
+		t.Fatal("saved")
+	}
+	if w.remote.count("PUT") != 0 {
+		t.Fatalf("remote saw %v", w.remote.log)
+	}
+
+	// Attested, edited, saved: one read again, then the one write.
+	w = operator(t)
+	w.attest(t, runtimeSourceFile)
+	pv, err := w.previewAt(prBaseSHA, runtimeSourceFile, promptEdit("plan", "plan better"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.remote.reset()
+	// The scripted factory has no copy route, so the write is refused as an
+	// older factory's; what matters is that it was sent.
+	_ = save(w, pv.Text)
+	if w.remote.count("PUT") != 1 || w.remote.count("GET /v1/repos") != 1 {
+		t.Fatalf("want one read again and one write: %v", w.remote.log)
+	}
+
+	// The factory serves other bytes than were attested: refused, not sent.
+	w.remote.serve(t, attested(editSourceFor(prRepo, runtimeSourceFile+"# changed after the read\n")), nil)
+	w.remote.reset()
+	err = save(w, pv.Text)
+	wantRefusal(t, err, rereadWords)
+	if w.remote.count("PUT") != 0 {
+		t.Fatalf("remote saw %v", w.remote.log)
+	}
+
+	// Legacy text is saved without a second read.
+	w.remote.reset()
+	_ = save(w, editTestFile)
+	if w.remote.count("PUT") != 1 || w.remote.count("GET /v1/repos") != 0 {
+		t.Fatalf("legacy text: %v", w.remote.log)
 	}
 }

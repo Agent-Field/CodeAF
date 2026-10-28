@@ -127,8 +127,55 @@ var errPipelineSourceRuntimeUnattested = appwire.Errorf(appwire.CodeEngine, "thi
 
 var errPipelineSourceUnreadable = appwire.Errorf(appwire.CodeEngine, "the factory sent a pipeline file this app cannot use; nothing was written")
 
-// classifyPipelineSource believes a reply only in its documented shape.
+// classifyPipelineSource believes a reply only in its documented shape. A read
+// it refuses, for any reason, still carries the copy the factory keeps
+// ([withKeptCopy]), so the person can stop using it.
 func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
+	out, err := classifyPipelineSourceReply(r, p)
+	if err != nil {
+		return appwire.FactoryPipelineSource{}, withKeptCopy(err, r, p)
+	}
+	return out, nil
+}
+
+// withKeptCopy is err with, as its Detail, the copy of the repository's steps
+// the factory said it keeps ([appwire.FactoryPipelineSourceRefusal]): A COPY
+// STILL RUNS WHEN ITS FILE CANNOT BE SHOWN, whether the factory's read failed
+// (its failure says the copy) or this engine refused what it read (a copy
+// that spells words the factory did not vouch for, or does not read), and
+// without its version the app could never stop it. Only who saved it, when,
+// the version and the caller's Can are taken, and only in their documented
+// shape: a copy that names no time or version, or that cleared itself on this
+// read (main "same"), adds nothing, and an error that already has a Detail
+// keeps it.
+func withKeptCopy(err error, r linkReply, p appwire.FactoryPipelineSourceParams) error {
+	var we *appwire.Error
+	if r.bodyBad || !errors.As(err, &we) || we.Detail != nil {
+		return err
+	}
+	var said struct {
+		FactoryCopy *api.PipelineCopyState `json:"factory_copy"`
+		CopyVersion int                    `json:"copy_version"`
+		Can         *api.PipelineCan       `json:"can"`
+	}
+	if json.Unmarshal(r.body, &said) != nil || said.FactoryCopy == nil || said.FactoryCopy.At.IsZero() || said.CopyVersion < 1 {
+		return err
+	}
+	main := said.FactoryCopy.Main
+	if main != "" && main != api.PipelineCopyMainMissing && main != api.PipelineCopyMainDiffers {
+		return err
+	}
+	detail := appwire.FactoryPipelineSourceRefusal{Factory: p.Factory, Repo: p.Repo, CopyVersion: said.CopyVersion,
+		FactoryCopy: &appwire.FactoryPipelineCopy{By: cleanLinkText(said.FactoryCopy.By, 64), At: said.FactoryCopy.At.UTC(), Main: main}}
+	if said.Can != nil {
+		detail.Can = &appwire.FactoryPipelineCan{UseOnFactory: said.Can.UseOnFactory}
+	}
+	out := *we
+	out.Detail = detail
+	return &out
+}
+
+func classifyPipelineSourceReply(r linkReply, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
 	if r.bodyBad {
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}

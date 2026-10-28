@@ -57,10 +57,29 @@ const (
 // Main is missing (main has no file), differs (main's file says something
 // else) or same: main's file now says the same and the copy cleared itself on
 // this very read, so main's file is what runs from now on.
+//
+// On a refused read ([FactoryPipelineSourceRefusal]) Main is absent when main's
+// file was not read.
 type FactoryPipelineCopy struct {
 	By   string    `json:"by"`
 	At   time.Time `json:"at"`
-	Main string    `json:"main" enum:"missing,differs,same"`
+	Main string    `json:"main,omitempty" enum:"missing,differs,same"`
+}
+
+// FactoryPipelineSourceRefusal is the Detail of a factory.pipeline_source
+// refusal (any code) when the factory keeps its own copy of the repository's
+// steps: the file cannot be shown, but the copy still runs, so the app can
+// still offer Stop using this copy. FactoryCopy says who saved it and when, and
+// Main only when main's file was read; CopyVersion is the expect.version
+// factory.pipeline_copy_clear names; Can says whether this caller may stop it,
+// and an app offers Stop only when it says so. A refusal without this Detail
+// says nothing of a copy.
+type FactoryPipelineSourceRefusal struct {
+	Factory     string               `json:"factory"`
+	Repo        string               `json:"repo"`
+	FactoryCopy *FactoryPipelineCopy `json:"factory_copy"`
+	CopyVersion int                  `json:"copy_version"`
+	Can         *FactoryPipelineCan  `json:"can,omitempty"`
 }
 
 // FactoryPipelineCan is what the caller may do with a repository's pipeline

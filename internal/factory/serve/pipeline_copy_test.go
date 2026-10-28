@@ -238,3 +238,29 @@ func TestPipelineOriginNamesTheFactoryCopy(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 }
+
+// A COPY STILL RUNS WHEN ITS SOURCE CANNOT BE READ, so a refused edit-source
+// read still says it: who saved it and when (no text, no comparison with a
+// main that was not read), the version a stop names, and whether the caller
+// may stop it. A factory that keeps no copy says nothing of one.
+func TestPipelineSourceRefusalStillSaysTheKeptCopy(t *testing.T) {
+	g := newPRGitHub(t)
+	h, _ := soloCopy(t, g)
+	g.status["repo"] = 404
+	var failed api.PipelineEditSourceFailure
+	w := sourceRequest(h, "", "GET", sourcePath)
+	if w.Code == 200 || json.Unmarshal(w.Body.Bytes(), &failed) != nil || failed.FactoryCopy != nil || failed.CopyVersion != 0 || failed.Can != nil {
+		t.Fatalf("no copy: %d %s", w.Code, w.Body)
+	}
+	readCopyAnswer(t, copyRequest(h, "PUT", copyBody(t, prText, 1)))
+	w = sourceRequest(h, "", "GET", sourcePath)
+	failed = api.PipelineEditSourceFailure{}
+	if w.Code == 200 || json.Unmarshal(w.Body.Bytes(), &failed) != nil || failed.Stage != api.PipelineEditStageRepository {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	c := failed.FactoryCopy
+	if c == nil || c.By != "solo-owner" || !c.At.Equal(time.Date(2026, 10, 28, 9, 30, 0, 0, time.UTC)) || c.Text != "" || c.Main != "" ||
+		failed.CopyVersion != 2 || failed.Can == nil || !failed.Can.UseOnFactory {
+		t.Fatalf("the refusal says %s", w.Body)
+	}
+}

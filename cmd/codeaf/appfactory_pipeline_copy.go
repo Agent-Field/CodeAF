@@ -20,6 +20,10 @@ package main
 // that file, for that repository, at a version past the one read. A stop is
 // believed at a version past the one read with no copy, or at the version
 // read with no copy: stopping a copy the factory does not keep writes nothing.
+//
+// A COPY THAT SPELLS A RUNTIME KEY is sealed as a pull request is: saved only
+// when the factory attested the file it was edited from and still does
+// ([checkPipelineCopyRuntimeText]).
 
 import (
 	"context"
@@ -81,6 +85,14 @@ func (b *appBackend) pipelineCopyWrite(ctx context.Context, id, repo, method str
 	if !h.callerIs(id, who.token) {
 		return none, appwire.Errorf(appwire.CodeConflict, "the sign-in changed while this was loading; try again")
 	}
+	// TEXT THAT SPELLS A RUNTIME KEY is saved only on a factory that attested
+	// the file it was edited from, read again here, as a pull request of the
+	// same text would be (appfactory_pipeline_runtime.go).
+	if want != nil {
+		if err := b.checkPipelineCopyRuntimeText(ctx, who, id, repo, body.Text); err != nil {
+			return none, err
+		}
+	}
 	owner, name, _ := strings.Cut(repo, "/")
 	path := appFactoryRepoRoute + url.PathEscape(owner) + "/" + url.PathEscape(name) + appFactoryPipelineCopySuffix
 	r, err := h.linkDo(ctx, who, method, path, body, appFactoryPipelineSourceLimit)
@@ -92,6 +104,12 @@ func (b *appBackend) pipelineCopyWrite(ctx context.Context, id, repo, method str
 	}
 	if !h.callerIs(id, who.token) {
 		return none, appwire.Errorf(appwire.CodeUncertain, "the sign-in changed while this was saving, and the result is not known; read the pipeline before trying again")
+	}
+	// AN OLDER FACTORY HAS NO SUCH ROUTE: it answers 404 or 405 with no phase
+	// marker, which a factory serving the route puts on every refusal of it,
+	// and a route it does not have wrote nothing.
+	if (r.status == http.StatusNotFound || r.status == http.StatusMethodNotAllowed) && !r.provedNoWrite() {
+		return none, factoryTooOld()
 	}
 	if r.provedNoWrite() {
 		switch r.status {

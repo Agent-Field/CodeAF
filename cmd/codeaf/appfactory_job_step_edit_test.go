@@ -263,3 +263,33 @@ func TestAppFactoryJobStepEditOmitsAForeignOrOlderCurrent(t *testing.T) {
 		})
 	}
 }
+
+// A FACTORY OLDER THAN REMOVE AND MOVE refuses them as fields it does not
+// know, and that is said as a factory that doesn't support them yet. The same
+// status with the factory's own sentence, or on an edit that sends neither, is
+// carried as it was.
+func TestAppFactoryJobStepEditOnAnOlderFactoryIsSaidAsNotSupported(t *testing.T) {
+	cases := []struct {
+		name  string
+		edit  map[string]any
+		reply string
+		code  string
+		says  string
+	}{
+		{"remove", map[string]any{"remove": []string{"plan"}}, `{"error":"invalid JSON body: json: unknown field \"remove\""}`, appwire.CodeConflict, "doesn't support that yet"},
+		{"move", map[string]any{"move": []map[string]any{{"step": "plan", "after": ""}}}, `{"error":"invalid JSON body: json: unknown field \"move\""}`, appwire.CodeConflict, "doesn't support that yet"},
+		{"a remove the factory refused", map[string]any{"remove": []string{"proof"}}, `{"error":"you may not remove proof; proof vouches for the work before it"}`, appwire.CodeBadParams, "you may not remove proof"},
+		{"a skip", map[string]any{"skip": []string{"plan"}}, `{"error":"invalid JSON body: json: unknown field \"skip\""}`, appwire.CodeBadParams, "unknown field"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := startStepFactory(t)
+			f.status, f.reply = 422, c.reply
+			wire, id := attachStep(t, f)
+			msg := wire.mustFail("factory.job_step_edit", map[string]any{"factory": id, "job": 7, "expect": map[string]any{"version": 4}, "edit": c.edit}, c.code)
+			if !strings.Contains(msg, c.says) || strings.Contains(msg, "can see") {
+				t.Fatalf("said %q", msg)
+			}
+		})
+	}
+}

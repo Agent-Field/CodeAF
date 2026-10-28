@@ -161,3 +161,21 @@ func (h *Handler) withPipelineCopy(r *http.Request, out *api.PipelineEditSource)
 	out.FactoryCopy = state
 	return nil
 }
+
+// keptPipelineCopy puts on a refused edit-source read the copy the factory
+// keeps for repo, if any: who saved it and when, its version and the caller's
+// Can, so the reader can still stop using it although the file was not read.
+// Main is not said (main's file was not read), the copy is never cleared here,
+// and a copy that cannot be read is left out.
+func (h *Handler) keptPipelineCopy(r *http.Request, repo string, out *api.PipelineEditSourceFailure) {
+	if h.config.Store == nil {
+		return
+	}
+	cur, version, err := h.config.Store.PipelineCopy(repo)
+	if err != nil || cur == nil {
+		return
+	}
+	can := h.pipelineCan(r)
+	out.FactoryCopy = &api.PipelineCopyState{By: cur.By, At: cur.At}
+	out.CopyVersion, out.Can = version, &can
+}

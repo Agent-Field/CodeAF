@@ -214,6 +214,11 @@ type FactoryPipelineSource struct {
 	// whether this caller may save or stop the copy; an app offers the action
 	// only when it says so. Both are absent without the feature, and from a
 	// factory that keeps no store.
+	//
+	// A REFUSED READ STILL SAYS THE COPY: when the file cannot be shown (the
+	// factory's read failed, or the copy spells words the factory did not
+	// vouch for), the error's detail is a [FactoryPipelineSourceRefusal]
+	// whenever the factory keeps a copy, so the app can still offer Stop.
 	FactoryCopy *FactoryPipelineCopy `json:"factory_copy,omitempty"`
 	CopyVersion int                  `json:"copy_version,omitempty"`
 	Can         *FactoryPipelineCan  `json:"can,omitempty"`

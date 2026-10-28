@@ -24,7 +24,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -63,6 +65,9 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 	h := b.factoryHub()
 	data, err := h.post(ctx, p.Factory, stepEditsPath(p.Job), body)
 	if err != nil {
+		if (len(body.Remove) > 0 || len(body.Move) > 0) && unknownStepEditField(err) {
+			return appwire.FactoryJobStepEdited{}, factoryTooOld()
+		}
 		return appwire.FactoryJobStepEdited{}, err
 	}
 	got, ok := decodeStepEditReceipt(data, p.Expect)
@@ -82,6 +87,17 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 		out.Current = &current
 	}
 	return out, nil
+}
+
+// unknownStepEditField says whether err is a factory's refusal of remove or
+// move as fields it does not know: the strict decode of a factory older than
+// both, which refused the whole edit as a bad request and changed nothing.
+func unknownStepEditField(err error) bool {
+	var e *appwire.Error
+	if !errors.As(err, &e) || e.Code != appwire.CodeBadParams {
+		return false
+	}
+	return strings.Contains(e.Message, `unknown field "remove"`) || strings.Contains(e.Message, `unknown field "move"`)
 }
 
 // decodeStepEditReceipt reads a factory's yes. It is whole only when steps and

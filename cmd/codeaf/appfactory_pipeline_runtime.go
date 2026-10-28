@@ -142,3 +142,27 @@ func (b *appBackend) checkPipelineRuntimeText(ctx context.Context, who adminWho,
 	}
 	return nil
 }
+
+// checkPipelineCopyRuntimeText is the factory copy's seal, as
+// checkPipelineRuntimeText is the pull request's: a copy is a file the
+// factory's runner reads at once, so text that spells a runtime key is saved
+// only when the file the edit was made from was attested to this caller and
+// the factory still attests it. The save names no commit, so the file is read
+// again as the same caller and a record is required for the commit and the
+// exact bytes the factory serves now: a main branch that moved, other bytes, or
+// a factory that no longer claims the words refuses, and the person reads the
+// file again. Legacy text costs nothing.
+func (b *appBackend) checkPipelineCopyRuntimeText(ctx context.Context, who adminWho, id, repo, text string) error {
+	if !pipeline.RuntimeKeysIn(text) {
+		return nil
+	}
+	fresh, err := b.readPipelineSource(ctx, who, appwire.FactoryPipelineSourceParams{Factory: id, Repo: repo})
+	if err != nil {
+		return err
+	}
+	if !fresh.RuntimeFields || (fresh.State != api.PipelineEditFile && fresh.State != api.PipelineEditMissing) || !fresh.Editable ||
+		!b.factoryHub().runtimeAttestedText(id, who.row.URL, who.token, repo, fresh.BaseSHA, fresh.Text) {
+		return appwire.Errorf(appwire.CodeBadParams, "%s Nothing was saved.", pipelineRuntimeReread)
+	}
+	return nil
+}

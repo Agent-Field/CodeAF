@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -214,3 +215,109 @@ func TestPipelineSourceBelievesOnlyACopyItCanRead(t *testing.T) {
 }
 
 func prNow() time.Time { return time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC) }
+
+// A FACTORY OLDER THAN THE COPY has no route for it: its plain 404 or 405 is
+// said as a factory that doesn't support that yet, never as a repository it
+// cannot see. A 404 with the phase marker is this factory's own refusal.
+func TestPipelineCopyOnAnOlderFactoryIsSaidAsNotSupported(t *testing.T) {
+	for name, c := range map[string]struct {
+		answer func(http.ResponseWriter, *http.Request)
+		code   string
+		says   string
+	}{
+		"no route":       {nil, appwire.CodeConflict, "doesn't support that yet"},
+		"no such method": {func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusMethodNotAllowed) }, appwire.CodeConflict, "doesn't support that yet"},
+		"a repository it cannot see": {func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
+			prWriteJSON(w, http.StatusNotFound, map[string]string{"error": "no such repository"})
+		}, appwire.CodeNotFound, "not one this factory can see"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stub := newEditStub(t, api.Me{Mode: api.FactorySolo, Operator: true})
+			stub.other = c.answer
+			r := newEditWire(t, stub, false, api.FactorySolo, prToken)
+			_, err := r.backend.FactoryPipelineCopySet(context.Background(), appwire.FactoryPipelineCopySetParams{Factory: r.id, Repo: prRepo, Text: editTestFile,
+				Expect: &appwire.FactoryPipelineCopyExpect{Version: 1}})
+			if wire, ok := err.(*appwire.Error); !ok || wire.Code != c.code || !strings.Contains(wire.Message, c.says) {
+				t.Fatalf("save: %v", err)
+			}
+			_, err = r.backend.FactoryPipelineCopyClear(context.Background(), appwire.FactoryPipelineCopyClearParams{Factory: r.id, Repo: prRepo,
+				Expect: &appwire.FactoryPipelineCopyExpect{Version: 1}})
+			if wire, ok := err.(*appwire.Error); !ok || wire.Code != c.code || !strings.Contains(wire.Message, c.says) {
+				t.Fatalf("stop: %v", err)
+			}
+		})
+	}
+}
+
+// A COPY THE APP CANNOT BE SHOWN STILL RUNS, so a refused source read still
+// carries it, and the app can offer Stop using this copy: whether this engine
+// refused the copy it read (here, one spelling words the factory did not
+// vouch for) or the factory's own read failed. The refusal's detail names who
+// saved it, when, the version a stop names and the caller's can, and nothing
+// of its text. A refusal on a factory that keeps no copy has no such detail.
+func TestPipelineSourceRefusalStillCarriesTheKeptCopy(t *testing.T) {
+	at := time.Date(2026, 10, 28, 9, 30, 0, 0, time.UTC)
+	unattested := editSourceFor(prRepo, editTestFile)
+	unattested.CopyVersion = 4
+	unattested.Can = &api.PipelineCan{UseOnFactory: true}
+	unattested.FactoryCopy = &api.PipelineCopyState{Text: runtimeSourceFile, By: "test-owner", At: at, Main: api.PipelineCopyMainDiffers}
+	failed := api.PipelineEditSourceFailure{Factory: api.Factory{Name: "Acme"}, Error: "GitHub refused the repository step", Reason: "not_found",
+		Stage: api.PipelineEditStageRepository, GitHubStatus: 404, RequestID: "req-1",
+		FactoryCopy: &api.PipelineCopyState{By: "test-owner", At: at}, CopyVersion: 4, Can: &api.PipelineCan{UseOnFactory: true}}
+	for name, c := range map[string]struct {
+		answer func(http.ResponseWriter, *http.Request)
+		want   string
+	}{
+		"this engine refused the copy": {editSourceReply(unattested), `{"factory":"%s","repo":"%s","factory_copy":{"by":"test-owner","at":"2026-10-28T09:30:00Z","main":"differs"},"copy_version":4,"can":{"use_on_factory":true}}`},
+		"the factory's read failed":    {func(w http.ResponseWriter, _ *http.Request) { prWriteJSON(w, 404, failed) }, `{"factory":"%s","repo":"%s","factory_copy":{"by":"test-owner","at":"2026-10-28T09:30:00Z"},"copy_version":4,"can":{"use_on_factory":true}}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stub := newEditStub(t, api.Me{Mode: api.FactorySolo, Operator: true})
+			stub.source = c.answer
+			r := newEditWire(t, stub, false, api.FactorySolo, prToken)
+			_, err := r.source()
+			wire, ok := err.(*appwire.Error)
+			if !ok || wire.Detail == nil {
+				t.Fatalf("err %v", err)
+			}
+			raw, _ := json.Marshal(wire.Detail)
+			if want := fmt.Sprintf(c.want, r.id, prRepo); string(raw) != want {
+				t.Fatalf("detail %s\nwant   %s", raw, want)
+			}
+		})
+	}
+	// No copy kept: the refusal is as it always was.
+	stub := newEditStub(t, api.Me{Mode: api.FactorySolo, Operator: true})
+	plain := failed
+	plain.FactoryCopy, plain.CopyVersion, plain.Can = nil, 0, nil
+	stub.source = func(w http.ResponseWriter, _ *http.Request) { prWriteJSON(w, 404, plain) }
+	r := newEditWire(t, stub, false, api.FactorySolo, prToken)
+	if _, err := r.source(); err == nil || err.(*appwire.Error).Detail != nil {
+		t.Fatalf("err %v", err)
+	}
+	// The detail crosses the wire on the error frame.
+	stub = newEditStub(t, api.Me{Mode: api.FactorySolo, Operator: true})
+	stub.source = func(w http.ResponseWriter, _ *http.Request) { prWriteJSON(w, 404, failed) }
+	r = newEditWire(t, stub, false, api.FactorySolo, prToken)
+	r.next++
+	raw, _ := json.Marshal(appwire.FactoryPipelineSourceParams{Factory: r.id, Repo: prRepo})
+	fmt.Fprintf(r.in, `{"id":%d,"method":"factory.pipeline_source","params":%s}`+"\n", r.next, raw)
+	for line := range r.answers {
+		var f struct {
+			ID    *int `json:"id"`
+			Error *struct {
+				Code   string                               `json:"code"`
+				Detail appwire.FactoryPipelineSourceRefusal `json:"detail"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(line, &f) != nil || f.ID == nil || *f.ID != r.next {
+			continue
+		}
+		if f.Error == nil || f.Error.Detail.CopyVersion != 4 || f.Error.Detail.FactoryCopy == nil || f.Error.Detail.Can == nil {
+			t.Fatalf("frame %s", line)
+		}
+		return
+	}
+	t.Fatal("the wire ended")
+}

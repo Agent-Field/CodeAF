@@ -81,9 +81,10 @@ const (
 
 // PipelineCopyState is the factory's copy as a reader sees it: the whole file
 // as the factory wrote it, who saved it and when, and, on the edit-source read
-// that also read main's file, how that file compares.
+// that also read main's file, how that file compares. A refused edit-source
+// read ([PipelineEditSourceFailure]) carries who and when only.
 type PipelineCopyState struct {
-	Text string    `json:"text"`
+	Text string    `json:"text,omitempty"`
 	By   string    `json:"by"`
 	At   time.Time `json:"at"`
 	Main string    `json:"main,omitempty" enum:"missing,differs,same"`
@@ -166,13 +167,23 @@ const (
 // PipelineEditSourceFailure is the route's non-2xx body. This route only reads,
 // so it wrote nothing; it says nothing about what anyone else may have written
 // to the repository meanwhile.
+//
+// A FACTORY THAT KEEPS ITS OWN COPY of the repository's file still says so
+// when the read fails, so a reader can still stop using it: FactoryCopy says
+// who saved it and when (no text, and no Main, since main's file was not
+// read), CopyVersion the version a stop names, and Can whether this caller
+// may. All three are absent when the factory keeps no copy, has no store, or
+// predates the copy.
 type PipelineEditSourceFailure struct {
-	Factory      Factory `json:"factory"`
-	Error        string  `json:"error"`
-	Reason       string  `json:"reason,omitempty"`
-	Stage        string  `json:"stage"`
-	GitHubStatus int     `json:"github_status,omitempty"`
-	RequestID    string  `json:"request_id"`
+	Factory      Factory            `json:"factory"`
+	Error        string             `json:"error"`
+	Reason       string             `json:"reason,omitempty"`
+	Stage        string             `json:"stage"`
+	GitHubStatus int                `json:"github_status,omitempty"`
+	RequestID    string             `json:"request_id"`
+	FactoryCopy  *PipelineCopyState `json:"factory_copy,omitempty"`
+	CopyVersion  int                `json:"copy_version,omitempty"`
+	Can          *PipelineCan       `json:"can,omitempty"`
 }
 
 // SetParsed fills the fields that are the parse of Text from what the pipeline

@@ -168,6 +168,8 @@ func (f *pipelinePRFlow) sourceFail(status int, stage string, github int, words 
 	if status == 401 && f.viaSes {
 		f.h.endGitHub(f.r, f.token)
 	}
-	f.h.write(f.w, status, api.PipelineEditSourceFailure{Factory: f.h.factory, Error: words, Reason: reasonFor(status),
-		Stage: stage, GitHubStatus: github, RequestID: requestID()})
+	out := api.PipelineEditSourceFailure{Factory: f.h.factory, Error: words, Reason: reasonFor(status),
+		Stage: stage, GitHubStatus: github, RequestID: requestID()}
+	f.h.keptPipelineCopy(f.r, f.owner+"/"+f.repo, &out)
+	f.h.write(f.w, status, out)
 }
