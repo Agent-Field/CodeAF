@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Explicit fallback lists hold, and finished shell calls keep background processes
-pr: 0
+pr: 2020
 surface: [chat, engine]
 invalidates:
   - "A cancellation watcher could kill background processes after their shell call had already finished. A completed call now takes precedence over a late cancellation."
