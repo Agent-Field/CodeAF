@@ -614,6 +614,13 @@ conversation lives in another folder's terminal (a crew member a manager
 started). If it cannot reach that terminal it says the conversation is open in
 another codeaf window rather than opening it twice.
 
+If that window accepts a connection but does not answer, the app waits up to
+five seconds across all candidate windows, then shows “Couldn’t open chat”:
+“This chat didn’t answer from the other codeaf window. Try again, or continue
+there.” Choose “Try again” when that window answers again. A failed open sends
+no message, takes over no work and leaves the terminal's conversation alone.
+The five-second limit ends with the handshake; joined replies can run longer.
+
 A joined conversation keeps the rules of the window that opened it, because
 they are how it behaves for everyone: a proposed task's clock, a choice's
 clock, moving a running reply to a task, naming, and saving proposed reminders
