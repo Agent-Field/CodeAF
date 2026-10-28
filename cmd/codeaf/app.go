@@ -43,6 +43,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -52,6 +53,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
@@ -317,6 +319,9 @@ type appOpener func(appOpenAsk) (*appConn, error)
 // a conversation.
 const appHostDialTimeout = 500 * time.Millisecond
 
+// appHostJoinWait is one budget for discovering and joining an existing host.
+var appHostJoinWait = 5 * time.Second
+
 // appOpenInProcess opens a conversation for the app. A saved conversation that
 // a window's host already holds is JOINED there, as a second view of the same
 // conversation, because opening it here as well would be a second writer on its
@@ -412,33 +417,103 @@ func appJoinExisting(ask appOpenAsk, launch *remote.LaunchShape) (*appConn, erro
 		if agent, ok := liveStageFor(ask.Transcript); ok {
 			return appLendLive(agent, ask, hello)
 		}
-		if socket, err := enginehost.DialStartingHost(ask.Workspace); err == nil {
-			client, err := remote.Dial(socket, "", hello)
+		deadline := time.Now().Add(appHostJoinWait)
+		// Keep the workspace host's connect cap as well as the overall deadline.
+		dialer := net.Dialer{Timeout: 2 * time.Second, Deadline: deadline}
+		join := func(socket net.Conn, err error) *appConn {
+			if socket == nil {
+				return nil
+			}
 			if err == nil {
-				return appConnOf(client, func() { _ = client.Close() }, false), nil
+				err = socket.SetDeadline(deadline)
+			}
+			if err == nil {
+				var client *remote.Client
+				client, err = remote.Dial(socket, "", hello)
+				if err == nil {
+					if err = socket.SetDeadline(time.Time{}); err == nil {
+						return appConnOf(client, func() { _ = client.Close() }, false)
+					}
+					_ = client.Close()
+				}
 			}
 			_ = socket.Close()
+			return nil
+		}
+		expired := func() bool { return !time.Now().Before(deadline) }
+		unreachable := func() error {
+			return appwire.Errorf(appwire.CodeUnreachable, "This chat didn’t answer from the other codeaf window. Try again, or continue there.")
+		}
+		if conn := join(appDialStartingHost(ask.Workspace, &dialer)); conn != nil {
+			return conn, nil
+		}
+		if expired() {
+			return nil, unreachable()
 		}
 		// HELD, BUT NOT BY THIS WORKSPACE'S HOST: a crew member a manager
 		// started lives in its manager's host. Every host is asked, and the
 		// one holding it answers; opening it here as well would be refused by
 		// its journal's lock, and is never tried while somebody holds it.
 		if session.InUse(ask.Transcript) {
+			dialer.Timeout = appHostDialTimeout
 			for _, path := range enginehost.Sockets() {
-				socket, err := net.DialTimeout("unix", path, appHostDialTimeout)
-				if err != nil {
-					continue
+				if expired() {
+					return nil, unreachable()
 				}
-				client, err := remote.Dial(socket, "", hello)
-				if err == nil {
-					return appConnOf(client, func() { _ = client.Close() }, false), nil
+				if conn := join(dialer.Dial("unix", path)); conn != nil {
+					return conn, nil
 				}
-				_ = socket.Close()
+			}
+			if expired() {
+				return nil, unreachable()
 			}
 			return nil, appwire.Errorf(appwire.CodeConflict, "%s", appWindowConflict)
 		}
 	}
 	return nil, nil
+}
+
+// appDialStartingHost keeps the host's brief remove-to-listen grace while
+// bounding every connect and retry by the app's remaining join budget.
+func appDialStartingHost(workspace string, dialer *net.Dialer) (net.Conn, error) {
+	path, err := enginehost.SocketPath(workspace)
+	if err != nil {
+		return nil, err
+	}
+	const pause = 10 * time.Millisecond
+	until := time.Now().Add(250 * time.Millisecond)
+	if dialer.Deadline.Before(until) {
+		until = dialer.Deadline
+	}
+	for {
+		conn, err := dialer.Dial("unix", path)
+		if err == nil {
+			return conn, nil
+		}
+		transient := errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, os.ErrNotExist)
+		if !transient || !time.Now().Before(until) {
+			return nil, err
+		}
+		lockPath, lockErr := enginehost.LockPath(workspace)
+		if lockErr != nil {
+			return nil, err
+		}
+		file, lockErr := os.OpenFile(lockPath, os.O_RDWR, 0o600)
+		if lockErr != nil {
+			return nil, err
+		}
+		lockErr = filelock.Lock(file, true, true)
+		if lockErr == nil {
+			_ = filelock.Unlock(file)
+		}
+		_ = file.Close()
+		if !filelock.IsBusy(lockErr) {
+			return nil, err
+		}
+		if left := time.Until(until); left > 0 {
+			time.Sleep(min(pause, left))
+		}
+	}
 }
 
 func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
@@ -1622,6 +1697,10 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	conn, err := b.open(ask)
 	b.locked(func() { a.opening = wasOpening })
 	if err != nil {
+		var wire *appwire.Error
+		if errors.As(err, &wire) && wire.Code == appwire.CodeUnreachable {
+			return appwire.Agent{}, false, wire
+		}
 		// Loopback errors may have crossed a codec and lost their Go type.
 		// The journal lock still proves an ownership conflict in that case.
 		if errors.Is(err, session.ErrSessionLocked) || session.InUse(transcript) {
@@ -3049,7 +3128,10 @@ func (b *appBackend) finish(live *appLive) {
 		live.stopPasses()
 	}
 	live.conn.Release()
-	wait := time.After(appReleaseWait)
+	// A closed channel lets every producer observe the same expired deadline.
+	wait := make(chan struct{})
+	stop := b.after(appReleaseWait, func() { close(wait) })
+	defer stop()
 	if live.pumpDone != nil {
 		select {
 		case <-live.pumpDone:
