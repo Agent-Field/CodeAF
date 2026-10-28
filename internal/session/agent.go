@@ -2781,6 +2781,7 @@ func (a *Agent) Close() error {
 	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	teamTraffic.remove(a)
 	cutPass()
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
 	// below can take time: a window that is closing is not somebody in front of
