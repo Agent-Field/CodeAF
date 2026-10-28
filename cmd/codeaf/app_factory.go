@@ -32,7 +32,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -175,8 +174,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
 			}
-			f, err := factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
-			return withFactoryHouseRules(h.floor, f, err)
+			return factoryPipelineRead(ctx, h.floor, repo, dir)
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
 		// A person's start reads the one item again first (serve's endedOnGitHub).

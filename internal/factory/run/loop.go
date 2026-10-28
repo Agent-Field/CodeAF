@@ -1632,9 +1632,8 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 
 	var recipe factory.Recipe
 	if res.Edit != nil {
-		if lp.r.opts.Recipe != nil {
-			recipe = lp.r.opts.Recipe(before.Repo)
-		} else {
+		var ok bool
+		if recipe, ok = jobRecipe(lp.r.opts.Recipe, before); !ok {
 			recipe = factory.DefaultRecipe()
 		}
 	}

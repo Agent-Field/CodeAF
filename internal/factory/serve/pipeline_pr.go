@@ -96,18 +96,9 @@ func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	file, err := pipeline.Parse(body.Text)
-	switch {
-	case err != nil:
-		f.refuse(422, "request", err.Error())
-		return
-	case len(file.Problems) > 0:
-		f.refuse(422, "request", file.Problems[0].Error())
-		return
-	}
-	data, err := pipeline.Encode(file)
-	if err != nil || len(data) > pipelinePRMaxText {
-		f.refuse(422, "request", "the pipeline could not be written as a small YAML file")
+	data, refused := pipelineFileFor(body.Text)
+	if refused != "" {
+		f.refuse(422, "request", refused)
 		return
 	}
 
@@ -133,6 +124,32 @@ func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	f.ctx = ctx
 	f.run(title, text, branchWanted, wanted, data)
+}
+
+// pipelineFileFor is a person's pipeline text as the factory writes it, or the
+// words that refuse it. IT IS THE ONE CHECK OF A WHOLE FILE A PERSON SENDS:
+// the pull request route and the factory's own copy (pipeline_copy.go) both
+// take a file only through it, so a file one of them takes the other takes
+// too, byte for byte.
+func pipelineFileFor(text string) ([]byte, string) {
+	switch {
+	case strings.TrimSpace(text) == "":
+		return nil, "pipeline text is required"
+	case len(text) > pipelinePRMaxText:
+		return nil, "pipeline text is too large"
+	}
+	file, err := pipeline.Parse(text)
+	switch {
+	case err != nil:
+		return nil, err.Error()
+	case len(file.Problems) > 0:
+		return nil, file.Problems[0].Error()
+	}
+	data, err := pipeline.Encode(file)
+	if err != nil || len(data) > pipelinePRMaxText {
+		return nil, "the pipeline could not be written as a small YAML file"
+	}
+	return data, ""
 }
 
 // validate bounds every caller-supplied field before anything is sent.

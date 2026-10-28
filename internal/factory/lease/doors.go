@@ -124,6 +124,20 @@ func (d *Doors) Launch(id int) error {
 		// these steps just below.
 		if file != nil {
 			pipeline.StampSteps(it, *file)
+			// THE FACTORY'S COPY OF THE REPOSITORY'S FILE GOES WITH THE JOB
+			// ([factory.Item.PipelineCopy]) when the read used it, as the
+			// factory's rules do: a runner on another machine reads its rules
+			// from the job, never from its own read of main. The job's record
+			// says which file it runs whenever that changes.
+			if !file.Copy.Same(it.PipelineCopy) {
+				switch {
+				case file.Copy != nil:
+					it.Note(now, "Runs this factory's copy of "+factory.PipelineFile+", "+file.Copy.Saved()+", not main's")
+				default:
+					it.Note(now, "Runs main's "+factory.PipelineFile+" again; this factory no longer keeps its own copy")
+				}
+			}
+			it.PipelineCopy = file.Copy.Clone()
 		}
 		// EVERY START CARRIES ITS START RULES ([factory.Item.StartRules]), so
 		// the approval after the plan is checked whichever door started it.

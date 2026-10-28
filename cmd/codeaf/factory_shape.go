@@ -16,7 +16,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -295,7 +294,7 @@ func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 		return nil
 	}
 	dirs := factoryRepoDirs(st, workspace)
-	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(dirs))
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(st), factory.WithRepoDirs(dirs))
 	if seam.Edit == nil {
 		return nil
 	}
@@ -314,8 +313,8 @@ func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Con
 			return factory.Item{}, nil, err
 		}
 		repo := factory.RepoOf(it)
-		f, err := factoryRules().Load(ctx, repo, dirs(repo), home.Join("factory.yaml"))
-		if f, err = withFactoryHouseRules(st, f, err); errors.Is(err, pipeline.ErrHouseRulesUnread) {
+		f, err := factoryPipelineRead(ctx, st, repo, dirs(repo))
+		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 			return factory.Item{}, nil, err
 		}
 		desk, err := lease.Open(st, lease.Options{})

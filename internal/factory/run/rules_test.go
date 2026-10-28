@@ -84,3 +84,25 @@ func TestAHouseRuleCodeKnowsIsAppliedToPosts(t *testing.T) {
 		t.Fatalf("no house rules changed the policy: %q", got)
 	}
 }
+
+// A JOB THAT CARRIES THE FACTORY'S COPY of its repository's file follows the
+// copy's rules, never what this machine reads of main: a runner on another
+// machine cannot read the factory's store, so the job is where it learns.
+func TestAJobsRulesComeFromTheFactoryCopyItCarries(t *testing.T) {
+	main := func(string) factory.Recipe {
+		return factory.Recipe{Policy: []string{"main's rule"}}
+	}
+	it := factory.Item{ID: 1, Repo: "acme/api", House: &factory.HouseRules{Rules: []string{"house rule"}},
+		PipelineCopy: &factory.PipelineCopy{Repo: "acme/api", Text: "pipeline:\n  issue: [write, proof]\nrules:\n  - the copy's rule\n", By: "test-owner"}}
+	if got := JobRules(main, it); !reflect.DeepEqual(got, []string{"the copy's rule", "house rule"}) {
+		t.Fatalf("rules %q", got)
+	}
+	// Even with no read of its own at all.
+	if got := JobRules(nil, it); !reflect.DeepEqual(got, []string{"the copy's rule", "house rule"}) {
+		t.Fatalf("rules %q", got)
+	}
+	it.PipelineCopy = nil
+	if got := JobRules(main, it); !reflect.DeepEqual(got, []string{"main's rule", "house rule"}) {
+		t.Fatalf("without a copy %q", got)
+	}
+}

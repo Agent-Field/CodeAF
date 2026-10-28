@@ -165,6 +165,8 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 	// What a state may carry. A field of another state is a contradiction.
 	parsed := func(s api.PipelineEditSource) []byte {
 		s.Factory, s.Repo, s.Path, s.DefaultBranch, s.BaseSHA, s.CanPush, s.Archived, s.RuntimeFields, s.State, s.Editable, s.Text, s.Problems = api.Factory{}, "", "", "", "", false, false, false, "", false, "", nil
+		// The factory's own copy is read on its own (pipelineSourceCopy).
+		s.FactoryCopy, s.CopyVersion, s.Can = nil, 0, nil
 		raw, _ := json.Marshal(s)
 		return raw
 	}
@@ -225,6 +227,11 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 		pipelineSettings(&out, src)
 	default:
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+	}
+	// THE FACTORY'S OWN COPY, when it keeps one, is what its jobs run, so it
+	// is the source an edit starts from (appfactory_pipeline_copy.go).
+	if err := pipelineSourceCopy(&out, got, runtimeClaim); err != nil {
+		return appwire.FactoryPipelineSource{}, err
 	}
 	return out, nil
 }

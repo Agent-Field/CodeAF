@@ -234,7 +234,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		// are the lease's, which queue a job for a worker and signal its
 		// lease; no window runs a job through them.
 		factoryRunnerDoors(st),
-		factoryPipelineOption(), factory.WithRepoDirs(dirs),
+		factoryPipelineOption(st), factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
 		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
