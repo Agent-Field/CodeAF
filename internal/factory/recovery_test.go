@@ -31,7 +31,7 @@ func TestRecoveryClassifiesOnlyTransientFailures(t *testing.T) {
 
 func TestRecoveryWindowExcludesTimeSpentRunningAnAttempt(t *testing.T) {
 	now := time.Now()
-	it := Item{Kind: KindIssue, State: StateNeedsYou, Autonomy: AutonomyAuto, Cap: 10, Stream: &Stream{}, Failure: &Failure{Step: "test", Code: CodeMachineLost, Next: FailureStopped, At: now}, Recovery: &StepRecovery{Step: "test", State: "running", Attempts: 1, Limit: 3, RunningAt: now.Add(-10 * time.Minute), Deadline: now.Add(-9 * time.Minute)}}
+	it := Item{Kind: KindIssue, State: StateNeedsYou, Autonomy: AutonomyAuto, Cap: 10, Stream: &Stream{}, Failure: &Failure{Step: "test", Code: CodeMachineLost, Next: FailureStopped, At: now}, Recovery: &StepRecovery{Step: "test", State: "running", Attempts: 1, Limit: 3, Deadline: now.Add(-9 * time.Minute)}}
 	if !PlanStepRecovery(&it, now) || it.Recovery.State != "waiting" || it.Recovery.Attempts != 1 || !it.Recovery.Deadline.After(now) {
 		t.Fatalf("productive running consumed reconnect window: %+v", it.Recovery)
 	}

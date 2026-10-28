@@ -243,8 +243,10 @@ func TestRecoveryRepositoryOffLeavesAManualRecoveryPath(t *testing.T) {
 // clock left over from the first wait, with attempts to spare.
 func TestRecoveryALateRetryThatRunsLongKeepsItsAttempts(t *testing.T) {
 	f := setup(t)
-	it := f.add(t, recoveryJob())
-	held, e := f.desk.Pull(worker("first-worker", "sam"))
+	job := recoveryJob()
+	job.Assignee = "owner-a"
+	it := f.add(t, job)
+	held, e := f.desk.Pull(worker("first-worker", "owner-a"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -276,7 +278,7 @@ func TestRecoveryALateRetryThatRunsLongKeepsItsAttempts(t *testing.T) {
 	}
 	// Picked up 14 minutes later, it runs for 46 minutes under heartbeats.
 	f.now = f.now.Add(14 * time.Minute)
-	w := worker("late-worker", "sam")
+	w := worker("late-worker", "owner-a")
 	if _, e := f.desk.Pull(w); e != nil {
 		t.Fatal(e)
 	}
@@ -301,5 +303,48 @@ func TestRecoveryALateRetryThatRunsLongKeepsItsAttempts(t *testing.T) {
 	}
 	if rec := readRecovery(t, f, it.ID).Recovery; rec == nil || rec.State != "waiting" || rec.Attempts != 1 {
 		t.Fatalf("a long retry ran out on a leftover clock: %+v", rec)
+	}
+}
+
+// A budget raised while a worker still holds the job starts the runner wait
+// over: the minutes spent blocked on the budget do not end the recovery at
+// once.
+func TestRecoveryABudgetRaisedUnderAHeldWorkerResumesTheWait(t *testing.T) {
+	f := setup(t)
+	job := recoveryJob()
+	job.Assignee = "owner-a"
+	it := f.add(t, job)
+	w := worker("held-worker", "owner-a")
+	if _, e := f.desk.Pull(w); e != nil {
+		t.Fatal(e)
+	}
+	// The step fails and its spend has reached the cap.
+	if e := f.store.Update(it.ID, func(cur *factory.Item) error {
+		factory.StampFailure(cur, factory.NewFailure(factory.FollowPRStep, factory.CodeTransportError, "connection reset", "", factory.FailureStopped, 1, f.now))
+		cur.Cap = 1
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	doors := lease.NewDoors(f.desk)
+	if _, e := doors.RecoverAutomatic(it.ID); e != nil {
+		t.Fatal(e)
+	}
+	if rec := readRecovery(t, f, it.ID).Recovery; rec == nil || rec.State != "exhausted" || rec.BlockedBy != "budget" {
+		t.Fatalf("not blocked by budget: %+v", rec)
+	}
+	for end := f.now.Add(30 * time.Minute); f.now.Before(end); f.now = f.now.Add(30 * time.Second) {
+		if _, e := f.desk.Heartbeat(it.ID, w.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := f.store.Update(it.ID, func(cur *factory.Item) error { cur.Cap = 10; return nil }); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := doors.RecoverAutomatic(it.ID); e != nil {
+		t.Fatal(e)
+	}
+	if rec := readRecovery(t, f, it.ID).Recovery; rec == nil || rec.State != "waiting" || rec.Attempts != 0 || rec.Reason != "Budget restored; retrying the interrupted step." {
+		t.Fatalf("a raised budget ended the recovery: %+v", rec)
 	}
 }

@@ -53,29 +53,21 @@ func TestStartClaimsNoKeyOnATeamServer(t *testing.T) {
 	}
 }
 
-// Which models count follows the session's policy: a job that never chose
-// (nil) or chose automatic models may move to the profile's fallbacks, up to
-// the provider's limit, so a keyed fallback within it lets the start go; with
-// automatic models off, only the job's own model counts.
-func TestStartCountsTheFallbacksAutomaticModelsCouldReach(t *testing.T) {
+// Only the job's own model counts: a request with no key is reported, never
+// moved to a fallback, so a keyed fallback does not let the start go, whatever
+// the job's automatic-models choice.
+func TestStartCountsOnlyTheJobsOwnModel(t *testing.T) {
 	t.Setenv(config.APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
 	on, off := true, false
 	for _, tc := range []struct {
 		name      string
-		fallbacks string
 		automatic *bool
-		want      int
-	}{
-		{"a job that never chose, keyed second fallback", "qwen/a, deepseek/b", nil, 200},
-		{"automatic models, keyed second fallback", "qwen/a, deepseek/b", &on, 200},
-		{"automatic models off", "qwen/a, deepseek/b", &off, 409},
-		{"a keyed fallback past the limit", "qwen/a, qwen/b, deepseek/c", nil, 409},
-	} {
+	}{{"a job that never chose", nil}, {"automatic models", &on}, {"automatic models off", &off}} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, profile := keylessSetup(t, factoryapi.FactorySolo)
-			// DeepSeek holds a key; the job's model and qwen are on OpenRouter,
-			// which holds none.
+			// DeepSeek holds a key; the job's model is on OpenRouter, which
+			// holds none.
 			if err := config.WriteSources(profile, []config.PersistedSource{{ID: "deepseek", Written: "deepseek", Key: "sk-deepseek-test-0000000001", Order: 1}}); err != nil {
 				t.Fatal(err)
 			}
@@ -83,15 +75,23 @@ func TestStartCountsTheFallbacksAutomaticModelsCouldReach(t *testing.T) {
 			if !ok {
 				t.Fatal("no fallbacks row")
 			}
-			if err := row.Apply(tc.fallbacks); err != nil {
+			if err := row.Apply("deepseek/b"); err != nil {
 				t.Fatal(err)
 			}
 			it, err := f.st.Create(factory.Item{Title: "test work", Repo: "acme/api", State: factory.StateQueued, Assignee: "owner", AutomaticModels: tc.automatic})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if w := identityRequest(f.h, "POST", fmt.Sprintf("/v1/jobs/%d/start_now", it.ID), "", "operator-secret", nil); w.Code != tc.want {
-				t.Fatalf("got %d %s, want %d", w.Code, w.Body, tc.want)
+			if w := identityRequest(f.h, "POST", fmt.Sprintf("/v1/jobs/%d/start_now", it.ID), "", "operator-secret", nil); w.Code != 409 {
+				t.Fatalf("got %d %s, want the key refusal", w.Code, w.Body)
+			}
+			// A job whose own model has a key starts.
+			keyed, err := f.st.Create(factory.Item{Title: "test work", Repo: "acme/api", State: factory.StateQueued, Assignee: "owner", Model: "deepseek/b", AutomaticModels: tc.automatic})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := identityRequest(f.h, "POST", fmt.Sprintf("/v1/jobs/%d/start_now", keyed.ID), "", "operator-secret", nil); w.Code != 200 {
+				t.Fatalf("a keyed model was refused: %d %s", w.Code, w.Body)
 			}
 		})
 	}

@@ -424,16 +424,17 @@ func TestWorkerCredentialsForgetDeadLoopbackFactories(t *testing.T) {
 		t.Fatal(err)
 	}
 	dial := newFactoryWorkerDial(st, nil)
-	for _, base := range []string{"http://127.0.0.1:50001", "http://localhost:50002", "http://[::1]:50003", "https://factory.example.com"} {
+	now := deadLoopbackBase(t, "127.0.0.1")
+	for _, base := range []string{deadLoopbackBase(t, "127.0.0.1"), deadLoopbackBase(t, "localhost"), deadLoopbackBase(t, "[::1]"), "https://factory.example.com"} {
 		dial.keep(0, client.Open(base, "").Worker("old-"+base))
 	}
-	dial.keep(0, client.Open("http://127.0.0.1:50004", "").Worker("now"))
+	dial.keep(0, client.Open(now, "").Worker("now"))
 	all := dial.readCreds()
-	if len(all) != 2 || all["http://127.0.0.1:50004"][0] != "now" || all["https://factory.example.com"][0] != "old-https://factory.example.com" {
+	if len(all) != 2 || all[now][0] != "now" || all["https://factory.example.com"][0] != "old-https://factory.example.com" {
 		t.Fatalf("kept %v, want the live loopback factory and the remote one", all)
 	}
 	dial.keep(1, client.Open("https://factory.example.com", "").Worker("remote-1"))
-	if all := dial.readCreds(); len(all) != 2 || all["http://127.0.0.1:50004"][0] != "now" {
+	if all := dial.readCreds(); len(all) != 2 || all[now][0] != "now" {
 		t.Fatalf("a remote attach forgot the local factory: %v", all)
 	}
 }
@@ -454,8 +455,25 @@ func TestWorkerCredentialsKeepALoopbackFactoryThatStillListens(t *testing.T) {
 	live := "http://" + listener.Addr().String()
 	dial := newFactoryWorkerDial(st, nil)
 	dial.keep(0, client.Open(live, "").Worker("tunnel"))
-	dial.keep(0, client.Open("http://127.0.0.1:50004", "").Worker("now"))
-	if all := dial.readCreds(); len(all) != 2 || all[live][0] != "tunnel" || all["http://127.0.0.1:50004"][0] != "now" {
+	now := deadLoopbackBase(t, "127.0.0.1")
+	dial.keep(0, client.Open(now, "").Worker("now"))
+	if all := dial.readCreds(); len(all) != 2 || all[live][0] != "tunnel" || all[now][0] != "now" {
 		t.Fatalf("kept %v, want both local factories", all)
 	}
+}
+
+// deadLoopbackBase is a loopback factory address at host that nothing listens
+// on: a port a listener of this test held and then closed, so no fixed port is
+// assumed free.
+func deadLoopbackBase(t *testing.T, host string) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return "http://" + host + ":" + port
 }

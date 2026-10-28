@@ -657,11 +657,6 @@ func dropAttachments(messages []ai.Message) []ai.Message {
 // and let them pick, rather than to walk a list on their behalf.
 const maxFallbackModels = 2
 
-// MaxFallbackModels is [maxFallbackModels] for a caller that must judge
-// whether a turn could reach a model, such as a factory checking a start's
-// keys before it writes.
-const MaxFallbackModels = maxFallbackModels
-
 // ── THE ADAPTER NEVER CHANGES THE MODEL ─────────────────────────────────────
 //
 // It used to. This ladder walked [Client.fallbackChain] after its relaxation

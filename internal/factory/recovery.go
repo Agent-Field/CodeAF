@@ -20,7 +20,6 @@ const RecoveryWindow = 2 * time.Minute
 // survives a service restart and repeated runner losses, until this step succeeds
 // or the person deliberately tries again. No publication or merge is replayed.
 type StepRecovery struct {
-	RunningAt time.Time `json:"running_at,omitzero"`
 	BlockedBy string    `json:"blocked_by,omitempty"`
 	BlockedAt time.Time `json:"blocked_at,omitzero"`
 	Step      string    `json:"step"`
@@ -83,8 +82,10 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 		cp := *rec
 		// Time spent waiting for more budget is not an attempt: the attempts
 		// left are what they were when the budget ran out.
+		// The runner wait starts over too: a worker that held the job while
+		// the budget was raised is not out of time for the minutes it waited.
 		cp.State, cp.Reason, cp.BlockedBy = "waiting", "Budget restored; retrying the interrupted step.", ""
-		cp.NextAt = now
+		cp.NextAt, cp.Deadline = now, now.Add(RunnerReturnWindow)
 		cp.BlockedAt = time.Time{}
 		it.Recovery = &cp
 		return true
@@ -123,7 +124,6 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 		rec = &StepRecovery{Step: f.Step, Limit: RecoveryLimit, Deadline: now.Add(RunnerReturnWindow)}
 	}
 	cp := *rec
-	cp.RunningAt = time.Time{}
 	cp.LastAt, cp.Reason = f.At, f.Detail
 	if why := RecoveryBlockReason(*it); why != "" {
 		cp.State, cp.Reason = "exhausted", why

@@ -337,7 +337,9 @@ another attempt can spend. Completed publication status does not disable step re
 In Auto, a lost runner or a recognised transient model connection failure gets at
 most three automatic retries, after 2, 5 and 15 seconds. They are counted in
 attempts, not minutes; the only deadline is for the runner, which has 15 minutes
-to take a queued retry. The service persists the attempt count and that deadline
+to take a queued retry. The same 15 minutes, counted again from each new failure
+and from a raised budget, bound how long a worker that still holds the job may
+keep it before a retry can start. The service persists the attempt count and that deadline
 and resumes them after a restart without an open job tab. The job shows
 the reason, next retry and limit; **Try again now** can skip the wait. A still-held
 worker is never silently replaced. After the limit, **Try again** makes a new manual

@@ -9,19 +9,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
-	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
-// startModelRefused refuses a person's start before any write when no model
-// the job's first step could answer on is on a service with a key: the job
-// would only fail at its first call. Which models count follows the session's
-// own policy. On automatic models, which is also a job that never chose (nil:
-// a step's conversation then allows automatic models), a refused call may move
-// to the profile's fallbacks, up to the provider's limit
-// ([provider.MaxFallbackModels]), so the start is refused only when the model
-// and every one of those lack a key. With automatic models off, the session
-// refuses any substitution, so only the model itself counts.
+// startModelRefused refuses a person's start before any write when the job's
+// model is on a service with no key: the job would only fail at its first
+// call. ONLY THE MODEL COUNTS. A request on a service with no key fails before
+// it is sent (provider.ErrNoAPIKey, no status), which the session reads as
+// work to report, never as a reason to move to a fallback model
+// (internal/session's wireEvidence and internal/taxonomy's classOf;
+// TestARequestWithNoKeyIsReportedNeverHopped holds it), so a keyed fallback
+// would never be asked.
 //
 // ONLY A SOLO FACTORY CLAIMS THIS: it runs on its person's own profile. A team
 // server holds no one's keys (its ProfileDir is the server's own home), so it
@@ -44,32 +42,11 @@ func (h *Handler) startModelRefused(w http.ResponseWriter, it factory.Item) bool
 		return false
 	}
 	sources := config.ResolveSources(profile, config.APIKeyAt(profile), config.DefaultBaseURL)
-	candidates := []string{model}
-	if it.AutomaticModels == nil || *it.AutomaticModels {
-		candidates = append(candidates, fallbacksFor(model, config.ParseModelFallbacks(config.ModelFallbacksAt(profile)))...)
-	}
-	for _, m := range candidates {
-		if keyed(sources, m) {
-			return false
-		}
+	if keyed(sources, model) {
+		return false
 	}
 	h.refuse(w, 409, fmt.Sprintf("This job can't start: its model, %s, is on %s, which has no key. Add a key for %s in Settings, or choose another model for this job.", model, serviceName(sources, model), serviceName(sources, model)), "conflict", "", nil, factory.JobState(it))
 	return true
-}
-
-// fallbacksFor is the fallbacks a refused call on model may move to, as the
-// provider builds them: the list in order, without model, up to its limit.
-func fallbacksFor(model string, list []string) []string {
-	var out []string
-	for _, m := range list {
-		if strings.EqualFold(strings.TrimSpace(m), model) {
-			continue
-		}
-		if out = append(out, m); len(out) == provider.MaxFallbackModels {
-			break
-		}
-	}
-	return out
 }
 
 // keyed says model's service can authenticate (a key, a sign-in, or a service

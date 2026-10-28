@@ -72,20 +72,20 @@ func TestStartNowOnAJobWhoseComputerIsDownSaysWhy(t *testing.T) {
 }
 
 func TestPinnedDownClaimsNothingUnknownOrLive(t *testing.T) {
-	roster := []machineRow{{Handle: "sam", Machine: api.Machine{Name: "mac", Status: api.MachineIdle}}, {Handle: "lee", Machine: api.Machine{Name: "old", Status: api.MachineOffline}}}
-	if _, ok := pinnedDown("", "sam", roster); ok {
+	roster := []machineRow{{Handle: "owner-a", Machine: api.Machine{Name: "mac", Status: api.MachineIdle}}, {Handle: "owner-b", Machine: api.Machine{Name: "old", Status: api.MachineOffline}}}
+	if _, ok := pinnedDown("", "owner-a", roster); ok {
 		t.Fatal("no pin")
 	}
-	if _, ok := pinnedDown("mac", "sam", roster); ok {
+	if _, ok := pinnedDown("mac", "owner-a", roster); ok {
 		t.Fatal("a live computer")
 	}
-	if _, ok := pinnedDown("gone", "sam", roster); ok {
+	if _, ok := pinnedDown("gone", "owner-a", roster); ok {
 		t.Fatal("a computer the roster does not know")
 	}
-	if _, ok := pinnedDown("old", "sam", roster); ok {
+	if _, ok := pinnedDown("old", "owner-a", roster); ok {
 		t.Fatal("another person's computer of the same name")
 	}
-	if row, ok := pinnedDown("old", "lee", roster); !ok || row.Name != "old" {
+	if row, ok := pinnedDown("old", "owner-b", roster); !ok || row.Name != "old" {
 		t.Fatal("the person's own offline computer")
 	}
 }
