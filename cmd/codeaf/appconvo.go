@@ -788,8 +788,8 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 // appDecideMark marks an ask the person handed back to the agent's own pick.
 const appDecideMark = "decide:"
 
-// HoldAsk stops an ask's clock. Only a proposed task has one: its hold is the
-// task's own.
+// HoldAsk stops an ask's clock through its owning lane. Proposed tasks keep
+// their task action; the model's questions use the engine's question hold.
 func (b *appBackend) HoldAsk(agent, id string) error {
 	a, err := b.findCrewOwner(agent)
 	if err != nil {
@@ -804,6 +804,16 @@ func (b *appBackend) HoldAsk(agent, id string) error {
 	b.locked(func() { q, open = live.questions[id] })
 	if !open {
 		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
+	}
+	if q.Kind == session.QuestionAsk {
+		holder, ok := live.conn.Conv.(interface {
+			HoldQuestion(session.QuestionKind, string)
+		})
+		if !ok {
+			return appwire.Errorf(appwire.CodeEngine, "this conversation cannot hold a question's clock")
+		}
+		holder.HoldQuestion(q.Kind, q.Token())
+		return nil
 	}
 	if q.Kind != session.QuestionTask || q.Deadline.IsZero() {
 		return nil

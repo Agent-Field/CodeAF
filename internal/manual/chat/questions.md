@@ -1448,3 +1448,11 @@ Saving is not forever: pausing or deleting one later is `/automations`, or askin
 (*Automations*). A rule such as "always use tabs" is not an automation — it has no
 time and nothing to run — so it is kept as a memory, with `/remember` (*Rules are not
 automations*).
+
+## Desktop Hold — stop a model question's countdown
+
+Hold on a model question stops its clock in the engine without answering it.
+The same question stays open past its original deadline. Its countdown goes
+away in the chat and Inbox, and later listings keep showing it without a clock.
+Hold on a task proposal still uses the task's existing hold action. A clock
+that has not been held still takes its declared suggestion when it expires.

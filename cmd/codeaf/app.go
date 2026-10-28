@@ -37,6 +37,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -2004,18 +2005,20 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		}
 		ask := appAskOf(id, q)
 		appAskFacts(id, &ask, q)
-		defer b.restateBatch(live, q)
-		restated, moved := false, false
+		restated, changed, moved := false, false, false
 		var view appwire.Agent
 		b.locked(func() {
 			ask.HoldingUp = askHoldingUpLocked(live, ask)
 			if _, open := live.questions[askID]; open {
-				// The lane replays what is open when it is subscribed again,
-				// and a question restated in place is the same ask.
+				// Identical subscription replays say nothing new. A changed
+				// question, such as a held clock, restates the same ask id.
 				restated = true
 				live.questions[askID] = q
+				ask.Batch, _ = b.batchLocked(live, q)
 				for i := range live.asks {
 					if live.asks[i].ID == askID {
+						ask.Later = live.asks[i].Later
+						changed = !reflect.DeepEqual(live.asks[i], ask)
 						live.asks[i] = ask
 					}
 				}
@@ -2025,13 +2028,14 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			live.asks = append(live.asks, ask)
 			view, moved = b.restateLocked(a, live)
 		})
-		if restated {
+		if restated && !changed {
 			return
 		}
 		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
+		b.restateBatch(live, q)
 	case session.EventQuestionAnswered, session.EventQuestionWithdrawn:
 		open, moved := false, false
 		by, option := appwire.ClosedByElsewhere, ""
