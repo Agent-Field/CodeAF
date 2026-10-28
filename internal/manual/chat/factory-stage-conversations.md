@@ -335,13 +335,14 @@ available through its normal ownership and budget gates. A cap must be raised be
 another attempt can spend. Completed publication status does not disable step retry.
 
 In Auto, a lost runner or a recognised transient model connection failure gets at
-most three automatic retries, after 2, 5 and 15 seconds, within a two-minute recovery
-window. The service persists the attempt count and deadline, including waiting for
-the runner, and resumes them after a restart without an open job tab. The job shows
+most three automatic retries, after 2, 5 and 15 seconds. They are counted in
+attempts, not minutes; the only deadline is for the runner, which has 15 minutes
+to take a queued retry. The service persists the attempt count and that deadline
+and resumes them after a restart without an open job tab. The job shows
 the reason, next retry and limit; **Try again now** can skip the wait. A still-held
 worker is never silently replaced. After the limit, **Try again** makes a new manual
 attempt. Manual, Take over, repository-off, spending limits and terminal jobs stop
-automatic admission. A successful step ends that recovery window.
+automatic admission. A successful step ends that recovery.
 
 A message has **Retry message** only when the backend retained the failed message.
 An old error in a cold or factory-owned conversation does not imply that capability.
@@ -624,9 +625,11 @@ shell profiles or change the engine's own PATH.
 
 After a repair claims completion and verification rejects it, the agent can
 correct the check in the same conversation. Three completion reports repeating
-the same unresolved evidence stop the stage. Recovery is also bounded to five
-minutes after the first rejected completion, even if the agent keeps investigating.
-These bounds do not shorten the initial test run. The job retains local changes,
+the same unresolved evidence stop the stage, and so do six refused completion
+reports in all, even when the evidence changes each time. No timer runs: a slow
+repair that is making progress is not stopped for the minutes it takes, and the
+stage's own time and money bounds still apply. These bounds do not shorten the
+initial test run. The job retains local changes,
 explains the specific problem and waits for a retry instead of opening another
 paid repair round automatically. A successful correction cancels that stop.
 
@@ -700,8 +703,10 @@ Implementation checks are not prerequisites for a Plan report.
 ## Result delivery and Mac sleep
 
 When this Mac sleeps, the app reports the elected runner's sleep to its factory,
-even when no step chat is open. The service retains that sleeping runner's lease;
-wake refreshes its silence deadline. A failed presence request remains an error,
+even when no step chat is open. The service retains that sleeping runner's lease
+for 24 hours at most after the computer went to sleep; wake refreshes its silence
+deadline. A computer that never wakes no longer holds its job for good: after
+that day the job is queued again like any silent hold. A failed presence request remains an error,
 not confirmation that remote ownership was retained. This does not change how
 ordinary conversation processes stop for sleep or turn an interrupted check green.
 

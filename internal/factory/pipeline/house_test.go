@@ -170,3 +170,19 @@ func TestAProtectedPathHoldsInOneWordingAtStartPlanAndChange(t *testing.T) {
 		}
 	}
 }
+
+// The dry run's Decide and real intake's DecideJob read an ask-first path line
+// alike: a protected path held by its own reason, never an unjudged sentence.
+func TestDecideAndDecideJobAgreeOnAPathLine(t *testing.T) {
+	f, err := Parse("start:\n  labels: [ready]\n  ask_first: [touch auth/]\n  never: [infra/]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, files := range [][]string{{"auth/keys.go", "infra/main.tf"}, {"docs/readme.md"}} {
+		intake := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, files)
+		dry := f.Decide(Job{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Size: "S", Paths: files})
+		if !reflect.DeepEqual(intake, dry) {
+			t.Errorf("%v: intake %+v, dry run %+v", files, intake, dry)
+		}
+	}
+}

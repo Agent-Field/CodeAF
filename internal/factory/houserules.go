@@ -125,9 +125,10 @@ func cleanRuleList(name string, in []string) ([]string, error) {
 	return out, nil
 }
 
-// StartRules are what a job asks about and never starts on by itself (a
-// repository's `start.ask_first` and `start.never`, with the factory's own
-// added), stamped on the job when it is started so its plan can be checked
+// StartRules are what a job asks a person about (a repository's
+// `start.ask_first` and `start.never`, with the factory's own added; a never
+// line is kept for older files and is a protected path exactly like an
+// ask-first `touch <path>`), stamped on the job when it is started so its plan can be checked
 // against them wherever it runs ([Item.StartRules]).
 type StartRules struct {
 	AskFirst []string `json:"ask_first"`

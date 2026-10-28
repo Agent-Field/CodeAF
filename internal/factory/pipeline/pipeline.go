@@ -110,9 +110,12 @@ type File struct {
 // Start is what may begin without a person. An empty Labels means nothing
 // starts on its own: a label has to be named first.
 type Start struct {
-	Labels   []string
-	MaxSize  string
-	MaxCost  float64
+	Labels  []string
+	MaxSize string
+	MaxCost float64
+	// Never is kept so files that still write `never:` keep working: each
+	// line is a protected path, exactly like an ask-first `touch <path>`
+	// ([ProtectedPaths]).
 	Never    []string
 	AskFirst []string
 }

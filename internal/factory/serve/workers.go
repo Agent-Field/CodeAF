@@ -247,6 +247,9 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		body.Machine = body.Name
 	}
 	worker := lease.Worker{Machine: body.Machine, ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned, Slots: body.Slots}
+	// Live reaps expired leases as a side effect (an asleep one past
+	// AsleepCeiling included), sending their jobs back to the queue before
+	// this attach reads what is held.
 	held, err := h.workers.desk.Live()
 	if h.failed(w, err) {
 		return

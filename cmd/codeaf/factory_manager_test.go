@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,24 @@ func TestTheTalkDoorAndTheRunMakeOneManager(t *testing.T) {
 	}
 }
 
+// lastAssistantMessage is the whole of the last assistant message in a
+// session file, "" when there is none. (session.LastSaid keeps only its last
+// sentence.)
+func lastAssistantMessage(path string) string {
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		var m struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &m) == nil && m.Role == "assistant" {
+			return m.Content
+		}
+	}
+	return ""
+}
+
 func TestARunReportsIntoTheManagersJournalAndReadsItsBrief(t *testing.T) {
 	st, web, profile := talkLab(t)
 	// Manual: the run lands for the person's approval (Auto would go on to publish).
@@ -147,8 +166,9 @@ func TestARunReportsIntoTheManagersJournalAndReadsItsBrief(t *testing.T) {
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		// The landing, as the run now words it: the work is done and waits for the person's approval.
-		if data, _ := os.ReadFile(chat); strings.Contains(string(data), "Implementation, tests, review and proof are complete.") && strings.Contains(string(data), "Approval needed: push the branch") {
+		// The landing is the last thing said, as the run now words it: the work
+		// is done and waits for the person's approval.
+		if got := lastAssistantMessage(chat); strings.HasPrefix(got, "Implementation, tests, review and proof are complete.") && strings.Contains(got, "Approval needed: push the branch") {
 			break
 		}
 		if time.Now().After(deadline) {

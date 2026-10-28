@@ -75,7 +75,10 @@ func (f File) Decide(j Job) Decision {
 	if j.Cap > 0 && j.CostKnown && !badMoney(j.Cost) && j.Cost > j.Cap {
 		reasons = append(reasons, "over your cap of "+money(j.Cap))
 	}
-	for _, path := range ProtectedPaths(nil, f.Start.Never) {
+	// One reason per protected path the job names (ask-first path lines and
+	// never paths alike), as [File.DecideJob] gives them, then the ask-first
+	// sentences.
+	for _, path := range ProtectedPaths(f.Start.AskFirst, f.Start.Never) {
 		if why := protectedWhy([]string{path}, j.Paths); why != "" {
 			reasons = append(reasons, why)
 		}
@@ -240,7 +243,15 @@ func normOr(s, fallback string) string {
 	return fallback
 }
 
-func askWhy(sentences []string, j Job) []string {
+// askWhy is the reasons ask-first sentences give. A path line is a protected
+// path, held by its own reason, so only sentences are judged here.
+func askWhy(askFirst []string, j Job) []string {
+	var sentences []string
+	for _, rule := range askFirst {
+		if askFirstPath(rule) == "" {
+			sentences = append(sentences, rule)
+		}
+	}
 	if len(sentences) == 0 {
 		return nil
 	}

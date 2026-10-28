@@ -7,18 +7,24 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // startModelRefused refuses a person's start before any write when neither
 // the job's model nor the profile's first fallback is on a service with a key:
-// the job would only fail at its first step's first call. A factory that does
-// not know this profile (no ProfileDir: a team server) claims nothing, and a
-// job with no model of its own and no default claims nothing either.
+// the job would only fail at its first step's first call. ONLY A SOLO FACTORY
+// CLAIMS THIS: it runs on its person's own profile. A team server holds no
+// one's keys (its ProfileDir is the server's own home), so it claims nothing;
+// nor does a job on automatic models, whose role routing may use other keyed
+// models, or a job with no model of its own and no default.
 func (h *Handler) startModelRefused(w http.ResponseWriter, it factory.Item) bool {
 	profile := strings.TrimSpace(h.config.ProfileDir)
-	if profile == "" {
+	if h.mode() != api.FactorySolo || profile == "" {
+		return false
+	}
+	if it.AutomaticModels != nil && *it.AutomaticModels {
 		return false
 	}
 	model := strings.TrimSpace(it.Model)

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
@@ -59,15 +60,18 @@ type appFactoryHost struct {
 	// factory.local_run ends the quiet, through [appFactoryHost.readLoops]
 	// (appfactory_setup.go).
 	quiet bool
+	// answered names the requests whose first answer the startup trace has
+	// recorded (startup.log on the floor): the first of all, the queue, a job.
+	// allAnswered is set once all three are, so every later answer skips the
+	// lock.
+	answeredMu  sync.Mutex
+	answered    map[string]bool
+	allAnswered atomic.Bool
 	// loopMu guards the read loops' start and their shutdown, loopsOn says this
 	// host already started them, loopsClosed that close has begun, and loops
 	// counts the goroutines close waits for. THE START IS PER HOST, never per
 	// process: a process-wide once would leave a later host in the same
 	// process, after this one closed, without its reads for good.
-	// answered names the requests whose first answer the startup trace has
-	// recorded (startup.log on the floor): the first of all, the queue, a job.
-	answeredMu           sync.Mutex
-	answered             map[string]bool
 	loopMu               sync.Mutex
 	loopsOn, loopsClosed bool
 	loops                sync.WaitGroup
@@ -349,6 +353,9 @@ func (h *appFactoryHost) mountSolo(ctx context.Context) (http.Handler, error) {
 // traceAnswer writes the first answer of all, of the queue and of a job to the
 // startup trace, with how long each took: what a cold start waits on.
 func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
+	if h.allAnswered.Load() {
+		return
+	}
 	kinds := []string{"any"}
 	if r.URL.Path == "/v1/queue" {
 		kinds = append(kinds, "queue")
@@ -365,6 +372,9 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 			h.answered[k] = true
 			fresh = append(fresh, k)
 		}
+	}
+	if len(h.answered) == 3 {
+		h.allAnswered.Store(true)
 	}
 	h.answeredMu.Unlock()
 	for _, k := range fresh {
