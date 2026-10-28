@@ -2,6 +2,8 @@ package cellstore
 
 import (
 	"context"
+	"os"
+	"runtime"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
@@ -35,6 +37,13 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	for _, opt := range opts {
 		opt(&engine)
 	}
+	if runtime.GOOS == "windows" && engine.Transport == nil && engine.Run == nil {
+		bin, _ := (Spawn{Binary: engine.Binary}).program()
+		if socketFor(bin) == "" {
+			engine.notifyHistoryOff(c)
+			return executor.Watching(base, obs), nil
+		}
+	}
 	if workspace != "" && engine.workspace(c) == "" {
 		engine.Guard.notify(homeFolderWord)
 	}
@@ -55,6 +64,17 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 // homeFolderWord is said once when a chat opens in a folder that holds the home
 // folder: the conversation is saved, the folder's files are not.
 const homeFolderWord = "this folder holds your home folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
+
+// notifyHistoryOff records the sentence on the chat, so reopening a seat
+// cannot repeat it. A notice must never make tools wait on saved history.
+func (e Engine) notifyHistoryOff(c cell.Cell) {
+	f, err := os.OpenFile(rel(c, cell.StateDir+"/saving-engine-notice"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return
+	}
+	_ = f.Close()
+	e.Guard.notify("rewind is off because this chat cannot save file history securely; restart codeaf to try again.")
+}
 
 // SeatOption adjusts the engine a seat seals through.
 type SeatOption func(*Engine)

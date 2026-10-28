@@ -73,6 +73,9 @@ func startAndDial(ctx context.Context, d Daemon) (net.Conn, error) {
 		}
 		return nil, errors.New("saving is waiting for the storage process to start; try again shortly")
 	}
+	if err := validateSocket(d.Socket); err != nil {
+		return nil, err
+	}
 	if conn, err := dial(ctx, d.Socket); err == nil {
 		return conn, nil
 	}
@@ -105,6 +108,7 @@ func startAndDial(ctx context.Context, d Daemon) (net.Conn, error) {
 		}
 	}
 
+	pruneStaleSockets(ctx, filepath.Dir(d.Socket))
 	conn, err := launchAndDial(ctx, d)
 	if err != nil {
 		startMu.Lock()

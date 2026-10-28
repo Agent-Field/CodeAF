@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -308,13 +310,29 @@ func holdsHome(dir string) bool {
 	}
 	house, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(house) == "" {
+		login, err := user.Current()
+		if err != nil || strings.TrimSpace(login.HomeDir) == "" {
+			return false
+		}
+		house = login.HomeDir
+	}
+	absolute, err := filepath.Abs(house)
+	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(tree, canonicalTree(house))
-	if err != nil || filepath.IsAbs(rel) {
-		return false
+	// Resolving a symlinked home must not discard its original ancestors.
+	for _, start := range []string{absolute, canonicalTree(absolute)} {
+		for dir := start; ; dir = filepath.Dir(dir) {
+			ancestor := canonicalTree(dir)
+			if tree == ancestor || (runtime.GOOS == "windows" && strings.EqualFold(tree, ancestor)) {
+				return true
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
 	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return false
 }
 
 // policyDir is where the harness keeps its exclusions: the cell's directory
