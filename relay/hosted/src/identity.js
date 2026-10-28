@@ -84,6 +84,7 @@ export class IdentityDO extends DurableObject {
       await this.#admitted.get(ipOf(request, this.env));
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
+      if (tenant.isClient(who.device) && !route.fabric) throw new Refusal('unauthorized', 'client scope');
       if (route.write) tenant.assertWritable();
       return await route.handler({ tenant, device: who.device, body, request, env: this.env }, route.args);
     } finally {

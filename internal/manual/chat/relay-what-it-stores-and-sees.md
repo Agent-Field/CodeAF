@@ -34,3 +34,43 @@ No. Turns, tool output and files are sealed on your computer before they are sen
 Your saved keys are sealed too, as said above.
 
 Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
+
+## Scoped clients, slots and queued calls
+
+The Go relay supports a client device kind with its own key pair and a list of
+allowed methods. Full devices register the client before handing it its signed
+certificate. A client receives no cell key, dedup secret, identity private key or
+vault. It cannot read the directory or the blob store, change leases, pair another
+device or change its own permissions. Revocation stops that certificate across
+relay restarts. This is a relay protocol capability; the chat pairing commands do
+not yet create scoped clients. The hosted Worker supports the same protocol.
+
+The HTTP contract is `docs/relay-clients.md` in the source tree. An empty method
+list allows offline reads only; adding methods requires a new paired key.
+
+## Client slots and offline snapshots
+
+A full device can replace a named sealed slot for one scoped client of the same
+identity. Only that client reads the slot. The relay adds the writer device and
+write time; readers can show when a snapshot was last refreshed. Each client has
+at most 64 slots, each at most 64 KiB, expiring after 24 hours. Revoking the client
+deletes its slots. The relay sees ciphertext and slot names, so names must not
+contain private content. Slots persist across relay restarts. The publishing box
+must seal to the client's current key and respect chat lease ownership.
+
+## Client queue, offline calls and replay protection
+
+Scoped clients can append sealed calls for an allowed method. Each call carries
+a signed sequence number, time and target box, or `any`. Numbers must increase
+by one, including after acknowledgement or expiry. Each client can hold 128
+unacknowledged calls, each at most 4 KiB; calls expire at 24 hours. The relay
+rejects replays, gaps, stale calls and methods outside the pairing's allowlist.
+A client with no allowed methods cannot queue calls.
+
+Full devices list work and claim an entry before executing it. An `any` claim
+has one winner and survives restart; another box cannot acknowledge it. The
+winning box acknowledges to delete the entry. Queue operations never acquire a
+chat lease. Revoking a client deletes its queue. An executor must verify the
+retained original request proof, permissions, age and any required biometric
+confirmation inside the encrypted call, use durable execution idempotency and
+log executed calls. The relay cannot read the call or verify biometric evidence.

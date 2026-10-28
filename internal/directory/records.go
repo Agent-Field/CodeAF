@@ -55,11 +55,13 @@ type Caps struct {
 
 // Device is keyed by device id (dev_…).
 type Device struct {
-	V       uint16 `json:"V"`
-	Name    string `json:"name"`     // b64, sealed under the metadata key
-	AddedBy string `json:"added_by"` // identity id that signed the device cert
-	Revoked bool   `json:"revoked"`  // set only by Revoke; a fresh pairing makes a new device id
-	Caps    Caps   `json:"caps"`
+	Kind    string   `json:"kind,omitempty"`    // client restricts this key to slots and queue
+	Methods []string `json:"methods,omitempty"` // allowed queued methods for a client
+	V       uint16   `json:"V"`
+	Name    string   `json:"name"`     // b64, sealed under the metadata key
+	AddedBy string   `json:"added_by"` // identity id that signed the device cert
+	Revoked bool     `json:"revoked"`  // set only by Revoke; a fresh pairing makes a new device id
+	Caps    Caps     `json:"caps"`
 
 	// Added by link pairing. Old records decode with zero values, and a client
 	// value for Created or LastSeen is ignored: the directory sets both.
