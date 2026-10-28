@@ -147,6 +147,7 @@ func runApp(args []string) error {
 	defer config.UseAppCredentials(config.NewAppCredentials())()
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
+	backend.leaving = leaving
 	backend.useSyncDrives(syncDrives)
 	// A chat's banked pipeline line takes the editor's road while the app
 	// holds the factory (factory_recipe_road.go).
@@ -616,6 +617,8 @@ type appBackend struct {
 	// pipe closing, its shutdown request, a signal or the app's process ending.
 	// runApp bounds the leaving from that moment (appleave.go).
 	left chan struct{}
+	// leaving is runApp's cancellation, installed before the backend starts.
+	leaving context.CancelFunc
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -4247,6 +4250,10 @@ func appMemberAgent(member teamstore.Member) string {
 
 // Close lets every conversation go and stops the watchers.
 func (b *appBackend) Close() error {
+	// EOF must arm the process bound before any backend lock or crew wait.
+	if b.leaving != nil {
+		b.leaving()
+	}
 	already := false
 	var crews *appCrewRun
 	var agents []*appAgent
@@ -4343,11 +4350,20 @@ func (b *appBackend) Close() error {
 		})
 	}
 	wg.Wait()
-	b.closeReferences(agents)
+	// An unfinished crew open owns its gate but has no held conversation to
+	// release. Optional file cleanup must not join that open; retain its files.
+	var settled []*appAgent
+	for _, a := range agents {
+		if a.gate.TryLock() {
+			a.gate.Unlock()
+			settled = append(settled, a)
+		}
+	}
+	b.closeReferences(settled)
 	// A BLANK CONVERSATION LIVES NO LONGER THAN THE PROCESS THAT MADE IT
 	// (appblank.go): with everything let go, each one this process made that
 	// nobody said anything in is taken away.
-	for _, a := range agents {
+	for _, a := range settled {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
