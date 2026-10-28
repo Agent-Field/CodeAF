@@ -23,11 +23,13 @@ type guardRig struct {
 	cell   cell.Cell
 	guard  Guard
 	notice []string
+	// told is every notice whole, files and all; notice is their words.
+	told []Notice
 }
 
 func newRig(t *testing.T) *guardRig {
 	r := &guardRig{t: t, tree: t.TempDir(), cell: newCell(t)}
-	r.guard = Guard{Home: t.TempDir(), Notify: func(s string) { r.notice = append(r.notice, s) }}
+	r.guard = Guard{Home: t.TempDir(), Notify: func(n Notice) { r.notice = append(r.notice, n.Text); r.told = append(r.told, n) }}
 	return r
 }
 
@@ -257,7 +259,7 @@ func BenchmarkScreen10k(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	g := Guard{Home: b.TempDir(), Notify: func(string) {}, Ledger: keys.NewLedger()}
+	g := Guard{Home: b.TempDir(), Notify: func(Notice) {}, Ledger: keys.NewLedger()}
 	for name, changed := range map[string][]string{"walk": nil, "changed": {"src/d005/f005.txt"}} {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
@@ -421,21 +423,24 @@ func TestC9CertificateBundleIsSealedWhilePrivateKeysAreWithheld(t *testing.T) {
 }
 
 // C9 and C15 require an unpaired computer's notice to distinguish imported
-// dotenv variables from files that have never been saved to a shared vault.
+// dotenv variables from files that have never been saved to a shared vault. The
+// two files of one screen are one notice, and its lead keeps both meanings.
 func TestSecretNoticesDescribeOnlyWhatAnUnpairedComputerKeeps(t *testing.T) {
 	r := newRig(t)
 	r.write(".env", "LOCAL_KEY="+fakeKey+"\n")
 	r.write("config.py", "key = '"+fakeKey+"'\n")
 	r.screen()
-	if len(r.notice) != 2 {
-		t.Fatalf("notices: %q", r.notice)
+	if len(r.told) != 1 {
+		t.Fatalf("one screen, one notice: %q", r.notice)
 	}
-	for _, notice := range r.notice {
-		if !strings.Contains(notice, "kept out of the saved history") || !strings.Contains(notice, "only to paired computers") || strings.Contains(notice, "kept in your key vault") {
-			t.Fatalf("untrue notice: %s", notice)
-		}
-		if strings.HasPrefix(notice, ".env ") && !strings.Contains(notice, "variables are kept locally for your tools") {
-			t.Fatalf("missing local variables: %s", notice)
-		}
+	notice := r.told[0]
+	if !strings.Contains(notice.Lead, "kept out of the saved history") || !strings.Contains(notice.Lead, "only to paired computers") || strings.Contains(notice.Text, "kept in your key vault") {
+		t.Fatalf("untrue notice: %s", notice.Text)
+	}
+	if !strings.Contains(notice.Lead, "variables of the environment file among them are kept locally for your tools") {
+		t.Fatalf("missing local variables: %s", notice.Lead)
+	}
+	if len(notice.Files) != 2 || !strings.Contains(notice.Text, "· .env ("+keys.RuleDotenv+")") || !strings.Contains(notice.Text, "· config.py (") {
+		t.Fatalf("the notice does not name both files: %+v", notice)
 	}
 }

@@ -60,10 +60,11 @@ func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 // rather than leaving a cold attachment for the second command (E2).
 func WithWarmCapture() SeatOption { return func(e *Engine) { e.warm = true } }
 
-// WithNotices sends the guard's one-line notices (a file kept out of the saved
-// history, and why) to say instead of to stderr, which a full-screen surface
-// cannot show. A door with a surface passes where its sentences go.
-func WithNotices(say func(string)) SeatOption {
+// WithNotices sends the guard's notices (the files a screen kept out of the
+// saved history, and why, one notice per screen) to say instead of to stderr,
+// which a full-screen surface cannot show. A door with a surface passes where its
+// notices go.
+func WithNotices(say func(Notice)) SeatOption {
 	return func(e *Engine) { e.Guard.Notify = say }
 }
 

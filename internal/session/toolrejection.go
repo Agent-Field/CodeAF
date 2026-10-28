@@ -40,11 +40,14 @@ func rejectToolArguments(ctx context.Context, text string) string {
 	return bare.RejectArguments(ctx, text)
 }
 
-// The two typed notices the engine produces. Any other EventNotice carries no
-// kind and stays an ordinary line.
+// The typed notices the engine produces. Any other EventNotice carries no kind
+// and stays an ordinary line.
 const (
 	NoticeKindSkills = "skills"
 	NoticeKindMemory = "memory"
+	// NoticeKindKeptOut is a seal's grouped notice about the files it kept out
+	// of the saved history, with [Event.KeptOut] (sealnotice.go).
+	NoticeKindKeptOut = "kept_out"
 )
 
 // recordToolResult binds metadata to the immutable result occurrence before

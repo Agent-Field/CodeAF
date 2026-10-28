@@ -169,7 +169,7 @@ func TestAbsentFolderStaysKnownUntilItsLockIsGone(t *testing.T) {
 func TestPersonExcludeIsNotRecorded(t *testing.T) {
 	c := newCell(t)
 	tree := t.TempDir()
-	g := Guard{Home: t.TempDir(), Notify: func(string) {}}
+	g := Guard{Home: t.TempDir(), Notify: func(Notice) {}}
 	for rel, body := range map[string]string{".furrowpolicy": "exclude node_modules\n", "package-lock.json": "{}", "node_modules/x/i.js": "1"} {
 		writeTree(t, tree, map[string]string{rel: body}, 0o644)
 	}

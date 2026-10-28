@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
+	keyscan "github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 )
 
@@ -41,6 +42,17 @@ type SealState interface {
 	Failing() bool
 	// Take hands over the next sentence worth saying, and "" when there is none.
 	Take() string
+}
+
+// SealFiles is what a SealState may also do: hand over the next sentence
+// together with, for a notice that names several files, its lead and the files
+// with the rule that kept each out of the saved history. cellstore.SealWatch is
+// the one implementation; a SealState without it is read with Take, and its
+// sentences reach the person as words only.
+type SealFiles interface {
+	// TakeFiled is Take with the facts: lead and files are empty on a sentence
+	// that names one file or none.
+	TakeFiled() (sentence, lead string, files []keyscan.Finding)
 }
 
 // TurnEnder is what a SealState may also do: hear that the agent finished a turn
