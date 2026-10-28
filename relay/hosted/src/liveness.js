@@ -1,8 +1,11 @@
+import { PRESENCE, windowMs } from './limits.js';
+import { presenceOf } from './presence.js';
+
 // Who is online, and the event frames that say so (docs/ux-pairing-contract.md, section 5; contract 21.12). A device
 // is online iff it holds at least one live watch socket: one that has not been flagged lapsed and whose sign of life
-// is inside its window. The only thing kept besides the platform's own socket list is the set of devices whose last
-// socket closed less than OFFLINE_DEBOUNCE_MS ago: they were told to be online and have not yet been told otherwise.
-// That set is in storage, because the alarm that ends it wakes a fresh object.
+// is inside its window. Devices whose last socket closed less than OFFLINE_DEBOUNCE_MS ago are kept in storage,
+// because the alarm that ends their debounce wakes a fresh object. Local observation evidence distinguishes a real
+// lapse from a computer this new presence memory has not heard from yet.
 
 /** How long a device may be without a socket before its peers are told it is offline (contract 5). */
 export const OFFLINE_DEBOUNCE_MS = 15_000;
@@ -37,6 +40,8 @@ export class Liveness {
     this.arm = arm;
     this.clock = clock;
     this.seen = seen;
+    this.started = clock();
+    this.observed = new Set();
   }
 
   #livePeers() {
@@ -52,6 +57,7 @@ export class Liveness {
   }
 
   #announce(device, online) {
+    this.observed.add(device);
     this.tell({ t: 'presence', device, online }, device);
   }
 
@@ -143,9 +149,24 @@ export class Liveness {
     return new Set(this.#livePeers().map((p) => p.device));
   }
 
+  /** present includes computers inside the reconnect debounce, matching watch events. */
+  present() {
+    return new Set([...this.online(), ...this.pending.keys()]);
+  }
+
+  /** A fresh relay cannot call an unobserved computer offline until a presence window passes. */
+  presence(devices, now) {
+    const online = this.present(), unknown = new Set();
+    if (this.clock() - this.started < windowMs(PRESENCE.defaultBeat)) {
+      const observed = new Set([...this.observed, ...this.peers().map((p) => p.device)]);
+      for (const id of Object.keys(devices)) if (!online.has(id) && !observed.has(id)) unknown.add(id);
+    }
+    return presenceOf(devices, online, now, unknown);
+  }
+
   /** snapshot is the presence frames a new event socket of `device` hears on connect: the others that peers believe online. */
   snapshot(device) {
-    const believed = new Set([...this.online(), ...this.pending.keys()]);
+    const believed = this.present();
     believed.delete(device);
     const at = this.clock();
     return [...believed].map((d) => eventFrame('presence', { device: d, online: true, at }));

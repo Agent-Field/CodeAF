@@ -19,7 +19,7 @@ func (d *Drive) followOwnership(ctx context.Context) {
 			_ = d.CheckLease(read)
 			cancel()
 		}
-		if _, viewer := d.Viewer(); viewer || state.Refused != nil {
+		if state.Refused != nil {
 			return
 		}
 		select {

@@ -119,6 +119,14 @@ var platformWords = map[string]string{
 	"ios": "iPhone or iPad", "android": "Android",
 }
 
+// ComputerLabel retains the name and adds a familiar platform when known.
+func ComputerLabel(name, platform string) string {
+	if word, ok := platformWords[platform]; ok {
+		return fmt.Sprintf("%s (%s)", name, word)
+	}
+	return name
+}
+
 // WantsToJoinLine tells the approving person which device is asking. A system
 // that has no familiar name is left out rather than shown as a raw word.
 func WantsToJoinLine(name, platform string) string {
@@ -163,14 +171,14 @@ func RenamedAloneLine(name string) string {
 // RenamedLine is what a computer in a fleet says after it was named and the
 // sync service has the new name, so every other device shows it.
 func RenamedLine(name string) string {
-	return fmt.Sprintf("This computer is now called %s on all your devices.", name)
+	return RenamedAloneLine(name)
 }
 
 // RenamedHereLine is what it says when the new name is kept here but the sync
 // service could not be reached: the next time this computer connects it tells
 // the others, so nothing needs to be typed again.
 func RenamedHereLine(name string) string {
-	return fmt.Sprintf("This computer is now called %s. Your other devices will show it after this one next connects.", name)
+	return fmt.Sprintf("This computer is now called %s. Your other computers will see it once this computer is back online.", name)
 }
 
 // NamePrompt is the question a person is asked while a computer joins: the name

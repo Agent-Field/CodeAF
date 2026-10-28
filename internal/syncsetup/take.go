@@ -167,6 +167,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
+	if seen != nil && !seen.Matches(view.Cell) {
+		return Continued{}, directory.ErrLeaseHeld
+	}
 	// Kept turns may name this device before their separate copy exists here.
 	known, err := cellstore.KnowsHead(cell.Cell{ID: id, Root: root}, view.Cell.Head)
 	if err != nil {
@@ -186,9 +189,6 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{AlreadyHere: true, Device: c.opt.DeviceName, Taken: handoff.Taken{
 			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
 		}}, nil
-	}
-	if seen != nil && (lease.Device != seen.Device || lease.Fence != seen.Fence) {
-		return Continued{}, directory.ErrLeaseHeld
 	}
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}

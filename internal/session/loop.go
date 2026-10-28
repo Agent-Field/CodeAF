@@ -337,6 +337,18 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	if user.bash == "" {
+		resolved, ready := a.prepareModel(hub)
+		if !ready {
+			return false
+		}
+		if resolved && !user.empty() && !user.resumed {
+			a.mu.Lock()
+			a.startTitleLocked()
+			a.startIntentNameLocked(user)
+			a.mu.Unlock()
+		}
+	}
 	// A newly admitted stage turn may do more work after an earlier report.
 	// Withdraw that candidate before this turn can submit a newer one; runTurn
 	// is serialized, so a later valid final report cannot be invalidated here.

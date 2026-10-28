@@ -224,6 +224,7 @@ func quirksAt(t *testing.T, models ...string) string {
 			delete(quirks.noCacheControl, normalizeModel(model))
 			delete(quirks.noReasoningBudget, normalizeModel(model))
 			delete(quirks.noReasoningReplay, normalizeModel(model))
+			delete(quirks.noReasoning, normalizeModel(model))
 		}
 		quirks.path = ""
 	})

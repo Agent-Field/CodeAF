@@ -1228,7 +1228,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
-	if notice != "" || hello.New {
+	if cfg.SessionFile != launch.SessionFile || hello.New {
 		// The session file moved under us, so the welcome has to name the new
 		// one — everything the surface prints about this conversation comes off
 		// that frame. A minted conversation is the same fact said on purpose: it

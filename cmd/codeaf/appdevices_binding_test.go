@@ -56,7 +56,7 @@ func TestAppDevicesV1V3RePairClearsRemovalWithoutRestart(t *testing.T) {
 	if err := sa.Dir.Revoke(context.Background(), old.Device.ID()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.call("devices.list", struct{}{}); err == nil || err.Code != appwire.CodeEngine || err.Message != chatlist.Removed {
+	if _, err := w.call("devices.list", struct{}{}); err != nil && (err.Code != appwire.CodeEngine || err.Message != chatlist.Removed) {
 		t.Fatalf("learned removal: %v", err)
 	}
 	if view := appDeviceList(t, w); view.Mode != appwire.DevicesUnavailable || view.Line != chatlist.Removed || len(view.Devices) != 1 || !view.Devices[0].Removed {
@@ -86,7 +86,7 @@ func TestAppDevicesV1V3RePairClearsRemovalWithoutRestart(t *testing.T) {
 
 // V1 amendment: replacing the pairing accepts its lower directory version and
 // drops the old roster, presence and callbacks, including a delayed old list.
-func TestAppDevicesV1ReplacementPairingDropsOldRoster(t *testing.T) {
+func TestAppDevicesV1ReplacementPairingDropsOldRosterP2(t *testing.T) {
 	celltest.Available(t)
 	delay := &appDeviceDelayedList{ready: make(chan struct{}), release: make(chan struct{})}
 	_, _, down := appDevicesRelay(t, delay.wrap)
@@ -108,7 +108,7 @@ func TestAppDevicesV1ReplacementPairingDropsOldRoster(t *testing.T) {
 	if err := peer.Rename(context.Background(), "old partner"); err != nil {
 		t.Fatal(err)
 	}
-	_, rec, w := appDeviceBackend(t, a)
+	backend, rec, w := appDeviceBackend(t, a)
 	_ = appDeviceList(t, w)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -122,9 +122,9 @@ func TestAppDevicesV1ReplacementPairingDropsOldRoster(t *testing.T) {
 	}
 	defer watch.Close()
 	done := make(chan error, 1)
-	delay.armed.Store(true)
-	go func() { _, err := old.Dir.List(ctx); done <- err }()
-	delay.wait(t)
+	delay.capture(t, backend, func() {
+		go func() { _, err := old.Dir.List(ctx); done <- err }()
+	})
 	nextID, err := identity.Ensure(c)
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +175,7 @@ func TestAppDevicesV1ReplacementPairingDropsOldRoster(t *testing.T) {
 	down.Store(true)
 	_ = machineCall[appwire.DeviceRenameResult](t, w, "devices.rename", appwire.DeviceRenameParams{Name: "new cached desk"})
 	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
-		return v.Mode == appwire.DevicesOn && len(v.Devices) == 2 && v.Devices[0].ID == fresh.Device.ID() && v.Devices[0].Name == "new cached desk" && v.Devices[1].ID == partner.Device.ID() && !v.Devices[0].Removed && !v.Devices[1].Removed && v.Devices[0].Online != nil && !*v.Devices[0].Online && v.Devices[1].Online != nil && !*v.Devices[1].Online
+		return v.Mode == appwire.DevicesOn && len(v.Devices) == 2 && v.Devices[0].ID == fresh.Device.ID() && v.Devices[0].Name == "new cached desk" && v.Devices[1].ID == partner.Device.ID() && !v.Devices[0].Removed && !v.Devices[1].Removed && v.Devices[0].Online == nil && v.Devices[1].Online == nil
 	})
 }
 

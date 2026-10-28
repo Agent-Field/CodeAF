@@ -35,8 +35,9 @@ type Entry struct {
 // one small record per deleted secret.
 type record struct {
 	Entry
-	Deleted bool  `json:"deleted,omitempty"`
-	Updated int64 `json:"updated,omitempty"`
+	Deleted  bool   `json:"deleted,omitempty"`
+	Updated  int64  `json:"updated,omitempty"`
+	Metadata string `json:"metadata,omitempty"`
 }
 
 // stampOf is the time a slot was last written, falling back to its document's.
@@ -114,6 +115,12 @@ func (v *Vault) Put(id string, e Entry) error { return v.PutAt(id, e, time.Now()
 // time of the edit, so recording an old edit late never beats a newer one that
 // another machine has already sent.
 func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
+	return v.PutMetadataAt(id, e, at, "")
+}
+
+// PutMetadataAt keeps a carrier's optional identity facts beside its value.
+// Older readers still receive the same value and ignore the extra metadata.
+func (v *Vault) PutMetadataAt(id string, e Entry, at time.Time, metadata string) error {
 	return v.update(func(d *vaultDoc) error {
 		stamp := at.UnixMilli()
 		if previous, exists := d.Secrets[id]; exists {
@@ -121,9 +128,30 @@ func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
 		}
 		// A new slot has its own edit clock. Falling back to the document's
 		// clock would make another setting's recent capture age this one.
-		d.Secrets[id] = record{Entry: e, Updated: stamp}
+		d.Secrets[id] = record{Entry: e, Updated: stamp, Metadata: metadata}
 		return nil
 	})
+}
+
+// Annotate supplies missing carrier facts without making the choice newer.
+// The expected value prevents an upgrade from describing a different choice
+// that arrived from another computer while the profile was being read.
+func (v *Vault) Annotate(id string, expected Entry, metadata string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	d, err := v.read()
+	if err != nil {
+		return err
+	}
+	r, ok := d.Secrets[id]
+	if !ok || !r.live() || r.Entry != expected || r.Metadata != "" || metadata == "" {
+		return nil
+	}
+	r.Updated = r.stampOf(d)
+	r.Metadata = metadata
+	d.Secrets[id] = r
+	// Preserve the document clock too: older slots may still inherit it.
+	return v.write(d)
 }
 
 // Get returns the secret under id.
@@ -177,6 +205,28 @@ func (v *Vault) Entries(project string) ([]Entry, error) {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// Revision identifies a slot's choice and the carrier facts saved with it.
+type Revision struct {
+	Stamp    int64
+	Metadata string
+}
+
+// Revisions returns the revisions of a scope's live slots in one vault read.
+// Receivers can remember a rejected revision without changing the shared slot.
+func (v *Vault) Revisions(scope string) (map[string]Revision, error) {
+	d, err := v.read()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]Revision{}
+	for _, r := range d.Secrets {
+		if r.live() && r.Scope == scope {
+			out[r.Name] = Revision{Stamp: r.stampOf(d), Metadata: r.Metadata}
+		}
+	}
 	return out, nil
 }
 

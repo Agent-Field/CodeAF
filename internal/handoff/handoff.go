@@ -110,7 +110,7 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if err != nil {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
 	}
-	if seen != nil && (view.Cell.Lease.Device != seen.Device || view.Cell.Lease.Fence != seen.Fence) {
+	if seen != nil && !seen.Matches(view.Cell) {
 		return Taken{}, directory.ErrLeaseHeld
 	}
 	c := cell.Cell{ID: id, Root: t.RootFor(id)}
@@ -118,7 +118,11 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if err != nil {
 		return Taken{}, err
 	}
-	head, fence, plan, err := t.claim(ctx, c, view.Cell.Head, displacing(view))
+	how := displacing(view)
+	if seen != nil && seen.Head != "" {
+		how.Expect.Head = seen.Head
+	}
+	head, fence, plan, err := t.claim(ctx, c, view.Cell.Head, how)
 	if err != nil {
 		return Taken{}, err
 	}

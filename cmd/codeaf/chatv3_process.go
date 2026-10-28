@@ -873,7 +873,7 @@ func (s *v3Seam) open(launch *v3Launch, cfg session.Config, resumed bool) (tui3.
 		return tui3.Conversation{}, err
 	}
 	s.proc.track(agent)
-	if notice != "" {
+	if cfg.SessionFile != launch.SessionFile {
 		// The session file moved under us, so this is a new conversation rather
 		// than the one that was asked for, and the sentence says so.
 		resumed = false

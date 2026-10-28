@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -30,6 +31,8 @@ type liveDrive struct {
 	ready     chan struct{}
 	attempted bool
 	closed    bool
+	retry     *time.Timer
+	retryWait time.Duration
 	// changes coalesces local health updates for the host's cached surface state.
 	changes chan struct{}
 }
@@ -80,9 +83,34 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet), true
 	if d != nil {
 		d.CatchUp()
+		l.retryWait = 0
+	} else if !l.closed && cellsync.Unreachable(err) {
+		l.retryStartup()
 	}
 	l.renewalChanged()
 	return l.closed
+}
+
+// retryStartup owns the next attempt after a transport failure. It runs under
+// mu; gates and seals remain local until the single startup attempt succeeds.
+func (l *liveDrive) retryStartup() {
+	if l.retryWait == 0 {
+		l.retryWait = cellsync.DefaultInterval
+	} else {
+		l.retryWait = min(2*l.retryWait, cellsync.MaxBackoff)
+	}
+	resetAttempt := func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.retry = nil
+		if !l.closed {
+			l.attempted = false
+		}
+	}
+	l.retry = time.AfterFunc(l.retryWait, func() {
+		resetAttempt()
+		l.try()
+	})
 }
 
 // openDrive is the started drive, or nil when none has started or this writer
@@ -180,6 +208,10 @@ func (l *liveDrive) Close(ctx context.Context) error {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.closed = true
+		if l.retry != nil {
+			l.retry.Stop()
+			l.retry = nil
+		}
 		return l.ready
 	}()
 	if ready != nil {

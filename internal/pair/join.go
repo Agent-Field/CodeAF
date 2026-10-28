@@ -31,6 +31,8 @@ type Joining struct {
 	Home string
 	// Label is what this device calls itself on the other device's screen.
 	Label string
+	// Platform disambiguates computers with the same name during approval.
+	Platform string
 	// Replace lets a computer that already has different chats give them up.
 	Replace bool
 	// MergeState keeps memory and preferences when a startup-only home joins.
@@ -80,7 +82,7 @@ func joinRun(ctx context.Context, route Mailbox, j Joining, code JoinCode, ui Jo
 	link := &boxLink{ctx: ctx, box: route.Box, plate: code.Plate, mine: pairbox.SideB, theirs: pairbox.SideA, key: key,
 		gone:     map[stage]error{awaitAnswer: ErrStopped, awaitVerdict: ErrCodeDidNotWork},
 		sendGone: NothingWaitingUnder(code.Plate)}
-	offer, err := joinOffer(j.Label)
+	offer, err := joinOffer(j.Label, j.Platform)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -108,12 +110,16 @@ func phraseJoin(err error, route Mailbox) error {
 
 // joinOffer is what this device sends in message 3: its name, then random bytes
 // that make the message differ from any other session's.
-func joinOffer(label string) ([]byte, error) {
+func joinOffer(label string, platform ...string) ([]byte, error) {
 	nonce := make([]byte, nonceSize)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	return append([]byte(readableLabel(label)), nonce...), nil
+	name := readableLabel(label)
+	if len(platform) != 0 && platform[0] != "" {
+		name = ComputerLabel(name, platform[0])
+	}
+	return append([]byte(name), nonce...), nil
 }
 
 // adopt takes the grant into this home, or says why not. A computer that

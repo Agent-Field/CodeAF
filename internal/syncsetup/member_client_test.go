@@ -438,6 +438,10 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 	a := r.home(nil)
 	id := a.Identity
 	b := r.home(&id)
+	// M1 requires usable provider credentials before a model preference can arrive.
+	for _, s := range []*Sync{a, b} {
+		mustNil(t, config.WriteAPIKey(s.Home, fakeKeyOne))
+	}
 	readyMember(t, a)
 	readyMember(t, b)
 	mustNil(t, a.SyncState(t.Context()))

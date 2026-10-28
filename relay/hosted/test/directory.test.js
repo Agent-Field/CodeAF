@@ -25,6 +25,23 @@ test('create makes a held cell, and a second create is refused', () => {
   assert.equal(code(() => dir.create('c1', init(), 'dev_b')), 'exists');
 });
 
+test('R2 saved_at follows the sealed head independently of publication and release', () => {
+  const { dir, clock } = open();
+  dir.create('c1', { ...init(), saved_at: 700_000 }, 'dev_a');
+  assert.equal(dir.cell('c1').cell.saved_at, 700_000);
+  clock.now += 10_000;
+  const p = { fence: 1, old_head: 'h0', head: 'h1', size: 1, class: 'work', pending: 0, saved_at: 800_000 };
+  dir.publish('c1', 'dev_a', p);
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  assert.equal(dir.cell('c1').cell.durable_at, 1_010_000);
+  dir.release('c1', 'dev_a', 1);
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', saved_at: undefined });
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', head: 'h2', saved_at: undefined });
+  assert.equal(dir.cell('c1').cell.saved_at, undefined);
+});
+
 test('a live lease refuses another device, an expired one does not, force takes a live one', () => {
   const { dir, clock } = open();
   dir.create('c1', init(), 'dev_a');

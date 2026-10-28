@@ -110,7 +110,7 @@ func (b *appBackend) needsLazyOpen(run *appCrewRun, read appCrewRead, row sessio
 func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first bool) map[string]session.SessionRow {
 	if first {
 		for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
-			if !row.DeletionPending {
+			if !row.DeletionPending && !appChatStaging(row.Dir) {
 				b.remember(row)
 			}
 		}

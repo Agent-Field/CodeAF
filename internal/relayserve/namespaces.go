@@ -43,6 +43,9 @@ type namespaces struct {
 	groups     map[string]*nativeNamespace
 	mu         sync.Mutex
 	dirs       map[string]*directory.SQLite
+	logf       func(string, ...any)
+	faultMu    sync.Mutex
+	faults     map[string]time.Time
 }
 
 func newNamespaces(root string, now func() time.Time, grace directory.GraceBounds, watchers int) *namespaces {
@@ -50,6 +53,12 @@ func newNamespaces(root string, now func() time.Time, grace directory.GraceBound
 		grace = directory.DefaultGraceBounds
 	}
 	return &namespaces{root: root, now: now, grace: grace, watchers: watchers, dirs: map[string]*directory.SQLite{}, groups: map[string]*nativeNamespace{}}
+}
+
+func (n *namespaces) group(id string) *nativeNamespace {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.groups[id]
 }
 
 // directory resolves only the irrevocably published consensus owner. Source

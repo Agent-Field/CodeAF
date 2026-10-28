@@ -17,6 +17,13 @@ is diagnostic; regression gates count deterministic work, bytes, allocations,
 request fanout, retained data and cache reuse. Do not gate on wall-clock thresholds.
 Use scripted providers and explicit synchronization rather than real sleeps.
 
+Keyed vault restores read the sealed vault at most twice when no selection
+policy is needed, and at most three times when incoming model choices need
+provider and revision checks. These caps are independent of the number of keys;
+`TestARestoreOpensTheVaultAFixedNumberOfTimes` and
+`TestSelectiveRestoreM1BoundedVaultReads` exercise 16 and 256 keys. A model's
+optional provider metadata is backfilled without advancing its choice clock.
+
 Activity layout lines share immutable task records instead of copying both task
 and conversation payloads into every line. Conversation overlays keep their own
 copy, so live titles do not mutate the held reading. Paint scratch still expires

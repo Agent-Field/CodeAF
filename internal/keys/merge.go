@@ -69,5 +69,8 @@ func supersedes(a record, ad *vaultDoc, b record, bd *vaultDoc) bool {
 		return false
 	}
 	sa, sb := a.stampOf(ad), b.stampOf(bd)
+	if sa == sb && a.live() && b.live() && a.Entry == b.Entry && a.Metadata != "" && b.Metadata == "" {
+		return true
+	}
 	return sa > sb || (sa == sb && a.Deleted && b.live())
 }

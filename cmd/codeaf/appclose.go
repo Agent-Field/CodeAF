@@ -851,6 +851,9 @@ func (b *appBackend) heldTaskViews(a *appAgent) map[string]appwire.Task {
 // Deleted journals keep their directory for deliverables. Only their lifetime
 // marker, not directory existence alone, can establish that work is still owed.
 func appCloseConversationExists(dir string) bool {
+	if appChatStaging(dir) {
+		return false
+	}
 	if _, err := os.Stat(filepath.Join(dir, teams.ConversationDeletedFile)); !os.IsNotExist(err) {
 		return false
 	}

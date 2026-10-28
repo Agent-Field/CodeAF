@@ -346,7 +346,33 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			if err := e.screenCapture(ctx, c); err != nil {
 				return nil, err
 			}
-			return e.do(ctx, c, e.cellDir(c), op)
+			// The daemon retains a directory watcher after materializing a tree.
+			// A take renames that tree next, which Windows refuses while watched.
+			// Join a one-shot process before returning; Follow binds the final root.
+			materializer := e
+			materializer.Transport = materializeTransport(e.transport())
+			return materializer.do(ctx, c, e.cellDir(c), op)
 		},
+	}
+}
+
+// materializeTransport releases daemon watchers before installation while
+// preserving a caller's independent transport, binary and runner.
+func materializeTransport(transport Transport) Transport {
+	switch t := transport.(type) {
+	case Daemon:
+		return Spawn{Binary: t.Binary, Socket: t.Socket}
+	case *Daemon:
+		return materializeTransport(*t)
+	case Fallback:
+		switch t.Primary.(type) {
+		case Daemon, *Daemon:
+			return materializeTransport(t.Secondary)
+		}
+		return Fallback{Primary: materializeTransport(t.Primary), Secondary: materializeTransport(t.Secondary)}
+	case *Fallback:
+		return materializeTransport(*t)
+	default:
+		return transport
 	}
 }

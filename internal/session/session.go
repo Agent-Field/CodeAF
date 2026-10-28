@@ -1482,6 +1482,11 @@ type Config struct {
 	APIKey          string
 	BaseURL         string
 	Sources         modelsource.Set
+	// PrepareModel resolves a continued chat's unavailable model before any
+	// model work. A failure leaves it pending for setup and the next turn;
+	// success applies the replacement through the conversation's model rules
+	// and records the notice once. Ordinary conversations leave it nil.
+	PrepareModel func(model string, sources modelsource.Set) (replacement, notice string, err error)
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category
@@ -2711,6 +2716,9 @@ type Agent struct {
 	conversationModels *ConversationModels
 	modelRequestSlot   string
 	fallbackNoticeOwed bool
+	// continuedModelNoticed suppresses the next main-request announcement when
+	// the receiver already explained this exact change on continuation.
+	continuedModelNoticed string
 
 	modelIdentity   ModelIdentity
 	automaticModels atomic.Int32

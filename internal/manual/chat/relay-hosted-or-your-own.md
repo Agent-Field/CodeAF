@@ -48,6 +48,14 @@ Stop it with SIGTERM or ctrl+c: requests under way finish first. **The relay has
 
 There is no Docker image for the relay. The page `docs/relay.md` in the repository says how to run, back up and upgrade it.
 
+## Why does my native relay answer leadership unavailable or HTTP 503
+
+The relay could not activate its durable group or complete the requested work.
+Its existing log includes the underlying local error, limited to one line per
+cause per minute. Check that log for a storage, permission or consensus error;
+the HTTP response keeps its usual wording. `--quiet` disables these log lines
+along with the other relay logging.
+
 ## Who can use my own relay
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

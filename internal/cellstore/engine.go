@@ -333,7 +333,7 @@ func (e Engine) cellDir(c cell.Cell) string {
 	if e.workspace(c) == "" {
 		return ""
 	}
-	return stateDir(c)
+	return composedPath(stateDir(c))
 }
 
 // cellDirArg names the directory the engine composes in as, and restores, the

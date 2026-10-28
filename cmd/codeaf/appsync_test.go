@@ -764,7 +764,7 @@ func TestC6AppSyncQuietOffAndUnavailableStayLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(syncsetup.URLVar, "off")
-	read(appwire.SyncOff, chatlist.SyncOff)
+	read(appwire.SyncOff, appSyncOff)
 	if d, err := startDriveWith(cell.Cell{}, cellstore.Engine{}, func(error) {}, b.drives.notices); d != nil || err != nil {
 		t.Fatalf("off drive = %v, %v", d, err)
 	}

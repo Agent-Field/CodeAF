@@ -38,7 +38,7 @@ func (s *Sync) PublishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 		return err
 	}
 	info := s.publishInfo(c, title)
-	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, Class: info.Class, Title: info.Title, Size: info.Size, Keys: info.Keys})
+	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Size: info.Size, Keys: info.Keys})
 	if errors.Is(err, directory.ErrExists) {
 		return nil
 	}

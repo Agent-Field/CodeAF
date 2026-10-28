@@ -9,6 +9,8 @@ import (
 // The frozen sentences. Every surface takes its words
 // from here so a respelling happens once.
 const (
+	// Available describes a free lease while work admission acquires a new fence.
+	Available     = "This chat is available to continue here."
 	OfferContinue = "continue here"
 	// MoveHere is the verb for a chat another device is running right now, and
 	// ContinueVerb for one it let go of; the devices row offers them by name.

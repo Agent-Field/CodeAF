@@ -118,6 +118,7 @@ func New(cfg Config) *Service {
 	}
 	links := directory.NewLinks(now, directory.DefaultLinkLimits)
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	svc.ns.logf = cfg.Logf
 	svc.ns.after = cfg.After
 	svc.ns.links = links
 	mux.HandleFunc(clusterstate.ClusterAPIPath, svc.ns.clusterAPI)
