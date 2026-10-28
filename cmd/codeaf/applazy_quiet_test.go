@@ -143,17 +143,44 @@ func TestAppLazyHeldMembersStayHotWithBoundedColdWork(t *testing.T) {
 	}
 }
 
-// B2: refresh last-live on every tick; closing stays hot through ten minutes
-// after the latest observation, then returns to the bounded cold sweep.
+// R2.1: opening and closing between passes still admits external work on the
+// next two-second pass, without waiting for the chat's cold sweep visit.
+func TestAppLazyOpenedAndClosedBetweenPassesStaysHot(t *testing.T) {
+	b, run, read, now, counts, _ := quietLazyRun(t, 100)
+	b.neededMembers(run, read, true)
+	const id = "0000000000000064"
+	*now = now.Add(500 * time.Millisecond)
+	if _, err := b.OpenAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(500 * time.Millisecond)
+	if err := b.CloseAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(quietLazyPath(b, id)), "tasks.json"), []byte(`{"type":"tasks","version":1,"seq":1,"nodes":[{"id":1,"title":"recover","brief":"continue","kind":"quick","state":"queued"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	clear(counts)
+	*now = now.Add(time.Second)
+	got := b.neededMembers(run, read, false)
+	if _, ok := got[id]; !ok || len(got) != 1 {
+		t.Fatalf("next two-second pass admitted %v, want only %s", got, id)
+	}
+}
+
+// R2.2/B2: closing stays hot through ten minutes after release, even without
+// a pass observing it live, then returns to the bounded cold sweep.
 func TestAppLazyRecentlyLiveStaysHotForTenMinutes(t *testing.T) {
 	b, run, read, now, counts, _ := quietLazyRun(t, 100)
 	b.neededMembers(run, read, true)
 	const id = "0000000000000064"
-	b.locked(func() { b.agents[id].live = &appLive{} })
-	b.neededMembers(run, read, false)
+	if _, err := b.OpenAgent(id); err != nil {
+		t.Fatal(err)
+	}
 	*now = now.Add(4 * time.Minute)
-	b.neededMembers(run, read, false)
-	b.locked(func() { b.agents[id].live = nil })
+	if err := b.CloseAgent(id); err != nil {
+		t.Fatal(err)
+	}
 	for range 300 {
 		clear(counts)
 		*now = now.Add(2 * time.Second)

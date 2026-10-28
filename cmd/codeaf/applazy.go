@@ -132,10 +132,8 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 			b.rememberLazyMember(appMemberAgent(member))
 		}
 	}
-	startup := first || run.lastLive == nil
-	if run.lastLive == nil {
-		run.lastLive = map[string]time.Time{}
-	}
+	startup := first || !run.lazyStarted
+	run.lazyStarted = true
 	now := b.now()
 	hot := map[string]bool{}
 	stageLends.mu.Lock()
@@ -171,17 +169,12 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 	b.locked(func() {
 		for id, a := range b.agents {
 			if a.live != nil {
-				run.lastLive[id] = now
 				if len(run.held[id]) > 0 {
 					a.crewHeld = true
 				}
 			}
-			if seen, ok := run.lastLive[id]; ok {
-				if now.After(seen.Add(appLazyHotWindow)) {
-					delete(run.lastLive, id)
-				} else {
-					hot[id] = true
-				}
+			if !a.lastLive.IsZero() && !now.After(a.lastLive.Add(appLazyHotWindow)) {
+				hot[id] = true
 			}
 			if a.live != nil || a.transcript == "" || recovering[id] {
 				continue

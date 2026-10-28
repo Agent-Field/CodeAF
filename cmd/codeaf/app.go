@@ -629,6 +629,8 @@ type appAgent struct {
 	view       appwire.Agent
 	transcript string
 	live       *appLive
+	// lastLive keeps brief opens hot even when no lazy pass saw them live.
+	lastLive time.Time
 	// failed is the words of the last turn that ended in failure, which is
 	// what agents.retry sends again; a turn that ends well clears it.
 	failed string
@@ -1667,6 +1669,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.view.UpdatedAt = b.now()
 		}
 		a.live = live
+		a.lastLive = b.now()
 		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
@@ -2015,6 +2018,7 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 			return
 		}
 		a.live = nil
+		a.lastLive = b.now()
 		a.view.State = appwire.StateStopped
 		view = a.view
 		asks = live.asks
@@ -2963,7 +2967,12 @@ func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
 // hold a.gate.
 func (b *appBackend) release(a *appAgent) {
 	var live *appLive
-	b.locked(func() { live, a.live = a.live, nil })
+	b.locked(func() {
+		live, a.live = a.live, nil
+		if live != nil {
+			a.lastLive = b.now()
+		}
+	})
 	if live == nil {
 		return
 	}
