@@ -10,6 +10,9 @@ invalidates:
   - "Desktop inventory previously inferred offline from an expired chat hold; offline wording now requires an explicit offline presence fact."
   - "Desktop saved times previously came from relay publication; new publications carry the sealed head's turn time, and takeover text leaves dates and ages to the desktop."
   - "Desktop inventory reads previously emitted chat changes; list calls now stay silent and the follower compares actual last-emitted content."
+  - "Synced model choices previously applied without a usable local provider; skipped choices now stay skipped until a newer choice arrives."
+  - "Opening an existing local hold previously acquired another fence; startup and idle ownership checks now renew an unchanged hold."
+  - "Presence refreshes previously ignored the reconnect grace period and could emit older last-seen times; queries now agree with watch events."
 ---
 The additive app wire reports the resolved Relay address and source, retains the
 last pairing operation, and sends device and sync changes after pairing. Joining
@@ -44,3 +47,17 @@ presence and unknown saved-turn times are omitted. A closed chat makes no claim
 that its computer is offline; unchanged chat rows stay quiet across inventory reads.
 Turn-time metadata is sent only when the relay advertises support, preserving
 publication on older relays. Historical records are not backfilled at startup.
+
+Incoming model slots use the engine's resolved provider credentials and local
+connections. An unavailable provider leaves the local choice and its edit clock
+alone; the skipped revision is remembered locally, preventing sync flaps and
+retroactive adoption after provider setup. Effort and limits still travel.
+
+An idle holder renews its existing fence through watch reconnects and resumes.
+Continue here accepts a newer fence from the same holder only when the saved head
+is unchanged; different holders and newer heads remain conflicts. Older relays
+retain their exact-fence wire. Startup device events wait for the complete roster,
+all device emitters compare their last value, and last-seen times never regress.
+Presence queries honor the watch's reconnect grace period. Reconnecting without
+changing a chat row emits no chat change. A completed turn after takeover is
+published promptly while its holder stays open.

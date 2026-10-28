@@ -760,10 +760,16 @@ and rows omit the unknown time. Existing records are not backfilled by startup.
 
 `local_agent` is the app's saved/open folder id, resolved independently from
 `cell`. Remote-only chats have no local agent. Cell locations include the
-observed computer and fence in opaque `seen`, plus `can_take` and the engine's
+observed computer, fence and optional saved `head` in opaque `seen`, plus `can_take` and the engine's
 `takeover_line` when known. Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
 remote cell id. It returns the adopted local Agent through the normal open path.
 Stale observations answer `conflict`, `detail:{kind:"holder_changed"}` and the
 engine's lost-race sentence; there is no automatic retry. Ownership changes
 also update an idle open agent's location. Unknown online facts are absent.
+A newer fence from the same holder is accepted when `seen.head` still matches;
+a different holder or saved head conflicts. The relay advertises atomic head
+checks with `Codeaf-Head-Takes: 1`; older relays retain exact-fence requests.
+Watch reconnects retain fresh presence, last-seen times never regress, and an
+unchanged row emits no chat event. Device events wait for the complete roster
+and compare the full last-emitted value across every emitter.

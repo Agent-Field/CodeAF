@@ -119,6 +119,12 @@ refresh the row and choose again. There is no automatic retry. Unsent drafts
 and attachments remain yours. Changes arrive as engine events without desktop
 polling. An older chat that works in the home folder stays on that computer.
 
+Continue here still works after a reconnect when the same computer holds the
+same saved turn. A different holder or a newer saved turn needs a fresh choice.
+Completed turns are shared while the chat stays open, including after a move.
+
+## If Continue here fails while moving a chat
+
 If moving the chat fails, the app says
 `This chat could not be moved to this computer.` Technical causes are kept in
 the error details. If installation failed after acquisition, the chat is released.
@@ -135,3 +141,6 @@ updates through the engine's settings event. One restore reports the full curren
 settings once, including changes to the default model, effort and spending limits.
 An unchanged restore sends no settings event. Repeated roster notifications also
 send no Devices event when the displayed computer list has not changed.
+A model choice is applied here only when its provider is set up on this computer;
+otherwise this computer keeps its own model. Setting up that provider later does
+not apply an older skipped choice; only a newer choice on the other computer travels.
