@@ -22,3 +22,11 @@ when a response is running, it can redirect the next request in that response.
 It does not promise to leave an in-flight response on its original model.
 The model name itself still opens the full picker. The quick-switch control
 belongs to a chat, not to home, settings, or a task room.
+
+## Desktop model list — models arriving after discovery starts
+
+The desktop's model list waits up to three seconds for discovery already in
+progress, then answers with what is available. A provider's late list can still
+arrive after that first answer. The engine announces completion with
+`models.changed`, so the desktop can read the completed list without changing a
+setting or restarting. Reading the list adds no recurring discovery timer.

@@ -123,6 +123,7 @@ const (
 
 	EventSettingsChanged = "settings.changed"
 	EventProviderChanged = "provider.changed"
+	EventModelsChanged   = "models.changed"
 )
 
 // Error is a refusal the app can read: a code from the closed set above and a

@@ -665,6 +665,9 @@ type appBackend struct {
 	// providerWarm closes when the latest fetch of the providers' model lists
 	// is over ([appBackend.warmProviderModels]); models.list waits a moment for it.
 	providerWarm chan struct{}
+	// stopModelNotices removes the model completion subscription and joins
+	// the initial catalog waiter and cancellable sender when this app closes.
+	stopModelNotices func()
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
@@ -3905,6 +3908,9 @@ func (b *appBackend) process() (*v3Process, error) {
 // opened — the keys a launch hands over, a setup finished on its first screen
 // — would otherwise offer nothing in models.list until the next fetch.
 func (b *appBackend) markAssembled() {
+	if proc := openedEngineProcess(); proc != nil {
+		b.watchModelCompletions(proc)
+	}
 	if !b.assembled.Swap(true) {
 		b.warmProviderModels()
 	}
@@ -4246,6 +4252,7 @@ func (b *appBackend) Close() error {
 	var agents []*appAgent
 	var warmed chan struct{}
 	var balances *appBalances
+	var stopModelNotices func()
 	b.locked(func() {
 		if already = b.closing; already {
 			return
@@ -4262,6 +4269,7 @@ func (b *appBackend) Close() error {
 			b.accountAuth.flow.Cancel()
 		}
 		crews, warmed, balances = b.crewRun, b.warmed, b.balances
+		stopModelNotices = b.stopModelNotices
 		if b.signIn != nil {
 			b.signIn.Cancel()
 			b.signIn = nil
@@ -4282,6 +4290,9 @@ func (b *appBackend) Close() error {
 		b.stopSyncedSettings()
 	}
 	b.closeChats()
+	if stopModelNotices != nil {
+		stopModelNotices()
+	}
 	if b.devices != nil {
 		b.devices.close()
 	}

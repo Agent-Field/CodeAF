@@ -120,12 +120,31 @@ func (s *Server) Emit(event string, data any) {
 	s.send(frame{event: event, data: data})
 }
 
+// EmitContext lets a lifecycle-owned background sender cancel its queue wait.
+// Cancellation drops that event; frames already queued keep their wire order.
+func (s *Server) EmitContext(ctx context.Context, event string, data any) {
+	s.sendContext(ctx, frame{event: event, data: data})
+}
+
 func (s *Server) send(f frame) {
+	s.sendContext(context.Background(), f)
+}
+
+func (s *Server) sendContext(ctx context.Context, f frame) {
+	if ctx.Err() != nil {
+		return
+	}
+	put := func(f frame) {
+		select {
+		case <-ctx.Done():
+		case s.frames <- f:
+		}
+	}
 	s.mu.RLock()
 	if s.greeted || s.closed {
 		defer s.mu.RUnlock()
 		if !s.closed {
-			s.frames <- f
+			put(f)
 		}
 		return
 	}
@@ -135,12 +154,12 @@ func (s *Server) send(f frame) {
 	switch {
 	case s.closed:
 	case s.greeted:
-		s.frames <- f
+		put(f)
 	case f.event == EventHello:
 		s.greeted = true
-		s.frames <- f
+		put(f)
 		for _, held := range s.early {
-			s.frames <- held
+			put(held)
 		}
 		s.early = nil
 	default:
