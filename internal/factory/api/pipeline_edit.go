@@ -1,6 +1,10 @@
 package api
 
-import "github.com/Agent-Field/codeaf/internal/factory/pipeline"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+)
 
 // GET /v1/repos/{owner}/{repo}/pipeline/edit-source answers the repository's
 // pipeline file exactly as the DEFAULT BRANCH holds it at one pinned commit, read
@@ -54,6 +58,71 @@ type PipelineEditSource struct {
 	Pipelines     []PipelineEditKind `json:"pipelines,omitempty"`
 	Steps         []PipelineEditStep `json:"steps,omitempty"`
 	Fixed         []string           `json:"fixed,omitempty"`
+
+	// FactoryCopy is the factory's own copy of the file (factory.PipelineCopy)
+	// when it keeps one: what its jobs run instead of the file above. Main
+	// says how the file above compares; "same" answers only the read that
+	// found main matching and cleared the copy, so the copy is no longer in
+	// effect. CopyVersion is the version of this repository's copy, kept or
+	// not, that a save or a stop names as expect.version. Can says what the
+	// caller may do with it. All three are absent from a factory without a
+	// store, and from one that predates the copy.
+	FactoryCopy *PipelineCopyState `json:"factory_copy,omitempty"`
+	CopyVersion int                `json:"copy_version,omitempty"`
+	Can         *PipelineCan       `json:"can,omitempty"`
+}
+
+// How main's file compares with the factory's copy ([PipelineCopyState.Main]).
+const (
+	PipelineCopyMainMissing = "missing" // the default branch has no file
+	PipelineCopyMainDiffers = "differs" // it has one, and it says something else (or does not read)
+	PipelineCopyMainSame    = "same"    // it says the same: the copy cleared itself on this read
+)
+
+// PipelineCopyState is the factory's copy as a reader sees it: the whole file
+// as the factory wrote it, who saved it and when, and, on the edit-source read
+// that also read main's file, how that file compares. A refused edit-source
+// read ([PipelineEditSourceFailure]) carries who and when only.
+type PipelineCopyState struct {
+	Text string    `json:"text,omitempty"`
+	By   string    `json:"by"`
+	At   time.Time `json:"at"`
+	Main string    `json:"main,omitempty" enum:"missing,differs,same"`
+}
+
+// PipelineCan is what the caller may do with a repository's pipeline on this
+// factory. UseOnFactory is saving the factory's own copy (PUT
+// .../pipeline/factory-copy) and stopping it (DELETE): the factory's operator
+// only, as with the factory's own rules, because it changes what every job on
+// the repository runs. On a solo factory the one person is its operator.
+type PipelineCan struct {
+	UseOnFactory bool `json:"use_on_factory"`
+}
+
+// PUT /v1/repos/{owner}/{repo}/pipeline/factory-copy saves the factory's own
+// copy of the repository's file, and DELETE stops using it. GET answers it.
+// Text is checked exactly as the pull request route checks a file and kept
+// as the factory writes it; Expect is required on both writes: the version the
+// writer read, and a slot that moved since refuses the write (409) and writes
+// nothing.
+type PipelineCopyRequest struct {
+	Text   string              `json:"text,omitempty"`
+	Expect *PipelineCopyExpect `json:"expect"`
+}
+
+// PipelineCopyExpect is the copy's version as the writer read it.
+type PipelineCopyExpect struct {
+	Version int `json:"version"`
+}
+
+// PipelineCopyAnswer is the route's answer: the copy as it stands after the
+// call (absent when there is none), its version and the caller's Can.
+type PipelineCopyAnswer struct {
+	Factory     Factory            `json:"factory"`
+	Repo        string             `json:"repo"`
+	Version     int                `json:"version"`
+	FactoryCopy *PipelineCopyState `json:"factory_copy,omitempty"`
+	Can         PipelineCan        `json:"can"`
 }
 
 // PipelineEditKind is one pipeline, its steps in order. InFile is false for a
@@ -98,13 +167,23 @@ const (
 // PipelineEditSourceFailure is the route's non-2xx body. This route only reads,
 // so it wrote nothing; it says nothing about what anyone else may have written
 // to the repository meanwhile.
+//
+// A FACTORY THAT KEEPS ITS OWN COPY of the repository's file still says so
+// when the read fails, so a reader can still stop using it: FactoryCopy says
+// who saved it and when (no text, and no Main, since main's file was not
+// read), CopyVersion the version a stop names, and Can whether this caller
+// may. All three are absent when the factory keeps no copy, has no store, or
+// predates the copy.
 type PipelineEditSourceFailure struct {
-	Factory      Factory `json:"factory"`
-	Error        string  `json:"error"`
-	Reason       string  `json:"reason,omitempty"`
-	Stage        string  `json:"stage"`
-	GitHubStatus int     `json:"github_status,omitempty"`
-	RequestID    string  `json:"request_id"`
+	Factory      Factory            `json:"factory"`
+	Error        string             `json:"error"`
+	Reason       string             `json:"reason,omitempty"`
+	Stage        string             `json:"stage"`
+	GitHubStatus int                `json:"github_status,omitempty"`
+	RequestID    string             `json:"request_id"`
+	FactoryCopy  *PipelineCopyState `json:"factory_copy,omitempty"`
+	CopyVersion  int                `json:"copy_version,omitempty"`
+	Can          *PipelineCan       `json:"can,omitempty"`
 }
 
 // SetParsed fills the fields that are the parse of Text from what the pipeline

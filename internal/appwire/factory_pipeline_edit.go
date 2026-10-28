@@ -197,6 +197,31 @@ type FactoryPipelineSource struct {
 	Labels  *[]string `json:"labels,omitempty"`
 	MaxSize *string   `json:"max_size,omitempty"`
 	MaxCost *float64  `json:"max_cost,omitempty"`
+
+	// Behind feature factory.pipeline_copy (factory_pipeline_copy.go):
+	//
+	// THE SOURCE IS WHAT THIS FACTORY RUNS. When the factory keeps its own
+	// copy of the file, FactoryCopy says who saved it, when, and how main's
+	// file compares (missing or differs), and text and everything parsed from
+	// it are THE COPY's, in state file: an edit starts from the steps the
+	// factory's jobs run, and a pull request of them still pins base_sha,
+	// main's commit. Main "same" says main's file now says the same and the
+	// copy cleared itself on this read: the source is main's file again.
+	// Absent, the factory keeps no copy and the source is main's file.
+	//
+	// CopyVersion is the copy's version (kept or not), from 1, that
+	// factory.pipeline_copy_set and _clear name as expect.version. Can says
+	// whether this caller may save or stop the copy; an app offers the action
+	// only when it says so. Both are absent without the feature, and from a
+	// factory that keeps no store.
+	//
+	// A REFUSED READ STILL SAYS THE COPY: when the file cannot be shown (the
+	// factory's read failed, or the copy spells words the factory did not
+	// vouch for), the error's detail is a [FactoryPipelineSourceRefusal]
+	// whenever the factory keeps a copy, so the app can still offer Stop.
+	FactoryCopy *FactoryPipelineCopy `json:"factory_copy,omitempty"`
+	CopyVersion int                  `json:"copy_version,omitempty"`
+	Can         *FactoryPipelineCan  `json:"can,omitempty"`
 }
 
 // FactoryPipelineEdit is one structured edit. set_step names a step and at

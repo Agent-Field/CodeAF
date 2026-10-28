@@ -155,7 +155,16 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	// THE EDIT DOOR knows by itself which bounds apply: an item none of whose
 	// stages has started is shaped before its run, and one with a stage begun
 	// is edited in its run, the tail only.
+	//
+	// WITH A RUNNER THAT EDITS STEPS ITSELF ([StepEditDoor], the lease's
+	// doors) the edit goes through it, as a person's edit on the factory
+	// does: a step removed leaves the run's phases not yet begun and a step
+	// moved runs in its new place, whether the job is queued or running, and
+	// a worker running it from its own copy is withdrawn.
 	seam.Edit = func(_ context.Context, id int, e RunEdit) (Item, []string, error) {
+		if door, ok := o.runner.(StepEditDoor); ok {
+			return door.EditSteps(id, e, o.itemRecipe(st, id))
+		}
 		var out Item
 		var lines []string
 		err := st.Update(id, func(it *Item) error {
@@ -163,7 +172,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if len(startedStages(*it)) > 0 {
 				mode = EditInRun
 			}
-			next, l, err := Edit(*it, e, o.recipe(it.Repo), mode)
+			next, l, err := Edit(*it, e, o.jobRecipe(*it), mode)
 			if err != nil {
 				return err
 			}
@@ -262,6 +271,14 @@ func WithRepositoryRecipeLoader(load func(repo, dir string) (Recipe, []Problem, 
 	return func(o *localOptions) { o.loadRepoRecipe = load }
 }
 
+// WithJobRecipeLoader reads the recipe one job is bounded by: the file it was
+// decided on (the factory's copy it carries, [Item.PipelineCopy], else main's
+// file), else, before that, its repository's (pipeline.JobFile). Without it a job is bounded by its
+// repository's read alone.
+func WithJobRecipeLoader(load func(it Item, dir string) (Recipe, []Problem, error)) LocalOption {
+	return func(o *localOptions) { o.loadJobRecipe = load }
+}
+
 func (o localOptions) defaultRecipe() Recipe {
 	if o.loadRecipe != nil {
 		r, _, _ := o.loadRecipe("")
@@ -279,6 +296,7 @@ func (o localOptions) load(dir string) (Recipe, []Problem, error) {
 
 type localOptions struct {
 	loadRepoRecipe func(string, string) (Recipe, []Problem, error)
+	loadJobRecipe  func(Item, string) (Recipe, []Problem, error)
 	loadRecipe     func(string) (Recipe, []Problem, error)
 	files          RecipeFiles
 	runner         RunnerDoors
@@ -492,13 +510,28 @@ func (o localOptions) recipe(repo string) Recipe {
 	return r
 }
 
-// itemRecipe is the recipe of the repository item id is on, read before the
-// store's update so no git read happens inside it; the default recipe when
-// the item or its folder is not known.
+// itemRecipe is the recipe item id is bounded by ([localOptions.jobRecipe]),
+// read before the store's update so no git read happens inside it; the
+// default recipe when the item or its folder is not known.
 func (o localOptions) itemRecipe(st ItemStore, id int) Recipe {
 	it, err := localItem(st, id)
 	if err != nil {
 		return DefaultRecipe()
+	}
+	return o.jobRecipe(it)
+}
+
+// jobRecipe is the recipe one job is bounded by: the job loader's, which reads
+// the file the job was decided on first, else its repository's
+// ([localOptions.recipe]).
+func (o localOptions) jobRecipe(it Item) Recipe {
+	if o.loadJobRecipe != nil && it.Repo != "" {
+		dir := ""
+		if o.dirs != nil {
+			dir = strings.TrimSpace(o.dirs(it.Repo))
+		}
+		r, _, _ := o.loadJobRecipe(it, dir)
+		return r
 	}
 	return o.recipe(it.Repo)
 }
@@ -841,6 +874,15 @@ type RunnerDoors interface {
 	SignOff(id int, edited bool) (bool, error)
 	SendBack(id int, words string) error
 	Reverify(id int) error
+}
+
+// StepEditDoor is a runner's own edit of a job's steps (internal/factory/lease's
+// Doors.EditSteps): the edit under recipe's bounds, the run's phases not yet
+// begun laid again from the edited steps, and a worker running the job from
+// its own copy withdrawn. The seam's Edit goes through it when its runner has
+// one.
+type StepEditDoor interface {
+	EditSteps(id int, edit RunEdit, recipe Recipe) (Item, []string, error)
 }
 
 // HoldDoor is the pause with its intent said ([Seam.Hold]): on holds, off goes

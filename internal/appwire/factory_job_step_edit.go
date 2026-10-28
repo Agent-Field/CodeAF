@@ -39,12 +39,15 @@ import (
 // can still refuse the write (for example when it has no worker desk).
 //
 // WHAT AN EDIT CAN SAY is deliberately the factory's bounded edit language and
-// no more: reword a step's ask, set its thinking, switch steps on or off, and
-// add a step with only a name, kind, ask, until and effort (and a check its
-// max), optionally after another step. It cannot reorder or remove a step, cannot change a step's kind
-// or its max, when, fanout, proof or model, and cannot name a path. A part the
-// language lacks is `bad_params` (a field this wire does not carry is refused,
-// not ignored).
+// no more: reword a step's ask, set its thinking, switch steps on or off, add a
+// step with only a name, kind, ask, until and effort (and a check its max),
+// optionally after another step, remove a step from this job, and move a step
+// after another (or first). It cannot change a step's kind or its max, when,
+// fanout, proof or model, and cannot name a path. A part the language lacks is
+// `bad_params` (a field this wire does not carry is refused, not ignored).
+// Which steps may be removed or moved (never proof, a fixed step, a step a
+// policy names or one that has begun; an approval only by its person) is the
+// factory's to say, as for every other part.
 //
 // AN EDIT CAN REQUEUE A RUNNING JOB. When the factory applies an edit whose
 // `lines` are not empty while a worker holds the job, the running step goes
@@ -58,6 +61,12 @@ const FeatureFactoryJobStepEdit = "factory.job_step_edit"
 // when this engine carries a check (kind check, with a max) in an added step.
 // The factory still decides: it takes one only from the job's person.
 const FeatureFactoryJobStepEditChecks = "factory.job_step_edit_checks"
+
+// FeatureFactoryJobStepEditStructure is announced beside FeatureFactoryJobStepEdit
+// when this engine carries `remove` and `move`. An app sends neither to an
+// engine that does not announce it: an older engine refuses them as unknown
+// fields, and the factory behind it would too.
+const FeatureFactoryJobStepEditStructure = "factory.job_step_edit_structure"
 
 // FactoryJobStepEditsParams names the job whose steps are read.
 type FactoryJobStepEditsParams struct {
@@ -88,6 +97,13 @@ type FactoryStepAddition struct {
 	After string         `json:"after,omitempty"`
 }
 
+// FactoryStepMove is one step to move. After is required: the step it now goes
+// after, or "" for first. A move with no `after` is refused, never read as first.
+type FactoryStepMove struct {
+	Step  string  `json:"step"`
+	After *string `json:"after"`
+}
+
 // FactoryStepEdit is the whole edit language of one request. Every name is a
 // step of the job as the person read it.
 type FactoryStepEdit struct {
@@ -98,6 +114,9 @@ type FactoryStepEdit struct {
 	Thinking map[string]string `json:"thinking,omitempty"`
 	On       []string          `json:"on,omitempty"`
 	Skip     []string          `json:"skip,omitempty"`
+	// Remove takes steps out of this job; skip leaves them in, off.
+	Remove []string          `json:"remove,omitempty"`
+	Move   []FactoryStepMove `json:"move,omitempty"`
 	// Why is one line, recorded with the edit.
 	Why string `json:"why,omitempty"`
 }
@@ -154,6 +173,7 @@ func withFactoryJobStepEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryJobStepEditor); ok {
 		hello = withFeature(hello, FeatureFactoryJobStepEdit)
 		hello = withFeature(hello, FeatureFactoryJobStepEditChecks)
+		hello = withFeature(hello, FeatureFactoryJobStepEditStructure)
 	}
 	return hello
 }
@@ -281,6 +301,28 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 	if ed.Skip, err = stepRefs("skip", ed.Skip); err != nil {
 		return err
 	}
+	if ed.Remove, err = stepRefs("remove", ed.Remove); err != nil {
+		return err
+	}
+	if len(ed.Move) > factory.StageMost {
+		return Errorf(CodeBadParams, "move names at most %d steps", factory.StageMost)
+	}
+	for i := range ed.Move {
+		mv := &ed.Move[i]
+		if mv.Step, err = stepRef("move", mv.Step); err != nil {
+			return err
+		}
+		if mv.After == nil {
+			return Errorf(CodeBadParams, "a moved step names the step it goes after, or \"\" for first")
+		}
+		after := strings.TrimSpace(*mv.After)
+		if after != "" {
+			if after, err = stepRef("after", after); err != nil {
+				return err
+			}
+		}
+		mv.After = &after
+	}
 	asks := make(map[string]string, len(ed.Ask))
 	for name, ask := range ed.Ask {
 		if name, err = stepRef("ask", name); err != nil {
@@ -318,8 +360,8 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 			return err
 		}
 	}
-	if len(ed.Add) == 0 && len(ed.Ask) == 0 && len(ed.Thinking) == 0 && len(ed.On) == 0 && len(ed.Skip) == 0 {
-		return Errorf(CodeBadParams, "the edit changes nothing: name a step to add, reword, set thinking for, switch on or skip")
+	if len(ed.Add) == 0 && len(ed.Ask) == 0 && len(ed.Thinking) == 0 && len(ed.On) == 0 && len(ed.Skip) == 0 && len(ed.Remove) == 0 && len(ed.Move) == 0 {
+		return Errorf(CodeBadParams, "the edit changes nothing: name a step to add, reword, set thinking for, switch on, skip, remove or move")
 	}
 	return nil
 }

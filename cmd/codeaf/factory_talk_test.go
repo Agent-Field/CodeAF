@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -251,5 +252,71 @@ func TestFactoryTalkMarker(t *testing.T) {
 	}
 	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of #3 in web.\n") || !strings.Contains(brief, "\n\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
 		t.Errorf("brief = %q", brief)
+	}
+}
+
+// A STEP THE CARD REMOVES LEAVES THE RUN, AND A STEP IT MOVES RUNS IN ITS NEW
+// PLACE, whether the job is queued (its phases were laid when it was queued)
+// or running: the card goes through the door a person's step edit takes, which
+// lays the run's phases not yet begun again from the steps. The phases that
+// began keep their place and state.
+func TestFactoryItemDoorLaysARemovedOrMovedStepOutOfTheRun(t *testing.T) {
+	st, web, _ := talkLab(t)
+	door := itemDoor(st, web).(storeItemDoor)
+	ctx := context.Background()
+	phases := func(it factory.Item) string {
+		var out []string
+		for _, ph := range it.Stream.Phases {
+			out = append(out, ph.Name+":"+string(ph.State))
+		}
+		return strings.Join(out, " ")
+	}
+	for name, c := range map[string]struct {
+		begun   int
+		removed string
+		moved   string
+	}{
+		"queued":  {0, "plan:pending approve:pending write:pending test:pending proof:pending", "plan:pending approve:pending test:pending write:pending proof:pending"},
+		"running": {2, "plan:done approve:done write:pending test:pending proof:pending", "plan:done approve:done test:pending write:pending proof:pending"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			id, err := st.Add(ctx, factory.Item{Repo: "web", Title: "fix the ledger double count", Kind: factory.KindIssue,
+				Cap: 5, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Update(id, func(it *factory.Item) error {
+				if err := factoryrun.QueueItem(it, time.Now()); err != nil {
+					return err
+				}
+				for i := range c.begun {
+					it.Stream.Phases[i].State = factory.PhaseDone
+				}
+				if c.begun > 0 {
+					it.State = factory.StateRunning
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Remove: []string{"review"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p := phases(got); p != c.removed {
+				t.Fatalf("after the removal the run is %s, want %s", p, c.removed)
+			}
+			got, err = door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Move: []factory.Moved{{Stage: "test", After: "approve"}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p := phases(got); p != c.moved {
+				t.Fatalf("after the move the run is %s, want %s", p, c.moved)
+			}
+			// A change that leaves the steps alone leaves the run alone.
+			if got, err = door.Apply(ctx, id, session.ItemChange{Cap: 9}); err != nil || phases(got) != c.moved || got.Cap != 9 {
+				t.Fatalf("a budget change = %s %v (%v)", phases(got), got.Cap, err)
+			}
+		})
 	}
 }

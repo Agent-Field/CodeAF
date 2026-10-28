@@ -20,6 +20,11 @@ import (
 type Options struct {
 	Refresh func(context.Context) error
 	Load    func(string) (pipeline.File, error)
+	// LoadJob reads ONE JOB'S OWN FILE (pipeline.JobFile): the one it was
+	// decided on ([factory.Item.DecidePipeline]), else its repository's as
+	// Load reads it. Nil reads Load. Intake decides a job's file when it
+	// stamps the job's steps first.
+	LoadJob func(factory.Item) (pipeline.File, error)
 	Launch  func(int) error
 	Record  *record.Record
 	// Owner is the factory owner's forge handle (its operator), "" when it
@@ -42,7 +47,7 @@ func (in *Intake) AskFirst(it factory.Item) []string {
 	if in.opts.Load == nil {
 		return nil
 	}
-	f, err := in.opts.Load(it.Repo)
+	f, err := in.load(it)
 	if err != nil {
 		return nil
 	}
@@ -91,8 +96,17 @@ func (in *Intake) Once(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// load is the file job it is decided under: its own ([Options.LoadJob]),
+// else its repository's.
+func (in *Intake) load(it factory.Item) (pipeline.File, error) {
+	if in.opts.LoadJob != nil {
+		return in.opts.LoadJob(it)
+	}
+	return in.opts.Load(it.Repo)
+}
+
 func (in *Intake) decide(ctx context.Context, it factory.Item) error {
-	f, err := in.opts.Load(it.Repo)
+	f, err := in.load(it)
 	if err != nil {
 		return err
 	}
@@ -122,6 +136,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
+			cur.DecidePipeline(f.Copy, time.Now())
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
@@ -139,6 +154,9 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
+			// THE JOB'S FILE IS DECIDED WITH ITS STEPS: the launch just below
+			// reads this one, not a copy saved in between.
+			cur.DecidePipeline(f.Copy, time.Now())
 			own(cur)
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget

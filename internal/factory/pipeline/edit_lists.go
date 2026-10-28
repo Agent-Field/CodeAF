@@ -13,8 +13,9 @@ import (
 // ── REPLACING THE FILE'S OWN RULES, ASK-FIRST AND NEVER LINES ───────────────
 //
 // set_list replaces one of the file's three lists of lines whole: rules (what
-// every step is told), start.ask_first (what a plan waits for a person over)
-// and start.never (what never starts on its own). The edit is the list as it
+// every step is told), start.ask_first (protected paths, as `touch <path>`,
+// and sentences a person is asked about) and start.never (kept for files that
+// still write it: each line is a protected path, exactly as `touch <path>`). The edit is the list as it
 // should read, every line, so an editor never has to say which line moved or
 // went: what it shows is what is sent, and what is sent is what is committed.
 //

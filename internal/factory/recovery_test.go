@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -30,8 +31,22 @@ func TestRecoveryClassifiesOnlyTransientFailures(t *testing.T) {
 
 func TestRecoveryWindowExcludesTimeSpentRunningAnAttempt(t *testing.T) {
 	now := time.Now()
-	it := Item{Kind: KindIssue, State: StateNeedsYou, Autonomy: AutonomyAuto, Cap: 10, Stream: &Stream{}, Failure: &Failure{Step: "test", Code: CodeMachineLost, Next: FailureStopped, At: now}, Recovery: &StepRecovery{Step: "test", State: "running", Attempts: 1, Limit: 3, RunningAt: now.Add(-10 * time.Minute), Deadline: now.Add(-9 * time.Minute)}}
+	it := Item{Kind: KindIssue, State: StateNeedsYou, Autonomy: AutonomyAuto, Cap: 10, Stream: &Stream{}, Failure: &Failure{Step: "test", Code: CodeMachineLost, Next: FailureStopped, At: now}, Recovery: &StepRecovery{Step: "test", State: "running", Attempts: 1, Limit: 3, Deadline: now.Add(-9 * time.Minute)}}
 	if !PlanStepRecovery(&it, now) || it.Recovery.State != "waiting" || it.Recovery.Attempts != 1 || !it.Recovery.Deadline.After(now) {
 		t.Fatalf("productive running consumed reconnect window: %+v", it.Recovery)
+	}
+}
+
+// Retries are counted in attempts: a step that keeps working between short
+// connection losses is retried while attempts remain, however long it ran.
+func TestRecoveryCountsAttemptsNotMinutes(t *testing.T) {
+	now := time.Now()
+	it := Item{Kind: KindIssue, State: StateNeedsYou, Autonomy: AutonomyAuto, Cap: 10, Stream: &Stream{}, Failure: &Failure{Step: "test", Code: CodeMachineLost, Next: FailureStopped, At: now}, Recovery: &StepRecovery{Step: "test", State: "waiting", Attempts: 2, Limit: 3, Deadline: now.Add(-time.Hour), LastAt: now.Add(-time.Hour)}}
+	if !PlanStepRecovery(&it, now) || it.Recovery.State != "waiting" || it.Recovery.NextAt.Before(now) {
+		t.Fatalf("a step with an attempt left was given up on the clock: %+v", it.Recovery)
+	}
+	it.Recovery.Attempts, it.Failure.At = 3, now.Add(time.Second)
+	if !PlanStepRecovery(&it, now.Add(time.Second)) || it.Recovery.State != "exhausted" || !strings.Contains(it.Recovery.Reason, "3 of 3 retries") {
+		t.Fatalf("out of attempts: %+v", it.Recovery)
 	}
 }

@@ -671,8 +671,7 @@ Examples:
     codeaf logs --tail 20 --model anthropic/claude-opus-4
     codeaf chat --host devbox:~/src/api   the chat here, the work over there
 
-Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.
-The environment table is ` + "`codeaf help env`" + ` — every variable and its default.`
+Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.`
 
 // environmentText is the reference half of the old `--help`: every variable a
 // person can set, and what it defaults to.

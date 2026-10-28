@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -402,7 +403,7 @@ func TestDesiredSlotsReadsWithTheWorkersOwnCredential(t *testing.T) {
 	if n, ok := dial.desiredSlots(context.Background()); !ok || n != 5 || auth != "Bearer worker-credential" {
 		t.Fatalf("saved credential: %d %v, asked with %q", n, ok, auth)
 	}
-	slots = 99
+	slots = api.MaxRunnerSlots + 50
 	if n, _ := dial.desiredSlots(context.Background()); n != api.MaxRunnerSlots {
 		t.Fatalf("an over-ceiling answer gave %d", n)
 	}
@@ -412,4 +413,67 @@ func TestDesiredSlotsReadsWithTheWorkersOwnCredential(t *testing.T) {
 			t.Fatalf("status %d must be unknown, got %d %v", code, n, ok)
 		}
 	}
+}
+
+// A machine's own factory listens on a new port at each start: saving a
+// credential for it forgets the dead loopback addresses, never a factory
+// elsewhere.
+func TestWorkerCredentialsForgetDeadLoopbackFactories(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dial := newFactoryWorkerDial(st, nil)
+	now := deadLoopbackBase(t, "127.0.0.1")
+	for _, base := range []string{deadLoopbackBase(t, "127.0.0.1"), deadLoopbackBase(t, "localhost"), deadLoopbackBase(t, "[::1]"), "https://factory.example.com"} {
+		dial.keep(0, client.Open(base, "").Worker("old-"+base))
+	}
+	dial.keep(0, client.Open(now, "").Worker("now"))
+	all := dial.readCreds()
+	if len(all) != 2 || all[now][0] != "now" || all["https://factory.example.com"][0] != "old-https://factory.example.com" {
+		t.Fatalf("kept %v, want the live loopback factory and the remote one", all)
+	}
+	dial.keep(1, client.Open("https://factory.example.com", "").Worker("remote-1"))
+	if all := dial.readCreds(); len(all) != 2 || all[now][0] != "now" {
+		t.Fatalf("a remote attach forgot the local factory: %v", all)
+	}
+}
+
+// A loopback factory that still listens (a second local factory, or a team
+// factory through a tunnel on localhost) keeps its credential when another
+// local factory's is saved.
+func TestWorkerCredentialsKeepALoopbackFactoryThatStillListens(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	live := "http://" + listener.Addr().String()
+	dial := newFactoryWorkerDial(st, nil)
+	dial.keep(0, client.Open(live, "").Worker("tunnel"))
+	now := deadLoopbackBase(t, "127.0.0.1")
+	dial.keep(0, client.Open(now, "").Worker("now"))
+	if all := dial.readCreds(); len(all) != 2 || all[live][0] != "tunnel" || all[now][0] != "now" {
+		t.Fatalf("kept %v, want both local factories", all)
+	}
+}
+
+// deadLoopbackBase is a loopback factory address at host that nothing listens
+// on: a port a listener of this test held and then closed, so no fixed port is
+// assumed free.
+func deadLoopbackBase(t *testing.T, host string) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return "http://" + host + ":" + port
 }

@@ -75,8 +75,13 @@ func (f File) Decide(j Job) Decision {
 	if j.Cap > 0 && j.CostKnown && !badMoney(j.Cost) && j.Cost > j.Cap {
 		reasons = append(reasons, "over your cap of "+money(j.Cap))
 	}
-	if why := neverWhy(f.Start.Never, j.Paths); why != "" {
-		reasons = append(reasons, why)
+	// One reason per protected path the job names (ask-first path lines and
+	// never paths alike), as [File.DecideJob] gives them, then the ask-first
+	// sentences.
+	for _, path := range ProtectedPaths(f.Start.AskFirst, f.Start.Never) {
+		if why := protectedWhy([]string{path}, j.Paths); why != "" {
+			reasons = append(reasons, why)
+		}
 	}
 	reasons = append(reasons, askWhy(f.Start.AskFirst, j)...)
 	if len(reasons) > 0 {
@@ -238,37 +243,15 @@ func normOr(s, fallback string) string {
 	return fallback
 }
 
-func neverWhy(globs, paths []string) string {
-	var hits []string
-	extra := false
-	for _, path := range paths {
-		var matched string
-		for _, glob := range globs {
-			if touches(glob, path) {
-				matched = glob
-				break
-			}
+// askWhy is the reasons ask-first sentences give. A path line is a protected
+// path, held by its own reason, so only sentences are judged here.
+func askWhy(askFirst []string, j Job) []string {
+	var sentences []string
+	for _, rule := range askFirst {
+		if askFirstPath(rule) == "" {
+			sentences = append(sentences, rule)
 		}
-		if matched == "" {
-			continue
-		}
-		if len(hits) == 3 {
-			extra = true
-			break
-		}
-		hits = append(hits, path+" ("+matched+")")
 	}
-	if len(hits) == 0 {
-		return ""
-	}
-	why := "touches " + strings.Join(hits, ", ")
-	if extra {
-		why += ", …"
-	}
-	return why
-}
-
-func askWhy(sentences []string, j Job) []string {
 	if len(sentences) == 0 {
 		return nil
 	}

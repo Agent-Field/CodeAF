@@ -482,6 +482,22 @@ and a model sent to a member as a message), a member's own budget, pausing a
 member (its own turns are stopped until you resume it), and an agent's
 proposal to bring in helpers.
 
+## Idle desktop chats, recovery checks and crew traffic
+
+While the desktop app is open, startup checks every saved candidate for work
+awaiting recovery. After startup, chats with live factory stages, kept or
+starting services, crew holds or due retries are checked every two seconds.
+Chats seen live in the last 10 minutes also keep these prompt checks after
+closing. Crew traffic and team changes retain their immediate file-watch checks.
+
+Other closed chats are checked in small batches, so every quiet chat's presence,
+tasks, team and process files are checked within a minute, allowing one extra
+two-second tick at the boundary. New work wakes the chat on its next check.
+These checks also find missed changes when file watching is unavailable or a
+work directory disappears and is re-created. Watcher errors still trigger an
+immediate crew check. The app watches shared crew directories; saved chats do
+not each add file watches.
+
 ## Closing, archiving and renaming agents in the desktop app — and finding one
 
 In the desktop app, Move to Closed lets an agent's conversation go and takes it

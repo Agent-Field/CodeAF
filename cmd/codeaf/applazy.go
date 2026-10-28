@@ -3,11 +3,13 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/fsnotify/fsnotify"
@@ -53,15 +55,11 @@ func (b *appBackend) subscribeCrewTraffic(run *appCrewRun) {
 // light record; presence, recovery or unread wake traffic needs a conversation.
 // The per-agent gate in ensure still arbitrates every automatic and UI open.
 func (b *appBackend) neededMembers(run *appCrewRun, read appCrewRead, first bool) map[string][]string {
-	b.locked(func() {
-		for id, a := range b.agents {
-			if a.live != nil && len(run.held[id]) > 0 {
-				a.crewHeld = true
-			}
-		}
-	})
 	candidates := b.lazyCandidates(run, read, first)
 	needed := map[string][]string{}
+	profile := b.crewProfile()
+	shared := ""
+	traffic := map[string]string{}
 	for id, row := range candidates {
 		var since time.Time
 		var crewHeld bool
@@ -73,7 +71,15 @@ func (b *appBackend) neededMembers(run *appCrewRun, read appCrewRead, first bool
 			needed[id] = run.held[id]
 			continue
 		}
-		stamp := b.lazyWorkStamp(row.Transcript, run.held[id])
+		if shared == "" {
+			shared = teamstore.Stamp(profile) + run.workStamp(config.BudgetConfigPath(profile))
+		}
+		for _, crew := range run.held[id] {
+			if _, ok := traffic[crew]; !ok {
+				traffic[crew] = teamstore.TrafficStamp(profile, crew)
+			}
+		}
+		stamp := shared + run.lazyWorkStamp(row.Transcript, run.held[id], traffic)
 		// A failed open remains due even when its input files did not change.
 		retry := false
 		run.locked(func() { retry = run.unheld[id] != nil })
@@ -126,39 +132,94 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 			b.rememberLazyMember(appMemberAgent(member))
 		}
 	}
+	startup := first || !run.lazyStarted
+	run.lazyStarted = true
+	now := b.now()
+	hot := map[string]bool{}
+	stageLends.mu.Lock()
+	for agent := range stageLends.agents {
+		hot[appAgentID(agent.SessionPath())] = true
+	}
+	stageLends.mu.Unlock()
+	if svc, err := b.servicesOf(); err == nil {
+		for _, row := range svc.sup.All() {
+			if row.Running || row.Stopping || row.State == service.StateStarting || row.State == service.StateRestarting {
+				hot[row.Owner] = true
+			}
+		}
+	}
 	recovering := map[string]bool{}
 	run.locked(func() {
+		for id, crews := range run.held {
+			if len(crews) > 0 {
+				hot[id] = true
+			}
+		}
+		for id, u := range run.unheld {
+			if u.healed || !now.Before(u.next) {
+				hot[id] = true
+			}
+		}
 		for id, waiting := range run.recovering {
 			recovering[id] = waiting
 		}
 	})
 	candidates := map[string]session.SessionRow{}
+	var cold []string
 	b.locked(func() {
 		for id, a := range b.agents {
+			if a.live != nil {
+				if len(run.held[id]) > 0 {
+					a.crewHeld = true
+				}
+			}
+			if !a.lastLive.IsZero() && !now.After(a.lastLive.Add(appLazyHotWindow)) {
+				hot[id] = true
+			}
 			if a.live != nil || a.transcript == "" || recovering[id] {
 				continue
 			}
 			if a.listening.IsZero() {
 				a.listening = run.since
 			}
+			if startup || hot[id] {
+				candidates[id] = session.SessionRow{ID: id, Dir: session.DirOf(a.transcript), Transcript: a.transcript}
+			} else {
+				cold = append(cold, id)
+			}
+		}
+		// A key cursor survives agents joining or leaving the cold set without
+		// restarting the sweep at the beginning and starving later chats.
+		sort.Strings(cold)
+		start := sort.Search(len(cold), func(i int) bool { return cold[i] > run.coldAfter })
+		beats := int(appLazyColdSweep / appCrewPoll)
+		for i := 0; i < (len(cold)+beats-1)/beats; i++ {
+			id := cold[(start+i)%len(cold)]
+			a := b.agents[id]
 			candidates[id] = session.SessionRow{ID: id, Dir: session.DirOf(a.transcript), Transcript: a.transcript}
+			run.coldAfter = id
 		}
 	})
 	return candidates
 }
 
-func (b *appBackend) lazyWorkStamp(transcript string, crews []string) string {
-	profile := b.crewProfile()
-	stamp := teamstore.Stamp(profile) + lazyStamp(config.BudgetConfigPath(profile))
-	stamp += lazyStamp(filepath.Join(session.DirOf(transcript), "presence.json"))
+func (run *appCrewRun) workStamp(path string) string {
+	if run.stamp != nil {
+		return run.stamp(path)
+	}
+	return lazyStamp(path)
+}
+
+func (run *appCrewRun) lazyWorkStamp(transcript string, crews []string, traffic map[string]string) string {
+	stamp := run.workStamp(filepath.Join(session.DirOf(transcript), "presence.json"))
 	// Presence belongs to the folder; task and process records stay beside
 	// the journal, including inside .cell/.
 	truth := filepath.Dir(transcript)
 	for _, name := range []string{"tasks.json", "team.json", "processes", "processes/head.json", "processes.json"} {
-		stamp += lazyStamp(filepath.Join(truth, name))
+		stamp += run.workStamp(filepath.Join(truth, name))
 	}
 	for _, crew := range crews {
-		stamp += teamstore.TrafficStamp(profile, crew)
+		stamp += traffic[crew]
 	}
 	return stamp
 }

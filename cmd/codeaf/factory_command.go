@@ -269,8 +269,10 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
-			f, err := factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
-			return withFactoryHouseRules(st, f, err)
+			return factoryPipelineRead(ctx, st, repo, dir)
+		},
+		JobPipeline: func(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
+			return factoryJobRead(ctx, st, it, dir)
 		},
 	}
 	if servedBy == "factory" && mode == api.FactoryTeam {

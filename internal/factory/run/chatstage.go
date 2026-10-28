@@ -917,6 +917,8 @@ func (d *stageDoor) Edit(_ context.Context, edit factory.PlanEdit) error {
 	d.edit.Add = append(d.edit.Add, edit.Add...)
 	d.edit.On = append(d.edit.On, edit.On...)
 	d.edit.Skip = append(d.edit.Skip, edit.Skip...)
+	d.edit.Remove = append(d.edit.Remove, edit.Remove...)
+	d.edit.Move = append(d.edit.Move, edit.Move...)
 	if why := strings.TrimSpace(edit.Why); why != "" {
 		d.edit.Why = why
 	}
@@ -943,10 +945,12 @@ func (d *stageDoor) result() factory.StageResult {
 
 // RejectReport withdraws a previous completion when a newer attempt is refused.
 // Keep its evidence for correction, but never let stale success stand in for it.
+// ONLY A DONE REPORT IS WITHDRAWN: an incomplete one (a blocker, a "needs you")
+// is not a success, and turning it into a checkpoint would hide what it said.
 func (d *stageDoor) RejectReport() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.report != nil {
+	if d.report != nil && d.report.Done {
 		d.report.Checkpoint = true
 	}
 }

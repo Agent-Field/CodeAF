@@ -530,12 +530,25 @@ type Item struct {
 	// machine follows the rules of the factory that handed it the work, not
 	// whatever its own machine keeps. Nil before a job is first queued.
 	House *HouseRules `json:",omitempty"`
-	// StartRules are the ask-first and never lines the job was started under
+	// PipelineCopy is the factory's own copy of the repository's pipeline
+	// file ([PipelineCopy]) the job runs, when its file was decided as one
+	// ([Item.DecidePipeline]): ITS STEPS AND RULES ARE THAT FILE'S, not
+	// main's. It travels with the job as House does, so a runner on another
+	// machine reads the same file. Nil when the job runs main's file (or the
+	// built-in steps), or its file is not decided yet.
+	PipelineCopy *PipelineCopy `json:",omitempty"`
+	// PipelineDecided says the job's pipeline file was decided, once, for its
+	// life ([Item.DecidePipeline]): PipelineCopy, or MAIN'S FILE ALONE when
+	// that is nil, never whatever copy the factory keeps later. False before
+	// its first launch (or intake's stamp), and again after Bring back.
+	PipelineDecided bool `json:",omitempty"`
+	// StartRules are the ask-first and never lines (never kept as an alias of
+	// a protected path) the job was started under
 	// (the repository's and the factory's), so the approval after its plan can
 	// be checked against the files the plan names. Nil before it was started.
 	StartRules *StartRules `json:",omitempty"`
 	// RuleHold is why the approval after the plan is not routine: the rule the
-	// plan's files matched and the file (`ask first · touch auth/ ·
+	// plan's files matched and the file (`protected · auth/ ·
 	// auth/login.go`). Auto never passes an approval that carries one. Empty
 	// once that approval is answered, and before any plan.
 	RuleHold string `json:",omitempty"`

@@ -103,13 +103,9 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 // EditStepsItem recompiles the unstarted tail after a bounded person edit.
 // Completed and current phases retain their results and conversation identity.
 func EditStepsItem(it *factory.Item, edit factory.RunEdit, recipe factory.Recipe) ([]string, error) {
-	mode, last := factory.EditBeforeRun, -1
-	if it.Stream != nil {
-		for i, p := range it.Stream.Phases {
-			if p.State != factory.PhasePending {
-				mode, last = factory.EditInRun, i
-			}
-		}
+	mode := factory.EditBeforeRun
+	if lastBegun(it) >= 0 {
+		mode = factory.EditInRun
 	}
 	next, lines, err := factory.Edit(*it, edit, recipe, mode)
 	if err != nil {
@@ -118,14 +114,43 @@ func EditStepsItem(it *factory.Item, edit factory.RunEdit, recipe factory.Recipe
 	if len(lines) == 0 {
 		return nil, nil
 	}
-	if next.Stream != nil {
-		if last >= 0 {
-			next.Stream.Phases = retail(next, next.Stream.Phases, last)
-		} else {
-			next.Stream.Phases = loopPhases(next)
-			next.Stream.Cur = 0
-		}
-	}
+	RelayTail(&next)
 	*it = next
 	return lines, nil
+}
+
+// RelayTail lays the phases of it's run that have not begun again from its
+// steps as they stand, after any door changed them (a person's edit, the
+// manager's, the factory_item card): A STEP REMOVED LEAVES THE RUN and a step
+// moved runs in its new place, whether the job is queued (its phases were
+// laid when it was queued) or running. Phases that began keep their results
+// and conversations. A job with no run is left as it is.
+//
+// The runner's own re-lay at each round ([tailPhases]) cannot do this for a
+// removed step: it leaves alone a tail holding a phase no step names, which
+// is how a send-back's prove looks.
+func RelayTail(it *factory.Item) {
+	if it.Stream == nil {
+		return
+	}
+	if last := lastBegun(it); last >= 0 {
+		it.Stream.Phases = retail(*it, it.Stream.Phases, last)
+		return
+	}
+	it.Stream.Phases = loopPhases(*it)
+	it.Stream.Cur = 0
+}
+
+// lastBegun is the index of the last phase of it's run that is not pending,
+// -1 when none is (or it has no run).
+func lastBegun(it *factory.Item) int {
+	last := -1
+	if it.Stream != nil {
+		for i, p := range it.Stream.Phases {
+			if p.State != factory.PhasePending {
+				last = i
+			}
+		}
+	}
+	return last
 }

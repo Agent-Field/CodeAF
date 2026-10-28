@@ -106,9 +106,9 @@ func (b *appBackend) ordersRefresh(store *automation.Store, stamp *string, curso
 	if next == *stamp {
 		return cursor, false
 	}
-	var ok bool
-	cursor, ok = b.ordersRead(store, cursor, seen)
-	if ok && b.sayOrderAsks(store, open) {
+	cursor, runs, ok := b.ordersRead(store, cursor, seen)
+	if ok {
+		b.sayOrderAsksFrom(store, open, runs)
 		*stamp = next
 	}
 	return cursor, true
