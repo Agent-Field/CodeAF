@@ -438,6 +438,44 @@ type PullRequest struct {
 // QKindAskFirst is an intake question, before a run or any step exists.
 const QKindAskFirst = "ask_first"
 
+// CheckPassed and CheckAsked are what one of the factory's own checks found on
+// a job ([RuleChecks]): nothing a rule guards, so the job went on by itself; or
+// a rule that made it wait for a person.
+const (
+	CheckPassed = "passed"
+	CheckAsked  = "asked"
+)
+
+// RuleChecks is what the factory's own two checks found on a job: its start
+// rules, judged when the factory starts it on its own (a person's start judges
+// nothing), and its change, judged against the protected paths when its run
+// lands ([Item.RuleHold]). A client draws them on the job's two ◆ rows.
+type RuleChecks struct {
+	// Start is the start rules' finding; "" for a job a person started.
+	Start string `json:",omitempty"`
+	// Publish is the change's finding when the run landed, and PublishHead
+	// the commit it was judged on: a later commit is another change, so the
+	// wire leaves the finding out until the job lands again.
+	Publish     string `json:",omitempty"`
+	PublishHead string `json:",omitempty"`
+}
+
+// SetStartCheck records the start rules' finding on it.
+func (it *Item) SetStartCheck(found string) {
+	if it.RuleChecks == nil {
+		it.RuleChecks = &RuleChecks{}
+	}
+	it.RuleChecks.Start = found
+}
+
+// SetPublishCheck records the change's finding on it, judged on its head.
+func (it *Item) SetPublishCheck(found string) {
+	if it.RuleChecks == nil {
+		it.RuleChecks = &RuleChecks{}
+	}
+	it.RuleChecks.Publish, it.RuleChecks.PublishHead = found, it.HeadCommit
+}
+
 type Item struct {
 	// Autonomy is explicit on new jobs. Missing on older jobs means manual.
 	Autonomy string      `json:",omitempty"`
@@ -525,6 +563,9 @@ type Item struct {
 	QKind string
 	// AskedFirstReason keeps the matched rule visible after the question is answered.
 	AskedFirstReason string `json:",omitempty"`
+	// RuleChecks is what the factory's own two checks found on the job
+	// ([RuleChecks]); nil before either was judged.
+	RuleChecks *RuleChecks `json:",omitempty"`
 	// House is the factory's own rules ([HouseRules]) as they stood when the
 	// job was last queued. They travel WITH THE JOB, so a runner on another
 	// machine follows the rules of the factory that handed it the work, not

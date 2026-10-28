@@ -607,6 +607,11 @@ func landItem(it *factory.Item, now time.Time) bool {
 	// changed file an ask-first or never path names waits for the person, in
 	// Auto ([factory.AutonomyBlockReason]) and as a habit alike.
 	it.RuleHold = ChangeRuleHold(*it)
+	if it.RuleHold != "" {
+		it.SetPublishCheck(factory.CheckAsked)
+	} else {
+		it.SetPublishCheck(factory.CheckPassed)
+	}
 	if it.FollowUp == nil && it.RuleHold == "" && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
 		it.State = factory.StateShipped
 		loopSay(it, now, "ok", logShippedHabit)

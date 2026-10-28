@@ -433,7 +433,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.MergePolicy, it.Merging = nil, nil
 	it.Notes = nil
 	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil
-	it.StartRules, it.RuleHold = nil, ""
+	it.StartRules, it.RuleHold, it.RuleChecks = nil, "", nil
 	// The pipeline file it was decided on goes too: its next start decides
 	// afresh ([factory.Item.DecidePipeline]).
 	it.ForgetPipeline()

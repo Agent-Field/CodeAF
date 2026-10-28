@@ -151,7 +151,7 @@ func TestAPlanReviewedBeforeItsApprovalIsStillHeldByItsFiles(t *testing.T) {
 // plan said nothing of it, its proof is green and no approve step is left.
 func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 	landed := func(rules *factory.StartRules, files ...string) factory.Item {
-		it := factory.Item{Autonomy: "", Assignee: "sam", Cap: 5, StartRules: rules, Stages: []factory.Stage{chat("write")},
+		it := factory.Item{Autonomy: "", Assignee: "sam", Cap: 5, StartRules: rules, HeadCommit: "c0ffee", Stages: []factory.Stage{chat("write")},
 			Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone}}},
 			Proof:  []factory.Claim{{Text: "it works", OK: true}}, Change: &factory.Change{}}
 		for _, f := range files {
@@ -169,6 +169,14 @@ func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 	}
 	if it := landed(rules, "docs/readme.md"); it.State != factory.StateShipped || it.RuleHold != "" {
 		t.Fatalf("an unguarded change did not ship as a habit: %s %q", it.State, it.RuleHold)
+	}
+	// THE JOB KEEPS WHAT THE CHECK FOUND, and on which commit, for its ◆
+	// Before publishing row: the hold itself is cleared once it is answered.
+	if c := landed(rules, "docs/readme.md").RuleChecks; c == nil || c.Publish != factory.CheckPassed || c.PublishHead != "c0ffee" {
+		t.Fatalf("an unguarded change's check: %+v", c)
+	}
+	if c := landed(rules, "infra/main.tf").RuleChecks; c == nil || c.Publish != factory.CheckAsked || c.PublishHead != "c0ffee" {
+		t.Fatalf("a guarded change's check: %+v", c)
 	}
 	// AUTO STOPS THERE TOO, naming the rule and the file.
 	it := landed(rules, "internal/auth/login.go")
