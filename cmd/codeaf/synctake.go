@@ -46,12 +46,7 @@ func wireSync(o *tui3.Options) {
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
-	take := takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
-		DeviceName: deviceName(),
-		RootFor:    takeRootFor,
-		BucketFor:  takeCopyBucket,
-		Notify:     surfaceNotices.Say,
-	})}
+	take := takeover{chatContinuer(s, surfaceNotices.Say)}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -236,11 +231,13 @@ func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
 // already has, found where a chat keeps it, and otherwise a folder in the
 // bucket of chats that belong to no project, where a chat that arrives from
 // another machine is at home.
-func takeRootFor(id string) string {
-	if c, err := openCellByID(id); err == nil {
+func takeRootFor(id string) string { return takeRootForAt(home.Dir(), id) }
+
+func takeRootForAt(dir, id string) string {
+	if c, err := openCellByIDAt(dir, id); err == nil {
 		return c.Root
 	}
-	return filepath.Join(home.Join("v3", "projects", "copies"), id)
+	return filepath.Join(dir, "v3", "projects", "copies", id)
 }
 
 // takeCopyBucket files each copy under the folder it came from, apart from
@@ -285,4 +282,16 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 		log.Printf("continue %s needs a choice: local files, conversation or tool work changed", id)
 	}
 	return !dirty, err
+}
+
+// chatContinuer is the shared CLI and app continuation assembly.
+func chatContinuer(s *syncsetup.Sync, notify func(string)) *syncsetup.Continuer {
+	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
+		DeviceName: devname.Name(s.Home),
+		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
+		BucketFor: func(origin string) string {
+			return filepath.Join(s.Home, "v3", "projects", "copy-"+encodeWorkspace(origin))
+		},
+		Notify: notify,
+	})
 }
