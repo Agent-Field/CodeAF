@@ -80,6 +80,9 @@ empty workspaces are created before binding; incoming chats use their receiver
 workspace instead of an unavailable absolute path recorded on the sender.
 Taking a project chat back on Windows also restores composed turn receipts whose
 full paths exceed MAX_PATH, using the native extended-length path spelling.
+Guarded materialization preserves caller-supplied non-daemon transports, including
+their binaries and runners. Shared-daemon routes still finish in a one-shot
+process before installation so no staging-tree watcher survives the move.
 
 Relay recovery renews an unchanged own hold even when locally saved work is newer
 than the relay's head. Failed uploads retain the existing bounded, single-flight
