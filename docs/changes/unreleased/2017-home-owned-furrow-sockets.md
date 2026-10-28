@@ -10,9 +10,11 @@ invalidates:
   - "An unset HOME or the original ancestor of a symlinked home could bypass the home-folder policy. Both now seal only the chat's own folder."
 ---
 
-Same-home clients keep sharing their saving daemon. Unix prefers the user's
-private runtime directory, then a fitting in-home address, then validated private
-temporary directories. Windows falls back only under the user's own temporary
+Same-home clients keep sharing their saving daemon, also across an upgrade.
+Unix keeps a fitting in-home address; a long home keeps the short temporary
+address earlier engines used while it is this user's private directory, and only
+a preclaimed one falls to the user's private runtime directory or other
+validated private temporary directories. Windows falls back only under the user's own temporary
 folder with a private ACL; final addresses stay below the platform byte limit.
 Stale endpoints are pruned only while holding their daemon's lifetime lock,
 inside the existing per-socket start gate. A lost answer is never replayed and

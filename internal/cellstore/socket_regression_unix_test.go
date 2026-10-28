@@ -5,7 +5,9 @@ package cellstore
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // F5/C7: A preclaimed short directory must not let an impersonator receive work.
@@ -139,8 +143,11 @@ func TestR9UnixShortSocketRejectsSocketSymlink(t *testing.T) {
 	}
 }
 
-// TestR9UnixRuntimeSocketPreference proves F5 without starting an engine.
-func TestR9UnixRuntimeSocketPreference(t *testing.T) {
+// TestR9UnixShortSocketOrder proves F5's order without starting an engine: a home
+// whose own address fits keeps it (an upgraded engine shares a live daemon), a long
+// home keeps the alias earlier engines used while it is private, and only a
+// preclaimed alias falls to the private runtime directory.
+func TestR9UnixShortSocketOrder(t *testing.T) {
 	runtime, err := os.MkdirTemp("/tmp", "r9-runtime-")
 	if err != nil {
 		t.Fatal(err)
@@ -154,9 +161,36 @@ func TestR9UnixRuntimeSocketPreference(t *testing.T) {
 	t.Setenv("CODEAF_HOME", login)
 	t.Setenv("XDG_RUNTIME_DIR", runtime)
 	bin := "/engine/furrow-review-runtime"
+	if got := socketFor(bin); got != filepath.Join(login, "v3", "engine-review-runtime.sock") {
+		t.Fatalf("F5: a fitting home's own address was displaced: %q", got)
+	}
+	long := filepath.Join(login, strings.Repeat("long-home-", 12))
+	if err := os.MkdirAll(long, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_HOME", long)
+	sum := sha256.Sum256([]byte(home.Dir() + "\x00" + bin))
+	base := os.TempDir()
+	alias := filepath.Join(base, fmt.Sprintf("codeaf-e-%d-%x", os.Getuid(), sum[:12]))
+	if len(filepath.Join(alias, "e.sock")) >= maxSocketBytes {
+		alias = filepath.Join("/tmp", filepath.Base(alias))
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(alias) })
+	if got := socketFor(bin); filepath.Dir(got) != alias || got != socketFor(bin) {
+		t.Fatalf("F5: a long home left the alias earlier engines used: %q", got)
+	}
+	if err := os.RemoveAll(alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(alias, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(alias, 0777); err != nil {
+		t.Fatal(err)
+	}
 	socket := socketFor(bin)
-	if !strings.HasPrefix(socket, runtime+string(filepath.Separator)) || socket != socketFor(bin) || len(socket) >= maxSocketBytes {
-		t.Fatalf("F5: private runtime directory was not preferred: %q", socket)
+	if !strings.HasPrefix(socket, runtime+string(filepath.Separator)) || len(socket) >= maxSocketBytes {
+		t.Fatalf("F5: a preclaimed alias did not fall to the private runtime directory: %q", socket)
 	}
 	for _, path := range []string{runtime, filepath.Dir(socket)} {
 		info, err := os.Lstat(path)
@@ -167,22 +201,15 @@ func TestR9UnixRuntimeSocketPreference(t *testing.T) {
 			t.Fatalf("F5: selected base is not private and owned: %s", info.Mode())
 		}
 	}
-	alias := filepath.Join(t.TempDir(), "runtime-link")
-	if err := os.Symlink(runtime, alias); err != nil {
+	link := filepath.Join(t.TempDir(), "runtime-link")
+	if err := os.Symlink(runtime, link); err != nil {
 		t.Fatal(err)
 	}
-	for _, unusable := range []string{"relative", alias, filepath.Join(runtime, "missing"), filepath.Join(runtime, strings.Repeat("long", 30))} {
+	for _, unusable := range []string{"relative", link, filepath.Join(runtime, "missing")} {
 		t.Setenv("XDG_RUNTIME_DIR", unusable)
-		if got := socketFor(bin); got != filepath.Join(login, "v3", "engine-review-runtime.sock") {
-			t.Fatalf("F5: unusable runtime directory displaced the fitting home: %q", got)
+		if got := socketFor(bin); got == "" || strings.HasPrefix(got, unusable) || filepath.Dir(got) == alias {
+			t.Fatalf("F5: an unusable runtime directory or the preclaimed alias was used: %q", got)
 		}
-	}
-	if err := os.Chmod(runtime, 0777); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XDG_RUNTIME_DIR", runtime)
-	if got := socketFor(bin); got != filepath.Join(login, "v3", "engine-review-runtime.sock") {
-		t.Fatalf("F5: writable runtime directory was accepted: %q", got)
 	}
 }
 
@@ -247,5 +274,69 @@ func TestR9ProjectChildRewindsThroughPrivateSocket(t *testing.T) {
 		if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != mode || stat.Uid != uint32(os.Getuid()) {
 			t.Errorf("C7: managed endpoint is not owner-only: %s mode=%s uid=%d", path, info.Mode(), stat.Uid)
 		}
+	}
+}
+
+// C1: an engine upgraded beside a live daemon of the same long home shares it,
+// even with a private runtime directory available.
+func TestR11UnixUpgradeSharesExistingFallback(t *testing.T) {
+	bin, err := sealingEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), strings.Repeat("long-home-", 15))
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_HOME", root)
+	runtime := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", runtime)
+
+	// This is d90273989's exact long-home address selection, before this port.
+	sum := sha256.Sum256([]byte(home.Dir() + "\x00" + bin))
+	name := fmt.Sprintf("codeaf-e-%d-%x", os.Getuid(), sum[:12])
+	base := os.TempDir()
+	if len(filepath.Join(base, name, "e.sock")) >= maxSocketBytes {
+		base = "/tmp"
+	}
+	old := Daemon{Socket: filepath.Join(base, name, "e.sock"), Binary: bin}
+	// Upstream launch creates this directory before starting its old daemon.
+	if err := os.MkdirAll(filepath.Dir(old.Socket), 0700); err != nil {
+		t.Fatal(err)
+	}
+	newSocket := socketFor(bin)
+	next := Daemon{Socket: newSocket, Binary: bin}
+	for _, daemon := range []Daemon{old, next} {
+		d := daemon
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := d.Stop(ctx); err != nil {
+				t.Errorf("stop review daemon: %v", err)
+			}
+			_ = os.RemoveAll(filepath.Dir(d.Socket))
+		})
+	}
+	e := engineFor(t, filepath.Join(root, "v3", "stores"))
+	e.Workspace, e.Transport = t.TempDir(), old
+	c := newCell(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if _, err := e.Seal(ctx, c, TurnInfo{}); err != nil {
+		t.Fatalf("old client fixture could not seal: %v", err)
+	}
+	if err := durable(ctx, c.Root); err != nil {
+		t.Fatal(err)
+	}
+	pid := homeDaemonPID(t, old)
+	e.Transport = transportFor(bin, nil)
+	_, sealErr := e.Seal(ctx, c, TurnInfo{})
+	nextPID := homeDaemonPID(t, next)
+	t.Logf("old=%s pid=%d; selected=%s pid=%d; seal=%v", old.Socket, pid, newSocket, nextPID, sealErr)
+	if sealErr != nil {
+		t.Errorf("C1/C3: upgraded same-home client failed to seal while its old daemon remains live: %v", sealErr)
+	}
+	if pid != nextPID {
+		t.Errorf("C1: one home/build started two daemons across the port: %d and %d", pid, nextPID)
 	}
 }
