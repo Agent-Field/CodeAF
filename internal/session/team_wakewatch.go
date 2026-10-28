@@ -40,11 +40,9 @@ import (
 // is drawn in the harness's lane and every gate a wake passes (the spend rail,
 // the wall, a closed or stopped session) still decides whether it may run.
 //
-// THE WATCH LIVES WITH THE CONVERSATION, ON THE ENGINE. Every conversation is
-// an [Agent] in the process that holds its journal (the workspace's session
-// host, locally and over --host alike), and the Traffic log is the one channel
-// between conversations (team.go), so each conversation watches the log for
-// itself. It costs, per tick of [teamWatchEvery]:
+// The process shares one watch across its open conversations. Each keeps its
+// own traffic cursors, but a conversation with no team is checked only when
+// the shared teams stamp changes. It costs, per tick of [teamWatchEvery]:
 //
 //   - while a turn runs, one stat of each managed member team's log, and a
 //     read only when it moves, so a manager's stop can reach a headless member;
@@ -174,17 +172,7 @@ func (a *Agent) watchTeamTraffic(profile string) {
 	if a.config.teamWatchManual {
 		return
 	}
-	guard.Go("team traffic wake", func() { a.teamWatchLoop(profile) })
-}
-
-func (a *Agent) teamWatchLoop(profile string) {
-	ticker := time.NewTicker(teamWatchInterval())
-	defer ticker.Stop()
-	for range ticker.C {
-		if !a.teamWatchTick(profile, time.Now()) {
-			return
-		}
-	}
+	teamTraffic.add(a, profile)
 }
 
 // teamWatchTick is one look, and false once the session has closed.
