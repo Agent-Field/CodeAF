@@ -24,5 +24,14 @@ and remote crew membership are outside this inventory.
 Desktop pairing uses app sentences and labelled choices while keeping option
 ids stable. An idle open chat says open on its computer, without claiming a
 turn is running. Move failures use a person sentence with the technical cause
-in error detail. Ownership recovery after a failure following acquisition
-remains unresolved; releasing the acquired lease does not restore its predecessor.
+in error detail. After a failed installation, the released lease names its last
+holder but does not make a missing local copy appear here. An unchanged source
+chat can acquire a newer fence on its next send; fences are never rolled back.
+
+Synced preferences now notify desktop Settings once with its full current value.
+Identical computer lists no longer repeat Devices events. Models whose catalog
+disallows reasoning receive no reasoning parameter. An unlisted model's specific
+thinking refusal gets one immediate repair without reasoning, remembered for the
+process; a permanent capability refusal does not retain a retryable app turn.
+Private takeover staging folders are excluded from app listing and automatic
+recovery, preventing copied working presence from opening them before installation.

@@ -116,4 +116,17 @@ polling. An older chat that works in the home folder stays on that computer.
 
 If moving the chat fails, the app says
 `This chat could not be moved to this computer.` Technical causes are kept in
-the error details.
+the error details. If installation failed after acquisition, the chat is released.
+The computer without the installed chat still offers Continue here and names the
+last holder without claiming it is open there. The original open chat says
+`This chat is available to continue here.` Its next send can acquire the free
+lease when its saved head still matches the relay.
+If another computer saved newer work, use Continue here to restore that work.
+
+## Shared settings after pairing — model, effort and spending limits
+
+When shared preferences arrive from another paired computer, desktop Settings
+updates through the engine's settings event. One restore reports the full current
+settings once, including changes to the default model, effort and spending limits.
+An unchanged restore sends no settings event. Repeated roster notifications also
+send no Devices event when the displayed computer list has not changed.
