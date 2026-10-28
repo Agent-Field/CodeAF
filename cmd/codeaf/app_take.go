@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -81,13 +82,13 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	guard.Go("app/take-cancel", func() {
 		select {
 		case <-b.left:
 			cancel()
 		case <-ctx.Done():
 		}
-	}()
+	})
 	// Check even the already-here fast path against what the person saw.
 	view, err := s.Dir.Cell(ctx, p.Cell)
 	if err != nil {
@@ -109,19 +110,24 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		b.locked(func() { existing = b.agents[local.agent] })
 	}
 	if existing != nil {
-		existing.gate.Lock()
-		busy := false
-		b.locked(func() {
-			busy = existing.opening || existing.starting || existing.live != nil && (existing.live.running || existing.live.needsYou())
-		})
-		if busy {
-			existing.gate.Unlock()
-			return appwire.Agent{}, appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before continuing it here.")
+		releaseForTake := func() error {
+			existing.gate.Lock()
+			defer existing.gate.Unlock()
+			busy := false
+			b.locked(func() {
+				busy = existing.opening || existing.starting || existing.live != nil && (existing.live.running || existing.live.needsYou())
+			})
+			if busy {
+				return appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before continuing it here.")
+			}
+			if view.Cell.Lease.Device != s.Device.ID() {
+				b.release(existing)
+			}
+			return nil
 		}
-		if view.Cell.Lease.Device != s.Device.ID() {
-			b.release(existing)
+		if err := releaseForTake(); err != nil {
+			return appwire.Agent{}, err
 		}
-		existing.gate.Unlock()
 	}
 	got, err := chatContinuer(s, nil).TakeSeen(ctx, p.Cell, seen)
 	if err != nil {
@@ -169,9 +175,13 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	agent.Location = location
 	// Acquisition may have been observed before installation and admission.
 	// Reconcile the local id even when no later directory version will arrive.
-	b.chats.op.Lock()
-	_, err = b.readChats(ctx, s, b.chats.feed, true)
-	b.chats.op.Unlock()
+	reconcileInventory := func() error {
+		b.chats.op.Lock()
+		defer b.chats.op.Unlock()
+		_, err := b.readChats(ctx, s, b.chats.feed, true)
+		return err
+	}
+	err = reconcileInventory()
 	if err != nil {
 		// The take has completed. Inventory recovery belongs to its follower.
 		b.startChatInventory()

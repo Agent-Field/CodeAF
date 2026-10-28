@@ -109,3 +109,7 @@ work still release after ten idle minutes and re-acquire when work needs them.
 Hold receipts also
 require a nonempty home, so a misconfigured sync cannot write relative lock files
 into the source tree. The stale-drive refusal fixture now uses a temporary home.
+
+Desktop relay cancellation goroutines now use the shared panic guard. Inventory,
+pairing, continuation, device publication and drive retry critical sections defer
+their unlocks while retaining their existing lock order and work boundaries.

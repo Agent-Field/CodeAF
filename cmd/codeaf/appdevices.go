@@ -46,12 +46,15 @@ type appDevices struct {
 func (b *appBackend) listenDevices() *appDevices {
 	d := &appDevices{home: home.Dir(), done: make(chan struct{})}
 	d.watch = syncsetup.ObserveDevices(d.home)
+	publishChange := func() {
+		d.op.Lock()
+		defer d.op.Unlock()
+		d.publish(b.emit)
+	}
 	guard.Go("app/devices", func() {
 		defer close(d.done)
 		for range d.watch.Changes() {
-			d.op.Lock()
-			d.publish(b.emit)
-			d.op.Unlock()
+			publishChange()
 		}
 	})
 	return d

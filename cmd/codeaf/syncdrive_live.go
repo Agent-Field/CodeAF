@@ -99,13 +99,16 @@ func (l *liveDrive) retryStartup() {
 	} else {
 		l.retryWait = min(2*l.retryWait, cellsync.MaxBackoff)
 	}
-	l.retry = time.AfterFunc(l.retryWait, func() {
+	resetAttempt := func() {
 		l.mu.Lock()
+		defer l.mu.Unlock()
 		l.retry = nil
 		if !l.closed {
 			l.attempted = false
 		}
-		l.mu.Unlock()
+	}
+	l.retry = time.AfterFunc(l.retryWait, func() {
+		resetAttempt()
 		l.try()
 	})
 }

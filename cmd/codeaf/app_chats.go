@@ -52,10 +52,7 @@ func (b *appBackend) startLocalChatPublication() {
 		c := &b.chats
 		c.op.Lock()
 		defer c.op.Unlock()
-		c.mu.Lock()
-		closed := c.closed
-		c.mu.Unlock()
-		if closed || c.offered {
+		if c.isClosed() || c.offered {
 			return
 		}
 		if s, ok, err := syncsetup.Open(b.relayHome()); err == nil && ok && syncsetup.MayTalk(b.relayHome()) {
@@ -115,22 +112,28 @@ func appChatStaging(dir string) bool {
 // explicit inventory bootstrap and sync callbacks share this same follower.
 func (b *appBackend) startChatInventory() {
 	c := &b.chats
-	c.mu.Lock()
-	active := c.closed || c.source != nil
-	c.mu.Unlock()
-	if active {
+	if c.inventoryActive() {
 		return
 	}
 	c.start.Do(func() {
 		guard.Go("app/chats-bootstrap", func() {
-			c.mu.Lock()
-			active := c.closed || c.source != nil
-			c.mu.Unlock()
-			if !active {
+			if !c.inventoryActive() {
 				_, _ = b.ListChats()
 			}
 		})
 	})
+}
+
+func (c *appChats) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
+}
+
+func (c *appChats) inventoryActive() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed || c.source != nil
 }
 
 func (b *appBackend) ListChats() (appwire.ChatsResult, error) {
@@ -141,10 +144,7 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 	c := &b.chats
 	c.op.Lock()
 	defer c.op.Unlock()
-	c.mu.Lock()
-	closed := c.closed
-	c.mu.Unlock()
-	if closed {
+	if c.isClosed() {
 		return appwire.ChatsResult{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
 	s, ok, err := syncsetup.Open(b.relayHome())
@@ -155,13 +155,27 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 		return appwire.ChatsResult{}, appEngineError(err)
 	}
 	if !ok || s == nil || !syncsetup.MayTalk(b.relayHome()) {
-		c.mu.Lock()
-		version := c.version
-		c.mu.Unlock()
+		readVersion := func() uint64 {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			return c.version
+		}
+		version := readVersion()
 		b.publishChats([]appwire.ChatRow{}, version, false)
 		return appwire.ChatsResult{Chats: []appwire.ChatRow{}, Version: version}, nil
 	}
+	feed := b.startChatFeed(s)
+	if !c.offered || publishExisting {
+		b.publishLocalChats(s)
+		c.offered = true
+	}
+	return b.readChats(context.Background(), s, feed, false)
+}
+
+func (b *appBackend) startChatFeed(s *syncsetup.Sync) dirwatch.Follower {
+	c := &b.chats
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.source == nil {
 		c.source = s
 		c.feed = s.Follow()
@@ -173,13 +187,7 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 			guard.Go("app/chats", func() { defer close(done); b.followChats(ctx, feed) })
 		}
 	}
-	feed := c.feed
-	c.mu.Unlock()
-	if !c.offered || publishExisting {
-		b.publishLocalChats(s)
-		c.offered = true
-	}
-	return b.readChats(context.Background(), s, feed, false)
+	return c.feed
 }
 
 // PublishCopy is also the terminal's background publication door. One finite,
@@ -188,13 +196,13 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 func (b *appBackend) publishLocalChats(s *syncsetup.Sync) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	guard.Go("app/existing-chats-cancel", func() {
 		select {
 		case <-b.left:
 			cancel()
 		case <-ctx.Done():
 		}
-	}()
+	})
 	// ReadWorld resolves older originals to conversion copies. Enumerate direct
 	// cells instead so this pass never offers a legacy home-folder conversion.
 	roots, _ := filepath.Glob(filepath.Join(s.Home, "v3", "projects", "*", "*"))
@@ -235,13 +243,9 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	if err != nil {
 		return appwire.ChatsResult{}, appEngineError(err)
 	}
-	b.chats.mu.Lock()
-	if version < b.chats.version {
-		result := appwire.ChatsResult{Chats: slices.Clone(b.chats.rows), Version: b.chats.version}
-		b.chats.mu.Unlock()
+	if result, newer := b.chats.newerChats(version); newer {
 		return result, nil
 	}
-	b.chats.mu.Unlock()
 	state := dirwatch.State{}
 	if feed != nil {
 		state = feed.State()
@@ -277,11 +281,23 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		out = append(out, row)
 	}
-	b.chats.mu.Lock()
-	b.chats.facts = facts
-	b.chats.mu.Unlock()
+	cacheFacts := func() {
+		b.chats.mu.Lock()
+		defer b.chats.mu.Unlock()
+		b.chats.facts = facts
+	}
+	cacheFacts()
 	b.publishChats(out, version, emit)
 	return appwire.ChatsResult{Chats: out, Version: version}, nil
+}
+
+func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if version < c.version {
+		return appwire.ChatsResult{Chats: slices.Clone(c.rows), Version: c.version}, true
+	}
+	return appwire.ChatsResult{}, false
 }
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
@@ -298,26 +314,8 @@ func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.Sta
 // Inventory operations hold op through caching and emission. A list refreshes
 // the cache silently; only the follower compares against rows actually emitted.
 func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit bool) {
-	c := &b.chats
-	c.mu.Lock()
-	if version < c.version {
-		c.mu.Unlock()
-		return
-	}
-	c.rows = rows
-	c.byAgent = make(map[string]appwire.ChatRow)
-	for _, row := range rows {
-		if row.LocalAgent != "" {
-			c.byAgent[row.LocalAgent] = row
-		}
-	}
-	c.version = version
-	old := c.sent
-	if emit {
-		c.sent = rows
-	}
-	c.mu.Unlock()
-	if !emit {
+	old, current := b.chats.cacheRows(rows, version, emit)
+	if !current || !emit {
 		return
 	}
 	before := map[string]appwire.ChatRow{}
@@ -342,6 +340,28 @@ func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit b
 		b.emit.Emit(appwire.EventChatRemoved, appwire.ChatRemoved{Cell: id, Version: version})
 	}
 }
+
+func (c *appChats) cacheRows(rows []appwire.ChatRow, version uint64, emit bool) ([]appwire.ChatRow, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if version < c.version {
+		return nil, false
+	}
+	c.rows = rows
+	c.byAgent = make(map[string]appwire.ChatRow)
+	for _, row := range rows {
+		if row.LocalAgent != "" {
+			c.byAgent[row.LocalAgent] = row
+		}
+	}
+	c.version = version
+	old := c.sent
+	if emit {
+		c.sent = rows
+	}
+	return old, true
+}
+
 func chatLocation(r appwire.ChatRow) *appwire.Location {
 	seen := r.Seen
 	line := r.Line
@@ -362,39 +382,55 @@ func (b *appBackend) followChats(ctx context.Context, feed dirwatch.Follower) {
 				return
 			}
 		}
-		c := &b.chats
-		c.op.Lock()
-		if ctx.Err() != nil {
-			c.op.Unlock()
+		if !b.refreshChatInventory(ctx, feed) {
 			return
 		}
-		c.mu.Lock()
-		s, version := c.source, c.version
-		c.mu.Unlock()
-		state := feed.State()
-		if state.Version > version {
-			_, _ = b.readChats(ctx, s, feed, true)
-		} else {
-			// Presence alone changes no directory version and needs no directory GET.
-			c.mu.Lock()
-			rows := slices.Clone(c.rows)
-			c.mu.Unlock()
-			known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
-			for i := range rows {
-				r := &rows[i]
-				appChatPresence(r, c.facts[r.Cell], state, known)
-			}
-			b.publishChats(rows, version, true)
-		}
-		c.op.Unlock()
 	}
 }
+
+func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Follower) bool {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	if ctx.Err() != nil {
+		return false
+	}
+	readSource := func() (*syncsetup.Sync, uint64) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.source, c.version
+	}
+	s, version := readSource()
+	state := feed.State()
+	if state.Version > version {
+		_, _ = b.readChats(ctx, s, feed, true)
+	} else {
+		// Presence alone changes no directory version and needs no directory GET.
+		cloneRows := func() []appwire.ChatRow {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			return slices.Clone(c.rows)
+		}
+		rows := cloneRows()
+		known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
+		for i := range rows {
+			r := &rows[i]
+			appChatPresence(r, c.facts[r.Cell], state, known)
+		}
+		b.publishChats(rows, version, true)
+	}
+	return true
+}
+
 func (b *appBackend) closeChats() {
 	c := &b.chats
-	c.mu.Lock()
-	c.closed = true
-	cancel, feed, done := c.cancel, c.feed, c.done
-	c.mu.Unlock()
+	stopFollower := func() (context.CancelFunc, dirwatch.Follower, chan struct{}) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.closed = true
+		return c.cancel, c.feed, c.done
+	}
+	cancel, feed, done := stopFollower()
 	if cancel != nil {
 		cancel()
 	}
@@ -408,16 +444,20 @@ func (b *appBackend) closeChats() {
 	c.take.Lock()
 	defer c.take.Unlock()
 	c.op.Lock()
-	c.op.Unlock()
+	defer c.op.Unlock()
 }
 
 // Cached enrichment is also used on agent.changed; emitting a turn's event
 // never adds network I/O. Existing refusal facts take precedence until the next
 // directory reading explicitly replaces them.
 func (b *appBackend) cachedChatLocation(id string) *appwire.Location {
-	b.chats.mu.Lock()
-	row, ok := b.chats.byAgent[id]
-	b.chats.mu.Unlock()
+	readRow := func() (appwire.ChatRow, bool) {
+		b.chats.mu.Lock()
+		defer b.chats.mu.Unlock()
+		row, ok := b.chats.byAgent[id]
+		return row, ok
+	}
+	row, ok := readRow()
 	if !ok {
 		return nil
 	}

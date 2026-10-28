@@ -151,26 +151,36 @@ func (b *appBackend) AnswerPair(p appwire.PairAnswerParams) (appwire.Pairing, er
 	return pairSnapshot(op.view), nil
 }
 func (b *appBackend) CancelPair(id string) (appwire.Pairing, error) {
-	b.pair.mu.Lock()
-	op := b.pairOperationLocked(id)
-	if op == nil || op.view.ID != id {
-		b.pair.mu.Unlock()
-		return appwire.Pairing{}, appwire.Errorf(appwire.CodeNotFound, "that pairing is not here")
+	cancelPair := func() (*appPairOperation, error) {
+		b.pair.mu.Lock()
+		defer b.pair.mu.Unlock()
+		op := b.pairOperationLocked(id)
+		if op == nil || op.view.ID != id {
+			return nil, appwire.Errorf(appwire.CodeNotFound, "that pairing is not here")
+		}
+		op.cancel()
+		return op, nil
 	}
-	op.cancel()
-	b.pair.mu.Unlock()
+	op, err := cancelPair()
+	if err != nil {
+		return appwire.Pairing{}, err
+	}
 	<-op.done
 	b.pair.mu.Lock()
 	defer b.pair.mu.Unlock()
 	return pairSnapshot(op.view), nil
 }
 func (b *appBackend) closePair() {
-	b.pair.mu.Lock()
-	op := b.pair.current
-	if op != nil {
-		op.cancel()
+	cancelCurrent := func() *appPairOperation {
+		b.pair.mu.Lock()
+		defer b.pair.mu.Unlock()
+		op := b.pair.current
+		if op != nil {
+			op.cancel()
+		}
+		return op
 	}
-	b.pair.mu.Unlock()
+	op := cancelCurrent()
 	if op != nil {
 		<-op.done
 	}

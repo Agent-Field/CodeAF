@@ -970,13 +970,18 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	// Publish cannot miss an agent first remembered from a saved row.
 	// Holding both locks makes its initial location agree with the inventory;
 	// a later publication will see the new agent and send its location change.
-	b.chats.mu.Lock()
-	b.mu.Lock()
-	var location *appwire.Location
-	if cached, ok := b.chats.byAgent[row.ID]; ok {
-		location = chatLocation(cached)
+	lockRememberedLocation := func() *appwire.Location {
+		b.chats.mu.Lock()
+		defer b.chats.mu.Unlock()
+		// The backend lock stays held after the inventory lock is released.
+		// The remainder of remember owns its existing deferred release.
+		b.mu.Lock()
+		if cached, ok := b.chats.byAgent[row.ID]; ok {
+			return chatLocation(cached)
+		}
+		return nil
 	}
-	b.chats.mu.Unlock()
+	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
 	defer func() {
 		b.mu.Unlock()

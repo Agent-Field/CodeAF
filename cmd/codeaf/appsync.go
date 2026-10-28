@@ -261,9 +261,12 @@ func (b *appBackend) refreshWorkRefusal(a *appAgent) error {
 	if moved || drives == nil || !folder {
 		return refusal
 	}
-	drives.mu.Lock()
-	live := drives.drive[filepath.Base(dir)]
-	drives.mu.Unlock()
+	readDrive := func() *liveDrive {
+		drives.mu.Lock()
+		defer drives.mu.Unlock()
+		return drives.drive[filepath.Base(dir)]
+	}
+	live := readDrive()
 	if live == nil || live.started() == nil {
 		return refusal
 	}
