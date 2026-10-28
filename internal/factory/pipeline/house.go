@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -103,8 +104,10 @@ func protectedWhy(paths, files []string) string {
 // protected path a planned file matches, by the same matcher a start uses, or
 // "" when none does. A sentence rule that names no path is judged before a
 // start, not here: a plan's files can only answer a question about paths. A
-// plan that names no files, under a path rule, is held too, and so is every
-// plan of a job that started with its repository's rules unread.
+// plan that names no files, under a path rule, is held too, with every
+// protected path in force (`protected · auth/, infra/ · the plan names no
+// files`, [factory.PlanNoFiles]), and so is every plan of a job that started
+// with its repository's rules unread.
 func PlanHold(rules *factory.StartRules, files []string) string {
 	if rules == nil {
 		return ""
@@ -117,7 +120,13 @@ func PlanHold(rules *factory.StartRules, files []string) string {
 	// force, a plan that declared no list (or an ambiguous one) is a person's.
 	if len(files) == 0 {
 		if len(paths) > 0 {
-			return Protected + " · the plan names no files"
+			var named []string
+			for _, p := range paths {
+				if !slices.Contains(named, p) {
+					named = append(named, p)
+				}
+			}
+			return Protected + " · " + strings.Join(named, ", ") + " · " + factory.PlanNoFiles
 		}
 		return ""
 	}

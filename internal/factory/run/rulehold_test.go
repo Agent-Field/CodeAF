@@ -113,6 +113,15 @@ func TestAnApprovalTurnedOffStillHoldsAPlanARuleGuards(t *testing.T) {
 			t.Fatalf("hold %q", it.RuleHold)
 		}
 	})
+	// A plan whose list is empty cannot clear the rule, and its hold names
+	// the path its files went unchecked against.
+	t.Run("names no files", func(t *testing.T) {
+		g, id := planRig(t, "", off, chat("write"))
+		it := g.asked(id, "plan is ready · continue, or send it back?")
+		if it.RuleHold != "protected · auth/ · "+factory.PlanNoFiles || PlanRuleHold(it) != it.RuleHold {
+			t.Fatalf("hold %q, the server reads %q", it.RuleHold, PlanRuleHold(it))
+		}
+	})
 	t.Run("touches docs", func(t *testing.T) {
 		g, id := planRig(t, "- docs/readme.md\n", off, chat("write"))
 		it := g.waitState(id, factory.StateLanded)
