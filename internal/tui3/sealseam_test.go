@@ -138,31 +138,3 @@ func TestToldNoticeIsATellingNoteAndAPlainOneIsNot(t *testing.T) {
 		t.Fatalf("told flags: %v then %v, want true then false", f.entries[0].told, f.entries[1].told)
 	}
 }
-
-// A SEAL'S GROUPED NOTICE IS ITS LEAD AND THEN ITS FILES in the terminal: the
-// words carry the list, so the note draws a row for the lead and a row for each
-// file, and the facts beside it change nothing here.
-func TestAGroupedSealNoticeShowsItsLeadAndEveryFile(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.width, a.height = 200, 40
-	lead := "2 files look like they hold secrets, so they are kept out of the saved history; they travel through the key vault only to paired computers"
-	a.ingest(session.Event{Kind: session.EventNotice, Told: true, Text: lead + "\n· a_test.go (api-key-sk)\n· .env (dotenv-file)",
-		NoticeKind: session.NoticeKindKeptOut, KeptOut: &session.KeptOut{Lead: lead, Files: []session.KeptOutFile{{Path: "a_test.go", Rule: "api-key-sk"}, {Path: ".env", Rule: "dotenv-file"}}}})
-	at := -1
-	for i, e := range a.entries {
-		if e.kind == entryNote && strings.HasPrefix(e.text, lead) {
-			at = i
-		}
-	}
-	if at < 0 || !a.entries[at].told {
-		t.Fatalf("the grouped notice is not a told note: %+v", a.entries)
-	}
-	rows := a.entryRows(a.conversation(), at, 180)
-	var drawn []string
-	for _, row := range rows {
-		drawn = append(drawn, strings.TrimSpace(plain(row)))
-	}
-	if len(drawn) != 3 || !strings.HasSuffix(drawn[0], "paired computers") || drawn[1] != "· a_test.go (api-key-sk)" || drawn[2] != "· .env (dotenv-file)" {
-		t.Fatalf("rows %q, want the lead then one row per file", drawn)
-	}
-}

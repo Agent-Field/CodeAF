@@ -204,7 +204,8 @@ func (g Guard) screenPlan(c cell.Cell, tree, dir string, plan capturePlan) (Scre
 	if err = next.write(dir); err != nil {
 		return Screened{}, err
 	}
-	g.announce(tree, policy, secrets, unreadable)
+	g.announce(policy, secrets)
+	g.announceUnreadable(policy, unreadable)
 	g.vault(c, tree, secrets)
 	left.Apart = next.apart()
 	left.directories = directories
@@ -302,7 +303,7 @@ func (g Guard) repairUnreadable(c cell.Cell, tree, dir string) (bool, error) {
 	for _, path := range found {
 		notices = append(notices, keys.Finding{Path: path, Rule: keys.RuleUnreadable})
 	}
-	g.announce(tree, policy, nil, notices)
+	g.announceUnreadable(policy, notices)
 	return true, nil
 }
 

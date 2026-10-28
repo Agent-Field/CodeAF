@@ -21,15 +21,13 @@ import (
 // so the file stays where it is on this machine and is simply never captured.
 // Nothing is written into the tree: the exclusions live in the cell's own folder.
 //
-// The zero Guard works: the vault lives in the codeaf home and a notice is
-// written on stderr.
+// The zero Guard works: the vault lives in the codeaf home and a notice is one
+// line on stderr.
 type Guard struct {
 	// Home is the codeaf home that holds the vault; empty means the state root.
 	Home string
-	// Notify receives the one notice a screen owes for what it newly kept out
-	// ([sealNotice]), and a vault that could not be written; nil writes the
-	// notice's words to stderr.
-	Notify func(Notice)
+	// Notify receives one line for a path newly withheld; nil writes to stderr.
+	Notify func(string)
 	// Ledger, when set, spares a file that has not changed since it was found
 	// clean from being read again; EngineFor sets one per session.
 	Ledger *keys.Ledger
@@ -43,12 +41,12 @@ func (g Guard) home() string {
 	return g.Home
 }
 
-func (g Guard) notify(n Notice) {
+func (g Guard) notify(line string) {
 	if g.Notify != nil {
-		g.Notify(n)
+		g.Notify(line)
 		return
 	}
-	fmt.Fprintln(os.Stderr, "codeaf: "+n.Text)
+	fmt.Fprintln(os.Stderr, "codeaf: "+line)
 }
 
 // Screen is the pre-seal step for the tree the seal will capture. changed is
@@ -80,7 +78,8 @@ func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string
 	if err := next.write(policyDir); err != nil {
 		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
 	}
-	g.announce(tree, policy, secrets, unreadable)
+	g.announce(policy, secrets)
+	g.announceUnreadable(policy, unreadable)
 	g.vault(c, tree, secrets)
 	left.Apart = next.apart()
 	return left, nil
@@ -131,18 +130,31 @@ func pathsOf(found []keys.Finding) []string {
 	return out
 }
 
-// announce tells a person, in ONE notice for the whole screen, about the paths
-// it newly kept out: the files newly withheld for a secret, less those git
-// already holds unchanged ([withoutHistory]), and the paths newly left out
-// because this machine cannot read them. A path already kept out is never
-// announced again. The notice names each file and its rule, never the value.
-// What it does not say changes nothing about what is kept out: before is
-// already written as next when this runs.
-func (g Guard) announce(tree string, before policyFile, secrets, unreadable []keys.Finding) {
-	withheld := withoutHistory(tree, newlyFound(secrets, before.isWithheld))
-	if n := sealNotice(withheld, newlyFound(unreadable, before.isUnreadable)); n.Text != "" {
-		g.notify(n)
+// announce tells a person once about each path newly withheld. It names the
+// file and the rule, never the value.
+func (g Guard) announce(before policyFile, found []keys.Finding) {
+	for _, f := range found {
+		if !before.isWithheld(f.Path) {
+			g.notify(noticeFor(f))
+		}
 	}
+}
+
+// announceUnreadable tells a person once about each path newly left out because
+// this machine cannot read it.
+func (g Guard) announceUnreadable(before policyFile, found []keys.Finding) {
+	for _, f := range found {
+		if !before.isUnreadable(f.Path) {
+			g.notify(f.Path + " cannot be read here, so it is left out of the saved history until its permissions allow it")
+		}
+	}
+}
+
+func noticeFor(f keys.Finding) string {
+	if f.Rule == keys.RuleDotenv {
+		return f.Path + " is kept out of the saved history; its variables are kept locally for your tools, and the file travels through the key vault only to paired computers"
+	}
+	return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is kept out of the saved history; the file travels through the key vault only to paired computers"
 }
 
 // vault keeps the variables of every environment file found. A vault that
@@ -158,7 +170,7 @@ func (g Guard) vault(c cell.Cell, tree string, found []keys.Finding) {
 		return
 	}
 	if err := g.importDotenv(scopeOf(c), tree, files); err != nil {
-		g.notify(Notice{Text: "could not keep " + strings.Join(files, ", ") + " in the key vault: " + err.Error()})
+		g.notify("could not keep " + strings.Join(files, ", ") + " in the key vault: " + err.Error())
 	}
 }
 

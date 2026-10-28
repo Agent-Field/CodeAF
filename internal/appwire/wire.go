@@ -449,11 +449,10 @@ type Entry struct {
 	Status    int    `json:"status,omitempty"`
 	// NoticeKind, Skills and Unrecorded are typed facts the engine attached to a
 	// notice at its producer: "skills" (the skills a turn carried, named in
-	// Skills), "memory" (a memory line), "factory_status", "kept_out" (a seal's
-	// grouped notice, its files in KeptOut), or a local "sync", "moved" or
-	// "interrupted" sentence. Unrecorded says no transcript record redraws it. A
-	// consumer never derives these facts from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,kept_out,sync,moved,interrupted"`
+	// Skills), "memory" (a memory line), "factory_status", or a local "sync",
+	// "moved" or "interrupted" sentence. Unrecorded says no transcript record
+	// redraws it. A consumer never derives these facts from Text.
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sync,moved,interrupted"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
@@ -496,12 +495,6 @@ type Entry struct {
 	// sent each, to whom, its kind and its log entry. The notice's Text is the
 	// same lines worded.
 	Team []TeamLine `json:"team,omitempty"`
-	// KeptOut is, on a notice of kind "kept_out", the files one seal newly kept
-	// out of the saved history and the one-line lead that counts them. Text is
-	// the lead followed by one line per file, so an app that knows nothing of
-	// this field still shows every file; an app that draws the list itself shows
-	// the lead and folds the files away.
-	KeptOut *KeptOut `json:"kept_out,omitempty"`
 	// A tool entry carries the facts of its call (worklog.go); a note entry
 	// names its task there too.
 	ToolFacts
@@ -531,22 +524,6 @@ type TeamLine struct {
 	Kind     string `json:"kind"`
 	Text     string `json:"text"`
 	Post     string `json:"post,omitempty"`
-}
-
-// KeptOut is a seal's grouped notice as facts: the lead, Text without its list,
-// and every file it names.
-type KeptOut struct {
-	Lead  string        `json:"lead"`
-	Files []KeptOutFile `json:"files"`
-}
-
-// KeptOutFile is one file a grouped seal notice names: its path, relative to
-// the conversation's workspace, and the rule that kept it out — a secret rule
-// such as "api-key-sk", "dotenv-file" for an environment file, or "unreadable"
-// for a path the machine cannot read. Never the value.
-type KeptOutFile struct {
-	Path string `json:"path"`
-	Rule string `json:"rule"`
 }
 
 // EntryOp is an operation the person or an agent did that the conversation

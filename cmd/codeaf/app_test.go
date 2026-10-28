@@ -1958,50 +1958,6 @@ func TestAppNoticeEntriesCarryOnlyTheEnginesTypedKinds(t *testing.T) {
 	}
 }
 
-// A SEAL'S GROUPED NOTICE reaches the app as words that still list every file,
-// for an app that draws only words, and as typed facts for one that folds the
-// list away. A kept_out kind with no facts is an ordinary notice.
-func TestAppKeptOutNoticeCarriesItsFilesAsFacts(t *testing.T) {
-	lead := "2 files look like they hold secrets, so they are kept out of the saved history; they travel through the key vault only to paired computers"
-	words := lead + "\n· a_test.go (api-key-sk)\n· .env (dotenv-file)"
-	conv := &fakeConversation{script: []session.Event{
-		{Kind: session.EventNotice, Told: true, Text: words, NoticeKind: session.NoticeKindKeptOut, KeptOut: &session.KeptOut{Lead: lead, Files: []session.KeptOutFile{{Path: "a_test.go", Rule: "api-key-sk"}, {Path: ".env", Rule: "dotenv-file"}}}},
-		{Kind: session.EventNotice, Told: true, Text: "factless", NoticeKind: session.NoticeKindKeptOut},
-		{Kind: session.EventTurnDone},
-	}}
-	var mu sync.Mutex
-	var opens, releases int
-	rec := newAppRecorder()
-	backend := newFakeBackend(rec, fakeOpener(conv, &opens, &releases, &mu))
-	defer backend.Close()
-	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := backend.Send(agent.ID, "add a step", ""); err != nil {
-		t.Fatal(err)
-	}
-	rec.waitFor(t, 5*time.Second, appTurnDone)
-	byText := map[string]appwire.Entry{}
-	rec.mu.Lock()
-	for _, data := range rec.data {
-		if added, ok := data.(appwire.EntryAdded); ok && added.Entry.Kind == appwire.EntryNotice {
-			byText[added.Entry.Text] = added.Entry
-		}
-	}
-	rec.mu.Unlock()
-	grouped, ok := byText[words]
-	if !ok || grouped.NoticeKind != "kept_out" || grouped.KeptOut == nil || grouped.KeptOut.Lead != lead || !grouped.Quiet {
-		t.Fatalf("grouped notice = %+v (present %v)", grouped, ok)
-	}
-	if want := []appwire.KeptOutFile{{Path: "a_test.go", Rule: "api-key-sk"}, {Path: ".env", Rule: "dotenv-file"}}; !reflect.DeepEqual(grouped.KeptOut.Files, want) {
-		t.Fatalf("files = %+v, want %+v", grouped.KeptOut.Files, want)
-	}
-	if plain, ok := byText["factless"]; !ok || plain.NoticeKind != "" || plain.KeptOut != nil {
-		t.Fatalf("a kept_out kind with no facts = %+v (present %v)", plain, ok)
-	}
-}
-
 // Reopening a completed stage or any saved conversation keeps its own choice.
 func TestAppReopenKeepsTheSavedModel(t *testing.T) {
 	rec := newAppRecorder()

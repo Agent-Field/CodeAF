@@ -2616,13 +2616,6 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				switch event.NoticeKind {
 				case session.NoticeKindSkills, session.NoticeKindMemory:
 					notice.NoticeKind = event.NoticeKind
-				case session.NoticeKindKeptOut:
-					// A SEAL'S GROUPED NOTICE: the words above are the lead
-					// and then the files, for an app that draws only words;
-					// the facts let a newer one fold the list away.
-					if kept := appKeptOut(event.KeptOut); kept != nil {
-						notice.NoticeKind, notice.KeptOut = event.NoticeKind, kept
-					}
 				}
 				notice.Skills = append([]string(nil), event.Skills...)
 				notice.Unrecorded = event.Unrecorded
@@ -2730,20 +2723,6 @@ func appToolEntryID(call string) string { return "t" + call }
 func appNoteEntryID(n, k int) string { return "n" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
 
 func appLiveNoticeID(n, k int) string { return "q" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
-
-// appKeptOut is a seal's grouped notice as the app's facts, nil when the
-// engine sent none. The lead takes the redaction the notice's words take;
-// paths and rules are names, never a secret's value.
-func appKeptOut(kept *session.KeptOut) *appwire.KeptOut {
-	if kept == nil || kept.Lead == "" || len(kept.Files) == 0 {
-		return nil
-	}
-	out := &appwire.KeptOut{Lead: redact.Secrets(kept.Lead), Files: make([]appwire.KeptOutFile, 0, len(kept.Files))}
-	for _, f := range kept.Files {
-		out.Files = append(out.Files, appwire.KeptOutFile{Path: f.Path, Rule: f.Rule})
-	}
-	return out
-}
 
 func appErrorEntryID(n int) string { return "x" + strconv.Itoa(n) }
 

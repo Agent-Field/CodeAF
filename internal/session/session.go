@@ -834,19 +834,6 @@ type Event struct {
 	// cannot support.
 	Skills []string `json:"Skills,omitempty"`
 
-	// KeptOut is a grouped seal notice as facts: its lead, and every file the
-	// screen newly kept out of the saved history with the rule that kept it out
-	// (sealnotice.go). It rides an [EventNotice] of kind [NoticeKindKeptOut],
-	// whose Text says the same in words — the lead, then one line per file — for
-	// a reader that draws notices as prose. A surface that draws the list itself
-	// reads it from here and never back out of Text.
-	//
-	// NIL IS EVERY OTHER NOTICE, a notice about one file (whose one sentence is
-	// the whole of it) and a peer built before the field existed. It is omitted
-	// when nil, so such an event serialises exactly as it did before, and an
-	// older peer reading a newer one sees the words it always drew.
-	KeptOut *KeptOut `json:"KeptOut,omitempty"`
-
 	// Summarized is how many messages a compaction pass replaced with a
 	// summary, on [EventCompacted]; zero for a pass that only stubbed and
 	// folded. It is the field a surface decides by, never the hint's words:

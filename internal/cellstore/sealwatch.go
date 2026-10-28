@@ -3,8 +3,6 @@ package cellstore
 import (
 	"sync"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 // TailQuiet is how long the record must be still, after a turn ended, before
@@ -27,11 +25,6 @@ const TailQuiet = 2 * time.Second
 // The zero value is ready to use, and safe for concurrent use. A door with no
 // surface to draw a segment on sets Say, and the sentences go there as they
 // happen instead of waiting to be taken.
-//
-// A SENTENCE MAY CARRY THE FILES IT NAMES. The guard's grouped notice
-// ([Notice]) is held whole, so the reader that takes it with [SealWatch.TakeFiled]
-// gets the list as facts; every other reader gets its words, which already
-// name the files.
 type SealWatch struct {
 	// Say, when set, receives each sentence as it happens.
 	Say func(string)
@@ -50,7 +43,7 @@ type SealWatch struct {
 	idle    bool
 	tail    *time.Timer
 	cause   string
-	said    []Notice
+	said    []string
 	failing bool
 }
 
@@ -66,13 +59,13 @@ func (w *SealWatch) Report(err error) {
 	w.fail(err.Error())
 }
 
-// Note says a notice that is not about a seal failing, such as the files the
+// Note says a sentence that is not about a seal failing, such as a file the
 // guard kept out of the saved history. It never changes whether sealing is
 // failing, and it travels the same road as the watch's own sentences.
-func (w *SealWatch) Note(n Notice) {
+func (w *SealWatch) Note(sentence string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.tell(n)
+	w.say(sentence)
 }
 
 func (w *SealWatch) fail(cause string) {
@@ -92,17 +85,12 @@ func (w *SealWatch) recover() {
 	w.failing, w.cause = false, ""
 }
 
-func (w *SealWatch) say(sentence string) { w.tell(Notice{Text: sentence}) }
-
-func (w *SealWatch) tell(n Notice) {
-	if n.Text == "" {
-		return
-	}
+func (w *SealWatch) say(sentence string) {
 	if w.Say != nil {
-		w.Say(n.Text)
+		w.Say(sentence)
 		return
 	}
-	w.said = append(w.said, n)
+	w.said = append(w.said, sentence)
 }
 
 // TurnStarted is the session's word that a turn began: the turn writes the
@@ -173,22 +161,13 @@ func (w *SealWatch) Failing() bool {
 }
 
 // Take hands over the oldest sentence not yet read, or "" when there is none.
-// A grouped notice comes as its words, which name its files.
 func (w *SealWatch) Take() string {
-	sentence, _, _ := w.TakeFiled()
-	return sentence
-}
-
-// TakeFiled is [SealWatch.Take] for a reader that draws a grouped notice's files
-// itself: the sentence, and for a notice that names several files its lead and
-// the files with their rules ([Notice]); lead and files are empty otherwise.
-func (w *SealWatch) TakeFiled() (sentence, lead string, files []keys.Finding) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if len(w.said) == 0 {
-		return "", "", nil
+		return ""
 	}
-	n := w.said[0]
+	sentence := w.said[0]
 	w.said = w.said[1:]
-	return n.Text, n.Lead, n.Files
+	return sentence
 }

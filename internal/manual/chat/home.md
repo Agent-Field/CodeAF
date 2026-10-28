@@ -385,24 +385,6 @@ different files keep both. When both edited the same file, the one saved last wi
 file, never line by line. A file you delete on one machine is deleted on the other. With no
 identity on this machine, no secrets are fetched and no file is written.
 
-## Why the chat says files look like they hold secrets — kept out of the saved history, show files, test fixtures with fake keys
-
-When a save keeps working files out of the chat's saved history, the chat says so once, in
-one notice for that save. One file is one sentence: `<file> looks like it holds a secret
-(<rule>), so it is kept out of the saved history; the file travels through the key vault only
-to paired computers`, or, for a `.env`, that `its variables are kept locally for your tools`.
-Several files are one line that counts them, such as `3 files look like they hold secrets, so
-they are kept out of the saved history; they travel through the key vault only to paired
-computers`, with each file and its rule listed under it. The desktop app folds that list away
-behind **Show files**; the terminal shows it under the line. Files this machine cannot read are
-counted the same way: `2 files cannot be read here, so they are left out of the saved history
-until their permissions allow it`.
-
-A file git already tracks, exactly as the last commit has it, such as a test fixture with a
-fake key, is kept out just the same but not announced: it is already in the repository's
-history. It is announced when it differs from that commit, when it is only staged, or when
-the folder is not a git checkout. A file is announced only the first time it is kept out.
-
 ## Do saved provider keys and credentials follow me to another computer
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -501,8 +483,8 @@ running is known only from the moment of the move.
 One odd file never stops a chat from saving or moving. A file that this machine cannot read
 (mode `0000`, or owned by another user) is kept out of the saved history: the chat says
 `<file> cannot be read here, so it is left out of the saved history until its permissions
-allow it` (several such files are one notice that counts them and lists each), the card lists
-it under `not brought along:` with the same reason, and everything else saves as usual. Once the file can be read, the next save carries it. Two files whose
+allow it`, the card lists it under `not brought along:` with the same reason, and everything
+else saves as usual. Once the file can be read, the next save carries it. Two files whose
 names differ only in letter case (`Readme.md` and `README.md`), or only in how an accent is
 spelled, cannot both live on a Mac's default disk. The move brings one, the name that sorts
 first (`README.md` before `Readme.md`), keeps the other out and lists it on the card as
