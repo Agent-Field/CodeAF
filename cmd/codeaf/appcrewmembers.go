@@ -702,6 +702,9 @@ func appParseProposal(answer string) (appwire.Proposal, bool) {
 // answerProposal is the person's answer to a proposal: make the crew, or keep
 // the agent alone. Edit is the app's editor, and leaves the ask open.
 func (b *appBackend) answerProposal(agent, id, option string) error {
+	if err := appValidateProposalAnswer(option); err != nil {
+		return err
+	}
 	switch option {
 	case appwire.ProposalCreate:
 		_, err := b.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: id})
@@ -710,6 +713,14 @@ func (b *appBackend) answerProposal(agent, id, option string) error {
 		return nil
 	case appwire.ProposalKeep:
 		b.dropProposal(id, appwire.ProposalKeep)
+		return nil
+	}
+	return appwire.Errorf(appwire.CodeBadParams, "a proposal is answered create, edit or keep")
+}
+
+func appValidateProposalAnswer(option string) error {
+	switch option {
+	case appwire.ProposalCreate, appwire.ProposalEdit, appwire.ProposalKeep:
 		return nil
 	}
 	return appwire.Errorf(appwire.CodeBadParams, "a proposal is answered create, edit or keep")

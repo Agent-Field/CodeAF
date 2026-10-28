@@ -58,6 +58,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -3209,18 +3210,9 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 			refused = appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
 			return
 		}
-		if option != "" {
-			picked, offered := appOptionNamed(q, option)
-			if !offered {
-				refused = appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", askID, option)
-				return
-			}
-			key = picked.key
-		}
-		if q.Kind == session.QuestionConsent && option == appwire.OptionAlways {
-			if refused = appValidateScope(option, scope, q.ConsentScopes); refused != nil {
-				return
-			}
+		key, refused = appValidateQuestionAnswer(askID, q, option, text, scope)
+		if refused != nil {
+			return
 		}
 		live.answered[askID] = appAnsweredMark + option
 		live.lastUse = b.now()
@@ -3251,6 +3243,57 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 		return appEngineError(err)
 	}
 	return nil
+}
+
+// appValidateQuestionAnswer is shared by immediate answers and Inbox preflight.
+// Words alone remain valid for model questions and task redirects.
+func appValidateQuestionAnswer(id string, q session.Question, option, text, scope string) (string, error) {
+	key := ""
+	if option != "" {
+		picked, offered := appOptionNamed(q, option)
+		if !offered {
+			return "", appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", id, option)
+		}
+		key = picked.key
+	} else {
+		required := false
+		switch q.Kind {
+		case session.QuestionConsent, session.QuestionKeep, session.QuestionLanding:
+			required = true
+		case session.QuestionTask, session.QuestionFactory, session.QuestionRecipe, session.QuestionItem, session.QuestionAutomation:
+			required = strings.TrimSpace(text) == ""
+		}
+		if required {
+			return "", appwire.Errorf(appwire.CodeBadParams, "the ask %s needs an option", id)
+		}
+	}
+	switch q.Kind {
+	case session.QuestionConsent:
+		if err := appValidateScope(option, scope, q.ConsentScopes); err != nil {
+			return "", err
+		}
+	case session.QuestionLanding, session.QuestionConflict:
+		if key == session.LandingTellKey && strings.TrimSpace(text) == "" {
+			return "", appwire.Errorf(appwire.CodeBadParams, "the ask %s needs words for Tell", id)
+		}
+	case session.QuestionFuel:
+		answer := strings.ToLower(strings.TrimSpace(text))
+		switch key {
+		case "1":
+			answer = orchestrate.GateTopup + ":" + answer
+		case "2":
+			answer = orchestrate.GateFinish
+		case "3":
+			answer = orchestrate.GateStop
+		}
+		if answer != orchestrate.GateFinish && answer != orchestrate.GateStop {
+			amount, topup := strings.CutPrefix(answer, orchestrate.GateTopup+":")
+			if _, valid := appParseUSD(amount); !topup || !valid {
+				return "", appwire.Errorf(appwire.CodeBadParams, "the ask %s needs a positive top-up amount, finish or stop", id)
+			}
+		}
+	}
+	return key, nil
 }
 
 // appValidateScope keeps both answer doors on the permission's offered rules.
