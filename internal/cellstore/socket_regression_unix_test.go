@@ -226,7 +226,7 @@ func TestR9ProjectChildRewindsThroughPrivateSocket(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), strings.Repeat("state", 25)))
 	bin, err := sealingEngine()
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("no engine binary: %v", err)
 	}
 	d := Daemon{Socket: socketFor(bin), Binary: bin}
 	t.Cleanup(func() {
@@ -282,9 +282,10 @@ func TestR9ProjectChildRewindsThroughPrivateSocket(t *testing.T) {
 func TestR11UnixUpgradeSharesExistingFallback(t *testing.T) {
 	bin, err := sealingEngine()
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("no engine binary: %v", err)
 	}
-	root := filepath.Join(t.TempDir(), strings.Repeat("long-home-", 15))
+	// An absolute home without links: earlier engines hashed it as spelled.
+	root := filepath.Join(canonicalTree(t.TempDir()), strings.Repeat("long-home-", 15))
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
 	}

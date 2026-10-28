@@ -61,7 +61,7 @@ func mustWorkingDir(t *testing.T) string {
 func TestW3HomeDaemonsSealConcurrentlyAndRestart(t *testing.T) {
 	bin, err := sealingEngine()
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("no engine binary: %v", err)
 	}
 	t.Setenv("LOCALAPPDATA", filepath.Dir(testSocket(t)))
 	engines := make([]Engine, 2)

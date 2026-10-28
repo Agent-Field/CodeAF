@@ -18,7 +18,8 @@ import (
 // home's canonical path so every alias of one home shares one start lock), so an
 // upgraded engine shares the daemon an older one started.
 func socketFor(bin string) string {
-	socket := filepath.Join(canonicalTree(home.Dir()), "v3", "engine-"+strings.TrimPrefix(filepath.Base(bin), "furrow-")+".sock")
+	root := canonicalTree(home.Dir())
+	socket := filepath.Join(root, "v3", "engine-"+strings.TrimPrefix(filepath.Base(bin), "furrow-")+".sock")
 	if len(socket) < maxSocketBytes {
 		return socket
 	}
@@ -28,7 +29,9 @@ func socketFor(bin string) string {
 	// earlier engines used comes first, so an upgrade beside a live daemon shares
 	// it; every short base must be a private directory of this user, and a
 	// preclaimed one is skipped for the runtime directory or another candidate.
-	sum := sha256.Sum256([]byte(home.Dir() + "\x00" + bin))
+	// The alias is keyed by the canonical home, so every spelling of one home
+	// shares it; an absolute home without links keeps the key earlier engines used.
+	sum := sha256.Sum256([]byte(root + "\x00" + bin))
 	name := fmt.Sprintf("codeaf-e-%d-%x", os.Getuid(), sum[:12])
 	legacy := os.TempDir()
 	if len(filepath.Join(legacy, name, "e.sock")) >= maxSocketBytes {
