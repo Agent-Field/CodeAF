@@ -577,10 +577,8 @@ func itemStagesQuestion(n ItemNotice) string {
 	for _, s := range lost {
 		onlyRemoved = onlyRemoved && gone[s]
 	}
+	// An approve step is never one: only the person removes it, never a card.
 	if onlyRemoved && len(removed) == 1 {
-		if factory.ApproveWord(removed[0]) {
-			return "remove the approve step?"
-		}
 		return "remove the " + removed[0] + " stage?"
 	}
 	if onlyRemoved {
