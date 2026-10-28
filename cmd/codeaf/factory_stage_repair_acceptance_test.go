@@ -335,3 +335,34 @@ func TestRepairChangingEvidenceIsBoundedByReportsNotMinutes(t *testing.T) {
 		t.Fatal("changing evidence ran past its report limit")
 	}
 }
+
+// A successful correction cancels the stop: refused reports before it do not
+// count toward the limit after it.
+func TestASuccessfulReportStartsTheRefusedCountOver(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	stopped := door.stoppedVerification()
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}}
+	refuse := func(from int) {
+		t.Helper()
+		for i := range stageVerificationReportLimit - 1 {
+			run(fmt.Sprintf("CHECK_EXIT=%d cargo test --test cli regression", from+i))
+			if err := door.Report(t.Context(), fixed); err == nil {
+				t.Fatal("failed repair accepted")
+			}
+		}
+	}
+	refuse(10)
+	run("cargo test --test cli regression")
+	if err := door.Report(t.Context(), fixed); err != nil {
+		t.Fatalf("passing correction refused: %v", err)
+	}
+	refuse(30)
+	select {
+	case reason := <-stopped:
+		t.Fatalf("stopped on reports refused before the correction: %s", reason)
+	default:
+	}
+}

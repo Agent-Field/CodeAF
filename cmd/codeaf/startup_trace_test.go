@@ -65,3 +65,21 @@ func TestStartupTraceKeepsItsLastLines(t *testing.T) {
 		t.Fatalf("kept %d lines, last %q", len(lines), lines[len(lines)-1])
 	}
 }
+
+// A trace names a request's route, never its job number or repository, and
+// narrows a file an older build left readable to others.
+func TestStartupTraceNamesRoutesAndIsTheOwnersAlone(t *testing.T) {
+	for path, want := range map[string]string{"/v1/queue": "/v1/queue", "/v1/jobs/42": "/v1/jobs/…", "/v1/repos/acme/api": "/v1/repos/…", "/": "/"} {
+		if got := traceRoute(path); got != want {
+			t.Errorf("traceRoute(%q) = %q, want %q", path, got, want)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "startup.log")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	traceStartup(path, "step")
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v, %v; want 0600", info.Mode().Perm(), err)
+	}
+}

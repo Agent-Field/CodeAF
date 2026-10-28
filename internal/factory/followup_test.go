@@ -68,9 +68,15 @@ func TestCIFollowUpNeverRunsAgainstUnknownOrChangingWork(t *testing.T) {
 			state, phases := it.State, len(it.Stream.Phases)
 			// The follow-up may say what it waits for (its reason is
 			// monitoring, saved as a change); it never queues work.
-			QueueCIFollowUp(&it, time.Now())
+			now := time.Now()
+			QueueCIFollowUp(&it, now)
 			if it.State != state || len(it.Stream.Phases) != phases || (it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running")) {
 				t.Fatalf("unexpected follow-up: state=%s phases=%d follow=%+v", it.State, len(it.Stream.Phases), it.FollowUp)
+			}
+			// Unchanged observations are quiet: the same read again saves
+			// nothing.
+			if QueueCIFollowUp(&it, now) {
+				t.Fatalf("an unchanged observation saved a change: follow=%+v", it.FollowUp)
 			}
 		})
 	}

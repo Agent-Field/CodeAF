@@ -123,10 +123,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 		rec = &StepRecovery{Step: f.Step, Limit: RecoveryLimit, Deadline: now.Add(RunnerReturnWindow)}
 	}
 	cp := *rec
-	if cp.State == "running" && !cp.RunningAt.IsZero() && now.After(cp.RunningAt) {
-		cp.Deadline = cp.Deadline.Add(now.Sub(cp.RunningAt))
-		cp.RunningAt = time.Time{}
-	}
+	cp.RunningAt = time.Time{}
 	cp.LastAt, cp.Reason = f.At, f.Detail
 	if why := RecoveryBlockReason(*it); why != "" {
 		cp.State, cp.Reason = "exhausted", why
@@ -136,8 +133,11 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	} else if cp.Attempts >= cp.Limit {
 		cp.State, cp.Reason = "exhausted", fmt.Sprintf("Automatic recovery stopped after %d of %d retries. Try again to make another attempt.", cp.Attempts, cp.Limit)
 	} else {
+		// EVERY NEW FAILURE GETS A FRESH RUNNER WAIT: a deadline left over
+		// from an earlier wait would end a retry that ran for an hour within
+		// a minute of its next drop, with attempts left.
 		delay := []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second}[cp.Attempts]
-		cp.State, cp.NextAt = "waiting", now.Add(delay)
+		cp.State, cp.NextAt, cp.Deadline = "waiting", now.Add(delay), now.Add(RunnerReturnWindow)
 	}
 	it.Recovery = &cp
 	return true

@@ -237,3 +237,69 @@ func TestRecoveryRepositoryOffLeavesAManualRecoveryPath(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+// A retry picked up late that runs for an hour, then drops while its worker
+// still holds the job, gets a fresh runner wait: it is not exhausted on the
+// clock left over from the first wait, with attempts to spare.
+func TestRecoveryALateRetryThatRunsLongKeepsItsAttempts(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, recoveryJob())
+	held, e := f.desk.Pull(worker("first-worker", "sam"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	fail := func() {
+		t.Helper()
+		if e := f.store.Update(it.ID, func(cur *factory.Item) error {
+			factory.StampFailure(cur, factory.NewFailure(factory.FollowPRStep, factory.CodeTransportError, "connection reset", "", factory.FailureStopped, 1, f.now))
+			return nil
+		}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	doors := lease.NewDoors(f.desk)
+	// The first drop: the worker's lease runs out, and retry 1 is queued.
+	fail()
+	f.now = held.ExpiresAt
+	if _, e := f.desk.Expire(); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := doors.RecoverAutomatic(it.ID); e != nil {
+		t.Fatal(e)
+	}
+	f.now = readRecovery(t, f, it.ID).Recovery.NextAt
+	if _, e := doors.RecoverAutomatic(it.ID); e != nil {
+		t.Fatal(e)
+	}
+	if rec := readRecovery(t, f, it.ID).Recovery; rec.State != "queued" || rec.Attempts != 1 {
+		t.Fatalf("retry 1 not queued: %+v", rec)
+	}
+	// Picked up 14 minutes later, it runs for 46 minutes under heartbeats.
+	f.now = f.now.Add(14 * time.Minute)
+	w := worker("late-worker", "sam")
+	if _, e := f.desk.Pull(w); e != nil {
+		t.Fatal(e)
+	}
+	for end := f.now.Add(46 * time.Minute); f.now.Before(end); f.now = f.now.Add(30 * time.Second) {
+		if _, e := f.desk.Heartbeat(it.ID, w.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// It drops while the worker still holds the job: two minutes on, it is
+	// still waiting with its attempts left.
+	fail()
+	if _, e := doors.RecoverAutomatic(it.ID); e != nil {
+		t.Fatal(e)
+	}
+	for end := f.now.Add(2 * time.Minute); f.now.Before(end); f.now = f.now.Add(30 * time.Second) {
+		if _, e := f.desk.Heartbeat(it.ID, w.ID); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := doors.RecoverAutomatic(it.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if rec := readRecovery(t, f, it.ID).Recovery; rec == nil || rec.State != "waiting" || rec.Attempts != 1 {
+		t.Fatalf("a long retry ran out on a leftover clock: %+v", rec)
+	}
+}

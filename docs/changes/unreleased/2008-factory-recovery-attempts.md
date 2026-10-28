@@ -2,7 +2,7 @@
 pr: 2008
 kind: fixed
 title: Recovery and verification limits count attempts, not minutes
-surface: [engine]
+surface: [engine, docs]
 invalidates:
   - "Was true: an interrupted step's automatic retries stopped after 2 minutes even with attempts left, and a runner had 2 minutes to come back. Is true: retries stop only when RecoveryLimit attempts are used; a runner has RunnerReturnWindow (15 minutes) to take a queued retry."
   - "Was true: a repair whose completion report was refused was stopped 5 minutes later whatever it was doing. Is true: it is stopped after 3 reports with the same evidence or 6 refused reports in all; its stage's own time and money bounds still apply."

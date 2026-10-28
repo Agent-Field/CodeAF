@@ -10,4 +10,6 @@ invalidates:
 A slow first read after a start can now be read back: startup.log on the
 factory floor says how long each step of the solo factory's start took and how
 long its first answers took, counted from when codeaf began. It holds step
-names and times only.
+names, each first answer's method and route (`GET /v1/jobs/…`, never a job
+number or a repository) and times only, and it is readable by its owner
+alone.

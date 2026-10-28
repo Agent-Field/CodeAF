@@ -2,7 +2,7 @@
 pr: 2008
 kind: fixed
 title: A queued job on a computer that is down names that computer
-surface: [engine]
+surface: [engine, docs]
 invalidates:
   - "Was true: a queued job whose work was on an offline or asleep computer read \"Waiting for an available runner\" with advice to change Jobs at once, and Start now did nothing. Is true: it reads \"Waiting for <computer> (offline for 3 h)\" (state_presentation kind waiting_for_computer), and Start now refuses with why."
 ---

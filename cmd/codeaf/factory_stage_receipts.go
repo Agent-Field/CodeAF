@@ -395,7 +395,8 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 		d.timer.Stop()
 		d.timer = nil
 	}
-	d.last, d.reason, d.repeats = "", "", 0
+	// A successful correction cancels the stop: both counts start over.
+	d.last, d.reason, d.repeats, d.refused = "", "", 0, 0
 	err := d.StageDoor.Report(ctx, r)
 	accepted = err == nil
 	return err

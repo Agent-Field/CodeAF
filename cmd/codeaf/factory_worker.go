@@ -85,9 +85,11 @@ func (d *factoryWorkerDial) creds(base string) []string {
 
 // keep caches slot's credential for w's factory; "" forgets it. THIS
 // MACHINE'S OWN FACTORY LISTENS ON A NEW PORT AT EACH START, so saving a
-// credential for a loopback factory forgets every other loopback address: those
-// factories are gone, and their credentials would otherwise pile up forever.
-// A factory elsewhere is never touched.
+// credential for a loopback factory forgets the other loopback addresses that
+// nothing listens on any more: those factories are gone, and their credentials
+// would otherwise pile up forever. One that still listens (a second local
+// factory, or a team factory reached through a tunnel on localhost) is kept,
+// and a factory elsewhere is never touched.
 func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -100,7 +102,7 @@ func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 	all := d.readCreds()
 	if factoryLoopback(w.Base()) {
 		for base := range all {
-			if base != w.Base() && factoryLoopback(base) {
+			if base != w.Base() && factoryLoopback(base) && !factoryListening(base) {
 				delete(all, base)
 			}
 		}
@@ -191,6 +193,22 @@ func (d *factoryWorkerDial) attach(ctx context.Context, person factory.Seam) (ap
 		Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: handle,
 		OS: runtime.GOOS, CodeafVersion: buildinfo.String(), TakesUnassigned: takes, Kind: kind, Slots: factoryBenches(), Checkouts: checkouts,
 	}, nil
+}
+
+// factoryListening says something still accepts connections at base's
+// address. A loopback port nobody listens on refuses at once, so the wait is
+// only for a listener that is slow to accept.
+func factoryListening(base string) bool {
+	u, err := url.Parse(base)
+	if err != nil || u.Port() == "" {
+		return false
+	}
+	conn, err := net.DialTimeout("tcp", u.Host, 250*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // factoryLoopback says base is a factory on this machine.

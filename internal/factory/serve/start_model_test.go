@@ -40,9 +40,8 @@ func TestStartRefusesAModelWithNoKeyBeforeItWrites(t *testing.T) {
 }
 
 // A team server's ProfileDir is its own home, which holds none of its people's
-// keys, and a job on automatic models may route roles to other keyed models:
-// neither start is refused for a key.
-func TestStartClaimsNoKeyOnATeamServerOrOnAutomaticModels(t *testing.T) {
+// keys: its start is never refused for a key.
+func TestStartClaimsNoKeyOnATeamServer(t *testing.T) {
 	t.Setenv(config.APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
 	team, _ := keylessSetup(t, factoryapi.FactoryTeam)
@@ -52,14 +51,49 @@ func TestStartClaimsNoKeyOnATeamServerOrOnAutomaticModels(t *testing.T) {
 	if w := identityRequest(team.h, "POST", fmt.Sprintf("/v1/jobs/%d/start_now", it.ID), "", "operator-secret", nil); w.Code != 200 {
 		t.Fatalf("a team server refused the start: %d %s", w.Code, w.Body)
 	}
-	solo, _ := keylessSetup(t, factoryapi.FactorySolo)
-	automatic := true
-	auto, err := solo.st.Create(factory.Item{Title: "test work", Repo: "acme/api", State: factory.StateQueued, Assignee: "owner", AutomaticModels: &automatic})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if w := identityRequest(solo.h, "POST", fmt.Sprintf("/v1/jobs/%d/start_now", auto.ID), "", "operator-secret", nil); w.Code != 200 {
-		t.Fatalf("a job on automatic models was refused: %d %s", w.Code, w.Body)
+}
+
+// Which models count follows the session's policy: a job that never chose
+// (nil) or chose automatic models may move to the profile's fallbacks, up to
+// the provider's limit, so a keyed fallback within it lets the start go; with
+// automatic models off, only the job's own model counts.
+func TestStartCountsTheFallbacksAutomaticModelsCouldReach(t *testing.T) {
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv("OPENAI_API_KEY", "")
+	on, off := true, false
+	for _, tc := range []struct {
+		name      string
+		fallbacks string
+		automatic *bool
+		want      int
+	}{
+		{"a job that never chose, keyed second fallback", "qwen/a, deepseek/b", nil, 200},
+		{"automatic models, keyed second fallback", "qwen/a, deepseek/b", &on, 200},
+		{"automatic models off", "qwen/a, deepseek/b", &off, 409},
+		{"a keyed fallback past the limit", "qwen/a, qwen/b, deepseek/c", nil, 409},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, profile := keylessSetup(t, factoryapi.FactorySolo)
+			// DeepSeek holds a key; the job's model and qwen are on OpenRouter,
+			// which holds none.
+			if err := config.WriteSources(profile, []config.PersistedSource{{ID: "deepseek", Written: "deepseek", Key: "sk-deepseek-test-0000000001", Order: 1}}); err != nil {
+				t.Fatal(err)
+			}
+			row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyModelFallbacks)
+			if !ok {
+				t.Fatal("no fallbacks row")
+			}
+			if err := row.Apply(tc.fallbacks); err != nil {
+				t.Fatal(err)
+			}
+			it, err := f.st.Create(factory.Item{Title: "test work", Repo: "acme/api", State: factory.StateQueued, Assignee: "owner", AutomaticModels: tc.automatic})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := identityRequest(f.h, "POST", fmt.Sprintf("/v1/jobs/%d/start_now", it.ID), "", "operator-secret", nil); w.Code != tc.want {
+				t.Fatalf("got %d %s, want %d", w.Code, w.Body, tc.want)
+			}
+		})
 	}
 }
 

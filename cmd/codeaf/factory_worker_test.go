@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -434,5 +435,27 @@ func TestWorkerCredentialsForgetDeadLoopbackFactories(t *testing.T) {
 	dial.keep(1, client.Open("https://factory.example.com", "").Worker("remote-1"))
 	if all := dial.readCreds(); len(all) != 2 || all["http://127.0.0.1:50004"][0] != "now" {
 		t.Fatalf("a remote attach forgot the local factory: %v", all)
+	}
+}
+
+// A loopback factory that still listens (a second local factory, or a team
+// factory through a tunnel on localhost) keeps its credential when another
+// local factory's is saved.
+func TestWorkerCredentialsKeepALoopbackFactoryThatStillListens(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	live := "http://" + listener.Addr().String()
+	dial := newFactoryWorkerDial(st, nil)
+	dial.keep(0, client.Open(live, "").Worker("tunnel"))
+	dial.keep(0, client.Open("http://127.0.0.1:50004", "").Worker("now"))
+	if all := dial.readCreds(); len(all) != 2 || all[live][0] != "tunnel" || all["http://127.0.0.1:50004"][0] != "now" {
+		t.Fatalf("kept %v, want both local factories", all)
 	}
 }

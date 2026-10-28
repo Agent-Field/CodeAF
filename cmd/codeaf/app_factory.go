@@ -379,7 +379,7 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	h.answeredMu.Unlock()
 	for _, k := range fresh {
 		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
-		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, r.URL.Path, ms(took))
+		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
 	}
 }
 func appFactoryProxy(target factoryTarget) http.Handler {

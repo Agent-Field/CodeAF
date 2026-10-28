@@ -18,15 +18,15 @@ func TestAnAttachForgetsOnlyItsOwnComputersQuietRegistrations(t *testing.T) {
 		s.credentials[k] = registeredWorker{Last: now.Add(-quiet), Worker: lease.Worker{ID: id, Handle: handle, Machine: machine}}
 		return k
 	}
-	fresh := row("fresh", "w-new", "sam", "mbp", 0)
-	old := row("old", "w-old", "sam", "mbp", 2*time.Minute)
-	older := row("older", "w-older", "sam", "mbp", 72*time.Hour)
-	recent := row("recent", "w-recent", "sam", "mbp", 30*time.Second)
-	working := row("working", "w-working", "sam", "mbp", time.Hour)
-	other := row("other", "w-other", "sam", "studio", time.Hour)
-	theirs := row("theirs", "w-theirs", "mei", "mbp", time.Hour)
+	fresh := row("fresh", "w-new", "owner-a", "mbp", 0)
+	old := row("old", "w-old", "owner-a", "mbp", 2*time.Minute)
+	older := row("older", "w-older", "owner-a", "mbp", 72*time.Hour)
+	recent := row("recent", "w-recent", "owner-a", "mbp", 30*time.Second)
+	working := row("working", "w-working", "owner-a", "mbp", time.Hour)
+	other := row("other", "w-other", "owner-a", "studio", time.Hour)
+	theirs := row("theirs", "w-theirs", "owner-b", "mbp", time.Hour)
 
-	s.forgetQuietLocked(lease.Worker{ID: "w-new", Handle: "sam", Machine: "mbp"}, []lease.Lease{{Worker: "w-working"}}, time.Minute)
+	s.forgetQuietLocked(lease.Worker{ID: "w-new", Handle: "owner-a", Machine: "mbp"}, []lease.Lease{{Worker: "w-working"}}, time.Minute)
 
 	for name, k := range map[string][32]byte{"old": old, "older": older} {
 		if _, ok := s.credentials[k]; ok {

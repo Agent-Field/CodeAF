@@ -2,7 +2,7 @@
 pr: 2008
 kind: fixed
 title: A sleeping computer holds its job for a day at most
-surface: [engine]
+surface: [engine, docs]
 invalidates:
   - "Was true: a lease held by a computer that went to sleep was kept forever, so a computer that never woke held its job for good. Is true: an asleep lease counts for AsleepCeiling (24 hours) after the computer went to sleep, then the job is queued again like any silent hold."
 ---

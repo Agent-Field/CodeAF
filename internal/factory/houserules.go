@@ -18,8 +18,9 @@ import (
 //
 // THEY ONLY EVER ADD. A house rule is merged into each repository's file the
 // way the personal file is ([pipeline.WithHouseRules]): it can add a sentence a
-// step must follow, a thing to ask about before a job starts, or a path never
-// to start on by itself. It can never take away anything the repository says.
+// step must follow, a thing to ask about before a job starts, or a protected
+// path (an ask-first `touch <path>`, or a never line, its kept alias). It can
+// never take away anything the repository says.
 //
 // Rules are what every step is told (the brief's rules paragraph) and what code
 // applies where it recognises the sentence (internal/factory/run's policy).

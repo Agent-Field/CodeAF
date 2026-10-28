@@ -37,6 +37,20 @@ func traceStartup(path, format string, args ...any) {
 	}
 	_ = os.MkdirAll(filepath.Dir(path), 0o700)
 	_ = os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
+	// WriteFile keeps an existing file's mode: narrow one an older build left
+	// wider.
+	_ = os.Chmod(path, 0o600)
+}
+
+// traceRoute is a request path as a trace line names it: the API version and
+// the collection, with anything after that (an id, a repository) as one
+// placeholder, so the trace holds no job numbers or names.
+func traceRoute(path string) string {
+	parts := strings.SplitN(strings.Trim(path, "/"), "/", 3)
+	if len(parts) == 3 {
+		parts[2] = "…"
+	}
+	return "/" + strings.Join(parts, "/")
 }
 
 // ms is d in whole milliseconds, for a trace line.

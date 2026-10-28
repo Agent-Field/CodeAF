@@ -2,7 +2,7 @@
 pr: 2008
 kind: changed
 title: Ask-first paths and never paths are one kind of rule, protected paths
-surface: [engine]
+surface: [engine, docs]
 invalidates:
   - "Was true: a step's brief listed ask-first paths and never paths on two lines (\"ask before touching\" and \"never touch\"), and a match was held as \"ask first · touch auth/ · …\", \"never · …\" or \"never starts on its own · …\". Is true: both are protected paths, told to every step on one line (\"ask before touching: auth/, infra/\"), and any match at a start, a plan or a change is held as \"protected · <path> · <file>\"."
 ---

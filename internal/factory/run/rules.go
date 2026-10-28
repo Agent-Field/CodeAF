@@ -43,9 +43,10 @@ func JobRules(recipe func(repo string) factory.Recipe, it factory.Item) []string
 //	rules for this work (follow every one; if the work would break one, stop and ask through ask instead):
 //	- don't touch auth without checking with me
 //	- no new dependencies without asking
-//	- ask before touching: auth/, billing/
+//	- ask before touching: auth/, billing/, infra/
 //	- ask before you: change the public API
-//	- never touch: infra/
+//
+// (infra/ there is a never path: a protected path like the ask-first ones.)
 //
 // "" when there are none (the emptiness law).
 func rulesBrief(job Job) string {
