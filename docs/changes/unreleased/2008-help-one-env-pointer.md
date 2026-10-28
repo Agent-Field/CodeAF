@@ -1,8 +1,8 @@
 ---
-pr: 0
+pr: 2008
 kind: changed
 title: codeaf --help names the environment table once
-surface: [cli]
+surface: [engine]
 invalidates:
   - "Was true: codeaf --help pointed to codeaf help env twice, in Housekeeping and again in its last line. Is true: the Housekeeping entry is the one pointer, and the page is back inside its line cap."
 ---
