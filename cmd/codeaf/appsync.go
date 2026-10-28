@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
@@ -239,6 +240,43 @@ func (b *appBackend) knownWorkRefusal(a *appAgent) error {
 		}
 	})
 	return refusal
+}
+
+// refreshWorkRefusal lets a person's next send recover a released source chat.
+// Other work doors retain their cached refusal, so a known viewer does not pay
+// a relay round trip for each task, queue or remote-action check.
+func (b *appBackend) refreshWorkRefusal(a *appAgent) error {
+	refusal := b.knownWorkRefusal(a)
+	if refusal == nil {
+		return nil
+	}
+	if err := b.pairingWorkRefusal(); err != nil {
+		return err
+	}
+	var transcript string
+	var drives *driveBook
+	var moved bool
+	b.locked(func() { transcript, drives, moved = a.transcript, b.drives, a.windowMoved })
+	dir, folder := session.FolderOf(transcript)
+	if moved || drives == nil || !folder {
+		return refusal
+	}
+	drives.mu.Lock()
+	live := drives.drive[filepath.Base(dir)]
+	drives.mu.Unlock()
+	if live == nil || live.started() == nil {
+		return refusal
+	}
+	drive := live.started()
+	ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+	defer cancel()
+	if _, err := drive.ConfirmWork(ctx); err != nil {
+		return refusal
+	}
+	if err := drive.Gate(); err != nil {
+		return appEngineError(err)
+	}
+	return b.knownWorkRefusal(a)
 }
 
 // workAllowed reads cached ownership before handing new work to an open

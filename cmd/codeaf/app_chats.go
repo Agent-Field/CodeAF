@@ -241,7 +241,9 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		if state.Up && r.DeviceID != "" && !slices.Contains(state.Online, r.DeviceID) && !r.Mine {
 			r = r.Quiet()
 		}
-		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: r.Mine, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !r.Mine && r.Head != "", Line: appChatStatusLine(r), TakeoverLine: ""}
+		_, installed := local[r.Cell]
+		here := r.Mine && (r.Status == chatlist.Here || installed)
+		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence}, CanTake: !here && r.Head != "", Line: appChatStatusLine(r), TakeoverLine: ""}
 		if r.DeviceID != "" {
 			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
 		}
@@ -307,7 +309,9 @@ func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64) {
 func chatLocation(r appwire.ChatRow) *appwire.Location {
 	seen := r.Seen
 	line := r.Line
-	if !r.Here && r.Holder != nil {
+	if !r.Here && r.Status == string(chatlist.Idle) {
+		line = chatlist.Available
+	} else if !r.Here && r.Holder != nil {
 		line = chatlist.Superseded(r.Holder.Name)
 	}
 	return &appwire.Location{Cell: r.Cell, Seen: &seen, Here: r.Here, Holder: r.Holder, CanTake: r.CanTake, Line: line, TakeoverLine: r.TakeoverLine}

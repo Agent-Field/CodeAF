@@ -2100,7 +2100,7 @@ func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64,
 // sendLocked opens a's conversation if it is not held and starts one turn on
 // it. The caller holds a.gate.
 func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSending) (uint64, error) {
-	if err := b.knownWorkRefusal(a); err != nil {
+	if err := b.refreshWorkRefusal(a); err != nil {
 		return 0, err
 	}
 	// Opening can wake saved crew work, so reject an invalid identity before

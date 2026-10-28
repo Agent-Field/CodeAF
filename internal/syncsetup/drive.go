@@ -371,9 +371,30 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
+	if s.Branch == "" && d.directoryID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		v, err := d.sync.Dir.Cell(ctx, d.directoryID)
+		cancel()
+		if err == nil && v.Cell.Lease.Expires <= v.Now {
+			d.available()
+			return
+		}
+		if err == nil && s.By == "" {
+			s.By = v.Cell.Lease.Device
+		}
+	}
 	d.mu.Lock()
+	previous := d.viewer
+	if s.By == "" {
+		s.By = previous.ID
+	}
 	changed := d.viewer.Line == ""
 	d.viewer = Viewer{ID: s.By, Line: chatlist.Superseded(unknownDevice)}
+	// Repeated ownership checks must not replace a known holder with the
+	// temporary unnamed refusal while its display name is read again.
+	if previous.ID == s.By && previous.Name != "" {
+		d.viewer = previous
+	}
 	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 	d.mu.Unlock()
 	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
@@ -484,10 +505,18 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err := cellstore.Captured(ctx, d.cell); err != nil {
 		return err
 	}
-	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
+	if d.batcher == nil {
 		return nil
 	}
+	id, fence := d.batcher.Lease()
 	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
+	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
+		return nil
+	}
+	if err == nil && v.Cell.Lease.Expires <= v.Now {
+		d.available()
+		return nil
+	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
 	}
