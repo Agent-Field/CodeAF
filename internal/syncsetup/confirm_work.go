@@ -63,6 +63,10 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		d.resumeViewer()
 		return true, nil
 	}
+	if lease.Device == d.sync.Device.ID() {
+		d.available()
+		return false, nil
+	}
 
 	// Naming the holder shares the admission budget. Once the fence is known
 	// lost, a slow name lookup cannot turn the refusal back into admission.

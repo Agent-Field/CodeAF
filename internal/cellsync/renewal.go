@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -29,7 +28,7 @@ func (b *Batcher) renewalResult(seen Driving, err error) {
 		case err == nil:
 			changed = !b.renewalSince.IsZero()
 			b.renewalSince = time.Time{}
-		case errors.Is(err, directory.ErrUnreachable), errors.Is(err, blobstore.ErrUnreachable), errors.Is(err, wireauth.ErrUnavailable):
+		case Unreachable(err):
 			if seen.Fence != 0 && b.renewalSince.IsZero() {
 				b.renewalSince, changed = b.now(), true
 			}

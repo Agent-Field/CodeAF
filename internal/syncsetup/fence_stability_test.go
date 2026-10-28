@@ -125,7 +125,7 @@ func (w fenceReconnectWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return c, rw, err
 }
 
-func TestFenceF1FailedIdleRenewalRefusesWork(t *testing.T) {
+func TestRelayOutageO4FailedIdleRenewalKeepsWorkLocal(t *testing.T) {
 	r := newDriveRig(t)
 	wire := &fenceRenewalControl{Client: r.a.Dir}
 	r.a.Dir = wire
@@ -140,8 +140,8 @@ func TestFenceF1FailedIdleRenewalRefusesWork(t *testing.T) {
 	r.clock.Advance(directory.LeaseTTL + time.Second)
 	wire.refuse.Store(true)
 	mustNil(t, drive.CheckLease(t.Context()))
-	if drive.Gate() == nil || drive.HoldsLease(t.Context()) {
-		t.Fatal("F1 expired hold with failed renewal authorized work")
+	if drive.Gate() != nil || !drive.HoldsLease(t.Context()) {
+		t.Fatal("O4 unreachable renewal retired an unchanged own hold")
 	}
 	wire.refuse.Store(false)
 	if !drive.HoldsLease(t.Context()) || drive.Gate() != nil {

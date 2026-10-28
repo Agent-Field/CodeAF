@@ -1,11 +1,13 @@
 package cellsync
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -13,6 +15,13 @@ import (
 // refusal that only a person can cure is not retried, and a Retry-After is
 // never trusted past an hour, so a wrong clock on the relay cannot silence sync.
 const MaxHalt = time.Hour
+
+// Unreachable identifies transport failures that can recover without a person's
+// intervention. They leave local work writable and use the bounded retry path.
+func Unreachable(err error) bool {
+	return errors.Is(err, directory.ErrUnreachable) || errors.Is(err, blobstore.ErrUnreachable) ||
+		errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded)
+}
 
 // Refusal is one way the relay says no: the sentinel the wire names it by, the
 // one plain sentence the person reads, and how the client carries on. The table

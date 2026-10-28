@@ -286,7 +286,10 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	}
 	var localHead string
 	wasFree := view.Cell.Lease.Expires <= view.Now
-	if wasFree {
+	// An outage can leave our own saved head ahead of the relay. The
+	// unchanged, unreleased hold can renew without discarding that work.
+	resumeOwn := view.Cell.Lease.Device == s.Device.ID() && view.Cell.Lease.Expires != 0
+	if wasFree && !resumeOwn {
 		head, err := cellstore.Head(c)
 		if err != nil {
 			return drv, "", err
@@ -299,7 +302,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		}
 	}
 	var v directory.CellView
-	if view.Cell.Lease.Device == s.Device.ID() && view.Cell.Lease.Expires != 0 {
+	if resumeOwn {
 		// Opening an installed copy, including just after a take or a process
 		// restart, resumes the same hold. Heartbeat checks its fence atomically
 		// and can renew an expired lease that nobody else acquired.
@@ -318,7 +321,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		return drv, "", err
 	}
 	known, err = cellstore.KnowsHead(c, v.Cell.Head)
-	if err != nil || !known || (wasFree && localHead != v.Cell.Head) {
+	if err != nil || !known || (wasFree && !resumeOwn && localHead != v.Cell.Head) {
 		_ = s.Dir.Release(ctx, drv.ID(), v.Cell.Lease.Fence)
 		return drv, nonemptyHolder(view.Cell.Lease.Device), err
 	}
@@ -390,6 +393,10 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 		if err == nil && s.By == "" {
 			s.By = v.Cell.Lease.Device
 		}
+	}
+	if s.By != "" && s.By == d.sync.Device.ID() {
+		d.available()
+		return
 	}
 	d.mu.Lock()
 	previous := d.viewer
@@ -504,7 +511,7 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 		v, err = d.renewIdleLease(ctx, v, d.batcher.Fence())
 	}
 	if err != nil {
-		if errors.Is(err, directory.ErrFenceStale) || errors.Is(err, cellstore.ErrReadOnly) || expired {
+		if errors.Is(err, directory.ErrFenceStale) || errors.Is(err, cellstore.ErrReadOnly) || expired && !cellsync.Unreachable(err) {
 			return false
 		}
 		return true
@@ -567,7 +574,7 @@ func (d *Drive) renewIdleLease(ctx context.Context, v directory.CellView, fence 
 		d.sealMu.Unlock()
 		if errors.Is(err, directory.ErrFenceStale) {
 			d.becomeViewer(cellsync.Superseded{})
-		} else if err != nil {
+		} else if err != nil && !cellsync.Unreachable(err) {
 			d.available()
 		}
 		if err != nil {
