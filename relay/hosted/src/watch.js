@@ -181,6 +181,10 @@ export class Watchers {
     return this.liveness.present();
   }
 
+  presence(devices, now) {
+    return this.liveness.presence(devices, now);
+  }
+
   /** announce sends an event frame to every event socket except the sockets of `except`. */
   announce(frame, except) {
     this.liveness.tell(frame, except);

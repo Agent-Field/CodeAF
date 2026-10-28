@@ -209,7 +209,7 @@ func TestAppDevicesV1V3OlderRosterCannotUndoRemoval(t *testing.T) {
 }
 
 // V1, V5: real watch traffic updates presence without any roster/presence read.
-func TestAppDevicesV1V5ExistingWatchSuppliesPresence(t *testing.T) {
+func TestAppDevicesV1V5ExistingWatchSuppliesPresenceP2(t *testing.T) {
 	celltest.Available(t)
 	_, hits, _ := appDevicesRelay(t)
 	a, b := t.TempDir(), t.TempDir()
@@ -228,8 +228,8 @@ func TestAppDevicesV1V5ExistingWatchSuppliesPresence(t *testing.T) {
 	}
 	_, rec, w := appDeviceBackend(t, a)
 	view := appDeviceList(t, w)
-	if view.Devices[1].Online == nil || *view.Devices[1].Online {
-		t.Fatalf("known offline presence: %+v", view)
+	if view.Devices[1].Online != nil {
+		t.Fatalf("P2 unobserved computer must start unknown: %+v", view)
 	}
 	before := hits.Load()
 	// These sockets belong to other engine work, not to the Devices adapter.

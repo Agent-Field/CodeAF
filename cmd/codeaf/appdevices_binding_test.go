@@ -86,7 +86,7 @@ func TestAppDevicesV1V3RePairClearsRemovalWithoutRestart(t *testing.T) {
 
 // V1 amendment: replacing the pairing accepts its lower directory version and
 // drops the old roster, presence and callbacks, including a delayed old list.
-func TestAppDevicesV1ReplacementPairingDropsOldRoster(t *testing.T) {
+func TestAppDevicesV1ReplacementPairingDropsOldRosterP2(t *testing.T) {
 	celltest.Available(t)
 	delay := &appDeviceDelayedList{ready: make(chan struct{}), release: make(chan struct{})}
 	_, _, down := appDevicesRelay(t, delay.wrap)
@@ -175,7 +175,7 @@ func TestAppDevicesV1ReplacementPairingDropsOldRoster(t *testing.T) {
 	down.Store(true)
 	_ = machineCall[appwire.DeviceRenameResult](t, w, "devices.rename", appwire.DeviceRenameParams{Name: "new cached desk"})
 	appDeviceEvent(t, rec, func(v appwire.Devices) bool {
-		return v.Mode == appwire.DevicesOn && len(v.Devices) == 2 && v.Devices[0].ID == fresh.Device.ID() && v.Devices[0].Name == "new cached desk" && v.Devices[1].ID == partner.Device.ID() && !v.Devices[0].Removed && !v.Devices[1].Removed && v.Devices[0].Online != nil && !*v.Devices[0].Online && v.Devices[1].Online != nil && !*v.Devices[1].Online
+		return v.Mode == appwire.DevicesOn && len(v.Devices) == 2 && v.Devices[0].ID == fresh.Device.ID() && v.Devices[0].Name == "new cached desk" && v.Devices[1].ID == partner.Device.ID() && !v.Devices[0].Removed && !v.Devices[1].Removed && v.Devices[0].Online == nil && v.Devices[1].Online == nil
 	})
 }
 

@@ -182,8 +182,12 @@ Any paired device may approve or deny; the first decision wins.
     "dev_B": { "online": false, "last_seen": 1789999000000 } } }
 ```
 
-One entry per non-revoked device in the committed directory, combined with advisory socket
-presence. Authorization and directory rows pass a fresh majority read; sampling current committed
+One entry per non-revoked device whose advisory socket presence is known. After presence
+memory starts or restarts, an unobserved device is omitted for one default presence window
+(75 seconds), then reads offline if it has not returned. An observed socket's actual lapse
+still reports offline during that window. Both native and hosted relays apply this rule;
+stored `last_seen` alone is not evidence that a computer stopped during a relay restart.
+Authorization and directory rows pass a fresh majority read; sampling current committed
 time can also write coordination state. Answers with `Codeaf-Dir-Version` like `/v1/dir/list`.
 Compatibility clients use this on app open or when their watch is down. A joined Home follows
 its local applied learner for display hints; taking or publishing still requires fresh authority.

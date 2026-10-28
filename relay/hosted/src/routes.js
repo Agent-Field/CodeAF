@@ -4,7 +4,7 @@
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
 import { approve, deny } from './link/decide.js';
-import { parseBeat, presenceOf } from './presence.js';
+import { parseBeat } from './presence.js';
 import { parseHolds } from './vouch.js';
 import { Wire, badRequest, json, empty, notFound } from './wire.js';
 
@@ -52,7 +52,7 @@ function watching(c) {
 // The directory's version rides on a presence answer as on a list.
 const presence = (c) => {
   const { tenant } = c;
-  const answer = presenceOf(tenant.dir.list().devices, tenant.watchers.present(), tenant.clock());
+  const answer = tenant.watchers.presence(tenant.dir.list().devices, tenant.clock());
   return withVersion(json(answer), tenant.dir.version);
 };
 

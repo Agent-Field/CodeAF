@@ -441,15 +441,7 @@ func (c *nativeClient) Presence(ctx context.Context) (directory.PresenceView, er
 	if e != nil {
 		return p, e
 	}
-	online := c.owner.feed.PresentSet()
-	for id, v := range p.Devices {
-		v.Online = online[id]
-		if v.Online {
-			v.LastSeen = p.Now
-		}
-		p.Devices[id] = v
-	}
-	return p, nil
+	return c.owner.feed.WithPresence(p), nil
 }
 func (c *nativeClient) ApproveRequest(ctx context.Context, code string, a directory.Approval) error {
 	if err := c.owner.effects.Admit(ctx, c.owner.now().UnixMilli(), c.owner.links, code); err != nil {

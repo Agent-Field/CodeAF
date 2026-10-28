@@ -23,7 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
-func TestAppChatRowsR1PresenceIsIndependentOfClosedChat(t *testing.T) {
+func TestAppChatRowsR1P2PresenceIsIndependentOfClosedChat(t *testing.T) {
 	celltest.Available(t)
 	relay := e2WireRelay(t, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,11 +61,14 @@ func TestAppChatRowsR1PresenceIsIndependentOfClosedChat(t *testing.T) {
 		}
 	}
 	var ids []string
-	var holder *syncsetup.Sync
+	var holder, sleeping *syncsetup.Sync
 	for i, name := range []string{"Mac", "Windows", "Sleeping"} {
 		s := appDeviceSync(t, homes[i])
 		if i == 0 {
 			holder = s
+		}
+		if i == 2 {
+			sleeping = s
 		}
 		if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, name); err != nil {
 			t.Fatal(err)
@@ -81,7 +84,7 @@ func TestAppChatRowsR1PresenceIsIndependentOfClosedChat(t *testing.T) {
 	}
 	feed := holder.Follow()
 	defer feed.Close()
-	_, _, wire := appDeviceBackend(t, homes[1])
+	_, rec, wire := appDeviceBackend(t, homes[1])
 	var rows map[string]appwire.ChatRow
 	appSyncWait(t, "R1 holder presence", func() bool {
 		rows = map[string]appwire.ChatRow{}
@@ -91,8 +94,7 @@ func TestAppChatRowsR1PresenceIsIndependentOfClosedChat(t *testing.T) {
 		row := rows[ids[0]]
 		return row.Online != nil && *row.Online
 	})
-	// The explicit computer presence snapshot also establishes the offline
-	// holder; absence from an unfinished watch snapshot is still unknown.
+	// P2: an explicit snapshot also leaves an unobserved computer unknown.
 	machineCall[appwire.DevicesResult](t, wire, "devices.list", struct{}{})
 	for _, row := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
 		rows[row.Cell] = row
@@ -104,6 +106,31 @@ func TestAppChatRowsR1PresenceIsIndependentOfClosedChat(t *testing.T) {
 		}
 	}
 	row := rows[ids[2]]
+	if row.Online != nil || row.Line != "" || row.TakeoverLine != "" {
+		t.Fatalf("P2 unobserved holder: %+v", row)
+	}
+	// Establish an actual connection and disconnect so the offline assertion
+	// still checks real presence independently of the closed chat's lease.
+	watch, err := sleeping.Dir.(directory.Watcher).Watch(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch.Close()
+	rec.waitFor(t, directory.OfflineDebounce+5*time.Second, func(event string, data any) bool {
+		if event != appwire.EventDevicesChanged {
+			return false
+		}
+		for _, dev := range data.(appwire.DevicesResult).Devices.Devices {
+			if dev.ID == sleeping.Device.ID() && dev.Online != nil && !*dev.Online {
+				return true
+			}
+		}
+		return false
+	})
+	for _, fresh := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
+		rows[fresh.Cell] = fresh
+	}
+	row = rows[ids[2]]
 	if row.Online == nil || *row.Online || row.Line != "Sleeping offline" || row.TakeoverLine != "Sleeping offline" {
 		t.Errorf("R1 offline holder: %+v", row)
 	}

@@ -13,7 +13,7 @@ import { RaftEffectsFacade } from './effects.js';
 import { Wire, empty, json, unwrap } from '../wire.js';
 import { prefixOf, signedUri } from '../base.js';
 import { fromBase64Url } from '../codec.js';
-import { presenceOf, parseBeat } from '../presence.js';
+import { parseBeat } from '../presence.js';
 import { parseHolds } from '../vouch.js';
 import { rotationView } from '../rotation.js';
 import { CommittedWatchers, CLOSE_REVOKED, CLOSE_ROTATED } from '../watch.js';
@@ -667,7 +667,7 @@ export class HostedIdentity {
     if(request.method==='GET'){
       if(path==='/v1/identity/rotation')return json(rotationView(identity.rotation,Number(snapshot.app.now),this.tenant.limits));
       if(path==='/v1/dir/list'||path==='/v1/dir/presence'){
-        const raw=await this.listingJSON(b,snapshot.app),reply=path.endsWith('/presence')?json(presenceOf(JSON.parse(raw).devices,this.watchers.online(),Number(snapshot.app.now))):this.jsonBytes(raw);reply.headers.set('Codeaf-Dir-Version',version);return reply;
+        const raw=await this.listingJSON(b,snapshot.app),reply=path.endsWith('/presence')?json(this.watchers.presence(JSON.parse(raw).devices,Number(snapshot.app.now))):this.jsonBytes(raw);reply.headers.set('Codeaf-Dir-Version',version);return reply;
       }
       const row=await this.members.get(b.node).hostView(b.index,'state','cell/'+segment(decodeURIComponent(route.args[0])));if(!row.raw)throw new Wire('not_found',404);
       const reply=this.jsonBytes('{"now":'+row.app.now+',"cell":'+this.projectJSON('cell',row.raw)+'}');reply.headers.set('codeaf-conditional-takes','1');return reply;
