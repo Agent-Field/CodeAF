@@ -346,7 +346,12 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			if err := e.screenCapture(ctx, c); err != nil {
 				return nil, err
 			}
-			return e.do(ctx, c, e.cellDir(c), op)
+			// The daemon retains a directory watcher after materializing a tree.
+			// A take renames that tree next, which Windows refuses while watched.
+			// Join a one-shot process before returning; Follow binds the final root.
+			materializer := e
+			materializer.Transport = Spawn{Binary: e.Binary, Run: e.Run}
+			return materializer.do(ctx, c, e.cellDir(c), op)
 		},
 	}
 }
