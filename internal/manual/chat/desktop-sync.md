@@ -107,6 +107,9 @@ unknown presence has no online dot or offline claim. The saved time is the time
 of the newest shared saved turn, shown in your local time, rather than the time
 it was copied to the relay. An unknown saved time is left out. The engine's
 takeover sentence adds holder or pending-work facts without repeating a date or age.
+After a relay starts or restarts, computers it has not heard from have unknown
+presence for up to 75 seconds. They have no offline line during that window.
+An observed computer whose connection actually lapses can still be marked offline.
 Select a chat to preview its title, saved time and engine sentence. Continue
 here moves it through the engine, then opens the returned local chat. Its
 history and working copies use the same continuation path as the terminal.
@@ -158,14 +161,19 @@ shared model settings. An unavailable model continues with this computer's usabl
 default. One line in the chat explains which model was unavailable and which
 model is used here. The existing conversation model-switch rules save that choice;
 continuing back on a computer without that provider checks its own default again.
-If the default is also unavailable, the chat asks you to set up a model in Settings
-before sending instead of passing the unavailable model to another provider.
+Continue here completes even when the default is also unavailable: the chat is
+here, and its row opens the returned local agent. Its first send fails locally
+with a setup sentence, such as `This chat used llama3.2 (Ollama), which isn't set up on this computer. Set up a model in Settings, then send again.`
+That reason appears once in the agent view, and no provider call is made for
+the turn. Set a usable default in Settings, then send again. The next send uses
+that default and explains the change once; taking the chat again is unnecessary.
 
 ## If Continue here fails while moving a chat
 
 If moving the chat fails, the app says
 `This chat could not be moved to this computer.` Technical causes are kept in
-the error details. If installation failed after acquisition, the chat is released.
+the error details. A plain model setup reason is carried in the visible message.
+If installation failed after acquisition, the chat is released.
 The computer without the installed chat still offers Continue here and names the
 last holder without claiming it is open there. The original open chat says
 `This chat is available to continue here.` Its next send can acquire the free

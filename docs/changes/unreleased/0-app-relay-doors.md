@@ -4,6 +4,8 @@ title: Desktop engines pair computers and continue chats from other computers
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
+  - "A missing local default previously refused a take after acquiring and installing the chat; taking now completes and the first send explains model setup without a provider call."
+  - "A restarted relay previously reported unobserved paired computers offline immediately; presence now remains unknown for one default presence window unless an observed connection actually lapses."
   - "An open desktop view previously lost its writer to the idle sweep and read calls acquired a new fence; explicitly open views now renew the same hold until closed."
   - "An expired own hold previously rejected newer locally saved work after a relay outage; unchanged ownership now renews and publishes that work."
   - "A failed renewal of an expired own hold previously blocked local work; unreachable renewals now leave outage turns writable and saved for retry."
@@ -89,6 +91,14 @@ default, explain the change once, and apply the existing conversation model-swit
 rules. A computer without a usable default gets a plain setup reason.
 The saved model choice also identifies its provider before any call, so a newly
 selected custom alias cannot fall through to a different computer's router.
+Taking a chat without a usable default now returns its local agent and reconciles
+the chat row's local id immediately. The first send gives a plain model setup
+reason once. After a usable default is set, the next send uses it and explains
+the change once. Actionable take reasons stay in the visible error message;
+technical detail has no repeated engine prefixes.
+Native and hosted relays omit unobserved computers for their first 75 seconds
+of presence memory, while still reporting observed connection lapses. Restarting
+the relay cannot briefly label a continuously running peer offline.
 
 An explicitly open desktop view keeps its hold through idle sweeps; heartbeats
 renew the same fence without row churn. Conversations opened only for background
