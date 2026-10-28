@@ -176,6 +176,11 @@ export class Watchers {
     return this.liveness.online();
   }
 
+  /** present agrees with presence events while a computer reconnects. */
+  present() {
+    return this.liveness.present();
+  }
+
   /** announce sends an event frame to every event socket except the sockets of `except`. */
   announce(frame, except) {
     this.liveness.tell(frame, except);

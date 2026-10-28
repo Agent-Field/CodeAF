@@ -143,9 +143,14 @@ export class Liveness {
     return new Set(this.#livePeers().map((p) => p.device));
   }
 
+  /** present includes computers inside the reconnect debounce, matching watch events. */
+  present() {
+    return new Set([...this.online(), ...this.pending.keys()]);
+  }
+
   /** snapshot is the presence frames a new event socket of `device` hears on connect: the others that peers believe online. */
   snapshot(device) {
-    const believed = new Set([...this.online(), ...this.pending.keys()]);
+    const believed = this.present();
     believed.delete(device);
     const at = this.clock();
     return [...believed].map((d) => eventFrame('presence', { device: d, online: true, at }));

@@ -441,7 +441,7 @@ func (c *nativeClient) Presence(ctx context.Context) (directory.PresenceView, er
 	if e != nil {
 		return p, e
 	}
-	online := c.owner.feed.OnlineSet()
+	online := c.owner.feed.PresentSet()
 	for id, v := range p.Devices {
 		v.Online = online[id]
 		if v.Online {

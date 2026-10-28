@@ -282,3 +282,13 @@ test('a device that comes back after being told offline is told online at once',
   r.join('dev_b', false, 10);
   assert.deepEqual(flat(viewer), ['dev_b:true', 'dev_b:false', 'dev_b:true']);
 });
+
+test('P1 presence queries retain a computer until its reconnect debounce lapses', () => {
+  const r = room();
+  const a = r.join('dev_a');
+  r.leave(a);
+  assert.deepEqual([...r.liveness.present()], ['dev_a']);
+  r.now.t += OFFLINE_DEBOUNCE_MS;
+  r.liveness.expire();
+  assert.deepEqual([...r.liveness.present()], []);
+});

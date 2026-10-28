@@ -257,6 +257,12 @@ func (p *presence) onlineSet() map[string]bool {
 	return p.liveDevices()
 }
 
+func (p *presence) presentSet() map[string]bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.believed()
+}
+
 // announce tells every event socket except those of `except` about e.
 func (p *presence) announce(e dirwatch.Event, except string) {
 	p.mu.Lock()
@@ -309,6 +315,10 @@ func (f *Feed) Online(device string) bool { return f.pres.online(device) }
 
 // OnlineSet is every device that holds a watch socket now. The caller owns the map.
 func (f *Feed) OnlineSet() map[string]bool { return f.pres.onlineSet() }
+
+// PresentSet agrees with presence events during the reconnect debounce. A
+// roster refresh cannot announce offline before the watch would announce it.
+func (f *Feed) PresentSet() map[string]bool { return f.pres.presentSet() }
 
 // announceJoin tells the event sockets of every device but the new one that it
 // joined. A backend calls it, through SetOnJoin, in the turn that approves the

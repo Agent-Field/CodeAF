@@ -52,7 +52,7 @@ function watching(c) {
 // The directory's version rides on a presence answer as on a list.
 const presence = (c) => {
   const { tenant } = c;
-  const answer = presenceOf(tenant.dir.list().devices, tenant.watchers.online(), tenant.clock());
+  const answer = presenceOf(tenant.dir.list().devices, tenant.watchers.present(), tenant.clock());
   return withVersion(json(answer), tenant.dir.version);
 };
 

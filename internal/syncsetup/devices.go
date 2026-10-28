@@ -22,11 +22,13 @@ const DeviceRequestWithin = 20 * time.Second
 // DeviceSnapshot contains only facts already read by this process. A missing
 // Online entry means unknown, including after a presence socket goes away.
 type DeviceSnapshot struct {
-	Devices  map[string]directory.Device
-	Online   map[string]bool
-	Version  uint64
-	Refused  error
-	mutation uint64
+	Devices    map[string]directory.Device
+	Online     map[string]bool
+	Complete   bool
+	Version    uint64
+	Refused    error
+	mutation   uint64
+	presenceAt map[string]int64
 }
 
 // A removal's sequence orders it against reads from every client in this
@@ -83,6 +85,7 @@ func (o *DeviceObserver) Snapshot(id identity.Identity, dev identity.Dev) Device
 	}
 	s := o.state
 	s.Devices, s.Online = maps.Clone(s.Devices), maps.Clone(s.Online)
+	s.presenceAt = maps.Clone(s.presenceAt)
 	return s
 }
 
@@ -104,8 +107,12 @@ func rememberDevices(home string, binding deviceBinding, edit func(*DeviceSnapsh
 		}
 		next := o.state
 		next.Devices, next.Online = maps.Clone(next.Devices), maps.Clone(next.Online)
+		next.presenceAt = maps.Clone(next.presenceAt)
 		if next.Devices == nil {
 			next.Devices = map[string]directory.Device{}
+		}
+		if next.presenceAt == nil {
+			next.presenceAt = map[string]int64{}
 		}
 		edit(&next)
 		if reflect.DeepEqual(next, o.state) {
@@ -123,8 +130,11 @@ func rememberDevices(home string, binding deviceBinding, edit func(*DeviceSnapsh
 // Embedding the HTTP client preserves its holding and conditional-take doors.
 type deviceDirectory struct {
 	*directory.HTTP
-	home    string
-	binding deviceBinding
+	home           string
+	binding        deviceBinding
+	watchMu        sync.Mutex
+	watchEpoch     uint64
+	presenceExpiry *time.Timer
 }
 
 func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {
@@ -140,6 +150,10 @@ func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {
 			if devices == nil {
 				devices = map[string]directory.Device{}
 			}
+			for id, rec := range devices {
+				rec.LastSeen = max(rec.LastSeen, s.Devices[id].LastSeen)
+				devices[id] = rec
+			}
 			// Equal or unversioned reads cannot retract a removal. A read
 			// begun before a completed removal cannot replace any facts.
 			if l.Version == 0 || l.Version == s.Version {
@@ -154,7 +168,7 @@ func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {
 					}
 				}
 			}
-			s.Devices, s.Version = devices, max(s.Version, l.Version)
+			s.Devices, s.Version, s.Complete = devices, max(s.Version, l.Version), true
 		})
 	}
 	return l, err
@@ -193,17 +207,22 @@ func (d *deviceDirectory) Presence(ctx context.Context) (directory.PresenceView,
 	p, err := d.HTTP.Presence(ctx)
 	d.refusal(err)
 	rememberDevices(d.home, d.binding, func(s *DeviceSnapshot) {
-		s.Online = nil
 		if err != nil {
 			return
 		}
-		s.Online = map[string]bool{}
+		if s.Online == nil {
+			s.Online = map[string]bool{}
+		}
 		for id, seen := range p.Devices {
+			if p.Now < s.presenceAt[id] {
+				continue
+			}
+			s.presenceAt[id] = p.Now
 			s.Online[id] = seen.Online
 			// An online answer stamps now, not a past sighting. Keeping
 			// that clock out prevents a refresh/event/refresh loop.
 			if rec, ok := s.Devices[id]; ok && !seen.Online {
-				rec.LastSeen = seen.LastSeen
+				rec.LastSeen = max(rec.LastSeen, seen.LastSeen)
 				s.Devices[id] = rec
 			}
 		}
@@ -237,7 +256,44 @@ func (d *deviceDirectory) Watch(ctx context.Context) (dirwatch.Stream, error) {
 		d.refusal(err)
 		return nil, err
 	}
-	return &deviceStream{Stream: s, dir: d, presence: true}, nil
+	d.watchMu.Lock()
+	reconnected := d.watchEpoch != 0
+	d.watchEpoch++
+	epoch := d.watchEpoch
+	if d.presenceExpiry != nil {
+		d.presenceExpiry.Stop()
+		d.presenceExpiry = nil
+	}
+	d.watchMu.Unlock()
+	if reconnected {
+		// Reconnect snapshots announce only online peers. Reconcile once so a
+		// computer that lapsed while this socket was down does not stay online.
+		// Finish before the new socket's first ping is due.
+		read, cancel := context.WithTimeout(ctx, dirwatch.KeepEvery)
+		_, err := d.Presence(read)
+		cancel()
+		if err != nil {
+			rememberDevices(d.home, d.binding, func(v *DeviceSnapshot) { v.Online = nil })
+		}
+	}
+	return &deviceStream{Stream: s, dir: d, presence: true, epoch: epoch}, nil
+}
+
+// expirePresence bounds retained online facts while a watch cannot reconnect.
+// Losing observation makes presence unknown; only the relay announces offline.
+// The caller holds watchMu, also used by the timer and the next connection.
+func (d *deviceDirectory) expirePresence(epoch uint64) {
+	if d.presenceExpiry != nil {
+		d.presenceExpiry.Stop()
+	}
+	d.presenceExpiry = time.AfterFunc(dirwatch.DeadAfter, func() {
+		d.watchMu.Lock()
+		defer d.watchMu.Unlock()
+		if d.watchEpoch == epoch {
+			rememberDevices(d.home, d.binding, func(v *DeviceSnapshot) { v.Online = nil })
+			d.presenceExpiry = nil
+		}
+	})
 }
 
 func (d *deviceDirectory) WatchHolding(ctx context.Context, holds []directory.Hold) (dirwatch.Stream, error) {
@@ -253,6 +309,7 @@ type deviceStream struct {
 	dirwatch.Stream
 	dir      *deviceDirectory
 	presence bool
+	epoch    uint64
 }
 
 func (s *deviceStream) Next(ctx context.Context) (dirwatch.Frame, error) {
@@ -260,11 +317,22 @@ func (s *deviceStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 	if f.Pong && err == nil {
 		return f, err
 	}
+	if s.presence {
+		s.dir.watchMu.Lock()
+		defer s.dir.watchMu.Unlock()
+		if s.epoch != s.dir.watchEpoch {
+			return f, err
+		}
+		if err != nil && ctx.Err() == nil {
+			s.dir.expirePresence(s.epoch)
+		}
+	}
 	rememberDevices(s.dir.home, s.dir.binding, func(v *DeviceSnapshot) {
 		switch {
 		case err != nil:
-			delete(v.Online, s.dir.binding.self)
-			if s.presence {
+			// A dropped socket says nothing about another computer's presence.
+			// A deliberate owner shutdown still retires its local observation.
+			if s.presence && ctx.Err() != nil {
 				v.Online = nil
 			}
 			if errors.Is(err, dirwatch.ErrRevoked) || errors.Is(err, dirwatch.ErrRotated) {
@@ -287,23 +355,26 @@ func (s *deviceStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 				v.Devices[e.Device] = rec
 				delete(v.Online, e.Device)
 			case dirwatch.EventPresence:
-				if e.Online != nil {
+				if e.Online != nil && e.At >= v.presenceAt[e.Device] {
+					v.presenceAt[e.Device] = e.At
 					if v.Online == nil {
 						v.Online = map[string]bool{}
 					}
 					v.Online[e.Device] = *e.Online
 					if !*e.Online && e.At > 0 {
-						rec.LastSeen = e.At
+						rec.LastSeen = max(rec.LastSeen, e.At)
 						v.Devices[e.Device] = rec
 					}
 				}
 			}
 		default:
 			v.Version = max(v.Version, f.Version)
-			if v.Online == nil {
-				v.Online = map[string]bool{}
+			if s.presence {
+				if v.Online == nil {
+					v.Online = map[string]bool{}
+				}
+				v.Online[s.dir.binding.self] = true
 			}
-			v.Online[s.dir.binding.self] = true
 		}
 	})
 	return f, err
