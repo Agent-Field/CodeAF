@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Rest lane refresh between routing requests
-pr: 0
+pr: 2010
 surface: [engine, chat]
 invalidates:
   - "Previously an open engine refreshed remembered models every five minutes; now startup warms once and periodic refresh pauses after one interval without routing."
