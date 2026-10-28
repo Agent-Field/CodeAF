@@ -1903,6 +1903,11 @@ func (a *Agent) recoverTasks() {
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
 	graph.checkpoint()
+	// A recovered job must settle both durable views. Leaving its process
+	// file running would make the next background look open this chat again.
+	if err := reconcileProcessRecords(a.config.SessionFile, graph.document()); err != nil {
+		log.Printf("session: settling recovered processes: %v", err)
+	}
 	// AND THE HAND-BACK IS TOLD. Every landing the floor took off the model on the
 	// way in is one ordinary task update, on the lane a surface already folds into
 	// the row it is drawing — the same lane and the same shape the end-of-turn

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -22,11 +25,109 @@ func TestAppIdleReleaseI1I2BackgroundChatStaysReleasedUntilSend(t *testing.T) {
 	appIdleReleaseI1I2(t, false)
 }
 
-func appIdleReleaseI1I2(t *testing.T, viewed bool) {
+func TestAppBackgroundE13B1B3B4StoppedProcessStaysReleasedAcrossRestart(t *testing.T) {
+	appIdleReleaseI1I2(t, false, true)
+}
+
+func TestAppBackgroundE13B2QueuedTaskAcquiresAndSettlesAtStartup(t *testing.T) {
 	celltest.RequireEngine(t)
-	var acquires, releases, beats atomic.Int32
+	var acquires atomic.Int32
 	relay := e2WireRelay(t, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/acquire") {
+				acquires.Add(1)
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	a, rec, _, workspace := appSyncBackend(t)
+	homeA, _ := outageHomes(t, relay.URL)
+	t.Cleanup(func() { _ = a.Close() })
+	agent, err := mustCreate(t, a, appwire.CreateAsk{Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := a.Send(agent.ID, "! echo before-recovery", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appTurnDoneFor(t, rec, turn)
+	local := mustFind(t, a, agent.ID)
+	var transcript string
+	a.locked(func() { transcript = local.transcript })
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	seedAppE13StoppedProcess(t, transcript)
+	checkpoint := filepath.Join(filepath.Dir(transcript), "tasks.json")
+	raw, err := os.ReadFile(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	job := document["runs"].([]any)[0].(map[string]any)
+	job["state"], job["stopped"] = "running", false
+	delete(job, "endedAt")
+	// This is genuinely runnable recovery, beyond the old command whose
+	// process died with its engine. It must retain an automatic opener even
+	// after that command's two saved records have been reconciled locally.
+	document["seq"] = 2
+	document["nodes"] = []any{map[string]any{
+		"id": 2, "title": "B2 queued answer", "brief": "Reply with recovered.",
+		"state": "queued", "acceptance": "An answer is recorded.",
+	}}
+	raw, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(checkpoint, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	acquires.Store(0)
+	restarted := e2StartApp(t, homeA)
+	defer func() {
+		if t.Failed() {
+			n, found, err := session.ReadProcessRecord(transcript, 1)
+			raw, _ := os.ReadFile(checkpoint)
+			t.Logf("B2 startup: acquires=%d process=%+v found=%v err=%v checkpoint=%s", acquires.Load(), n, found, err, raw)
+		}
+	}()
+	appSyncWait(t, "B2 startup recovery acquired and settled the queued task", func() bool {
+		n, found, err := session.ReadProcessRecord(transcript, 1)
+		if acquires.Load() != 1 || err != nil || !found || n.State != session.JobStopped {
+			return false
+		}
+		for _, task := range session.ReadSessionTasks(transcript) {
+			if task.ID == 2 && (task.State == session.TaskDone || task.State == session.TaskFailed || task.State == session.TaskUnverified) && !task.EndedAt.IsZero() {
+				t.Logf("B2 queued task recovered as %s: %s", task.State, task.Report)
+				return true
+			}
+		}
+		return false
+	})
+	e2Quit(t, restarted)
+}
+
+func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
+	celltest.RequireEngine(t)
+	var acquires, releases, beats atomic.Int32
+	var watches, devices, vaults atomic.Int32
+	leftover := len(stopped) > 0 && stopped[0]
+	relay := e2WireRelay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/watch") {
+				watches.Add(1)
+			}
+			if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/devices/") {
+				devices.Add(1)
+			}
+			if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/vault") {
+				vaults.Add(1)
+			}
 			if strings.HasSuffix(r.URL.Path, "/acquire") {
 				acquires.Add(1)
 			}
@@ -45,6 +146,11 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool) {
 	t.Setenv(syncsetup.IntervalVar, "50")
 	a, rec, _, workspace := appSyncBackend(t)
 	_, homeB := outageHomes(t, relay.URL)
+	var idleClock atomic.Int64
+	if leftover {
+		clock := a.now
+		a.now = func() time.Time { return clock().Add(time.Duration(idleClock.Load())) }
+	}
 	// outageHomes stops spawned stores. Close the parent first so its final
 	// save cannot restart a store while the fixture is being dismantled.
 	t.Cleanup(func() { _ = a.Close() })
@@ -70,6 +176,23 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool) {
 		a.locked(func() { idle = a.agents[agent.ID].live != nil && !a.agents[agent.ID].live.running })
 		return idle
 	})
+	var transcript string
+	if leftover {
+		// Model the old engine's mismatch after its final checkpoint: the
+		// stopped job is in tasks.json, but its process file still says running.
+		func() {
+			a := mustFind(t, a, agent.ID)
+			a.gate.Lock()
+			defer a.gate.Unlock()
+			live := a.live
+			transcript = a.transcript
+			release := live.conn.Release
+			live.conn.Release = func() {
+				release()
+				seedAppE13StoppedProcess(t, transcript)
+			}
+		}()
+	}
 	if viewed {
 		if _, err := a.OpenAgent(agent.ID); err != nil {
 			t.Fatal(err)
@@ -88,12 +211,17 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool) {
 	}
 	acquires.Store(0)
 	releases.Store(0)
+	network := [3]int32{watches.Load(), devices.Load(), vaults.Load()}
 	for period := 0; period < 2; period++ {
-		a.locked(func() {
-			if live := a.agents[agent.ID].live; live != nil {
-				live.lastUse = a.now().Add(-appAgentIdle - time.Second)
-			}
-		})
+		if leftover {
+			idleClock.Add(int64(appAgentIdle + time.Second))
+		} else {
+			a.locked(func() {
+				if live := a.agents[agent.ID].live; live != nil {
+					live.lastUse = a.now().Add(-appAgentIdle - time.Second)
+				}
+			})
+		}
 		a.sweepOnce()
 		a.crewTick(run, false)
 		// Live read doors must keep using the existing open conversation.
@@ -137,6 +265,11 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool) {
 		if live != viewed || v.Cell.Lease.Fence != row.Seen.Fence || acquires.Load() != 0 || releases.Load() != wantReleases {
 			t.Fatalf("I1/I2 period %d: lease=%+v acquires=%d releases=%d", period+1, v.Cell.Lease, acquires.Load(), releases.Load())
 		}
+		if leftover {
+			if got := [3]int32{watches.Load(), devices.Load(), vaults.Load()}; got != network {
+				t.Fatalf("B4 idle release restarted sync traffic: before=%v after=%v (watch/device/vault)", network, got)
+			}
+		}
 	}
 	if viewed {
 		appSyncWait(t, "I1 open idle hold to renew beyond its original deadline", func() bool {
@@ -163,6 +296,30 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool) {
 		t.Fatalf("I2 idle chat emitted %d changes, want %d", changes, wantChanges)
 	}
 	t.Logf("I1/I2 viewed=%v: idle acquires=%d releases=%d heartbeat requests=%d row changes=%d fence=%d", viewed, acquires.Load(), releases.Load(), beats.Load(), changes, row.Seen.Fence)
+	if leftover {
+		if session.NeedsProcessRecovery(transcript) {
+			t.Fatal("B1 settled process still demands recovery after the sweep")
+		}
+		if err := a.Close(); err != nil {
+			t.Fatal(err)
+		}
+		// A fresh engine must also leave the known ending closed without acquiring.
+		seedAppE13StoppedProcess(t, transcript)
+		restarted := e2StartApp(t, homeA)
+		for range 2 {
+			time.Sleep(250 * time.Millisecond)
+			v, err := own.Dir.Cell(t.Context(), agent.ID)
+			if err != nil || v.Cell.Lease.Fence != row.Seen.Fence || acquires.Load() != 0 || releases.Load() != 1 {
+				t.Fatalf("B1/B3 restart acquired: lease=%+v acquires=%d releases=%d err=%v", v.Cell.Lease, acquires.Load(), releases.Load(), err)
+			}
+		}
+		e2Turn(t, restarted, agent.ID, "send after background restart")
+		newRow := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Fence == row.Seen.Fence+1 && r.Seen.Head != row.Seen.Head })
+		if acquires.Load() != 1 || newRow.Holder == nil || newRow.Holder.ID != own.Device.ID() {
+			t.Fatalf("B3 send after restart: row=%+v acquires=%d", newRow, acquires.Load())
+		}
+		return
+	}
 	turn, err = a.Send(agent.ID, "! echo after-idle", "")
 	if err != nil {
 		t.Fatal(err)
@@ -175,6 +332,23 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool) {
 	newRow := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Fence == wantFence && r.Seen.Head != row.Seen.Head })
 	if acquires.Load() != wantAcquires || newRow.Holder == nil || newRow.Holder.ID != own.Device.ID() {
 		t.Fatalf("I1 send: row=%+v acquires=%d", newRow, acquires.Load())
+	}
+}
+
+func seedAppE13StoppedProcess(t *testing.T, transcript string) {
+	t.Helper()
+	dir := filepath.Dir(transcript)
+	if err := os.MkdirAll(filepath.Join(dir, "processes"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range map[string]string{
+		"processes/head.json": `{"epoch":"e13","high":1}`,
+		"processes/1.json":    `{"ID":1,"Command":"say hi","Kind":"command","State":"running","Started":"2026-10-27T23:58:18Z","Elapsed":379625,"ToolCallID":"call_e13","StartedBy":"chat"}`,
+		"tasks.json":          `{"type":"tasks","version":1,"seq":1,"runs":[{"id":1,"kind":"job","title":"say hi","state":"failed","stopped":true,"report":"job 1","job_command":"say hi","job_call_id":"call_e13","startedAt":"2026-10-27T23:58:18Z","endedAt":"2026-10-27T23:58:18.000379625Z"}]}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
