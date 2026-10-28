@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -18,15 +19,22 @@ type sendLease struct {
 	Fence uint64 `json:"fence"`
 }
 
-func (s *Sync) sendLeasePath(id string) string {
+func (s *Sync) sendLeasePath(id string) (string, error) {
+	if strings.TrimSpace(s.Home) == "" {
+		return "", errors.New("sync: a home directory is required for chat holds")
+	}
 	key := sha256.Sum256([]byte(s.Ledger + "/" + s.Device.ID() + "/" + id))
-	return filepath.Join(s.Home, "v3", "sync", "holds", hex.EncodeToString(key[:]))
+	return filepath.Join(s.Home, "v3", "sync", "holds", hex.EncodeToString(key[:])), nil
 }
 
 // SendLease names the hold the local session actually publishes under. It
 // stays outside the saved chat so restoring another computer's copy cannot
 // grant this window permission to send.
 func (s *Sync) SendLease(id string) (string, uint64, error) {
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return "", 0, err
+	}
 	current, err := s.currentDisplaySync()
 	if err != nil {
 		return "", 0, err
@@ -34,7 +42,7 @@ func (s *Sync) SendLease(id string) (string, uint64, error) {
 	if current != s {
 		return current.SendLease(id)
 	}
-	raw, err := os.ReadFile(s.sendLeasePath(id))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", 0, err
 	}
@@ -84,7 +92,10 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 	if err != nil {
 		return err
 	}
-	path := s.sendLeasePath(id)
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
@@ -114,7 +125,10 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 		return err
 	}
 	defer lock.Close()
-	path := s.sendLeasePath(id)
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return err
+	}
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -137,7 +151,10 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 }
 
 func (s *Sync) lockSendLease(id string) (*os.File, error) {
-	path := s.sendLeasePath(id)
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
