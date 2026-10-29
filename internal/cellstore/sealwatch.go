@@ -124,11 +124,14 @@ func (w *SealWatch) Changes() <-chan struct{} {
 	return w.changes
 }
 
-// Pending reports whether a queued sentence is waiting, without checking recovery.
-func (w *SealWatch) Pending() bool {
+// Owed reports whether a reader that drains Take must look again although
+// nothing woke it: a sentence is waiting, or sealing is failing, whose recovery
+// is found only by asking Take or Failing. It never looks for that recovery
+// itself, so a reader's own Take stays the one check per look.
+func (w *SealWatch) Owed() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.said) > 0
+	return w.failing || len(w.said) > 0
 }
 
 // Waiting arms a newly constructed chat that is waiting for its first input.
