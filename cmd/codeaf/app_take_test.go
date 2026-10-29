@@ -322,6 +322,22 @@ func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 		Agent appwire.Agent `json:"agent"`
 	}](t, a.w, "agents.create", map[string]any{"workspace": workspace}).Agent
 	e2Turn(t, a, created.ID, "first")
+	heldFence := func() uint64 {
+		rows := machineCall[appwire.ChatsResult](t, a.w, "chats.list", struct{}{})
+		for _, r := range rows.Chats {
+			if r.Cell == created.ID && r.Here {
+				return r.Seen.Fence
+			}
+		}
+		return 0
+	}
+	var firstFence uint64
+	if !absent {
+		appSyncWait(t, "A's first published fence", func() bool {
+			firstFence = heldFence()
+			return firstFence > 0
+		})
+	}
 	// Start continuation from a chat saved by the real app leaving path. This
 	// exercises a saved chat independently of background first-publication timing.
 	e2Quit(t, a)
@@ -332,6 +348,11 @@ func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 	} else {
 		a = e2StartApp(t, dirA, daemon)
 		machineCall[appwire.TakeResult](t, a.w, "agents.open", appwire.IDParams{ID: created.ID})
+		// Reopening owns the journal before its background drive acquires.
+		// Take consent must name that new hold rather than race its arrival.
+		appSyncWait(t, "A's reopened chat holds a new fence", func() bool {
+			return heldFence() > firstFence
+		})
 	}
 
 	t.Logf("created %s", string(e2JSON(created)))

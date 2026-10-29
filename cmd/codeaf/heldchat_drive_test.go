@@ -105,8 +105,8 @@ func checkHeldChatLease(t *testing.T, s *syncsetup.Sync, id string, before direc
 	if after.Cell.Lease.Device != before.Cell.Lease.Device || after.Cell.Lease.Fence != before.Cell.Lease.Fence {
 		t.Fatalf("lease after P2 quit = %s fence %d; want %s fence %d", after.Cell.Lease.Device, after.Cell.Lease.Fence, before.Cell.Lease.Device, before.Cell.Lease.Fence)
 	}
-	if after.Cell.Lease.Expires == 0 || after.Cell.Lease.Expires != before.Cell.Lease.Expires {
-		t.Fatalf("lease expiry after P2 quit = %d; want unchanged, unreleased %d", after.Cell.Lease.Expires, before.Cell.Lease.Expires)
+	if after.Cell.Lease.Expires == 0 || after.Cell.Lease.Expires < before.Cell.Lease.Expires {
+		t.Fatalf("lease expiry after P2 quit = %d; want unreleased and at least %d", after.Cell.Lease.Expires, before.Cell.Lease.Expires)
 	}
 	if after.Cell.Head != before.Cell.Head {
 		t.Fatalf("relay head after P2 quit = %q; want %q", after.Cell.Head, before.Cell.Head)
@@ -275,6 +275,123 @@ func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
 	}
 }
 
+func TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat(t *testing.T) {
+	cfg, c := spokenDoorChat(t)
+	s, writes := heldChatRelay(t, c.ID)
+	firstBook := syncDrives
+	defer firstBook.closeAll()
+	agent, firstCfg, _, err := openV3Agent(cfg, cfg.Place.Workspace, session.New)
+	if err != nil {
+		t.Fatalf("open P1's seated chat: %v", err)
+	}
+	defer agent.Close()
+	events, err := agent.SubmitBash(t.Context(), "! printf fixture")
+	if err != nil {
+		t.Fatalf("P1 send = %v; want admitted", err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			t.Fatalf("P1 send reported %q; want no EventError", event.Text)
+		}
+	}
+	if err := executor.Drain(t.Context(), firstCfg.Seat); err != nil {
+		t.Fatalf("settle P1's spoken turn: %v", err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	var before directory.CellView
+	for {
+		head, headErr := cellstore.Head(c)
+		before, err = s.Dir.Cell(t.Context(), c.ID)
+		_, receiptFence, receiptErr := s.SendLease(c.ID)
+		if headErr == nil && head != nil && err == nil && before.Cell.Head == head.Turn.ID && before.Cell.Lease.Fence > 0 && receiptErr == nil && receiptFence == before.Cell.Lease.Fence {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("P1's spoken turn did not publish: relay = %+v, %v; local head error = %v", before, err, headErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	heldTurns, err := cellstore.Turns(c)
+	if err != nil || len(heldTurns) == 0 {
+		t.Fatalf("P1's published turns = %d, %v; want a sealed turn", len(heldTurns), err)
+	}
+	receipt := snapshotHeldChatReceipt(t, s, c.ID)
+	first := firstBook.renewalsOf(c.ID)
+	writes.Store(0)
+	syncDrives = &driveBook{}
+	defer func() { syncDrives.closeAll(); syncDrives = firstBook }()
+	_, seated, _, err := openV3Agent(cfg, cfg.Place.Workspace, session.New)
+	var held *sessionHeldElsewhere
+	if !errors.As(err, &held) {
+		t.Fatalf("P2 open = %v; want sessionHeldElsewhere", err)
+	}
+	fresh, freshCfg, err := v3TakeOverInstead(seated, cfg.Place.Workspace)
+	if err != nil {
+		t.Fatalf("open the fresh chat beside P1: %v", err)
+	}
+	defer fresh.Close()
+	if freshCfg.Place.Dir == c.Root {
+		t.Fatal("the fresh chat shares P1's cell")
+	}
+	if err := executor.Drain(t.Context(), seated.Seat); err != nil {
+		t.Fatalf("settle P2's unused seat: %v", err)
+	}
+	if err := executor.Drain(t.Context(), freshCfg.Seat); err != nil {
+		t.Fatalf("settle the fresh chat's startup: %v", err)
+	}
+	freshCell, err := cell.OpenAt(freshCfg.Place.Dir, freshCfg.Place.ID())
+	if err != nil {
+		t.Fatalf("open the fresh chat's cell: %v", err)
+	}
+	freshBefore, err := cellstore.Turns(freshCell)
+	if err != nil {
+		t.Fatalf("read the fresh chat before sending: %v", err)
+	}
+	events, err = fresh.SubmitBash(t.Context(), "! printf beside")
+	if err != nil {
+		t.Fatalf("fresh chat send = %v; want admitted", err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			t.Fatalf("fresh chat send reported %q; want no EventError", event.Text)
+		}
+	}
+	if err := executor.Drain(t.Context(), freshCfg.Seat); err != nil {
+		t.Fatalf("settle the fresh chat's command: %v", err)
+	}
+	checkHeld := func() {
+		t.Helper()
+		turns, err := cellstore.Turns(c)
+		if err != nil || len(turns) != len(heldTurns) {
+			t.Fatalf("P1's sealed turns = %d, %v; want unchanged count %d", len(turns), err, len(heldTurns))
+		}
+		if got, want := turns[len(turns)-1].ID, heldTurns[len(heldTurns)-1].ID; got != want {
+			t.Fatalf("P1's newest turn = %s; want unchanged %s", got, want)
+		}
+		if got := writes.Load(); got != 0 {
+			t.Fatalf("P2 made %d writes to P1's relay cell; want 0", got)
+		}
+		checkHeldChatLease(t, s, c.ID, before)
+		receipt.check(t)
+		if first == nil || first.started() == nil || !first.started().HoldsLease(t.Context()) {
+			t.Fatal("P1 lost its hold while P2 used or quit the fresh chat")
+		}
+	}
+	checkHeld()
+	turns, err := cellstore.Turns(freshCell)
+	if err != nil || len(turns) <= len(freshBefore) {
+		t.Fatalf("fresh chat's sealed turns = %d, %v; want a new turn beyond %d", len(turns), err, len(freshBefore))
+	}
+	if d := syncDrives.renewalsOf(freshCell.ID); d == nil || d.started() == nil {
+		t.Fatal("P2 has no started drive for the fresh chat's own cell")
+	}
+	if d := syncDrives.renewalsOf(c.ID); d != nil && d.started() != nil {
+		t.Fatal("P2 started a drive for P1's held chat")
+	}
+	syncDrives.closeAll()
+	checkHeld()
+}
+
 // waitParkedIn waits until some goroutine is blocked on a channel inside fn,
 // which is how a waiter on a parked drive's startup boundary looks.
 func waitParkedIn(t *testing.T, fn string) {
@@ -283,6 +400,10 @@ func waitParkedIn(t *testing.T, fn string) {
 	buf := make([]byte, 1<<20)
 	for {
 		n := runtime.Stack(buf, true)
+		for n == len(buf) {
+			buf = make([]byte, len(buf)*2)
+			n = runtime.Stack(buf, true)
+		}
 		for _, g := range strings.Split(string(buf[:n]), "\n\n") {
 			head, _, _ := strings.Cut(g, "\n")
 			if (strings.Contains(head, "[chan receive") || strings.Contains(head, "[select")) && strings.Contains(g, fn) {

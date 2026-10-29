@@ -50,10 +50,29 @@ func TestC6AppSendDoesNotWaitForSyncStartupOrCapture(t *testing.T) {
 			entered, release := make(chan struct{}), make(chan struct{})
 			var once sync.Once
 			unblock := func() { once.Do(func() { close(release) }) }
-			var requests atomic.Int64
+			var requestMu sync.Mutex
+			var requestPaths []string
+			recordRequest := func(r *http.Request) {
+				requestMu.Lock()
+				defer requestMu.Unlock()
+				requestPaths = append(requestPaths, r.Method+" "+r.URL.Path)
+			}
+			requests := func() []string {
+				requestMu.Lock()
+				defer requestMu.Unlock()
+				return append([]string(nil), requestPaths...)
+			}
 			var first sync.Once
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests.Add(1)
+				// The drive's startup opens with a device listing, at the same
+				// moment as the app's own chat listing and watch. Every request
+				// is held, so a startup held at its listing cannot reach the
+				// chat's cell; the listings themselves are not admission's work
+				// and arrive in either order, so they are not counted.
+				listing := r.Method == http.MethodGet && (r.URL.Path == "/v1/dir/list" || r.URL.Path == "/v1/dir/watch")
+				if boundary != "startup" || !listing {
+					recordRequest(r)
+				}
 				if boundary == "startup" {
 					first.Do(func() { close(entered) })
 					select {
@@ -120,7 +139,7 @@ func TestC6AppSendDoesNotWaitForSyncStartupOrCapture(t *testing.T) {
 					}
 				})
 			}
-			before := requests.Load()
+			before := len(requests())
 			type sent struct {
 				turn uint64
 				err  error
@@ -145,8 +164,8 @@ func TestC6AppSendDoesNotWaitForSyncStartupOrCapture(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("the admitted send never reached the real session model")
 			}
-			if got := requests.Load(); got != before {
-				t.Fatalf("admission added relay work: before %d, after %d", before, got)
+			if got := requests(); len(got) != before {
+				t.Fatalf("admission added relay work: before %d, after %d; added %v", before, len(got), got[before:])
 			}
 			unblock()
 			releaseModel()

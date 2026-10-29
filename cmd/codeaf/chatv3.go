@@ -1581,11 +1581,8 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 	if err != nil {
 		return nil, cfg, err
 	}
-	agent, err := v3OpenSession(fresh)
-	if err != nil {
-		return nil, cfg, err
-	}
-	return agent, fresh, nil
+	agent, fresh, _, err := openV3Agent(fresh, workspace, v3OpenSession)
+	return agent, fresh, err
 }
 
 // sessionHeldElsewhereSentence is what a person reads when the conversation
