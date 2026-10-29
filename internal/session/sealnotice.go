@@ -1,10 +1,13 @@
 package session
 
 // SealNews is what a seal watch may also do so an idle host waits for its news
-// instead of asking.
+// instead of asking: Changes is signalled whenever a sentence is queued, and
+// Owed says whether the host must look again although nothing woke it (a
+// sentence is waiting, or sealing is failing and its recovery is found by
+// asking). Owed never looks for that recovery itself.
 type SealNews interface {
 	Changes() <-chan struct{}
-	Pending() bool
+	Owed() bool
 }
 
 // SealNotices gives the host a wake for idle saving news. A nil wake with true
@@ -20,14 +23,17 @@ func (a *Agent) SealNotices() (<-chan struct{}, bool) {
 }
 
 // SealNoticesOwed keeps a host looking while recovery can change on disk or a
-// sentence is held for a running turn or an absent surface.
+// sentence is held for a running turn or an absent surface. The host's own
+// TakeSealNotice is what finds a recovery, as it always was; this only says
+// whether to come back.
 func (a *Agent) SealNoticesOwed() bool {
 	if a == nil || a.config.InTask || a.config.Errand || a.config.Seals == nil {
 		return false
 	}
-	failing := a.config.Seals.Failing()
-	news, ok := a.config.Seals.(SealNews)
-	return failing || (ok && news.Pending())
+	if news, ok := a.config.Seals.(SealNews); ok {
+		return news.Owed()
+	}
+	return a.config.Seals.Failing()
 }
 
 // SealFailing reports whether the last seal of this conversation's calls
