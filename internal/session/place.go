@@ -239,9 +239,9 @@ type Meta struct {
 	ID string `json:"id"`
 	// ChatURI is stable conversation identity carried in the sealed truth.
 	ChatURI string `json:"chat_uri,omitempty"`
-	// AgentIdentity is the agent's DID (agent_identity.go): minted the first
-	// time the conversation opens and never replaced. It is bound to ID, so a
-	// copy or branch that takes a new id mints its own.
+	// AgentIdentity is the agent's DID (agent_identity.go): written with the
+	// conversation's first identity write after it opens, and never replaced.
+	// It is bound to ID, so a copy or branch that takes a new id mints its own.
 	AgentIdentity   *AgentIdentity   `json:"agent_identity,omitempty"`
 	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
 	// Title is what a picker row says. Empty until something names the

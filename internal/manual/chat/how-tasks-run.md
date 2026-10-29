@@ -3496,7 +3496,8 @@ terminal's current folder after the task has started.
 ## Which agent ran this command — CODEAF_AGENT_DID, the agent's identity, and a task's `#w` suffix
 
 Every conversation has its own identity, a DID such as `did:key:z7QE…`. It is
-made the first time the conversation opens and stays the same after a restart.
+made when the conversation opens, saved with it by the end of its first turn,
+and stays the same after a restart.
 A copied or branched conversation gets a new one.
 
 Each command the conversation runs sees it as `CODEAF_AGENT_DID`, so a tool can

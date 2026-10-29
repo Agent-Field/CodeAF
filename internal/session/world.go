@@ -211,7 +211,7 @@ type SessionRow struct {
 	// ID is the session id, which is its folder's name.
 	ID string
 	// AgentDID is the conversation's agent DID (agent_identity.go), and ""
-	// for one that has not opened since agents were given one.
+	// for one that has not taken a turn since agents were given one.
 	AgentDID string
 	// Dir is the session folder and Transcript its journal — the path a resume
 	// is asked for.

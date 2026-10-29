@@ -32,7 +32,7 @@ func writeSpokenSession(t *testing.T, workspace, id string, identity *session.Ag
 	if err := os.WriteFile(session.Place{Dir: dir}.Transcript(), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	meta := session.Meta{ID: id, Title: "hello", Workspace: workspace, AgentIdentity: identity, Created: time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)}
+	meta := session.Meta{ID: id, Title: "hello", Workspace: workspace, AgentIdentity: identity, LastUserAt: time.Date(2026, 10, 29, 9, 0, 1, 0, time.UTC), Created: time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)}
 	if err := session.SaveMeta(dir, meta); err != nil {
 		t.Fatal(err)
 	}

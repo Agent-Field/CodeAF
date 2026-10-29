@@ -42,6 +42,10 @@ func TestAgentDIDIsMintedOnceAndSurvivesReopening(t *testing.T) {
 	if !agentdid.Valid(did) {
 		t.Fatalf("a conversation opened without a valid DID: %q", did)
 	}
+	if opened, _ := LoadMeta(place.Dir); opened.AgentIdentity != nil {
+		t.Fatal("opening a conversation wrote to its files")
+	}
+	first.stampMeta()
 	meta, err := LoadMeta(place.Dir)
 	if err != nil {
 		t.Fatal(err)
@@ -71,10 +75,15 @@ func TestAgentDIDIsUniquePerConversation(t *testing.T) {
 func TestAgentDIDIsNotCarriedToANewID(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	place := identityPlace(t, "3333333333333333")
-	did := openIdentityAgent(t, place, nil).AgentDID()
+	agent := openIdentityAgent(t, place, nil)
+	did := agent.AgentDID()
+	agent.stampMeta()
 	meta, err := LoadMeta(place.Dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if meta.AgentDID() != did {
+		t.Fatalf("the DID was not written: %q", meta.AgentDID())
 	}
 	meta.ID = "4444444444444444"
 	if err := SaveMeta(place.Dir, meta); err != nil {
@@ -93,7 +102,9 @@ func TestAgentDIDIsNotCarriedToANewID(t *testing.T) {
 func TestAgentDIDIsNeverReplaced(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	place := identityPlace(t, "5555555555555555")
-	did := openIdentityAgent(t, place, nil).AgentDID()
+	agent := openIdentityAgent(t, place, nil)
+	did := agent.AgentDID()
+	agent.stampMeta()
 	other, err := agentdid.New()
 	if err != nil {
 		t.Fatal(err)

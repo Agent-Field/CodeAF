@@ -8,8 +8,9 @@ package session
 //
 // MINTED ONCE, KEPT WITH THE CONVERSATION. The DID is part of the sealed truth
 // (metatruth.go), so it survives a restart and travels with the conversation.
-// It is minted the first time the conversation opens: a conversation that
-// never opens after this build has none, and a reader says nothing for it.
+// It is minted when the conversation opens and written with its next identity
+// write: a conversation that has not taken a turn since this build has none on
+// disk, and a reader says nothing for it.
 //
 // BOUND TO THE CONVERSATION'S ID. A copy or a branch takes a new id and starts
 // from a copy of the old files; the binding is what makes it mint its own
@@ -72,43 +73,21 @@ func configureAgentIdentity(config *Config) {
 	config.Seat = executor.WithEnvironment(config.seat(), []string{agentdid.Env + "=" + config.actorDID})
 }
 
-// conversationAgentDID answers the DID kept in place, minting one when it has
-// none. A folder already holding a conversation gets the DID written at once,
-// under the identity lock, so two processes opening it agree. A folder with no
-// conversation in it yet is not written to: the DID is carried on the agent and
-// the conversation's first identity write records it ([Agent.fillMetaLocked]).
+// conversationAgentDID answers the DID kept in place, or mints a fresh one.
+//
+// OPENING WRITES NOTHING. A conversation opens without touching its files (an
+// older folder must resume exactly as it was), so a minted DID is carried on
+// the agent and the conversation's next identity write records it
+// ([Agent.fillMetaLocked]). That write comes at the latest when the first turn
+// ends, and a turn is the only thing that runs commands, so every DID a
+// command has seen is on disk once its turn is over.
 func conversationAgentDID(place Place) string {
-	meta, err := LoadMeta(place.Dir)
-	if err != nil {
-		return ""
+	if meta, err := LoadMeta(place.Dir); err == nil {
+		if did := meta.AgentDID(); did != "" {
+			return did
+		}
 	}
-	if did := meta.AgentDID(); did != "" {
-		return did
-	}
-	if strings.TrimSpace(meta.ID) == "" {
-		did, _ := agentdid.New()
-		return did
-	}
-	var did string
-	_ = withMetaLock(place.Dir, func() error {
-		meta, err := LoadMeta(place.Dir)
-		if err != nil || strings.TrimSpace(meta.ID) == "" {
-			return err
-		}
-		if did = meta.AgentDID(); did != "" {
-			return nil
-		}
-		minted, err := agentdid.New()
-		if err != nil {
-			return err
-		}
-		meta.AgentIdentity = &AgentIdentity{DID: minted, Session: meta.ID}
-		if err := saveMetaLocked(place.Dir, meta); err != nil {
-			return err
-		}
-		did = minted
-		return nil
-	})
+	did, _ := agentdid.New()
 	return did
 }
 

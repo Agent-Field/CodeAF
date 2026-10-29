@@ -171,9 +171,9 @@ type Agent struct {
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
 	// DID is the agent's identity: what its commands carry as
-	// $CODEAF_AGENT_DID and a worker's `<did>#w<n>` hangs from. It is minted
-	// the first time the conversation opens and never changes; absent for one
-	// that has not opened since.
+	// $CODEAF_AGENT_DID and a worker's `<did>#w<n>` hangs from. It never
+	// changes once written, and is absent for a conversation that has not
+	// taken a turn since agents were given one.
 	DID       string `json:"did,omitempty"`
 	Title     string `json:"title"`
 	Workspace string `json:"workspace"`
