@@ -178,3 +178,42 @@ func TestCaptureConsentRefreshesWhenEmptyHistoryArmsCapture(t *testing.T) {
 		t.Fatalf("empty inventory did not immediately refresh frozen-clock consent: (%v, %v)", enabled, since)
 	}
 }
+
+func TestConfirmConsentReadsNowAndSharesTheAnswer(t *testing.T) {
+	v := Open(t.TempDir())
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	previous := consentNow
+	consentNow = func() time.Time { return now }
+	t.Cleanup(func() { consentNow = previous })
+	var opens atomic.Int64
+	path := filepath.Join(v.root, "knowledge.sqlite")
+	t.Cleanup(SetDatabaseHookForTest(func(opened string) {
+		if opened == path {
+			opens.Add(1)
+		}
+	}))
+	if enabled, _ := v.CaptureConsent(); enabled {
+		t.Fatal("fresh profile already enabled")
+	}
+	written := now.Add(time.Second)
+	uri := sqliteuri.File(path)
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec("INSERT INTO state(key,payload) VALUES('config',?)", fmt.Sprintf(`{"enabled":true,"schema":1,"created_at":%q}`, written.Format(time.RFC3339Nano)))
+	closeErr := db.Close()
+	if err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	before := opens.Load()
+	if enabled, since := v.ConfirmConsent(); !enabled || !since.Equal(written) {
+		t.Fatalf("confirmed consent = (%v, %v); want (true, %v) without waiting for a recheck", enabled, since, written)
+	}
+	if enabled, since := Open(v.profile).CaptureConsent(); !enabled || !since.Equal(written) {
+		t.Fatalf("shared view after confirmation = (%v, %v)", enabled, since)
+	}
+	if got := opens.Load() - before; got != 1 {
+		t.Fatalf("confirmation and the next shared read opened the database %d times; want 1", got)
+	}
+}

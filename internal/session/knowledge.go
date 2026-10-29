@@ -142,7 +142,9 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 			j.lastError = ""
 		}
 	}()
-	// Idle chat tickers share consent reads instead of reopening SQLite each second.
+	// Idle chat tickers share consent reads instead of reopening SQLite each
+	// second. The shared answer only decides whether to look; sources found
+	// below are admitted, or passed over, on consent read afresh.
 	enabled, since := j.vault.CaptureConsent()
 	if !enabled {
 		return nil
@@ -160,6 +162,16 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 		batch, e := history.Read(ctx, journal, cursor)
 		if e != nil {
 			return e
+		}
+		if len(batch.Sources) > 0 {
+			// The cursor moves past these sources only on the database's own
+			// opt-in time: a replaced or reset vault is judged as it is now.
+			if enabled, since = j.vault.ConfirmConsent(); !enabled {
+				return nil
+			}
+			if since.IsZero() {
+				return fmt.Errorf("knowledge: missing opt-in timestamp")
+			}
 		}
 		for _, source := range batch.Sources {
 			if e = ctx.Err(); e != nil {
