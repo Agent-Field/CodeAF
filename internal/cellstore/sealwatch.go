@@ -53,6 +53,7 @@ type SealWatch struct {
 	tail        *time.Timer
 	cause       string
 	said        []string
+	changes     chan struct{}
 	failing     bool
 	syncFailing bool
 	// SyncAddress is selected by the door, so failures without a URL still name the right service.
@@ -113,6 +114,31 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	select {
+	case w.changes <- struct{}{}:
+	default:
+	}
+}
+
+// Changes wakes a reader when a sentence is queued. One signal may stand for
+// several sentences; a receiver drains Take until it returns "".
+func (w *SealWatch) Changes() <-chan struct{} {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	return w.changes
+}
+
+// Pending reports whether a queued sentence is waiting, without checking recovery.
+func (w *SealWatch) Pending() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.said) > 0
 }
 
 // Waiting arms a newly constructed chat that is waiting for its first input.
