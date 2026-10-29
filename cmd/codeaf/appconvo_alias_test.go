@@ -99,6 +99,14 @@ func TestAppFileStatFindsAChangeRecordedUnderTheWorkspaceSpelling(t *testing.T) 
 	if stat.State != appwire.FileChanged || stat.Add == nil || *stat.Add != 3 || stat.Del == nil || *stat.Del != 1 {
 		t.Fatalf("the change was not found through the other spelling: %+v", stat)
 	}
+	// A tool call that named the file relative to the workspace records it so.
+	relative := map[string]appwire.FileChange{"notes.md": {Path: "notes.md", Add: 2, Del: 0}}
+	for _, spelled := range []string{filepath.Join(real, "notes.md"), filepath.Join(link, "notes.md")} {
+		stat := backend.statFile(agent.Workspace, relative, spelled)
+		if stat.State != appwire.FileChanged || stat.Add == nil || *stat.Add != 2 {
+			t.Fatalf("a change recorded as notes.md was not found for %s: %+v", spelled, stat)
+		}
+	}
 }
 
 // A link inside the workspace that points elsewhere keeps the answer it had:
