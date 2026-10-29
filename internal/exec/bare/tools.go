@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -538,7 +539,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			cmd.Stderr = acc
 
 			if err := cmd.Start(); err != nil {
-				return "Failed to start command: " + err.Error(), true, nil
+				return startFailedText(runtime.GOOS, err), true, nil
 			}
 
 			// THE SEAT IS TOLD WHICH GROUP THIS IS, so a record of the call can end
@@ -727,6 +728,18 @@ func newBashTool(cwd string, caps Caps) Tool {
 			return text, false, nil
 		},
 	}
+}
+
+// startFailedText is the bash tool's result when the shell never started. A
+// refusal the platform can explain puts that reason on the first line, which is
+// the line a failed step's summary shows, with the advice and the platform's own
+// words below it; every other failure keeps the plain one-line form.
+func startFailedText(goos string, err error) string {
+	reason, advice := shell.StartFailure(goos, err)
+	if reason == "" {
+		return "Failed to start command: " + err.Error()
+	}
+	return "Failed to start command: " + reason + "\n" + advice + "\nWindows said: " + err.Error()
 }
 
 // appendStatus mirrors pi's bash.js:appendStatus: join text and status with
