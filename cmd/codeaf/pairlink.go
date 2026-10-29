@@ -134,6 +134,7 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 	}
 	if !joined.Already {
 		d.recordOwnDeviceOrSay(ctx, route)
+		d.term.say(terminalSharingLine)
 	}
 	return nil
 }

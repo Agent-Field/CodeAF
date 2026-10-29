@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -13,8 +12,30 @@ import (
 )
 
 const mergeFile = "pair-merge.json"
+const sharingFile = "pair-sharing.pending"
 
-var mergeMu sync.Mutex
+// SharingPending reports an approved merge whose home-state pass is unfinished.
+func SharingPending(home, id string) bool {
+	raw, err := os.ReadFile(filepath.Join(home, sharingFile))
+	return err == nil && string(raw) == id
+}
+
+// CompleteSharing records the first successful home-state pass after pairing.
+func CompleteSharing(home, id string) error {
+	unlock, err := keys.LockHome(home)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if !SharingPending(home, id) {
+		return nil
+	}
+	err = os.Remove(filepath.Join(home, sharingFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
 
 // mergeRecord keeps the approved destination before the first local change.
 // The old key allows startup to finish staging; the target device makes every
@@ -26,13 +47,20 @@ type mergeRecord struct {
 	SyncURL    string          `json:"sync_url,omitempty"`
 	Replace    bool            `json:"replace,omitempty"`
 	ProfileDir string          `json:"profile_dir,omitempty"`
+	Phase      string          `json:"phase,omitempty"`
 }
 
 // Resume completes an approved local merge before sync opens its clients.
 // The live chats and their engine store are never moved or rewritten.
 func Resume(home string, saveSyncURL func(string) error) error {
-	mergeMu.Lock()
-	defer mergeMu.Unlock()
+	if _, err := os.Stat(filepath.Join(home, mergeFile)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	unlock, err := keys.LockHome(home)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	return (Joining{Home: home, SaveSyncURL: saveSyncURL}).resume()
 }
 
@@ -59,14 +87,25 @@ func (j Joining) merge(g Grant, dev *identity.Dev, oldKey []byte) error {
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(mergeRecord{OldKey: oldKey, Identity: idDoc, Device: devDoc, SyncURL: g.SyncURL, Replace: j.Replace, ProfileDir: j.ProfileDir})
+	rec := mergeRecord{OldKey: oldKey, Identity: idDoc, Device: devDoc, SyncURL: g.SyncURL, Replace: j.Replace, ProfileDir: j.ProfileDir}
+	if err := rec.save(j.Home); err != nil {
+		return err
+	}
+	if err := j.after("recorded"); err != nil {
+		return err
+	}
+	return j.resume()
+}
+
+func (rec mergeRecord) save(home string) error {
+	raw, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(j.Home, 0700); err != nil {
+	if err := os.MkdirAll(home, 0700); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(j.Home, ".pair-merge-*")
+	f, err := os.CreateTemp(home, ".pair-merge-*")
 	if err != nil {
 		return err
 	}
@@ -75,13 +114,7 @@ func (j Joining) merge(g Grant, dev *identity.Dev, oldKey []byte) error {
 	if err := errors.Join(f.Chmod(0600), writeErr, f.Sync(), f.Close()); err != nil {
 		return err
 	}
-	if err := fsreplace.Rename(f.Name(), filepath.Join(j.Home, mergeFile)); err != nil {
-		return err
-	}
-	if err := j.after("recorded"); err != nil {
-		return err
-	}
-	return j.resume()
+	return fsreplace.Rename(f.Name(), filepath.Join(home, mergeFile))
 }
 
 func (j Joining) resume() error {
@@ -105,11 +138,27 @@ func (j Joining) resume() error {
 		return err
 	}
 	if rec.Replace {
-		if err := replaceState(j.Home, rec.ProfileDir); err != nil {
-			return err
+		if rec.Phase == "" {
+			// Older records have no phase. An installed destination proves the
+			// reset already ran, even if its process stopped before saving progress.
+			current, err := identity.Load(j.Home)
+			if err != nil && !errors.Is(err, identity.ErrNone) {
+				return err
+			}
+			if current.ID() != id.ID() {
+				if err := replaceState(j.Home, rec.ProfileDir); err != nil {
+					return err
+				}
+			}
 		}
 	} else {
 		if _, err := keys.StageReseal(j.Home, rec.OldKey, id.CellKey()); err != nil {
+			return err
+		}
+	}
+	if rec.Phase == "" {
+		rec.Phase = "prepared"
+		if err := rec.save(j.Home); err != nil {
 			return err
 		}
 	}
@@ -117,6 +166,10 @@ func (j Joining) resume() error {
 		return err
 	}
 	if err := identity.Install(j.Home, id, dev); err != nil {
+		return err
+	}
+	rec.Phase = "installed"
+	if err := rec.save(j.Home); err != nil {
 		return err
 	}
 	if err := j.after("installed"); err != nil {
@@ -142,5 +195,18 @@ func (j Joining) resume() error {
 	if err := j.after("relay"); err != nil {
 		return err
 	}
+	// Save the background obligation before discarding local switch progress.
+	if err := markSharing(j.Home, id.ID()); err != nil {
+		return err
+	}
 	return os.Remove(filepath.Join(j.Home, mergeFile))
+}
+
+func markSharing(home, id string) error {
+	f, err := os.OpenFile(filepath.Join(home, sharingFile), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.WriteString(id)
+	return errors.Join(writeErr, f.Sync(), f.Close())
 }

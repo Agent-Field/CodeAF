@@ -130,12 +130,32 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 }
 
 func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
-	mergeMu.Lock()
-	defer mergeMu.Unlock()
+	if err := Resume(j.Home, j.SaveSyncURL); err != nil {
+		return Joined{}, err
+	}
+	// No-op and refusal paths must not even create a lock file. Recheck the
+	// destination under the lock below before making any actual switch.
+	held, err := identity.Load(j.Home)
+	if err != nil && !errors.Is(err, identity.ErrNone) {
+		return Joined{}, err
+	}
+	if err == nil && held.ID() == grant.Identity.ID() {
+		return Joined{Already: true}, nil
+	}
+	if err == nil && !j.Replace && !identity.Solo(j.Home) && !slices.Contains(grant.Replaces, held.ID()) {
+		if ok, err := identity.Joinable(j.Home); err != nil || !ok {
+			return Joined{}, ErrDifferentChats
+		}
+	}
+	unlock, err := keys.LockHome(j.Home)
+	if err != nil {
+		return Joined{}, err
+	}
+	defer unlock()
 	if err := j.resume(); err != nil {
 		return Joined{}, err
 	}
-	held, err := identity.Load(j.Home)
+	held, err = identity.Load(j.Home)
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
 		return Joined{Already: true}, nil
@@ -164,6 +184,9 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
 		return Joined{}, adoptFailure(err)
+	}
+	if err := markSharing(j.Home, grant.Identity.ID()); err != nil {
+		return Joined{}, err
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
 		return Joined{}, j.SaveSyncURL(grant.SyncURL)

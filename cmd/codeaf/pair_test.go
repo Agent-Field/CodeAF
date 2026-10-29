@@ -227,7 +227,7 @@ func TestM1M8PairBothDoorsOnATerminal(t *testing.T) {
 	}
 
 	wanted := pair.WaitingChatsLine(asked[1])
-	if got := joiner.String(); got != wanted+"\n"+pair.JoinedLine+"\n" {
+	if got := joiner.String(); got != wanted+"\n"+pair.JoinedLine+"\n"+terminalSharingLine+"\n" {
 		t.Fatalf("the joining terminal printed:\n%s\nwant:\n%s\n%s", got, wanted, pair.JoinedLine)
 	}
 	if !strings.HasSuffix(shown.out.String(), pair.PairedChatsLine("laptop")+"\n") {

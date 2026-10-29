@@ -251,8 +251,9 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 	switch {
 	case err == nil:
 		o.backend.devices.wakePublication()
+		o.backend.chats.wakePublication()
 		if !restart {
-			guard.Go("app/paired-chats", func() { _, _ = o.backend.listChats(true) })
+			guard.Go("app/paired-chats", func() { _, _ = o.backend.ListChats() })
 		}
 		// These events precede done: a desktop may immediately restart on done.
 		o.backend.publishDevices()

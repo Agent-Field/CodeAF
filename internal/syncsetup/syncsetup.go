@@ -54,6 +54,9 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
+	publicationMu     sync.Mutex
+	publication       map[string]*pendingPublication
+	publicationSeen   map[string]struct{}
 	removed           atomic.Bool
 	memberRetries     uint64
 	clock             func() time.Time

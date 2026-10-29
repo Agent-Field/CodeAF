@@ -187,10 +187,13 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	if !joined.Already {
+	// Explicit re-pairing installs the approved device even in the same set,
+	// so a removed device can return without changing the shared identity.
+	if !joined.Already || j.Replace {
 		if err := identity.Install(j.Home, g.Identity, dev); err != nil {
 			return LinkJoined{}, err
 		}
+		joined.Already = false
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {

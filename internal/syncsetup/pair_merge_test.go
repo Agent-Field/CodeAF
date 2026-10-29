@@ -101,7 +101,7 @@ func TestM1M2M3M4M5PairMergeRealHomes(t *testing.T) {
 	block := &blocker{Store: h.b.Store}
 	h.b.Store = block
 	block.set(true)
-	if err := h.b.PublishLocalChats(ctx, nil); err == nil {
+	if err := h.b.PublishLocalChats(ctx, time.Now, nil); err == nil {
 		t.Fatal("M5 expected the interrupted upload to fail")
 	}
 	if got, _ := os.ReadFile(transcriptOf(c)); !bytes.Equal(got, wantB) {
@@ -110,9 +110,9 @@ func TestM1M2M3M4M5PairMergeRealHomes(t *testing.T) {
 	// A new process retries from disk with the same chat and computer ids.
 	h.b = openSync(t, h.homeB)
 	beforePublish := relayCounts(t, h.b)
-	mustNil(t, h.b.PublishLocalChats(ctx, nil))
+	mustNil(t, h.b.PublishLocalChats(ctx, time.Now, nil))
 	afterPublish := relayCounts(t, h.b)
-	mustNil(t, h.b.PublishLocalChats(ctx, nil))
+	mustNil(t, h.b.PublishLocalChats(ctx, time.Now, nil))
 	afterRetry := relayCounts(t, h.b)
 	if afterPublish.BytesIn <= beforePublish.BytesIn || afterRetry.BytesIn != afterPublish.BytesIn || afterRetry.Puts != afterPublish.Puts {
 		t.Fatalf("M5 retry upload work: before=%+v published=%+v retry=%+v", beforePublish, afterPublish, afterRetry)

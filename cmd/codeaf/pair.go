@@ -243,9 +243,12 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	d.term.say(joinedSentence(joined))
 	if !joined.Already {
 		d.recordOwnDeviceOrSay(ctx, route)
+		d.term.say(terminalSharingLine)
 	}
 	return nil
 }
+
+const terminalSharingLine = "Sharing finishes the next time codeaf runs."
 
 // joinedSentence is how a finished join reads.
 func joinedSentence(joined pair.Joined) string { return joined.Sentence() }

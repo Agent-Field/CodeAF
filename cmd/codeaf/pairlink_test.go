@@ -59,6 +59,9 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen.waitFor(t, `Paired\.`)
+	if !strings.Contains(screen.String(), terminalSharingLine+"\n") {
+		t.Fatalf("link join omitted deferred sharing: %s", screen.String())
+	}
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)
 	if err != nil || second.ID() != first.ID() {

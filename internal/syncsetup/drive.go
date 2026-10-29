@@ -274,6 +274,11 @@ func (s *Sync) Rename(ctx context.Context, name string) error { return s.putDevi
 // 0), a record this device now holds, or a record another device holds, in
 // which case held names that device. A chat that was branched drives its branch.
 func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, string, error) {
+	lock, err := s.lockChat(c.ID, ".publication")
+	if err != nil {
+		return cellsync.Driving{}, "", err
+	}
+	defer lock.Close()
 	branches, err := cellsync.OpenBranchMap(s.Home)
 	if err != nil {
 		return cellsync.Driving{}, "", err
