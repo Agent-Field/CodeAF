@@ -110,6 +110,9 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "tui3 tests: %v\n", err)
 		return 1
 	}
+	// The scratch roots were read at package initialisation, before the
+	// temporary folder took its physical spelling; fixtures now live under it.
+	homeScratchRoots[0] = filepath.Clean(os.TempDir())
 	root, err := os.MkdirTemp("", "codeaf-tui3-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui3 tests: no temporary state root: %v\n", err)
