@@ -167,11 +167,16 @@ func TestCanonicalizeTempRootsLeavesOtherSystemsAlone(t *testing.T) {
 		t.Skip("macOS is the system whose temporary folder is an alias")
 	}
 	root := physicalTempDir(t)
+	roots := []string{"relative/tmp", filepath.Join(root, "missing")}
+	// Windows may refuse to make links without a privilege; the other roots
+	// still prove the environment is left alone there.
 	alias := filepath.Join(root, "alias")
-	if err := os.Symlink(root, alias); err != nil {
-		t.Fatalf("create alias: %v", err)
+	if err := os.Symlink(root, alias); err == nil {
+		roots = append(roots, alias+string(os.PathSeparator))
+	} else {
+		t.Logf("no alias case on %s: %v", runtime.GOOS, err)
 	}
-	for _, raw := range []string{alias + string(os.PathSeparator), "relative/tmp", filepath.Join(root, "missing")} {
+	for _, raw := range roots {
 		t.Setenv("TMPDIR", raw)
 		t.Setenv("GOTMPDIR", raw)
 		if err := testutil.CanonicalizeTempRoots(); err != nil {
@@ -189,6 +194,22 @@ func requireDarwin(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS != "darwin" {
 		t.Skip("only macOS rewrites its temporary roots")
+	}
+}
+
+// A relative root is left as given on macOS too, because anchoring it would
+// depend on how the working directory happens to be spelled.
+func TestCanonicalizeTempRootsLeavesRelativeRootsAlone(t *testing.T) {
+	requireDarwin(t)
+	t.Setenv("TMPDIR", "../T")
+	t.Setenv("GOTMPDIR", "relative/go")
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		t.Fatalf("canonicalize relative roots: %v", err)
+	}
+	for name, want := range map[string]string{"TMPDIR": "../T", "GOTMPDIR": "relative/go"} {
+		if got := os.Getenv(name); got != want {
+			t.Fatalf("%s = %q, want the relative root untouched %q", name, got, want)
+		}
 	}
 }
 
