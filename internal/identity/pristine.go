@@ -30,6 +30,7 @@ func Pristine(home string) (bool, error) {
 // holds rather than by its name.
 var startupRules = rules{
 	File: never, DeviceFile: never, legacyKeyFile: never, soloFile: never,
+	"vault.enc.lock": never, "pair-sharing.pending": never,
 	"config.json": never, "config.json.lock": never, "notices.json": never,
 	"catalog.json": never, "model-catalog.json": never, "model-quirks.json": never,
 	"credits.json": never, "logs": never, "bin": never, "cache": never,
