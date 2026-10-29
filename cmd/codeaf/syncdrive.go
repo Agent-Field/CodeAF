@@ -22,9 +22,8 @@ const driveCloseWithin = cellstore.SealWithin
 // this process. It exists at all only for a chat: a headless run never syncs.
 var syncDrives = &driveBook{}
 
-// driveBook keeps one drive side per cell, so a conversation opened again in the
-// same process (a resume, a switch back) goes on with the drive it had instead
-// of taking a second lease.
+// driveBook keeps one drive side per open cell. Reopening a closed conversation
+// gets a fresh drive and lease after its previous journal owner has let go.
 type driveBook struct {
 	mu     sync.Mutex
 	drive  map[string]*liveDrive
@@ -280,6 +279,27 @@ func driveStore(d *liveDrive) func(cellstore.Engine) cellstore.Store {
 // its last seal is durable, even when the local engine process stays alive.
 func (b *driveBook) closeCell(id string) error {
 	d := b.takeCell(id)
+	if d == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
+	defer cancel()
+	return session.SavingError(d.transcript, d.Close(ctx))
+}
+
+// closeCellIf releases this journal owner's begun drive before its lock goes.
+// A refused opener and an earlier owner leave any replacement drive alone.
+func (b *driveBook) closeCellIf(id string, expected *liveDrive) error {
+	d := func() *liveDrive {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if expected == nil || b.drive[id] != expected || expected.isParked() {
+			return nil
+		}
+		workAdmissions.Delete(expected)
+		delete(b.drive, id)
+		return expected
+	}()
 	if d == nil {
 		return nil
 	}

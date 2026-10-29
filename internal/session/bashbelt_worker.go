@@ -57,6 +57,7 @@ import (
 // `plandb` refuses a store at that path whose root is another run's
 // ([plandb.RunEnv]). Empty binds the path alone.
 func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath, rootID string) (*Agent, error) {
+	config.ReleaseHold = nil
 	if !bashBeltAsked() {
 		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
 	}

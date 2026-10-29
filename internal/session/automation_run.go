@@ -138,6 +138,7 @@ type automationRunner struct {
 
 // newChild is the runner's one way to make a run's session.
 func (r *automationRunner) newChild(cfg Config) (*Agent, error) {
+	cfg.ReleaseHold = nil
 	if r.child != nil {
 		return r.child(cfg)
 	}

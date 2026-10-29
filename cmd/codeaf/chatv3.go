@@ -1473,6 +1473,8 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if model != "" {
 		cfg.Model = model
 	}
+	cfg.ReleaseHold = nil
+	book := syncDrives
 	cfg, claim := v3SeatedPending(v3Migrated(cfg))
 	defer claim(false)
 	// Restore the gate before construction, so restored work cannot start behind
@@ -1503,6 +1505,10 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 			return nil, cfg, "", errors.New("restore conversation approvals: rules unavailable")
 		}
 		restored.ApprovalPolicy, restored.Guardian, restoredPosture = policy, guardian, saved
+	}
+	if d, ok := cfg.Renewals.(*liveDrive); ok && d != nil {
+		id := cfg.Place.ID()
+		restored.ReleaseHold = func() error { return book.closeCellIf(id, d) }
 	}
 	agent, err := open(restored)
 	if err == nil {

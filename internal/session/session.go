@@ -1398,6 +1398,13 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// ReleaseHold is called once when this session lets go of its journal,
+	// after its last turn is saved and before the journal lock is released.
+	// It releases whatever this process holds on the conversation's behalf
+	// while no other process can open it. Nil does nothing, and derived
+	// sessions do not inherit it.
+	ReleaseHold func() error
+
 	// ConversationModels is the desktop conversation's explicit main/fallback pair.
 	// Nil retains the terminal's existing routing policy.
 	ConversationModels *ConversationModels

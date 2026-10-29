@@ -1144,6 +1144,8 @@ func (p journalPart) placeholderBecause(reason string) ai.ContentPart {
 // lock orders the writes, this one keeps a write from being interleaved by
 // anything that reaches the file another way.
 type sessionFile struct {
+	// releaseHold belongs to this journal, including a deferred worker close.
+	releaseHold func() error
 	// onWrite hears each line that reached the file, once the lock is released.
 	onWrite func()
 	mu      sync.Mutex
@@ -1694,7 +1696,7 @@ func partKey(part ai.ContentPart) string {
 // it can be, so by the time the journal is opened the id already exists. Empty
 // is the legacy flat layout, where nobody outside had an opinion and the file
 // names itself. A resumed file keeps the id it was written with either way.
-func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession, error) {
+func openSessionFile(path, cwd, model, id string, releaseHold ...func() error) (*sessionFile, replayedSession, error) {
 	if _, err := os.Stat(filepath.Join(filepath.Dir(path), conversationDeletedFile)); err == nil {
 		return nil, replayedSession{}, errors.New("this conversation was permanently deleted")
 	}
@@ -1714,9 +1716,11 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		return nil, replayedSession{}, err
 	}
 	journal := &sessionFile{file: file, locked: locked}
+	if len(releaseHold) > 0 {
+		journal.releaseHold = releaseHold[0]
+	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(path), conversationDeletedFile)); err == nil {
-		_ = journal.Close()
-		return nil, replayedSession{}, errors.New("this conversation was permanently deleted")
+		return nil, replayedSession{}, errors.Join(errors.New("this conversation was permanently deleted"), journal.Close())
 	}
 
 	// Creating the file above does not make it an existing session: existed is
@@ -1725,8 +1729,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	if err != nil {
 		// The claim is released here rather than left to the caller: this
 		// returns no journal, so nobody else has a handle to close.
-		_ = journal.Close()
-		return nil, replayedSession{}, err
+		return nil, replayedSession{}, errors.Join(err, journal.Close())
 	}
 	journal.title = replayed.title
 	journal.shortTitle = replayed.shortTitle
@@ -3463,11 +3466,15 @@ func (s *sessionFile) Close() error {
 		// close below is the one that matters.
 		_ = err
 	}
+	var releaseErr error
+	if s.releaseHold != nil {
+		releaseErr = s.releaseHold()
+	}
 	if s.locked {
 		s.locked = false
 		_ = filelock.Unlock(s.file)
 	}
-	return s.file.Close()
+	return errors.Join(releaseErr, s.file.Close())
 }
 
 func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }

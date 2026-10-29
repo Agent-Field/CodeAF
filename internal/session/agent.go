@@ -90,6 +90,7 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.ReleaseHold = nil
 	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
 		pair.Main = config.Model
 		if config.OneModel || pair.Fallback == pair.Main {
@@ -116,6 +117,10 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 // newAgent is the seam New and the tests share: everything except which
 // Completer the turns run against.
 func newAgent(config Config, client Completer) (*Agent, error) {
+	// The journal owns the release; copies of the session's config must never
+	// let a worker or a side conversation release its parent's hold.
+	releaseHold := config.ReleaseHold
+	config.ReleaseHold = nil
 	if strings.TrimSpace(config.Workspace) == "" {
 		return nil, errors.New("session: workspace is required")
 	}
@@ -300,7 +305,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the header repeats that name rather than minting a second one. A
 		// legacy flat session hands "" and the file names itself, exactly as it
 		// always did.
-		file, replayed, err := openSessionFile(config.SessionFile, config.Workspace, config.Model, config.Place.ID())
+		file, replayed, err := openSessionFile(config.SessionFile, config.Workspace, config.Model, config.Place.ID(), releaseHold)
 		if err != nil {
 			return nil, err
 		}
@@ -2972,7 +2977,7 @@ func (a *Agent) Close() (saveErr error) {
 	}
 	if err := procexec.Drain(drainCtx, a.config.seat()); err != nil {
 		if file != nil {
-			_ = file.Close()
+			err = errors.Join(err, file.Close())
 		}
 		return err
 	}
