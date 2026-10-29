@@ -13,6 +13,7 @@ import (
 // and decides how to degrade a failed read. True confirms the current fence;
 // false means either a viewer or a drive that cannot confirm ownership yet.
 func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
+	held := d.sendLeaseSnapshot()
 	if d.batcher == nil {
 		return false, nil
 	}
@@ -37,7 +38,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if lease.Expires <= v.Now {
-		d.available()
+		d.availableAfter(held, lease)
 		// Never resume an older tree over work saved by another computer.
 		head, err := cellstore.Head(d.cell)
 		if err != nil || head == nil || head.Turn.ID != v.Cell.Head {
@@ -64,7 +65,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if lease.Device == d.sync.Device.ID() {
-		d.available()
+		d.availableAfter(held, lease)
 		return false, nil
 	}
 
@@ -122,14 +123,30 @@ func (d *Drive) resumeViewer() {
 	}
 }
 
-// available retains the work gate until admission acquires a new fence, without
+// available retains the work gate until ownership is confirmed again, without
 // claiming that the last holder is still working in a released chat.
 func (d *Drive) available() {
+	d.availableAfter(sendLease{}, directory.Lease{})
+}
+
+// availableAfter closes the work gate before receipt I/O can block and retires
+// only the receipt held before the reading, so a concurrent reacquisition survives.
+// An unchanged owner and fence keeps its receipt even when released, because a
+// heartbeat can still renew it. Readers hear the change after retirement finishes.
+func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 	viewer := Viewer{Line: chatlist.Available}
 	d.mu.Lock()
 	changed := d.viewer != viewer
 	d.viewer = viewer
 	d.mu.Unlock()
+	if held.Fence != 0 && (reading.Device != d.sync.Device.ID() || reading.Fence != held.Fence) {
+		if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
+			d.notice(err.Error())
+		}
+	}
+	if changed {
+		d.renewalChanged()
+	}
 	if changed && d.opt.OnViewer != nil {
 		d.opt.OnViewer(viewer)
 	}
