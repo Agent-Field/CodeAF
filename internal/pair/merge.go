@@ -138,9 +138,10 @@ func (j Joining) resume() error {
 		return err
 	}
 	if rec.Replace {
-		if rec.Phase == "" {
-			// Older records have no phase. An installed destination proves the
-			// reset already ran, even if its process stopped before saving progress.
+		if rec.Phase != "installed" {
+			// Preparation can precede a failed install or new writes under the
+			// old key. An installed destination proves the reset already ran,
+			// even if its process stopped before saving progress.
 			current, err := identity.Load(j.Home)
 			if err != nil && !errors.Is(err, identity.ErrNone) {
 				return err

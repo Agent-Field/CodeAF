@@ -25,6 +25,9 @@ type pendingPublication struct {
 // SharingRetryMax bounds retry pauses for unfinished pairing publication.
 const SharingRetryMax = time.Minute
 
+// An unsaved chat stays pending without reporting a failure or delaying retry.
+var errNoChatHead = errors.New("chat has nothing to share yet")
+
 // RefreshLocalChats discovers newly saved chats without forgetting completed
 // publications or the retry deadlines of chats still waiting to be shared.
 func (s *Sync) RefreshLocalChats() error {
@@ -82,6 +85,9 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 			continue
 		}
 		if err := s.publishLocalChat(ctx, pending.root, id); err != nil {
+			if errors.Is(err, errNoChatHead) {
+				continue
+			}
 			pending.err = err
 			if pending.backoff == 0 {
 				pending.backoff = DefaultInterval
@@ -105,8 +111,12 @@ func (s *Sync) publishLocalChat(ctx context.Context, root, id string) error {
 	if err != nil {
 		return err
 	}
-	if head, err := cellstore.Head(c); err != nil || head == nil {
+	head, err := cellstore.Head(c)
+	if err != nil {
 		return err
+	}
+	if head == nil {
+		return errNoChatHead
 	}
 	meta, err := session.LoadMeta(root)
 	if err != nil {
