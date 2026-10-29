@@ -61,6 +61,42 @@ func (s *stampIndex) of(message ai.Message) time.Time {
 	return s.at[key]
 }
 
+// retain keeps only the instants of messages something still holds. Like a
+// presentation mark, a stamp's key holds the message's whole part array alive;
+// keeping stamps for folded or rewound messages would keep their words too.
+func (s *stampIndex) retain(live ...[]ai.Message) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.at) == 0 {
+		return
+	}
+	kept := make(map[any]time.Time)
+	for _, messages := range live {
+		for index := range messages {
+			if key := stampKey(messages[index]); key != nil {
+				if at, ok := s.at[key]; ok {
+					kept[key] = at
+				}
+			}
+		}
+	}
+	s.at = kept
+}
+
+// retainStamps follows the live transcript and its queues at the same boundaries
+// as the presentation index, after any departing region has been shaped.
+func (s *sessionFile) retainStamps(live ...[]ai.Message) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stamps.retain(live...)
+}
+
 // lineInstant reads a journal line's own timestamp, and the zero time for a
 // line that has none or one this build cannot read.
 func lineInstant(text string) time.Time {

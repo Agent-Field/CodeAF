@@ -1748,6 +1748,9 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		journal.stamps = &stampIndex{}
 	}
 	journal.restored = replayed.usage
+	if info, err := file.Stat(); err == nil {
+		replayed.readBytes = info.Size()
+	}
 
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
@@ -2488,6 +2491,9 @@ func legacyCompactionNote(summary string) string {
 // the name arrived here after the other two — and a reader of a call site
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
+	// readBytes lets the resume caller release a large replay's working memory
+	// after shaping, without looking up the journal's path a second time.
+	readBytes     int64
 	modelSwitches []ModelSwitch
 	// userLines is read-only physical provenance for display reads, nil on resume.
 	userLines map[any]int

@@ -381,6 +381,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// The region above the last pass is shaped and let go of, so its marks
 		// go with it ([presentationIndex.retain]).
 		agent.presentation.retain(agent.messages)
+		file.retainStamps(agent.messages)
 		agent.restorePasses(replayed.passes)
 		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
 		// session resumed onto a model without vision — the journal remembers
@@ -412,6 +413,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// that has not spoken since the field arrived would read as free on
 		// home forever.
 		agent.stampRestoredSpend(agent.usage)
+		// The earlier region has been shaped and its message indexes pruned.
+		// Let the replay go before returning a large read's working memory.
+		readBytes := replayed.readBytes
+		replayed = replayedSession{}
+		restored = nil
+		releaseAfterLargeRead(readBytes)
 	}
 	// AND WHERE THIS CONVERSATION IS ABOUT. The referred places ride on the same
 	// meta.json everything else about the session's identity does (places.go), so
@@ -3151,9 +3158,10 @@ func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) func() {
 	return func() { a.presentation.forget(kept) }
 }
 
-// retainPresentationLocked cuts the presentation marks back to the messages
-// this session still holds — the transcript and every queue of messages not yet
-// in it — after a boundary that let messages go ([presentationIndex.retain]).
+// retainPresentationLocked cuts the presentation marks and journal stamps back
+// to the messages this session still holds — the transcript and every queue of
+// messages not yet in it — after a boundary that let messages go
+// ([presentationIndex.retain]).
 func (a *Agent) retainPresentationLocked() {
 	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.followups))
 	for _, user := range a.steering {
@@ -3166,6 +3174,7 @@ func (a *Agent) retainPresentationLocked() {
 		queued = append(queued, follow.message.message)
 	}
 	a.presentation.retain(a.messages, queued)
+	a.file.retainStamps(a.messages, queued)
 }
 
 func (a *Agent) record(message ai.Message) {
