@@ -97,6 +97,22 @@ func (s *sessionFile) retainStamps(live ...[]ai.Message) {
 	s.stamps.retain(live...)
 }
 
+// rememberStamp puts back the instant a message was written, for a message a
+// boundary let go of and an undo is handing back ([Agent.UndoRewind]): the
+// stamps field is read under the file's lock everywhere else.
+func (s *sessionFile) rememberStamp(message ai.Message, at time.Time) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.stamps == nil {
+		s.stamps = &stampIndex{}
+	}
+	stamps := s.stamps
+	s.mu.Unlock()
+	stamps.remember(message, at)
+}
+
 // lineInstant reads a journal line's own timestamp, and the zero time for a
 // line that has none or one this build cannot read.
 func lineInstant(text string) time.Time {
