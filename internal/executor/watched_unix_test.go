@@ -1,6 +1,6 @@
-//go:build !windows
+//go:build linux || darwin
 
-// K6 keeps Unix process, lock and mode assertions on the systems that provide them.
+// K6 keeps process, lock and mode assertions on Linux and macOS.
 package executor
 
 import (

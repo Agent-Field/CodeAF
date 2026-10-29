@@ -5,11 +5,7 @@ package executor
 import (
 	"reflect"
 	"testing"
-
-	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
-
-func membersOf(pgid int) []int { return processgroup.Members(pgid) }
 
 const tcpFixture = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000 100 0 0 10 0

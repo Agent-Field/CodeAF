@@ -1,6 +1,6 @@
-//go:build !windows
+//go:build linux || darwin
 
-// K6 keeps Unix process-group service inspection on Unix.
+// K6 keeps process-group service inspection on Linux and macOS.
 package executor
 
 import (
@@ -19,14 +19,16 @@ func TestLocalRecordsAListeningServiceFully(t *testing.T) {
 	}
 	s := res.Services[0]
 	t.Cleanup(func() { _ = syscall.Kill(-s.PGID, syscall.SIGKILL) })
-	if s.Name != "python3" || len(s.Argv) < 3 || s.Argv[1] != "-c" {
-		t.Fatalf("name/argv not recorded: %+v", s)
-	}
-	// The listener may bind just after the call returned; poll the record.
+	// The call can return before the backgrounded shell has exec'd python3
+	// (macOS loses that race most times) and before the listener binds, so the
+	// record is polled until it names the server and its port.
 	deadline := time.Now().Add(5 * time.Second)
-	for len(s.Ports) == 0 && time.Now().Before(deadline) {
+	for (s.Name != "python3" || len(s.Ports) == 0) && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 		s = describe(sh(script), root, s.PGID, membersOf(s.PGID))
+	}
+	if s.Name != "python3" || len(s.Argv) < 3 || s.Argv[1] != "-c" {
+		t.Fatalf("name/argv not recorded: %+v", s)
 	}
 	if len(s.Ports) != 1 || s.Ports[0] == 0 {
 		t.Fatalf("port not recorded: %+v", s)

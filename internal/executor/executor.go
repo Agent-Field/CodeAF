@@ -115,10 +115,10 @@ type Chunk struct {
 
 // Service is a process group still alive after its call returned.
 type Service struct {
-	Name    string   // basename of the first member's argv[0]
-	Argv    []string // the first member's command line (the request's off Linux)
+	Name    string   // Basename of the naming member's argv[0].
+	Argv    []string // The naming member's command line on Linux and macOS; otherwise the request's.
 	PGID    int
-	Ports   []int  // listening TCP ports, when known (Linux only)
+	Ports   []int  // Listening TCP ports, when known on Linux and macOS.
 	DataDir string // cell-relative data directory, when the service keeps one
 }
 
