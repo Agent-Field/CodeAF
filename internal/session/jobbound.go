@@ -58,8 +58,8 @@ package session
 //
 // The watch is this program's own and runs everywhere. It reads the subtree
 // through the process-group handle #1155 gave, which works wherever a process
-// group is a process group; the CPU-and-process reading itself is /proc, so off
-// Linux it says it cannot say and the bound never cuts ([processgroup.Usage]).
+// group is a process group. Linux and macOS read the subtree's CPU and process
+// count; other platforms cannot say and the bound never cuts ([processgroup.Usage]).
 // The subtree's USAGE needs no cgroup — a job is a process group and not a
 // cgroup. Whether a quota BINDS is a different question — how many cores the
 // subtree could ever reach — answered from the process's own cgroup CPU quota and
