@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -537,6 +538,12 @@ func TestDisplacementRetiresWithoutHoldingTheReceiptLock(t *testing.T) {
 			defer probe.Close()
 			announced := make(chan error, 1)
 			d.opt.OnRenewalChange = func() {
+				if runtime.GOOS == "windows" {
+					// Windows may release a closed handle's lock late, so
+					// there only the deadline below proves no self-wait.
+					announced <- nil
+					return
+				}
 				err := filelock.Lock(probe, true, true)
 				if err == nil {
 					err = filelock.Unlock(probe)
