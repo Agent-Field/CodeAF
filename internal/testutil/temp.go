@@ -12,7 +12,7 @@ import (
 // macOS hands every process a TMPDIR under /var/folders, which is a link to
 // /private/var/folders, so a fixture's t.TempDir() spelling differs from the path
 // the product records once it resolves links. Empty roots retain Go's defaults,
-// and physical roots retain their original spelling. Other systems keep their
+// relative and physical roots retain their spelling. Other systems keep their
 // environment untouched, because their temporary folder is not an alias.
 // This belongs before suite setup because testing caches temporary parents per test.
 func CanonicalizeTempRoots() error {
@@ -21,16 +21,14 @@ func CanonicalizeTempRoots() error {
 	}
 	for _, name := range []string{"TMPDIR", "GOTMPDIR"} {
 		raw := os.Getenv(name)
-		if raw == "" {
+		// A relative root depends on the working directory's spelling, so it
+		// is left exactly as given rather than anchored to a guess.
+		if raw == "" || !filepath.IsAbs(raw) {
 			continue
 		}
 		// Links are followed before any lexical cleaning, so a ".." after a link
 		// climbs out of the link's target exactly as the kernel would.
 		resolved, err := filepath.EvalSymlinks(raw)
-		if err != nil {
-			return fmt.Errorf("cannot resolve %s: %w", name, err)
-		}
-		resolved, err = filepath.Abs(resolved)
 		if err != nil {
 			return fmt.Errorf("cannot resolve %s: %w", name, err)
 		}
