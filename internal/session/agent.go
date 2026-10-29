@@ -306,7 +306,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
-		file.onWrite = agent.tellWrote
+		file.onWrite = func() { agent.tellWrote(); agent.wakeKnowledge() }
 		agent.presentation = file.presentation
 		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing

@@ -6,11 +6,33 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
+
+// The test hook counts scans without changing the journal or the capture path.
+var knowledgeScanHook atomic.Pointer[func(string)]
+
+// knowledgeSafetyTick bounds discovery of journal lines this process did not
+// write, such as a session host's or terminal's writes. With consentRecheck,
+// lines covered by consent changed elsewhere wait at most
+// consentRecheck + knowledgeSafetyTick.
+const knowledgeSafetyTick = 5 * time.Second
+
+// knowledgeCatchUp is the former capture cadence. A look follows a write burst
+// by this long, and follows any look that moved the cursor, so a backlog keeps
+// moving one batch a second and the timer stops once a look finds nothing new.
+const knowledgeCatchUp = time.Second
+
+// knowledgeWroteConsentAge is how old the shared consent answer may be for a
+// look a write woke: a turn written just after consent changed elsewhere is
+// captured on the trailing look, a second later, not at the next safety tick.
+// The answer is shared, so writing chats open the database at most once a
+// second between them, and idle chats never.
+const knowledgeWroteConsentAge = time.Second
 
 // Knowledge is the profile-wide vault the conversation's tools read.
 // Capture is opt-in and only persisted, human-facing conversations write it.
@@ -47,6 +69,7 @@ type knowledgeJournal struct {
 }
 
 func (a *Agent) initKnowledge() {
+	a.knowledgeWake = make(chan struct{}, 1)
 	if a.config.knowledgeReadVault != nil {
 		a.knowledgeVault = a.config.knowledgeReadVault
 		return
@@ -56,6 +79,16 @@ func (a *Agent) initKnowledge() {
 	}
 	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""))
 }
+
+// wakeKnowledge is called by the journal writer's hook. It never blocks or
+// takes a lock, because writers call it with locks held.
+func (a *Agent) wakeKnowledge() {
+	select {
+	case a.knowledgeWake <- struct{}{}:
+	default:
+	}
+}
+
 func (a *Agent) startKnowledge() {
 	vault := a.Knowledge()
 	if vault == nil || a.config.InTask || a.config.taskID != 0 || a.config.knowledgeReadVault != nil || a.file == nil {
@@ -73,19 +106,55 @@ func (a *Agent) startKnowledge() {
 	sessionID := a.id
 	go func() {
 		defer close(j.done)
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
+		safety := time.NewTicker(knowledgeSafetyTick)
+		defer safety.Stop()
+		catchUpTimer := time.NewTimer(knowledgeCatchUp)
+		catchUpTimer.Stop()
+		defer catchUpTimer.Stop()
+		var catchUp <-chan time.Time
+		// look scans once and says whether it moved the cursor; wrote says a
+		// write woke it, or it trails one, so its consent answer is fresh.
+		look := func(wrote bool) bool {
+			j.mu.Lock()
+			before := j.offset
+			j.mu.Unlock()
+			a.scanKnowledge(ctx, j, path, sessionID, wrote)
+			j.mu.Lock()
+			defer j.mu.Unlock()
+			return j.offset != before
+		}
+		// trail asks for one more look knowledgeCatchUp from now.
+		trail := func() {
+			catchUpTimer.Reset(knowledgeCatchUp)
+			catchUp = catchUpTimer.C
+		}
+		// A resumed chat may already have durable lines waiting for capture.
+		if look(false) {
+			trail()
+		}
 		for {
 			select {
 			case <-ctx.Done():
 				// A bounded final copy helps small chats close immediately. The
 				// process worker recovers the remaining durable journal later.
 				finalCtx, finish := context.WithTimeout(context.Background(), time.Second)
-				a.scanKnowledge(finalCtx, j, path, sessionID)
+				a.scanKnowledge(finalCtx, j, path, sessionID, true)
 				finish()
 				return
-			case <-ticker.C:
-				a.scanKnowledge(ctx, j, path, sessionID)
+			case <-a.knowledgeWake:
+				// Every write is followed by one trailing look, which catches
+				// lines still being written and consent that changed elsewhere.
+				look(true)
+				trail()
+			case <-safety.C:
+				if look(false) {
+					trail()
+				}
+			case <-catchUp:
+				catchUp = nil
+				if look(true) {
+					trail()
+				}
 			}
 		}
 	}()
@@ -131,7 +200,10 @@ func (a *Agent) stopKnowledge() {
 // scanKnowledge reads complete journal lines by byte offset. Re-journaled
 // compaction windows are skipped, so stubs and summaries never become new
 // claims. IDs survive reopen/retry and do not conflate equal human messages.
-func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, sessionID string) (err error) {
+func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, sessionID string, wrote bool) (err error) {
+	if hook := knowledgeScanHook.Load(); hook != nil && *hook != nil {
+		(*hook)(path)
+	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	defer func() {
@@ -142,10 +214,15 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 			j.lastError = ""
 		}
 	}()
-	// Idle chat tickers share consent reads instead of reopening SQLite each
-	// second. The shared answer only decides whether to look; sources found
+	// Idle chats share consent reads instead of each reopening SQLite. The
+	// shared answer only decides whether to look; sources found
 	// below are admitted, or passed over, on consent read afresh.
-	enabled, since := j.vault.CaptureConsent()
+	enabled, since := false, time.Time{}
+	if wrote {
+		enabled, since = j.vault.CaptureConsentWithin(knowledgeWroteConsentAge)
+	} else {
+		enabled, since = j.vault.CaptureConsent()
+	}
 	if !enabled {
 		return nil
 	}
