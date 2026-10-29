@@ -6,11 +6,133 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
+
+func TestSealWatchChangesSignalQueuedSentences(t *testing.T) {
+	var w SealWatch
+	changes := w.Changes()
+	if changes == nil || changes != w.Changes() || w.Pending() {
+		t.Fatal("zero-value watch must have one stable wake channel and no pending sentences")
+	}
+	for _, speak := range []func(){
+		func() { w.Note("file kept out") },
+		func() { w.Report(errors.New("disk full")) },
+		func() { w.Report(nil) },
+	} {
+		speak()
+		select {
+		case <-changes:
+		default:
+			t.Fatal("queued sentence did not signal")
+		}
+		if !w.Pending() || w.Take() == "" || w.Pending() {
+			t.Fatal("pending must follow the sentence until it is taken")
+		}
+	}
+}
+
+func TestSealWatchChangesCoalesceABurstBeforeSubscription(t *testing.T) {
+	var w SealWatch
+	for range 10 {
+		w.Note("file kept out")
+	}
+	changes := w.Changes()
+	select {
+	case <-changes:
+	default:
+		t.Fatal("news queued before subscription lost its wake")
+	}
+	select {
+	case <-changes:
+		t.Fatal("a burst must leave only one pending wake")
+	default:
+	}
+	for range 10 {
+		if !w.Pending() || w.Take() != "file kept out" {
+			t.Fatal("coalescing wakes lost a sentence")
+		}
+	}
+	if w.Pending() || w.Take() != "" {
+		t.Fatal("drained watch still has a sentence")
+	}
+}
+
+func TestSealWatchChangesDoNotSignalSay(t *testing.T) {
+	var said []string
+	w := SealWatch{Say: func(line string) { said = append(said, line) }}
+	changes := w.Changes()
+	w.Note("file kept out")
+	w.Report(errors.New("disk full"))
+	w.Report(nil)
+	if len(said) != 3 || w.Pending() || w.Take() != "" {
+		t.Fatalf("Say must receive sentences without queueing them: %q", said)
+	}
+	select {
+	case <-changes:
+		t.Fatal("a sentence handed to Say woke a queue reader")
+	default:
+	}
+}
+
+func TestSealWatchPendingDoesNotDiscoverRecovery(t *testing.T) {
+	c := newCell(t)
+	if err := os.WriteFile(rel(c, ".cell/transcript.jsonl"), []byte("reply\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var w SealWatch
+	w.TrackTurn(c.Root)
+	w.Report(errors.New("disk full"))
+	w.Take()
+	if _, err := (&fakeEngine{}).engine(t).Seal(t.Context(), c, TurnInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if w.Pending() {
+		t.Fatal("Pending must not discover and queue recovery")
+	}
+	if w.Failing() || !w.Pending() || !strings.Contains(w.Take(), "sealing works again") {
+		t.Fatal("Failing must still discover recovery after Pending left it alone")
+	}
+}
+
+func TestSealWatchConcurrentNews(t *testing.T) {
+	var w SealWatch
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		for range 1000 {
+			w.Note("file kept out")
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		for range 1000 {
+			w.Pending()
+			select {
+			case <-w.Changes():
+			default:
+			}
+		}
+	}()
+	taken := 0
+	for range 1000 {
+		if w.Take() != "" {
+			taken++
+		}
+	}
+	workers.Wait()
+	for w.Take() != "" {
+		taken++
+	}
+	if taken != 1000 || w.Pending() {
+		t.Fatalf("concurrent reader received %d sentences, want 1000 and none pending", taken)
+	}
+}
 
 func TestSealWatchFailureIsVisibleAndSaidOnce(t *testing.T) {
 	var w SealWatch

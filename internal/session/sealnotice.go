@@ -1,5 +1,35 @@
 package session
 
+// SealNews is what a seal watch may also do so an idle host waits for its news
+// instead of asking.
+type SealNews interface {
+	Changes() <-chan struct{}
+	Pending() bool
+}
+
+// SealNotices gives the host a wake for idle saving news. A nil wake with true
+// means nothing can be taken here; false keeps watches without signals polling.
+func (a *Agent) SealNotices() (<-chan struct{}, bool) {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.Seals == nil {
+		return nil, true
+	}
+	if news, ok := a.config.Seals.(SealNews); ok {
+		return news.Changes(), true
+	}
+	return nil, false
+}
+
+// SealNoticesOwed keeps a host looking while recovery can change on disk or a
+// sentence is held for a running turn or an absent surface.
+func (a *Agent) SealNoticesOwed() bool {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.Seals == nil {
+		return false
+	}
+	failing := a.config.Seals.Failing()
+	news, ok := a.config.Seals.(SealNews)
+	return failing || (ok && news.Pending())
+}
+
 // SealFailing reports whether the last seal of this conversation's calls
 // failed. It is the one predicate every reader asks: the in-process surface
 // reads it directly, and an engine states it to a surface in another process on
