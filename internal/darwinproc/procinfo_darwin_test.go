@@ -16,8 +16,26 @@ import (
 	"time"
 )
 
+// procArgsFixture lays out a kern.procargs2 answer the way the kernel does:
+// argc, the executable path padded with NULs to the next eight-byte boundary,
+// then the arguments and the environment.
+func procArgsFixture(argc int32, exec string, strings ...string) []byte {
+	raw := make([]byte, 4)
+	binary.LittleEndian.PutUint32(raw, uint32(argc))
+	raw = append(raw, exec...)
+	raw = append(raw, 0)
+	for (len(raw)-4)%procArgsAlign != 0 {
+		raw = append(raw, 0)
+	}
+	for _, s := range strings {
+		raw = append(raw, s...)
+		raw = append(raw, 0)
+	}
+	return raw
+}
+
 func TestDarwinProcArgsStopsBeforeEnvironment(t *testing.T) {
-	rawArgs := func(argc int32, body string) []byte {
+	header := func(argc int32, body string) []byte {
 		raw := make([]byte, 4, 4+len(body))
 		binary.LittleEndian.PutUint32(raw, uint32(argc))
 		return append(raw, body...)
@@ -27,13 +45,17 @@ func TestDarwinProcArgsStopsBeforeEnvironment(t *testing.T) {
 		raw  []byte
 		want []string
 	}{
-		{"padding and environment", rawArgs(4, "/bin/tool\x00\x00\x00tool\x00\x00two words\x00last\x00PRIVATE=value\x00"), []string{"tool", "", "two words", "last"}},
-		{"zero", rawArgs(0, "/bin/tool\x00tool\x00"), nil},
-		{"negative", rawArgs(-1, "/bin/tool\x00tool\x00"), nil},
-		{"absurd", rawArgs(1<<30, "/bin/tool\x00tool\x00"), nil},
-		{"missing argument", rawArgs(2, "/bin/tool\x00tool\x00"), nil},
-		{"truncated argument", rawArgs(1, "/bin/tool\x00tool"), nil},
-		{"truncated executable", rawArgs(1, "/bin/tool"), nil},
+		{"padding and environment", procArgsFixture(4, "/bin/tool", "tool", "", "two words", "last", "PRIVATE=value"), []string{"tool", "", "two words", "last"}},
+		{"empty argv[0] keeps the environment out", procArgsFixture(2, "/bin/tool", "", "argument", "PRIVATE=value"), []string{"", "argument"}},
+		{"path that fills its boundary", procArgsFixture(1, "/bin/to", "tool", "PRIVATE=value"), []string{"tool"}},
+		{"padding that is not NUL", header(1, "/bin/tool\x00\x00tool\x00PRIVATE=value\x00"), nil},
+		{"zero", procArgsFixture(0, "/bin/tool", "tool"), nil},
+		{"negative", procArgsFixture(-1, "/bin/tool", "tool"), nil},
+		{"absurd", procArgsFixture(1<<30, "/bin/tool", "tool"), nil},
+		{"missing argument", procArgsFixture(2, "/bin/tool", "tool"), nil},
+		{"truncated argument", header(1, "/bin/tool\x00\x00\x00\x00\x00\x00\x00tool"), nil},
+		{"truncated padding", header(1, "/bin/tool\x00\x00"), nil},
+		{"truncated executable", header(1, "/bin/tool"), nil},
 		{"short header", []byte{1, 0, 0}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -41,6 +63,35 @@ func TestDarwinProcArgsStopsBeforeEnvironment(t *testing.T) {
 				t.Fatalf("argv = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// An empty argv[0] is read in place on a live process, with the environment
+// left out, whatever the length of the executable path.
+func TestDarwinArgvKeepsAnEmptyFirstArgument(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"s", "sl", "sleeper", "sleeperx"} {
+		link := filepath.Join(dir, name)
+		if err := os.Symlink("/bin/sleep", link); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(link, "30")
+		cmd.Args[0] = ""
+		cmd.Env = []string{"PRIVATE=value"}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+		var got []string
+		for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+			if got = Argv(cmd.Process.Pid); reflect.DeepEqual(got, []string{"", "30"}) {
+				break
+			}
+		}
+		if !reflect.DeepEqual(got, []string{"", "30"}) {
+			t.Fatalf("%s: argv = %q, want [\"\" \"30\"]", name, got)
+		}
 	}
 }
 

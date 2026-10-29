@@ -65,6 +65,10 @@ const (
 	childrenInitialPIDs = 64
 	childrenGrowth      = 4
 	childrenAttempts    = 4
+
+	// procArgsAlign is the boundary the kernel pads the executable path to
+	// before the arguments begin: the pointer size of every supported Mac.
+	procArgsAlign = 8
 )
 
 // procInfo keeps pointer conversion in the syscall expression so the buffer
@@ -91,7 +95,9 @@ func procInfo(call, a1, a2, a3 int, buf []byte) (int, error) {
 }
 
 // Children lists immediate children, bounding retries when the tree grows
-// between reads. A full final buffer is unknown rather than a partial tree.
+// between reads. When even the last buffer fills, the children it holds are
+// returned with ENOMEM: they are a lower bound on the children, never the
+// whole list, and a caller counting them must say so.
 func Children(ppid int) ([]int, error) {
 	if ppid <= 0 {
 		return nil, unix.EINVAL
@@ -107,27 +113,35 @@ func Children(ppid int) ([]int, error) {
 			return nil, unix.EIO
 		}
 		if n < len(buf) {
-			pids := make([]int, 0, n/pidSize)
-			for offset := 0; offset < n; offset += pidSize {
-				if pid := int(int32(binary.LittleEndian.Uint32(buf[offset:]))); pid > 0 {
-					pids = append(pids, pid)
-				}
-			}
-			return pids, nil
+			return childPIDs(buf[:n]), nil
 		}
 		if attempt+1 < childrenAttempts {
 			buf = make([]byte, len(buf)*childrenGrowth)
 		}
 	}
-	return nil, unix.ENOMEM
+	return childPIDs(buf), unix.ENOMEM
+}
+
+func childPIDs(buf []byte) []int {
+	pids := make([]int, 0, len(buf)/pidSize)
+	for offset := 0; offset+pidSize <= len(buf); offset += pidSize {
+		if pid := int(int32(binary.LittleEndian.Uint32(buf[offset:]))); pid > 0 {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
 
 // TaskInfo combines identity and CPU from one kernel snapshot so callers can
 // validate ancestry before attributing a process's accumulated CPU time.
 type TaskInfo struct {
 	PID, PPID, PGID, Status int
-	CPUSeconds              float64
-	Resident                uint64
+	// Start is the process's start time in microseconds. A pid handed out
+	// again names a process with another start, so a reader that must not
+	// confuse the two compares it.
+	Start      uint64
+	CPUSeconds float64
+	Resident   uint64
 }
 
 var (
@@ -158,6 +172,7 @@ func Task(pid int) (TaskInfo, error) {
 		PPID:       int(int32(binary.LittleEndian.Uint32(buf[bsdPPIDOffset:]))),
 		PGID:       int(int32(binary.LittleEndian.Uint32(buf[bsdPGIDOffset:]))),
 		Status:     int(binary.LittleEndian.Uint32(buf[bsdStatusOffset:])),
+		Start:      binary.LittleEndian.Uint64(buf[bsdStartSecondsOffset:])*1_000_000 + binary.LittleEndian.Uint64(buf[bsdStartMicrosOffset:]),
 		CPUSeconds: float64(binary.LittleEndian.Uint64(buf[taskUserOffset:]))/float64(tickFrequency) + float64(binary.LittleEndian.Uint64(buf[taskSystemOffset:]))/float64(tickFrequency),
 		Resident:   binary.LittleEndian.Uint64(buf[taskResidentOffset:]),
 	}, nil
@@ -229,7 +244,16 @@ func parseProcArgs(raw []byte) []string {
 	if end < 0 {
 		return nil
 	}
-	rest = bytes.TrimLeft(rest[end+1:], "\x00")
+	// The kernel pads the executable path with NULs so the arguments start on
+	// a pointer-size boundary of the string area. Skipping every NUL instead
+	// would swallow an empty argv[0] and shift the first environment string,
+	// which can hold a secret, into the arguments. Padding that is not all NUL
+	// is a layout this parser does not know, and it reads as nothing.
+	start := (end + 1 + procArgsAlign - 1) &^ (procArgsAlign - 1)
+	if start > len(rest) || len(bytes.Trim(rest[end+1:start], "\x00")) != 0 {
+		return nil
+	}
+	rest = rest[start:]
 	argv := make([]string, 0, argc)
 	for range argc {
 		end = bytes.IndexByte(rest, 0)
