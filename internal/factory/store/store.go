@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -289,6 +290,13 @@ func (st *Store) Save(it factory.Item) error {
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return err
 	}
+	var was factory.Item
+	wrote := false
+	defer func() {
+		if wrote {
+			st.tellWritten(was, it)
+		}
+	}()
 	return st.underItemLock(it.ID, func() error {
 		rev := 1
 		current, err := st.read(st.ItemPath(it.ID))
@@ -304,9 +312,11 @@ func (st *Store) Save(it factory.Item) error {
 		if err != nil {
 			return err
 		}
-		return live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
+		err = live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
 			return writeAtomic(st.ItemPath(it.ID), data)
 		})
+		was, wrote = current.Item, err == nil
+		return err
 	})
 }
 
@@ -356,6 +366,21 @@ func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
 	return st.update(id, false, nil, change)
 }
 
+// written is told of every item write; see [WhenWritten].
+var written atomic.Pointer[func(root string, before, after factory.Item)]
+
+// WhenWritten has fn told of every item a write lands, as it was before the
+// write and as it is after, with the root of the store written. It is told
+// after the item's lock is let go, so fn may write elsewhere (the crews store,
+// where a job's room follows the job). A later fn replaces an earlier one.
+func WhenWritten(fn func(root string, before, after factory.Item)) { written.Store(&fn) }
+
+func (st *Store) tellWritten(before, after factory.Item) {
+	if fn := written.Load(); fn != nil {
+		(*fn)(st.root, before, after)
+	}
+}
+
 // update is every read-modify-write. A nil expect writes whatever revision is
 // on disk; a revision refuses any other one before change runs.
 func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.Item) error) error {
@@ -365,6 +390,13 @@ func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.It
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return err
 	}
+	var was, after factory.Item
+	wrote := false
+	defer func() {
+		if wrote {
+			st.tellWritten(was, after)
+		}
+	}()
 	return st.underItemLock(id, func() error {
 		current, err := st.read(st.ItemPath(id))
 		if err != nil {
@@ -415,9 +447,11 @@ func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.It
 		if err != nil {
 			return err
 		}
-		return live.Commit(st.root, live.Changes(before, it, now), func() error {
+		err = live.Commit(st.root, live.Changes(before, it, now), func() error {
 			return writeAtomic(st.ItemPath(id), data)
 		})
+		was, after, wrote = before, it, err == nil
+		return err
 	})
 }
 

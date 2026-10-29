@@ -1805,7 +1805,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		var id, known string
 		b.locked(func() { id, known = a.view.ID, a.view.Title })
 		if strings.TrimSpace(known) == "" {
-			title = b.memberNames()[id]
+			title = b.memberName(id)
 		}
 	}
 	users := conn.UserMessages

@@ -256,7 +256,7 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 	}
 	key = filepath.Clean(key)
 	now := time.Now()
-	return teams.Update(profileDir, func(f *teams.File) error {
+	return teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		id := recordedRoomIn(f, it)
 		if id == "" {
 			id = itemTeamIn(f, name, now)
@@ -621,43 +621,10 @@ func talkPutAway(seam factory.Seam, st *store.Store, profileDir string) factory.
 		if err != nil || strings.TrimSpace(it.Talk) == "" {
 			return nil
 		}
-		room := ""
-		if it.Stream != nil {
-			room = strings.TrimSpace(it.Stream.Room)
-		}
 		_ = session.SetArchived(filepath.Dir(it.Talk), true)
-		key := it.Talk
-		if real, err := filepath.EvalSymlinks(key); err == nil {
-			key = real
-		}
-		key = filepath.Clean(key)
-		_ = teams.Update(profileDir, func(f *teams.File) error {
-			// ONLY WHAT THE FACTORY RECORDED IS CLOSED: the item's own
-			// Stream.Room, else a factory-made item team holding the talk.
-			// An ordinary crew that holds the same conversation, the root and
-			// the `factory` parent are the person's, and stay open.
-			closable := func(t teams.Team) bool {
-				return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID)
-			}
-			for _, t := range f.Teams {
-				if room != "" && t.ID == room && closable(t) {
-					return f.Close(t.ID, time.Now(), "")
-				}
-			}
-			if room != "" {
-				for _, t := range f.Teams {
-					if t.ID == room {
-						return nil
-					}
-				}
-			}
-			for _, t := range f.Teams {
-				if t.Holds(key) && t.FactoryManaged && t.Parent != "" && closable(t) {
-					return f.Close(t.ID, time.Now(), "")
-				}
-			}
-			return nil
-		})
+		// The dismissal ended the job, which closed its room already
+		// (factory_room_follow.go); this closes it if that write was not seen.
+		_ = closeJobRooms(profileDir, it)
 		return nil
 	}
 	return seam

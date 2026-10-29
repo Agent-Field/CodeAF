@@ -93,11 +93,11 @@ func ReviseBrief(profileDir, team, key string, c BriefChange) (BriefRevision, er
 	}
 	var rev BriefRevision
 	err := withLock(profileDir, lockWait, func() error {
-		f, err := read(profileDir)
+		f, exists, err := lookTeams(profileDir, "", team)
 		if err != nil {
 			return err
 		}
-		if f == nil {
+		if !exists {
 			return errors.New("there are no teams")
 		}
 		t, ok := f.Team(team)
@@ -146,7 +146,7 @@ func ReviseBrief(profileDir, team, key string, c BriefChange) (BriefRevision, er
 			kept[0].Before = briefs[over-1].Text
 			briefs = kept
 		}
-		_, err = updateLocked(profileDir, func(f *File) error {
+		_, err = updateOpenLocked(profileDir, func(f *File) error {
 			for i := range f.Teams {
 				if f.Teams[i].ID != team {
 					continue

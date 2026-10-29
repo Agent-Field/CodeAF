@@ -13,14 +13,17 @@ import (
 
 var _ appwire.CrewsOrganizer = (*appBackend)(nil)
 
-// CrewsOrganize reads a snapshot, never the repairing teams loader or watch.
+// CrewsOrganize reads the open crews as stored, never the repairing teams
+// loader or watch.
 // Naming uses a conversation's existing door, including hosted Teams.Propose;
 // no turn, manager or team is created to obtain a suggestion.
 func (b *appBackend) CrewsOrganize(ctx context.Context, ask appwire.OrganizeAsk) (*appwire.OrganizeReply, error) {
 	if err := appwire.CheckOrganizeAsk(ask); err != nil {
 		return nil, err
 	}
-	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile())
+	// Only open crews are organized into, or counted as quiet: closed ones are
+	// not read.
+	file, err := teamstore.LoadOpen(b.crewProfile())
 	if err != nil {
 		return nil, appEngineError(overviewReadError(err, ""))
 	}

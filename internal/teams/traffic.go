@@ -219,9 +219,9 @@ func appendTrafficIDLocked(profileDir, teamID string, e Entry) (string, error) {
 
 // Only closing-report acceptance may append its final event after disbanding.
 func appendTrafficLifecycleLocked(profileDir, teamID string, e Entry, closing bool) (string, error) {
-	if f, err := read(profileDir); err != nil {
+	if f, exists, err := lookTeams(profileDir, "", teamID); err != nil {
 		return "", err
-	} else if f != nil {
+	} else if exists {
 		t, ok := f.Team(teamID)
 		if !ok || t.Closed() && !(closing && e.Kind == KindClose && e.Packet != "" && e.Packet == t.Report) {
 			return "", ErrClosed

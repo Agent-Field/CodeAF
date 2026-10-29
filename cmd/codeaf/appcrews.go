@@ -248,8 +248,15 @@ func (b *appBackend) crewRead() (appCrewRead, error) {
 	profile := b.crewProfile()
 	// ONCE FOR THIS BACKEND CONNECTION, BEFORE THE FIRST READ: a team the factory made before
 	// the stamp was kept is marked from its item's recorded Room, never a name.
-	b.factoryRooms.Do(func() { factoryStampStoredRooms(profile, v3FactoryRoot()) })
-	file, err := teamstore.Load(profile)
+	b.factoryRooms.Do(func() {
+		factoryStampStoredRooms(profile, v3FactoryRoot())
+		factorySweepEndedRooms(profile, v3FactoryRoot())
+	})
+	// THE WATCH FOLLOWS THE OPEN CREWS. A closed crew does not change by
+	// itself, and every finished factory job leaves one, so the beat reads the
+	// open ones; a closed one is read by id when it is shown ([appBackend.CrewGet],
+	// the closed list) or when it closes ([appBackend.crewTickLocked]).
+	file, err := teamstore.LoadOpen(profile)
 	if err != nil {
 		return appCrewRead{}, err
 	}
@@ -316,7 +323,6 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 		}
 		for id := range run.prints {
 			if _, still := views[id]; !still {
-				delete(run.prints, id)
 				removed = append(removed, id)
 			}
 		}
@@ -332,8 +338,33 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 	for _, m := range members {
 		b.emit.Emit(appwire.EventMemberChanged, appwire.MemberChanged{Member: m})
 	}
-	for _, id := range removed {
-		b.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
+	// A CREW THAT LEFT THE OPEN CREWS while this watch held it closed, or was
+	// deleted. It is kept and read by id on every look, so archiving or
+	// deleting it later is said too: only crews that closed while the app
+	// watched are kept, never every closed crew.
+	if len(removed) > 0 {
+		sort.Strings(removed)
+		gone, err := teamstore.LoadLineage(b.crewProfile(), removed...)
+		if err == nil {
+			for _, id := range removed {
+				t, ok := gone.Team(id)
+				if !ok {
+					run.locked(func() { delete(run.prints, id) })
+					b.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
+					continue
+				}
+				view := b.crewView(appCrewRead{file: gone, defaults: read.defaults, layer: read.layer, waiting: read.waiting}, t)
+				raw, _ := json.Marshal(view)
+				said := false
+				run.locked(func() {
+					said = run.prints[id] == string(raw)
+					run.prints[id] = string(raw)
+				})
+				if !said {
+					b.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: view})
+				}
+			}
+		}
 	}
 	// AN AGENT WHOSE CREWS CHANGED IS SAID AGAIN, so its row's crews are
 	// never older than the crews' own.
@@ -775,7 +806,7 @@ func (b *appBackend) crewAct(run *appCrewRun, read appCrewRead, t teamstore.Team
 			return
 		}
 		claimed := false
-		if err := teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
+		if err := teamstore.UpdateOpen(b.crewProfile(), func(f *teamstore.File) error {
 			claimed = f.ClaimStart(t.ID, e.ID)
 			return nil
 		}); err != nil || !claimed {
@@ -925,7 +956,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	if e.Kind == teamstore.KindStart && e.From == teamstore.FromManager && (e.Team == "" || e.Team == t.ID) {
 		member.StartEntry, member.StartID = e.ID, e.ID
 	}
-	err = teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
+	err = teamstore.UpdateOpen(b.crewProfile(), func(f *teamstore.File) error {
 		if err := f.AddMember(t.ID, member); err != nil {
 			return err
 		}
@@ -1081,6 +1112,20 @@ func (b *appBackend) crewsOf(agent string) []string {
 
 // appDecisionOf is a packet as a decision, its path named by the crews it
 // climbed through.
+// appPacketTeams is every crew packets name: where each was raised, where it
+// waits, and every crew it climbed through, which is all a decision is
+// named by ([appDecisionOf]).
+func appPacketTeams(profile string, packets ...teamstore.Packet) (*teamstore.File, error) {
+	var ids []string
+	for _, p := range packets {
+		ids = append(ids, p.Origin, p.Team)
+		for _, hop := range p.Trail {
+			ids = append(ids, hop.To)
+		}
+	}
+	return teamstore.LoadTeams(profile, ids...)
+}
+
 func appDecisionOf(f *teamstore.File, p teamstore.Packet) appwire.Decision {
 	name := func(id string) string {
 		if id == teamstore.Person {
@@ -1188,11 +1233,16 @@ func (b *appBackend) crewPackets(run *appCrewRun, read appCrewRead, first bool) 
 		}
 		run.packets = now
 	})
+	// A packet names crews by id, closed ones too: those are read by id.
+	names, err := appPacketTeams(b.crewProfile(), append(append([]teamstore.Packet(nil), opened...), gone...)...)
+	if err != nil {
+		names = read.file
+	}
 	for _, p := range opened {
-		ask := appDecisionAsk(read.file, p)
+		ask := appDecisionAsk(names, p)
 		run.locked(func() { run.asks[ask.ID] = ask })
 		if !first {
-			b.emit.Emit(appwire.EventDecisionOpened, appwire.DecisionEvent{Decision: appDecisionOf(read.file, p)})
+			b.emit.Emit(appwire.EventDecisionOpened, appwire.DecisionEvent{Decision: appDecisionOf(names, p)})
 		}
 		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 	}
@@ -1207,7 +1257,7 @@ func (b *appBackend) crewPackets(run *appCrewRun, read appCrewRead, first bool) 
 		if err != nil {
 			decided = p
 		}
-		b.emit.Emit(appwire.EventDecisionChanged, appwire.DecisionEvent{Decision: appDecisionOf(read.file, decided)})
+		b.emit.Emit(appwire.EventDecisionChanged, appwire.DecisionEvent{Decision: appDecisionOf(names, decided)})
 		b.closeCrewAsk(ask, decided.Decision, decided.DecidedBy)
 	}
 }
@@ -1272,9 +1322,14 @@ func (b *appBackend) CrewList(closed bool) ([]appwire.Crew, error) {
 	}
 	teams := read.file.Open()
 	if closed {
+		// The person's closed crews, with the crews above them; a finished
+		// factory job's room is read where its job names it, never listed.
+		if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
+			return nil, appEngineError(err)
+		}
 		teams = nil
 		for _, t := range read.file.ClosedTeams() {
-			if !t.Archived() {
+			if !t.Archived() && !t.FactoryManaged {
 				teams = append(teams, t)
 			}
 		}
@@ -1293,7 +1348,15 @@ func (b *appBackend) CrewListArchived() ([]appwire.Crew, error) {
 	if err != nil {
 		return nil, appEngineError(err)
 	}
-	teams := read.file.ArchivedTeams()
+	if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
+		return nil, appEngineError(err)
+	}
+	var teams []teamstore.Team
+	for _, t := range read.file.ArchivedTeams() {
+		if !t.FactoryManaged {
+			teams = append(teams, t)
+		}
+	}
 	out := make([]appwire.Crew, 0, len(teams))
 	for _, t := range teams {
 		out = append(out, b.crewView(read, t))
@@ -1313,7 +1376,13 @@ func (b *appBackend) CrewGet(id string) (appwire.Crew, error) {
 	}
 	t, ok := read.file.Team(id)
 	if !ok {
-		return appwire.Crew{}, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", id)
+		// Not open: read by id, with the crews above it.
+		if read.file, err = teamstore.LoadLineage(b.crewProfile(), id); err != nil {
+			return appwire.Crew{}, appEngineError(err)
+		}
+		if t, ok = read.file.Team(id); !ok {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", id)
+		}
 	}
 	return b.crewView(read, t), nil
 }
@@ -1542,7 +1611,7 @@ func appCrewFormedID(crew string) string { return "rcrew:" + crew }
 // formation entry the conversation carried when it was made, oldest first.
 // One read of the teams file.
 func (b *appBackend) crewFormedEntries(agent string) []appwire.Entry {
-	file, err := teamstore.Load(b.crewProfile())
+	file, err := teamstore.LoadFoundedBy(b.crewProfile(), agent)
 	if err != nil {
 		return nil
 	}
@@ -1724,7 +1793,7 @@ func (b *appBackend) crewSettingReceipt(manager, id, setting, words string) {
 
 // crewTeam is one team as it stands, or not_found.
 func (b *appBackend) crewTeam(id string) (teamstore.Team, *teamstore.File, error) {
-	f, err := teamstore.Load(b.crewProfile())
+	f, err := teamstore.LoadTeams(b.crewProfile(), id)
 	if err != nil {
 		return teamstore.Team{}, nil, appEngineError(err)
 	}
@@ -1743,6 +1812,16 @@ func (b *appBackend) crewMemberOf(t teamstore.Team, agent string) (teamstore.Mem
 		}
 	}
 	return teamstore.Member{}, false
+}
+
+// crewSeatOf is [appCrewSeat] over the teams agent is a member of, read by
+// the store's index rather than over every team.
+func (b *appBackend) crewSeatOf(agent string) (teamstore.Team, teamstore.Member, bool) {
+	f, err := teamstore.LoadTeamsOf(b.crewProfile(), agent, false)
+	if err != nil {
+		return teamstore.Team{}, teamstore.Member{}, false
+	}
+	return appCrewSeat(f, agent)
 }
 
 // appCrewSeat is the one open crew an agent works in, and its membership
@@ -1931,7 +2010,15 @@ func (b *appBackend) CrewLogAt(ask appwire.LogAnchorAsk) (appwire.LogAnchor, err
 		around = appLogAnchorAround
 	}
 	profile := b.crewProfile()
-	f, err := teamstore.Load(profile)
+	// A line whose crew is named is looked for in that crew and the crews under
+	// it; one that is not, in the crews the agent is in. Neither reads others.
+	var f *teamstore.File
+	var err error
+	if ask.Crew != "" {
+		f, err = teamstore.LoadSubtree(profile, ask.Crew)
+	} else {
+		f, err = teamstore.LoadTeamsOf(profile, ask.Agent, false)
+	}
 	if err != nil {
 		return appwire.LogAnchor{}, appEngineError(err)
 	}
@@ -2026,11 +2113,8 @@ func (b *appBackend) crewLogAtCrew(profile string, f *teamstore.File, crew, agen
 // every decision waiting on the person.
 func (b *appBackend) CrewDecisions(id string, all bool) ([]appwire.Decision, error) {
 	profile := b.crewProfile()
-	f, err := teamstore.Load(profile)
-	if err != nil {
-		return nil, appEngineError(err)
-	}
 	var packets []teamstore.Packet
+	var err error
 	switch {
 	case id == "":
 		packets, _, err = teamstore.OpenPackets(profile, teamstore.Person)
@@ -2045,6 +2129,10 @@ func (b *appBackend) CrewDecisions(id string, all bool) ([]appwire.Decision, err
 			}
 		}
 	}
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	f, err := appPacketTeams(profile, packets...)
 	if err != nil {
 		return nil, appEngineError(err)
 	}
@@ -2081,7 +2169,7 @@ func (b *appBackend) CrewDecide(packet, option, text, reason string) (appwire.De
 			return appwire.Decision{}, appEngineError(err)
 		}
 	}
-	f, err := teamstore.Load(profile)
+	f, err := appPacketTeams(profile, p)
 	if err != nil {
 		return appwire.Decision{}, appEngineError(err)
 	}

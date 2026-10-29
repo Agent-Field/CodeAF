@@ -25,7 +25,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -209,14 +208,12 @@ func (b *appBackend) inboxWhere(ask appwire.Ask) appwire.InboxWhere {
 	// Inbox is where it reaches the person, and the person knows a member by
 	// the handle the crew's Team and Log call it, never by a conversation title
 	// they did not write. One crew is named, the one it works in.
-	if f, err := teamstore.Load(b.crewProfile()); err == nil {
-		if t, m, ok := appCrewSeat(f, ask.Agent); ok {
-			where.Crew = t.ID
-			if m.Handle != "" {
-				title = m.Handle
-			}
-			where.Path = append([]string{t.Name}, where.Path...)
+	if t, m, ok := b.crewSeatOf(ask.Agent); ok {
+		where.Crew = t.ID
+		if m.Handle != "" {
+			title = m.Handle
 		}
+		where.Path = append([]string{t.Name}, where.Path...)
 	}
 	if title != "" {
 		at := 0

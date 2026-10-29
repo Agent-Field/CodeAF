@@ -65,11 +65,11 @@ func AcceptClosing(profileDir string, p Packet) (bool, error) {
 	}
 	closed := false
 	err := withLock(profileDir, lockWait, func() error {
-		f, err := read(profileDir)
+		f, exists, err := lookTeams(profileDir, "", p.Origin)
 		if err != nil {
 			return err
 		}
-		if f == nil {
+		if !exists {
 			return nil
 		}
 		t, ok := f.Team(p.Origin)
@@ -77,7 +77,7 @@ func AcceptClosing(profileDir string, p Packet) (bool, error) {
 			return nil
 		}
 		if !t.Closed() {
-			if _, err = updateLocked(profileDir, func(f *File) error { return f.Close(p.Origin, time.Now(), p.ID) }); err != nil {
+			if _, err = updateOpenLocked(profileDir, func(f *File) error { return f.Close(p.Origin, time.Now(), p.ID) }); err != nil {
 				return err
 			}
 			closed = true

@@ -15,9 +15,9 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 	key := filepath.Join("/srv/sessions", "0123456789abcdef", "transcript.jsonl")
 	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Members: []Member{{Key: key}}}, {ID: "bbbbbbbbbbbb"}}))
 	writeLedger(t, ledger, line("2026-09-24", 1, keySessionForTest(key), ""))
-	spendTeams.Lock()
-	before := spendTeams.reads
-	spendTeams.Unlock()
+	teamSpendResults.mu.Lock()
+	before := teamSpendResults.reads
+	teamSpendResults.mu.Unlock()
 	var wg sync.WaitGroup
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
@@ -29,9 +29,9 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	spendTeams.Lock()
-	reads := spendTeams.reads - before
-	spendTeams.Unlock()
+	teamSpendResults.mu.Lock()
+	reads := teamSpendResults.reads - before
+	teamSpendResults.mu.Unlock()
 	if reads != 1 {
 		t.Fatalf("unchanged membership snapshot loaded %d times, want once", reads)
 	}

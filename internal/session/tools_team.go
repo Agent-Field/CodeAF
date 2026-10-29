@@ -174,13 +174,13 @@ func (a *Agent) teamTarget(want string, manager bool) (teams.Team, teamRole, str
 	if profile == "" {
 		return teams.Team{}, teamRole{}, "This conversation is not in a team."
 	}
-	file, err := teams.Load(profile)
-	if err != nil {
-		return teams.Team{}, teamRole{}, "The teams file could not be read: " + err.Error()
-	}
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
+	file, err := teamView(profile, keys)
+	if err != nil {
+		return teams.Team{}, teamRole{}, "The teams file could not be read: " + err.Error()
+	}
 	defaults := a.teamDefaults(profile)
 	var fits []teamRole
 	for _, role := range rolesFor(file, keys, defaults) {

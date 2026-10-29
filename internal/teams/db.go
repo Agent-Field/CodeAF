@@ -73,7 +73,8 @@ const schema = `
 CREATE TABLE meta (
  id INTEGER PRIMARY KEY CHECK (id = 1),
  store TEXT NOT NULL,
- rev INTEGER NOT NULL
+ rev INTEGER NOT NULL,
+ indexed INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE teams (
  id TEXT PRIMARY KEY,
@@ -84,6 +85,7 @@ CREATE TABLE teams (
  closed INTEGER NOT NULL,
  root INTEGER NOT NULL,
  factory INTEGER NOT NULL,
+ founder TEXT NOT NULL DEFAULT '',
  doc TEXT NOT NULL
 ) WITHOUT ROWID;
 CREATE INDEX teams_order ON teams(pos);
@@ -93,6 +95,7 @@ CREATE TABLE members (
  former INTEGER NOT NULL,
  pos INTEGER NOT NULL,
  key TEXT NOT NULL,
+ conv TEXT NOT NULL DEFAULT '',
  doc TEXT NOT NULL,
  PRIMARY KEY (team_id, former, pos)
 ) WITHOUT ROWID;
@@ -104,6 +107,27 @@ CREATE TABLE briefs (
  PRIMARY KEY (team_id, key, seq)
 ) WITHOUT ROWID;
 `
+
+// indexes are the lookups a narrow read leans on: the root, the open teams in
+// the list's order, and a member's teams. They are made with the store and,
+// on a store an earlier build of this schema made, the first time it opens.
+const indexes = `
+CREATE INDEX IF NOT EXISTS teams_root ON teams(root) WHERE root = 1;
+CREATE INDEX IF NOT EXISTS teams_open ON teams(closed, pos);
+CREATE INDEX IF NOT EXISTS members_conv ON members(conv, former);
+CREATE INDEX IF NOT EXISTS teams_founder ON teams(founder);
+`
+
+// indexNames are [indexes]' names, to see whether a store has them all.
+var indexNames = []string{"teams_root", "teams_open", "members_conv", "teams_founder"}
+
+// addedColumns are the columns an earlier build of this schema made without,
+// each with what adds it. Every one has a default, so that build still writes.
+var addedColumns = []struct{ table, column, add string }{
+	{"meta", "indexed", "ALTER TABLE meta ADD COLUMN indexed INTEGER NOT NULL DEFAULT 0"},
+	{"teams", "founder", "ALTER TABLE teams ADD COLUMN founder TEXT NOT NULL DEFAULT ''"},
+	{"members", "conv", "ALTER TABLE members ADD COLUMN conv TEXT NOT NULL DEFAULT ''"},
+}
 
 // ── HANDLES ─────────────────────────────────────────────────────────────────
 
@@ -374,8 +398,14 @@ func openDB(path string) (*sql.DB, error) {
 func ensureSchema(db *sql.DB, path string) error {
 	ctx := context.Background()
 	state, err := inspectSchema(ctx, db, &sql.TxOptions{ReadOnly: true}, path)
-	if err != nil || state != schemaBlank {
+	if err != nil {
 		return err
+	}
+	if state != schemaBlank {
+		if err := ensureColumns(ctx, db, path); err != nil {
+			return err
+		}
+		return ensureIndexes(ctx, db, path)
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -385,7 +415,7 @@ func ensureSchema(db *sql.DB, path string) error {
 	if state, err = inspectIn(ctx, tx, path); err != nil || state != schemaBlank {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, schema); err != nil {
+	if _, err := tx.ExecContext(ctx, schema+indexes); err != nil {
 		return storeError(err)
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO meta (id, store, rev) VALUES (1, ?, 0)", newStoreID()); err != nil {
@@ -398,6 +428,43 @@ func ensureSchema(db *sql.DB, path string) error {
 		return storeError(err)
 	}
 	return storeError(tx.Commit())
+}
+
+// ensureColumns adds whichever of [addedColumns] the store lacks. Its rows
+// then say nothing in them, and [writeTeams] fills them in ([reindexIn]).
+func ensureColumns(ctx context.Context, db *sql.DB, path string) error {
+	for _, c := range addedColumns {
+		var n int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info(?) WHERE name = ?", c.table, c.column).Scan(&n); err != nil {
+			return unreadable(err, path)
+		}
+		if n > 0 {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, c.add); err != nil {
+			var again int
+			// A peer that opened at the same moment may have added it first.
+			if db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info(?) WHERE name = ?", c.table, c.column).Scan(&again) != nil || again == 0 {
+				return storeError(err)
+			}
+		}
+	}
+	return nil
+}
+
+// ensureIndexes makes whichever of [indexes] the store lacks. Looking is a
+// read; only a store without them all takes the writer.
+func ensureIndexes(ctx context.Context, db *sql.DB, path string) error {
+	marks, args := placeholders(indexNames)
+	var have int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name IN ("+marks+")", args...).Scan(&have); err != nil {
+		return unreadable(err, path)
+	}
+	if have == len(indexNames) {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, indexes)
+	return storeError(err)
 }
 
 type schemaState int
@@ -496,6 +563,9 @@ type snapshot struct {
 	rev   int64
 	teams []Team
 	rows  map[string]*teamRows
+	// open is a snapshot of the open teams only ([LoadOpen]); a write never
+	// diffs against one.
+	open bool
 }
 
 // teamRows is one team's rows as stored: rev is the store revision the team or
@@ -510,7 +580,9 @@ type teamRows struct {
 	former  []memberRow
 }
 
-type memberRow struct{ key, doc string }
+// memberRow is one membership row: its key, the conversation it names
+// ([ConversationName]) and its JSON.
+type memberRow struct{ key, conv, doc string }
 
 func (s *snapshot) stamp() string { return s.store + "." + strconv.FormatInt(s.rev, 10) }
 
@@ -568,27 +640,58 @@ func readPath(ctx context.Context, path string) (*snapshot, error) {
 		return nil, unreadable(err, path)
 	}
 	defer tx.Rollback()
-	return readIn(ctx, tx, path)
+	return readIn(ctx, tx, path, false)
+}
+
+// readOpenPath is [readPath] of the open teams only.
+func readOpenPath(ctx context.Context, path string) (*snapshot, error) {
+	h, err := acquire(path, false)
+	if err != nil || h == nil {
+		return nil, err
+	}
+	defer h.release()
+	tx, err := h.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, unreadable(err, path)
+	}
+	defer tx.Rollback()
+	return readIn(ctx, tx, path, true)
+}
+
+// heldKey is where a snapshot of path is held: one of every team, one of the
+// open teams only.
+func heldKey(path string, open bool) string {
+	if open {
+		return path + "\x00open"
+	}
+	return path
 }
 
 // readIn reads the store through q, answering the held snapshot when the
 // revision has not moved, and otherwise decoding only the teams whose rows
 // changed since it: the rest are the held snapshot's, which nobody changes.
-func readIn(ctx context.Context, q querier, path string) (*snapshot, error) {
+func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, error) {
 	var store string
 	var rev int64
 	if err := q.QueryRowContext(ctx, "SELECT store, rev FROM meta WHERE id = 1").Scan(&store, &rev); err != nil {
 		return nil, unreadable(err, path)
 	}
-	held := heldAt(path)
+	held, other := heldAt(heldKey(path, open)), heldAt(heldKey(path, !open))
 	if held != nil && held.store != store {
 		held = nil
+	}
+	if other != nil && other.store != store {
+		other = nil
 	}
 	if held != nil && held.rev == rev {
 		return held, nil
 	}
-	s := &snapshot{store: store, rev: rev, rows: map[string]*teamRows{}}
-	list, err := q.QueryContext(ctx, "SELECT id, pos, rev FROM teams ORDER BY pos")
+	s := &snapshot{store: store, rev: rev, rows: map[string]*teamRows{}, open: open}
+	query := "SELECT id, pos, rev FROM teams ORDER BY pos"
+	if open {
+		query = "SELECT id, pos, rev FROM teams WHERE closed = 0 ORDER BY pos"
+	}
+	list, err := q.QueryContext(ctx, query)
 	if err != nil {
 		return nil, unreadable(err, path)
 	}
@@ -601,9 +704,9 @@ func readIn(ctx context.Context, q querier, path string) (*snapshot, error) {
 			return nil, unreadable(err, path)
 		}
 		r := &teamRows{pos: pos, rev: at, at: len(s.teams)}
-		if old := heldRows(held, id); old != nil && old.rev == at {
+		if from, old := reusable(id, at, held, other); old != nil {
 			r.doc, r.members, r.former = old.doc, old.members, old.former
-			s.teams = append(s.teams, held.teams[old.at])
+			s.teams = append(s.teams, from.teams[old.at])
 		} else {
 			stale = append(stale, id)
 			s.teams = append(s.teams, Team{ID: id})
@@ -621,15 +724,22 @@ func readIn(ctx context.Context, q querier, path string) (*snapshot, error) {
 		}
 		stale = stale[n:]
 	}
-	hold(path, s)
+	hold(heldKey(path, open), s)
 	return s, nil
 }
 
-func heldRows(s *snapshot, id string) *teamRows {
-	if s == nil {
-		return nil
+// reusable is the first held snapshot that has team id's rows at revision
+// at, and those rows.
+func reusable(id string, at int64, held ...*snapshot) (*snapshot, *teamRows) {
+	for _, s := range held {
+		if s == nil {
+			continue
+		}
+		if r := s.rows[id]; r != nil && r.rev == at {
+			return s, r
+		}
 	}
-	return s.rows[id]
+	return nil, nil
 }
 
 // decodeTeams reads and decodes the rows of the teams ids name into s, whose
@@ -658,7 +768,7 @@ func decodeTeams(ctx context.Context, q querier, path string, s *snapshot, ids [
 	if err := list.Close(); err != nil {
 		return unreadable(err, path)
 	}
-	return readMembers(ctx, q, path, s, "SELECT team_id, former, key, doc FROM members WHERE team_id IN ("+marks+") ORDER BY team_id, former, pos", args...)
+	return readMembers(ctx, q, path, s, "SELECT team_id, former, key, conv, doc FROM members WHERE team_id IN ("+marks+") ORDER BY team_id, former, pos", args...)
 }
 
 func readMembers(ctx context.Context, q querier, path string, s *snapshot, query string, args ...any) error {
@@ -668,9 +778,9 @@ func readMembers(ctx context.Context, q querier, path string, s *snapshot, query
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var team, key, doc string
+		var team, key, conv, doc string
 		var former bool
-		if err := rows.Scan(&team, &former, &key, &doc); err != nil {
+		if err := rows.Scan(&team, &former, &key, &conv, &doc); err != nil {
 			return unreadable(err, path)
 		}
 		r := s.rows[team]
@@ -684,10 +794,10 @@ func readMembers(ctx context.Context, q querier, path string, s *snapshot, query
 		}
 		if former {
 			s.teams[i].FormerMembers = append(s.teams[i].FormerMembers, m)
-			r.former = append(r.former, memberRow{key, doc})
+			r.former = append(r.former, memberRow{key, conv, doc})
 		} else {
 			s.teams[i].Members = append(s.teams[i].Members, m)
-			r.members = append(r.members, memberRow{key, doc})
+			r.members = append(r.members, memberRow{key, conv, doc})
 		}
 	}
 	return unreadable(rows.Err(), path)
@@ -732,7 +842,7 @@ func encodeMembers(list []Member) ([]memberRow, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i] = memberRow{m.Key, string(raw)}
+		out[i] = memberRow{m.Key, memberConv(m), string(raw)}
 	}
 	return out, nil
 }
@@ -741,6 +851,13 @@ func encodeMembers(list []Member) ([]memberRow, error) {
 // differ from before (the snapshot the caller read, nil for none). The caller
 // holds the teams lock. It answers the snapshot written.
 func writeTeams(profileDir string, before *snapshot, teams []Team) (*snapshot, error) {
+	return writeScoped(profileDir, before, teams, false)
+}
+
+// writeScoped is [writeTeams] over every team, or with open over the open
+// teams only: then a closed team is neither compared nor written, and only an
+// open team the list leaves out is deleted.
+func writeScoped(profileDir string, before *snapshot, teams []Team, open bool) (*snapshot, error) {
 	path := Path(profileDir)
 	h, err := acquire(path, true)
 	if err != nil {
@@ -757,16 +874,30 @@ func writeTeams(profileDir string, before *snapshot, teams []Team) (*snapshot, e
 	// is what the caller read; a writer that could not take the lock may have
 	// moved it, and its rows are then read again inside this transaction.
 	var store string
-	var rev int64
-	if err := tx.QueryRowContext(ctx, "SELECT store, rev FROM meta WHERE id = 1").Scan(&store, &rev); err != nil {
+	var rev, indexed int64
+	if err := tx.QueryRowContext(ctx, "SELECT store, rev, indexed FROM meta WHERE id = 1").Scan(&store, &rev, &indexed); err != nil {
 		return nil, unreadable(err, path)
 	}
-	if before == nil || before.store != store || before.rev != rev {
-		if before, err = readIn(ctx, tx, path); err != nil {
+	// A store an earlier build of this schema wrote last has lookup columns
+	// that may not say what its rows hold; they are said again first.
+	reindexed := indexed != rev
+	if reindexed {
+		if err := reindexIn(ctx, tx); err != nil {
+			return nil, storeError(err)
+		}
+	}
+	if before == nil || before.open != open || before.store != store || before.rev != rev {
+		if before, err = readIn(ctx, tx, path, open); err != nil {
 			return nil, err
 		}
 	}
-	next := &snapshot{store: store, rev: rev, rows: make(map[string]*teamRows, len(teams))}
+	next := &snapshot{store: store, rev: rev, rows: make(map[string]*teamRows, len(teams)), open: open}
+	// A team that needs a place goes after every team in the store, so its
+	// place is never one a team outside this write already holds.
+	var free int64
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(pos), -1) + 1 FROM teams").Scan(&free); err != nil {
+		return nil, unreadable(err, path)
+	}
 	changed := false
 	w := rowWriter{ctx: ctx, tx: tx}
 	keep := make(map[string]bool, len(teams))
@@ -792,9 +923,11 @@ func writeTeams(profileDir string, before *snapshot, teams []Team) (*snapshot, e
 			return nil, err
 		}
 		old := before.rows[t.ID]
-		pos := last + 1
+		var pos int64
 		if old != nil && old.pos > last {
 			pos = old.pos
+		} else {
+			pos, free = free, free+1
 		}
 		last = pos
 		r := &teamRows{pos: pos, at: len(next.teams), doc: doc, members: members, former: former}
@@ -810,10 +943,10 @@ func writeTeams(profileDir string, before *snapshot, teams []Team) (*snapshot, e
 		moved = w.members(t.ID, true, oldFormer, former) || moved
 		if old == nil || old.doc != doc || old.pos != pos {
 			closed, root, factory := t.Closed(), t.Root, t.FactoryManaged
-			w.exec(`INSERT INTO teams (id, pos, rev, parent, made_ns, closed, root, factory, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			w.exec(`INSERT INTO teams (id, pos, rev, parent, made_ns, closed, root, factory, founder, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (id) DO UPDATE SET pos = excluded.pos, rev = excluded.rev, parent = excluded.parent, made_ns = excluded.made_ns,
- closed = excluded.closed, root = excluded.root, factory = excluded.factory, doc = excluded.doc`,
-				t.ID, pos, rev+1, t.Parent, madeNanos(t.Made), closed, root, factory, doc)
+ closed = excluded.closed, root = excluded.root, factory = excluded.factory, founder = excluded.founder, doc = excluded.doc`,
+				t.ID, pos, rev+1, t.Parent, madeNanos(t.Made), closed, root, factory, founderConv(t), doc)
 			r.rev, changed = rev+1, true
 		} else if moved {
 			w.exec("UPDATE teams SET rev = ? WHERE id = ?", rev+1, t.ID)
@@ -866,10 +999,18 @@ ON CONFLICT (id) DO UPDATE SET pos = excluded.pos, rev = excluded.rev, parent = 
 	}
 	next.teams = stripped(next.teams)
 	if !changed {
-		hold(path, next)
+		if reindexed {
+			if _, err := tx.ExecContext(ctx, "UPDATE meta SET indexed = rev WHERE id = 1"); err != nil {
+				return nil, storeError(err)
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, storeError(err)
+			}
+		}
+		hold(heldKey(path, open), next)
 		return next, nil
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE meta SET rev = rev + 1 WHERE id = 1"); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE meta SET rev = rev + 1, indexed = rev + 1 WHERE id = 1"); err != nil {
 		return nil, storeError(err)
 	}
 	before0 := modTime(path)
@@ -877,11 +1018,25 @@ ON CONFLICT (id) DO UPDATE SET pos = excluded.pos, rev = excluded.rev, parent = 
 		return nil, storeError(err)
 	}
 	next.rev = rev + 1
-	hold(path, next)
+	// An open-teams write that closed a team left it in its list; the open
+	// teams at this revision are read again, reusing every unchanged row.
+	if !open || !holdsClosed(next.teams) {
+		hold(heldKey(path, open), next)
+	}
 	// A watcher that stats the database, or waits on its directory, sees the
 	// write: the commit landed in the WAL, so the file's own time is moved.
 	touch(path, before0)
 	return next, nil
+}
+
+// holdsClosed reports whether any of teams is closed.
+func holdsClosed(teams []Team) bool {
+	for _, t := range teams {
+		if t.Closed() {
+			return true
+		}
+	}
+	return false
 }
 
 // stripped is a copy of teams with no briefs, as a load answers them.
@@ -956,17 +1111,17 @@ func (w *rowWriter) members(team string, former bool, old, rows []memberRow) boo
 	case len(old) == len(rows):
 		for i := prefix; i < len(rows); i++ {
 			if old[i] != rows[i] {
-				w.exec("UPDATE members SET key = ?, doc = ? WHERE team_id = ? AND former = ? AND pos = ?", rows[i].key, rows[i].doc, team, former, i)
+				w.exec("UPDATE members SET key = ?, conv = ?, doc = ? WHERE team_id = ? AND former = ? AND pos = ?", rows[i].key, rows[i].conv, rows[i].doc, team, former, i)
 			}
 		}
 	case len(rows) > len(old) && prefix == len(old):
 		for i := prefix; i < len(rows); i++ {
-			w.exec("INSERT INTO members (team_id, former, pos, key, doc) VALUES (?, ?, ?, ?, ?)", team, former, i, rows[i].key, rows[i].doc)
+			w.exec("INSERT INTO members (team_id, former, pos, key, conv, doc) VALUES (?, ?, ?, ?, ?, ?)", team, former, i, rows[i].key, rows[i].conv, rows[i].doc)
 		}
 	default:
 		w.exec("DELETE FROM members WHERE team_id = ? AND former = ? AND pos >= ?", team, former, prefix)
 		for i := prefix; i < len(rows); i++ {
-			w.exec("INSERT INTO members (team_id, former, pos, key, doc) VALUES (?, ?, ?, ?, ?)", team, former, i, rows[i].key, rows[i].doc)
+			w.exec("INSERT INTO members (team_id, former, pos, key, conv, doc) VALUES (?, ?, ?, ?, ?, ?)", team, former, i, rows[i].key, rows[i].conv, rows[i].doc)
 		}
 	}
 	return true

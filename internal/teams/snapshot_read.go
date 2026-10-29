@@ -275,7 +275,7 @@ func (r *pageReader) teams(ids []string) ([]Team, error) {
 			s.teams = append(s.teams, t)
 		}
 	}
-	err = readMembers(r.ctx, r.q, r.path, s, "SELECT team_id, former, key, doc FROM members WHERE former = 0 AND team_id IN ("+marks+") ORDER BY team_id, pos", args...)
+	err = readMembers(r.ctx, r.q, r.path, s, "SELECT team_id, former, key, conv, doc FROM members WHERE former = 0 AND team_id IN ("+marks+") ORDER BY team_id, pos", args...)
 	return s.teams, err
 }
 

@@ -182,6 +182,53 @@ func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
 	return f, nil
 }
 
+// UpdateOpen is [Update] over the open teams only, which is what almost every
+// write changes: fn is handed the open teams, and a closed team is neither
+// read nor written. A team fn closes stays in the list, closed, and is
+// written; a team it takes out of the list is deleted; one it adds is added.
+// What it costs is what the open teams hold, however many have closed.
+//
+// A write that acts on a closed team (reopening, archiving or deleting one)
+// uses [Update], which hands fn every team.
+func UpdateOpen(profileDir string, fn func(*File) error) error {
+	return withLock(profileDir, lockWait, func() error {
+		_, err := updateOpenLocked(profileDir, fn)
+		return err
+	})
+}
+
+// updateOpenLocked is [UpdateOpen]'s body, for a caller that holds the lock.
+func updateOpenLocked(profileDir string, fn func(*File) error) (*File, error) {
+	s, err := readOpenPath(context.Background(), Path(profileDir))
+	if err != nil {
+		return nil, err
+	}
+	missing := s == nil
+	f := &File{Version: Version, localIdentities: true}
+	if !missing {
+		f = s.file()
+	}
+	tidy(f.Teams)
+	previous := f.ManagementSnapshot()
+	if err := fn(f); err != nil {
+		return nil, err
+	}
+	if missing && len(f.Teams) == 0 {
+		return f, nil
+	}
+	tidy(f.Teams)
+	if err := f.checkIntroducedConversations(previous); err != nil {
+		return nil, err
+	}
+	if err := f.CheckManagementChange(previous); err != nil {
+		return nil, err
+	}
+	if _, err := writeScoped(profileDir, s, f.Teams, true); err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
 // Snapshot reads references without repairs, locking or writes. Launch
 // discovery must not change a profile merely to inspect conversations.
 func Snapshot(profileDir string) (*File, error) {

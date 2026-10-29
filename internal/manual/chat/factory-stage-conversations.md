@@ -178,6 +178,9 @@ over when it has been idle, with no task it started still running.
 itself, so it cannot be opened yet, and `enter` on its stage row says
 `plan has no conversation yet · it opens when a round ends`. Once the round has ended, `enter`
 on the row, or the team menu, opens it like any other conversation.
+When the job ends (merged, closed, answered, dropped or closed here) its team closes quietly,
+with no report and no line in its traffic; its conversations still open from the item's rows.
+Reopening the job, or running it again, opens its team again; nothing reopens it on its own.
 
 ## what a stage may do — edit files and run commands, the allow posture
 

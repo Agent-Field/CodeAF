@@ -407,3 +407,51 @@ func TestCloseFoldsTheWalIntoTheDatabase(t *testing.T) {
 		t.Fatalf("reopened with %d teams", len(f.Teams))
 	}
 }
+
+// UPDATEOPEN NEITHER READS NOR WRITES A CLOSED TEAM. It is handed the open
+// teams; leaving one out deletes it, a closed one stays whatever the list
+// says, a team it adds goes after every team in the store, and one it closes
+// is written closed and leaves the open teams.
+func TestUpdateOpenWritesOnlyOpenTeams(t *testing.T) {
+	dir := t.TempDir()
+	list := manyTeams(6)
+	list[1].State, list[1].ClosedAt = TeamClosed, time.Unix(5, 0).UTC()
+	list[4].State, list[4].ClosedAt = TeamClosed, time.Unix(5, 0).UTC()
+	must(t, Save(dir, list))
+	touched := watchRows(t, dir)
+	var seen []string
+	must(t, UpdateOpen(dir, func(f *File) error {
+		for _, team := range f.Teams {
+			seen = append(seen, team.ID)
+		}
+		i := Index(f.Teams, "team00000005")
+		f.Teams = append(f.Teams[:i:i], f.Teams[i+1:]...) // drops team 5
+		f.Teams = append(f.Teams, Team{ID: "new000000000", Name: "new"})
+		return f.Close("team00000003", time.Unix(9, 0), "")
+	}))
+	if fmt.Sprint(seen) != "[team00000000 team00000002 team00000003 team00000005]" {
+		t.Fatalf("handed %v", seen)
+	}
+	for _, what := range touched() {
+		if strings.HasSuffix(what, "team00000001") || strings.HasSuffix(what, "team00000004") {
+			t.Fatalf("a closed team was written: %s", what)
+		}
+	}
+	f := mustLoad(t, dir)
+	if got := ids(f); got != "team,team00000001,team00000002,team00000003,team00000004,new" {
+		t.Fatalf("after: %s", got)
+	}
+	if c, _ := f.Team("team00000003"); !c.Closed() {
+		t.Fatal("the close was not written")
+	}
+	if open := mustOpen(t, dir); ids(open) != "team,team00000002,new" {
+		t.Fatalf("open after: %s", ids(open))
+	}
+}
+
+func mustOpen(t *testing.T, dir string) *File {
+	t.Helper()
+	f, err := LoadOpen(dir)
+	must(t, err)
+	return f
+}
