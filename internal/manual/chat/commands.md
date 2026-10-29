@@ -338,8 +338,8 @@ command).
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
 | `/pair` | `/sync`, `/link`, `/laptop` | — | shows a code like `42-715-302`, valid 10 minutes, that gives your chats to another computer, then asks `y / n` when that computer types it |
-| `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, and shows three words to compare while it waits |
-| `/pair` | `/sync`, `/link`, `/laptop` | `<code> --replace` | on the other computer: like `<code>`, but a computer with chats of its own is asked first, and an explicit yes replaces them with the shared ones — chats sealed under the old identity cannot be read afterwards |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, shows three words to compare, and keeps and shares this solo computer's existing chats |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<code> --replace` | explicit clean slate: asks first and gives up this computer's shared state for the other computer's; ordinary pairing keeps and shares a solo computer's chats |
 | `/pair` | `/sync`, `/link`, `/laptop` | `<link>` | on a device that is already paired: opens a new device's request from the link it shows, with its name, system, time and a check number to compare, then `a` approves and `d` declines |
 | `/devices` | — | — | lists your devices with `●` online and `○` away; `n` renames this device, `r` removes the one under the cursor at once, and a removed device can only return as a new request you approve |
 

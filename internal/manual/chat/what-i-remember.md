@@ -653,7 +653,7 @@ one line on a failed row is the whole of what it says.
 
 Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 
-Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. Pairing a computer that has its own memory merges those lines and preferences; explicit `--replace` replaces them. Chat-written memory still rides in each chat's own saved ledger as well.
+Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. Pairing a solo computer keeps its chats and saved keys and merges its memory and preferences without a replacement question. Only explicit terminal `--replace` chooses a clean slate for shared memory and preferences. Chat-written memory still rides in each chat's own saved ledger as well.
 
 ## Memory in older local conversations and new moving chats
 

@@ -191,13 +191,32 @@ It is not a view of your chats. It is a copy of you. Pair only a computer you ow
 
 Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
 
-If the other computer already has chats of its own, it keeps them and nothing changes. It says:
+## Pairing a computer that already has chats — merge, keeping history, sharing progress and interrupted pairing
 
-```
-this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace
-```
+Pairing a computer that has never shared its chats keeps its chats, full history,
+saved keys, memory and preferences. It asks no replacement question. Each
+computer's own chats stay here; the other computer's chats appear with Continue
+here. Continuing a chat moves it, just as before.
 
-Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first, states that this machine's own chats will be permanently replaced and that chats sealed under the old identity can no longer be read afterwards, and replaces them only after an explicit yes. A no, or closing the panel with esc, leaves everything as it was.
+After approval, codeaf saves the pairing and keeps the saved keys readable before
+it says Paired. Existing chats are shared in the background. The chat list updates
+as each arrives. A failed upload says `This chat could not be shared yet. It is
+still saved here; codeaf will try again.` Keep codeaf open to retry. If pairing
+or sharing is interrupted, reopen codeaf: it finishes the saved pairing and
+retries sharing the same chats without making duplicates. Older chats still use
+the independent-copy policy described above.
+
+A used computer already sharing a different set refuses with `This computer
+already shares chats with another set of computers; nothing was changed.` Its
+chats stay readable where they are.
+
+Only an explicit `codeaf pair <code> --replace` or `/pair <code> --replace` asks
+to give up this computer's shared state for the other computer's. The existing
+confirmation remains; a no or Esc leaves everything as it was. This clean-slate
+option is never needed for a solo computer to bring its chats along. Old chat
+folders are set aside outside the chat list and are not shared into the new set.
+
+## Already paired — pairing the same computers again
 
 If the other computer already has the same chats, it says:
 
