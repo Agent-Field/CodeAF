@@ -59,8 +59,8 @@ func TestDarwinUsageCountsTheWholeTreeOnce(t *testing.T) {
 	}
 	tree.use(t)
 	usage, ok := subtreeUsage(10)
-	if !ok || usage.Processes != 4 || usage.CPUSeconds != 10 {
-		t.Fatalf("usage = %+v, %v, want 4 processes and 10 CPU seconds", usage, ok)
+	if !ok || usage.Processes != 4 || usage.CPUSeconds != 10 || usage.CPUPartial {
+		t.Fatalf("usage = %+v, %v, want 4 processes and a complete 10 CPU seconds", usage, ok)
 	}
 }
 
@@ -96,8 +96,8 @@ func TestDarwinUsageCountsATruncatedListingAndRefusesAFailedOne(t *testing.T) {
 	}
 	tree := &scriptedTree{tasks: tasks, children: map[int][]int{10: kids}, listErr: map[int]error{10: unix.ENOMEM}}
 	tree.use(t)
-	if usage, ok := subtreeUsage(10); !ok || usage.Processes != 301 {
-		t.Fatalf("truncated listing: usage = %+v, %v, want at least the 301 it named", usage, ok)
+	if usage, ok := subtreeUsage(10); !ok || usage.Processes != 301 || !usage.CPUPartial {
+		t.Fatalf("truncated listing: usage = %+v, %v, want the 301 it named and a partial CPU sum", usage, ok)
 	}
 	tree.listErr = map[int]error{10: unix.EPERM}
 	if usage, ok := subtreeUsage(10); ok {
@@ -122,13 +122,36 @@ func TestDarwinUsageStopsAtTheWalkLimit(t *testing.T) {
 	tree := &scriptedTree{tasks: tasks, children: children}
 	tree.use(t)
 	usage, ok := subtreeUsage(10)
-	if !ok || usage.Processes != usageWalkLimit {
-		t.Fatalf("usage = %+v, %v, want exactly the walk limit %d", usage, ok, usageWalkLimit)
+	if !ok || usage.Processes != usageWalkLimit || !usage.CPUPartial {
+		t.Fatalf("usage = %+v, %v, want exactly the walk limit %d and a partial CPU sum", usage, ok, usageWalkLimit)
 	}
 	if tree.taskRead > 2*usageWalkLimit+1 {
 		t.Fatalf("%d task reads for a walk limited to %d processes", tree.taskRead, usageWalkLimit)
 	}
 	if len(tree.listed) > usageWalkLimit {
 		t.Fatalf("%d child listings for a walk limited to %d processes", len(tree.listed), usageWalkLimit)
+	}
+}
+
+// A child that exited between two reads leaves the tree, as on Linux; one that
+// could not be read for another reason makes the CPU sum partial.
+func TestDarwinUsageMarksAnUnreadableChildPartial(t *testing.T) {
+	tree := &scriptedTree{
+		tasks:    map[int]darwinproc.TaskInfo{10: task(10, 1, 10, 1)},
+		children: map[int][]int{10: {11}},
+	}
+	tree.use(t)
+	if usage, ok := subtreeUsage(10); !ok || usage.Processes != 1 || usage.CPUPartial {
+		t.Fatalf("an exited child: usage = %+v, %v, want the leader alone and a complete sum", usage, ok)
+	}
+	saved := usageReader.task
+	usageReader.task = func(pid int) (darwinproc.TaskInfo, error) {
+		if pid == 11 {
+			return darwinproc.TaskInfo{}, unix.EPERM
+		}
+		return saved(pid)
+	}
+	if usage, ok := subtreeUsage(10); !ok || usage.Processes != 1 || !usage.CPUPartial {
+		t.Fatalf("an unreadable child: usage = %+v, %v, want the leader and a partial sum", usage, ok)
 	}
 }

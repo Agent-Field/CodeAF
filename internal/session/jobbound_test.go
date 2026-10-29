@@ -230,3 +230,37 @@ func TestASubtreeThatCannotBeReadIsNeverCut(t *testing.T) {
 		t.Fatal("a subtree whose usage could not be read was cut: silence is not pressure")
 	}
 }
+
+// TestAPartialCPUSumNeverMakesARate: a reading that left part of the tree out
+// (macOS's walk limit, a truncated listing) still counts processes, but its CPU
+// sum is not comparable with the next one. A storm of sleepers read partially
+// for fourteen readings that then shrinks to a leader and one old child — whose
+// lifetime CPU the partial sums never held — must not be cut on that jump.
+func TestAPartialCPUSumNeverMakesARate(t *testing.T) {
+	registry := &jobRegistry{}
+	one := &job{id: 1, kind: jobKindBash, state: jobRunning, done: make(chan struct{})}
+	var readings []processgroup.Usage
+	for i := 0; i < jobBoundStrikes-1; i++ {
+		readings = append(readings, processgroup.Usage{Processes: 1100, CPUSeconds: 1, CPUPartial: true})
+	}
+	readings = append(readings, processgroup.Usage{Processes: 2, CPUSeconds: 1001}, processgroup.Usage{Processes: 2, CPUSeconds: 1001})
+	subtreeReadings(t, readings, 2*time.Second)
+	if driveBound(registry, one, newTestBound(), len(readings)) {
+		t.Fatal("a jump between a partial and a complete CPU sum was read as a storm and cut")
+	}
+}
+
+// TestAPartialReadingStillCountsTowardsTheProcessBackstop: the count from a
+// partial reading is a lower bound, and a fork storm read that way is cut.
+func TestAPartialReadingStillCountsTowardsTheProcessBackstop(t *testing.T) {
+	registry := &jobRegistry{}
+	one := &job{id: 1, kind: jobKindBash, state: jobRunning, done: make(chan struct{})}
+	readings := storm(0.5, 1024, long, time.Second)
+	for i := range readings {
+		readings[i].CPUPartial = true
+	}
+	subtreeReadings(t, readings, time.Second)
+	if !driveBound(registry, one, newTestBound(), long) {
+		t.Fatal("a fork storm read partially was never cut by the process backstop")
+	}
+}
