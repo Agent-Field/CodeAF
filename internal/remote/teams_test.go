@@ -51,8 +51,10 @@ func TestTheTeamsDoorsCrossFromTheEnginesProfile(t *testing.T) {
 	if err != nil || !same.Same || same.Teams != nil {
 		t.Fatalf("a read at the held stamp: %+v, %v", same, err)
 	}
-	if raw, _ := json.Marshal(same); len(raw) > 64 {
-		t.Fatalf("an unchanged answer is %d bytes: %s", len(raw), raw)
+	// Device and inode widths vary by filesystem; only the stamp and flag cross.
+	stamp, _ := json.Marshal(wrote.Stamp)
+	if raw, _ := json.Marshal(same); string(raw) != `{"stamp":`+string(stamp)+`,"same":true}` {
+		t.Fatalf("an unchanged answer must carry only the held stamp and same: %s", raw)
 	}
 
 	if err := teamstore.AppendTraffic(dir, "0a0a0a0a0a0a", teamstore.Entry{Kind: teamstore.KindNote,
@@ -67,8 +69,9 @@ func TestTheTeamsDoorsCrossFromTheEnginesProfile(t *testing.T) {
 	if err != nil || len(quiet.Entries) != 0 {
 		t.Fatalf("a quiet log after the cursor: %+v, %v", quiet, err)
 	}
-	if raw, _ := json.Marshal(quiet); len(raw) > 64 {
-		t.Fatalf("a quiet Traffic answer is %d bytes: %s", len(raw), raw)
+	stamp, _ = json.Marshal(got.Stamp)
+	if raw, _ := json.Marshal(quiet); string(raw) != `{"stamp":`+string(stamp)+`}` {
+		t.Fatalf("a quiet Traffic answer must carry only the held stamp: %s", raw)
 	}
 	if _, err := loop.Client.TeamsTraffic("../escape", "", 1); err == nil {
 		t.Fatal("a team id that is a path was read")
