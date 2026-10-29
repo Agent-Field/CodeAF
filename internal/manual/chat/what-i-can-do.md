@@ -506,6 +506,25 @@ parts it has, and however long it takes — belongs to a task instead, which giv
 to watch and a report you can read. If a multi-part piece of work was started as a
 background command, say so: it can be handed to a task instead.
 
+## Why was my background job ended — the CPU and process bound on a job
+
+The bound applies to `bash` jobs: both background commands and foreground
+commands kept as jobs. It measures the job's whole process tree, including its
+children, rather than just the shell that started it.
+
+A job's tree may not hold more than **128 processes**. When no CPU quota or
+affinity mask holds codeaf below the machine's logical core count, the tree
+also may not sustain more than **three fifths of those logical cores**. Under
+a binding quota or affinity mask, only the process-count bound applies.
+
+Either limit exceeded for **15 consecutive readings, 2 seconds apart**
+(**thirty seconds**) ends the job. A brief spike does not end it. The run is
+told **"the job subtree was not settled within its bound"**, with the job's
+process count and CPU usage, so the ending is explained.
+
+The tree is read on **Linux and macOS**. Where the tree cannot be read,
+including **Windows**, this bound never cuts a job.
+
 ## How much disk space do finished job logs keep?
 
 Finished logs do not pile up forever either. Each session's logs/jobs
