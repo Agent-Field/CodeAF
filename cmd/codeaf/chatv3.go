@@ -1473,7 +1473,8 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if model != "" {
 		cfg.Model = model
 	}
-	cfg = v3Seated(v3Migrated(cfg))
+	cfg, claim := v3SeatedPending(v3Migrated(cfg))
+	defer claim(false)
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1505,6 +1506,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	agent, err := open(restored)
 	if err == nil {
+		claim(true)
 		if model != "" {
 			if err := agent.ContinueWithModel(model, modelNotice); err != nil {
 				closeV3Agent(agent)
@@ -1579,11 +1581,8 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 	if err != nil {
 		return nil, cfg, err
 	}
-	agent, err := v3OpenSession(fresh)
-	if err != nil {
-		return nil, cfg, err
-	}
-	return agent, fresh, nil
+	agent, fresh, _, err := openV3Agent(fresh, workspace, v3OpenSession)
+	return agent, fresh, err
 }
 
 // sessionHeldElsewhereSentence is what a person reads when the conversation

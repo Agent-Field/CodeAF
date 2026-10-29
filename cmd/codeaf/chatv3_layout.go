@@ -787,16 +787,23 @@ func v3Migrated(cfg session.Config) session.Config {
 	return cfg
 }
 
-// v3Seated gives the session the executor it owns, built once here from the
-// class the cell declared and the workspace its tools run in.
+// v3Seated is for a caller that already holds the journal. It gives the session
+// the executor it owns, built from the cell class and its tools' workspace.
 //
 // A folder that is not a readable cell gets no seat and its calls run on the
 // host as they always did, and so does every folder without a compatible engine. The
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
+	cfg, claim := v3SeatedPending(cfg)
+	claim(true)
+	return cfg
+}
+
+// v3SeatedPending builds the seat before committing its drive to journal ownership.
+func v3SeatedPending(cfg session.Config) (session.Config, func(bool)) {
 	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
-	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
+	seat, machine, seals, claim := v3SeatPending(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
 	if machine != nil {
@@ -805,7 +812,7 @@ func v3Seated(cfg session.Config) session.Config {
 	if seals != nil {
 		cfg.Seals = seals
 	}
-	return cfg
+	return cfg, claim
 }
 
 // v3SeatOf is the seat of the cell a place names, the machine view it was
@@ -822,12 +829,19 @@ func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.
 // the chat its tool calls are refused. A nil book, or sync off, is the seat
 // exactly as it was.
 func v3SeatWith(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
+	seat, machine, watch, claim := v3SeatPending(place, say, drives)
+	claim(true)
+	return seat, machine, watch
+}
+
+func v3SeatPending(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch, func(bool)) {
+	noop := func(bool) {}
 	if !cell.Available() || place.Dir == "" || place.Workspace == "" {
-		return nil, nil, nil
+		return nil, nil, nil, noop
 	}
 	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))
 	if err != nil {
-		return nil, nil, nil
+		return nil, nil, nil, noop
 	}
 	class, ok := executor.ParseClass(string(c.Meta().Class))
 	if !ok {
@@ -836,7 +850,7 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	watch := &cellstore.SealWatch{Say: say}
 	failed(watch, err)
-	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
 	if drive != nil {
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}
@@ -847,7 +861,7 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	// the first input; their journal writes need a tail seal even before chat.
 	// Window attachment reuses the engine's seat rather than constructing one.
 	watch.Waiting()
-	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch
+	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch, claim
 }
 
 // sealTail seals what the chat wrote after the turn-end seal (titles, summaries,

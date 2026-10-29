@@ -39,7 +39,7 @@ type workAdmission struct {
 
 func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
 	check := &workAdmission{}
-	d := newLiveDrive(func(changed func()) (*syncsetup.Drive, error) {
+	d := newPendingLiveDrive(func(changed func()) (*syncsetup.Drive, error) {
 		drive, err := start(changed)
 		if err == nil && drive != nil && drive.Gate() == nil {
 			check.mu.Lock()
