@@ -87,6 +87,12 @@ func subtreeUsage(root int) (Usage, bool) {
 			if next == 0 {
 				return Usage{}, false
 			}
+			// A parent that exited or whose pid changed hands left the tree with
+			// its children; one that merely could not be read leaves them out of
+			// this sum only, so the sum is partial.
+			if err != nil && !errors.Is(err, unix.ESRCH) {
+				usage.CPUPartial = true
+			}
 			continue
 		}
 		for _, pid := range children {
