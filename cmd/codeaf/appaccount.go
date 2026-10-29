@@ -135,13 +135,15 @@ func (b *appBackend) appProviders() []appProvider {
 }
 
 // appProviderOf is one description as the app connects it. The kind is read
-// off the same facts the terminal's connect flow branches on.
+// off the same facts the terminal's connect flow branches on. OpenRouter's
+// check uses its API base to ask for key details before listing models, because
+// its listing answers even for a bearer it does not accept.
 func appProviderOf(source modelsource.Source) appProvider {
 	p := appProvider{id: source.ID, name: source.Name, kind: appwire.ProviderKey, source: source}
 	switch {
 	case source.ID == modelsource.DefaultID:
 		p.signIn = true
-		p.check = strings.TrimRight(config.DefaultBaseURL, "/") + "/models/user"
+		p.check = strings.TrimRight(config.DefaultBaseURL, "/")
 	case strings.EqualFold(source.ID, "codex"):
 		p.kind, p.signIn = appwire.ProviderBrowser, true
 	case source.AddressOwned || modelsource.IsCustomID(source.ID):
@@ -284,8 +286,10 @@ func (b *appBackend) CheckKey(provider, key string) (appwire.KeyCheck, error) {
 }
 
 // CheckProvider proves a provider can be connected as asked and keeps
-// nothing. OpenRouter's key is one request; every other provider is proved by
-// the terminal's own requests, with the region or address the person gave.
+// nothing. OpenRouter must accept the key at its key endpoint before its model
+// listing is asked, because the listing answers for any bearer. Every other
+// provider is proved by the terminal's own requests, with the region or address
+// the person gave.
 func (b *appBackend) CheckProvider(params appwire.KeyParams) (appwire.KeyCheck, error) {
 	p, ok := b.appProviderNamed(params.Provider)
 	if !ok {
@@ -459,44 +463,53 @@ func appServiceHost(source modelsource.Source, row config.PersistedSource) strin
 	return modelsource.AddressHost(firstNonEmptyString(address, source.Address))
 }
 
-// appCheckKey is the one request: an authenticated listing of the models the
-// key reaches. OpenRouter's public listing proves nothing about a key, so its
-// listing filtered to the key's own account is the one asked.
+// appCheckKey proves OpenRouter accepts the key, then lists the models it
+// reaches. Both model listings answer 200 with the public catalog for any
+// bearer, revoked or made up, so a listing proves nothing about a key. The key
+// endpoint answers only for a bearer OpenRouter resolved to a live key: its 200
+// carries that key's own row (label, limit, usage), and an unknown key is a 401.
+// So the key's row is asked first (and the older /auth/key when /key is not
+// there, as the balance reader does), and the listing only after it answered.
+// One deadline covers every request.
 func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+	address = strings.TrimRight(address, "/")
 	host := address
 	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
 		host = parsed.Hostname()
 	}
-	unreachable := appwire.KeyCheck{Status: "timeout", Message: "No answer · couldn't reach " + host + " in 10s"}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
-	if err != nil {
-		return unreachable
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+key)
 	if client == nil {
 		client = http.DefaultClient
 	}
-	// A REDIRECT MUST NEVER TURN THIS ONE CALL INTO A KEY SENT ELSEWHERE.
+	// A REDIRECT MUST NEVER TURN THE CHECK INTO A KEY SENT ELSEWHERE.
 	local := *client
 	local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	response, err := local.Do(request)
-	if err != nil {
-		var netErr net.Error
-		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
-			return unreachable
-		}
-		unreachable.Status = appCheckUnreachable
-		unreachable.Message = "No answer · couldn't reach " + host
-		return unreachable
+	get := func(path string) (int, []byte, *appwire.KeyCheck) {
+		return appKeyGet(ctx, &local, address+path, host, key)
 	}
-	defer response.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, appKeyAnswerLimit+1))
-	if err != nil || len(raw) > appKeyAnswerLimit {
-		return appwire.KeyCheck{Status: response.StatusCode, Message: "the provider's answer could not be read"}
+
+	status, raw, failed := get("/key")
+	if failed == nil && status == http.StatusNotFound {
+		status, raw, failed = get("/auth/key")
 	}
-	if response.StatusCode != http.StatusOK {
-		return appwire.KeyCheck{Status: response.StatusCode, Message: redact.Secrets(appProviderWords(raw, response.StatusCode))}
+	if failed != nil {
+		return *failed
+	}
+	if status != http.StatusOK {
+		return appwire.KeyCheck{Status: status, Message: redact.Secrets(appProviderWords(raw, status))}
+	}
+	var row struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &row); err != nil || row.Data == nil {
+		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with the key's details"}
+	}
+
+	status, raw, failed = get("/models/user")
+	if failed != nil {
+		return *failed
+	}
+	if status != http.StatusOK {
+		return appwire.KeyCheck{Status: status, Message: redact.Secrets(appProviderWords(raw, status))}
 	}
 	var listing struct {
 		Data []struct {
@@ -505,7 +518,7 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &listing); err != nil || listing.Data == nil {
-		return appwire.KeyCheck{Status: response.StatusCode, Message: "the provider answered, but not with a list of models"}
+		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with a list of models"}
 	}
 	check := appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
 	for _, row := range listing.Data {
@@ -520,6 +533,33 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		check.Models = append(check.Models, appwire.Model{ID: id, Name: name, Provider: provider})
 	}
 	return check
+}
+
+// appKeyGet is one of the check's requests: a GET with the key on it and the
+// answer read under the cap. It returns the status and the body, or the check's
+// answer when there is no answer to read: the host was not reached in time, not
+// reached at all, or said more than the cap.
+func appKeyGet(ctx context.Context, client *http.Client, address, host, key string) (int, []byte, *appwire.KeyCheck) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return 0, nil, &appwire.KeyCheck{Status: "timeout", Message: "No answer · couldn't reach " + host + " in 10s"}
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", "Bearer "+key)
+	response, err := client.Do(request)
+	if err != nil {
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			return 0, nil, &appwire.KeyCheck{Status: "timeout", Message: "No answer · couldn't reach " + host + " in 10s"}
+		}
+		return 0, nil, &appwire.KeyCheck{Status: appCheckUnreachable, Message: "No answer · couldn't reach " + host}
+	}
+	defer response.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(response.Body, appKeyAnswerLimit+1))
+	if err != nil || len(raw) > appKeyAnswerLimit {
+		return 0, nil, &appwire.KeyCheck{Status: response.StatusCode, Message: "the provider's answer could not be read"}
+	}
+	return response.StatusCode, raw, nil
 }
 
 // appProviderWords are a rejection's own words, read from the shapes
