@@ -6,6 +6,9 @@ surface: [chat, engine, docs]
 invalidates:
   - "A computer with its own chats previously had to replace its shared state when pairing. A solo computer now keeps its chats, history, saved keys, memory and preferences and shares them with the other computer."
   - "The app previously asked whether to replace this computer's chats. Ordinary pairing now asks only for the existing pairing approval and keeps local chats."
+  - "An unfinished sync round could previously publish saved keys under its old pairing after the home switched. It now refuses an export sealed for a different set."
+  - "Replacement recovery previously skipped cleanup after preparation even if installation had failed. It now repeats the clean slate only before the destination is installed."
+  - "A chat with no saved head was previously treated as already shared. It now stays pending without a retry delay until its first save."
 ---
 
 Code and link pairing merge a used solo computer into the shared set. Existing
@@ -31,3 +34,9 @@ Explicit link re-pairing in the same set installs a new device so a removed
 computer can return; ordinary same-set pairing still changes nothing.
 Pairing completion wakes one new background chat scan, so chats saved after
 startup are shared even when the approving computer keeps its identity and device.
+An in-progress saved-key upload refuses a changed pairing key before sending
+anything; the next round uses the new pairing. Recovery before installation
+repeats explicit replacement's clean slate, including writes made since
+preparation; recovery after installation keeps newly saved state. A chat with
+nothing saved yet stays pending without a failure notice or retry pause and is
+shared once its first save is ready.

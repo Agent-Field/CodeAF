@@ -222,7 +222,20 @@ confirmation remains; a no or Esc leaves everything as it was. This clean-slate
 option is never needed for a solo computer to bring its chats along. Old chat
 folders are set aside outside the chat list and are not shared into the new set.
 
+## Interrupted explicit replacement — clean slate and saved keys
+
+Reopening codeaf finishes an interrupted explicit `--replace` pairing. Recovery
+clears the old shared state again only if the new pairing has not taken effect
+yet. Keys or preferences saved in that gap are discarded as part of the confirmed
+clean slate. Anything saved after the new pairing takes effect is kept. Saved
+keys remain readable after recovery.
+
 ## Pairing progress could not finish — saved chats and retry messages
+
+A chat with nothing saved yet waits for its first save, without a failure notice
+or retry pause. It is shared once that save is ready. If pairing changes which
+computers share your chats during an upload, codeaf stops that pass and retries
+with the new set.
 
 If sharing stops before the chats can be checked, the app says:
 
