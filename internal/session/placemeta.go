@@ -280,6 +280,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		if meta.ChatURI == "" {
 			meta.ChatURI = snapshot.ChatURI
 		}
+		if meta.AgentIdentity == nil {
+			meta.AgentIdentity = snapshot.AgentIdentity
+		}
 		if meta.Workspace == "" {
 			meta.Workspace = snapshot.Workspace
 		}
@@ -310,6 +313,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if !a.config.InTask && a.config.WorkspaceURI != "" {
 		meta.ChatURI = a.config.WorkspaceURI
+	}
+	if identity := a.config.agentIdentity(); identity != nil {
+		meta.AgentIdentity = identity
 	}
 	if strings.TrimSpace(meta.ID) == "" {
 		meta.ID = a.config.Place.ID()

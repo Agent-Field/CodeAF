@@ -98,6 +98,15 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 		config.ConversationModels = &pair
 	}
 	config.JobBudget = a.jobBudgetOf()
+	// THE CHILD ACTS FOR THE SAME AGENT. A task worker hangs its own fragment
+	// off the agent's DID (agent_identity.go); any other child acts as its
+	// builder does.
+	if config.agentDID == "" {
+		config.agentDID = a.config.agentDID
+	}
+	if config.actorDID == "" && config.taskID == 0 {
+		config.actorDID = a.config.actorDID
+	}
 	config.knowledgeReadVault = a.Knowledge()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
@@ -128,6 +137,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if err := configureOwnedChat(&config); err != nil {
 		return nil, fmt.Errorf("prepare conversation storage: %w", err)
 	}
+	configureAgentIdentity(&config)
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}

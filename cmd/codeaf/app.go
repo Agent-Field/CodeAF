@@ -1048,7 +1048,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 		}
 		identity = &copy
 	}
-	return appwire.Agent{ModelIdentity: identity, FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
+	return appwire.Agent{ModelIdentity: identity, FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, DID: row.AgentDID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
 }
 
 // remember files what the disk said about an agent, without touching one this
@@ -1092,6 +1092,11 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	// An agent this process is opening is its own word too: the disk has not
 	// heard of its first turn yet.
 	if a.opening || a.starting || (!busyElsewhere && (a.live != nil || a.view.State == appwire.StateClosed || a.view.State == appwire.StateStopped)) {
+		// The DID is the disk's word: a conversation's identity is written
+		// in its folder the first time it opens (session's agent_identity.go).
+		if a.view.DID == "" {
+			a.view.DID = row.AgentDID
+		}
 		view := a.view
 		if view.Title == "" {
 			view.Title = row.Title
@@ -1163,7 +1168,7 @@ func appRowOnDisk(id string) (session.SessionRow, bool) {
 		if err != nil || strings.TrimSpace(meta.ID) == "" {
 			continue
 		}
-		return session.SessionRow{ID: id, Dir: dir, Transcript: transcript, Title: meta.Title, Workspace: meta.Workspace, Created: meta.Created}, true
+		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript, Title: meta.Title, Workspace: meta.Workspace, Created: meta.Created}, true
 	}
 	return session.SessionRow{}, false
 }

@@ -210,6 +210,9 @@ type SessionRow struct {
 	ModelIdentity *ModelIdentity
 	// ID is the session id, which is its folder's name.
 	ID string
+	// AgentDID is the conversation's agent DID (agent_identity.go), and ""
+	// for one that has not opened since agents were given one.
+	AgentDID string
 	// Dir is the session folder and Transcript its journal — the path a resume
 	// is asked for.
 	Dir        string
@@ -564,6 +567,7 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 	meta, _ := LoadMeta(dir)
 	row := SessionRow{
 		ID:            filepath.Base(dir),
+		AgentDID:      meta.AgentDID(),
 		Dir:           dir,
 		Transcript:    transcript,
 		Title:         firstWord(seed.Title, meta.Title),
@@ -784,6 +788,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	}
 	return SessionRow{
 		ID:              id,
+		AgentDID:        meta.AgentDID(),
 		Dir:             dir,
 		Transcript:      transcript,
 		DeletionPending: pending,

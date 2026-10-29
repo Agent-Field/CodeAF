@@ -1054,6 +1054,9 @@ var OperatorEnvPins = []string{
 	// The harness supplies the admitted working-root identity to each execution.
 	// This runtime association is not an editable placement preference.
 	"CODEAF_WORKSPACE_URI",
+	// The engine hands each command the identity of the agent running it
+	// (internal/agentdid). It names who acted, so it is never a preference.
+	"CODEAF_AGENT_DID",
 	// These switches select unfinished ownership and archive lifecycles in an
 	// explicit prototype profile; they are not persisted settings. The archive
 	// executable path is operator plumbing, like CODEAF_FURROW below.
