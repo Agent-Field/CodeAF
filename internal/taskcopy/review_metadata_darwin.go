@@ -22,10 +22,13 @@ func portableExtendedAttributes(path string) error {
 	return portableDarwinExtendedAttributes(path, unix.Llistxattr, unix.Lgetxattr)
 }
 
-// macOS attaches com.apple.provenance itself to what a tracked process writes.
-// Apply writes new inodes that receive their own provenance, so dropping it loses
-// no project data. Quarantine and all other attributes stay refused because
-// replacing a file would silently drop security or user state.
+// macOS attaches com.apple.provenance itself to what a tracked process writes,
+// and a tracked process cannot change or remove it. Apply writes new inodes that
+// receive their own provenance, so the old value is not carried, whoever wrote
+// it: an untracked process can store any 11 bytes there, and those bytes are
+// outside the portable contract like the attribute itself. Quarantine and all
+// other attributes stay refused because replacing a file would silently drop
+// security or user state.
 func portableDarwinExtendedAttributes(path string, list func(string, []byte) (int, error), get func(string, string, []byte) (int, error)) error {
 	var names [len(portableDarwinProvenance) + 1]byte
 	n, err := list(path, names[:])
@@ -52,7 +55,8 @@ func portableDarwinExtendedAttributes(path string, list func(string, []byte) (in
 	if err != nil {
 		return err
 	}
-	// The bytes stay opaque: size is a compatibility constraint, not proof of system origin.
+	// The bytes stay opaque: the size is a compatibility constraint, not proof
+	// of system origin, and it keeps any larger payload under this name refused.
 	if n != 11 {
 		return errors.New(portableExtendedMetadataRefusal)
 	}

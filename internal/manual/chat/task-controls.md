@@ -275,11 +275,12 @@ The portable apply contract preserves raw file bytes and line endings, file
 permissions, empty directories and directory permissions. Changed paths with
 unsupported ownership, hardlinks, extended attributes, native flags or access
 control metadata are refused before writing the original. On macOS, the system's
-own `com.apple.provenance` attribute (11 bytes) does not prevent review or apply.
+own `com.apple.provenance` attribute (11 bytes) does not prevent review or apply;
+it is not carried over, and an applied file gets the provenance macOS gives it.
 Every other extended attribute, an ACL or a native file flag still refuses with
 the same message. Timestamps are outside this portable contract. Older copies
-without a historical metadata baseline stay
-readable, but this apply door cannot infer their original metadata safely.
+without a historical metadata baseline stay readable, but this apply door cannot
+infer their original metadata safely.
 
 If an apply reports that its outcome could not be saved, retry `/task apply` for
 the same root. The retained receipt records work that already arrived, so recovery

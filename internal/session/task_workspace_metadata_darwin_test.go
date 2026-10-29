@@ -60,7 +60,13 @@ func TestTaskWorkspaceApplyWithDarwinProvenance(t *testing.T) {
 			var value [12]byte
 			n, err := unix.Lgetxattr(private, "com.apple.provenance", value[:])
 			if errors.Is(err, unix.ENOATTR) || errors.Is(err, unix.ENOTSUP) {
-				t.Skip("private output has no system provenance; the test binary may be untracked")
+				// A tracked test binary tags what it writes, so only an untracked one may skip.
+				self, selfErr := os.Executable()
+				var mark [12]byte
+				if _, markErr := unix.Lgetxattr(self, "com.apple.provenance", mark[:]); selfErr == nil && markErr == nil {
+					t.Fatalf("this test binary carries com.apple.provenance, but the private output has none: %v", err)
+				}
+				t.Skip("private output has no system provenance; the test binary is untracked")
 			}
 			if err != nil || n != 11 {
 				t.Fatalf("private output provenance size = %d, error = %v; want 11 bytes", n, err)

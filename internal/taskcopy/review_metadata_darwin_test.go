@@ -75,12 +75,29 @@ func TestPortableMutationPreflightBatchesDarwinPaths(t *testing.T) {
 	}
 }
 
+// darwinTestBinaryTracked says whether macOS tracks this test binary's
+// provenance. A tracked executable tags everything it writes, so a fixture
+// without the attribute is then a failure rather than a reason to skip.
+func darwinTestBinaryTracked(t *testing.T) bool {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value [12]byte
+	_, err = unix.Lgetxattr(self, "com.apple.provenance", value[:])
+	return err == nil
+}
+
 func requireDarwinProvenance(t *testing.T, path string) {
 	t.Helper()
 	var value [12]byte
 	n, err := unix.Lgetxattr(path, "com.apple.provenance", value[:])
 	if errors.Is(err, unix.ENOATTR) || errors.Is(err, unix.ENOTSUP) {
-		t.Skip("fixture has no system provenance; the test binary may be untracked")
+		if darwinTestBinaryTracked(t) {
+			t.Fatalf("this test binary carries com.apple.provenance, but the fixture it wrote has none: %v", err)
+		}
+		t.Skip("fixture has no system provenance; the test binary is untracked")
 	}
 	if err != nil || n != 11 {
 		t.Fatalf("system provenance size = %d, error = %v; want 11 bytes", n, err)
