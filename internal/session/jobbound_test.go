@@ -235,11 +235,13 @@ func TestASubtreeThatCannotBeReadIsNeverCut(t *testing.T) {
 // (macOS's walk limit, a truncated listing) still counts processes, but its CPU
 // sum is not comparable with the next one. A storm of sleepers read partially
 // for fourteen readings that then shrinks to a leader and one old child — whose
-// lifetime CPU the partial sums never held — must not be cut on that jump.
+// lifetime CPU the partial sums never held — must not be cut on that jump. The
+// storm starts after one complete, quiet reading, so the partial readings must
+// also drop that earlier baseline rather than leave it waiting for the jump.
 func TestAPartialCPUSumNeverMakesARate(t *testing.T) {
 	registry := &jobRegistry{}
 	one := &job{id: 1, kind: jobKindBash, state: jobRunning, done: make(chan struct{})}
-	var readings []processgroup.Usage
+	readings := []processgroup.Usage{{Processes: 2, CPUSeconds: 1}}
 	for i := 0; i < jobBoundStrikes-1; i++ {
 		readings = append(readings, processgroup.Usage{Processes: 1100, CPUSeconds: 1, CPUPartial: true})
 	}

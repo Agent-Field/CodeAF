@@ -44,10 +44,12 @@ func (g Group) Usage() (Usage, bool) {
 // subtreeUsage walks the tree below root through each process's children, so
 // a child that changed process groups is still the job's.
 //
-// A PARENT IS RE-READ AFTER ITS CHILDREN ARE LISTED. A queued process can exit
-// and its pid be handed to another process before its children are asked for;
-// the children of that stranger would pass the parent-pid check. Comparing the
-// parent's start time before and after the listing keeps them out.
+// A PARENT IS RE-READ AFTER ITS CHILDREN ARE READ. A queued process can exit
+// and its pid be handed to another process while its children are listed or
+// read; the children of that stranger would pass the parent-pid check. A pid is
+// never handed on while its process lives, so a parent that reads with the same
+// start time after its children were read was their parent while they were
+// read, and only then are they admitted.
 //
 // A listing that filled even the largest buffer, a walk that reached
 // [usageWalkLimit], and a process that could not be read for any reason other
@@ -82,19 +84,7 @@ func subtreeUsage(root int) (Usage, bool) {
 		default:
 			return Usage{}, false
 		}
-		again, err := usageReader.task(parent.PID)
-		if err != nil || again.Start != parent.Start || again.PID != parent.PID {
-			if next == 0 {
-				return Usage{}, false
-			}
-			// A parent that exited or whose pid changed hands left the tree with
-			// its children; one that merely could not be read leaves them out of
-			// this sum only, so the sum is partial.
-			if err != nil && !errors.Is(err, unix.ESRCH) {
-				usage.CPUPartial = true
-			}
-			continue
-		}
+		var read []darwinproc.TaskInfo
 		for _, pid := range children {
 			if len(seen) >= usageWalkLimit {
 				usage.CPUPartial = true
@@ -114,8 +104,22 @@ func subtreeUsage(root int) (Usage, bool) {
 			if err != nil || child.PID != pid || child.PPID != parent.PID || child.Status == darwinproc.StatusZombie {
 				continue
 			}
-			queue = append(queue, child)
+			read = append(read, child)
 		}
+		again, err := usageReader.task(parent.PID)
+		if err != nil || again.Start != parent.Start || again.PID != parent.PID {
+			if next == 0 {
+				return Usage{}, false
+			}
+			// A parent that exited or whose pid changed hands left the tree with
+			// its children; one that merely could not be read leaves them out of
+			// this sum only, so the sum is partial.
+			if err != nil && !errors.Is(err, unix.ESRCH) {
+				usage.CPUPartial = true
+			}
+			continue
+		}
+		queue = append(queue, read...)
 	}
 	return usage, true
 }
