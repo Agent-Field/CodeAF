@@ -970,6 +970,11 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 			b.holdRecovered(run, agent)
 			continue
 		}
+		// AN AGENT THE PERSON CLOSED IS NOT KEPT: holding it would take it out
+		// of Closed, and its row would come back the moment it left.
+		if b.tidied(agent) {
+			continue
+		}
 		start := false
 		run.locked(func() {
 			if !run.opening[agent] && run.holdDueLocked(agent, now) {
@@ -988,7 +993,10 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 				b.holdFailed(run, agent, err, true)
 				return
 			}
-			view, opened, err := b.ensure(a)
+			view, opened, err := b.keepOpen(a)
+			if errors.Is(err, errAppKeptClosed) {
+				return
+			}
 			if err != nil {
 				b.holdFailed(run, agent, err, false)
 				return

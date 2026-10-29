@@ -148,6 +148,26 @@ func (b *appBackend) tidied(id string) bool {
 	return marked
 }
 
+// errAppKeptClosed is keepOpen's answer for an agent the person closed or
+// archived.
+var errAppKeptClosed = appwire.Errorf(appwire.CodeConflict, "closed by the person; only their own open takes it out")
+
+// keepOpen is ensure for what holds an agent open by itself, never at the
+// person's word (a crew's keeper, the roads that carry on work a quit or a
+// dead holder left): an agent the person closed or archived is left as it is,
+// unopened, since an open takes it out of Closed. The mark is read under the
+// agent's gate, where a close writes it, so a close that lands first is seen.
+func (b *appBackend) keepOpen(a *appAgent) (appwire.Agent, bool, error) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	var id string
+	b.locked(func() { id = a.view.ID })
+	if b.tidied(id) {
+		return appwire.Agent{}, false, errAppKeptClosed
+	}
+	return b.ensureLocked(a)
+}
+
 // Archive closes each agent and puts it away.
 func (b *appBackend) Archive(ids []string) error {
 	now := b.now()
