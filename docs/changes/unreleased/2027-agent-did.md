@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Each agent has a stable DID that its commands see as CODEAF_AGENT_DID
-pr: 0
+pr: 2027
 surface: [engine, chat, docs]
 invalidates:
   - "The engine gave commands no way to tell which agent ran them. Each conversation now carries a did:key identity in CODEAF_AGENT_DID, and task workers carry it with a #w<task id> suffix."
