@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -274,6 +275,27 @@ func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
 	}
 }
 
+// waitParkedIn waits until some goroutine is blocked on a channel inside fn,
+// which is how a waiter on a parked drive's startup boundary looks.
+func waitParkedIn(t *testing.T, fn string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		for _, g := range strings.Split(string(buf[:n]), "\n\n") {
+			head, _, _ := strings.Cut(g, "\n")
+			if (strings.Contains(head, "[chan receive") || strings.Contains(head, "[select")) && strings.Contains(g, fn) {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no goroutine is waiting inside %s on the parked startup", fn)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestAParkedChatDriveWaitsForItsJournalDecision(t *testing.T) {
 	celltest.Available(t)
 	t.Setenv(home.EnvVar, t.TempDir())
@@ -306,7 +328,7 @@ func TestAParkedChatDriveWaitsForItsJournalDecision(t *testing.T) {
 		t.Helper()
 		gate, store := make(chan error, 1), make(chan error, 1)
 		entered := make(chan struct{}, 2)
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		t.Cleanup(cancel)
 		go func() { entered <- struct{}{}; gate <- d.Gate() }()
 		go func() {
@@ -322,12 +344,16 @@ func TestAParkedChatDriveWaitsForItsJournalDecision(t *testing.T) {
 		}()
 		<-entered
 		<-entered
+		// Both waiters must be parked on the startup boundary, not merely
+		// scheduled: the goroutine dump names each one blocked inside its wait.
+		waitParkedIn(t, "(*liveDrive).Gate")
+		waitParkedIn(t, "lateStore.readyStore")
 		select {
 		case err := <-gate:
 			t.Fatalf("parked gate returned %v before journal ownership was decided", err)
 		case err := <-store:
 			t.Fatalf("parked store returned %v before journal ownership was decided", err)
-		case <-time.After(20 * time.Millisecond):
+		default:
 		}
 		return func() {
 			t.Helper()
@@ -419,7 +445,9 @@ func TestAParkedChatDriveWaitsForItsJournalDecision(t *testing.T) {
 				if err != nil {
 					t.Fatalf("closing parked drive = %v; want nil even with a canceled context", err)
 				}
-			case <-time.After(250 * time.Millisecond):
+			case <-time.After(driveCloseWithin / 3):
+				// A close that waited for the parked startup would take the
+				// whole driveCloseWithin; a third of it is generous under load.
 				t.Fatalf("closing a parked drive waited for startup or driveCloseWithin")
 			}
 			claim(true)
