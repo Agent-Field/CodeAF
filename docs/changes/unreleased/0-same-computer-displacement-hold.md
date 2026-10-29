@@ -14,3 +14,6 @@ acquires a new fence.
 
 A temporary lease lapse keeps the receipt needed to resume the same fence.
 Retiring a displaced window preserves a newer local writer's receipt.
+A delayed refusal also preserves this window's reacquired receipt when the relay
+still names that hold. A replacement fence that has expired or been released
+still retires the displaced window's receipt, since the older fence cannot resume.

@@ -37,6 +37,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if lease.Expires <= v.Now {
+		d.retireSendLease(lease)
 		d.available()
 		// Never resume an older tree over work saved by another computer.
 		head, err := cellstore.Head(d.cell)
@@ -64,7 +65,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if lease.Device == d.sync.Device.ID() {
-		d.retireSendLease()
+		d.retireSendLease(lease)
 		d.available()
 		return false, nil
 	}
@@ -123,13 +124,16 @@ func (d *Drive) resumeViewer() {
 	}
 }
 
-// retireSendLease removes this displaced window's receipt before readers are
-// notified, while preserving any receipt already written by its replacement.
-func (d *Drive) retireSendLease() {
+// retireSendLease keeps the recorded receipt when the relay still names this
+// device at that fence with a nonzero expiry, even if it has lapsed, because
+// this drive may renew it. Otherwise it conditionally removes that receipt
+// before notifying readers, preserving any newer writer's receipt. A zero
+// recorded fence has no receipt to retire. Removal errors are reported as notices.
+func (d *Drive) retireSendLease(lease directory.Lease) {
 	d.mu.Lock()
 	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 	d.mu.Unlock()
-	if expected.Fence == 0 {
+	if expected.Fence == 0 || lease.Device == d.sync.Device.ID() && lease.Fence == expected.Fence && lease.Expires != 0 {
 		return
 	}
 	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {

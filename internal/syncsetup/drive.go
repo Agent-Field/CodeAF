@@ -405,11 +405,17 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
+	var current directory.Lease
+	fresh := false
 	if s.Branch == "" && d.directoryID != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		v, err := d.sync.Dir.Cell(ctx, d.directoryID)
 		cancel()
+		if err == nil {
+			current, fresh = v.Cell.Lease, true
+		}
 		if err == nil && v.Cell.Lease.Expires <= v.Now {
+			d.retireSendLease(v.Cell.Lease)
 			d.available()
 			return
 		}
@@ -418,7 +424,12 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 		}
 	}
 	if s.By != "" && s.By == d.sync.Device.ID() {
-		d.retireSendLease()
+		// A branch follows a refused publish or heartbeat under the batcher's
+		// flush lock, which also excludes reacquisition. Without a branch or
+		// a fresh reading, a delayed refusal may refer to an older fence.
+		if fresh || s.Branch != "" {
+			d.retireSendLease(current)
+		}
 		d.available()
 		return
 	}
@@ -567,6 +578,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		v, err = d.renewIdleLease(ctx, v, fence)
 	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
+		d.retireSendLease(v.Cell.Lease)
 		d.available()
 		return nil
 	}
