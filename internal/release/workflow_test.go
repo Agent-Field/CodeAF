@@ -183,7 +183,8 @@ func releaseSurfacePrologue(t *testing.T) string {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "go test ") {
-			script = append(script, `printf 'ARG:%s\n' "${test_args[@]}"`)
+			// Bash 3.2 treats an empty array as unset under nounset in this probe.
+			script = append(script, `printf 'ARG:%s\n' ${test_args[@]+"${test_args[@]}"}`)
 			return strings.Join(script, "\n") + "\n"
 		}
 		script = append(script, trimmed)

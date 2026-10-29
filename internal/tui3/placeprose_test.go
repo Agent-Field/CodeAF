@@ -139,7 +139,7 @@ func TestEveryEmptyPlaceDrawsItsHeadingAndOneWhisper(t *testing.T) {
 			a.width, a.height = size[0], size[1]
 			lines, _, _, _ := a.placeDraw(placeFor(lab.id), a.width, a.height)
 			body := make([]string, 0, len(lines))
-			for _, line := range lines[emptyPlaceHeadingRow(t, lab.id, lines) : len(lines)-placeFootRowsFor(lab.id, size[1])+1] {
+			for _, line := range lines[emptyPlaceHeadingRow(t, lab.id, lines, a.chords) : len(lines)-placeFootRowsFor(lab.id, size[1])+1] {
 				body = append(body, strings.TrimRight(plain(line), " "))
 			}
 			want := placeWhisperLines(lab.id, a.width, newPalette(tokens.NoColor, false))
@@ -159,11 +159,13 @@ func TestEveryEmptyPlaceDrawsItsHeadingAndOneWhisper(t *testing.T) {
 
 // Memory has a saved-memory/knowledge switch above its empty-state guidance.
 // Assert that navigation explicitly before applying the common heading rules.
-func emptyPlaceHeadingRow(t *testing.T, id page, rows []string) int {
+func emptyPlaceHeadingRow(t *testing.T, id page, rows []string, chords chordSpelling) int {
 	t.Helper()
 	top := placeHeadRows
 	if id == pageMemory {
-		if len(rows) <= top+2 || strings.TrimSpace(plain(rows[top])) != "Saved memory  Knowledge · alt+u" || strings.TrimSpace(plain(rows[top+1])) != "" {
+		// The switch keeps the app's platform spelling while its text stays exact.
+		want := chords.say("Saved memory  Knowledge · alt+u")
+		if len(rows) <= top+2 || strings.TrimSpace(plain(rows[top])) != want || strings.TrimSpace(plain(rows[top+1])) != "" {
 			t.Fatalf("Memory must show its switch and spacing before empty-state guidance: %q", rows)
 		}
 		top += 2

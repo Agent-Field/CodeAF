@@ -146,7 +146,8 @@ func TestLegacyOwnedWorkerUsesItsAdmittedRuntime(t *testing.T) {
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	script := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("runtime", "bash", `{"command":"printf '%s\\n' \"$CODEAF_WORKSPACE_URI\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" > runtime.txt; mktemp >> runtime.txt"}`), nil
+			// An explicit template makes BSD mktemp use the routed TMPDIR too.
+			return toolResponse("runtime", "bash", `{"command":"printf '%s\\n' \"$CODEAF_WORKSPACE_URI\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" > runtime.txt; mktemp \"${TMPDIR:-/tmp}/probe.XXXXXX\" >> runtime.txt"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}}

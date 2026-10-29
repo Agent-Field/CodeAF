@@ -148,7 +148,8 @@ func TestOwnedBeltWorkerUsesRealScratchWithoutChangingHome(t *testing.T) {
 	defer store.Close()
 	script := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("scratch", "bash", `{"command":"printf '%s\n' \"$HOME\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" \"$CODEAF_WORKSPACE_URI\" > runtime.txt; mktemp >> runtime.txt"}`), nil
+			// An explicit template makes BSD mktemp use the routed TMPDIR too.
+			return toolResponse("scratch", "bash", `{"command":"printf '%s\n' \"$HOME\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" \"$CODEAF_WORKSPACE_URI\" > runtime.txt; mktemp \"${TMPDIR:-/tmp}/probe.XXXXXX\" >> runtime.txt"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}}
@@ -443,7 +444,8 @@ func TestExplicitInPlaceWorkerRoutesScratchWithoutOwningTheProject(t *testing.T)
 	defer store.Close()
 	script := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			arguments, _ := json.Marshal(map[string]string{"command": `pwd > placement.txt; printf '%s\n' "$TMPDIR" "$XDG_CACHE_HOME" "$CODEAF_WORKSPACE_URI" >> placement.txt; mktemp >> placement.txt`})
+			// An explicit template makes BSD mktemp use the routed TMPDIR too.
+			arguments, _ := json.Marshal(map[string]string{"command": `pwd > placement.txt; printf '%s\n' "$TMPDIR" "$XDG_CACHE_HOME" "$CODEAF_WORKSPACE_URI" >> placement.txt; mktemp "${TMPDIR:-/tmp}/probe.XXXXXX" >> placement.txt`})
 			return toolResponse("runtime", "bash", string(arguments)), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },

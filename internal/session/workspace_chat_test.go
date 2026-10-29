@@ -31,7 +31,8 @@ func TestOwnershipChatRoutesScratchWithoutMovingTheProject(t *testing.T) {
 	if err != nil || chat.Role != workspaceidentity.Chat {
 		t.Fatalf("chat identity missing: %v", err)
 	}
-	result, err := a.config.seat().In(project).Exec(context.Background(), executor.ExecRequest{Argv: []string{"sh", "-c", "mktemp"}}, nil)
+	// An explicit template makes BSD mktemp use the routed TMPDIR too.
+	result, err := a.config.seat().In(project).Exec(context.Background(), executor.ExecRequest{Argv: []string{"sh", "-c", `mktemp "${TMPDIR:-/tmp}/probe.XXXXXX"`}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

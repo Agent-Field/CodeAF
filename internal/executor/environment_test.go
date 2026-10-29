@@ -16,7 +16,8 @@ func TestWorkspaceEnvironmentRoutesRealTemporaryFilesThroughBothRunnerDoors(t *t
 	scratch, cache := t.TempDir(), t.TempDir()
 	originalHOME := os.Getenv("HOME")
 	seat := executor.WithEnvironment(executor.Host, []string{"TMPDIR=" + scratch, "XDG_CACHE_HOME=" + cache, "CODEAF_WORKSPACE_URI=codeaf-workspace://example/run"})
-	command := `printf '%s\n' "$HOME" "$XDG_CACHE_HOME" "$CODEAF_WORKSPACE_URI"; mktemp`
+	// An explicit template makes BSD mktemp use the routed TMPDIR too.
+	command := `printf '%s\n' "$HOME" "$XDG_CACHE_HOME" "$CODEAF_WORKSPACE_URI"; mktemp "${TMPDIR:-/tmp}/probe.XXXXXX"`
 	for _, door := range []string{"exec", "command", "setup"} {
 		runner := seat.In(t.TempDir())
 		if door == "setup" {
