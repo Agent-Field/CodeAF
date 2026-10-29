@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -409,13 +410,32 @@ func (e Engine) target(c cell.Cell) Target {
 	return Target{Tree: canonicalTree(e.tree(c)), DataDir: dir, CellDir: e.cellDir(c), Timeline: timeline}
 }
 
+// canonicalTree is the physical spelling of tree, so one folder is one tree
+// whichever spelling named it: macOS reaches /tmp and /var through links, and a
+// home or project folder can sit under a linked folder too.
+//
+// A TREE THAT DOES NOT EXIST YET STILL RESOLVES ITS ANCESTORS. Its longest
+// existing ancestor is resolved and the missing rest is kept as written. Were
+// the lexical spelling returned instead, the same folder would change spelling
+// the moment it was created: a binding recorded before creation would read as
+// another folder after it, and a chat's own absent work/ would compare as
+// outside the chat's resolved folder. Any other failure keeps the absolute
+// spelling, as before.
 func canonicalTree(tree string) string {
 	absolute, err := filepath.Abs(tree)
 	if err != nil {
 		return filepath.Clean(tree)
 	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err == nil {
 		return resolved
 	}
-	return absolute
+	if !errors.Is(err, os.ErrNotExist) {
+		return absolute
+	}
+	parent := filepath.Dir(absolute)
+	if parent == absolute {
+		return absolute
+	}
+	return filepath.Join(canonicalTree(parent), filepath.Base(absolute))
 }
