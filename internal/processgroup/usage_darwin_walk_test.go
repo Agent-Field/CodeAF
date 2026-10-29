@@ -182,3 +182,49 @@ func TestDarwinUsageMarksAnUnreadableParentPartial(t *testing.T) {
 		t.Fatalf("a parent that exited: usage = %+v, %v, want 2 processes and a complete sum", usage, ok)
 	}
 }
+
+// A parent's pid and its listed child's pid can both change hands right after
+// the parent read the same again. The child read after that swap is a
+// stranger's busy child and must not be charged to the job: a child is
+// admitted only when its parent still reads as the same process after it.
+func TestDarwinUsageAdmitsAChildOnlyWhileItsParentIsTheSame(t *testing.T) {
+	saved := usageReader
+	t.Cleanup(func() { usageReader = saved })
+	leader, own := task(10, 1, 10, 1), task(11, 10, 10, 1)
+	strangerLeader, strangerChild := task(10, 1, 50, 0), task(11, 10, 50, 500)
+	strangerLeader.Start, strangerChild.Start = 90000, 91000
+	strangers := map[int]darwinproc.TaskInfo{12: task(12, 11, 50, 300), 13: task(13, 11, 50, 300)}
+	leaderReads, swapped := 0, false
+	usageReader.task = func(pid int) (darwinproc.TaskInfo, error) {
+		switch {
+		case pid == 10 && swapped:
+			return strangerLeader, nil
+		case pid == 10:
+			// The swap lands just after the leader's second read.
+			if leaderReads++; leaderReads == 2 {
+				swapped = true
+			}
+			return leader, nil
+		case pid == 11 && swapped:
+			return strangerChild, nil
+		case pid == 11:
+			return own, nil
+		case swapped && strangers[pid].PID == pid:
+			return strangers[pid], nil
+		}
+		return darwinproc.TaskInfo{}, unix.ESRCH
+	}
+	usageReader.children = func(ppid int) ([]int, error) {
+		switch {
+		case ppid == 10:
+			return []int{11}, nil
+		case ppid == 11 && swapped:
+			return []int{12, 13}, nil
+		}
+		return nil, nil
+	}
+	usage, ok := subtreeUsage(10)
+	if !ok || usage.Processes != 2 || usage.CPUSeconds != 2 {
+		t.Fatalf("usage = %+v, %v, want the leader and its own child only (2 processes, 2 CPU seconds)", usage, ok)
+	}
+}
