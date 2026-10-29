@@ -394,7 +394,9 @@ browser and nothing else. Setup connects as many of them as you like, one after 
 or none at all, and Settings connects one later; with none connected, setup says there
 are no models yet instead of offering a default.
 
-OpenRouter's key is checked with one request and ten seconds to answer. Every other
+OpenRouter's key is checked against OpenRouter's own record of it before its models are
+listed, so a revoked or made-up key, or a management key, is turned away rather than
+reported as working; both requests share ten seconds to answer. Every other
 provider is checked the way `/connect` checks it: its model list, a one-token call where
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
