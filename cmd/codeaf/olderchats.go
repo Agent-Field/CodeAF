@@ -56,8 +56,21 @@ func runOlderChats(ctx context.Context) {
 	case <-ticker.C:
 	}
 	chats := olderChats{copy: copyOlderChat}
+	offered := ""
+	var source *syncsetup.Sync
 	for {
 		if syncsetup.MayTalk(home.Dir()) {
+			if s, ok, err := syncsetup.Open(home.Dir()); err == nil && ok {
+				binding := s.Ledger + "/" + s.Device.ID()
+				if source == nil || source.Ledger+"/"+source.Device.ID() != binding {
+					source, offered = s, ""
+				}
+				if offered != binding {
+					if err := source.PublishLocalChats(ctx, time.Now, func(_ cell.Cell, line string) { surfaceNotices.SayHomeOnce(line) }); err == nil {
+						offered = binding
+					}
+				}
+			}
 			dirs, _ := filepath.Glob(home.Join("v3", "projects", "*", "*"))
 			for _, dir := range dirs {
 				if ctx.Err() != nil {

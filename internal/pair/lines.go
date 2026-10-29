@@ -37,7 +37,10 @@ func WaitingChatsLine(words string) string {
 }
 
 // JoinedLine is what the joining device says when it worked.
-const JoinedLine = "Paired. This device now has your chats."
+const JoinedLine = "Paired. Your chats are kept. Both computers' chats will appear as sharing finishes."
+
+// AlreadyPairedLine is the no-change result on every pairing surface.
+const AlreadyPairedLine = "already paired; nothing changed"
 
 // FollowedLine is what the joining device says when it was on an identity that
 // was rotated and has moved to the one that replaced it.

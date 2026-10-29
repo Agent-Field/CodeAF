@@ -14,11 +14,18 @@ import (
 // TestC30PairingMergesMemoryUnlessReplaceWasExplicit proves C30.4 at both
 // adoption doors: hand-edited personal lines survive a join; --replace clears
 // shared memory/preferences while preserving machine-owned lines and paths.
-func TestC30PairingMergesMemoryUnlessReplaceWasExplicit(t *testing.T) {
+func TestM1M6M8PairingMergesMemoryUnlessReplaceWasExplicit(t *testing.T) {
 	for _, replace := range []bool{false, true} {
 		t.Run(map[bool]string{false: "merge", true: "replace"}[replace], func(t *testing.T) {
 			home := t.TempDir()
 			if _, err := identity.EnsureSolo(home); err != nil {
+				t.Fatal(err)
+			}
+			chat := filepath.Join(home, "v3", "projects", "local", "own-chat")
+			if err := os.MkdirAll(chat, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(chat, "transcript.jsonl"), []byte("kept history\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(`{"model.talk":"stub/local","machine.path":"/keep"}`), 0600); err != nil {
@@ -43,6 +50,10 @@ func TestC30PairingMergesMemoryUnlessReplaceWasExplicit(t *testing.T) {
 			}
 			if _, err := adopt(Joining{Home: home, Replace: replace}, Grant{Identity: other}); err != nil {
 				t.Fatal(err)
+			}
+			_, chatErr := os.Stat(chat)
+			if replace != os.IsNotExist(chatErr) {
+				t.Fatalf("M8 clean slate=%v, old chat visible=%v", replace, chatErr == nil)
 			}
 			if replace {
 				if err := brain.Rebuild(); err != nil {

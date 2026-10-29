@@ -6,6 +6,13 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
+Pairing a computer that has never shared keeps and shares its existing chats,
+full history, saved keys, memory and preferences. It asks no replacement question.
+The chat list updates as background sharing finishes. Each computer's own chats
+stay here; Continue here moves a chat from the other one. Reopen codeaf after an
+interruption to finish pairing and retry sharing. A used computer already
+sharing another set refuses and changes nothing.
+
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
 While you have only one device, home shows a card at the foot:

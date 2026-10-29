@@ -356,7 +356,8 @@ func (a *app) runPair(typed string) tea.Cmd {
 	return a.startPair(pairJoiningWord, joinWork(door, typed, replace))
 }
 
-// joinWork is the joining side's errand: type the code, and end on the line for
+// joinWork shares the joining computer's chats by default. Only an explicitly
+// typed --replace asks to discard them. It ends on the line for
 // how it went. It is the same errand from /pair <code> and from the first-run
 // screen's field, so the two cannot end in different words.
 func joinWork(door Pairing, typed string, replace bool) func(*pairRun) {

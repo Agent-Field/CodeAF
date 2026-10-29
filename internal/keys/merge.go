@@ -9,9 +9,12 @@ import (
 // wire. A vault never written yet exports as an empty, sealed one, so the
 // receiver can tell "nothing yet" from "damaged".
 func (v *Vault) Export() ([]byte, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	d, err := v.read()
+	unlock, err := v.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	d, err := v.readLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -30,13 +33,16 @@ func (v *Vault) Export() ([]byte, error) {
 // stamp instead of taking the time of the merge, so merging never makes an old
 // edit look new.
 func (v *Vault) Merge(enc []byte) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	unlock, err := v.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	remote, err := openDoc(v.key, enc)
 	if err != nil {
 		return fmt.Errorf("keys: cannot merge vault: %w", err)
 	}
-	local, err := v.read()
+	local, err := v.readLocked()
 	if err != nil {
 		return err
 	}

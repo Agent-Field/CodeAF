@@ -4,8 +4,7 @@ package pair
 // words with its screen, and this computer has the same chats.
 //
 // NOTHING IS WRITTEN UNTIL THE OTHER DEVICE HAS SAID YES. The grant arrives in
-// memory, is checked whole, and only then does anything touch the disk; a
-// computer that already has chats of its own refuses before it writes a byte.
+// memory, is checked whole, and only then does anything touch the disk.
 
 import (
 	"context"
@@ -35,13 +34,14 @@ type Joining struct {
 	Platform string
 	// Replace lets a computer that already has different chats give them up.
 	Replace bool
-	// MergeState keeps memory and preferences when a startup-only home joins.
-	MergeState bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
 	// SaveSyncURL is told the relay the other device syncs through, when it is
 	// not the default. Nil ignores it.
 	SaveSyncURL func(url string) error
+	// After runs after each durable local merge step. An error interrupts the
+	// merge; startup or retry completes its recorded switch.
+	After func(step string) error
 }
 
 // Joined is how a pairing ended on the joining device.
@@ -122,42 +122,71 @@ func joinOffer(label string, platform ...string) ([]byte, error) {
 	return append([]byte(name), nonce...), nil
 }
 
-// adopt takes the grant into this home, or says why not. A computer that
-// already holds these chats changes nothing, and one with chats of its own keeps
-// them unless it was told to replace them.
+// adopt takes the grant into this home, keeping a solo computer's chats and
+// shared state. Their local objects stay in place; sync exports them under the
+// shared keys and a new publication ledger after pairing.
 func adopt(j Joining, grant Grant) (Joined, error) {
+	return adoptWithDevice(j, grant, nil)
+}
+
+func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
+	if err := Resume(j.Home, j.SaveSyncURL); err != nil {
+		return Joined{}, err
+	}
+	// No-op and refusal paths must not even create a lock file. Recheck the
+	// destination under the lock below before making any actual switch.
 	held, err := identity.Load(j.Home)
+	if err != nil && !errors.Is(err, identity.ErrNone) {
+		return Joined{}, err
+	}
+	if err == nil && held.ID() == grant.Identity.ID() {
+		return Joined{Already: true}, nil
+	}
+	if err == nil && !j.Replace && !identity.Solo(j.Home) && !slices.Contains(grant.Replaces, held.ID()) {
+		if ok, err := identity.Joinable(j.Home); err != nil || !ok {
+			return Joined{}, ErrDifferentChats
+		}
+	}
+	unlock, err := keys.LockHome(j.Home)
+	if err != nil {
+		return Joined{}, err
+	}
+	defer unlock()
+	if err := j.resume(); err != nil {
+		return Joined{}, err
+	}
+	held, err = identity.Load(j.Home)
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
 		return Joined{Already: true}, nil
 	case err == nil && slices.Contains(grant.Replaces, held.ID()):
 		return Joined{Successor: true}, follow(j, held, grant)
 	}
-	merge := j.MergeState
-	if err == nil && held.ID() != grant.Identity.ID() && !j.Replace && identity.Solo(j.Home) {
-		can, checkErr := identity.Joinable(j.Home)
-		if checkErr != nil {
-			return Joined{}, checkErr
+	if err != nil && !errors.Is(err, identity.ErrNone) {
+		return Joined{}, err
+	}
+	if j.Replace {
+		return Joined{}, j.merge(grant, dev, nil)
+	}
+	merge := false
+	if err == nil && !j.Replace {
+		merge = identity.Solo(j.Home)
+		if !merge {
+			var checkErr error
+			merge, checkErr = identity.Joinable(j.Home)
+			if checkErr != nil {
+				return Joined{}, ErrDifferentChats
+			}
 		}
-		merge = can
 	}
 	if merge && err == nil {
-		if _, err := keys.StageReseal(j.Home, held.CellKey(), grant.Identity.CellKey()); err != nil {
-			return Joined{}, err
-		}
+		return Joined{}, j.merge(grant, dev, held.CellKey())
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
 		return Joined{}, adoptFailure(err)
 	}
-	if merge {
-		if err := keys.CommitReseal(j.Home); err != nil {
-			return Joined{}, err
-		}
-	}
-	if j.Replace {
-		if err := replaceState(j.Home, j.ProfileDir); err != nil {
-			return Joined{}, err
-		}
+	if err := markSharing(j.Home, grant.Identity.ID()); err != nil {
+		return Joined{}, err
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
 		return Joined{}, j.SaveSyncURL(grant.SyncURL)
