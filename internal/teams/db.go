@@ -1,0 +1,1039 @@
+package teams
+
+// db.go is where the teams are kept: one SQLite database, teams.db, in the
+// profile, opened the way the plan, workspace and automation stores open theirs
+// (modernc's SQLite, WAL, BEGIN IMMEDIATE writes behind a busy timeout).
+//
+// IT REPLACED teams.json, and the reason is the size of what a team carries. A
+// factory stage keeps the whole brief it was started on, and those briefs grew
+// the file past what one read should hold; every load, save and stat-and-parse
+// of a 3 MB file paid for all of them. Here:
+//
+//   - A team is one row and each membership is one row, in the list's order. A
+//     write compares what fn left with the rows it read and touches only the
+//     rows that differ, so a change to one team writes that team.
+//   - A member's briefs (the factory's opening brief and the brief's
+//     revisions) are rows of their own, never part of a load. [WithBriefs]
+//     reads one member's when they are shown.
+//   - The store's revision is a counter bumped by every write that changed a
+//     row. [Stamp] is the store's id and that counter, so a reader asks one
+//     indexed row whether anything moved, and nothing caps the store's size.
+//   - The decoded teams are held per revision, and each team's row says the
+//     revision it last changed at (its own row or any of its memberships). A
+//     load of a store nobody wrote since is one query and a copy; a load after
+//     a write decodes only the teams that write changed.
+//
+// THERE IS NO MIGRATION. teams.json and spaces.json, when a profile still has
+// them, are never read, written, renamed or removed here: a store that is not
+// there is no teams.
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
+	sqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
+)
+
+// applicationID marks the file as this store's, so a database belonging to
+// anything else is refused rather than read as empty. "TEAM".
+const applicationID = 0x5445414d
+
+// schemaVersion is the shape below. A newer file is refused, never rewritten.
+const schemaVersion = 1
+
+// busyTimeout bounds how long a statement waits behind another process's
+// write. Writers already queue on the teams lock, so this is a stuck peer.
+const busyTimeout = 10 * time.Second
+
+// handlesKept is how many profiles' databases one process keeps open.
+const handlesKept = 16
+
+// ErrUnreadable is a teams.db that is not this store's: not a database, some
+// other program's, or written by a newer build. Nothing here writes to it;
+// [SetAside] moves it out of the way when the caller decides to start again.
+var ErrUnreadable = errors.New("teams: the store is unreadable")
+
+const schema = `
+CREATE TABLE meta (
+ id INTEGER PRIMARY KEY CHECK (id = 1),
+ store TEXT NOT NULL,
+ rev INTEGER NOT NULL
+);
+CREATE TABLE teams (
+ id TEXT PRIMARY KEY,
+ pos INTEGER NOT NULL,
+ rev INTEGER NOT NULL,
+ parent TEXT NOT NULL,
+ made_ns INTEGER NOT NULL,
+ closed INTEGER NOT NULL,
+ root INTEGER NOT NULL,
+ factory INTEGER NOT NULL,
+ doc TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE INDEX teams_order ON teams(pos);
+CREATE INDEX teams_children ON teams(parent, closed, root, factory, made_ns DESC, id);
+CREATE TABLE members (
+ team_id TEXT NOT NULL,
+ former INTEGER NOT NULL,
+ pos INTEGER NOT NULL,
+ key TEXT NOT NULL,
+ doc TEXT NOT NULL,
+ PRIMARY KEY (team_id, former, pos)
+) WITHOUT ROWID;
+CREATE TABLE briefs (
+ team_id TEXT NOT NULL,
+ key TEXT NOT NULL,
+ seq INTEGER NOT NULL,
+ doc TEXT NOT NULL,
+ PRIMARY KEY (team_id, key, seq)
+) WITHOUT ROWID;
+`
+
+// ── HANDLES ─────────────────────────────────────────────────────────────────
+
+// handle is one open database. It is shared by every caller in the process
+// that names the same file, and closed once it is evicted or the file it
+// opened is no longer the one at its path and nobody is using it.
+type handle struct {
+	db   *sql.DB
+	path string
+	file os.FileInfo
+	refs int
+	used uint64
+	gone bool
+}
+
+var handles struct {
+	sync.Mutex
+	open map[string]*handle
+	tick uint64
+}
+
+// acquire is the database at path, opened or shared. A file that is not there
+// is (nil, nil) unless create, which makes it private and empty first. The
+// caller releases what it got.
+func acquire(path string, create bool) (*handle, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		forget(path)
+		if !create {
+			return nil, nil
+		}
+		// A WAL left beside a database that is gone (deleted by hand) belongs
+		// to that database, and SQLite would replay it into the new one. The
+		// writer that makes the store holds the teams lock, so no live store
+		// owns these names.
+		_ = os.Remove(path + "-wal")
+		_ = os.Remove(path + "-shm")
+		if err := makeFile(path); err != nil {
+			return nil, err
+		}
+		info, err = os.Stat(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s is not a file", ErrUnreadable, filepath.Base(path))
+	}
+	if h := shared(path, info); h != nil {
+		return h, nil
+	}
+	db, err := open(path)
+	if err != nil {
+		return nil, err
+	}
+	handles.Lock()
+	defer handles.Unlock()
+	if h := handles.open[path]; h != nil && !h.gone && os.SameFile(h.file, info) {
+		_ = db.Close()
+		handles.tick++
+		h.refs++
+		h.used = handles.tick
+		return h, nil
+	}
+	if handles.open == nil {
+		handles.open = map[string]*handle{}
+	}
+	if old := handles.open[path]; old != nil {
+		retire(old)
+	}
+	handles.tick++
+	h := &handle{db: db, path: path, file: info, refs: 1, used: handles.tick}
+	handles.open[path] = h
+	evict()
+	return h, nil
+}
+
+// shared is the handle already open on the file info names, nil for none. A
+// handle on a file that was replaced or set aside is retired.
+func shared(path string, info os.FileInfo) *handle {
+	handles.Lock()
+	defer handles.Unlock()
+	h := handles.open[path]
+	if h == nil {
+		return nil
+	}
+	if !os.SameFile(h.file, info) {
+		retire(h)
+		return nil
+	}
+	handles.tick++
+	h.refs++
+	h.used = handles.tick
+	return h
+}
+
+// forget retires the handle on path, whose file is gone.
+func forget(path string) {
+	handles.Lock()
+	defer handles.Unlock()
+	if h := handles.open[path]; h != nil {
+		retire(h)
+	}
+}
+
+// retire takes h out of the pool and closes it now or on its last release.
+// The pool's lock is held.
+func retire(h *handle) {
+	if handles.open[h.path] == h {
+		delete(handles.open, h.path)
+	}
+	h.gone = true
+	if h.refs == 0 {
+		_ = h.db.Close()
+	}
+}
+
+// evict closes the least recently used idle handles past [handlesKept]. The
+// pool's lock is held.
+func evict() {
+	for len(handles.open) > handlesKept {
+		var oldest *handle
+		for _, h := range handles.open {
+			if h.refs == 0 && (oldest == nil || h.used < oldest.used) {
+				oldest = h
+			}
+		}
+		if oldest == nil {
+			return
+		}
+		retire(oldest)
+	}
+}
+
+func (h *handle) release() {
+	handles.Lock()
+	defer handles.Unlock()
+	h.refs--
+	if h.refs == 0 && h.gone {
+		_ = h.db.Close()
+	}
+}
+
+// opener opens every database on one goroutine of the package's own, started
+// with it. database/sql keeps a goroutine per open database until it is
+// closed, and that goroutine belongs to whoever opened it: opened by a caller
+// inside a testing/synctest bubble, it would outlive the bubble and fail it,
+// since the pool keeps databases open across callers. Both channels are made
+// here too, so a caller in a bubble only ever waits on the package's.
+var opener struct {
+	sync.Mutex
+	ask    chan string
+	answer chan openResult
+}
+
+func init() {
+	opener.ask, opener.answer = make(chan string), make(chan openResult)
+	go func() {
+		for path := range opener.ask {
+			db, err := openDB(path)
+			opener.answer <- openResult{db, err}
+		}
+	}()
+}
+
+type openResult struct {
+	db  *sql.DB
+	err error
+}
+
+// open is [openDB] on the package's goroutine.
+func open(path string) (*sql.DB, error) {
+	opener.Lock()
+	defer opener.Unlock()
+	opener.ask <- path
+	r := <-opener.answer
+	return r.db, r.err
+}
+
+// makeFile creates the database file private and empty, so SQLite never
+// creates it with its own default permissions.
+func makeFile(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// sqliteMagic opens every SQLite database file.
+const sqliteMagic = "SQLite format 3\x00"
+
+// foreign reports whether the file at path holds bytes that are not a SQLite
+// database. An empty file is this store's own, made by [makeFile] a moment
+// before SQLite wrote to it; a short or foreign one is refused before SQLite
+// sees it, because SQLite reads a file shorter than its header as an empty
+// database and would build the schema over it.
+func foreign(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	head := make([]byte, len(sqliteMagic))
+	n, err := io.ReadFull(f, head)
+	switch {
+	case n == 0 && errors.Is(err, io.EOF):
+		return nil
+	case string(head[:n]) != sqliteMagic:
+		return fmt.Errorf("%w: %s is not a database", ErrUnreadable, filepath.Base(path))
+	}
+	return nil
+}
+
+func openDB(path string) (*sql.DB, error) {
+	if err := foreign(path); err != nil {
+		return nil, err
+	}
+	q := make(url.Values)
+	q.Set("mode", "rw")
+	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
+	// WAL lets every window read while one writes; FULL keeps a team that was
+	// written written across a power cut.
+	q.Add("_pragma", "journal_mode(WAL)")
+	q.Add("_pragma", "synchronous(FULL)")
+	q.Set("_txlock", "immediate")
+	db, err := sql.Open("sqlite", sqlitefile.URI(path, q.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	// A few connections, not one: WAL lets readers share the file while one
+	// writes, and a page's callback ([PageAt]) that reads the store again
+	// must not wait on the connection its own page holds. Writers still go
+	// one at a time, behind the teams lock and BEGIN IMMEDIATE.
+	db.SetMaxOpenConns(4)
+	if err := ensureSchema(db, path); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// ensureSchema checks the file is this store's at this version, and builds a
+// blank one. The check is a read-only transaction, which the driver begins
+// plainly, so opening never waits on a peer's write; only a blank file takes
+// the writer, and looks again under it.
+func ensureSchema(db *sql.DB, path string) error {
+	ctx := context.Background()
+	state, err := inspectSchema(ctx, db, &sql.TxOptions{ReadOnly: true}, path)
+	if err != nil || state != schemaBlank {
+		return err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return storeError(err)
+	}
+	defer tx.Rollback()
+	if state, err = inspectIn(ctx, tx, path); err != nil || state != schemaBlank {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, schema); err != nil {
+		return storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO meta (id, store, rev) VALUES (1, ?, 0)", newStoreID()); err != nil {
+		return storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id = %d", applicationID)); err != nil {
+		return storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
+		return storeError(err)
+	}
+	return storeError(tx.Commit())
+}
+
+type schemaState int
+
+const (
+	schemaReady schemaState = iota
+	schemaBlank
+)
+
+func inspectSchema(ctx context.Context, db *sql.DB, opts *sql.TxOptions, path string) (schemaState, error) {
+	tx, err := db.BeginTx(ctx, opts)
+	if err != nil {
+		return schemaBlank, unreadable(err, path)
+	}
+	defer tx.Rollback()
+	return inspectIn(ctx, tx, path)
+}
+
+func inspectIn(ctx context.Context, tx *sql.Tx, path string) (schemaState, error) {
+	var app, version, tables int
+	if err := tx.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app); err != nil {
+		return schemaBlank, unreadable(err, path)
+	}
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return schemaBlank, unreadable(err, path)
+	}
+	switch {
+	case app == applicationID && version == schemaVersion:
+		var store string
+		if err := tx.QueryRowContext(ctx, "SELECT store FROM meta WHERE id = 1").Scan(&store); err != nil {
+			return schemaReady, unreadable(err, path)
+		}
+		for _, probe := range []string{
+			"SELECT id, pos, rev, parent, made_ns, closed, root, factory, doc FROM teams LIMIT 0",
+			"SELECT team_id, former, pos, key, doc FROM members LIMIT 0",
+			"SELECT team_id, key, seq, doc FROM briefs LIMIT 0",
+		} {
+			if _, err := tx.ExecContext(ctx, probe); err != nil {
+				return schemaReady, unreadable(err, path)
+			}
+		}
+		return schemaReady, nil
+	case app == applicationID && version > schemaVersion:
+		return schemaReady, fmt.Errorf("%w: %s was written by a newer codeaf", ErrUnreadable, filepath.Base(path))
+	case app != 0 || version != 0:
+		return schemaReady, fmt.Errorf("%w: %s belongs to something else", ErrUnreadable, filepath.Base(path))
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
+		return schemaBlank, unreadable(err, path)
+	}
+	if tables != 0 {
+		return schemaReady, fmt.Errorf("%w: %s belongs to something else", ErrUnreadable, filepath.Base(path))
+	}
+	return schemaBlank, nil
+}
+
+// unreadable is err as this package says it: a peer holding the file too long
+// is [ErrBusy], anything else SQLite refuses to read is [ErrUnreadable].
+func unreadable(err error, path string) error {
+	if err = storeError(err); err == nil || errors.Is(err, ErrBusy) {
+		return err
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return fmt.Errorf("%w: %s: %w", ErrUnreadable, filepath.Base(path), err)
+}
+
+// storeError says SQLite's lock refusal as [ErrBusy]. Extended result codes
+// keep their primary code in the low byte.
+func storeError(err error) error {
+	var e *sqlite.Error
+	if errors.As(err, &e) {
+		if code := e.Code() & 0xff; code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED {
+			return fmt.Errorf("%w (waited %s)", ErrBusy, busyTimeout)
+		}
+	}
+	return err
+}
+
+func newStoreID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 16)
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// ── READING ─────────────────────────────────────────────────────────────────
+
+// snapshot is the store at one revision, decoded, with each row as it was
+// stored so a write can tell which rows it changed. It is never changed once
+// made; readers get copies of its teams.
+type snapshot struct {
+	store string
+	rev   int64
+	teams []Team
+	rows  map[string]*teamRows
+}
+
+// teamRows is one team's rows as stored: rev is the store revision the team or
+// any of its memberships last changed at, and at is its place in the
+// snapshot's teams.
+type teamRows struct {
+	pos     int64
+	rev     int64
+	at      int
+	doc     string
+	members []memberRow
+	former  []memberRow
+}
+
+type memberRow struct{ key, doc string }
+
+func (s *snapshot) stamp() string { return s.store + "." + strconv.FormatInt(s.rev, 10) }
+
+// held is the newest snapshot read or written per database path.
+var held struct {
+	sync.Mutex
+	by map[string]*snapshot
+}
+
+// storeReads counts the teams decoded from their rows, for a test to see that
+// a team nobody wrote is not decoded again.
+var storeReads atomic.Int64
+
+func heldAt(path string) *snapshot {
+	held.Lock()
+	defer held.Unlock()
+	return held.by[path]
+}
+
+func hold(path string, s *snapshot) {
+	held.Lock()
+	defer held.Unlock()
+	if held.by == nil {
+		held.by = map[string]*snapshot{}
+	}
+	if old := held.by[path]; old != nil && old.store == s.store && old.rev > s.rev {
+		return
+	}
+	held.by[path] = s
+	for p := range held.by {
+		if len(held.by) <= handlesKept {
+			break
+		}
+		if p != path {
+			delete(held.by, p)
+		}
+	}
+}
+
+// querier is a transaction or anything else that answers queries.
+type querier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// readPath is the store at path as it stands, nil when there is no store.
+func readPath(ctx context.Context, path string) (*snapshot, error) {
+	h, err := acquire(path, false)
+	if err != nil || h == nil {
+		return nil, err
+	}
+	defer h.release()
+	tx, err := h.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, unreadable(err, path)
+	}
+	defer tx.Rollback()
+	return readIn(ctx, tx, path)
+}
+
+// readIn reads the store through q, answering the held snapshot when the
+// revision has not moved, and otherwise decoding only the teams whose rows
+// changed since it: the rest are the held snapshot's, which nobody changes.
+func readIn(ctx context.Context, q querier, path string) (*snapshot, error) {
+	var store string
+	var rev int64
+	if err := q.QueryRowContext(ctx, "SELECT store, rev FROM meta WHERE id = 1").Scan(&store, &rev); err != nil {
+		return nil, unreadable(err, path)
+	}
+	held := heldAt(path)
+	if held != nil && held.store != store {
+		held = nil
+	}
+	if held != nil && held.rev == rev {
+		return held, nil
+	}
+	s := &snapshot{store: store, rev: rev, rows: map[string]*teamRows{}}
+	list, err := q.QueryContext(ctx, "SELECT id, pos, rev FROM teams ORDER BY pos")
+	if err != nil {
+		return nil, unreadable(err, path)
+	}
+	var stale []string
+	for list.Next() {
+		var id string
+		var pos, at int64
+		if err := list.Scan(&id, &pos, &at); err != nil {
+			list.Close()
+			return nil, unreadable(err, path)
+		}
+		r := &teamRows{pos: pos, rev: at, at: len(s.teams)}
+		if old := heldRows(held, id); old != nil && old.rev == at {
+			r.doc, r.members, r.former = old.doc, old.members, old.former
+			s.teams = append(s.teams, held.teams[old.at])
+		} else {
+			stale = append(stale, id)
+			s.teams = append(s.teams, Team{ID: id})
+		}
+		s.rows[id] = r
+	}
+	if err := list.Close(); err != nil {
+		return nil, unreadable(err, path)
+	}
+	storeReads.Add(int64(len(stale)))
+	for len(stale) > 0 {
+		n := min(len(stale), 400)
+		if err := decodeTeams(ctx, q, path, s, stale[:n]); err != nil {
+			return nil, err
+		}
+		stale = stale[n:]
+	}
+	hold(path, s)
+	return s, nil
+}
+
+func heldRows(s *snapshot, id string) *teamRows {
+	if s == nil {
+		return nil
+	}
+	return s.rows[id]
+}
+
+// decodeTeams reads and decodes the rows of the teams ids name into s, whose
+// rows already say where each sits.
+func decodeTeams(ctx context.Context, q querier, path string, s *snapshot, ids []string) error {
+	marks, args := placeholders(ids)
+	list, err := q.QueryContext(ctx, "SELECT id, doc FROM teams WHERE id IN ("+marks+")", args...)
+	if err != nil {
+		return unreadable(err, path)
+	}
+	for list.Next() {
+		var id, doc string
+		if err := list.Scan(&id, &doc); err != nil {
+			list.Close()
+			return unreadable(err, path)
+		}
+		var t Team
+		if err := json.Unmarshal([]byte(doc), &t); err != nil {
+			list.Close()
+			return fmt.Errorf("%w: team %s: %w", ErrUnreadable, id, err)
+		}
+		r := s.rows[id]
+		t.ID, t.Members, t.FormerMembers = id, nil, nil
+		s.teams[r.at], r.doc = t, doc
+	}
+	if err := list.Close(); err != nil {
+		return unreadable(err, path)
+	}
+	return readMembers(ctx, q, path, s, "SELECT team_id, former, key, doc FROM members WHERE team_id IN ("+marks+") ORDER BY team_id, former, pos", args...)
+}
+
+func readMembers(ctx context.Context, q querier, path string, s *snapshot, query string, args ...any) error {
+	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return unreadable(err, path)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var team, key, doc string
+		var former bool
+		if err := rows.Scan(&team, &former, &key, &doc); err != nil {
+			return unreadable(err, path)
+		}
+		r := s.rows[team]
+		if r == nil {
+			continue
+		}
+		i := r.at
+		var m Member
+		if err := json.Unmarshal([]byte(doc), &m); err != nil {
+			return fmt.Errorf("%w: a member of team %s: %w", ErrUnreadable, team, err)
+		}
+		if former {
+			s.teams[i].FormerMembers = append(s.teams[i].FormerMembers, m)
+			r.former = append(r.former, memberRow{key, doc})
+		} else {
+			s.teams[i].Members = append(s.teams[i].Members, m)
+			r.members = append(r.members, memberRow{key, doc})
+		}
+	}
+	return unreadable(rows.Err(), path)
+}
+
+// file is a copy of the snapshot's teams the caller may change.
+func (s *snapshot) file() *File {
+	teams := make([]Team, len(s.teams))
+	for i, t := range s.teams {
+		teams[i] = t.Clone()
+	}
+	return &File{Version: Version, Teams: teams, localIdentities: true}
+}
+
+// ── WRITING ─────────────────────────────────────────────────────────────────
+
+// encodeTeam is the team's own row and its memberships' rows. Briefs are
+// never in them: they are rows of their own ([rowWriter.briefs]).
+func encodeTeam(t Team) (string, []memberRow, []memberRow, error) {
+	bare := t
+	bare.Members, bare.FormerMembers = nil, nil
+	doc, err := json.Marshal(bare)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	members, err := encodeMembers(t.Members)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	former, err := encodeMembers(t.FormerMembers)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return string(doc), members, former, nil
+}
+
+func encodeMembers(list []Member) ([]memberRow, error) {
+	out := make([]memberRow, len(list))
+	for i, m := range list {
+		m.Briefs, m.FactoryBrief = nil, ""
+		raw, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = memberRow{m.Key, string(raw)}
+	}
+	return out, nil
+}
+
+// writeTeams makes the store hold teams, in order, changing only the rows that
+// differ from before (the snapshot the caller read, nil for none). The caller
+// holds the teams lock. It answers the snapshot written.
+func writeTeams(profileDir string, before *snapshot, teams []Team) (*snapshot, error) {
+	path := Path(profileDir)
+	h, err := acquire(path, true)
+	if err != nil {
+		return nil, err
+	}
+	defer h.release()
+	ctx := context.Background()
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	defer tx.Rollback()
+	// The rows are compared with what the store holds now. Under the lock that
+	// is what the caller read; a writer that could not take the lock may have
+	// moved it, and its rows are then read again inside this transaction.
+	var store string
+	var rev int64
+	if err := tx.QueryRowContext(ctx, "SELECT store, rev FROM meta WHERE id = 1").Scan(&store, &rev); err != nil {
+		return nil, unreadable(err, path)
+	}
+	if before == nil || before.store != store || before.rev != rev {
+		if before, err = readIn(ctx, tx, path); err != nil {
+			return nil, err
+		}
+	}
+	next := &snapshot{store: store, rev: rev, rows: make(map[string]*teamRows, len(teams))}
+	changed := false
+	w := rowWriter{ctx: ctx, tx: tx}
+	keep := make(map[string]bool, len(teams))
+	for _, t := range teams {
+		keep[t.ID] = true
+	}
+	for id := range before.rows {
+		if keep[id] {
+			continue
+		}
+		w.exec("DELETE FROM teams WHERE id = ?", id)
+		w.exec("DELETE FROM members WHERE team_id = ?", id)
+		changed = true
+	}
+	// A member who leaves one team and joins another in the same write takes
+	// its briefs along (a move); one who only leaves takes them nowhere.
+	joined := map[string]string{}
+	left := map[string][]string{}
+	last := int64(-1)
+	for _, t := range teams {
+		doc, members, former, err := encodeTeam(t)
+		if err != nil {
+			return nil, err
+		}
+		old := before.rows[t.ID]
+		pos := last + 1
+		if old != nil && old.pos > last {
+			pos = old.pos
+		}
+		last = pos
+		r := &teamRows{pos: pos, at: len(next.teams), doc: doc, members: members, former: former}
+		next.rows[t.ID] = r
+		next.teams = append(next.teams, t)
+		var oldMembers, oldFormer []memberRow
+		if old != nil {
+			oldMembers, oldFormer, r.rev = old.members, old.former, old.rev
+		}
+		// A membership written moves the team's own revision too, so a reader
+		// decodes this team again and no other.
+		moved := w.members(t.ID, false, oldMembers, members)
+		moved = w.members(t.ID, true, oldFormer, former) || moved
+		if old == nil || old.doc != doc || old.pos != pos {
+			closed, root, factory := t.Closed(), t.Root, t.FactoryManaged
+			w.exec(`INSERT INTO teams (id, pos, rev, parent, made_ns, closed, root, factory, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET pos = excluded.pos, rev = excluded.rev, parent = excluded.parent, made_ns = excluded.made_ns,
+ closed = excluded.closed, root = excluded.root, factory = excluded.factory, doc = excluded.doc`,
+				t.ID, pos, rev+1, t.Parent, madeNanos(t.Made), closed, root, factory, doc)
+			r.rev, changed = rev+1, true
+		} else if moved {
+			w.exec("UPDATE teams SET rev = ? WHERE id = ?", rev+1, t.ID)
+			r.rev = rev + 1
+		}
+		changed = changed || moved
+		was := keysOf(oldMembers)
+		now := keysOf(members)
+		for k := range was {
+			if !now[k] {
+				left[k] = append(left[k], t.ID)
+			}
+		}
+		for k := range now {
+			if !was[k] {
+				if _, ok := joined[k]; !ok {
+					joined[k] = t.ID
+				}
+			}
+		}
+		if w.briefs(t) {
+			changed = true
+		}
+	}
+	for id := range before.rows {
+		if !keep[id] {
+			for _, m := range before.rows[id].members {
+				left[m.key] = append(left[m.key], id)
+			}
+		}
+	}
+	for key, teams := range left {
+		sort.Strings(teams)
+		for _, from := range teams {
+			if to, ok := joined[key]; ok && keep[to] && to != from {
+				w.exec("UPDATE OR IGNORE briefs SET team_id = ? WHERE team_id = ? AND key = ?", to, from, key)
+				delete(joined, key)
+			}
+			w.exec("DELETE FROM briefs WHERE team_id = ? AND key = ?", from, key)
+			changed = true
+		}
+	}
+	for id := range before.rows {
+		if !keep[id] {
+			w.exec("DELETE FROM briefs WHERE team_id = ?", id)
+		}
+	}
+	if w.err != nil {
+		return nil, storeError(w.err)
+	}
+	next.teams = stripped(next.teams)
+	if !changed {
+		hold(path, next)
+		return next, nil
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE meta SET rev = rev + 1 WHERE id = 1"); err != nil {
+		return nil, storeError(err)
+	}
+	before0 := modTime(path)
+	if err := tx.Commit(); err != nil {
+		return nil, storeError(err)
+	}
+	next.rev = rev + 1
+	hold(path, next)
+	// A watcher that stats the database, or waits on its directory, sees the
+	// write: the commit landed in the WAL, so the file's own time is moved.
+	touch(path, before0)
+	return next, nil
+}
+
+// stripped is a copy of teams with no briefs, as a load answers them.
+func stripped(teams []Team) []Team {
+	out := make([]Team, len(teams))
+	for i, t := range teams {
+		t = t.Clone()
+		for j := range t.Members {
+			t.Members[j].Briefs, t.Members[j].FactoryBrief = nil, ""
+		}
+		for j := range t.FormerMembers {
+			t.FormerMembers[j].Briefs, t.FormerMembers[j].FactoryBrief = nil, ""
+		}
+		out[i] = t
+	}
+	return out
+}
+
+func keysOf(rows []memberRow) map[string]bool {
+	out := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		if r.key != "" {
+			out[r.key] = true
+		}
+	}
+	return out
+}
+
+func madeNanos(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()
+}
+
+// touch moves path's modification time past before.
+func touch(path string, before time.Time) {
+	now := time.Now()
+	if !now.After(before) {
+		now = before.Add(time.Microsecond)
+	}
+	_ = os.Chtimes(path, now, now)
+}
+
+// rowWriter runs statements until the first error, which it keeps.
+type rowWriter struct {
+	ctx context.Context
+	tx  *sql.Tx
+	err error
+}
+
+func (w *rowWriter) exec(query string, args ...any) {
+	if w.err != nil {
+		return
+	}
+	_, w.err = w.tx.ExecContext(w.ctx, query, args...)
+}
+
+// members makes one team's member (or former member) rows say rows, given
+// they said old, and reports whether it wrote. An unchanged list writes
+// nothing, a changed row is rewritten alone, an appended member is one insert,
+// and anything else (a removal, a reorder) rewrites this one list.
+func (w *rowWriter) members(team string, former bool, old, rows []memberRow) bool {
+	same := min(len(old), len(rows))
+	prefix := 0
+	for prefix < same && old[prefix] == rows[prefix] {
+		prefix++
+	}
+	switch {
+	case len(old) == len(rows) && prefix == len(rows):
+		return false
+	case len(old) == len(rows):
+		for i := prefix; i < len(rows); i++ {
+			if old[i] != rows[i] {
+				w.exec("UPDATE members SET key = ?, doc = ? WHERE team_id = ? AND former = ? AND pos = ?", rows[i].key, rows[i].doc, team, former, i)
+			}
+		}
+	case len(rows) > len(old) && prefix == len(old):
+		for i := prefix; i < len(rows); i++ {
+			w.exec("INSERT INTO members (team_id, former, pos, key, doc) VALUES (?, ?, ?, ?, ?)", team, former, i, rows[i].key, rows[i].doc)
+		}
+	default:
+		w.exec("DELETE FROM members WHERE team_id = ? AND former = ? AND pos >= ?", team, former, prefix)
+		for i := prefix; i < len(rows); i++ {
+			w.exec("INSERT INTO members (team_id, former, pos, key, doc) VALUES (?, ?, ?, ?, ?)", team, former, i, rows[i].key, rows[i].doc)
+		}
+	}
+	return true
+}
+
+// briefs writes the briefs a member of t carries. A load never fills them, so
+// one that is there was given by the write: a factory brief replaces the
+// stored one, and revisions replace the stored revisions. A member that
+// carries none leaves its stored briefs as they are.
+func (w *rowWriter) briefs(t Team) bool {
+	wrote := false
+	for _, m := range t.Members {
+		if m.Key == "" {
+			continue
+		}
+		if m.FactoryBrief != "" {
+			w.exec(`INSERT INTO briefs (team_id, key, seq, doc) VALUES (?, ?, 0, ?)
+ON CONFLICT (team_id, key, seq) DO UPDATE SET doc = excluded.doc WHERE doc <> excluded.doc`, t.ID, m.Key, m.FactoryBrief)
+			wrote = true
+		}
+		if len(m.Briefs) == 0 {
+			continue
+		}
+		w.exec("DELETE FROM briefs WHERE team_id = ? AND key = ? AND seq > 0", t.ID, m.Key)
+		for i, rev := range m.Briefs {
+			raw, err := json.Marshal(rev)
+			if err != nil {
+				w.err = err
+				return wrote
+			}
+			w.exec("INSERT INTO briefs (team_id, key, seq, doc) VALUES (?, ?, ?, ?)", t.ID, m.Key, i+1, string(raw))
+		}
+		wrote = true
+	}
+	return wrote
+}
+
+// ── BRIEFS, READ WHEN SHOWN ─────────────────────────────────────────────────
+
+// WithBriefs is m, a member of team teamID as a load answered it, with its
+// briefs read from the store: the factory's opening brief and the brief's
+// revisions. A load leaves both out, because they are most of what the store
+// holds and almost nothing that reads a team shows them. A brief m already
+// carries is kept when the store has none.
+func WithBriefs(profileDir, teamID string, m Member) (Member, error) {
+	if m.Key == "" {
+		return m, nil
+	}
+	path := Path(profileDir)
+	h, err := acquire(path, false)
+	if err != nil || h == nil {
+		return m, err
+	}
+	defer h.release()
+	ctx := context.Background()
+	rows, err := h.db.QueryContext(ctx, "SELECT seq, doc FROM briefs WHERE team_id = ? AND key = ? ORDER BY seq", teamID, m.Key)
+	if err != nil {
+		return m, unreadable(err, path)
+	}
+	defer rows.Close()
+	var revisions []BriefRevision
+	for rows.Next() {
+		var seq int
+		var doc string
+		if err := rows.Scan(&seq, &doc); err != nil {
+			return m, unreadable(err, path)
+		}
+		if seq == 0 {
+			m.FactoryBrief = doc
+			continue
+		}
+		var rev BriefRevision
+		if err := json.Unmarshal([]byte(doc), &rev); err != nil {
+			return m, fmt.Errorf("%w: a brief of team %s: %w", ErrUnreadable, teamID, err)
+		}
+		revisions = append(revisions, rev)
+	}
+	if err := rows.Err(); err != nil {
+		return m, unreadable(err, path)
+	}
+	if len(revisions) > 0 {
+		m.Briefs = revisions
+	}
+	return m, nil
+}

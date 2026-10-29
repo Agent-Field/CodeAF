@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 func TestTeamMembershipManagerToolsAddAnExistingConversationAndRemoveOnlyItsMembership(t *testing.T) {
@@ -180,13 +181,7 @@ func TestUnreadableMembershipFileRefusesPostsWithoutWritingTraffic(t *testing.T)
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
-	original, err := os.ReadFile(teams.Path(f.profile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(teams.Path(f.profile), []byte("unreadable"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore := teamstest.Break(t, f.profile, []byte("unreadable"))
 	_, failed, err := member.teamPostTool(context.Background(), json.RawMessage(`{"to":"room","text":"unsafe post"}`))
 	if !failed && err == nil {
 		t.Fatal("unreadable membership authorized post")
@@ -195,9 +190,7 @@ func TestUnreadableMembershipFileRefusesPostsWithoutWritingTraffic(t *testing.T)
 	if string(before) != string(after) {
 		t.Fatal("refused post changed traffic")
 	}
-	if err = os.WriteFile(teams.Path(f.profile), original, 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	if _, failed, err := member.teamPostTool(context.Background(), json.RawMessage(`{"to":"room","text":"safe post"}`)); failed || err != nil {
 		t.Fatalf("repaired post: %v %v", failed, err)
 	}

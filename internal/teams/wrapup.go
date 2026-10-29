@@ -65,7 +65,7 @@ func AcceptClosing(profileDir string, p Packet) (bool, error) {
 	}
 	closed := false
 	err := withLock(profileDir, lockWait, func() error {
-		f, _, _, err := read(profileDir)
+		f, err := read(profileDir)
 		if err != nil {
 			return err
 		}

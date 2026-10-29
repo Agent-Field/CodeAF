@@ -7,10 +7,10 @@ import (
 )
 
 // CREWS.OVERVIEW: one page of the teams under one parent, or of one team's
-// direct members, read from the teams file alone. It is the All teams
+// direct members, read from the teams store alone. It is the All teams
 // surface's source for "what teams are there and who is in them", and it is
-// BOUNDED: one file read of at most [OverviewMaxBytes], one level of the tree
-// per call, at most [OverviewLimitMax] rows, and a deadline of
+// BOUNDED: one page cut by the store's index, one level of the tree per
+// call, at most [OverviewLimitMax] rows, and a deadline of
 // [OverviewTimeout]. It starts no conversation, watcher or session, repairs
 // nothing and writes nothing. Spend, activity and latest updates are not in it:
 // a fact the file does not hold is absent from the answer, never zero.
@@ -25,7 +25,6 @@ const (
 	OverviewMembers      = "members"
 	OverviewLimitMax     = 100
 	OverviewLimitDefault = 25
-	OverviewMaxBytes     = 2 << 20
 	OverviewTimeout      = 2 * time.Second
 	// OverviewCursorMax and OverviewParentMax bound what a request may carry.
 	OverviewCursorMax = 512

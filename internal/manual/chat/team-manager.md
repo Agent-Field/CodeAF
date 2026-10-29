@@ -548,7 +548,7 @@ The ten wakes count ten replies when each member turn replies and then finishes.
 
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams
-under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
+under it: its entry in the profile's teams store, `teams.db`, carries `"wake": false` (or `true`). With it
 off, every message waits for each conversation's next turn, and a member the manager starts
 with `team_start` is opened and handed its brief on that next turn, with no turn started for
 it. The traffic says so.

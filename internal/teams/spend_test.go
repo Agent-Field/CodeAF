@@ -1,7 +1,6 @@
 package teams
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,15 +54,6 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 	must(t, err)
 	if new.USD != 0 {
 		t.Fatal("membership snapshot crossed profile boundary")
-	}
-	// A legacy file arriving after a missing-profile reading must still migrate.
-	legacy, err := json.Marshal(map[string]any{"spaces": []Team{{ID: "bbbbbbbbbbbb", Members: []Member{{Key: key}}}}})
-	must(t, err)
-	must(t, os.WriteFile(legacyPath(other), legacy, 0o600))
-	new, err = TeamSpendIn(other, ledger, "bbbbbbbbbbbb", "2026-09-24")
-	must(t, err)
-	if new.USD != 3 {
-		t.Fatal("cached absence hid the legacy membership file", new.USD)
 	}
 }
 

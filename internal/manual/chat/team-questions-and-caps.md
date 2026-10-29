@@ -135,7 +135,7 @@ the countdown in memory and on disk, once.
 
 ## What happens to a wrap-up when codeaf restarts, does a wrap-up keep going if I quit codeaf
 
-The countdown is kept with the team, in `teams.json`: the moment the wrap-up began, and the
+The countdown is kept with the team, in `teams.db`: the moment the wrap-up began, and the
 15 minutes it was given. Quitting codeaf, or the engine restarting, does not drop it and
 does not hand out another 15 minutes. The next time the manager's conversation is open, the
 countdown continues with the time that is left. If that time already ran out while codeaf

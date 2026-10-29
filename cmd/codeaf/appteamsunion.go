@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,10 +73,8 @@ func (b *appBackend) teamsUnion(ctx context.Context) (*appTeamsUnion, error) {
 
 // teamsSnapshot is one read-only, ctx-aware read of the stored teams.
 func (b *appBackend) teamsSnapshot(ctx context.Context) (*teamstore.File, error) {
-	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile(), teamstore.SnapshotMaxBytes)
+	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile())
 	switch {
-	case errors.Is(err, teamstore.ErrSnapshotTooLarge):
-		return nil, appwire.Errorf(appwire.CodeTooLarge, "the teams file is too large to read as one union")
 	case ctx.Err() != nil:
 		return nil, appTeamsBusy()
 	case err != nil:

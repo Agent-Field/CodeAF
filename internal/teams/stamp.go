@@ -8,35 +8,55 @@ import (
 	"time"
 )
 
-// ── STAMPS: WHETHER A FILE MOVED, ANSWERED BY A STAT ────────────────────────
+// ── STAMPS: WHETHER THE TEAMS OR A LOG MOVED, ANSWERED CHEAPLY ──────────────
 //
-// A reader that asks every second whether the teams file or a Traffic log has
-// changed must not read either file to find out. A stamp is what one stat says
-// about a file, its size and its modification time, written as a short string
-// so that it can cross a wire and be handed back unchanged. Two equal stamps
-// are a file nobody wrote in between.
+// A reader that asks every second whether the teams or a Traffic log has
+// changed must not read them to find out. A stamp is a short string that can
+// cross a wire and be handed back unchanged; two equal stamps are nothing
+// written in between.
 //
-// EVERY WRITE HERE MOVES THE TIME FORWARD, so the stamp is a real answer and not
-// a likely one. A filesystem keeps modification times at some granularity, and
-// two writes inside one tick with the same size would read as one; [write] and
-// [AppendTraffic] therefore set the new file's time to one microsecond past the
-// old one's whenever the clock has not moved past it. Every write of the teams
-// file happens under its lock, so the times it leaves only ever increase.
+// THE TEAMS' STAMP IS THE STORE'S OWN COUNT OF ITS WRITES: the store's random
+// id and its revision (db.go), one indexed row. Every write that changed a row
+// moves it, in the same transaction as the rows, so it is a real answer on any
+// filesystem. A store that cannot be read is stamped by what one stat says
+// about its file, so replacing it still moves the stamp.
 //
-// A stamp is never "": [MissingStamp] is the answer for a file that is not
-// there, and "" is kept for a reader that has not looked yet, so a reader
-// passing "" to [ChangeIf] or to a caller that compares is always told the file
-// moved.
+// A LOG'S STAMP is what one stat says about it, its size and its modification
+// time. A filesystem keeps modification times at some granularity, and two
+// writes inside one tick with the same size would read as one; [AppendTraffic]
+// therefore sets the new file's time to one microsecond past the old one's
+// whenever the clock has not moved past it.
+//
+// A stamp is never "": [MissingStamp] is the answer for a store or log that is
+// not there, and "" is kept for a reader that has not looked yet, so a reader
+// passing "" to [ChangeIf] or to a caller that compares is always told the
+// teams moved.
 
-// MissingStamp is the stamp of a file that does not exist.
+// MissingStamp is the stamp of a store or log that does not exist.
 const MissingStamp = "-"
 
-// ErrStale is [ChangeIf] finding the file changed since the stamp it was given.
-// Nothing was written; the caller reads again and makes its change again.
-var ErrStale = errors.New("teams: the file changed since it was read")
+// ErrStale is [ChangeIf] finding the store changed since the stamp it was
+// given. Nothing was written; the caller reads again and makes its change again.
+var ErrStale = errors.New("teams: the store changed since it was read")
 
-// Stamp is the teams file's stamp in profileDir.
-func Stamp(profileDir string) string { return stampOf(Path(profileDir)) }
+// Stamp is the teams store's stamp in profileDir.
+func Stamp(profileDir string) string {
+	path := Path(profileDir)
+	h, err := acquire(path, false)
+	if h == nil {
+		if err != nil {
+			return "!" + stampOf(path)
+		}
+		return MissingStamp
+	}
+	defer h.release()
+	var store string
+	var rev int64
+	if err := h.db.QueryRow("SELECT store, rev FROM meta WHERE id = 1").Scan(&store, &rev); err != nil {
+		return "!" + stampOf(path)
+	}
+	return store + "." + strconv.FormatInt(rev, 10)
+}
 
 // TrafficStamp is the stamp of team teamID's current Traffic log. A rotation
 // starts a new current file, so it moves this stamp as an append does.
@@ -76,17 +96,17 @@ func modTime(path string) time.Time {
 	return info.ModTime()
 }
 
-// Change is [Update] that answers what it wrote and the file's stamp after the
-// write, both taken under the lock, so the caller can hold the list and know
-// which version of the file it is.
+// Change is [Update] that answers what it wrote and the store's stamp after
+// the write, both taken under the lock, so the caller can hold the list and
+// know which version of the store it is.
 func Change(profileDir string, fn func(*File) error) (*File, string, error) {
 	return change(profileDir, nil, fn)
 }
 
-// ChangeIf is [Change] only while the file is still at stamp base: the
+// ChangeIf is [Change] only while the store is still at stamp base: the
 // compare-and-swap a writer on the far side of a wire needs, because it read
-// the file in one call and writes it in another and the lock cannot be held
-// across the two. A file that moved in between is [ErrStale], nothing is
+// the store in one call and writes it in another and the lock cannot be held
+// across the two. A store that moved in between is [ErrStale], nothing is
 // written, and fn is not called.
 func ChangeIf(profileDir, base string, fn func(*File) error) (*File, string, error) {
 	return change(profileDir, &base, fn)

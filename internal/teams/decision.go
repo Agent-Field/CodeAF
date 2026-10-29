@@ -637,7 +637,7 @@ func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Pack
 	if err := safeTeamID(teamID); err != nil {
 		return err
 	}
-	if f, _, _, err := read(profileDir); err != nil {
+	if f, err := read(profileDir); err != nil {
 		return err
 	} else if f != nil {
 		if t, ok := f.Team(teamID); !ok || t.Closed() {

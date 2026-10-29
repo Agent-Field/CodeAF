@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 func TestARecordedRoomIsMadeOnAMachineThatNeverSawIt(t *testing.T) {
@@ -50,7 +51,7 @@ func TestARecordedRoomIsMadeOnAMachineThatNeverSawIt(t *testing.T) {
 	if !ok || !parent.FactoryManaged || len(f.Teams) != 2 {
 		t.Fatal("missing dedicated factory parent")
 	}
-	if !room.Members[0].FactoryStage || room.Members[0].FactoryBrief != "Actual opening instructions." {
+	if m, err := teams.WithBriefs(profile, room.ID, room.Members[0]); err != nil || !m.FactoryStage || m.FactoryBrief != "Actual opening instructions." {
 		t.Fatal("stage brief not recorded")
 	}
 	kept, err := st.Get(it.ID)
@@ -92,10 +93,7 @@ func TestARecordedRoomNeverAdoptsACollidingLocalCrew(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			before, err := os.ReadFile(teams.Path(profile))
-			if err != nil {
-				t.Fatal(err)
-			}
+			before := teamstest.JSON(t, profile)
 			it, err := st.Create(factory.Item{Repo: "work", Title: "collision", Stream: &factory.Stream{Room: id}})
 			if err != nil {
 				t.Fatal(err)
@@ -114,10 +112,7 @@ func TestARecordedRoomNeverAdoptsACollidingLocalCrew(t *testing.T) {
 			if !called {
 				t.Fatal("collision blocked approved work")
 			}
-			after, err := os.ReadFile(teams.Path(profile))
-			if err != nil {
-				t.Fatal(err)
-			}
+			after := teamstest.JSON(t, profile)
 			if !bytes.Equal(before, after) {
 				t.Fatal("colliding local crew changed")
 			}

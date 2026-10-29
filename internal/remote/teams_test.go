@@ -103,11 +103,11 @@ func TestATeamsWriteAtAnOldBaseIsStale(t *testing.T) {
 	}
 }
 
-// AN UNREADABLE TEAMS FILE IS MOVED ASIDE BY THE ENGINE'S READ, AS THE MANUAL
+// AN UNREADABLE TEAMS STORE IS MOVED ASIDE BY THE ENGINE'S READ, AS THE MANUAL
 // SAYS (conversations-and-teams.md, "Where teams are kept"). Every ordinary
 // launch reads teams through these doors, so a window never reaches the local
-// seam that sets a bad file aside; without this the person could make no team
-// at all, every edit refused with "teams.json is unreadable". The bad bytes
+// seam that sets a bad store aside; without this the person could make no team
+// at all, every edit refused with "the store is unreadable". The bad bytes
 // survive beside it for a person to recover, and a write after the read lands.
 func TestAnUnreadableTeamsFileIsSetAsideByTheEnginesRead(t *testing.T) {
 	loop, dir := teamsLoop(t)
@@ -165,12 +165,11 @@ func TestHostedMembershipUpdatesRequireCapabilityAndKeepEngineJoinBoundaries(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, _ := os.ReadFile(teamstore.Path(dir))
+	before := teamstore.Stamp(dir)
 	if _, err = loop.Client.call(nil, MethodTeamsUpdate, TeamsUpdateArgs{Base: first.Stamp, Teams: []teamstore.Team{}}); err == nil {
 		t.Fatal("legacy writer accepted")
 	}
-	after, _ := os.ReadFile(teamstore.Path(dir))
-	if string(before) != string(after) {
+	if after := teamstore.Stamp(dir); before != after {
 		t.Fatal("legacy writer changed memberships")
 	}
 	first.Teams[0].Members[0].JoinedAt = time.Time{}

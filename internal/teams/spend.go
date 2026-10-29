@@ -164,12 +164,7 @@ func spendTeamsFile(profileDir string) (*File, error) {
 }
 
 func spendMembershipStamp(profileDir string) string {
-	stamp := Stamp(profileDir)
-	if stamp == MissingStamp {
-		// An older installation can acquire its legacy file before migration.
-		return stamp + "|" + stampOf(legacyPath(profileDir))
-	}
-	return stamp
+	return Stamp(profileDir)
 }
 
 // SpendStamp is one stamp over what a team's spend is read from: the teams

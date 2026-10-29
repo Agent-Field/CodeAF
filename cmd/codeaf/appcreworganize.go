@@ -20,9 +20,9 @@ func (b *appBackend) CrewsOrganize(ctx context.Context, ask appwire.OrganizeAsk)
 	if err := appwire.CheckOrganizeAsk(ask); err != nil {
 		return nil, err
 	}
-	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile(), appwire.OverviewMaxBytes)
+	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile())
 	if err != nil {
-		return nil, appEngineError(overviewReadError(err))
+		return nil, appEngineError(overviewReadError(err, ""))
 	}
 	agents, err := b.ListAgents("")
 	if err != nil {

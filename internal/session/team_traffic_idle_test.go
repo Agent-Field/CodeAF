@@ -1,7 +1,6 @@
 package session
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // C1: idle chats share the timer's lifetime rather than each keeping a goroutine.
@@ -46,19 +46,11 @@ func TestTeamTrafficNoTeamChatsShareOneWatch(t *testing.T) {
 func TestTeamTrafficMembershipAddedWhileOpenStillWakes(t *testing.T) {
 	fastTeamWake(t)
 	fixture := newWakingTeamFixture(t)
-	raw, err := os.ReadFile(teams.Path(fixture.profile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(teams.Path(fixture.profile)); err != nil {
-		t.Fatal(err)
-	}
+	restore := teamstest.Hide(t, fixture.profile)
 	completer := oneAnswer(1)
 	teamAgent(t, fixture, fixture.web, completer, nil)
 	quietFor()
-	if err := os.WriteFile(teams.Path(fixture.profile), raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Check the header."})
 	waitRequests(t, completer, 1)
 }
