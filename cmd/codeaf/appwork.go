@@ -151,6 +151,21 @@ func (b *appBackend) heldLive(agent string) (*appAgent, *appLive, error) {
 	return b.heldLiveLocked(a)
 }
 
+// keptLive is heldLive for work carried on without the person asking: an agent
+// they closed or archived since is left closed ([appBackend.keepOpen]).
+func (b *appBackend) keptLive(agent string) (*appAgent, *appLive, error) {
+	a, err := b.find(agent)
+	if err != nil {
+		return nil, nil, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if b.tidied(agent) {
+		return nil, nil, errAppKeptClosed
+	}
+	return b.heldLiveLocked(a)
+}
+
 // heldLiveLocked opens the conversation while its admission and release gate
 // remains held by the caller, including through a work-producing action.
 func (b *appBackend) heldLiveLocked(a *appAgent) (*appAgent, *appLive, error) {
