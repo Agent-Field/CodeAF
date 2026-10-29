@@ -1602,7 +1602,15 @@ func appSendUnsure(err error) bool {
 }
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
-func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
+func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) { return b.openAgent(id, false) }
+
+// WarmAgent is OpenAgent for a window's guess at a view (a hover's prefetch):
+// an agent in Closed or the archive is refused, never taken out again
+// ([appwire.WarmOpener]). The check holds the agent's gate, as a close's mark
+// does, so a warm open asked before a close and run after it is refused too.
+func (b *appBackend) WarmAgent(id string) (appwire.Agent, error) { return b.openAgent(id, true) }
+
+func (b *appBackend) openAgent(id string, warm bool) (appwire.Agent, error) {
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.Agent{}, err
@@ -1623,6 +1631,9 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	}
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	if warm && b.tidied(id) {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeConflict, "%s is closed; only opening it yourself or Reopen takes it out", id)
+	}
 	b.locked(func() { a.viewOpen = true })
 	view, opened, err := b.ensureLocked(a)
 	if err != nil {
@@ -3103,6 +3114,11 @@ func (b *appBackend) CloseAgent(id string) error {
 func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	return b.closeAgentLocked(a)
+}
+
+// closeAgentLocked is [appBackend.closeAgent] for a caller holding a.gate.
+func (b *appBackend) closeAgentLocked(a *appAgent) (view appwire.Agent) {
 	b.release(a)
 	b.locked(func() {
 		a.view.State = appwire.StateClosed

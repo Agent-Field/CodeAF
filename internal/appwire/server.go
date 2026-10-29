@@ -546,12 +546,24 @@ var methods = map[string]method{
 		}
 		return &SpendResult{spend}, nil
 	}),
-	"agents.open": typed(func(e Engine, p IDParams) (*agentResult, error) {
+	"agents.open": typed(func(e Engine, p struct {
+		ID string `json:"id"`
+		// Warm is a window's guess at a view: it never reopens a closed agent ([WarmOpener]).
+		Warm bool `json:"warm,omitempty"`
+	}) (*agentResult, error) {
 		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		agent, err := e.OpenAgent(id)
+		open := e.OpenAgent
+		if p.Warm {
+			w, ok := e.(WarmOpener)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "a warm open requires a newer engine")
+			}
+			open = w.WarmAgent
+		}
+		agent, err := open(id)
 		if err != nil {
 			return nil, err
 		}

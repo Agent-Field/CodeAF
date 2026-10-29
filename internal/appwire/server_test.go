@@ -109,12 +109,20 @@ type wire struct {
 
 func startWire(t *testing.T, engine *fakeEngine) *wire {
 	t.Helper()
+	return startWireOver(t, engine, engine)
+}
+
+// startWireOver serves over, a fake with more doors than fakeEngine, whose
+// own fakeEngine is fake.
+func startWireOver(t *testing.T, over Engine, fake *fakeEngine) *wire {
+	t.Helper()
+	engine := fake
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	served := make(chan error, 1)
 	server := NewServer(outW)
 	go func() {
-		served <- server.Serve(context.Background(), inR, Hello{Version: "test", PID: 42, Home: "/h"}, engine)
+		served <- server.Serve(context.Background(), inR, Hello{Version: "test", PID: 42, Home: "/h"}, over)
 		outW.Close()
 	}()
 	scanner := bufio.NewScanner(outR)

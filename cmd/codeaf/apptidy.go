@@ -120,7 +120,9 @@ func (b *appBackend) MoveToClosed(ids []string) error {
 // Archive: what the agent kept running is fenced and stopped FIRST, and an
 // agent whose process would not stop is left exactly as it was, open and
 // unmarked, with the error saying which. mark runs after the conversation is
-// let go and before the fence is released, so nothing starts in between.
+// let go and before the fence is released, so nothing starts in between, and
+// under the agent's gate, so no open lands between the two: an open waiting
+// on the gate finds the mark (a warm one is then refused, appwire.WarmOpener).
 // Only this agent's own services are touched.
 func (b *appBackend) closeOne(a *appAgent, mark func() error) error {
 	var agentID string
@@ -129,8 +131,21 @@ func (b *appBackend) closeOne(a *appAgent, mark func() error) error {
 	if err := b.stopAgentServices(agentID); err != nil {
 		return err
 	}
-	b.closeAgent(a)
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	b.closeAgentLocked(a)
 	return mark()
+}
+
+// tidied says the app's state marks the agent closed or archived.
+func (b *appBackend) tidied(id string) bool {
+	marked := false
+	_ = b.state.read(func(f *appStateFile) {
+		_, closed := f.Closed[id]
+		_, archived := f.Archived[id]
+		marked = closed || archived
+	})
+	return marked
 }
 
 // Archive closes each agent and puts it away.
@@ -197,13 +212,7 @@ func (b *appBackend) Reopen(id string) (appwire.Agent, error) {
 
 // unmarkTidy forgets that an agent was closed or archived: it is open again.
 func (b *appBackend) unmarkTidy(id string) {
-	known := false
-	_ = b.state.read(func(f *appStateFile) {
-		_, closed := f.Closed[id]
-		_, archived := f.Archived[id]
-		known = closed || archived
-	})
-	if !known {
+	if !b.tidied(id) {
 		return
 	}
 	_ = b.state.write(func(f *appStateFile) error {
