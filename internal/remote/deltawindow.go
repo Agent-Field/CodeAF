@@ -22,8 +22,8 @@ import (
 // cannot fold the desktop's text deltas arriving 25 milliseconds apart.
 const DefaultDeltaWindow = 33 * time.Millisecond
 
-// DeltaBytes bounds a pending run so a fast producer cannot grow a frame for
-// the whole window. It matches the app outbox's 4 KiB text budget.
+// DeltaBytes is the flush threshold for a pending run, not a frame size cap.
+// Folding a chunk can cross it; a chunk already at or above it travels alone.
 const DeltaBytes = 4 << 10
 
 func streamedText(kind session.EventKind) bool {
@@ -75,7 +75,8 @@ func (w *deltaWindow) add(ev session.Event) {
 	if w.pending != nil && !time.Now().Before(w.until) {
 		w.flush()
 	}
-	// A large producer chunk is already a full frame and must travel alone.
+	// A chunk at or above the flush threshold travels alone. Smaller chunks
+	// fold before the threshold is checked, so their frame may exceed it.
 	if len(ev.Text) >= DeltaBytes {
 		w.flush()
 		w.send(ev)

@@ -1,7 +1,9 @@
 package remote
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"reflect"
 	"sort"
 	"strings"
@@ -295,6 +297,13 @@ func TestDeltaWindowByteCapSendsImmediately(t *testing.T) {
 	if ev := deltaEvent(t, l, id, &seq); ev.Text != strings.Repeat("x", DeltaBytes-1)+"y" {
 		t.Fatalf("capped delta = %d bytes", len(ev.Text))
 	}
+	// The threshold is checked after folding, so two smaller chunks can overshoot.
+	chunk := strings.Repeat("o", DeltaBytes-1)
+	stream <- session.Event{Kind: session.EventTextDelta, Text: chunk}
+	stream <- session.Event{Kind: session.EventTextDelta, Text: chunk}
+	if ev := deltaEvent(t, l, id, &seq); ev.Text != chunk+chunk {
+		t.Fatalf("overshoot delta = %d bytes, want %d", len(ev.Text), 2*(DeltaBytes-1))
+	}
 	// A large delta is its own frame, even when a small run is already pending.
 	stream <- session.Event{Kind: session.EventTextDelta, Text: "small"}
 	stream <- session.Event{Kind: session.EventTextDelta, Text: strings.Repeat("z", DeltaBytes+1)}
@@ -373,6 +382,258 @@ func TestDeltaWindowReplayWhileTextIsPending(t *testing.T) {
 	}
 }
 
+func TestDeltaWindowSwapWhileTextIsPending(t *testing.T) {
+	for _, method := range []string{MethodSessionNew, MethodSessionOpen} {
+		t.Run(method, func(t *testing.T) {
+			first, second := &fakeAgent{}, &fakeAgent{title: "the new conversation"}
+			engine := engineOn(first)
+			engine.DeltaWindow = 2 * time.Second
+			const file = "/sessions/next.jsonl"
+			engine.Fresh = func() (WrappedAgent, string, error) { return second, file, nil }
+			engine.Open = func(string) (WrappedAgent, bool, error) { return second, true, nil }
+			sess := NewSession(engine, true)
+			t.Cleanup(func() { _ = sess.Close() })
+			l := dialSession(t, sess)
+			l.hello(Hello{Version: Version})
+			id := decode[StreamRef](t, l.ok(1, MethodSubmit, SubmitArgs{Text: "old"}).Payload).Stream
+			stream := first.stream(0)
+			var seq uint64
+			stream <- session.Event{Kind: session.EventTextDelta, Text: "a"}
+			deltaEvent(t, l, id, &seq)
+			stream <- session.Event{Kind: session.EventTextDelta, Text: "old pending b"}
+			stream <- session.Event{Kind: session.EventTextDelta, Text: "old pending c"}
+			// Taking both chunks means the pump has folded at least the first one.
+			waitForEngine(t, func() bool { return len(stream) == 0 })
+			welcome := decode[Welcome](t, l.ok(2, method, file).Payload)
+			if welcome.SessionFile != file || welcome.Title != second.title || welcome.Resumed != (method == MethodSessionOpen) {
+				t.Fatalf("swap welcome = %+v", welcome)
+			}
+			// Join the retired pump before opening another stream, so its close-time
+			// flush has been attempted and cannot arrive after the assertions below.
+			drained := make(chan struct{})
+			go func() { sess.pumps.Wait(); close(drained) }()
+			select {
+			case <-drained:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the retired pump did not finish")
+			}
+			id = decode[StreamRef](t, l.ok(3, MethodSubmit, SubmitArgs{Text: "new"}).Payload).Stream
+			stream = second.stream(0)
+			stream <- session.Event{Kind: session.EventTextDelta, Text: "new text"}
+			second.finish(stream)
+			seq = 0
+			if ev := deltaEvent(t, l, id, &seq); ev.Kind != session.EventTextDelta || ev.Text != "new text" {
+				t.Fatalf("text after swap = %+v", ev)
+			}
+			deltaClose(t, l, id, seq)
+		})
+	}
+}
+
+// Duplicate numbered frames on the repaired transport so the real client's
+// sequence check must discard replay overlap, including folded text frames.
+type deltaReplayWriter struct {
+	io.Writer
+	duplicated chan struct{}
+}
+
+func (w deltaReplayWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	if err != nil {
+		return n, err
+	}
+	var frame Frame
+	if json.Unmarshal(p, &frame) == nil && frame.Kind == "event" && frame.Seq != 0 {
+		if _, err := w.Writer.Write(p); err != nil {
+			return n, err
+		}
+		select {
+		case w.duplicated <- struct{}{}:
+		default:
+		}
+	}
+	return n, nil
+}
+
+func TestDeltaWindowRealClientReconnectWhileTextIsPending(t *testing.T) {
+	agent := &fakeAgent{}
+	engine := engineOn(agent)
+	engine.DeltaWindow = 5 * time.Second
+	sess := NewSession(engine, true)
+	t.Cleanup(func() { _ = sess.Close() })
+	var first io.ReadWriteCloser
+	dials := 0
+	ready, cancel := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(cancel) })
+	resumed := make(chan Hello, 1)
+	duplicated := make(chan struct{}, 1)
+	dialer := func() (io.ReadWriteCloser, error) {
+		dials++
+		repair := dials > 1
+		if repair {
+			select {
+			case <-ready:
+			case <-cancel:
+				return nil, io.ErrClosedPipe
+			}
+		}
+		surface, engine := Pipe()
+		if !repair {
+			first = surface
+		}
+		go func() {
+			defer engine.Close()
+			var out io.Writer = engine
+			if repair {
+				out = deltaReplayWriter{Writer: engine, duplicated: duplicated}
+			}
+			_ = ServeAttach(engine, out, AttachOptions{Open: func(hello Hello) (*Session, error) {
+				if repair {
+					resumed <- hello
+				}
+				return sess, nil
+			}})
+		}()
+		return surface, nil
+	}
+	client, err := Roam("devbox", Hello{Version: Version}, Roaming{Dial: dialer, Window: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	events, err := client.Agent().Submit(nil, "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := agent.stream(0)
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "a"}
+	leading, ok := nextEvent(t, events)
+	if !ok || leading.Kind != session.EventTextDelta || leading.Text != "a" {
+		t.Fatalf("leading event = %+v, open %v", leading, ok)
+	}
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "b"}
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "c"}
+	waitForEngine(t, func() bool { return len(stream) == 0 })
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Changed metadata flushes "bc" into the ring while disconnected and
+	// leaves the following text pending through the real resume handshake.
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "d", Addressed: true}
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "e", Addressed: true}
+	waitForEngine(t, func() bool { return len(stream) == 0 })
+	close(ready)
+	replayed, ok := nextEvent(t, events)
+	if !ok || replayed.Kind != session.EventTextDelta || replayed.Text != "bc" {
+		t.Fatalf("replayed event = %+v, open %v", replayed, ok)
+	}
+	hello := <-resumed
+	if len(hello.Resume) != 1 || hello.Resume[0].Stream == 0 || hello.Resume[0].Seq != 1 || hello.Session != engine.SessionFile {
+		t.Fatalf("resume hello = %+v", hello)
+	}
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "f", Addressed: true}
+	agent.finish(stream)
+	text := leading.Text + replayed.Text
+	for {
+		ev, ok := nextEvent(t, events)
+		if !ok {
+			break
+		}
+		if ev.Kind != session.EventTextDelta {
+			t.Fatalf("resumed event = %+v", ev)
+		}
+		text += ev.Text
+	}
+	if text != "abcdef" {
+		t.Fatalf("client drew %q, want every character exactly once in order", text)
+	}
+	select {
+	case <-duplicated:
+	default:
+		t.Fatal("the repaired transport supplied no replay overlap")
+	}
+}
+
+func TestDeltaWindowDefaultQuietTail(t *testing.T) {
+	agent, _, l, id, stream := deltaSession(t, DefaultDeltaWindow)
+	var seq uint64
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "a"}
+	if ev := deltaEvent(t, l, id, &seq); ev.Text != "a" {
+		t.Fatalf("leading delta = %+v", ev)
+	}
+	start := time.Now()
+	stream <- session.Event{Kind: session.EventTextDelta, Text: "b"}
+	if ev := deltaEvent(t, l, id, &seq); ev.Kind != session.EventTextDelta || ev.Text != "b" {
+		t.Fatalf("quiet tail = %+v", ev)
+	}
+	elapsed := time.Since(start)
+	t.Logf("default-window quiet tail: %v", elapsed)
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("quiet tail waited %v", elapsed)
+	}
+	agent.finish(stream)
+	deltaClose(t, l, id, seq)
+}
+
+func TestDeltaWindowDefaultSteadyProducer(t *testing.T) {
+	const deltas, interval = 80, 5 * time.Millisecond
+	agent, _, l, id, stream := deltaSession(t, DefaultDeltaWindow)
+	var want strings.Builder
+	for i := range deltas {
+		want.WriteByte(byte('a' + i%26))
+	}
+	text := want.String()
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for _, char := range text {
+			<-ticker.C
+			stream <- session.Event{Kind: session.EventTextDelta, Text: string(char)}
+		}
+		agent.finish(stream)
+	}()
+	var seq uint64
+	var got strings.Builder
+	var last time.Time
+	var maxGap time.Duration
+	for {
+		frame := deltaFrame(l)
+		if frame.Kind == "closed" {
+			if frame.ID != id || frame.Seq != seq {
+				t.Fatalf("close = %+v, last seq %d", frame, seq)
+			}
+			break
+		}
+		now := time.Now()
+		if !last.IsZero() && now.Sub(last) > maxGap {
+			maxGap = now.Sub(last)
+		}
+		last = now
+		seq++
+		if frame.Kind != "event" || frame.ID != id || frame.Seq != seq {
+			t.Fatalf("frame = %+v, want stream %d seq %d", frame, id, seq)
+		}
+		ev := decode[EventWire](t, frame.Payload).Unwire()
+		if ev.Kind != session.EventTextDelta {
+			t.Fatalf("steady event = %+v", ev)
+		}
+		got.WriteString(ev.Text)
+	}
+	t.Logf("default-window steady producer: %d deltas, %d frames, max gap %v", deltas, seq, maxGap)
+	if got.String() != text {
+		t.Fatalf("steady text = %q, want %q", got.String(), text)
+	}
+	if limit := uint64(deltas*interval/DefaultDeltaWindow) + 3; seq > limit {
+		t.Fatalf("steady producer sent %d frames, want at most %d", seq, limit)
+	}
+	if maxGap > 250*time.Millisecond {
+		t.Fatalf("steady producer left a gap of %v", maxGap)
+	}
+}
+
+// The median measures ordinary non-text latency without treating a scheduler
+// pause as timer waiting. TestDeltaWindowNonTextFlushesAndClosesWindow uses a
+// long window to prove that pending text and non-text never wait for the timer.
 func TestDeltaWindowNonTextLatency(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -413,7 +674,7 @@ func TestDeltaWindowNonTextLatency(t *testing.T) {
 			sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
 			median, maximum := samples[len(samples)/2], samples[len(samples)-1]
 			t.Logf("non-text push-to-receipt: median %v, max %v (window %v)", median, maximum, DefaultDeltaWindow)
-			if median >= DefaultDeltaWindow/2 || maximum >= DefaultDeltaWindow {
+			if median >= DefaultDeltaWindow/2 {
 				t.Fatalf("non-text waited: median %v, max %v", median, maximum)
 			}
 			agent.finish(stream)
