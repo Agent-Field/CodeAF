@@ -21,9 +21,11 @@ package main
 // keys.set keeps it in the profile the terminal reads ([config.KeepAppSource]).
 //
 // OPENROUTER'S CHECK PROVES THE KEY BEFORE IT LISTS ANYTHING: the key's own row
-// first (/key), then the models it reaches, with no redirect followed and ten
-// seconds for both, and a rejection is said in the provider's own words with
-// its own status code. Its browser sign-in produces a key the app keeps.
+// first (/key, or the older /auth/key), then the models it reaches, with no
+// redirect followed and ten seconds for every request together. A key the
+// provider rejects is said in its own words with its own status code; a row that
+// is not a key's, or is a management key's, is turned away in codeaf's words.
+// Its browser sign-in produces a key the app keeps.
 //
 // THE CHATGPT SIGN-IN IS THE ONE EXCEPTION, accepted by the owner: its tokens
 // rotate on every refresh, so they stay in the profile exactly as the terminal

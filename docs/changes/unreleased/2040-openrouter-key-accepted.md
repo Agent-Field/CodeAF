@@ -12,7 +12,8 @@ OpenRouter's `/key` answers only for a bearer it resolved to a live key: its
 key is a 401 such as "User not found.". A refusal there is answered with that
 status and the provider's own words before any model is listed. A key row that
 is not a JSON `data` object, or that marks a management key (which OpenRouter
-lets manage keys but never run a model), is refused in codeaf's own words. A
-redirect is never followed with the key on it, on either request. A key whose
+lets manage keys but never run a model), is refused in codeaf's own words. No
+request follows a redirect with the key on it, and all of them share one
+ten-second deadline. A key whose
 credit or spending limit has run out is still accepted here, as before: that is
 the balance's to say. Every other provider's check is unchanged.

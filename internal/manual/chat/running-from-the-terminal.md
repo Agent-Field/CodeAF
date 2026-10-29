@@ -361,8 +361,9 @@ or from the call's clock.
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
 The app hands them to `codeaf app` at every launch and that process holds them in memory
 only: while it runs, a key never reaches the profile's `config.json`, and a provider the
-app disconnected is not quietly reconnected from a key in the profile or the shell. A
-rejected key is reported in the provider's own words and status code. Which providers the
+app disconnected is not quietly reconnected from a key in the profile or the shell. A key
+the provider rejects is reported in the provider's own words and status code; one codeaf
+turns away itself (an OpenRouter management key) says why in codeaf's words. Which providers the
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
@@ -396,7 +397,7 @@ are no models yet instead of offering a default.
 
 OpenRouter's key is checked against OpenRouter's own record of it before its models are
 listed, so a revoked or made-up key, or a management key, is turned away rather than
-reported as working; both requests share ten seconds to answer. Every other
+reported as working; all of its requests share ten seconds to answer. Every other
 provider is checked the way `/connect` checks it: its model list, a one-token call where
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
