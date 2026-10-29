@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -123,4 +125,54 @@ func TestAppSettingsSayTheStandingPosture(t *testing.T) {
 	if settings, _ = h.b.Settings(); settings.ApprovalPosture != session.PostureDeny {
 		t.Fatalf("after Block in Settings, posture = %q", settings.ApprovalPosture)
 	}
+}
+
+// A chat in a repository that sets its own approval mode follows that mode, not
+// Settings: the view says where it really stands and what auto returns it to,
+// so a pick of Settings' word is kept as the chat's own.
+func TestAppApprovalFollowsTheRepositoryRealEngine(t *testing.T) {
+	h := newRealActionHarness(t)
+	ask := "prompt"
+	if _, err := h.b.SetSettings(appwire.SettingsPatch{AsksBefore: &ask}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(h.cwd, ".codeaf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.cwd, ".codeaf", "config.json"), []byte(`{"tools.approvalMode":"allow"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.restart()
+	opened := h.readAgent("agents.open", map[string]string{"id": h.agent})
+	if a := opened.Approval; a == nil || a.Posture != session.PostureAllow || a.Source != appwire.ApprovalFromSettings || a.Follows != session.PostureAllow {
+		t.Fatalf("a chat in an allow repository = %+v", opened.Approval)
+	}
+	got := h.readAgent("agents.set_approval_posture", map[string]string{"id": h.agent, "posture": "ask"})
+	if a := got.Approval; a == nil || a.Posture != session.PostureAsk || a.Source != appwire.ApprovalFromChat || a.Follows != session.PostureAllow {
+		t.Fatalf("ask in an allow repository = %+v", got.Approval)
+	}
+	got = h.readAgent("agents.set_approval_posture", map[string]string{"id": h.agent, "posture": "auto"})
+	if a := got.Approval; a == nil || a.Posture != session.PostureAllow || a.Source != appwire.ApprovalFromSettings {
+		t.Fatalf("auto in an allow repository = %+v", got.Approval)
+	}
+}
+
+// A held chat that follows Settings is said again when Settings' approval mode
+// moves, so a window never shows the mode it stood at before.
+func TestAppSettingsMoveSaysTheHeldChatsApprovalRealEngine(t *testing.T) {
+	h := newRealActionHarness(t)
+	ask := "prompt"
+	if _, err := h.b.SetSettings(appwire.SettingsPatch{AsksBefore: &ask}); err != nil {
+		t.Fatal(err)
+	}
+	h.readAgent("agents.open", map[string]string{"id": h.agent})
+	allow := "allow"
+	if _, err := h.b.SetSettings(appwire.SettingsPatch{AsksBefore: &allow}); err != nil {
+		t.Fatal(err)
+	}
+	h.rec.waitFor(t, 10*time.Second, func(event string, data any) bool {
+		changed, ok := data.(appwire.AgentChanged)
+		return ok && changed.Agent.ID == h.agent && changed.Agent.Approval != nil &&
+			changed.Agent.Approval.Posture == session.PostureAllow && changed.Agent.Approval.Follows == session.PostureAllow
+	})
 }

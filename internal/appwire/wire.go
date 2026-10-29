@@ -210,6 +210,10 @@ type Agent struct {
 type AgentApproval struct {
 	Posture string `json:"posture" enum:"ask,guardian,allow,deny"`
 	Source  string `json:"source" enum:"settings,chat"`
+	// Follows is what this chat stands at when it follows (auto): its
+	// repository's approval mode where one is set, else Settings. A pick equal
+	// to it is auto; any other is the chat's own.
+	Follows string `json:"follows,omitempty" enum:"ask,guardian,allow,deny"`
 }
 
 // AppApprovalPosture is a posture the app may set on a conversation, spelled

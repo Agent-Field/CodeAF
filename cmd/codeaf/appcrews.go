@@ -802,12 +802,17 @@ func (b *appBackend) crewMemberOpen(manager teamstore.Member, handle, agent, pos
 		}
 		return
 	}
-	// A manager the person closed since is not opened to read its posture.
+	// A manager the person closed since is not opened to read its posture:
+	// its saved word is read instead.
 	if posture == "" {
-		if _, mlive, err := b.keptLive(appMemberAgent(manager)); err == nil {
+		_, mlive, err := b.keptLive(appMemberAgent(manager))
+		switch {
+		case err == nil:
 			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
 				posture = door.ResolvedApprovalPosture()
 			}
+		case errors.Is(err, errAppKeptClosed):
+			posture = b.savedPosture(manager)
 		}
 	}
 	if posture != "" {
@@ -827,6 +832,28 @@ func (b *appBackend) crewMemberOpen(manager teamstore.Member, handle, agent, pos
 			}
 		}
 	}
+}
+
+// savedPosture is the posture a crew member that is not held stands at, read
+// without opening it: its own stored word, else the one its view last said.
+func (b *appBackend) savedPosture(member teamstore.Member) string {
+	transcript := member.File
+	if strings.TrimSpace(transcript) == "" {
+		transcript = member.Key
+	}
+	if stored := appStoredApproval(transcript); stored != "" && stored != session.PostureAuto {
+		return stored
+	}
+	var last *appwire.AgentApproval
+	b.locked(func() {
+		if a := b.agents[appMemberAgent(member)]; a != nil {
+			last = a.view.Approval
+		}
+	})
+	if last != nil {
+		return last.Posture
+	}
+	return ""
 }
 
 // appPostureDoor is a conversation whose approval posture can be read or set.

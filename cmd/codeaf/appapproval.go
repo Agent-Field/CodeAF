@@ -24,8 +24,9 @@ type appApprovalDial interface {
 }
 
 // appApprovalOf is what the Agent view says about a held conversation's gate:
-// the resolved posture, and "chat" when this conversation's own meta.json
-// keeps a word other than auto. Nil when the conversation has no gate.
+// the resolved posture, "chat" when this conversation's own meta.json keeps a
+// word other than auto, and what it would follow without one. Nil when the
+// conversation has no gate.
 func appApprovalOf(conv any, transcript string) *appwire.AgentApproval {
 	dial, ok := conv.(appApprovalDial)
 	if !ok || !dial.ApprovalDial() {
@@ -39,7 +40,50 @@ func appApprovalOf(conv any, transcript string) *appwire.AgentApproval {
 	if stored := appStoredApproval(transcript); stored != "" && stored != session.PostureAuto {
 		source = appwire.ApprovalFromChat
 	}
-	return &appwire.AgentApproval{Posture: posture, Source: source}
+	// WHAT IT FOLLOWS IS THE GATE'S OWN STANDING, which reads the repository's
+	// approval mode before Settings: settings.approval_posture is the profile's
+	// answer only, and a chat in a repository that sets its own follows that.
+	follows := ""
+	if standing, ok := conv.(interface{ StandingApprovalPosture() string }); ok {
+		follows = standing.StandingApprovalPosture()
+	}
+	if follows == "" && source == appwire.ApprovalFromSettings {
+		follows = posture
+	}
+	return &appwire.AgentApproval{Posture: posture, Source: source, Follows: follows}
+}
+
+// reapproveHeld says again where each held chat's gate stands once the
+// approval mode it may follow moved: the view it was held with says the old one.
+func (b *appBackend) reapproveHeld() {
+	type held struct {
+		a          *appAgent
+		conv       appConversation
+		transcript string
+	}
+	var all []held
+	b.locked(func() {
+		for _, a := range b.agents {
+			if a.live != nil {
+				all = append(all, held{a, a.live.conn.Conv, a.transcript})
+			}
+		}
+	})
+	for _, h := range all {
+		approval := appApprovalOf(h.conv, h.transcript)
+		var view appwire.Agent
+		changed, said := false, false
+		b.locked(func() {
+			was := h.a.view.Approval
+			if changed = (was == nil) != (approval == nil) || (was != nil && *was != *approval); changed {
+				h.a.view.Approval = approval
+				view, said = h.a.view, h.a.saidLocked()
+			}
+		})
+		if changed && said {
+			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		}
+	}
 }
 
 // appStoredApproval is the posture this conversation itself keeps, "" when

@@ -515,6 +515,9 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 	// THEIR ROWS — the checker and planner pins are the Checks and Planner
 	// rows — so a budget, an appearance or a folder is never held up by them.
 	b.settingsChanged(settings, patch.ChecksModel != nil || patch.PlannerModel != nil)
+	if patch.AsksBefore != nil {
+		b.reapproveHeld()
+	}
 	if patch.DayCapUSD != nil {
 		b.spendSay()
 	}
@@ -532,6 +535,11 @@ func (b *appBackend) settingsMoved() {
 // another file watcher or clock. One restore can change several settings.
 func (b *appBackend) listenSyncedSettings() func() {
 	return config.ObserveSyncedPreferences(config.ProfileDir(), func(keys []string) {
+		for _, key := range keys {
+			if key == config.KeyToolApprovalMode {
+				b.reapproveHeld()
+			}
+		}
 		for _, key := range keys {
 			switch key {
 			case config.KeyChatModel, config.KeyToolApprovalMode, config.KeySpendRail,

@@ -133,7 +133,7 @@ func TestTheSchemaNamesTheApprovalWords(t *testing.T) {
 	}
 	for _, want := range []struct{ def, field string }{
 		{"in.CreateAsk", "effort"}, {"in.CreateAsk", "approval_posture"},
-		{"AgentApproval", "posture"}, {"AgentApproval", "source"},
+		{"AgentApproval", "posture"}, {"AgentApproval", "source"}, {"AgentApproval", "follows"},
 		{"Settings", "approval_posture"},
 	} {
 		if doc.Defs[want.def].Properties[want.field]["enum"] == nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -194,4 +195,35 @@ func (c *postureConversation) ResolvedApprovalPosture() string { return c.postur
 func (c *postureConversation) SetApprovalPosture(posture string) error {
 	c.posture = posture
 	return nil
+}
+
+// A member started while its manager is closed takes the manager's saved
+// posture, read without opening the manager.
+func TestAMemberOfAClosedManagerTakesItsSavedPosture(t *testing.T) {
+	b, _, paths, opens := lazyBackend(t, 2)
+	manager := appAgentID(paths[0])
+	meta, err := session.LoadMeta(session.DirOf(paths[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Approval = session.PostureAsk
+	if err := session.SaveMeta(session.DirOf(paths[0]), meta); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.MoveToClosed([]string{manager}); err != nil {
+		t.Fatal(err)
+	}
+	conv := &postureConversation{}
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		opens.Add(1)
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: ask.Transcript, UserMessages: 1, Release: func() {}}, nil
+	}
+	before := opens.Load()
+	b.crewMemberOpen(teamstore.Member{Key: paths[0], File: paths[0], Handle: "member0"}, "member1", appAgentID(paths[1]), "")
+	if conv.posture != session.PostureAsk {
+		t.Fatalf("the member took posture %q, want the closed manager's ask", conv.posture)
+	}
+	if got := opens.Load() - before; got != 1 || !b.tidied(manager) {
+		t.Fatalf("%d opens (want the member's only); manager still closed: %v", got, b.tidied(manager))
+	}
 }
