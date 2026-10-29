@@ -2099,8 +2099,8 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		if scope != "" {
 			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
 			receipt.Link = &appwire.EntryLink{Label: "Settings › Permissions", Target: "settings:permissions"}
-			_ = b.keepAppEntry(a, receipt, q.Subject.CallID)
 		}
+		_ = b.keepAppEntry(a, receipt, q.Subject.CallID)
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -2850,8 +2850,8 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 // it that said something (a<n>.<m>), and a tool entry is its call's own id
 // (t<call>). The live pump counts as it streams and the listing counts as it
 // reads, by one rule, so agents.entries names what entry.added named. What
-// only ever exists live — a turn's error, an ask's receipt, the engine's dim
-// notices — has an id of its own kind that the listing never makes.
+// only ever exists live — a turn's error, the engine's dim notices — has an id
+// of its own kind that the listing never makes.
 
 func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
 

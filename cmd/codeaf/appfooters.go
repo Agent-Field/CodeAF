@@ -1,7 +1,7 @@
 package main
 
 // App lifecycle footers belong to the conversation, but never to its model's
-// transcript. This sidecar keeps close/quit and permission receipts together
+// transcript. This sidecar keeps close/quit and ask receipts together
 // and anchors each even when timestamps are identical.
 
 import (
@@ -82,7 +82,7 @@ func (b *appBackend) keepAppFooter(a *appAgent, key, kind, words string) error {
 	return b.keepAppEntry(a, appFooter(key, id, 0, kind, words, b.now()), "")
 }
 
-// keepAppEntry uses the same sidecar for permission receipts, including their
+// keepAppEntry uses the same sidecar for ask receipts, including their
 // links and explanations. A call anchors its receipt after its tool row, even
 // when the event consumer is behind the journal writer.
 func (b *appBackend) keepAppEntry(a *appAgent, entry appwire.Entry, afterCall string) error {
