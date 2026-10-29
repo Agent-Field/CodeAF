@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A chat folder that does not exist yet keeps one spelling through linked folders
-pr: 0
+pr: 2037
 surface: [engine]
 invalidates:
   - "A saved chat's folder that did not exist yet was named by its spelled path, and the same folder was named by its resolved path once created. Its longest existing ancestor is now resolved first, so the folder keeps one name before and after it is created."
