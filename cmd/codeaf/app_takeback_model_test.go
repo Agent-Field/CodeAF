@@ -57,7 +57,25 @@ func TestAppTakeC1bSavedModelTravelsBack(t *testing.T) {
 			a, b := e2StartApp(t, homeA), e2StartApp(t, homeB)
 			created := machineCall[struct{ Agent appwire.Agent }](t, a.w, "agents.create", map[string]any{"workspace": workspace, "model": x}).Agent
 			e2Turn(t, a, created.ID, "A on X")
-			row := outageChatRow(t, b, "", func(r appwire.ChatRow) bool { return r.Title != "" && r.CanTake && r.Seen.Head != "" })
+			// A also saves its turn in several publications, and a take that names
+			// an earlier head is rightly refused. Take only a head that both
+			// computers report, twice, as the take back below does.
+			var row appwire.ChatRow
+			first := ""
+			outageWait(t, "C1b B sees A's last save", func() bool {
+				row = outageChatRow(t, b, "", func(r appwire.ChatRow) bool { return r.Title != "" && r.CanTake && r.Seen.Head != "" })
+				mine := outageChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool { return r.Seen.Head != "" })
+				if row.Seen.Head != mine.Seen.Head {
+					first = ""
+					return false
+				}
+				if first != row.Seen.Head {
+					first = row.Seen.Head
+					time.Sleep(time.Second)
+					return false
+				}
+				return true
+			})
 			fresh := machineCall[appwire.TakeResult](t, b.w, "agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}).Agent
 			if fresh.Model != x {
 				t.Fatalf("C1b fresh receiver used %q, want %q", fresh.Model, x)

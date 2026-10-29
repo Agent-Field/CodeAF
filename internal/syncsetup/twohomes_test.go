@@ -493,6 +493,10 @@ func TestTwoHomesL12DeathBranches(t *testing.T) {
 
 	h.block.set(false)
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	waitFor(t, "A's branch row to hold three orphan turns", func() bool {
+		branch, ok := branchRowOf(t, h.a, h.cell.ID)
+		return ok && branch.OrphanTurns == 3
+	})
 
 	v, err := h.a.Dir.Cell(ctx, h.cell.ID)
 	if err != nil || v.Cell.Head != parentHead || v.Cell.Lease.Device != h.b.Device.ID() {
@@ -675,6 +679,10 @@ func TestTwoHomesTakeARunningChatAtOnce(t *testing.T) {
 	}
 	a.mustSay("orphaned") // A does not know it lost the chat; its publish is refused and becomes a branch
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	waitFor(t, "A's branch row to hold one orphan turn", func() bool {
+		branch, ok := branchRowOf(t, h.a, h.cell.ID)
+		return ok && branch.OrphanTurns == 1
+	})
 	if _, ok := branchRowOf(t, h.a, h.cell.ID); !ok {
 		t.Fatal("A's refused turns did not become a branch")
 	}

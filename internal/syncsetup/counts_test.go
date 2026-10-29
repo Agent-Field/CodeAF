@@ -81,6 +81,10 @@ func TestScopesCountsEveryRelayRequest(t *testing.T) {
 	}
 	a.mustSay("orphaned") // A does not know it lost the chat; its publish is refused and becomes a branch
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	waitFor(t, "A's branch row to hold one orphan turn", func() bool {
+		branch, ok := branchRowOf(t, h.a, h.cell.ID)
+		return ok && branch.OrphanTurns == 1
+	})
 	if _, ok := branchRowOf(t, h.a, h.cell.ID); !ok {
 		t.Fatal("A's refused turns did not become a branch")
 	}

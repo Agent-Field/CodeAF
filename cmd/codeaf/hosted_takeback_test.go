@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,17 +40,18 @@ import (
 )
 
 type hostedMoveRig struct {
-	t          *testing.T
-	c          cell.Cell
-	work       string
-	a, b       *syncsetup.Sync
-	ea, eb     cellstore.Engine
-	bRoots     string
-	modelCalls atomic.Int32
-	mu         sync.Mutex
-	requests   []string
-	acquires   []time.Time
-	changes    chan struct{}
+	t              *testing.T
+	c              cell.Cell
+	work           string
+	a, b           *syncsetup.Sync
+	ea, eb         cellstore.Engine
+	bRoots         string
+	modelCalls     atomic.Int32
+	mu             sync.Mutex
+	requests       []string
+	acquires       []time.Time
+	acquiredFences []uint64
+	changes        chan struct{}
 }
 
 type moveRenewals struct {
@@ -88,6 +90,26 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 			h.acquires = append(h.acquires, time.Now())
 		}
 		h.mu.Unlock()
+		if strings.HasSuffix(r.URL.Path, "/acquire") {
+			answer := httptest.NewRecorder()
+			service.ServeHTTP(answer, r)
+			if answer.Code == http.StatusOK {
+				var view directory.CellView
+				if err := json.Unmarshal(answer.Body.Bytes(), &view); err != nil {
+					t.Errorf("decode acquire answer: %v", err)
+				} else {
+					h.mu.Lock()
+					h.acquiredFences = append(h.acquiredFences, view.Cell.Lease.Fence)
+					h.mu.Unlock()
+				}
+			}
+			for name, values := range answer.Header() {
+				w.Header()[name] = values
+			}
+			w.WriteHeader(answer.Code)
+			_, _ = w.Write(answer.Body.Bytes())
+			return
+		}
 		service.ServeHTTP(w, r)
 	}))
 	t.Cleanup(relay.Close)
@@ -322,16 +344,32 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.mu.Lock()
 	h.requests = nil
 	h.acquires = nil
+	h.acquiredFences = nil
 	h.mu.Unlock()
 	started = time.Now()
 	if _, err := io.WriteString(typed, "1\r"); err != nil {
 		t.Fatal(err)
 	}
 	h.wait("hosted take-back arrival", func() bool { return strings.Contains(screen.String(), "Moved from other computer") })
+	view, err := h.a.Dir.Cell(t.Context(), h.c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseCell, fence, err := h.a.SendLease(h.c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.acquires) < 2 {
-		t.Fatalf("take and reopened hosted writer made %d acquires; want both", len(h.acquires))
+	if len(h.acquires) == 0 || len(h.acquiredFences) == 0 {
+		t.Fatalf("take made %d acquire requests and %d successful answers; want at least one", len(h.acquires), len(h.acquiredFences))
+	}
+	takenFence := h.acquiredFences[0]
+	if takenFence == 0 || view.Cell.Lease.Device != h.a.Device.ID() || view.Cell.Lease.Fence != takenFence {
+		t.Errorf("relay hold after arrival = %+v; want A at take fence %d", view.Cell.Lease, takenFence)
+	}
+	if leaseCell != h.c.ID || fence != takenFence {
+		t.Errorf("reopened writer's send lease = %s at fence %d; want %s at take fence %d", leaseCell, fence, h.c.ID, takenFence)
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {
@@ -355,6 +393,15 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 
 type crashedWriterConfig struct {
 	Home, Root, Work, Data string
+}
+
+// hostedAltChord mirrors internal/tui3/chords.go detectChords so the wait reads
+// the modifier the surface displays on this platform.
+func hostedAltChord(key string) string {
+	if runtime.GOOS == "darwin" {
+		return "opt+" + key
+	}
+	return "alt+" + key
 }
 
 // TestCrashedWriterProcess is the disposable writer used by the crash contract.
@@ -493,7 +540,7 @@ func TestKilledComputerTakesBackFromHomeAndLocalCard(t *testing.T) {
 				if _, err := io.WriteString(typed, "  "); err != nil {
 					t.Fatal(err)
 				}
-				h.wait("Home continuation offer", func() bool { return strings.Contains(screen.String(), "alt+c") })
+				h.wait("Home continuation offer", func() bool { return strings.Contains(screen.String(), hostedAltChord("c")) })
 				if _, err := io.WriteString(typed, "\x1bc"); err != nil {
 					t.Fatal(err)
 				}

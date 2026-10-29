@@ -225,10 +225,12 @@ func (r *driveRig) startChat(notices *noticeLog) *chat {
 	return &chat{r: r, drive: drive, seat: executor.Gated(seat, drive.Gate)}
 }
 
-// say is one scripted model turn: it writes a file and the seat seals the call.
+// say is one scripted model turn: the transcript grows, a file is written, and
+// the seat seals the call.
 func (c *chat) say() error {
 	c.calls++
 	name := filepath.Join(c.r.work, "note"+string(rune('a'+c.calls))+".txt")
+	appendTo(c.r.t, transcriptOf(c.r.cell), `{"type":"message","role":"assistant","content":"scripted reply"}`+"\n")
 	call := executor.Call{Tool: "bash", Args: []byte(`{"command":"echo"}`)}
 	return c.seat.Around(context.Background(), call, func() ([]byte, bool) {
 		return nil, os.WriteFile(name, []byte("turn "+name), 0o600) != nil
@@ -361,8 +363,13 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 		t.Fatalf("line = %q, want %q", line, want)
 	}
 	waitFor(t, "the superseded line to be shown", func() bool { return notices.last() == want })
-	if kept := chatlist.KeptEdits(1, "tower"); !notices.has(kept) {
-		t.Fatalf("the displaced window silently kept a branch; notices = %v, want %q", notices.all(), kept)
+	// The refusal makes A a viewer before its unpublished turn is uploaded as a
+	// branch, so the kept-work notice follows the first superseded line.
+	kept := chatlist.KeptEdits(1, "tower")
+	for deadline := time.Now().Add(30 * time.Second); !notices.has(kept); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the displaced window silently kept a branch; notices = %v, want %q", notices.all(), kept)
+		}
 	}
 
 	v, err := r.a.Dir.Cell(ctx, r.cell.ID)
@@ -500,6 +507,16 @@ func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 // daemon's socket appearing shows the daemon, and not the spawn, served them.
 func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
 	r := newDriveRig(t)
+	if runtime.GOOS != "windows" {
+		// The rig has not opened an engine transport yet. A short home keeps
+		// its socket inside the home even with macOS's small address limit.
+		short, err := os.MkdirTemp("/tmp", "cds")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(short) })
+		t.Setenv(home.EnvVar, short)
+	}
 	t.Setenv("CODEAF_ENGINE_DAEMON", "")
 	r.engine.Transport = nil
 	t.Cleanup(func() { stopDaemons(t) })
