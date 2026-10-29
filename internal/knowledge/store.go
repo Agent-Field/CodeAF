@@ -65,14 +65,26 @@ func (v *Vault) captureConsentView() *consentView {
 }
 
 // CaptureConsent shares one consent read across this process's chat tickers.
-// Capture still checks Enabled directly before admitting any source.
+// It answers whether a tick has anything to look at; a tick that finds sources
+// to admit asks [Vault.ConfirmConsent] before it admits them or moves past them.
 func (v *Vault) CaptureConsent() (enabled bool, since time.Time) {
+	return v.consent(false)
+}
+
+// ConfirmConsent reads consent now and shares the answer with the other
+// tickers. Admission uses it, so a source is judged against the database's own
+// opt-in time, never a remembered one.
+func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
+	return v.consent(true)
+}
+
+func (v *Vault) consent(fresh bool) (enabled bool, since time.Time) {
 	view := v.captureConsentView()
 	view.mu.Lock()
 	defer view.mu.Unlock()
 	now := consentNow()
 	generation := view.generation.Load()
-	if !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < consentRecheck {
+	if !fresh && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < consentRecheck {
 		return view.enabled, view.since
 	}
 	// Keep the lock across the read so simultaneous tickers share failures too.
