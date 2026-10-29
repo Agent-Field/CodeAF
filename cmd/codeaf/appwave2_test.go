@@ -18,15 +18,18 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
-// KEYS.CHECK IS ONE REQUEST. A rejected key is answered with the provider's
-// own status and words, a good one with the models it reaches, a redirect is
-// never followed with the key on it, and nothing is kept.
-func TestAppKeyCheckIsOneRequestInTheProvidersWords(t *testing.T) {
+// A rejected key is answered with the provider's own status and words. Only
+// a key the provider accepts gets a model listing, and nothing is kept.
+func TestAppKeyCheckProvesTheKeyInTheProvidersWords(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		switch r.Header.Get("Authorization") {
 		case "Bearer sk-good-key-0001":
+			if r.URL.Path == "/key" {
+				_, _ = w.Write([]byte(`{"data":{"label":"test key","usage":0}}`))
+				return
+			}
 			_, _ = w.Write([]byte(`{"data":[{"id":"deepseek/deepseek-v4-flash","name":"DeepSeek V4 Flash"},{"id":"qwen/qwen3-coder"}]}`))
 		case "Bearer sk-moved-key-0002":
 			http.Redirect(w, r, "https://elsewhere.example/steal", http.StatusFound)
@@ -38,7 +41,7 @@ func TestAppKeyCheckIsOneRequestInTheProvidersWords(t *testing.T) {
 	defer server.Close()
 	backend := newFakeBackend(newAppRecorder(), nil)
 	defer backend.Close()
-	backend.keyAddress = func(string) string { return server.URL + "/models/user" }
+	backend.keyAddress = func(string) string { return server.URL }
 
 	bad, err := backend.CheckKey("openrouter", "sk-bad-key-0000")
 	if err != nil || bad.OK || bad.Status != http.StatusUnauthorized || bad.Message != "User not found." {
@@ -52,8 +55,8 @@ func TestAppKeyCheckIsOneRequestInTheProvidersWords(t *testing.T) {
 	if moved.OK || moved.Status != http.StatusFound {
 		t.Fatalf("a redirect = %+v", moved)
 	}
-	if n := calls.Load(); n != 3 {
-		t.Fatalf("three checks made %d requests", n)
+	if n := calls.Load(); n != 4 {
+		t.Fatalf("three checks made %d requests; want 4: the bad key's row, the good key's row and listing, the redirect", n)
 	}
 	if _, ok := backend.keys.Key("openrouter"); ok {
 		t.Fatal("a checked key was kept")
@@ -66,7 +69,7 @@ func TestAppKeyCheckIsOneRequestInTheProvidersWords(t *testing.T) {
 	defer stall.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	timeout := appCheckKey(ctx, nil, stall.URL+"/models", "deepseek", "sk-good-key-0001")
+	timeout := appCheckKey(ctx, nil, stall.URL, "openrouter", "sk-good-key-0001")
 	if timeout.OK || timeout.Status != "timeout" || timeout.Message != "No answer · couldn't reach 127.0.0.1 in 10s" {
 		t.Fatalf("timeout = %+v", timeout)
 	}
