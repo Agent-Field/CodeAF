@@ -93,6 +93,20 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## Why did a compact worker reject a write with “write needs text”?
+
+Chat writes require a string `content` field, including with `append:true`. A
+missing or null `content` returns
+`Invalid arguments: content is required and must be a string` before changing
+files or creating directories. An explicit `content:""` is valid.
+
+The compact worker toolbelt uses `write` with `path` and `text`, rather than the
+chat toolbelt's `path` and `content`. Its `text` field must be a string. A missing,
+null or differently typed `text` returns
+`write needs text as a string (use text, not content; an empty string is allowed)`
+before creating directories or changing a file. Retry with the required `text`
+field. An explicit `text:""` intentionally writes an empty file.
+
 ## Can you append to a file, or add to the end without rewriting it?
 
 Yes. `write` takes an optional `append:true`, which adds the new content after
