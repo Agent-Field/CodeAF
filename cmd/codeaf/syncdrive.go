@@ -26,8 +26,9 @@ var syncDrives = &driveBook{}
 // same process (a resume, a switch back) goes on with the drive it had instead
 // of taking a second lease.
 type driveBook struct {
-	mu    sync.Mutex
-	drive map[string]*liveDrive
+	mu     sync.Mutex
+	drive  map[string]*liveDrive
+	claims map[*liveDrive]int
 	// notices is installed by an app assembly before any drive starts. Nil
 	// retains the terminal's desk and its marking first-run behaviour.
 	notices *driveNotices
@@ -47,17 +48,25 @@ type driveNotices struct {
 // moment one is made (see liveDrive). A nil book answers nil, which is how a
 // door that never syncs asks.
 func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(error)) *liveDrive {
+	d, claim := b.pendingDriveOf(c, engine, report)
+	claim(true)
+	return d
+}
+
+// pendingDriveOf reserves a drive until one opener owns the journal.
+func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report func(error)) (*liveDrive, func(bool)) {
+	noop := func(bool) {}
 	if b == nil {
-		return nil
+		return nil, noop
 	}
 	if syncsetup.Resolve(home.Dir()).Off || !cell.Available() {
-		return nil
+		return nil, noop
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if d := b.drive[c.ID]; d != nil {
 		if !d.superseded() {
-			return d
+			return d, b.claim(d, c.ID)
 		}
 		// Settle the displaced writer before the replacement reads its branch map
 		// or acquires a lease, so late uploads cannot change the new drive's target.
@@ -66,7 +75,7 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 		cancel()
 		if err != nil {
 			report(err)
-			return d
+			return d, b.claim(d, c.ID)
 		}
 	}
 	// A drive side that no longer holds the chat's lease (another machine took it, or it was moved
@@ -84,7 +93,36 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 		}
 		b.drive[c.ID] = d
 	}
-	return d
+	return d, b.claim(d, c.ID)
+}
+
+// claim is made under the book lock; no drive path takes that lock in return.
+func (b *driveBook) claim(d *liveDrive, id string) func(bool) {
+	if !d.isParked() {
+		return func(bool) {}
+	}
+	if b.claims == nil {
+		b.claims = make(map[*liveDrive]int)
+	}
+	b.claims[d]++
+	var once sync.Once
+	return func(opened bool) {
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			b.claims[d]--
+			if opened {
+				d.begin()
+			}
+			if b.claims[d] <= 0 {
+				delete(b.claims, d)
+				if d.abandon() && b.drive[id] == d {
+					delete(b.drive, id)
+					workAdmissions.Delete(d)
+				}
+			}
+		})
+	}
 }
 
 // startDrive opens the drive side of c. The error it answers is already
@@ -193,6 +231,7 @@ func (b *driveBook) take() map[string]*liveDrive {
 	defer b.mu.Unlock()
 	drives := b.drive
 	for _, d := range drives {
+		d.abandon()
 		workAdmissions.Delete(d)
 	}
 	b.drive = nil
@@ -254,6 +293,9 @@ func (b *driveBook) takeCell(id string) *liveDrive {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	d := b.drive[id]
+	if d != nil {
+		d.abandon()
+	}
 	workAdmissions.Delete(d)
 	delete(b.drive, id)
 	return d

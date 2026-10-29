@@ -1473,7 +1473,8 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if model != "" {
 		cfg.Model = model
 	}
-	cfg = v3Seated(v3Migrated(cfg))
+	cfg, claim := v3SeatedPending(v3Migrated(cfg))
+	defer claim(false)
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1505,6 +1506,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	agent, err := open(restored)
 	if err == nil {
+		claim(true)
 		if model != "" {
 			if err := agent.ContinueWithModel(model, modelNotice); err != nil {
 				closeV3Agent(agent)
