@@ -64,6 +64,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if lease.Device == d.sync.Device.ID() {
+		d.retireSendLease()
 		d.available()
 		return false, nil
 	}
@@ -122,6 +123,20 @@ func (d *Drive) resumeViewer() {
 	}
 }
 
+// retireSendLease removes this displaced window's receipt before readers are
+// notified, while preserving any receipt already written by its replacement.
+func (d *Drive) retireSendLease() {
+	d.mu.Lock()
+	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
+	d.mu.Unlock()
+	if expected.Fence == 0 {
+		return
+	}
+	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
+		d.notice(err.Error())
+	}
+}
+
 // available retains the work gate until admission acquires a new fence, without
 // claiming that the last holder is still working in a released chat.
 func (d *Drive) available() {
@@ -130,6 +145,9 @@ func (d *Drive) available() {
 	changed := d.viewer != viewer
 	d.viewer = viewer
 	d.mu.Unlock()
+	if changed {
+		d.renewalChanged()
+	}
 	if changed && d.opt.OnViewer != nil {
 		d.opt.OnViewer(viewer)
 	}

@@ -418,6 +418,7 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 		}
 	}
 	if s.By != "" && s.By == d.sync.Device.ID() {
+		d.retireSendLease()
 		d.available()
 		return
 	}
