@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Opening a held chat leaves the other window's sync lease alone
-pr: 0
+pr: 2046
 surface: [chat, engine]
 invalidates:
   - "Opening a chat used to start its sync drive before checking the journal lock. A process refused the journal no longer starts, renews, releases or forgets that chat's sync hold."
