@@ -541,14 +541,23 @@ func TestALandReadsEachTreesAttributesWithoutTheCheckout(t *testing.T) {
 			}
 			// Keep the same file-location resolver so this compares tree answers only.
 			original := landCommand
+			indexed := false
 			landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
-				if strings.Contains(strings.Join(args, " "), "--source=") {
+				joined := strings.Join(args, " ")
+				if strings.Contains(joined, "read-tree") {
+					indexed = true
+				}
+				if strings.Contains(joined, "--source=") {
 					return execGitForLand(ctx, dir, args...)
 				}
 				return original(ctx, dir, args...)
 			}
 			resetLandAttributeCapabilities()
 			native, err := landFilterAttributes(landCtx(t), repo, config, []string{path, "nested/overridden.bin"}, sources...)
+			// The native half must really be native, or it compares the fallback with itself.
+			if indexed {
+				t.Fatal("the native reading fell back to a temporary index")
+			}
 			if err != nil || native != fallback {
 				t.Fatalf("native %q, fallback %q: %v", native, fallback, err)
 			}
@@ -749,9 +758,33 @@ func TestALandsTemporaryIndexLeavesTheRepositoryUntouched(t *testing.T) {
 	}
 }
 
+// landCaseAlias spells path with the case of its deepest lettered component
+// swapped, so the alias differs as a string from every spelling of path.
+func landCaseAlias(t *testing.T, path string) string {
+	t.Helper()
+	parts := strings.Split(path, string(filepath.Separator))
+	for i := len(parts) - 1; i >= 0; i-- {
+		swapped := strings.Map(func(r rune) rune {
+			switch {
+			case 'a' <= r && r <= 'z':
+				return r - 'a' + 'A'
+			case 'A' <= r && r <= 'Z':
+				return r - 'A' + 'a'
+			}
+			return r
+		}, parts[i])
+		if swapped != parts[i] {
+			parts[i] = swapped
+			return strings.Join(parts, string(filepath.Separator))
+		}
+	}
+	t.Fatalf("no lettered component to alias in %q", path)
+	return ""
+}
+
 func TestALandRefusesScratchInsideTheRepository(t *testing.T) {
 	skipLandAttributeShellOnWindows(t)
-	for _, location := range []string{".git", ".", "symlink to .git", "symlink to worktree"} {
+	for _, location := range []string{".git", ".", "symlink to .git", "symlink to worktree", "case alias of .git"} {
 		t.Run(location, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			repo, place := landRepo(t)
@@ -772,9 +805,32 @@ func TestALandRefusesScratchInsideTheRepository(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if location == "case alias of .git" {
+				// The same directory spelled in another case: only a
+				// case-insensitive volume (APFS by default) resolves it.
+				scratch = filepath.Join(landCaseAlias(t, repo), ".git")
+				alias, err := os.Stat(scratch)
+				real, realErr := os.Stat(filepath.Join(repo, ".git"))
+				if err != nil || realErr != nil || !os.SameFile(alias, real) {
+					t.Skip("this volume is case-sensitive, so the alias names another directory")
+				}
+			}
 			t.Setenv("TMPDIR", scratch)
+			// Containment must refuse before any temporary index is written,
+			// not merely clean one up afterwards.
+			indexed := false
+			original := landCommand
+			landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+				if strings.Contains(strings.Join(args, " "), "read-tree") {
+					indexed = true
+				}
+				return original(ctx, dir, args...)
+			}
 			_, err = PlanTaskBranchLand(landCtx(t), place, repo, landBranch)
 			wantRefusal(t, err, LandFilter)
+			if indexed {
+				t.Fatal("a temporary index was written inside the repository before the refusal")
+			}
 			after, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
 			if err != nil || !bytes.Equal(before, after) {
 				t.Fatalf("plan changed real index: %v", err)
@@ -889,8 +945,8 @@ func TestALandCachesOnlyAttributeCapabilities(t *testing.T) {
 		}
 	})
 	for _, probe := range []string{"version", "files", "tree"} {
-		for _, reply := range []string{"failure", "warning", "truncated", "fatal", "error", "missing newline", "wrong source", "unexpected line"} {
-			if probe == "version" && reply != "failure" || probe == "files" && (reply == "wrong source" || reply == "unexpected line") {
+		for _, reply := range []string{"failure", "warning", "truncated", "fatal", "error", "missing newline", "wrong source", "unexpected line", "short usage", "indented warning"} {
+			if probe == "version" && reply != "failure" || probe == "files" && (reply == "wrong source" || reply == "unexpected line" || reply == "short usage" || reply == "indented warning") {
 				continue
 			}
 			t.Run("transient "+probe+"/"+reply, func(t *testing.T) {
@@ -932,6 +988,11 @@ func TestALandCachesOnlyAttributeCapabilities(t *testing.T) {
 								diagnostics = landAttributeSourceUsage([]string{"--source=wrong"})
 							case "unexpected line":
 								diagnostics += "unexpected text\n"
+							case "short usage":
+								// Three lines with an empty last one, but no usage body.
+								diagnostics = strings.SplitN(diagnostics, "\n", 2)[0] + "\nusage: git check-attr \n"
+							case "indented warning":
+								diagnostics += "    warning: indented like an option line\n"
 							}
 							return landAttributeReply(ctx, "", diagnostics, code)
 						}

@@ -290,22 +290,23 @@ func (c *landAttributeCapabilities) older(major, minor int) bool {
 	return c.parsed && (c.major < major || c.major == major && c.minor < minor)
 }
 
-// landUnsupportedTreeAttributes accepts only the complete usage reply for this
-// source, so warnings and truncated errors cannot become cached capabilities.
+// landTreeUsage is check-attr's usage block as Git 2.38 and 2.39 print it after
+// an unknown option (measured on Apple Git 2.39.5). Only Gits that predate
+// --source need it, and those versions do not change it any more.
+const landTreeUsage = "usage: git check-attr [-a | --all | <attr>...] [--] <pathname>...\n" +
+	"   or: git check-attr --stdin [-z] [-a | --all | <attr>...]\n" +
+	"\n" +
+	"    -a, --all             report all attributes set on file\n" +
+	"    --cached              use .gitattributes only from the index\n" +
+	"    --stdin               read file names from stdin\n" +
+	"    -z                    terminate input and output records by a NUL character\n" +
+	"\n"
+
+// landUnsupportedTreeAttributes accepts only the complete reply for this
+// source, so a warning, a truncated reply or a wrapper's own words can never
+// become a cached capability.
 func landUnsupportedTreeAttributes(diagnostics []byte, source string) bool {
-	if !bytes.HasSuffix(diagnostics, []byte{'\n'}) {
-		return false
-	}
-	lines := strings.Split(string(diagnostics), "\n")
-	if len(lines) < 3 || lines[0] != "error: unknown option `source="+source+"'" || !strings.HasPrefix(lines[1], "usage: git check-attr ") {
-		return false
-	}
-	for _, line := range lines[2:] {
-		if line != "" && strings.TrimLeft(line, " \t\r\v\f") == line {
-			return false
-		}
-	}
-	return true
+	return string(diagnostics) == "error: unknown option `source="+source+"'\n"+landTreeUsage
 }
 
 func landTreeAttributes(ctx context.Context, root, source string, input []byte, caps *landAttributeCapabilities, scratch *string) ([]byte, []byte, int, error) {
@@ -340,20 +341,23 @@ func landTreeAttributes(ctx context.Context, root, source string, input []byte, 
 		if err != nil {
 			return nil, nil, -1, landUnknownAttributes()
 		}
-		canonicalRoot, err := filepath.EvalSymlinks(root)
+		// TMPDIR may point into the checkout, through a symlink or a differently
+		// cased spelling on a case-insensitive volume, so containment compares
+		// directory identities rather than names. The caller removes scratch on
+		// refusal before any private index is made. A linked worktree's Git
+		// directory outside this root is out of scope.
+		rootInfo, err := os.Stat(root)
 		if err != nil {
 			return nil, nil, -1, landUnknownAttributes()
 		}
-		canonicalRoot, err = filepath.Abs(canonicalRoot)
-		if err != nil {
-			return nil, nil, -1, landUnknownAttributes()
-		}
-		// TMPDIR may point into the checkout, including through a symlink. The
-		// caller removes scratch on refusal before any private indexes are made.
-		// A linked worktree's Git directory outside this root is out of scope.
-		relative, err := filepath.Rel(canonicalRoot, canonical)
-		if err != nil || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return nil, nil, -1, landUnknownAttributes()
+		for up := canonical; ; up = filepath.Dir(up) {
+			info, err := os.Stat(up)
+			if err != nil || os.SameFile(info, rootInfo) {
+				return nil, nil, -1, landUnknownAttributes()
+			}
+			if filepath.Dir(up) == up {
+				break
+			}
 		}
 		*scratch = canonical
 		if err := os.Mkdir(filepath.Join(canonical, "hooks"), 0o700); err != nil {
