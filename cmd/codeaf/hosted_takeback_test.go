@@ -51,7 +51,14 @@ type hostedMoveRig struct {
 	requests       []string
 	acquires       []time.Time
 	acquiredFences []uint64
+	beats          []hostedBeat
 	changes        chan struct{}
+}
+
+// hostedBeat is one heartbeat the relay accepted, with the hold it renewed.
+type hostedBeat struct {
+	at    time.Time
+	lease directory.Lease
 }
 
 type moveRenewals struct {
@@ -90,16 +97,20 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 			h.acquires = append(h.acquires, time.Now())
 		}
 		h.mu.Unlock()
-		if strings.HasSuffix(r.URL.Path, "/acquire") {
+		if acquire, beat := strings.HasSuffix(r.URL.Path, "/acquire"), strings.HasSuffix(r.URL.Path, "/heartbeat"); acquire || beat {
 			answer := httptest.NewRecorder()
 			service.ServeHTTP(answer, r)
 			if answer.Code == http.StatusOK {
 				var view directory.CellView
 				if err := json.Unmarshal(answer.Body.Bytes(), &view); err != nil {
-					t.Errorf("decode acquire answer: %v", err)
+					t.Errorf("decode %s answer: %v", r.URL.Path, err)
 				} else {
 					h.mu.Lock()
-					h.acquiredFences = append(h.acquiredFences, view.Cell.Lease.Fence)
+					if acquire {
+						h.acquiredFences = append(h.acquiredFences, view.Cell.Lease.Fence)
+					} else {
+						h.beats = append(h.beats, hostedBeat{at: time.Now(), lease: view.Cell.Lease})
+					}
 					h.mu.Unlock()
 				}
 			}
@@ -345,12 +356,32 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.requests = nil
 	h.acquires = nil
 	h.acquiredFences = nil
+	h.beats = nil
 	h.mu.Unlock()
 	started = time.Now()
 	if _, err := io.WriteString(typed, "1\r"); err != nil {
 		t.Fatal(err)
 	}
 	h.wait("hosted take-back arrival", func() bool { return strings.Contains(screen.String(), "Moved from other computer") })
+	// The reopened writer resumes the take's own hold with a heartbeat rather
+	// than a second acquire. Only a drive heartbeats, and the relay accepts one
+	// only at the current fence, so an accepted beat at the take's fence from
+	// this computer is the reopened writer driving the chat.
+	var resumed hostedBeat
+	h.wait("reopened hosted writer resuming the take's hold", func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if len(h.acquires) == 0 || len(h.acquiredFences) == 0 {
+			return false
+		}
+		for _, beat := range h.beats {
+			if beat.at.After(h.acquires[0]) && beat.lease.Device == h.a.Device.ID() && beat.lease.Fence == h.acquiredFences[0] {
+				resumed = beat
+				return true
+			}
+		}
+		return false
+	})
 	view, err := h.a.Dir.Cell(t.Context(), h.c.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -370,6 +401,11 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	}
 	if leaseCell != h.c.ID || fence != takenFence {
 		t.Errorf("reopened writer's send lease = %s at fence %d; want %s at take fence %d", leaseCell, fence, h.c.ID, takenFence)
+	}
+	gap := resumed.at.Sub(h.acquires[0])
+	t.Logf("take acquire to reopened writer heartbeat: %s", gap)
+	if gap >= 5*time.Second {
+		t.Errorf("take acquire to reopened writer heartbeat gap=%s", gap)
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {
