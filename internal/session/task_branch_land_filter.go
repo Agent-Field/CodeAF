@@ -90,21 +90,8 @@ func landFilterAttributes(ctx context.Context, root string, config landConfigFac
 	filtered := map[string]bool{}
 	for _, source := range sources {
 		out, diagnostics, code, err := landTreeAttributes(ctx, root, source, input, caps, &scratch)
-		unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
-		if err != nil || code != 0 || len(diagnostics) != 0 {
-			return "", landReadFailed(err, unknown)
-		}
-		records := bytes.Split(out, []byte{0})
-		if len(records) != len(paths)*3+1 || len(records[len(records)-1]) != 0 {
-			return "", unknown
-		}
-		for i, path := range paths {
-			if string(records[3*i]) != path || string(records[3*i+1]) != "filter" {
-				return "", unknown
-			}
-			if drivers[string(records[3*i+2])] {
-				filtered[path] = true
-			}
+		if err := landFilterAttributeAnswer(out, diagnostics, code, err, paths, drivers, filtered); err != nil {
+			return "", err
 		}
 		sum.Write(out)
 	}
@@ -120,11 +107,32 @@ func landFilterAttributes(ctx context.Context, root string, config landConfigFac
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
+// landFilterAttributeAnswer validates the whole answer before its bytes enter
+// the digest, so incomplete records cannot stand in for a reading.
+func landFilterAttributeAnswer(out, diagnostics []byte, code int, err error, paths []string, drivers, filtered map[string]bool) error {
+	unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
+	if err != nil || code != 0 || len(diagnostics) != 0 {
+		return landReadFailed(err, unknown)
+	}
+	records := bytes.Split(out, []byte{0})
+	if len(records) != len(paths)*3+1 || len(records[len(records)-1]) != 0 {
+		return unknown
+	}
+	for i, path := range paths {
+		if string(records[3*i]) != path || string(records[3*i+1]) != "filter" {
+			return unknown
+		}
+		if drivers[string(records[3*i+2])] {
+			filtered[path] = true
+		}
+	}
+	return nil
+}
+
 // landAttributeFiles binds readable attribute files outside the committed
 // trees. Git sometimes silently ignores a read failure (a directory used as
 // core.attributesFile, for example), so a successful check-attr is not enough.
 func landAttributeFiles(ctx context.Context, root string, paths []string, sum io.Writer, caps *landAttributeCapabilities) error {
-	unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
 	files := map[string]bool{}
 	locations, disabled, err := landAttributeLocations(ctx, root, caps)
 	if err != nil {
@@ -139,6 +147,13 @@ func landAttributeFiles(ctx context.Context, root string, paths []string, sum io
 		}
 		files[path] = true
 	}
+	landNestedAttributeFiles(root, paths, files)
+	return landAuditAttributeFiles(files, sum)
+}
+
+// landNestedAttributeFiles includes each ancestor once because both nested
+// rules and their parents can govern a path.
+func landNestedAttributeFiles(root string, paths []string, files map[string]bool) {
 	for _, path := range paths {
 		for dir := filepath.Dir(filepath.FromSlash(path)); ; dir = filepath.Dir(dir) {
 			file := filepath.Join(root, dir, ".gitattributes")
@@ -151,6 +166,12 @@ func landAttributeFiles(ctx context.Context, root string, paths []string, sum io
 			}
 		}
 	}
+}
+
+// landAuditAttributeFiles reads in path order with one shared budget, so the
+// digest binds both missing files and the bytes Git could otherwise ignore.
+func landAuditAttributeFiles(files map[string]bool, sum io.Writer) error {
+	unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
 	ordered := make([]string, 0, len(files))
 	for file := range files {
 		ordered = append(ordered, file)
@@ -249,11 +270,10 @@ func landGitAttributeCapabilities(ctx context.Context, root string) (*landAttrib
 	command := landCommand(ctx, root, "version")
 	info, statErr := os.Stat(command.Path)
 	cacheable := command.Err == nil && statErr == nil
-	out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, "version")
-	if err != nil || code != 0 || len(diagnostics) != 0 || !bytes.HasSuffix(out, []byte{'\n'}) || bytes.Count(out, []byte{'\n'}) != 1 || !bytes.HasPrefix(out, []byte("git version ")) {
-		return nil, landReadFailed(err, landUnknownAttributes())
+	version, err := landGitAttributeVersion(ctx, root)
+	if err != nil {
+		return nil, err
 	}
-	version := string(out[:len(out)-1])
 	landAttributeCapabilityCache.Lock()
 	defer landAttributeCapabilityCache.Unlock()
 	if cacheable {
@@ -273,17 +293,32 @@ func landGitAttributeCapabilities(ctx context.Context, root string) (*landAttrib
 		}
 	}
 	if cacheable {
-		// A new executable identity or version at the same path retires its old
-		// entry, so upgrades and shim switches keep one entry per path.
-		kept := landAttributeCapabilityCache.entries[:0]
-		for _, old := range landAttributeCapabilityCache.entries {
-			if old.path != entry.path {
-				kept = append(kept, old)
-			}
-		}
-		landAttributeCapabilityCache.entries = append(kept, entry)
+		landCacheAttributeCapabilities(entry)
 	}
 	return entry, nil
+}
+
+// landGitAttributeVersion reads the current version even on a cache hit because
+// a shim can select another Git without changing executable identity.
+func landGitAttributeVersion(ctx context.Context, root string) (string, error) {
+	out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, "version")
+	if err != nil || code != 0 || len(diagnostics) != 0 || !bytes.HasSuffix(out, []byte{'\n'}) || bytes.Count(out, []byte{'\n'}) != 1 || !bytes.HasPrefix(out, []byte("git version ")) {
+		return "", landReadFailed(err, landUnknownAttributes())
+	}
+	return string(out[:len(out)-1]), nil
+}
+
+// landCacheAttributeCapabilities requires the cache lock. A new executable
+// identity or version at the same path retires its old entry, so upgrades and
+// shim switches keep one entry per path.
+func landCacheAttributeCapabilities(entry *landAttributeCapabilities) {
+	kept := landAttributeCapabilityCache.entries[:0]
+	for _, old := range landAttributeCapabilityCache.entries {
+		if old.path != entry.path {
+			kept = append(kept, old)
+		}
+	}
+	landAttributeCapabilityCache.entries = append(kept, entry)
 }
 
 func (c *landAttributeCapabilities) older(major, minor int) bool {
@@ -327,19 +362,28 @@ func landTreeAttributes(ctx context.Context, root, source string, input []byte, 
 		caps.treeUnsupported = true
 		caps.mu.Unlock()
 	}
+	if err := landAttributeScratch(root, scratch); err != nil {
+		return nil, nil, -1, err
+	}
+	return landIndexedTreeAttributes(ctx, root, source, input, *scratch)
+}
+
+// landAttributeScratch prepares one shared directory lazily, so native readings
+// need no scratch and every fallback leaves cleanup to the caller.
+func landAttributeScratch(root string, scratch *string) error {
 	if *scratch == "" {
 		dir, err := os.MkdirTemp("", "codeaf-land-attributes-")
 		if err != nil {
-			return nil, nil, -1, landUnknownAttributes()
+			return landUnknownAttributes()
 		}
 		*scratch = dir
 		absolute, err := filepath.Abs(dir)
 		if err != nil {
-			return nil, nil, -1, landUnknownAttributes()
+			return landUnknownAttributes()
 		}
 		canonical, err := filepath.EvalSymlinks(absolute)
 		if err != nil {
-			return nil, nil, -1, landUnknownAttributes()
+			return landUnknownAttributes()
 		}
 		// TMPDIR may point into the checkout, through a symlink or a differently
 		// cased spelling on a case-insensitive volume, so containment compares
@@ -348,12 +392,12 @@ func landTreeAttributes(ctx context.Context, root, source string, input []byte, 
 		// directory outside this root is out of scope.
 		rootInfo, err := os.Stat(root)
 		if err != nil {
-			return nil, nil, -1, landUnknownAttributes()
+			return landUnknownAttributes()
 		}
 		for up := canonical; ; up = filepath.Dir(up) {
 			info, err := os.Stat(up)
 			if err != nil || os.SameFile(info, rootInfo) {
-				return nil, nil, -1, landUnknownAttributes()
+				return landUnknownAttributes()
 			}
 			if filepath.Dir(up) == up {
 				break
@@ -361,17 +405,22 @@ func landTreeAttributes(ctx context.Context, root, source string, input []byte, 
 		}
 		*scratch = canonical
 		if err := os.Mkdir(filepath.Join(canonical, "hooks"), 0o700); err != nil {
-			return nil, nil, -1, landUnknownAttributes()
+			return landUnknownAttributes()
 		}
 	}
-	// Every tree starts with a nonexistent index; split indexes and index-change
-	// hooks would otherwise write in the repository while preparing this reading.
-	slot, err := os.MkdirTemp(*scratch, "tree-")
+	return nil
+}
+
+// landIndexedTreeAttributes starts every tree with a nonexistent index; split
+// indexes and index-change hooks would otherwise write in the repository while
+// preparing this reading.
+func landIndexedTreeAttributes(ctx context.Context, root, source string, input []byte, scratch string) ([]byte, []byte, int, error) {
+	slot, err := os.MkdirTemp(scratch, "tree-")
 	if err != nil {
 		return nil, nil, -1, landUnknownAttributes()
 	}
 	env := []string{"GIT_INDEX_FILE=" + filepath.Join(slot, "index")}
-	quiet := []string{"-c", "core.splitIndex=false", "-c", "index.sparse=false", "-c", "core.hooksPath=" + filepath.Join(*scratch, "hooks")}
+	quiet := []string{"-c", "core.splitIndex=false", "-c", "index.sparse=false", "-c", "core.hooksPath=" + filepath.Join(scratch, "hooks")}
 	args := append(append([]string{}, quiet...), "read-tree", "--no-sparse-checkout", "--no-recurse-submodules", source)
 	out, diagnostics, code, err := landReadInputEnv(ctx, root, landAttributeReadMax, nil, env, args...)
 	if err != nil || code != 0 || len(out) != 0 || len(diagnostics) != 0 {
@@ -387,23 +436,10 @@ func landAttributeLocations(ctx context.Context, root string, caps *landAttribut
 	caps.mu.Unlock()
 	var files, disabled []string
 	if !legacy {
-		for _, name := range []string{"GIT_ATTR_GLOBAL", "GIT_ATTR_SYSTEM"} {
-			out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, "var", name)
-			if err == nil && code == 129 && len(out) == 0 && bytes.Equal(diagnostics, []byte("usage: git var (-l | <variable>)\n")) && caps.older(2, 42) {
-				caps.mu.Lock()
-				caps.filesUnsupported = true
-				caps.mu.Unlock()
-				legacy = true
-				break
-			}
-			if err != nil || code != 0 || len(diagnostics) != 0 || !bytes.HasSuffix(out, []byte{'\n'}) {
-				return nil, nil, landReadFailed(err, landUnknownAttributes())
-			}
-			if path := string(out[:len(out)-1]); path == "" {
-				disabled = append(disabled, name)
-			} else {
-				files = append(files, path)
-			}
+		var err error
+		files, disabled, legacy, err = landNativeAttributeLocations(ctx, root, caps)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 	if legacy {
@@ -418,6 +454,30 @@ func landAttributeLocations(ctx context.Context, root string, caps *landAttribut
 		return nil, nil, landReadFailed(err, landUnknownAttributes())
 	}
 	return append(files, string(out[:len(out)-1])), disabled, nil
+}
+
+// landNativeAttributeLocations accepts only the exact unsupported reply from
+// an older Git, so transient failures cannot become a cached capability.
+func landNativeAttributeLocations(ctx context.Context, root string, caps *landAttributeCapabilities) ([]string, []string, bool, error) {
+	var files, disabled []string
+	for _, name := range []string{"GIT_ATTR_GLOBAL", "GIT_ATTR_SYSTEM"} {
+		out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, "var", name)
+		if err == nil && code == 129 && len(out) == 0 && bytes.Equal(diagnostics, []byte("usage: git var (-l | <variable>)\n")) && caps.older(2, 42) {
+			caps.mu.Lock()
+			caps.filesUnsupported = true
+			caps.mu.Unlock()
+			return files, disabled, true, nil
+		}
+		if err != nil || code != 0 || len(diagnostics) != 0 || !bytes.HasSuffix(out, []byte{'\n'}) {
+			return nil, nil, false, landReadFailed(err, landUnknownAttributes())
+		}
+		if path := string(out[:len(out)-1]); path == "" {
+			disabled = append(disabled, name)
+		} else {
+			files = append(files, path)
+		}
+	}
+	return files, disabled, false, nil
 }
 
 func landAttributePath(out, diagnostics []byte, code int, err error) (string, error) {
