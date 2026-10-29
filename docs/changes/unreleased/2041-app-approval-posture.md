@@ -1,7 +1,7 @@
 ---
 kind: added
 title: codeaf app sets a chat's own approval posture and a new agent's effort
-pr: 0
+pr: 2041
 surface: [engine]
 invalidates:
   - "Was true: a chat's own approval posture (ask, guardian, allow, auto) could be set only from the terminal's chip and /approvals. Is true now: agents.set_approval_posture sets it from the app, through the same conversation door and meta.json word; deny is refused there, because Block is Settings' answer and a chat follows it with auto. A factory stage refuses it as it refuses a model change."

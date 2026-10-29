@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf app keeps a closed agent closed when a window only warms it
-pr: 0
+pr: 2041
 surface: [engine]
 invalidates:
   - "Was true: every agents.open took an agent out of Closed or the archive, so a window's prefetch (a hover over its row, the × under the pointer) could reopen an agent the person had just closed, and its row came back. Is true now: agents.open takes warm (omitempty; an older engine ignores it). A warm open of an agent marked closed or archived is refused with conflict and the mark stays; an open agent is opened as before. An open without warm (the person's own, Reopen) still takes it out."
