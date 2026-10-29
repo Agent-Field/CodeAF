@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: macOS reads process groups for left-running services and the job subtree bound
-pr: 0
+pr: 2039
 surface: [engine, docs]
 invalidates:
   - "On macOS, a server left running by a shell command was never reported, and service records named the shell without its server's argv or listening ports. These records now inspect the surviving processes."
