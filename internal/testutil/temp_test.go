@@ -4,13 +4,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
+// On macOS an aliased TMPDIR, even with a trailing separator, becomes the
+// physical folder, and later temporary folders are made under it.
 func TestCanonicalizeTempRootsTMPDIRAlias(t *testing.T) {
+	requireDarwin(t)
 	root := physicalTempDir(t)
 	alias := filepath.Join(root, "alias")
 	if err := os.Symlink(root, alias); err != nil {
@@ -36,7 +40,9 @@ func TestCanonicalizeTempRootsTMPDIRAlias(t *testing.T) {
 	}
 }
 
+// TMPDIR and GOTMPDIR are resolved separately and keep their own targets.
 func TestCanonicalizeTempRootsSeparateAliases(t *testing.T) {
+	requireDarwin(t)
 	root := physicalTempDir(t)
 	for _, name := range []string{"TMPDIR", "GOTMPDIR"} {
 		target := filepath.Join(root, name)
@@ -60,6 +66,7 @@ func TestCanonicalizeTempRootsSeparateAliases(t *testing.T) {
 	}
 }
 
+// Empty and unset roots stay exactly as they were.
 func TestCanonicalizeTempRootsEmptyAndUnset(t *testing.T) {
 	for _, unset := range []string{"TMPDIR", "GOTMPDIR"} {
 		t.Run("unset "+unset, func(t *testing.T) {
@@ -82,6 +89,7 @@ func TestCanonicalizeTempRootsEmptyAndUnset(t *testing.T) {
 	}
 }
 
+// An already physical root keeps its spelling byte for byte.
 func TestCanonicalizeTempRootsPhysicalUnchanged(t *testing.T) {
 	root := physicalTempDir(t)
 	for _, suffix := range []string{"", string(os.PathSeparator), string(os.PathSeparator) + "."} {
@@ -101,7 +109,9 @@ func TestCanonicalizeTempRootsPhysicalUnchanged(t *testing.T) {
 	}
 }
 
+// A root that does not exist stops the suite with the variable's name.
 func TestCanonicalizeTempRootsMissingTarget(t *testing.T) {
+	requireDarwin(t)
 	root := physicalTempDir(t)
 	for _, name := range []string{"TMPDIR", "GOTMPDIR"} {
 		t.Run(name, func(t *testing.T) {
@@ -123,6 +133,62 @@ func TestCanonicalizeTempRootsMissingTarget(t *testing.T) {
 				t.Fatalf("%s after error = %q, want original %q", name, got, missing)
 			}
 		})
+	}
+}
+
+// A ".." after a link climbs out of the link's target, as the kernel resolves
+// it, and never out of the folder that spells the link.
+func TestCanonicalizeTempRootsFollowsLinksBeforeDotDot(t *testing.T) {
+	requireDarwin(t)
+	root := physicalTempDir(t)
+	deep := filepath.Join(root, "other", "deep")
+	for _, dir := range []string{deep, filepath.Join(root, "other", "T"), filepath.Join(root, "case", "T")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatalf("create %s: %v", dir, err)
+		}
+	}
+	if err := os.Symlink(deep, filepath.Join(root, "case", "link")); err != nil {
+		t.Fatalf("create link: %v", err)
+	}
+	t.Setenv("TMPDIR", filepath.Join(root, "case", "link")+"/../T")
+	t.Setenv("GOTMPDIR", "")
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		t.Fatalf("canonicalize a root with a dot-dot after a link: %v", err)
+	}
+	if got, want := os.Getenv("TMPDIR"), filepath.Join(root, "other", "T"); got != want {
+		t.Fatalf("TMPDIR = %q, want the folder the kernel reaches, %q", got, want)
+	}
+}
+
+// Elsewhere the environment is never touched, whatever it holds: the
+// temporary folder is not an alias there, and a suite must not fail on it.
+func TestCanonicalizeTempRootsLeavesOtherSystemsAlone(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("macOS is the system whose temporary folder is an alias")
+	}
+	root := physicalTempDir(t)
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatalf("create alias: %v", err)
+	}
+	for _, raw := range []string{alias + string(os.PathSeparator), "relative/tmp", filepath.Join(root, "missing")} {
+		t.Setenv("TMPDIR", raw)
+		t.Setenv("GOTMPDIR", raw)
+		if err := testutil.CanonicalizeTempRoots(); err != nil {
+			t.Fatalf("canonicalize %q on %s: %v", raw, runtime.GOOS, err)
+		}
+		for _, name := range []string{"TMPDIR", "GOTMPDIR"} {
+			if got := os.Getenv(name); got != raw {
+				t.Fatalf("%s on %s = %q, want it untouched %q", name, runtime.GOOS, got, raw)
+			}
+		}
+	}
+}
+
+func requireDarwin(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "darwin" {
+		t.Skip("only macOS rewrites its temporary roots")
 	}
 }
 
