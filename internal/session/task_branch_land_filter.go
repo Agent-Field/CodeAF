@@ -214,8 +214,9 @@ func landFilterDrivers(config landConfigFacts) map[string]bool {
 	return drivers
 }
 
-// Capability entries bind only executable facts. Repository facts must be read
-// again under the land lock, even when a previous plan found the same Git.
+// Capability entries bind executable identity and the current version line,
+// because a macOS shim can select another Git without changing its own file.
+// Repository facts must still be read again under the land lock.
 type landAttributeCapabilities struct {
 	mu                                sync.Mutex
 	path                              string
@@ -248,20 +249,21 @@ func landGitAttributeCapabilities(ctx context.Context, root string) (*landAttrib
 	command := landCommand(ctx, root, "version")
 	info, statErr := os.Stat(command.Path)
 	cacheable := command.Err == nil && statErr == nil
-	landAttributeCapabilityCache.Lock()
-	defer landAttributeCapabilityCache.Unlock()
-	if cacheable {
-		for _, entry := range landAttributeCapabilityCache.entries {
-			if entry.path == command.Path && os.SameFile(entry.info, info) && entry.info.Size() == info.Size() && entry.info.ModTime().Equal(info.ModTime()) {
-				return entry, nil
-			}
-		}
-	}
 	out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, "version")
 	if err != nil || code != 0 || len(diagnostics) != 0 || !bytes.HasSuffix(out, []byte{'\n'}) || bytes.Count(out, []byte{'\n'}) != 1 || !bytes.HasPrefix(out, []byte("git version ")) {
 		return nil, landReadFailed(err, landUnknownAttributes())
 	}
-	entry := &landAttributeCapabilities{path: command.Path, info: info, version: string(out[:len(out)-1])}
+	version := string(out[:len(out)-1])
+	landAttributeCapabilityCache.Lock()
+	defer landAttributeCapabilityCache.Unlock()
+	if cacheable {
+		for _, entry := range landAttributeCapabilityCache.entries {
+			if entry.path == command.Path && entry.version == version && os.SameFile(entry.info, info) && entry.info.Size() == info.Size() && entry.info.ModTime().Equal(info.ModTime()) {
+				return entry, nil
+			}
+		}
+	}
+	entry := &landAttributeCapabilities{path: command.Path, info: info, version: version}
 	entry.apple = landAppleVersion.MatchString(entry.version)
 	if parts := landVersionNumbers.FindStringSubmatch(entry.version); parts != nil {
 		major, e1 := strconv.Atoi(parts[1])
@@ -271,8 +273,8 @@ func landGitAttributeCapabilities(ctx context.Context, root string) (*landAttrib
 		}
 	}
 	if cacheable {
-		// A replaced executable at the same path retires its old entry, so the
-		// cache holds one entry per path however often Git is upgraded.
+		// A new executable identity or version at the same path retires its old
+		// entry, so upgrades and shim switches keep one entry per path.
 		kept := landAttributeCapabilityCache.entries[:0]
 		for _, old := range landAttributeCapabilityCache.entries {
 			if old.path != entry.path {
@@ -288,6 +290,24 @@ func (c *landAttributeCapabilities) older(major, minor int) bool {
 	return c.parsed && (c.major < major || c.major == major && c.minor < minor)
 }
 
+// landUnsupportedTreeAttributes accepts only the complete usage reply for this
+// source, so warnings and truncated errors cannot become cached capabilities.
+func landUnsupportedTreeAttributes(diagnostics []byte, source string) bool {
+	if !bytes.HasSuffix(diagnostics, []byte{'\n'}) {
+		return false
+	}
+	lines := strings.Split(string(diagnostics), "\n")
+	if len(lines) < 3 || lines[0] != "error: unknown option `source="+source+"'" || !strings.HasPrefix(lines[1], "usage: git check-attr ") {
+		return false
+	}
+	for _, line := range lines[2:] {
+		if line != "" && strings.TrimLeft(line, " \t\r\v\f") == line {
+			return false
+		}
+	}
+	return true
+}
+
 func landTreeAttributes(ctx context.Context, root, source string, input []byte, caps *landAttributeCapabilities, scratch *string) ([]byte, []byte, int, error) {
 	caps.mu.Lock()
 	unsupported := caps.treeUnsupported
@@ -299,7 +319,7 @@ func landTreeAttributes(ctx context.Context, root, source string, input []byte, 
 		}
 		args = append(args, "filter")
 		out, diagnostics, code, err := landReadInput(ctx, root, landAttributeReadMax, input, args...)
-		if source == "" || err != nil || code != 129 || len(out) != 0 || !bytes.HasPrefix(diagnostics, []byte("error: unknown option `source=")) || !caps.older(2, 40) {
+		if source == "" || err != nil || code != 129 || len(out) != 0 || !landUnsupportedTreeAttributes(diagnostics, source) || !caps.older(2, 40) {
 			return out, diagnostics, code, err
 		}
 		caps.mu.Lock()
@@ -316,8 +336,27 @@ func landTreeAttributes(ctx context.Context, root, source string, input []byte, 
 		if err != nil {
 			return nil, nil, -1, landUnknownAttributes()
 		}
-		*scratch = absolute
-		if err := os.Mkdir(filepath.Join(absolute, "hooks"), 0o700); err != nil {
+		canonical, err := filepath.EvalSymlinks(absolute)
+		if err != nil {
+			return nil, nil, -1, landUnknownAttributes()
+		}
+		canonicalRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return nil, nil, -1, landUnknownAttributes()
+		}
+		canonicalRoot, err = filepath.Abs(canonicalRoot)
+		if err != nil {
+			return nil, nil, -1, landUnknownAttributes()
+		}
+		// TMPDIR may point into the checkout, including through a symlink. The
+		// caller removes scratch on refusal before any private indexes are made.
+		// A linked worktree's Git directory outside this root is out of scope.
+		relative, err := filepath.Rel(canonicalRoot, canonical)
+		if err != nil || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return nil, nil, -1, landUnknownAttributes()
+		}
+		*scratch = canonical
+		if err := os.Mkdir(filepath.Join(canonical, "hooks"), 0o700); err != nil {
 			return nil, nil, -1, landUnknownAttributes()
 		}
 	}
@@ -346,7 +385,7 @@ func landAttributeLocations(ctx context.Context, root string, caps *landAttribut
 	if !legacy {
 		for _, name := range []string{"GIT_ATTR_GLOBAL", "GIT_ATTR_SYSTEM"} {
 			out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, "var", name)
-			if err == nil && code == 129 && len(out) == 0 && bytes.HasPrefix(diagnostics, []byte("usage: git var ")) && caps.older(2, 42) {
+			if err == nil && code == 129 && len(out) == 0 && bytes.Equal(diagnostics, []byte("usage: git var (-l | <variable>)\n")) && caps.older(2, 42) {
 				caps.mu.Lock()
 				caps.filesUnsupported = true
 				caps.mu.Unlock()
