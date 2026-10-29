@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A window displaced by a newer hold on the same computer lets go at once
-pr: 0
+pr: 2034
 surface: [chat, engine]
 invalidates:
   - "A window displaced by a newer hold on the same computer kept reporting its hold, and kept its send receipt, until a heartbeat. It now retires its own receipt and wakes readers as soon as it learns of the takeover."
