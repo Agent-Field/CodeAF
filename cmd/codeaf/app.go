@@ -366,6 +366,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 			}
 			eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
 			if err == nil {
+				// In-process chats are the desktop's hot path. Remote surfaces keep
+				// one frame per event until someone measures them.
+				eng.DeltaWindow = remote.DefaultDeltaWindow
 				err = enableAppConversationModels(eng.Agent, ask.Models)
 			}
 			if err == nil && ask.AutomaticModels != nil {

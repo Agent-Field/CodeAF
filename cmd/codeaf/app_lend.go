@@ -186,6 +186,9 @@ func appLendLive(agent *session.Agent, ask appOpenAsk, hello remote.Hello) (*app
 		SessionFile: ask.Transcript,
 		Resumed:     true,
 	}
+	// In-process chats are the desktop's hot path. Remote surfaces keep
+	// one frame per event until someone measures them.
+	engine.DeltaWindow = remote.DefaultDeltaWindow
 	sess := remote.NewSession(engine, true)
 	loop, err := remote.LoopbackAttach(hello, remote.AttachOptions{
 		Open: func(remote.Hello) (*remote.Session, error) { return sess, nil },
