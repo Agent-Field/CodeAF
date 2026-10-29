@@ -16,11 +16,9 @@ package processgroup
 //     cores the subtree held, which is the reading this product bounds. One
 //     reading on its own is not a rate and must not be read as one.
 //
-// THE READING IS /proc, WHICH IS LINUX'S. A platform without it answers "cannot
-// say" rather than a guess, and a bound that cannot say never cuts — the same
-// silence rule the admission governor keeps (session's task_pressure.go): a
-// person on a machine this cannot measure gets exactly the scheduler they had
-// before the bound existed.
+// Linux reads /proc and macOS reads the kernel's process-info interface. Other
+// platforms answer "cannot say" rather than guess, and a bound that cannot say
+// never cuts, preserving the scheduler the person had before the bound existed.
 
 // Usage is what one job subtree is using at one instant.
 type Usage struct {
