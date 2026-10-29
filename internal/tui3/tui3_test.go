@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -105,6 +106,10 @@ func waitOut(cmd tea.Cmd) tea.Msg {
 // temporary root is still removed on the way out — os.Exit runs no deferred
 // call.
 func runTests(m *testing.M) int {
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintf(os.Stderr, "tui3 tests: %v\n", err)
+		return 1
+	}
 	root, err := os.MkdirTemp("", "codeaf-tui3-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui3 tests: no temporary state root: %v\n", err)
