@@ -155,3 +155,30 @@ func TestDarwinUsageMarksAnUnreadableChildPartial(t *testing.T) {
 		t.Fatalf("an unreadable child: usage = %+v, %v, want the leader and a partial sum", usage, ok)
 	}
 }
+
+// A parent that read once and then could not be re-read leaves its children out
+// of this reading only, so the sum is partial; one that exited does not.
+func TestDarwinUsageMarksAnUnreadableParentPartial(t *testing.T) {
+	tree := &scriptedTree{
+		tasks:    map[int]darwinproc.TaskInfo{10: task(10, 1, 10, 1), 11: task(11, 10, 10, 1), 12: task(12, 11, 10, 9)},
+		children: map[int][]int{10: {11}, 11: {12}},
+	}
+	tree.use(t)
+	saved := usageReader.task
+	reads := map[int]int{}
+	failWith := unix.EPERM
+	usageReader.task = func(pid int) (darwinproc.TaskInfo, error) {
+		reads[pid]++
+		if pid == 11 && reads[pid] == 2 {
+			return darwinproc.TaskInfo{}, failWith
+		}
+		return saved(pid)
+	}
+	if usage, ok := subtreeUsage(10); !ok || usage.Processes != 2 || !usage.CPUPartial {
+		t.Fatalf("a parent that could not be re-read: usage = %+v, %v, want 2 processes and a partial sum", usage, ok)
+	}
+	reads, failWith = map[int]int{}, unix.ESRCH
+	if usage, ok := subtreeUsage(10); !ok || usage.Processes != 2 || usage.CPUPartial {
+		t.Fatalf("a parent that exited: usage = %+v, %v, want 2 processes and a complete sum", usage, ok)
+	}
+}
