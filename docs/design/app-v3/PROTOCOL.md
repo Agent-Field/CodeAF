@@ -51,7 +51,7 @@ decides which combinations are accepted.
 | `agents.move_to_closed` | `in.tidyIDs` | `Empty` |
 | `agents.move_to_task` | `{id, turn}` | `MoveResult` |
 | `agents.take` | `in.TakeParams` | `TakeResult` |
-| `agents.open` | `in.IDParams` | `agentResult` |
+| `agents.open` | `{id, warm}` | `agentResult` |
 | `agents.queue` | `in.sayTo` | `queueResult` |
 | `agents.rename` | `{id, title}` | `agentResult` |
 | `agents.reopen` | `in.crewID` | `agentResult` |
@@ -793,3 +793,6 @@ read the open agent keep using that conversation. Conversations opened only for
 background work retain the ten-minute idle release, checked every 30 seconds;
 new work reopens through existing admission. Running turns, unanswered questions,
 established open crew holds and kept services retain their conversations.
+`warm` marks a window's guess at a view (a hover's prefetch): a warm open of an
+agent in Closed or the archive is refused with `conflict` and the mark stays.
+Only an open without `warm` (the person's own, Reopen) takes it out.

@@ -119,7 +119,7 @@ func (b *appBackend) SetApprovalPosture(id, posture string) (appwire.Agent, erro
 
 // bootDials sets a created conversation's own effort and posture, which
 // agents.create carried, before its first turn can run.
-func bootDials(conv appConversation, boot *appBoot) error {
+func bootDials(conv appConversation, boot *appDials) error {
 	if boot == nil {
 		return nil
 	}

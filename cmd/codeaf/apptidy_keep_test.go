@@ -129,6 +129,10 @@ func TestReadingAClosedCrewMemberLeavesItClosed(t *testing.T) {
 	if _, err := b.ListAsks(id); err != nil {
 		t.Fatal(err)
 	}
+	bucket := filepath.Base(filepath.Dir(filepath.Dir(paths[1])))
+	if _, err := b.crewOwnerPage(t.Context(), crewOwner{id: id, bucket: bucket, file: paths[1]}, 10); err != nil {
+		t.Fatal(err)
+	}
 	keptClosed(t, b, run, id)
 	if got := opens.Load(); got != before {
 		t.Fatalf("reading a closed member opened it: %d opens, was %d", got, before)
@@ -147,4 +151,47 @@ func TestAQuitsResumeLeavesAClosedAgentClosed(t *testing.T) {
 	if !b.tidied(id) || b.held(id) || opens.Load() != 0 {
 		t.Fatalf("after the resume: marked=%v held=%v opens=%d", b.tidied(id), b.held(id), opens.Load())
 	}
+}
+
+// agents.create's posture outlives a first open that could not set it: the
+// retry's open sets it, so the agent never runs without what was asked.
+func TestCreateDialsOutliveAFailedFirstOpen(t *testing.T) {
+	b, _, paths, _ := lazyBackend(t, 1)
+	a, err := b.find(appAgentID(paths[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.locked(func() { a.dials = &appDials{posture: "ask"} })
+	if _, _, err := b.ensure(a); err == nil {
+		t.Fatal("a conversation with no posture door opened as if it took the posture")
+	}
+	var kept *appDials
+	b.locked(func() { kept = a.dials })
+	if kept == nil {
+		t.Fatal("the failed open dropped the posture agents.create asked for")
+	}
+	conv := &postureConversation{}
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: ask.Transcript, UserMessages: 1, Release: func() {}}, nil
+	}
+	if _, _, err := b.ensure(a); err != nil {
+		t.Fatal(err)
+	}
+	b.locked(func() { kept = a.dials })
+	if conv.posture != "ask" || kept != nil {
+		t.Fatalf("after the retry's open: posture %q, still pending %+v", conv.posture, kept)
+	}
+}
+
+// postureConversation is a conversation with a posture door.
+type postureConversation struct {
+	fakeConversation
+	posture string
+}
+
+func (c *postureConversation) ResolvedApprovalPosture() string { return c.posture }
+
+func (c *postureConversation) SetApprovalPosture(posture string) error {
+	c.posture = posture
+	return nil
 }

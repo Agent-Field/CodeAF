@@ -746,7 +746,10 @@ type appAgent struct {
 	step string
 	// boot is what agents.create asked of a conversation not yet open, taken
 	// by whichever road opens it first; opening says one is being assembled.
-	boot    *appBoot
+	boot *appBoot
+	// dials are what agents.create asked to set on the conversation before
+	// its first turn, kept until an open has set them ([bootDials]).
+	dials   *appDials
 	opening bool
 	// starting says agents.create took a first message whose turn has not
 	// started yet: the conversation is still being opened (bootAgent). While
@@ -805,8 +808,12 @@ type appBoot struct {
 	automatic *bool
 	model     string
 	budget    *float64
-	// effort and posture are the conversation's own dials agents.create
-	// named ("" leaves each to the scopes above it).
+}
+
+// appDials are the conversation's own dials agents.create named ("" leaves
+// each to the scopes above it). Unlike the boot they stay until an open has
+// set them, so a retry after a failed first open never runs without them.
+type appDials struct {
 	effort, posture string
 }
 
@@ -1411,7 +1418,11 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			a.starting, a.stopAsked, a.early = true, false, nil
 		}
 		a.view.UpdatedAt = b.now()
-		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models, effort: ask.Effort, posture: ask.ApprovalPosture}
+		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models}
+		a.dials = nil
+		if ask.Effort != "" || ask.ApprovalPosture != "" {
+			a.dials = &appDials{effort: ask.Effort, posture: ask.ApprovalPosture}
+		}
 		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
@@ -1742,10 +1753,17 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		conn.Release()
 		return appwire.Agent{}, false, appEngineError(err)
 	}
-	if err := bootDials(conn.Conv, boot); err != nil {
+	var dials *appDials
+	b.locked(func() { dials = a.dials })
+	if err := bootDials(conn.Conv, dials); err != nil {
 		conn.Release()
 		return appwire.Agent{}, false, err
 	}
+	b.locked(func() {
+		if a.dials == dials {
+			a.dials = nil
+		}
+	})
 	return b.hold(a, conn, workspace), true, nil
 }
 

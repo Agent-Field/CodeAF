@@ -282,7 +282,7 @@ func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
 	// A member the person closed is answered from what is there too: opening
 	// it would take it out of Closed.
 	if b.crewKeeps(id) && !b.held(id) && !b.isClosing() {
-		if _, _, err = b.keepOpen(a); errors.Is(err, errAppKeptClosed) {
+		if _, _, err = b.keptLive(id); errors.Is(err, errAppKeptClosed) {
 			err = nil
 		}
 	}
