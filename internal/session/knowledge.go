@@ -128,10 +128,11 @@ func (a *Agent) startKnowledge() {
 			catchUpTimer.Reset(knowledgeCatchUp)
 			catchUp = catchUpTimer.C
 		}
-		// A resumed chat may already have durable lines waiting for capture.
-		if look(false) {
-			trail()
-		}
+		// A resumed chat may already have durable lines waiting for capture,
+		// and a rebind may have taken over a write whose wake the retired
+		// scanner consumed: look now, and once more with fresh consent.
+		look(false)
+		trail()
 		for {
 			select {
 			case <-ctx.Done():
