@@ -20,8 +20,9 @@ package main
 // whether the service lists its models, the address) is not a secret, so
 // keys.set keeps it in the profile the terminal reads ([config.KeepAppSource]).
 //
-// OPENROUTER'S CHECK IS EXACTLY ONE REQUEST, with no redirect followed and ten
-// seconds to answer, and a rejection is said in the provider's own words with
+// OPENROUTER'S CHECK PROVES THE KEY BEFORE IT LISTS ANYTHING: the key's own row
+// first (/key), then the models it reaches, with no redirect followed and ten
+// seconds for both, and a rejection is said in the provider's own words with
 // its own status code. Its browser sign-in produces a key the app keeps.
 //
 // THE CHATGPT SIGN-IN IS THE ONE EXCEPTION, accepted by the owner: its tokens
@@ -470,7 +471,8 @@ func appServiceHost(source modelsource.Source, row config.PersistedSource) strin
 // carries that key's own row (label, limit, usage), and an unknown key is a 401.
 // So the key's row is asked first (and the older /auth/key when /key is not
 // there, as the balance reader does), and the listing only after it answered.
-// One deadline covers every request.
+// A management key has a row too, but OpenRouter lets it manage keys and never
+// run a model, so its row is a refusal. One deadline covers every request.
 func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
 	address = strings.TrimRight(address, "/")
 	host := address
@@ -502,6 +504,13 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 	}
 	if err := json.Unmarshal(raw, &row); err != nil || row.Data == nil {
 		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with the key's details"}
+	}
+	// is_provisioning_key is the flag's older name, still sent beside it.
+	for _, flag := range []string{"is_management_key", "is_provisioning_key"} {
+		var set bool
+		if json.Unmarshal(row.Data[flag], &set) == nil && set {
+			return appwire.KeyCheck{Status: status, Message: "this is a management key, which can't run models · use an API key"}
+		}
 	}
 
 	status, raw, failed = get("/models/user")

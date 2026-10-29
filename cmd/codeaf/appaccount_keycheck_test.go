@@ -12,9 +12,9 @@ import (
 )
 
 // A KEY WORKS ONLY WHEN OPENROUTER ACCEPTS IT, NOT WHEN ITS CATALOG ANSWERS.
-// The stub is the shape a dead key really meets (CodeAF #2022): every listing
+// The stub is the shape a dead key really meets (codeaf #2022): every listing
 // answers 200 with the public catalog whatever the bearer, and only the key
-// endpoint tells a live key from a revoked one. A refused, redirected or
+// endpoint tells a live key from a revoked one or a management key. A refused, redirected or
 // unreadable key row stops the check before the listing, with the provider's
 // status and words and never the key; an accepted one gets the models.
 func TestAppKeyCheckRefusesAKeyOpenRouterDoesNotAccept(t *testing.T) {
@@ -64,6 +64,17 @@ func TestAppKeyCheckRefusesAKeyOpenRouterDoesNotAccept(t *testing.T) {
 				_, _ = w.Write([]byte(`{"data":[]}`))
 			case "sk-or-no-details-key":
 				_, _ = w.Write([]byte(`{}`))
+			case "sk-or-management-key":
+				_, _ = w.Write([]byte(`{"data":{"label":"admin","is_management_key":true,"is_provisioning_key":true}}`))
+			case "sk-or-provisioning-key":
+				_, _ = w.Write([]byte(`{"data":{"label":"admin","is_provisioning_key":true}}`))
+			case "sk-or-fallback-dead-key":
+				if r.URL.Path == "/key" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":{"message":"User not found.","code":401}}`))
 			case "sk-or-echo-key":
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(map[string]string{"message": "Rejected " + key})
@@ -97,6 +108,9 @@ func TestAppKeyCheckRefusesAKeyOpenRouterDoesNotAccept(t *testing.T) {
 		{name: "null details", key: "sk-or-null-key", status: 200, message: "the provider answered, but not with the key's details", paths: []string{"/key"}},
 		{name: "array details", key: "sk-or-array-key", status: 200, message: "the provider answered, but not with the key's details", paths: []string{"/key"}},
 		{name: "missing details", key: "sk-or-no-details-key", status: 200, message: "the provider answered, but not with the key's details", paths: []string{"/key"}},
+		{name: "management key", key: "sk-or-management-key", status: 200, message: "this is a management key, which can't run models · use an API key", paths: []string{"/key"}},
+		{name: "provisioning key", key: "sk-or-provisioning-key", status: 200, message: "this is a management key, which can't run models · use an API key", paths: []string{"/key"}},
+		{name: "fallback dead key", key: "sk-or-fallback-dead-key", status: 401, message: "User not found.", paths: []string{"/key", "/auth/key"}},
 		{name: "redacted rejection", key: "sk-or-echo-key", status: 401, paths: []string{"/key"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
