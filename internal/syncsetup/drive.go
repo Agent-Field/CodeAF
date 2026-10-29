@@ -405,6 +405,7 @@ func (d *Drive) info() cellsync.PublishInfo {
 // becomeViewer is the Batcher's word that another device took the chat over:
 // from now on this window only shows it, and says who has it.
 func (d *Drive) becomeViewer(s cellsync.Superseded) {
+	held := d.sendLeaseSnapshot()
 	var current directory.Lease
 	fresh := false
 	if s.Branch == "" && d.directoryID != "" {
@@ -415,8 +416,7 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 			current, fresh = v.Cell.Lease, true
 		}
 		if err == nil && v.Cell.Lease.Expires <= v.Now {
-			d.retireSendLease(v.Cell.Lease)
-			d.available()
+			d.availableAfter(held, v.Cell.Lease)
 			return
 		}
 		if err == nil && s.By == "" {
@@ -428,9 +428,10 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 		// flush lock, which also excludes reacquisition. Without a branch or
 		// a fresh reading, a delayed refusal may refer to an older fence.
 		if fresh || s.Branch != "" {
-			d.retireSendLease(current)
+			d.availableAfter(held, current)
+		} else {
+			d.available()
 		}
-		d.available()
 		return
 	}
 	d.mu.Lock()
@@ -563,6 +564,7 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 // CheckLease closes the stale-window gap before a tool runs, even when no
 // heartbeat or directory change has reached this process since the move.
 func (d *Drive) CheckLease(ctx context.Context) error {
+	held := d.sendLeaseSnapshot()
 	if err := cellstore.Captured(ctx, d.cell); err != nil {
 		return err
 	}
@@ -578,8 +580,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		v, err = d.renewIdleLease(ctx, v, fence)
 	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
-		d.retireSendLease(v.Cell.Lease)
-		d.available()
+		d.availableAfter(held, v.Cell.Lease)
 		return nil
 	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
@@ -588,6 +589,14 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		d.resumeViewer()
 	}
 	return nil
+}
+
+// sendLeaseSnapshot binds retirement to the receipt held before a relay reading,
+// so an older reading cannot retire a receipt recorded by a later reacquisition.
+func (d *Drive) sendLeaseSnapshot() sendLease {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 }
 
 // renewIdleLease covers the gap between a watch reconnect and its ordinary

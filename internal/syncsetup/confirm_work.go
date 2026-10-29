@@ -13,6 +13,7 @@ import (
 // and decides how to degrade a failed read. True confirms the current fence;
 // false means either a viewer or a drive that cannot confirm ownership yet.
 func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
+	held := d.sendLeaseSnapshot()
 	if d.batcher == nil {
 		return false, nil
 	}
@@ -37,8 +38,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if lease.Expires <= v.Now {
-		d.retireSendLease(lease)
-		d.available()
+		d.availableAfter(held, lease)
 		// Never resume an older tree over work saved by another computer.
 		head, err := cellstore.Head(d.cell)
 		if err != nil || head == nil || head.Turn.ID != v.Cell.Head {
@@ -65,8 +65,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if lease.Device == d.sync.Device.ID() {
-		d.retireSendLease(lease)
-		d.available()
+		d.availableAfter(held, lease)
 		return false, nil
 	}
 
@@ -124,31 +123,27 @@ func (d *Drive) resumeViewer() {
 	}
 }
 
-// retireSendLease keeps the recorded receipt when the relay still names this
-// device at that fence with a nonzero expiry, even if it has lapsed, because
-// this drive may renew it. Otherwise it conditionally removes that receipt
-// before notifying readers, preserving any newer writer's receipt. A zero
-// recorded fence has no receipt to retire. Removal errors are reported as notices.
-func (d *Drive) retireSendLease(lease directory.Lease) {
-	d.mu.Lock()
-	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
-	d.mu.Unlock()
-	if expected.Fence == 0 || lease.Device == d.sync.Device.ID() && lease.Fence == expected.Fence && lease.Expires != 0 {
-		return
-	}
-	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
-		d.notice(err.Error())
-	}
-}
-
-// available retains the work gate until admission acquires a new fence, without
+// available retains the work gate until ownership is confirmed again, without
 // claiming that the last holder is still working in a released chat.
 func (d *Drive) available() {
+	d.availableAfter(sendLease{}, directory.Lease{})
+}
+
+// availableAfter closes the work gate before receipt I/O can block and retires
+// only the receipt held before the reading, so a concurrent reacquisition survives.
+// An unchanged owner and fence keeps its receipt even when released, because a
+// heartbeat can still renew it. Readers hear the change after retirement finishes.
+func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 	viewer := Viewer{Line: chatlist.Available}
 	d.mu.Lock()
 	changed := d.viewer != viewer
 	d.viewer = viewer
 	d.mu.Unlock()
+	if held.Fence != 0 && (reading.Device != d.sync.Device.ID() || reading.Fence != held.Fence) {
+		if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
+			d.notice(err.Error())
+		}
+	}
 	if changed {
 		d.renewalChanged()
 	}
