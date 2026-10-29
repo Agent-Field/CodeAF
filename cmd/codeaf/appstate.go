@@ -394,6 +394,7 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 	settings := appwire.Settings{
 		DefaultModel:       appDefaultModel(),
 		AsksBefore:         config.ToolApprovalModeAt(profile),
+		ApprovalPosture:    appStandingPosture(profile),
 		BudgetUSD:          appFigure(config.SpendRailUSDAt(profile)),
 		DayCapUSD:          appFigure(base),
 		WorkFolder:         file.workFolder(),

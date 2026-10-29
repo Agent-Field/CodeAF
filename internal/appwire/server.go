@@ -377,6 +377,20 @@ var methods = map[string]method{
 		if err := CheckAttachSources(p.Attachments); err != nil {
 			return nil, err
 		}
+		if p.Effort != "" {
+			rung, ok := effort.Parse(p.Effort)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "effort is low, medium or high")
+			}
+			p.Effort = rung.String()
+		}
+		if p.ApprovalPosture != "" {
+			posture, ok := AppApprovalPosture(p.ApprovalPosture)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "approval_posture is ask, guardian, allow or auto")
+			}
+			p.ApprovalPosture = posture
+		}
 		agent, err := e.CreateAgent(p)
 		if err != nil {
 			return nil, err
@@ -470,6 +484,31 @@ var methods = map[string]method{
 			return nil, Errorf(CodeBadParams, "effort is low, medium or high")
 		}
 		agent, err := e.SetEffort(p.ID, rung.String())
+		if err != nil {
+			return nil, err
+		}
+		return &agentResult{agent}, nil
+	}),
+	// Block is never set from the app: it is Settings' answer, and a chat that
+	// wants it follows Settings. auto hands the conversation back to Settings.
+	"agents.set_approval_posture": typed(func(e Engine, p struct {
+		ID      string `json:"id"`
+		Posture string `json:"posture" enum:"ask,guardian,allow,auto"`
+	}) (*agentResult, error) {
+		if strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "agents.set_approval_posture needs an id")
+		}
+		posture, ok := AppApprovalPosture(p.Posture)
+		if !ok {
+			return nil, Errorf(CodeBadParams, "posture is ask, guardian, allow or auto")
+		}
+		door, ok := e.(interface {
+			SetApprovalPosture(id, posture string) (Agent, error)
+		})
+		if !ok {
+			return nil, Errorf(CodeBadParams, "approval postures require a newer engine")
+		}
+		agent, err := door.SetApprovalPosture(p.ID, posture)
 		if err != nil {
 			return nil, err
 		}

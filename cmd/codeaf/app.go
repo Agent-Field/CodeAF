@@ -805,6 +805,9 @@ type appBoot struct {
 	automatic *bool
 	model     string
 	budget    *float64
+	// effort and posture are the conversation's own dials agents.create
+	// named ("" leaves each to the scopes above it).
+	effort, posture string
 }
 
 // appEarlySteer is a steer that came while the agent was starting, kept for
@@ -1408,7 +1411,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			a.starting, a.stopAsked, a.early = true, false, nil
 		}
 		a.view.UpdatedAt = b.now()
-		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models}
+		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models, effort: ask.Effort, posture: ask.ApprovalPosture}
 		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
@@ -1728,6 +1731,10 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		conn.Release()
 		return appwire.Agent{}, false, appEngineError(err)
 	}
+	if err := bootDials(conn.Conv, boot); err != nil {
+		conn.Release()
+		return appwire.Agent{}, false, err
+	}
 	return b.hold(a, conn, workspace), true, nil
 }
 
@@ -1761,6 +1768,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
 		effort = dial.ConversationEffort()
 	}
+	approval := appApprovalOf(conn.Conv, replayTranscript)
 	// A CONVERSATION WITH NO NAME OF ITS OWN THAT A CREW KNOWS goes by the
 	// word its crew calls it, which for a member a manager started is its
 	// brief's first words: held again after a relaunch, nothing else names it.
@@ -1779,6 +1787,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.users, a.counted = users, true
 		}
 		a.view.Effort = effort
+		a.view.Approval = approval
 		a.view.ModelIdentity = modelIdentity
 		if conn.Transcript != "" {
 			a.transcript = conn.Transcript

@@ -623,6 +623,8 @@ func TestALentStageKeepsTheFactorysModelPostureAndBudget(t *testing.T) {
 	usd := 5.0
 	_, err = r.backend.SetAgentBudget(appwire.AgentBudgetSet{ID: r.agent, USD: &usd})
 	conflict("SetAgentBudget", err)
+	_, err = r.backend.SetApprovalPosture(r.agent, "allow")
+	conflict("SetApprovalPosture", err)
 	conflict("RaiseCap", r.backend.RaiseCap(appwire.CapRaise{Scope: appwire.CapAgent, ID: r.agent, ToUSD: 9, For: appwire.RaiseGood}))
 	conflict("memberRole", r.backend.memberRole(r.spec.Team, r.agent, "reviewer", "Review it.", "other/model"))
 	if role := r.backend.roleNamed("reviewer"); role != nil {
