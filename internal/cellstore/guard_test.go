@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -437,5 +438,40 @@ func TestSecretNoticesDescribeOnlyWhatAnUnpairedComputerKeeps(t *testing.T) {
 		if strings.HasPrefix(notice, ".env ") && !strings.Contains(notice, "variables are kept locally for your tools") {
 			t.Fatalf("missing local variables: %s", notice)
 		}
+	}
+}
+
+// A guard with no route runs under the full-screen surface (the older-chat
+// copier seals with one), so its notice goes to the standard logger, which the
+// surface parks in chat.log, and never as a raw row on stderr.
+func TestAGuardWithNoRouteLogsItsNoticeAndWritesNothingToStderr(t *testing.T) {
+	var logged bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logged)
+	defer log.SetOutput(previous)
+
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stderr
+	os.Stderr = stderr
+	defer func() { os.Stderr = saved }()
+
+	r := newRig(t)
+	r.guard.Notify = nil
+	r.write("Tests/BrowseTests.swift", "let key = \""+fakeKey+"\"\n")
+	r.screen()
+
+	os.Stderr = saved
+	raw, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) != 0 {
+		t.Fatalf("stderr %q: a notice must not tear through the surface", raw)
+	}
+	if got := logged.String(); !strings.Contains(got, "Tests/BrowseTests.swift") || strings.Contains(got, fakeKey) {
+		t.Fatalf("logged %q: want the file named, never the secret", got)
 	}
 }
