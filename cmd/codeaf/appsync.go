@@ -19,9 +19,10 @@ import (
 const appWindowConflict = "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window"
 
 type appSync struct {
-	mu   sync.Mutex
-	owed *syncsetup.Sync
-	last appwire.Sync
+	mu      sync.Mutex
+	owed    *syncsetup.Sync
+	last    appwire.Sync
+	sharing string
 }
 
 type appSyncFact struct {
@@ -174,6 +175,7 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 		state.Mode, state.Reason = appwire.SyncUnavailable, cell.UnavailableReason()
 	case syncsetup.MayTalk(b.relayHome()):
 		state.Mode = appwire.SyncOn
+		state.Reason = b.sync.sharing
 	}
 	if b.sync.owed != nil {
 		if line, owed := b.sync.owed.PeekFirstRun(); owed {
@@ -183,6 +185,15 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 		}
 	}
 	return state
+}
+
+// sharingStatus uses the existing sync event so background progress and errors
+// are visible even when none of the chats being shared has been opened.
+func (b *appBackend) sharingStatus(line string) {
+	b.sync.mu.Lock()
+	defer b.sync.mu.Unlock()
+	b.sync.sharing = line
+	b.syncChangedLocked()
 }
 
 func (b *appBackend) SyncStatus() (appwire.Sync, error) {

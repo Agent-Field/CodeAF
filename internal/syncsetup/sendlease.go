@@ -83,7 +83,7 @@ func (s *Sync) reconcileSendLease(id, remoteID string, view directory.CellView) 
 }
 
 func (s *Sync) recordSendLease(id string, held sendLease) error {
-	lock, err := s.lockSendLease(id)
+	lock, err := s.lockChat(id, "")
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 
 // forgetSendLease retires only this writer's fence, preserving a newer local owner.
 func (s *Sync) forgetSendLease(id string, expected sendLease) error {
-	lock, err := s.lockSendLease(id)
+	lock, err := s.lockChat(id, "")
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 	return err
 }
 
-func (s *Sync) lockSendLease(id string) (*os.File, error) {
+func (s *Sync) lockChat(id, suffix string) (*os.File, error) {
 	path, err := s.sendLeasePath(id)
 	if err != nil {
 		return nil, err
@@ -158,7 +158,7 @@ func (s *Sync) lockSendLease(id string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(path+suffix+".lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}

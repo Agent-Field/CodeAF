@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -192,8 +194,16 @@ func (r *pairRig) joinWith(t *testing.T, code string, replace bool) (*pairScreen
 // The whole of both doors through the real command: one shows a code, the other
 // types it, both screens show the same three words, a person types y, and the
 // second computer holds the first one's chats and the relay it came through.
-func TestPairBothDoorsOnATerminal(t *testing.T) {
+func TestM1M8PairBothDoorsOnATerminal(t *testing.T) {
 	rig := newPairRig(t)
+	if _, err := identity.EnsureSolo(rig.homeB); err != nil {
+		t.Fatal(err)
+	}
+	chat := filepath.Join(rig.homeB, "own-chat")
+	if err := os.WriteFile(chat, []byte("first question\nfirst answer\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	shown := rig.show(t)
 	code := shown.code(t)
 
@@ -217,11 +227,14 @@ func TestPairBothDoorsOnATerminal(t *testing.T) {
 	}
 
 	wanted := pair.WaitingChatsLine(asked[1])
-	if got := joiner.String(); got != wanted+"\n"+pair.JoinedLine+"\n" {
+	if got := joiner.String(); got != wanted+"\n"+pair.JoinedLine+"\n"+terminalSharingLine+"\n" {
 		t.Fatalf("the joining terminal printed:\n%s\nwant:\n%s\n%s", got, wanted, pair.JoinedLine)
 	}
 	if !strings.HasSuffix(shown.out.String(), pair.PairedChatsLine("laptop")+"\n") {
 		t.Fatalf("the sharing terminal did not end on the paired line:\n%s", shown.out.String())
+	}
+	if got, err := os.ReadFile(chat); err != nil || string(got) != "first question\nfirst answer\n" {
+		t.Fatalf("M1 terminal history: %q, %v", got, err)
 	}
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)

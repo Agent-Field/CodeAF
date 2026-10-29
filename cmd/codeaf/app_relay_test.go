@@ -197,9 +197,9 @@ func TestAppChatsEC1(t *testing.T) {
 
 // E-P1 and E-P2: explicit replacement precedes any exchange; both pairing sides
 // answer the same typed app door, with two homes and a loopback relay.
-func TestAppPairEP1EP2L3(t *testing.T) {
+func TestM1M4M8M9M10AppPair(t *testing.T) {
 	for _, used := range []bool{false, true} {
-		t.Run(map[bool]string{false: "empty", true: "replace"}[used], func(t *testing.T) {
+		t.Run(map[bool]string{false: "empty", true: "merge"}[used], func(t *testing.T) {
 			celltest.Available(t)
 			relay := e2Relay(t)
 			t.Setenv(syncsetup.URLVar, relay.URL)
@@ -216,11 +216,11 @@ func TestAppPairEP1EP2L3(t *testing.T) {
 				}
 			}
 			_, recB, wb := appDeviceBackend(t, dirB)
-			defer assertAppPairCopyL3(t, recA)
-			defer assertAppPairCopyL3(t, recB)
+			defer assertAppPairCopyM9(t, recA)
+			defer assertAppPairCopyM9(t, recB)
 			var kept string
 			if used {
-				if _, err := identity.Ensure(dirB); err != nil {
+				if _, err := identity.EnsureSolo(dirB); err != nil {
 					t.Fatal(err)
 				}
 				kept = filepath.Join(dirB, "v3", "projects", "local", "saved", "meta.json")
@@ -233,23 +233,7 @@ func TestAppPairEP1EP2L3(t *testing.T) {
 			}
 			offer := machineCall[appwire.PairResult](t, wa, "pair.start", appwire.PairStartParams{Mode: "offer_code", Name: "A"}).Pairing
 			waiting := e2PairWait(t, wa, offer.ID, "waiting")
-			if used {
-				join := machineCall[appwire.PairResult](t, wb, "pair.start", appwire.PairStartParams{Mode: "use_code", Code: waiting.Code, Name: "B"}).Pairing
-				question := e2PairWait(t, wb, join.ID, "question")
-				if question.Question.Kind != "replace_own_chats" {
-					t.Fatal(question)
-				}
-				machineCall[appwire.PairResult](t, wb, "pair.answer", appwire.PairAnswerParams{ID: join.ID, Question: question.Question.ID, Option: "cancel"})
-				e2PairWait(t, wb, join.ID, "cancelled")
-				if raw, err := os.ReadFile(kept); err != nil || !strings.Contains(string(raw), "keep me") {
-					t.Fatalf("own chat lost: %s %v", raw, err)
-				}
-			}
 			join := machineCall[appwire.PairResult](t, wb, "pair.start", appwire.PairStartParams{Mode: "use_code", Code: waiting.Code, Name: "B"}).Pairing
-			if used {
-				q := e2PairWait(t, wb, join.ID, "question")
-				machineCall[appwire.PairResult](t, wb, "pair.answer", appwire.PairAnswerParams{ID: join.ID, Question: q.Question.ID, Option: "replace"})
-			}
 			q := e2PairWait(t, wa, offer.ID, "question")
 			if q.Question.Kind != "approve" || q.Words == "" {
 				t.Fatal(q)
@@ -257,6 +241,12 @@ func TestAppPairEP1EP2L3(t *testing.T) {
 			machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer.ID, Question: q.Question.ID, Option: "y"})
 			e2PairWait(t, wa, offer.ID, "done")
 			done := e2PairWait(t, wb, join.ID, "done")
+			if used {
+				if raw, err := os.ReadFile(kept); err != nil || !strings.Contains(string(raw), "keep me") {
+					t.Fatalf("M1 own chat lost: %s %v", raw, err)
+				}
+			}
+
 			if !done.Restart {
 				t.Fatal("join did not request restart")
 			}
@@ -275,9 +265,9 @@ func TestAppPairEP1EP2L3(t *testing.T) {
 	}
 }
 
-func assertAppPairCopyL3(t *testing.T, rec *appRecorder) {
+func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
-	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. This computer now shares your chats\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Replace this computer's chats\?|This computer already has its own chats\. Pairing replaces them with the chats from your other computer\.|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Replace this computer's chats|Not now|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {
@@ -285,12 +275,15 @@ func assertAppPairCopyL3(t *testing.T, rec *appRecorder) {
 			continue
 		}
 		p := rec.data[i].(appwire.PairResult).Pairing
+		if p.Question != nil && p.Question.Kind == "replace_own_chats" {
+			t.Error("M8 app asked to replace chats")
+		}
 		visible := slices.Clone(p.Lines)
 		if q := p.Question; q != nil {
 			visible = append(visible, q.Title, q.Detail)
 			for _, option := range q.Options {
 				visible = append(visible, option.Label)
-				if !slices.Contains([]string{"Pair", "Don't pair", "Replace this computer's chats", "Not now"}, option.Label) {
+				if !slices.Contains([]string{"Pair", "Don't pair"}, option.Label) {
 					t.Errorf("L3 option: %q", option.Label)
 				}
 			}
@@ -300,7 +293,7 @@ func assertAppPairCopyL3(t *testing.T, rec *appRecorder) {
 				t.Errorf("L3 unexpected app copy: %q", line)
 			}
 
-			for _, banned := range []string{"codeaf pair", "--replace", "device"} {
+			for _, banned := range []string{"codeaf pair", "--replace", "device", "identity", "cell", "lease", "fence", "ledger", "vault"} {
 				if strings.Contains(strings.ToLower(line), banned) {
 					t.Errorf("L3 terminal copy: %q", line)
 				}
@@ -338,8 +331,8 @@ func TestAppPairLinksEP1(t *testing.T) {
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	a, recA, wa := appDeviceBackend(t, t.TempDir())
 	_, recB, wb := appDeviceBackend(t, t.TempDir())
-	defer assertAppPairCopyL3(t, recA)
-	defer assertAppPairCopyL3(t, recB)
+	defer assertAppPairCopyM9(t, recA)
+	defer assertAppPairCopyM9(t, recB)
 	if _, err := identity.Ensure(a.relayHome()); err != nil {
 		t.Fatal(err)
 	}

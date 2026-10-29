@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -109,7 +110,11 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 	if err != nil {
 		return err
 	}
-	joined, err := pair.JoinByLink(ctx, d.requests(route), d.linking(route, replace), inviteScreen{d.term})
+	joining := d.linking(route, replace)
+	if d.name != "" {
+		joining.Label = d.name
+	}
+	joined, err := pair.JoinByLink(ctx, d.requests(route), joining, inviteScreen{d.term})
 	if err != nil && !errors.Is(err, pair.ErrPairedNotRead) {
 		return d.endedByPerson(ctx, err)
 	}
@@ -117,8 +122,20 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		d.term.say(err.Error())
 		return nil
 	}
-	d.term.say(pair.JoinedFleetLine(joined.Fleet.Workspaces))
-	d.recordOwnDeviceOrSay(ctx, route)
+	if !joined.Already && d.name != "" {
+		if _, err := devname.Set(joining.Home, d.name); err != nil {
+			return err
+		}
+	}
+	if joined.Already {
+		d.term.say(joined.Sentence())
+	} else {
+		d.term.say(pair.JoinedFleetLine(joined.Fleet.Workspaces))
+	}
+	if !joined.Already {
+		d.recordOwnDeviceOrSay(ctx, route)
+		d.term.say(terminalSharingLine)
+	}
 	return nil
 }
 

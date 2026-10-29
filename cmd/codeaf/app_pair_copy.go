@@ -12,25 +12,20 @@ import (
 // Desktop pairing copy belongs here: terminal prompts contain commands and
 // keyboard answers that do not describe the app's controls.
 const (
-	appPairReplaceTitle  = "Replace this computer's chats?"
-	appPairReplaceDetail = "This computer already has its own chats. Pairing replaces them with the chats from your other computer."
-	appPairCancelled     = "Cancelled. Nothing was paired."
-	appPairDeclined      = "Pairing was declined. Nothing was paired."
-	appPairBurned        = "Someone entered a wrong code. Here is a new code."
-	appPairJoined        = "Paired. This computer now shares your chats."
-	appPairAlready       = "This computer is already paired with your chats."
-	appPairFollowed      = "Paired. This computer now shares your current chats and keeps its saved keys."
-	appPairListUnread    = "Paired. Your computers could not be listed yet. Open codeaf again in a moment."
-	appPairFailed        = "This computer could not finish pairing. Try again."
+	appPairCancelled  = "Cancelled. Nothing was paired."
+	appPairDeclined   = "Pairing was declined. Nothing was paired."
+	appPairBurned     = "Someone entered a wrong code. Here is a new code."
+	appPairJoined     = pair.JoinedLine
+	appPairAlready    = pair.AlreadyPairedLine
+	appPairFollowed   = "Paired. This computer now shares your current chats and keeps its saved keys."
+	appPairListUnread = "Paired. Your computers could not be listed yet. Open codeaf again in a moment."
+	appPairFailed     = "This computer could not finish pairing. Try again."
 )
 
 func pairApprovalOptions() []appwire.PairOption {
 	return []appwire.PairOption{{ID: "y", Label: "Pair"}, {ID: "n", Label: "Don't pair"}}
 }
 
-func appPairReplaceOptions() []appwire.PairOption {
-	return []appwire.PairOption{{ID: "replace", Label: "Replace this computer's chats"}, {ID: "cancel", Label: "Not now"}}
-}
 func appPairCodeLines(code string) []string {
 	return []string{"Pairing shares your chats with another computer.", fmt.Sprintf("On your other computer, choose Pair a computer, then Enter a code from the other computer, and type %s. This code lasts %d minutes.", code, int(pair.CodeValidFor/time.Minute))}
 }
@@ -62,6 +57,8 @@ func appPairCheck(check string) string {
 }
 func appPairFailure(err error) string {
 	switch {
+	case errors.Is(err, pair.ErrDifferentChats):
+		return pair.ErrDifferentChats.Error()
 	case errors.Is(err, pair.ErrCodeDidNotWork):
 		return "That code did not work, or it timed out. Ask for a new one."
 	case errors.Is(err, pair.ErrCodeShape):
