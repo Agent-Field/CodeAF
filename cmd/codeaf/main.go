@@ -38,6 +38,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -58,6 +59,8 @@ func main() {
 	}
 	registerRunningCLI()
 	code := execute()
+	// The teams store folds its WAL back in as it closes (internal/teams).
+	teams.Close()
 	stopDiagnostics()
 	os.Exit(code)
 }

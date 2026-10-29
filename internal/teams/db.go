@@ -247,6 +247,21 @@ func (h *handle) release() {
 	}
 }
 
+// Close closes every teams store this process has open, so SQLite folds the
+// WAL back into teams.db and removes it as the last connection leaves; a
+// handle still in use closes when it is released. The process calls it on
+// its way out. A store used after it is opened again.
+//
+// Without it the WAL simply stays beside the database: that is safe, since the
+// next open replays it, but a store a quit left behind looks unfinished.
+func Close() {
+	handles.Lock()
+	defer handles.Unlock()
+	for _, h := range handles.open {
+		retire(h)
+	}
+}
+
 // opener opens every database on one goroutine of the package's own, started
 // with it. database/sql keeps a goroutine per open database until it is
 // closed, and that goroutine belongs to whoever opened it: opened by a caller

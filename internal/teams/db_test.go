@@ -375,3 +375,35 @@ func TestAShortForeignFileIsUnreadableAndUntouched(t *testing.T) {
 		t.Fatalf("the file became %q", raw)
 	}
 }
+
+// A PROCESS THAT CLOSES THE STORE ON ITS WAY OUT LEAVES NO WAL BEHIND. While
+// the store is open its writes sit in teams.db-wal; Close is the last
+// connection leaving, which folds them into teams.db and removes the WAL, and
+// what was written is all there on the next open.
+func TestCloseFoldsTheWalIntoTheDatabase(t *testing.T) {
+	dir := t.TempDir()
+	must(t, Save(dir, manyTeams(20)))
+	if _, err := os.Stat(Path(dir) + "-wal"); err != nil {
+		t.Fatalf("an open store has no WAL: %v", err)
+	}
+	Close()
+	if _, err := os.Stat(Path(dir) + "-wal"); !os.IsNotExist(err) {
+		t.Fatalf("the WAL outlived the close: %v", err)
+	}
+	// A handle in use when Close comes closes as it is released.
+	h, err := acquire(Path(dir), false)
+	must(t, err)
+	Close()
+	var n int
+	must(t, h.db.QueryRow("SELECT count(*) FROM teams").Scan(&n))
+	h.release()
+	if n != 20 {
+		t.Fatalf("%d teams after closing", n)
+	}
+	if _, err := os.Stat(Path(dir) + "-wal"); !os.IsNotExist(err) {
+		t.Fatalf("the WAL outlived the last release: %v", err)
+	}
+	if f := mustLoad(t, dir); len(f.Teams) != 20 {
+		t.Fatalf("reopened with %d teams", len(f.Teams))
+	}
+}
