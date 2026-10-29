@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Pairing keeps and shares a solo computer's existing chats
-pr: 0
+pr: 2031
 surface: [chat, engine, docs]
 invalidates:
   - "A computer with its own chats previously had to replace its shared state when pairing. A solo computer now keeps its chats, history, saved keys, memory and preferences and shares them with the other computer."
