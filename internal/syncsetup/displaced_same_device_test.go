@@ -517,6 +517,67 @@ func TestAvailableAfterALapseKeepsTheReceiptItMayResume(t *testing.T) {
 	}
 }
 
+// The receipt lock is a file lock, so a door that already held it when it
+// retired the displaced receipt would wait on itself forever. Every door
+// finishes, and nothing on its call chain still holds the lock by the time
+// it announces the change.
+func TestDisplacementRetiresWithoutHoldingTheReceiptLock(t *testing.T) {
+	for _, path := range []string{"becomeViewer", "ConfirmWork", "CheckLease"} {
+		t.Run(path, func(t *testing.T) {
+			d := sameComputerDrive(t)
+			s := d.sync
+			_, err := s.Dir.Acquire(t.Context(), d.directoryID, directory.AcquireOpts{
+				Force: true, Expect: &directory.LeaseExpectation{Device: s.Device.ID(), Fence: d.recordedFence},
+			})
+			mustNil(t, err)
+			lockPath, err := s.sendLeasePath(d.cell.ID)
+			mustNil(t, err)
+			probe, err := os.OpenFile(lockPath+".lock", os.O_CREATE|os.O_RDWR, 0600)
+			mustNil(t, err)
+			defer probe.Close()
+			announced := make(chan error, 1)
+			d.opt.OnRenewalChange = func() {
+				err := filelock.Lock(probe, true, true)
+				if err == nil {
+					err = filelock.Unlock(probe)
+				}
+				announced <- err
+			}
+			done := make(chan error, 1)
+			go func() {
+				switch path {
+				case "becomeViewer":
+					d.becomeViewer(cellsync.Superseded{By: s.Device.ID()})
+					done <- nil
+				case "ConfirmWork":
+					_, err := d.ConfirmWork(context.Background())
+					done <- err
+				case "CheckLease":
+					done <- d.CheckLease(context.Background())
+				}
+			}()
+			select {
+			case err := <-done:
+				mustNil(t, err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("displacement did not finish; the door waits on a receipt lock it holds")
+			}
+			select {
+			case err := <-announced:
+				if filelock.IsBusy(err) {
+					t.Fatal("the door still held the receipt lock when it announced the retirement")
+				}
+				mustNil(t, err)
+			default:
+				t.Fatal("displacement announced no change")
+			}
+			if remote, fence, err := s.SendLease(d.cell.ID); !os.IsNotExist(err) {
+				t.Fatalf("displaced receipt = %q, %d, %v; want no receipt", remote, fence, err)
+			}
+		})
+	}
+}
+
 // sameComputerDrive is one window driving a chat at its first fence over an
 // in-memory directory, with its receipt recorded and no engine staged.
 func sameComputerDrive(t *testing.T, clock ...func() time.Time) *Drive {
