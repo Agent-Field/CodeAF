@@ -142,10 +142,11 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 			j.lastError = ""
 		}
 	}()
-	if !j.vault.Enabled() {
+	// Idle chat tickers share consent reads instead of reopening SQLite each second.
+	enabled, since := j.vault.CaptureConsent()
+	if !enabled {
 		return nil
 	}
-	since := j.vault.EnabledSince()
 	if since.IsZero() {
 		return fmt.Errorf("knowledge: missing opt-in timestamp")
 	}

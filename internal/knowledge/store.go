@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
@@ -38,11 +39,76 @@ const knowledgeSchema = `
 var schemaLocks sync.Map
 var schemaReady sync.Map
 
+// consentRecheck bounds how stale this process's view of another process's
+// consent change may be. This process's own writes refresh the view at once.
+const consentRecheck = 5 * time.Second
+
+var consentNow = time.Now
+var consentViews sync.Map
+
+type consentView struct {
+	mu             sync.Mutex
+	checked        time.Time
+	enabled        bool
+	since          time.Time
+	readGeneration uint64
+	generation     atomic.Uint64
+}
+
+func (v *Vault) captureConsentView() *consentView {
+	path := filepath.Join(v.root, "knowledge.sqlite")
+	if view, ok := consentViews.Load(path); ok {
+		return view.(*consentView)
+	}
+	view, _ := consentViews.LoadOrStore(path, &consentView{})
+	return view.(*consentView)
+}
+
+// CaptureConsent shares one consent read across this process's chat tickers.
+// Capture still checks Enabled directly before admitting any source.
+func (v *Vault) CaptureConsent() (enabled bool, since time.Time) {
+	view := v.captureConsentView()
+	view.mu.Lock()
+	defer view.mu.Unlock()
+	now := consentNow()
+	generation := view.generation.Load()
+	if !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < consentRecheck {
+		return view.enabled, view.since
+	}
+	// Keep the lock across the read so simultaneous tickers share failures too.
+	value, err := v.state("config")
+	if err == nil {
+		enabled = flag(value["enabled"])
+		since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
+	}
+	view.checked, view.enabled, view.since = now, enabled, since
+	view.readGeneration = generation
+	return enabled, since
+}
+
+func (v *Vault) forgetConsent() {
+	// A reader may hold the view lock while SQLite waits for our write to end.
+	// Invalidation must never wait for that reader, including during a worker pass.
+	v.captureConsentView().generation.Add(1)
+}
+
+var databaseHook atomic.Pointer[func(string)]
+
+// SetDatabaseHookForTest observes database opens for tests in this and other
+// packages. Production callers leave this test-only hook unset.
+func SetDatabaseHookForTest(hook func(path string)) (restore func()) {
+	previous := databaseHook.Swap(&hook)
+	return func() { databaseHook.Store(previous) }
+}
+
 func (v *Vault) database() (*sql.DB, error) {
+	path := filepath.Join(v.root, "knowledge.sqlite")
+	if hook := databaseHook.Load(); hook != nil && *hook != nil {
+		(*hook)(path)
+	}
 	if err := os.MkdirAll(v.root, 0700); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(v.root, "knowledge.sqlite")
 	uri := sqliteuri.File(path)
 	q := uri.Query()
 	q.Add("_pragma", "busy_timeout(1000)")
