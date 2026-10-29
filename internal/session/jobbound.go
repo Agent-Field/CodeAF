@@ -179,10 +179,18 @@ func (b *subtreeBound) strike(now time.Time, usage processgroup.Usage, ok bool) 
 		return false
 	}
 	cores := 0.0
-	if b.have && now.After(b.last) {
-		cores = (usage.CPUSeconds - b.lastCPU) / now.Sub(b.last).Seconds()
+	if usage.CPUPartial {
+		// A sum that left part of the tree out yields no rate, and it is no
+		// baseline for the next reading either: only the process count is
+		// judged, and the next complete reading arms the CPU half again.
+		b.have = false
+	} else {
+		if b.have && now.After(b.last) {
+			cores = (usage.CPUSeconds - b.lastCPU) / now.Sub(b.last).Seconds()
+		}
+		b.last, b.lastCPU, b.have = now, usage.CPUSeconds, true
 	}
-	b.last, b.lastCPU, b.have, b.lastCores = now, usage.CPUSeconds, true, cores
+	b.lastCores = cores
 	if usage.Processes > jobBoundProcesses || cores > b.ceilingCores() {
 		b.strikes++
 	} else {

@@ -9,10 +9,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// usageWalkLimit is how many processes one reading visits at most. Past it the
-// reading is a lower bound on both figures: still far over the 128-process
-// ceiling the job bound states, so a fork storm is cut on the count, while a
-// tree that keeps growing cannot make every two-second sample a longer walk.
+// usageWalkLimit is how many processes one reading looks at most. Past it the
+// process count is a lower bound and the CPU sum is marked partial, so a tree
+// that keeps growing cannot make every two-second sample a longer walk. A storm
+// that size normally still counts far over the job bound's 128-process ceiling
+// and is cut on the count; a lower count can only hold a cut back.
 const usageWalkLimit = 1024
 
 // usageReader is the kernel's answer for one process and for its children. It
@@ -48,11 +49,13 @@ func (g Group) Usage() (Usage, bool) {
 // the children of that stranger would pass the parent-pid check. Comparing the
 // parent's start time before and after the listing keeps them out.
 //
-// A listing that filled even the largest buffer, and a walk that reached
-// [usageWalkLimit], are counted as far as they got: lower bounds can only hold
-// a cut back, and a count that large is already over any process ceiling. A
-// process that went away between two reads is skipped, as the Linux reading
-// skips it; any other failure makes the whole reading unknown.
+// A listing that filled even the largest buffer, a walk that reached
+// [usageWalkLimit], and a process that could not be read for any reason other
+// than having exited are counted as far as they got, with the CPU sum marked
+// partial ([Usage.CPUPartial]): the count is a lower bound and no rate is taken
+// from the sum. A process that exited between two reads is skipped, as the
+// Linux reading skips it. A listing that fails outright makes the whole
+// reading unknown.
 func subtreeUsage(root int) (Usage, bool) {
 	top, err := usageReader.task(root)
 	if err != nil || top.PID != root || top.Status == darwinproc.StatusZombie {
@@ -66,11 +69,14 @@ func subtreeUsage(root int) (Usage, bool) {
 		usage.Processes++
 		usage.CPUSeconds += parent.CPUSeconds
 		if len(seen) >= usageWalkLimit {
+			usage.CPUPartial = true
 			continue
 		}
 		children, err := usageReader.children(parent.PID)
 		switch {
-		case err == nil, errors.Is(err, unix.ENOMEM):
+		case err == nil:
+		case errors.Is(err, unix.ENOMEM):
+			usage.CPUPartial = true
 		case errors.Is(err, unix.ESRCH):
 			continue
 		default:
@@ -85,6 +91,7 @@ func subtreeUsage(root int) (Usage, bool) {
 		}
 		for _, pid := range children {
 			if len(seen) >= usageWalkLimit {
+				usage.CPUPartial = true
 				break
 			}
 			if pid <= 0 || seen[pid] {
@@ -92,6 +99,10 @@ func subtreeUsage(root int) (Usage, bool) {
 			}
 			seen[pid] = true
 			child, err := usageReader.task(pid)
+			if err != nil && !errors.Is(err, unix.ESRCH) {
+				usage.CPUPartial = true
+				continue
+			}
 			// A child can exit, be reparented or have its pid reused between reads.
 			// Skip that snapshot rather than charging an unrelated process to us.
 			if err != nil || child.PID != pid || child.PPID != parent.PID || child.Status == darwinproc.StatusZombie {
