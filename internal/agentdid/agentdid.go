@@ -26,8 +26,8 @@ import (
 	"strings"
 )
 
-// Env is the variable every command an agent runs carries its DID in.
-const Env = "CODEAF_AGENT_DID"
+// AgentDIDEnv is the variable every command an agent runs carries its DID in.
+const AgentDIDEnv = "CODEAF_AGENT_DID"
 
 // prefix is did:key with the multibase marker AgentField writes.
 const prefix = "did:key:z"

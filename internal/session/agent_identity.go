@@ -70,7 +70,7 @@ func configureAgentIdentity(config *Config) {
 	if config.actorDID == "" {
 		return
 	}
-	config.Seat = executor.WithEnvironment(config.seat(), []string{agentdid.Env + "=" + config.actorDID})
+	config.Seat = executor.WithEnvironment(config.seat(), []string{agentdid.AgentDIDEnv + "=" + config.actorDID})
 }
 
 // conversationAgentDID answers the DID kept in place, or mints a fresh one.
