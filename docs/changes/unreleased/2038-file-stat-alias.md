@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A desktop file chip in the chat's folder is not called outside through a linked path
-pr: 0
+pr: 2038
 surface: [engine]
 invalidates:
   - "A file inside the chat's workspace read as outside this workspace when the file and the workspace were spelled through different links, such as /private/tmp/demo and /tmp/demo on macOS. Containment now also compares resolved paths."
