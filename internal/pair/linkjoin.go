@@ -71,21 +71,15 @@ func JoinByLink(ctx context.Context, reqs directory.Requests, j LinkJoining, ui 
 	return me.install(ctx, j, grant)
 }
 
-// free refuses a join that would overwrite chats, before any approval is spent.
-// A computer that has only been started holds nothing to lose, so it joins
-// without being told to replace; one that is used keeps its chats unless told.
+// free checks that this home's pairing can be read. Whether the grant is the
+// same set, its successor, or a different set is decided only once it arrives.
 func (j LinkJoining) free() (LinkJoining, error) {
 	if j.Replace {
 		return j, nil
 	}
-	if _, err := identity.Load(j.Home); err != nil {
-		return j, nil
+	if _, err := identity.Load(j.Home); err != nil && !errors.Is(err, identity.ErrNone) {
+		return j, err
 	}
-	fresh, err := identity.Joinable(j.Home)
-	if err != nil || !fresh {
-		return j, ErrDifferentChats
-	}
-	j.MergeState = true
 	return j, nil
 }
 
@@ -189,12 +183,14 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	joined, err := adopt(j.Joining, g.Grant)
+	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev)
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	if err := identity.Install(j.Home, g.Identity, dev); err != nil {
-		return LinkJoined{}, err
+	if !joined.Already {
+		if err := identity.Install(j.Home, g.Identity, dev); err != nil {
+			return LinkJoined{}, err
+		}
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {

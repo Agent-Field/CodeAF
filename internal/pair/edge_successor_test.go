@@ -3,6 +3,8 @@ package pair
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,7 +25,7 @@ func pairGrant(t *testing.T, r *chatRig, grant Grant, j Joining) (Joined, error)
 
 // A COMPUTER ON AN IDENTITY THAT WAS ROTATED FOLLOWS IT. It needs no --replace,
 // keeps its secrets (sealed again under the new key), and pairs others in turn.
-func TestJoinAcceptsSuccessor(t *testing.T) {
+func TestM6JoinAcceptsSuccessor(t *testing.T) {
 	r := newChatRig(t)
 	old, err := identity.Ensure(r.homeB)
 	if err != nil {
@@ -63,13 +65,16 @@ func TestJoinAcceptsSuccessor(t *testing.T) {
 
 // A computer on an identity the grant does not name is treated as any other
 // computer with chats of its own: refused, and left exactly as it was.
-func TestJoinRefusesUnrelated(t *testing.T) {
+func TestM7JoinRefusesUnrelated(t *testing.T) {
 	r := newChatRig(t)
 	mine, err := identity.Ensure(r.homeB)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stranger, _ := identity.Mint()
+	if err := os.WriteFile(filepath.Join(r.homeB, "own-chat"), []byte("kept"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	before := filesIn(t, r.homeB)
 	_, err = pairGrant(t, r, Grant{Identity: r.a, Replaces: []string{stranger.ID()}}, joiningAt(r.homeB))
 	if !errors.Is(err, ErrDifferentChats) {

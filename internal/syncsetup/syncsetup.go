@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
 )
@@ -114,6 +115,9 @@ func OpenFirst(home string) (*Sync, bool, error) {
 }
 
 func open(home string) (*Sync, bool, error) {
+	if err := pair.Resume(home, func(url string) error { return SaveRelayURL(home, url) }); err != nil {
+		return nil, false, err
+	}
 	relay := Resolve(home)
 	if !relay.On() {
 		return nil, false, nil

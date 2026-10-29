@@ -3,12 +3,76 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// PublishLocalChats offers existing cell histories under this set's keys and
+// publication ledger. Repeating a pass only creates absent directory records;
+// a failed upload leaves the local history intact for the next pass or start.
+// Older chats retain their separate conversion policy.
+func (s *Sync) PublishLocalChats(ctx context.Context, say func(cell.Cell, string)) error {
+	if Quiet(s.Home) {
+		return nil
+	}
+	roots, err := filepath.Glob(filepath.Join(s.Home, "v3", "projects", "*", "*"))
+	if err != nil {
+		return err
+	}
+	var failures error
+	failed := func(c cell.Cell, err error) {
+		if err == nil {
+			return
+		}
+		failures = errors.Join(failures, err)
+		if say != nil {
+			say(c, "This chat could not be shared yet. It is still saved here; codeaf will try again.")
+		}
+	}
+	for _, root := range roots {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		id := filepath.Base(root)
+		if !cell.ValidID(id) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, cell.MetaPath)); os.IsNotExist(err) {
+			continue
+		}
+		c, err := cell.OpenAt(root, id)
+		if err != nil {
+			failed(cell.Cell{ID: id, Root: root}, err)
+			continue
+		}
+		if head, err := cellstore.Head(c); err != nil || head == nil {
+			failed(cell.Cell{ID: id, Root: root}, err)
+			continue
+		}
+		meta, err := session.LoadMeta(root)
+		if err != nil {
+			failed(cell.Cell{ID: id, Root: root}, err)
+			continue
+		}
+		e := cellstore.EngineFor(meta.Workspace)
+		e.DataRoot = filepath.Join(s.Home, "v3", "stores")
+		if meta.Owned {
+			e.Workspace = filepath.Join(root, "work")
+		}
+		one, stop := context.WithTimeout(ctx, cellstore.SealWithin)
+		err = s.PublishCopy(one, e, c, devname.Name(s.Home), meta.Title)
+		stop()
+		failed(c, err)
+	}
+	return failures
+}
 
 // PublishCopy offers a background copy once, without ever acquiring an existing
 // chat. The foreground may have opened it while it was copied; only Create's

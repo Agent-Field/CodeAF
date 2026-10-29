@@ -272,26 +272,8 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 	if reason := cell.UnavailableReason(); reason != "" {
 		return errors.New(reason), false
 	}
-	if p.Name != "" {
+	if p.Name != "" && !o.joining {
 		if _, err := devname.Set(dir, p.Name); err != nil {
-			return err, false
-		}
-	}
-	replace := false
-	if o.joining {
-		if _, err := identity.Load(dir); err == nil {
-			fresh, err := identity.Joinable(dir)
-			if err != nil {
-				return err, false
-			}
-			if !fresh {
-				a := o.ask(o.ctx, "replace_own_chats", appPairReplaceTitle, appPairReplaceDetail, appPairReplaceOptions())
-				if a != "replace" {
-					return context.Canceled, false
-				}
-				replace = true
-			}
-		} else if !errors.Is(err, identity.ErrNone) {
 			return err, false
 		}
 	}
@@ -304,6 +286,9 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return err, false
 	}
 	record := func() {
+		if p.Name != "" && o.joining {
+			_, _ = devname.Set(dir, p.Name)
+		}
 		_ = ownDeviceRecord(o.ctx, dir, route)
 	}
 	switch p.Mode {
@@ -320,23 +305,35 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		o.line(appPairPaired(name))
 		return nil, false
 	case "use_code":
-		joined, err := pair.Join(o.ctx, route, pairJoiningAt(dir)(replace), p.Code, o)
+		joining := pairJoiningAt(dir)(false)
+		if p.Name != "" {
+			joining.Label = p.Name
+		}
+		joined, err := pair.Join(o.ctx, route, joining, p.Code, o)
 		if err != nil {
 			return err, false
 		}
-		record()
+		if !joined.Already {
+			record()
+		}
 		o.line(appPairJoinedLine(joined))
 		return nil, !joined.Already
 	case "request_link":
-		joined, err := pair.JoinByLink(o.ctx, linkRequests(route), linkJoining(dir)(route, replace), o)
+		joining := linkJoining(dir)(route, false)
+		if p.Name != "" {
+			joining.Label = p.Name
+		}
+		joined, err := pair.JoinByLink(o.ctx, linkRequests(route), joining, o)
 		if err != nil && !errors.Is(err, pair.ErrPairedNotRead) {
 			return err, false
 		}
-		record()
+		if !joined.Already {
+			record()
+		}
 		if err != nil {
 			o.line(appPairListUnread)
 		} else {
-			o.line(appPairJoined)
+			o.line(appPairJoinedLine(joined.Joined))
 		}
 		return nil, !joined.Already
 	case "approve_link":

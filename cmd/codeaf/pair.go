@@ -40,6 +40,7 @@ type pairDoor struct {
 	// asksName is true when a person is at the terminal and so can be asked what
 	// this computer should be called while it joins.
 	asksName bool
+	name     string // A join keeps the requested name only after approval succeeds.
 
 	// The three seams of pairing by link.
 	requests func(pair.Mailbox) directory.Requests
@@ -124,15 +125,23 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code), *via)
 }
 
-// naming settles what this computer is called before a join starts, because the
-// name is what the device that lets it in will show. A typed --name is kept as it
-// is, and a bad one stops the pairing before the relay is looked up. Without one,
+// naming settles the label shown during approval. A join keeps the choice in
+// memory until it succeeds, so refusal changes no files. A bad --name stops
+// pairing before the relay is looked up. Without one,
 // a person at a terminal who has never named this computer is shown the host name
 // and may keep it with Enter or type another. The device that shows a code or
 // approves already has a name, so only a join asks.
-func (d pairDoor) naming(ctx context.Context, typed string, args []string, showing bool) error {
+func (d *pairDoor) naming(ctx context.Context, typed string, args []string, showing bool) error {
 	if typed != "" {
-		_, err := devname.Set(home.Dir(), typed)
+		name, err := devname.Clean(typed)
+		if err != nil {
+			return err
+		}
+		if !showing && joins(args) {
+			d.name = name
+			return nil
+		}
+		_, err = devname.Set(home.Dir(), name)
 		return err
 	}
 	if !d.asksName || showing || !joins(args) {
@@ -151,7 +160,7 @@ func joins(args []string) bool {
 }
 
 // askName asks until a name is kept or the person leaves it as it is.
-func (d pairDoor) askName(ctx context.Context) error {
+func (d *pairDoor) askName(ctx context.Context) error {
 	for {
 		fmt.Fprint(d.term.out, pair.NamePrompt(devname.Name(home.Dir()))+" ")
 		typed, ok := d.term.lines.next(ctx)
@@ -159,8 +168,9 @@ func (d pairDoor) askName(ctx context.Context) error {
 			fmt.Fprintln(d.term.out)
 			return nil
 		}
-		_, err := devname.Set(home.Dir(), typed)
+		name, err := devname.Clean(typed)
 		if err == nil {
+			d.name = name
 			return nil
 		}
 		d.term.say(pair.NameTried(err))
@@ -217,12 +227,23 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if err != nil {
 		return err
 	}
-	joined, err := pair.Join(ctx, route, d.joining(replace), typed, joinScreen{d.term})
+	joining := d.joining(replace)
+	if d.name != "" {
+		joining.Label = d.name
+	}
+	joined, err := pair.Join(ctx, route, joining, typed, joinScreen{d.term})
 	if err != nil {
 		return d.endedByPerson(ctx, err)
 	}
+	if !joined.Already && d.name != "" {
+		if _, err := devname.Set(joining.Home, d.name); err != nil {
+			return err
+		}
+	}
 	d.term.say(joinedSentence(joined))
-	d.recordOwnDeviceOrSay(ctx, route)
+	if !joined.Already {
+		d.recordOwnDeviceOrSay(ctx, route)
+	}
 	return nil
 }
 

@@ -207,20 +207,29 @@ func TestJoinByLinkExpires(t *testing.T) {
 	}
 }
 
-// A device that already has an identity is not overwritten without --replace,
-// and nothing is asked of the relay before that is said.
-func TestJoinByLinkKeepsOwnChats(t *testing.T) {
+// M7b: after seeing the grant a used computer in another set refuses it,
+// retaining every local byte. Approval cannot grant permission to discard chats.
+func TestM7JoinByLinkKeepsOwnChats(t *testing.T) {
 	r := newLinkRig(t)
 	if _, err := identity.Ensure(r.new); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(r.new, "vault.enc"), []byte("x"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(r.new, "own-chat"), []byte("kept"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := JoinByLink(context.Background(), goneRequests{}, r.joining(false), &invites{got: make(chan Invite, 1)})
-	if !errors.Is(err, ErrDifferentChats) {
-		t.Fatalf("joining over own chats ended with %v", err)
+	before := filesIn(t, r.new)
+	ui, done := r.start(t, t.Context())
+	asking, err := r.approver.Look(t.Context(), waitInvite(t, ui).Ref)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := r.approver.Approve(t.Context(), asking); err != nil {
+		t.Fatal(err)
+	}
+	if res := waitResult(t, done); !errors.Is(res.err, ErrDifferentChats) {
+		t.Fatalf("M7 refusal: %v", res.err)
+	}
+	same(t, before, filesIn(t, r.new))
 }
 
 // A request whose check number does not fit its key is refused by the approver.
@@ -300,8 +309,8 @@ func TestJoinByLinkAdoptsAnUnusedIdentity(t *testing.T) {
 }
 
 // Anything a person made here (a vault, a chat store) makes the computer used,
-// so it keeps its identity and nothing is asked of the relay.
-func TestJoinByLinkKeepsAUsedIdentity(t *testing.T) {
+// so it keeps its set when an unrelated grant arrives.
+func TestM7JoinByLinkKeepsAUsedIdentity(t *testing.T) {
 	for _, name := range []string{"vault.enc", "graph.db", "v3", "something-new"} {
 		r := newLinkRig(t)
 		own, err := identity.Ensure(r.new)
@@ -311,7 +320,15 @@ func TestJoinByLinkKeepsAUsedIdentity(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(r.new, name), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		_, err = JoinByLink(context.Background(), goneRequests{}, r.joining(false), &invites{got: make(chan Invite, 1)})
+		ui, done := r.start(t, t.Context())
+		asking, err := r.approver.Look(t.Context(), waitInvite(t, ui).Ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.approver.Approve(t.Context(), asking); err != nil {
+			t.Fatal(err)
+		}
+		err = waitResult(t, done).err
 		if !errors.Is(err, ErrDifferentChats) {
 			t.Fatalf("%s: joining over a used computer ended with %v", name, err)
 		}
