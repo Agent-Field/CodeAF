@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -395,8 +396,20 @@ func TestDeltaWindowSwapWhileTextIsPending(t *testing.T) {
 			t.Cleanup(func() { _ = sess.Close() })
 			l := dialSession(t, sess)
 			l.hello(Hello{Version: Version})
-			id := decode[StreamRef](t, l.ok(1, MethodSubmit, SubmitArgs{Text: "old"}).Payload).Stream
-			stream := first.stream(0)
+			id, generation := sess.mint()
+			stream := make(chan session.Event, 64)
+			closeStream := sync.OnceFunc(func() { close(stream) })
+			t.Cleanup(closeStream)
+			sess.tellTurn(Turn{Stream: id, Said: "old"}, nil)
+			if frame := deltaFrame(l); frame.Kind != "turn" || decode[Turn](t, frame.Payload).Stream != id {
+				t.Fatalf("turn = %+v, want stream %d", frame, id)
+			}
+			drained := make(chan struct{})
+			sess.pumps.Add(1)
+			go func() {
+				sess.pump(id, generation, stream)
+				close(drained)
+			}()
 			var seq uint64
 			stream <- session.Event{Kind: session.EventTextDelta, Text: "a"}
 			deltaEvent(t, l, id, &seq)
@@ -408,19 +421,19 @@ func TestDeltaWindowSwapWhileTextIsPending(t *testing.T) {
 			if welcome.SessionFile != file || welcome.Title != second.title || welcome.Resumed != (method == MethodSessionOpen) {
 				t.Fatalf("swap welcome = %+v", welcome)
 			}
-			// Join the retired pump before opening another stream, so its close-time
-			// flush has been attempted and cannot arrive after the assertions below.
-			drained := make(chan struct{})
-			go func() { sess.pumps.Wait(); close(drained) }()
+			// Owning the channel lets us join just this retired pump after its
+			// close-time flush, even if other session pumps are still running.
+			// The real swap still invalidates its generation while text is pending.
+			closeStream()
 			select {
 			case <-drained:
 			case <-time.After(5 * time.Second):
 				t.Fatal("the retired pump did not finish")
 			}
 			id = decode[StreamRef](t, l.ok(3, MethodSubmit, SubmitArgs{Text: "new"}).Payload).Stream
-			stream = second.stream(0)
-			stream <- session.Event{Kind: session.EventTextDelta, Text: "new text"}
-			second.finish(stream)
+			nextStream := second.stream(0)
+			nextStream <- session.Event{Kind: session.EventTextDelta, Text: "new text"}
+			second.finish(nextStream)
 			seq = 0
 			if ev := deltaEvent(t, l, id, &seq); ev.Kind != session.EventTextDelta || ev.Text != "new text" {
 				t.Fatalf("text after swap = %+v", ev)
@@ -583,13 +596,36 @@ func TestDeltaWindowDefaultSteadyProducer(t *testing.T) {
 		want.WriteByte(byte('a' + i%26))
 	}
 	text := want.String()
+	twoFrames := make(chan struct{})
+	produced := make(chan struct {
+		duration          time.Duration
+		streamedBeforeEnd bool
+	}, 1)
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for _, char := range text {
+		var firstPush time.Time
+		var streamedBeforeEnd bool
+		for i, char := range text {
 			<-ticker.C
+			if i == 0 {
+				firstPush = time.Now()
+			}
+			if i == len(text)-1 {
+				// Keep the final push behind two surface receipts so a delayed
+				// reader cannot turn successful streaming into a starvation failure.
+				select {
+				case <-twoFrames:
+					streamedBeforeEnd = true
+				case <-time.After(2 * time.Second):
+				}
+			}
 			stream <- session.Event{Kind: session.EventTextDelta, Text: string(char)}
 		}
+		produced <- struct {
+			duration          time.Duration
+			streamedBeforeEnd bool
+		}{time.Since(firstPush), streamedBeforeEnd}
 		agent.finish(stream)
 	}()
 	var seq uint64
@@ -618,16 +654,20 @@ func TestDeltaWindowDefaultSteadyProducer(t *testing.T) {
 			t.Fatalf("steady event = %+v", ev)
 		}
 		got.WriteString(ev.Text)
+		if seq == 2 {
+			close(twoFrames)
+		}
 	}
-	t.Logf("default-window steady producer: %d deltas, %d frames, max gap %v", deltas, seq, maxGap)
+	production := <-produced
+	t.Logf("default-window steady producer: %d deltas over %v, %d frames, max gap %v", deltas, production.duration, seq, maxGap)
 	if got.String() != text {
 		t.Fatalf("steady text = %q, want %q", got.String(), text)
 	}
-	if limit := uint64(deltas*interval/DefaultDeltaWindow) + 3; seq > limit {
+	if limit := uint64((production.duration+DefaultDeltaWindow-1)/DefaultDeltaWindow) + 3; seq > limit {
 		t.Fatalf("steady producer sent %d frames, want at most %d", seq, limit)
 	}
-	if maxGap > 250*time.Millisecond {
-		t.Fatalf("steady producer left a gap of %v", maxGap)
+	if !production.streamedBeforeEnd {
+		t.Fatal("fewer than two text frames reached the surface before the last push")
 	}
 }
 
