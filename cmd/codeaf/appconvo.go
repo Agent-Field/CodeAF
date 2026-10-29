@@ -973,7 +973,7 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 	}
 	full = filepath.Clean(full)
 	stat := appwire.FileStat{Path: path, State: appwire.FileExists}
-	// ONE FOLDER CAN BE SPELLED TWO WAYS. macOS reaches /tmp and /var through
+	// One folder can be spelled two ways. macOS reaches /tmp and /var through
 	// links, and a project can sit under a linked folder, so a file a picker or
 	// a drag names /private/tmp/demo/notes.md is inside a workspace typed as
 	// /tmp/demo. The spelled test stays first, so nothing inside by spelling is
@@ -997,7 +997,9 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 	}
 	size := info.Size()
 	stat.Size = &size
-	if !info.IsDir() {
+	// Only a regular file is opened for its first bytes: opening a FIFO or a
+	// device would wait for a writer and hold the request.
+	if info.Mode().IsRegular() {
 		if file, err := os.Open(full); err == nil {
 			head := make([]byte, 8000)
 			n, _ := io.ReadFull(file, head)
