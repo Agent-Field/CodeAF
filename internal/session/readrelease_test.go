@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func waitReadReleaseIdle(t *testing.T) {
+func waitReadReleaseRunFinished(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -27,19 +27,71 @@ func waitReadReleaseIdle(t *testing.T) {
 	}
 }
 
-func replaceReadRelease(t *testing.T, free func()) {
+type readReleaseTimer struct {
+	at  time.Time
+	run func()
+}
+
+type readReleaseClock struct {
+	mu        sync.Mutex
+	now       time.Time
+	timer     *readReleaseTimer
+	schedules int
+}
+
+func (c *readReleaseClock) instant() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *readReleaseClock) afterFunc(delay time.Duration, run func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.timer != nil {
+		panic("more than one journal read release timer")
+	}
+	c.schedules++
+	c.timer = &readReleaseTimer{at: c.now.Add(delay), run: run}
+}
+
+func (c *readReleaseClock) advance(d time.Duration) {
+	c.mu.Lock()
+	target := c.now.Add(d)
+	for c.timer != nil && !c.timer.at.After(target) {
+		timer := c.timer
+		c.now, c.timer = timer.at, nil
+		c.mu.Unlock()
+		timer.run()
+		c.mu.Lock()
+	}
+	c.now = target
+	c.mu.Unlock()
+}
+
+func replaceReadRelease(t *testing.T, free func()) *readReleaseClock {
 	t.Helper()
-	waitReadReleaseIdle(t)
+	waitReadReleaseRunFinished(t)
+	clock := &readReleaseClock{now: time.Date(2026, 10, 15, 14, 0, 0, 0, time.UTC)}
 	journalReadRelease.mu.Lock()
-	prior := freeJournalReadMemory
-	freeJournalReadMemory = free
+	priorFree, priorNow, priorAfter := freeJournalReadMemory, journalReadNow, journalReadAfterFunc
+	if journalReadRelease.scheduled || journalReadRelease.pending {
+		journalReadRelease.mu.Unlock()
+		t.Fatal("prior journal read release still scheduled")
+	}
+	priorStart := journalReadRelease.lastStart
+	journalReadRelease.lastStart = time.Time{}
+	freeJournalReadMemory, journalReadNow, journalReadAfterFunc = free, clock.instant, clock.afterFunc
 	journalReadRelease.mu.Unlock()
 	t.Cleanup(func() {
-		waitReadReleaseIdle(t)
+		waitReadReleaseRunFinished(t)
 		journalReadRelease.mu.Lock()
-		freeJournalReadMemory = prior
+		journalReadRelease.pending, journalReadRelease.scheduled = false, false
+		journalReadRelease.lastStart = priorStart
+		freeJournalReadMemory, journalReadNow, journalReadAfterFunc = priorFree, priorNow, priorAfter
 		journalReadRelease.mu.Unlock()
 	})
+	return clock
 }
 
 func receiveReadRelease(t *testing.T, ch <-chan struct{}) {
@@ -53,50 +105,132 @@ func receiveReadRelease(t *testing.T, ch <-chan struct{}) {
 
 func TestLargeReadReleaseThreshold(t *testing.T) {
 	var calls atomic.Int32
-	replaceReadRelease(t, func() { calls.Add(1) })
+	clock := replaceReadRelease(t, func() { calls.Add(1) })
 	releaseAfterLargeRead(recordCacheFileBytes - 1)
-	waitReadReleaseIdle(t)
+	waitReadReleaseRunFinished(t)
 	if n := calls.Load(); n != 0 {
 		t.Fatalf("small read caused %d collections", n)
 	}
 	releaseAfterLargeRead(recordCacheFileBytes)
-	waitReadReleaseIdle(t)
-	if n := calls.Load(); n != 1 {
-		t.Fatalf("one large read caused %d collections", n)
+	waitReadReleaseRunFinished(t)
+	clock.advance(2 * releaseCooldown)
+	waitReadReleaseRunFinished(t)
+	if n := calls.Load(); n != 1 || clock.schedules != 0 {
+		t.Fatalf("one large read caused %d collections and %d timers, want one prompt collection", n, clock.schedules)
 	}
 }
 
-func TestLargeReadReleaseCoalescesWithoutBlocking(t *testing.T) {
-	entered := make(chan struct{}, 4)
-	resume := make(chan struct{}, 2)
+func TestLargeReadReleaseBurstHasOneTrailingCollection(t *testing.T) {
 	var calls atomic.Int32
-	replaceReadRelease(t, func() {
-		calls.Add(1)
-		entered <- struct{}{}
-		<-resume
-	})
-	// Unblock a failed assertion before restoring the hook in the prior cleanup.
-	t.Cleanup(func() { close(resume) })
-	returned := make(chan struct{})
-	go func() {
-		releaseAfterLargeRead(recordCacheFileBytes)
-		close(returned)
-	}()
-	receiveReadRelease(t, entered)
-	receiveReadRelease(t, returned)
-	var requests sync.WaitGroup
+	clock := replaceReadRelease(t, func() { calls.Add(1) })
+	releaseAfterLargeRead(recordCacheFileBytes)
+	waitReadReleaseRunFinished(t)
 	for range 64 {
-		requests.Go(func() { releaseAfterLargeRead(recordCacheFileBytes) })
+		releaseAfterLargeRead(recordCacheFileBytes)
 	}
-	done := make(chan struct{})
-	go func() { requests.Wait(); close(done) }()
-	receiveReadRelease(t, done)
-	resume <- struct{}{}
-	receiveReadRelease(t, entered)
-	resume <- struct{}{}
-	waitReadReleaseIdle(t)
-	if n := calls.Load(); n != 2 {
-		t.Fatalf("concurrent requests caused %d collections, want one plus one follow-up", n)
+	clock.advance(releaseCooldown - time.Nanosecond)
+	waitReadReleaseRunFinished(t)
+	if n := calls.Load(); n != 1 || clock.schedules != 1 {
+		t.Fatalf("burst before deadline: %d collections, %d timers, want 1 each", n, clock.schedules)
+	}
+	clock.advance(time.Nanosecond)
+	waitReadReleaseRunFinished(t)
+	clock.advance(2 * releaseCooldown)
+	waitReadReleaseRunFinished(t)
+	if n := calls.Load(); n != 2 || clock.schedules != 1 {
+		t.Fatalf("burst: %d collections, %d timers, want one prompt and one trailing collection", n, clock.schedules)
+	}
+}
+
+func TestLargeReadReleaseSustainedRequestsStayBounded(t *testing.T) {
+	var startsMu sync.Mutex
+	var starts []time.Time
+	clock := replaceReadRelease(t, func() {
+		journalReadRelease.mu.Lock()
+		at := journalReadRelease.lastStart
+		journalReadRelease.mu.Unlock()
+		startsMu.Lock()
+		starts = append(starts, at)
+		startsMu.Unlock()
+	})
+	start := clock.instant()
+	releaseAfterLargeRead(recordCacheFileBytes)
+	waitReadReleaseRunFinished(t)
+	const duration, interval = 30 * time.Second, 900 * time.Millisecond
+	for elapsed := interval; elapsed < duration; elapsed += interval {
+		clock.advance(interval)
+		waitReadReleaseRunFinished(t)
+		releaseAfterLargeRead(recordCacheFileBytes)
+	}
+	lastRequest := clock.instant()
+	clock.advance(releaseCooldown)
+	waitReadReleaseRunFinished(t)
+	startsMu.Lock()
+	defer startsMu.Unlock()
+	limit := int((duration+releaseCooldown-1)/releaseCooldown) + 1
+	if len(starts) > limit || len(starts) < 2 || !starts[len(starts)-1].After(lastRequest) {
+		t.Fatalf("sustained requests: %d collections, limit %d, starts %v, last request %v", len(starts), limit, starts, lastRequest)
+	}
+	for i := 1; i < len(starts); i++ {
+		if gap := starts[i].Sub(starts[i-1]); gap < releaseCooldown {
+			t.Fatalf("collections %d and %d separated by %v, want at least %v", i-1, i, gap, releaseCooldown)
+		}
+	}
+	if !starts[0].Equal(start) {
+		t.Fatalf("first collection delayed until %v, want %v", starts[0], start)
+	}
+	t.Logf("30 s of sustained requests: %d collections (limit %d), final collection after last request", len(starts), limit)
+}
+
+func TestLargeReadReleaseCoalescesWithoutBlocking(t *testing.T) {
+	for _, blocked := range []time.Duration{time.Second, 2 * releaseCooldown} {
+		t.Run(blocked.String(), func(t *testing.T) {
+			entered := make(chan struct{}, 4)
+			resume := make(chan struct{}, 2)
+			var calls atomic.Int32
+			clock := replaceReadRelease(t, func() {
+				calls.Add(1)
+				entered <- struct{}{}
+				<-resume
+			})
+			// Unblock a failed assertion before restoring the hook in the prior cleanup.
+			t.Cleanup(func() { close(resume) })
+			returned := make(chan struct{})
+			go func() {
+				releaseAfterLargeRead(recordCacheFileBytes)
+				close(returned)
+			}()
+			receiveReadRelease(t, entered)
+			receiveReadRelease(t, returned)
+			var requests sync.WaitGroup
+			for range 64 {
+				requests.Go(func() { releaseAfterLargeRead(recordCacheFileBytes) })
+			}
+			done := make(chan struct{})
+			go func() { requests.Wait(); close(done) }()
+			receiveReadRelease(t, done)
+			clock.advance(blocked)
+			if n := calls.Load(); n != 1 {
+				t.Fatalf("collection overlapped a blocked run: %d calls", n)
+			}
+			resume <- struct{}{}
+			if blocked < releaseCooldown {
+				waitReadReleaseRunFinished(t)
+				clock.advance(releaseCooldown - blocked - time.Nanosecond)
+				if n := calls.Load(); n != 1 {
+					t.Fatalf("follow-up started before cooldown: %d calls", n)
+				}
+				clock.advance(time.Nanosecond)
+			}
+			receiveReadRelease(t, entered)
+			resume <- struct{}{}
+			waitReadReleaseRunFinished(t)
+			clock.advance(2 * releaseCooldown)
+			waitReadReleaseRunFinished(t)
+			if n := calls.Load(); n != 2 {
+				t.Fatalf("concurrent requests caused %d collections, want one plus one follow-up", n)
+			}
+		})
 	}
 }
 
@@ -146,7 +280,7 @@ func TestRecordReadReleaseFollowsCallback(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			waitReadReleaseIdle(t)
+			waitReadReleaseRunFinished(t)
 			want := int32(0)
 			if size >= recordCacheFileBytes {
 				want = 1
@@ -164,6 +298,6 @@ func TestResumeReadReleaseAfterStampPrune(t *testing.T) {
 	replaceReadRelease(t, func() { called <- struct{}{} })
 	a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) { c.SessionFile = path })
 	receiveReadRelease(t, called)
-	waitReadReleaseIdle(t)
-	assertLiveStamps(t, a)
+	waitReadReleaseRunFinished(t)
+	assertLiveStamps(t, a, journalStampInstants(t, a, nil))
 }

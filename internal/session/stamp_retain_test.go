@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -39,7 +40,51 @@ func stampWindowJournal(t *testing.T, passes, width int) string {
 	return path
 }
 
-func assertLiveStamps(t *testing.T, a *Agent) {
+func stampInstants(a *Agent) map[any]time.Time {
+	a.file.mu.Lock()
+	stamps := a.file.stamps
+	a.file.mu.Unlock()
+	stamps.mu.Lock()
+	defer stamps.mu.Unlock()
+	instants := make(map[any]time.Time, len(stamps.at))
+	for key, at := range stamps.at {
+		instants[key] = at
+	}
+	return instants
+}
+
+// Window writes refresh ordinary timestamps before pruning. Read those new
+// instants independently; steers and queued messages keep their prior instants.
+func journalStampInstants(t *testing.T, a *Agent, prior map[any]time.Time) map[any]time.Time {
+	t.Helper()
+	replayed, err := replaySessionFile(a.config.SessionFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(replayed.messages) != len(a.messages)-1 {
+		t.Fatalf("journal has %d messages, live window has %d", len(replayed.messages), len(a.messages)-1)
+	}
+	want := make(map[any]time.Time, len(prior)+len(replayed.messages))
+	for key, at := range prior {
+		want[key] = at
+	}
+	for i, m := range a.messages[1:] {
+		if chatRefKey(m) != chatRefKey(replayed.messages[i]) {
+			t.Fatalf("live message %d differs from journal", i)
+		}
+		if a.file.steerMark(m) != nil && !want[stampKey(m)].IsZero() {
+			continue
+		}
+		if at := replayed.stamps.of(replayed.messages[i]); !at.IsZero() {
+			want[stampKey(m)] = at
+		}
+	}
+	return want
+}
+
+func assertLiveStamps(t *testing.T, a *Agent, want map[any]time.Time) {
 	t.Helper()
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -67,12 +112,17 @@ func assertLiveStamps(t *testing.T, a *Agent) {
 			t.Fatalf("stamp retains a discarded message: %d stamps for %d live identities", len(stamps.at), len(live))
 		}
 	}
+	for key := range live {
+		if at, ok := want[key]; ok && !stamps.at[key].Equal(at) {
+			t.Fatalf("live stamp = %v, want %v", stamps.at[key], at)
+		}
+	}
 }
 
 func TestResumeRetainsOnlyLiveStamps(t *testing.T) {
 	path := stampWindowJournal(t, 40, 32)
 	a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) { c.SessionFile = path })
-	assertLiveStamps(t, a)
+	assertLiveStamps(t, a, journalStampInstants(t, a, nil))
 }
 
 func TestResumeHeapDoesNotScaleWithDiscardedWindows(t *testing.T) {
@@ -90,7 +140,16 @@ func TestResumeHeapDoesNotScaleWithDiscardedWindows(t *testing.T) {
 		}
 		return after.HeapAlloc - before.HeapAlloc
 	}
-	short, long := measure(6), measure(60)
+	minimum := func(passes int) uint64 {
+		var samples [3]uint64
+		for i := range samples {
+			samples[i] = measure(passes)
+		}
+		best := min(samples[0], samples[1], samples[2])
+		t.Logf("%d passes: retained heap samples %v bytes, minimum %d bytes", passes, samples, best)
+		return best
+	}
+	short, long := minimum(6), minimum(60)
 	const duplicated = 54 * 48 * (len("long conversation ") * 128)
 	t.Logf("retained heap growth: 6 passes %d bytes, 60 passes %d bytes; duplicated content %d bytes", short, long, duplicated)
 	if int64(long)-int64(short) >= int64(duplicated/4) {
@@ -98,7 +157,25 @@ func TestResumeHeapDoesNotScaleWithDiscardedWindows(t *testing.T) {
 	}
 }
 
-func TestLiveCompactionAndRewindRetainOnlyLiveStamps(t *testing.T) {
+func TestLiveCompactionTurnFoldAndRewindRetainOnlyLiveStamps(t *testing.T) {
+	queueInstants := func(a *Agent) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		// Queues are outside the rewritten window, so every live boundary must
+		// preserve their original instants rather than just their keys.
+		messages := []ai.Message{textMessage("user", "queued steering"), textMessage("user", "queued ambient"), textMessage("user", "queued followup")}
+		for _, m := range messages {
+			a.file.stamps.remember(m, lineInstant("2026-10-15T14:00:00Z"))
+		}
+		a.steering = append(a.steering, userMessage{message: messages[0]})
+		a.ambient = append(a.ambient, userMessage{message: messages[1]})
+		a.followups = append(a.followups, followUp{message: userMessage{message: messages[2]}})
+		t.Cleanup(func() {
+			a.mu.Lock()
+			a.steering, a.ambient, a.followups = nil, nil, nil
+			a.mu.Unlock()
+		})
+	}
 	a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) {
 		c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
 		c.ContextWindow = 2_000_000
@@ -109,21 +186,48 @@ func TestLiveCompactionAndRewindRetainOnlyLiveStamps(t *testing.T) {
 		a.file.append(m, false, nil)
 	}
 	a.mu.Unlock()
+	queueInstants(a)
+	instants := stampInstants(a)
 	if changed, err := a.compact(context.Background(), nil); !changed || err != nil {
 		t.Fatalf("compact = %v, %v", changed, err)
 	}
-	assertLiveStamps(t, a)
+	assertLiveStamps(t, a, journalStampInstants(t, a, instants))
 	before := a.Transcript()
 	if want := ReadTranscript(a.config.SessionFile).Entries; !reflect.DeepEqual(before, want) {
 		t.Fatal("live compaction entries or times differ from the journal")
 	}
+	instants = stampInstants(a)
 	if _, err := a.Rewind(); err != nil {
 		t.Fatal(err)
 	}
-	assertLiveStamps(t, a)
+	assertLiveStamps(t, a, instants)
 	after := a.Transcript()
 	if !reflect.DeepEqual(after, before[:len(after)]) {
 		t.Fatal("rewind changed the retained entries or their times")
+	}
+
+	folded, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) {
+		c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+		c.ContextWindow = bigTestWindow
+	})
+	folded.mu.Lock()
+	folded.turnFloor = len(folded.messages)
+	for round := range 24 {
+		appendToolRound(folded, fmt.Sprintf("call-%d", round), "read", "{}", turnFoldOutput())
+	}
+	for _, m := range folded.messages[1:] {
+		folded.file.append(m, false, nil)
+	}
+	folded.mu.Unlock()
+	queueInstants(folded)
+	instants = stampInstants(folded)
+	foldWholeTurn(t, folded)
+	if !holdsPrefix(folded.snapshot(), foldMarkerPrefix) {
+		t.Fatal("turn-fold fixture did not reach the pruning boundary")
+	}
+	assertLiveStamps(t, folded, journalStampInstants(t, folded, instants))
+	if want := ReadTranscript(folded.config.SessionFile).Entries; !reflect.DeepEqual(folded.Transcript(), want) {
+		t.Fatal("live turn-fold entries or times differ from the journal")
 	}
 }
 
@@ -189,12 +293,13 @@ func TestStampRetainKeepsQueueTimes(t *testing.T) {
 	// boundary before the message joins the model's transcript.
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	messages := []ai.Message{textMessage("user", "steering"), textMessage("user", "ambient"), textMessage("user", "followup")}
+	messages := []ai.Message{textMessage("user", "steering"), textMessage("user", "ambient"), textMessage("user", "followup"), textMessage("assistant", "retained reply")}
 	ats := make([]time.Time, len(messages))
 	for i, m := range messages {
 		a.file.append(m, false, nil)
 		ats[i] = a.file.written(m)
 	}
+	a.messages = append(a.messages, messages[3])
 	a.steering = append(a.steering, userMessage{message: messages[0]})
 	a.ambient = append(a.ambient, userMessage{message: messages[1]})
 	a.followups = append(a.followups, followUp{message: userMessage{message: messages[2]}})
