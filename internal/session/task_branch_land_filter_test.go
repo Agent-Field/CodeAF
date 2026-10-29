@@ -320,13 +320,18 @@ func TestAnInertFilterAttributeAfterThePlanDoesNotRefuseALand(t *testing.T) {
 	}
 }
 
+func skipLandAttributeShellOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the unsupported-query fixture uses /bin/sh and Unix filenames")
+	}
+}
+
 // The identity command is only constructed, so leave its resolved executable
 // intact. Executed version questions use the bounded runner's prefixed args.
 func landAttributeGit(t *testing.T, version string, tree, files bool) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the unsupported-query fixture uses /bin/sh")
-	}
+	skipLandAttributeShellOnWindows(t)
 	resetLandAttributeCapabilities()
 	t.Cleanup(resetLandAttributeCapabilities)
 	real := landCommand
@@ -337,13 +342,28 @@ func landAttributeGit(t *testing.T, version string, tree, files bool) {
 		if len(args) > 1 && args[len(args)-1] == "version" {
 			command = real(ctx, dir, "-c", "codeaf.testversion="+version, "config", "--get", "codeaf.testversion")
 		} else if tree && strings.Contains(joined, "--source=") {
-			command = landAttributeReply(ctx, "", "error: unknown option `source=tree'\nusage: git check-attr\n", 129)
+			command = landAttributeReply(ctx, "", landAttributeSourceUsage(args), 129)
 		} else if files && strings.Contains(joined, "var GIT_ATTR_") {
 			command = landAttributeReply(ctx, "", "usage: git var (-l | <variable>)\n", 129)
 		}
 		command.Env = append(command.Env, "GIT_CONFIG_NOSYSTEM=1")
 		return command
 	}
+}
+
+func landAttributeSourceUsage(args []string) string {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--source=") {
+			return "error: unknown option `" + strings.TrimPrefix(arg, "--") + "'\n" +
+				"usage: git check-attr [-a | --all | <attr>...] [--] <pathname>...\n" +
+				"   or: git check-attr --stdin [-z] [-a | --all | <attr>...]\n\n" +
+				"    -a, --all             report all attributes set on file\n" +
+				"    --cached              use .gitattributes only from the index\n" +
+				"    --stdin               read file names from stdin\n" +
+				"    -z                    terminate input and output records by a NUL character\n\n"
+		}
+	}
+	return ""
 }
 
 func landAttributeReply(ctx context.Context, out, diagnostics string, code int) *exec.Cmd {
@@ -394,6 +414,7 @@ func landAttributeTreeFixture(t *testing.T, repo, source string, nested bool) st
 }
 
 func TestALandFallsBackWhenAttributeQueriesAreUnavailable(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
 	for _, mode := range []string{"source", "files", "both"} {
 		t.Run(mode, func(t *testing.T) {
 			for _, source := range []string{"unused lfs", "task", "target", "base"} {
@@ -471,6 +492,7 @@ func TestALandFallsBackWhenAttributeQueriesAreUnavailable(t *testing.T) {
 }
 
 func TestALandReadsEachTreesAttributesWithoutTheCheckout(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
 	for _, source := range []string{"target", "task", "base"} {
 		t.Run(source, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -501,10 +523,20 @@ func TestALandReadsEachTreesAttributesWithoutTheCheckout(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			probe := exec.Command("git", "check-attr", "--source="+sources[1], "filter", "--", path)
-			probe.Dir = repo
-			if out, err := probe.CombinedOutput(); err != nil {
-				t.Logf("host lacks native tree query: %s", out)
+			version, err := execGitForLand(landCtx(t), repo, "version").Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts := landVersionNumbers.FindStringSubmatch(strings.TrimSpace(string(version)))
+			if parts == nil {
+				t.Fatalf("cannot parse host git version: %q", version)
+			}
+			major, minor := 0, 0
+			if _, err := fmt.Sscanf(parts[1]+"."+parts[2], "%d.%d", &major, &minor); err != nil {
+				t.Fatal(err)
+			}
+			if major < 2 || major == 2 && minor < 40 {
+				t.Logf("host predates native tree query; skipping native comparison: %s", version)
 				return
 			}
 			// Keep the same file-location resolver so this compares tree answers only.
@@ -531,6 +563,7 @@ func execGitForLand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 }
 
 func TestALandResolvesLegacyAttributeFiles(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
 	for _, kind := range []string{"absolute", "relative", "tilde", "whitespace", "disabled", "xdg", "empty xdg"} {
 		for _, editBound := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/bound=%t", kind, editBound), func(t *testing.T) {
@@ -630,6 +663,7 @@ func TestALandResolvesLegacyAttributeFiles(t *testing.T) {
 }
 
 func TestALandsTemporaryIndexLeavesTheRepositoryUntouched(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
 	for _, outcome := range []string{"plan and land", "refusal", "cancel"} {
 		t.Run(outcome, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -715,7 +749,53 @@ func TestALandsTemporaryIndexLeavesTheRepositoryUntouched(t *testing.T) {
 	}
 }
 
+func TestALandRefusesScratchInsideTheRepository(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
+	for _, location := range []string{".git", ".", "symlink to .git", "symlink to worktree"} {
+		t.Run(location, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			repo, place := landRepo(t)
+			gitT(t, repo, "config", "filter.unused.clean", "cat")
+			landAttributeGit(t, "git version 2.39.5 (Apple Git-154)", true, true)
+			before, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			scratch := filepath.Join(repo, location)
+			if strings.HasPrefix(location, "symlink") {
+				target := repo
+				if location == "symlink to .git" {
+					target = filepath.Join(repo, ".git")
+				}
+				scratch = filepath.Join(t.TempDir(), "scratch")
+				if err := os.Symlink(target, scratch); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("TMPDIR", scratch)
+			_, err = PlanTaskBranchLand(landCtx(t), place, repo, landBranch)
+			wantRefusal(t, err, LandFilter)
+			after, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("plan changed real index: %v", err)
+			}
+			if err := filepath.WalkDir(repo, func(path string, entry os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if strings.HasPrefix(entry.Name(), "codeaf-land-attributes-") {
+					t.Errorf("scratch artifact left in repository: %s", path)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestALandCachesOnlyAttributeCapabilities(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
 	t.Run("repeated plans and executable identity", func(t *testing.T) {
 		t.Setenv("HOME", t.TempDir())
 		repo, place := landRepo(t)
@@ -752,41 +832,132 @@ func TestALandCachesOnlyAttributeCapabilities(t *testing.T) {
 			t.Fatalf("new executable path not probed: trees=%d files=%d", trees, files)
 		}
 	})
-	for _, probe := range []string{"version", "files", "tree"} {
-		t.Run("transient "+probe, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
-			repo, place := landRepo(t)
-			gitT(t, repo, "config", "filter.unused.clean", "cat")
-			landAttributeGit(t, "git version 2.39.5 (Apple Git-154)", true, true)
-			original := landCommand
-			attempts := 0
-			landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
-				joined := strings.Join(args, " ")
-				match := probe == "files" && strings.Contains(joined, "var GIT_ATTR_") || probe == "tree" && strings.Contains(joined, "--source=") || probe == "version" && len(args) > 1 && args[len(args)-1] == "version"
-				if match {
-					attempts++
-					// The first executed version is the existing minimum-version check.
-					failAt := 1
-					if probe == "version" {
-						failAt = 2
-					}
-					if attempts == failAt {
-						return landAttributeReply(ctx, "", "temporary failure\n", 128)
-					}
+	t.Run("version switch behind unchanged executable", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		repo, place := landRepo(t)
+		gitT(t, repo, "config", "filter.unused.clean", "cat")
+		landAttributeGit(t, "git version 2.39.5 (Apple Git-154)", true, true)
+		original := landCommand
+		version := "git version 2.39.5 (Apple Git-154)"
+		trees, files, versions := 0, 0, 0
+		landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+			joined := strings.Join(args, " ")
+			if len(args) > 1 && args[len(args)-1] == "version" {
+				versions++
+				return landAttributeReply(ctx, version+"\n", "", 0)
+			}
+			if strings.Contains(joined, "--source=") {
+				trees++
+			}
+			if strings.Contains(joined, "var GIT_ATTR_") {
+				files++
+				if strings.Contains(version, "2.50") {
+					return landAttributeReply(ctx, "\n", "", 0)
 				}
-				return original(ctx, dir, args...)
 			}
-			_, err := PlanTaskBranchLand(landCtx(t), place, repo, landBranch)
-			wantRefusal(t, err, LandFilter)
-			planLand(t, place, repo)
-			if attempts < 2 {
-				t.Fatalf("transient failure cached: %d attempts", attempts)
+			return original(ctx, dir, args...)
+		}
+		identity := original(landCtx(t), repo, "version").Path
+		before, err := os.Stat(identity)
+		if err != nil {
+			t.Fatal(err)
+		}
+		planLand(t, place, repo)
+		planLand(t, place, repo)
+		if trees != 1 || files != 1 || versions != 4 {
+			t.Fatalf("repeated plans: trees=%d files=%d versions=%d", trees, files, versions)
+		}
+		version = "git version 2.39.5 (Apple Git-155)"
+		planLand(t, place, repo)
+		if trees != 2 || files != 2 || versions != 6 {
+			t.Fatalf("new version not probed: trees=%d files=%d versions=%d", trees, files, versions)
+		}
+		version = "git version 2.50.0 (Apple Git-155)"
+		_, err = PlanTaskBranchLand(landCtx(t), place, repo, landBranch)
+		wantRefusal(t, err, LandFilter)
+		if trees != 3 || files != 4 || versions != 8 {
+			t.Fatalf("modern version reused unsupported facts: trees=%d files=%d versions=%d", trees, files, versions)
+		}
+		after, err := os.Stat(identity)
+		if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+			t.Fatalf("executable identity changed: %v", err)
+		}
+		landAttributeCapabilityCache.Lock()
+		defer landAttributeCapabilityCache.Unlock()
+		if entries := landAttributeCapabilityCache.entries; len(entries) != 1 || entries[0].version != version {
+			t.Fatalf("version switch did not replace entry: %+v", entries)
+		}
+	})
+	for _, probe := range []string{"version", "files", "tree"} {
+		for _, reply := range []string{"failure", "warning", "truncated", "fatal", "error", "missing newline", "wrong source", "unexpected line"} {
+			if probe == "version" && reply != "failure" || probe == "files" && (reply == "wrong source" || reply == "unexpected line") {
+				continue
 			}
-		})
+			t.Run("transient "+probe+"/"+reply, func(t *testing.T) {
+				t.Setenv("HOME", t.TempDir())
+				repo, place := landRepo(t)
+				gitT(t, repo, "config", "filter.unused.clean", "cat")
+				landAttributeGit(t, "git version 2.39.5 (Apple Git-154)", true, true)
+				original := landCommand
+				attempts := 0
+				landCommand = func(ctx context.Context, dir string, args ...string) *exec.Cmd {
+					joined := strings.Join(args, " ")
+					match := probe == "files" && strings.Contains(joined, "var GIT_ATTR_") || probe == "tree" && strings.Contains(joined, "--source=") || probe == "version" && len(args) > 1 && args[len(args)-1] == "version"
+					if match {
+						attempts++
+						// The first executed version is the existing minimum-version check.
+						failAt := 1
+						if probe == "version" {
+							failAt = 2
+						}
+						if attempts == failAt {
+							diagnostics, code := "usage: git var (-l | <variable>)\n", 129
+							if probe == "tree" {
+								diagnostics = landAttributeSourceUsage(args)
+							}
+							switch reply {
+							case "failure":
+								diagnostics, code = "temporary failure\n", 128
+							case "warning", "fatal", "error":
+								diagnostics += reply + ": additional diagnostic\n"
+							case "truncated":
+								if probe == "tree" {
+									diagnostics = strings.SplitN(diagnostics, "\n", 2)[0] + "\n"
+								} else {
+									diagnostics = "usage: git var "
+								}
+							case "missing newline":
+								diagnostics = strings.TrimRight(diagnostics, "\n")
+							case "wrong source":
+								diagnostics = landAttributeSourceUsage([]string{"--source=wrong"})
+							case "unexpected line":
+								diagnostics += "unexpected text\n"
+							}
+							return landAttributeReply(ctx, "", diagnostics, code)
+						}
+					}
+					return original(ctx, dir, args...)
+				}
+				_, err := PlanTaskBranchLand(landCtx(t), place, repo, landBranch)
+				wantRefusal(t, err, LandFilter)
+				if attempts != 1 && probe != "version" || probe == "version" && attempts != 2 {
+					t.Fatalf("first plan did not reach failing probe: %d attempts", attempts)
+				}
+				planLand(t, place, repo)
+				wantAttempts := 2
+				if probe == "version" {
+					wantAttempts = 4
+				}
+				if attempts != wantAttempts {
+					t.Fatalf("transient failure cached: %d attempts, want %d", attempts, wantAttempts)
+				}
+			})
+		}
 	}
 }
 
 func TestALandRefusesWhenFallbackAttributesAreUnknown(t *testing.T) {
+	skipLandAttributeShellOnWindows(t)
 	for _, failure := range []string{"read-tree exit", "read-tree warning", "read-tree output", "cached exit", "cached warning", "cached incomplete", "cached malformed", "cached oversized"} {
 		t.Run(failure, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
