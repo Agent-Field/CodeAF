@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -155,13 +156,30 @@ func drainConsentRoad(t *testing.T, events <-chan session.Event, answer func(ses
 // rule.
 func shortStateRoot(t *testing.T) string {
 	t.Helper()
-	root, err := os.MkdirTemp("", "afl")
+	root, err := os.MkdirTemp(shortSocketParent(t), "afl")
 	if err != nil {
 		t.Fatalf("make a state root: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	t.Setenv("CODEAF_HOME", root)
 	return root
+}
+
+// shortSocketParent is where a short state root is made. On macOS it is /tmp,
+// spelled physically (/private/tmp) like every other fixture root here:
+// TestMain gives this package the physical /private/var/folders spelling of the
+// temporary folder, and a workspace host's socket under that spelling is a few
+// bytes past the socket limit. Other systems keep the temporary folder.
+func shortSocketParent(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	parent, err := filepath.EvalSymlinks("/tmp")
+	if err != nil {
+		t.Fatalf("resolve /tmp: %v", err)
+	}
+	return parent
 }
 
 // answeringHost is a socket where this workspace's host would be, and nothing
