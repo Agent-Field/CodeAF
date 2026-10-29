@@ -11,6 +11,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func portableExtendedAttributes(path string) error {
+	size, err := unix.Llistxattr(path, nil)
+	if err != nil && !errors.Is(err, unix.ENOTSUP) {
+		return err
+	}
+	if size > 0 {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	return nil
+}
+
 func portableFilesystemFlags(path string, info fs.FileInfo) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil

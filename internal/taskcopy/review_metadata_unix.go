@@ -7,9 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
+
+const portableExtendedMetadataRefusal = "portable apply cannot preserve extended attributes or access-control metadata"
 
 func portablePlatformMetadata(path string, info fs.FileInfo) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -26,12 +26,8 @@ func portablePlatformMetadata(path string, info fs.FileInfo) error {
 }
 
 func portableUnsupportedNativeMetadata(path string, info fs.FileInfo) error {
-	size, err := unix.Llistxattr(path, nil)
-	if err != nil && !errors.Is(err, unix.ENOTSUP) {
+	if err := portableExtendedAttributes(path); err != nil {
 		return err
-	}
-	if size > 0 {
-		return errors.New("portable apply cannot preserve extended attributes or access-control metadata")
 	}
 	return portableFilesystemFlags(path, info)
 }

@@ -6,13 +6,69 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"golang.org/x/sys/unix"
 	"io/fs"
 	"os/exec"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+
+	"golang.org/x/sys/unix"
 )
+
+const portableDarwinProvenance = "com.apple.provenance"
+
+func portableExtendedAttributes(path string) error {
+	return portableDarwinExtendedAttributes(path, unix.Llistxattr, unix.Lgetxattr)
+}
+
+// macOS attaches com.apple.provenance itself to what a tracked process writes.
+// Apply writes new inodes that receive their own provenance, so dropping it loses
+// no project data. Quarantine and all other attributes stay refused because
+// replacing a file would silently drop security or user state.
+func portableDarwinExtendedAttributes(path string, list func(string, []byte) (int, error), get func(string, string, []byte) (int, error)) error {
+	var names [len(portableDarwinProvenance) + 1]byte
+	n, err := list(path, names[:])
+	if errors.Is(err, unix.ENOTSUP) {
+		return nil
+	}
+	if errors.Is(err, unix.ERANGE) {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	if n != len(names) || string(names[:]) != portableDarwinProvenance+"\x00" {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	var value [12]byte
+	n, err = get(path, portableDarwinProvenance, value[:])
+	if errors.Is(err, unix.ERANGE) || errors.Is(err, unix.ENOATTR) {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	if err != nil {
+		return err
+	}
+	// The bytes stay opaque: size is a compatibility constraint, not proof of system origin.
+	if n != 11 {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	clear(names[:])
+	n, err = list(path, names[:])
+	if errors.Is(err, unix.ERANGE) || errors.Is(err, unix.ENOTSUP) {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	if err != nil {
+		return err
+	}
+	if n != len(names) || string(names[:]) != portableDarwinProvenance+"\x00" {
+		return errors.New(portableExtendedMetadataRefusal)
+	}
+	return nil
+}
 
 func portableFilesystemFlags(path string, info fs.FileInfo) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -50,11 +106,27 @@ func portableDarwinACLBatch(ctx context.Context, paths []string) error {
 	if err := cmd.Run(); err != nil {
 		return errors.New("portable apply cannot verify native access-control metadata")
 	}
-	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != len(paths) {
+	return portableDarwinACLListing(output.String(), len(paths))
+}
+
+func portableDarwinACLListing(output string, paths int) error {
+	// Preserve leading whitespace because ls indents ACL entries even when the
+	// mode field shows '@' for an attribute instead of '+' for the ACL.
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) != paths {
 		return errors.New("portable apply cannot preserve native access-control metadata")
 	}
 	for _, line := range lines {
+		if strings.TrimLeftFunc(line, unicode.IsSpace) != line {
+			return errors.New("portable apply cannot preserve native access-control metadata")
+		}
+		i := 0
+		for i < len(line) && line[i] >= '0' && line[i] <= '9' {
+			i++
+		}
+		if i > 0 && strings.HasPrefix(line[i:], ": ") {
+			return errors.New("portable apply cannot preserve native access-control metadata")
+		}
 		fields := strings.Fields(line)
 		if len(fields) == 0 || strings.HasSuffix(fields[0], "+") {
 			return errors.New("portable apply cannot preserve native access-control metadata")
