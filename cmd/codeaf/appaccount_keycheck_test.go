@@ -68,6 +68,10 @@ func TestAppKeyCheckRefusesAKeyOpenRouterDoesNotAccept(t *testing.T) {
 				_, _ = w.Write([]byte(`{"data":{"label":"admin","is_management_key":true,"is_provisioning_key":true}}`))
 			case "sk-or-provisioning-key":
 				_, _ = w.Write([]byte(`{"data":{"label":"admin","is_provisioning_key":true}}`))
+			case "sk-or-management-only-key":
+				_, _ = w.Write([]byte(`{"data":{"label":"admin","is_management_key":true,"is_provisioning_key":"unknown"}}`))
+			case "sk-or-plain-flags-key":
+				_, _ = w.Write([]byte(`{"data":{"label":"mine","is_management_key":false,"is_provisioning_key":false,"is_free_tier":true}}`))
 			case "sk-or-fallback-dead-key":
 				if r.URL.Path == "/key" {
 					w.WriteHeader(http.StatusNotFound)
@@ -109,6 +113,8 @@ func TestAppKeyCheckRefusesAKeyOpenRouterDoesNotAccept(t *testing.T) {
 		{name: "array details", key: "sk-or-array-key", status: 200, message: "the provider answered, but not with the key's details", paths: []string{"/key"}},
 		{name: "missing details", key: "sk-or-no-details-key", status: 200, message: "the provider answered, but not with the key's details", paths: []string{"/key"}},
 		{name: "management key", key: "sk-or-management-key", status: 200, message: "this is a management key, which can't run models · use an API key", paths: []string{"/key"}},
+		{name: "management flag alone", key: "sk-or-management-only-key", status: 200, message: "this is a management key, which can't run models · use an API key", paths: []string{"/key"}},
+		{name: "ordinary key with its flags off", key: "sk-or-plain-flags-key", ok: true, paths: []string{"/key", "/models/user"}},
 		{name: "provisioning key", key: "sk-or-provisioning-key", status: 200, message: "this is a management key, which can't run models · use an API key", paths: []string{"/key"}},
 		{name: "fallback dead key", key: "sk-or-fallback-dead-key", status: 401, message: "User not found.", paths: []string{"/key", "/auth/key"}},
 		{name: "redacted rejection", key: "sk-or-echo-key", status: 401, paths: []string{"/key"}},
