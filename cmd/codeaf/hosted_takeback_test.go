@@ -74,7 +74,14 @@ func (m moveRenewals) RenewalChanges() <-chan struct{} { return m.changes }
 func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *hostedMoveRig {
 	t.Helper()
 	cfg, c := doorChat(t)
-	short, err := os.MkdirTemp("", "cf-move-")
+	// The workspace host's socket lives under this home. macOS's temporary
+	// folder leaves it only a few bytes under the socket limit, and none once
+	// that folder is spelled through /private, so Unix homes start at /tmp.
+	base := ""
+	if runtime.GOOS != "windows" {
+		base = "/tmp"
+	}
+	short, err := os.MkdirTemp(base, "cf-move-")
 	if err != nil {
 		t.Fatal(err)
 	}
