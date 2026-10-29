@@ -3,7 +3,6 @@ package cellstore
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -52,9 +51,6 @@ func TestCanonicalTreeResolvesAncestorOfMissingWorkspace(t *testing.T) {
 // A path through a file is not a missing folder: it keeps its absolute
 // spelling rather than being resolved past the file.
 func TestCanonicalTreeKeepsAPathThroughAFile(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows reports a path through a file as a missing path")
-	}
 	real, link := linkedRoot(t)
 	if err := os.WriteFile(filepath.Join(real, "file"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
@@ -89,5 +85,31 @@ func TestForeignFolderKeepsMissingWorkUnderSymlinkedChat(t *testing.T) {
 	}
 	if !ForeignFolder(root, outside) {
 		t.Fatal("a folder outside the chat is not called foreign")
+	}
+}
+
+// A link whose target is missing is not a missing folder: a path through it
+// keeps its spelled, absolute form, so a chat's work/ that is a dangling link
+// to somewhere else stays foreign when the chat is named through an alias.
+func TestCanonicalTreeDoesNotResolvePastADanglingLink(t *testing.T) {
+	real, link := linkedRoot(t)
+	chat := filepath.Join(real, "chat")
+	if err := os.MkdirAll(filepath.Join(chat, filepath.FromSlash(filepath.Dir(OwnFolderPath))), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chat, filepath.FromSlash(OwnFolderPath)), []byte("own\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "absent"), filepath.Join(chat, "work")); err != nil {
+		t.Skipf("this filesystem cannot make a symbolic link: %v", err)
+	}
+	for _, spelled := range []string{filepath.Join(link, "chat", "work"), filepath.Join(link, "chat", "work", "deeper")} {
+		if got := canonicalTree(spelled); got != spelled {
+			t.Errorf("a path through a dangling link: got %q, want it unchanged %q", got, spelled)
+		}
+	}
+	useHome(t, t.TempDir())
+	if !ForeignFolder(filepath.Join(link, "chat"), filepath.Join(link, "chat", "work")) {
+		t.Error("a dangling work/ link named through the alias is not called foreign")
 	}
 }

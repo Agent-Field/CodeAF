@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -414,13 +415,14 @@ func (e Engine) target(c cell.Cell) Target {
 // whichever spelling named it: macOS reaches /tmp and /var through links, and a
 // home or project folder can sit under a linked folder too.
 //
-// A TREE THAT DOES NOT EXIST YET STILL RESOLVES ITS ANCESTORS. Its longest
+// A tree that does not exist yet still resolves its ancestors. Its longest
 // existing ancestor is resolved and the missing rest is kept as written. Were
-// the lexical spelling returned instead, the same folder would change spelling
-// the moment it was created: a binding recorded before creation would read as
+// the spelled path returned instead, the same folder would change spelling the
+// moment it was created: a binding recorded before creation would read as
 // another folder after it, and a chat's own absent work/ would compare as
-// outside the chat's resolved folder. Any other failure keeps the absolute
-// spelling, as before.
+// outside the chat's resolved folder. Only components that are truly absent
+// are kept as written; a link whose target is missing is not a missing folder,
+// so a path through one keeps its absolute spelling, as does any other failure.
 func canonicalTree(tree string) string {
 	absolute, err := filepath.Abs(tree)
 	if err != nil {
@@ -433,9 +435,26 @@ func canonicalTree(tree string) string {
 	if !errors.Is(err, os.ErrNotExist) {
 		return absolute
 	}
-	parent := filepath.Dir(absolute)
-	if parent == absolute {
+	existing, missing := absolute, []string(nil)
+	for {
+		_, err := os.Lstat(existing)
+		if err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if !errors.Is(err, os.ErrNotExist) || parent == existing {
+			return absolute
+		}
+		missing = append(missing, filepath.Base(existing))
+		existing = parent
+	}
+	if len(missing) == 0 {
 		return absolute
 	}
-	return filepath.Join(canonicalTree(parent), filepath.Base(absolute))
+	resolved, err = filepath.EvalSymlinks(existing)
+	if err != nil {
+		return absolute
+	}
+	slices.Reverse(missing)
+	return filepath.Join(append([]string{resolved}, missing...)...)
 }
