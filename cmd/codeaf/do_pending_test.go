@@ -130,6 +130,9 @@ func TestADoErrandHandedToAResidentLeavesNoPendingLanding(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
 	t.Setenv("CODEAF_MODEL_POOL", "on")
+	// The hand-off under test is the default behavior; a shell that exports
+	// CODEAF_NO_RESIDENT would turn it into a refusal, so pin it off.
+	t.Setenv("CODEAF_NO_RESIDENT", "")
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "graph.db")
