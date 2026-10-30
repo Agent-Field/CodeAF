@@ -167,6 +167,10 @@ var handles struct {
 	sync.Mutex
 	open map[string]*handle
 	tick uint64
+	// seen is the file each path's last handle opened. A handle that opens
+	// another file there (a copy put in its place) drops the snapshots held
+	// of the one before ([dropHeld]): its revisions are not this file's.
+	seen map[string]os.FileInfo
 }
 
 // acquire is the database at path, opened or shared. A file that is not there
@@ -213,11 +217,15 @@ func acquire(path string, create bool) (*handle, error) {
 		return h, nil
 	}
 	if handles.open == nil {
-		handles.open = map[string]*handle{}
+		handles.open, handles.seen = map[string]*handle{}, map[string]os.FileInfo{}
 	}
 	if old := handles.open[path]; old != nil {
 		retire(old)
 	}
+	if was := handles.seen[path]; was != nil && !os.SameFile(was, info) {
+		dropHeld(path)
+	}
+	handles.seen[path] = info
 	handles.tick++
 	h := &handle{db: db, path: path, file: info, refs: 1, used: handles.tick}
 	handles.open[path] = h
@@ -681,6 +689,15 @@ func hold(path string, s *snapshot) {
 	}
 }
 
+// dropHeld forgets the snapshots held of path, both of every team and of the
+// open ones: the store there is not the one they were read from.
+func dropHeld(path string) {
+	held.Lock()
+	defer held.Unlock()
+	delete(held.by, heldKey(path, false))
+	delete(held.by, heldKey(path, true))
+}
+
 // querier is a transaction or anything else that answers queries.
 type querier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -741,6 +758,13 @@ func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, 
 	}
 	if other != nil && other.store != store {
 		other = nil
+	}
+	// A revision behind one held is the store put back to an older copy in
+	// place: what is held is not its history, and a write may carry it past
+	// the held revision with other rows.
+	if held != nil && rev < held.rev || other != nil && rev < other.rev {
+		dropHeld(path)
+		held, other = nil, nil
 	}
 	if held != nil && held.rev == rev {
 		return held, nil
