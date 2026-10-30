@@ -135,11 +135,12 @@ const indexes = `
 CREATE INDEX IF NOT EXISTS teams_root ON teams(root) WHERE root = 1;
 CREATE INDEX IF NOT EXISTS teams_open ON teams(closed, pos);
 CREATE INDEX IF NOT EXISTS members_conv ON members(conv, former);
+CREATE INDEX IF NOT EXISTS members_key ON members(key, former);
 CREATE INDEX IF NOT EXISTS teams_founder ON teams(founder);
 `
 
 // indexNames are [indexes]' names, to see whether a store has them all.
-var indexNames = []string{"teams_root", "teams_open", "members_conv", "teams_founder"}
+var indexNames = []string{"teams_root", "teams_open", "members_conv", "members_key", "teams_founder"}
 
 // addedColumns are the columns an earlier build of this schema made without,
 // each with what adds it. Every one has a default, so that build still writes.
