@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"golang.org/x/net/http/httpproxy"
 )
 
 // errRawOnly is a relay that answered a WebSocket with 426: one from before
@@ -31,7 +32,32 @@ const messageLimit = frameHeader + MaxPayload
 // the protocol-level ping a carrier uses to keep a quiet connection proven.
 type wsConn struct {
 	net.Conn
-	socket *websocket.Conn
+	socket   *websocket.Conn
+	maxWrite int
+}
+
+// Write cuts surface writes larger than [MaxPayload] into relay-sized WebSocket
+// messages so a caller above [Dial] cannot trip a front end's per-message cap
+// or the peer's [messageLimit]. Carrier frames on [EnginePath] set maxWrite to
+// [messageLimit] so each frame stays one message.
+func (w *wsConn) Write(b []byte) (int, error) {
+	if w.maxWrite <= 0 || len(b) <= w.maxWrite {
+		return w.Conn.Write(b)
+	}
+	written := 0
+	for len(b) > 0 {
+		chunk := b
+		if len(chunk) > w.maxWrite {
+			chunk = chunk[:w.maxWrite]
+		}
+		n, err := w.Conn.Write(chunk)
+		written += n
+		if err != nil {
+			return written, err
+		}
+		b = b[n:]
+	}
+	return written, nil
 }
 
 // ping is answered by the far end's WebSocket layer, never by the relay's own
@@ -43,9 +69,31 @@ type pinger interface {
 	ping(ctx context.Context) error
 }
 
-func upgradeWebSocket(ctx context.Context, address *url.URL, path string, header http.Header) (net.Conn, error) {
+// proxyFromEnvironment resolves HTTP_PROXY, HTTPS_PROXY and NO_PROXY with the
+// same rules [http.ProxyFromEnvironment] uses, reading the current environment
+// so process-lifetime changes and tests are honoured.
+func proxyFromEnvironment(req *http.Request) (*url.URL, error) {
+	return httpproxy.FromEnvironment().ProxyFunc()(req.URL)
+}
+
+func upgradeWebSocket(ctx context.Context, address *url.URL, base, path string, header http.Header) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: dialWithin}
-	client := &http.Client{Transport: &http.Transport{DialContext: dialer.DialContext, ForceAttemptHTTP2: false}}
+	transport := &http.Transport{
+		Proxy:             proxyFromEnvironment,
+		DialContext:       dialer.DialContext,
+		ForceAttemptHTTP2: false,
+		DisableKeepAlives: true,
+	}
+	upgraded := false
+	defer func() {
+		// Any non-101 response (including every 426 fallback to an older
+		// self-hosted relay) must release its socket and transport goroutines
+		// before returning rather than leaving idle state behind.
+		if !upgraded {
+			transport.CloseIdleConnections()
+		}
+	}()
+	client := &http.Client{Transport: transport}
 	handshake, cancel := context.WithTimeout(ctx, HandshakeWithin)
 	defer cancel()
 	socket, response, err := websocket.Dial(handshake, address.String(), &websocket.DialOptions{
@@ -55,28 +103,44 @@ func upgradeWebSocket(ctx context.Context, address *url.URL, path string, header
 		CompressionMode: websocket.CompressionDisabled, // the payloads are ciphertext
 	})
 	if err != nil {
+		// Always drain and close a non-101 body first — including on 426
+		// fallbacks — so net/http closes the underlying TCP socket instead of
+		// holding an active response open.
+		said := ""
+		if response != nil && response.Body != nil {
+			said = strings.TrimSpace(readBounded(response.Body))
+		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		if response == nil {
-			return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+			return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 		}
 		if response.StatusCode == http.StatusUpgradeRequired {
 			return nil, errRawOnly
 		}
-		said := ""
-		if response.Body != nil {
-			said = strings.TrimSpace(readBounded(response.Body))
-		}
 		if response.StatusCode == http.StatusSwitchingProtocols {
-			return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+			return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 		}
-		return nil, refusal(address.Host, path, response.StatusCode, said)
+		return nil, refusal(base, path, response.StatusCode, said)
 	}
-	socket.SetReadLimit(messageLimit)
+	// coder/websocket permits a server that omitted Sec-WebSocket-Protocol; a
+	// generic WebSocket endpoint is not a relay door and must fail closed here.
+	if socket.Subprotocol() != Protocol {
+		_ = socket.CloseNow()
+		return nil, fmt.Errorf("%w: %s", ErrNoDoor, base)
+	}
+	upgraded = true
 	// The connection outlives the handshake's context: it ends when the
-	// carrier closes it, not when the dial's caller returns.
-	return &wsConn{Conn: websocket.NetConn(context.Background(), socket, websocket.MessageBinary), socket: socket}, nil
+	// carrier closes it, not when the dial's caller returns. SetReadLimit must
+	// follow websocket.NetConn because NetConn resets the limit to -1 on entry.
+	nc := websocket.NetConn(context.Background(), socket, websocket.MessageBinary)
+	socket.SetReadLimit(messageLimit)
+	maxWrite := MaxPayload
+	if path == EnginePath {
+		maxWrite = messageLimit
+	}
+	return &wsConn{Conn: nc, socket: socket, maxWrite: maxWrite}, nil
 }
 
 // proveAlive pings a carrier from this end every [PingEvery] and counts an

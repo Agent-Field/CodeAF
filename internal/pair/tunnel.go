@@ -207,9 +207,9 @@ func acceptAsMachine(conn io.ReadWriteCloser, me Device, allow func(key []byte, 
 	return &Tunnel{conn: conn, peer: deviceKey, send: second, recv: first}, deviceKey, nil
 }
 
-// withDeadline puts a bound on a handshake when the thing underneath can carry
-// one. A relay stream cannot — it is a queue, not a socket — so this is a
-// courtesy on the transports that can and a silence on the ones that cannot.
+// withDeadline puts a bound on a handshake when the stream underneath carries
+// deadlines, as both TCP sockets and relay mux streams do, so an unpaired
+// caller that opens a stream and says nothing cannot hold a slot forever.
 type deadliner interface{ SetDeadline(time.Time) error }
 
 func withDeadline(conn io.ReadWriteCloser, when time.Time) {

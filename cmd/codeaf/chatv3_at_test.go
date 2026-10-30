@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -144,5 +147,51 @@ func TestDevicesOnAFreshMachineSaysNothingIsPaired(t *testing.T) {
 	}
 	if err := runDevices([]string{"nonsense"}); err == nil {
 		t.Fatal("an unknown word was accepted")
+	}
+}
+
+// Contract item 7 (Finding 10): `codeaf serve --help` names the full relay
+// precedence — CODEAF_RELAY, ~/.codeaf/v3/remote/relay, then sync — matching
+// what pair.Relay and pair.RelayFor actually resolve.
+func TestServeHelpAndRelayPrecedenceIncludeSavedRemoteRelayFile(t *testing.T) {
+	var buf bytes.Buffer
+	previous := usageOut
+	usageOut = &buf
+	t.Cleanup(func() { usageOut = previous })
+
+	if err := runServe([]string{"--help"}); err != exitHelped {
+		t.Fatalf("runServe(--help) returned %v, want exitHelped", err)
+	}
+	help := strings.Join(strings.Fields(buf.String()), " ")
+	envPos := strings.Index(help, pair.RelayEnv)
+	filePos := strings.Index(help, "~/.codeaf/v3/remote/relay")
+	syncPos := strings.Index(help, "syncs through")
+	if envPos < 0 || filePos < 0 || syncPos < 0 || !(envPos < filePos && filePos < syncPos) {
+		t.Fatalf("serve --help did not list %s, ~/.codeaf/v3/remote/relay, then sync in order: %q", pair.RelayEnv, help)
+	}
+
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv(pair.RelayEnv, "")
+	t.Setenv(syncsetup.URLVar, "https://sync.example")
+	if err := os.MkdirAll(filepath.Dir(pair.RelayFile()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pair.RelayFile(), []byte("https://file.example/fabric\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := pair.Relay(syncRelayURL()); got != "https://file.example/fabric" {
+		t.Fatalf("serve precedence with v3/remote/relay gave %q, want file override", got)
+	}
+	if got := pair.RelayFor(pair.Known{}, false, syncRelayURL()); got != "https://file.example/fabric" {
+		t.Fatalf("unpaired --at precedence with v3/remote/relay gave %q, want file override", got)
+	}
+	paired := pair.Known{Service: "https://paired.example/fabric"}
+	if got := pair.RelayFor(paired, true, syncRelayURL()); got != "https://paired.example/fabric" {
+		t.Fatalf("paired --at precedence gave %q, want paired machine service over file", got)
+	}
+	t.Setenv(pair.RelayEnv, "https://env.example/fabric")
+	if got := pair.RelayFor(paired, true, syncRelayURL()); got != "https://env.example/fabric" {
+		t.Fatalf("CODEAF_RELAY precedence gave %q, want env override", got)
 	}
 }
