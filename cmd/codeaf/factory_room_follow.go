@@ -30,6 +30,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,13 +115,14 @@ func jobTalkKey(it factory.Item) string {
 }
 
 // closeJobRooms closes the open room of each job in one write, and leaves
-// alone any room keep holds back (nil holds none back). ONLY WHAT THE FACTORY
+// alone any room keep holds back, asked with the open crews in hand (nil holds
+// none back). ONLY WHAT THE FACTORY
 // RECORDED IS CLOSED: the job's own Stream.Room, else a factory-made item
 // team holding the job's conversation. An ordinary crew that holds the same
 // conversation, the root and the `factory` parent are the person's, and stay
 // open. A recorded room that is here but not open (closed already, or a crew
 // that is not the factory's) is not looked for any other way.
-func closeJobRooms(profile string, keep func(room string) bool, jobs ...factory.Item) error {
+func closeJobRooms(profile string, keep func(f *teams.File, room teams.Team) bool, jobs ...factory.Item) error {
 	var recorded []string
 	for _, it := range jobs {
 		if room := jobRoomRecorded(it); room != "" {
@@ -139,7 +141,7 @@ func closeJobRooms(profile string, keep func(room string) bool, jobs ...factory.
 	}
 	return teams.UpdateOpen(profile, func(f *teams.File) error {
 		closable := func(t teams.Team) bool {
-			return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID) && (keep == nil || !keep(t.ID))
+			return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID) && (keep == nil || !keep(f, t))
 		}
 		now := time.Now()
 		for _, it := range jobs {
@@ -216,9 +218,9 @@ const sweptMarker = "factory-rooms-swept"
 
 // factorySweepEndedRooms closes, once per profile, the rooms of the jobs that
 // were already over before rooms followed their jobs, and answers how many
-// jobs it looked at (0 when it had run already). A room a person reopened by
-// hand (its traffic holds a reopen line) is left open. It marks the profile
-// once it has run, and never runs again there.
+// jobs it looked at (0 when it had run already). A room a person may have
+// reopened is left open ([personMayHaveReopened]). It marks the profile once
+// it has run, and never runs again there.
 //
 // TODO(crews-store): a one-time fix for stores from before 2026-10-29, when an
 // ended job's room stayed open. Remove once every developer's store has been
@@ -242,18 +244,7 @@ func factorySweepEndedRooms(profile, root string) int {
 			over = append(over, it)
 		}
 	}
-	reopened := func(room string) bool {
-		lines, err := teams.ReadTraffic(profile, room, "", 0)
-		if err != nil {
-			return true
-		}
-		for _, e := range lines {
-			if e.Kind == teams.KindReopen {
-				return true
-			}
-		}
-		return false
-	}
+	reopened := personMayHaveReopened(profile)
 	if len(over) > 0 {
 		if err := closeJobRooms(profile, reopened, over...); err != nil {
 			return len(over)
@@ -263,4 +254,60 @@ func factorySweepEndedRooms(profile, root string) int {
 		_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
 	}
 	return len(over)
+}
+
+// firstTrafficID is the id of the first line any crew's log holds.
+var firstTrafficID = fmt.Sprintf("%012d", 1)
+
+// personMayHaveReopened answers, for the sweep, whether a person may have
+// reopened a room: a reopen line, written after the room was made, in its own
+// log or in the log of any crew above it (a crew's reopen opens again what its
+// close closed, and says so only in its own log); or such a log whose first
+// lines rotated out after the room was made, which may have held one; or a
+// crew above it that is not open, or a log that does not read. WHEN UNSURE THE
+// ROOM IS LEFT OPEN: the sweep is only a tidy-up. Each crew's log is read once.
+func personMayHaveReopened(profile string) func(f *teams.File, room teams.Team) bool {
+	type look struct {
+		reopens []time.Time
+		oldest  time.Time
+		lost    bool
+		err     error
+	}
+	logs := map[string]look{}
+	read := func(id string) look {
+		if l, ok := logs[id]; ok {
+			return l
+		}
+		var l look
+		lines, err := teams.ReadTraffic(profile, id, "", 0)
+		l.err = err
+		if len(lines) > 0 {
+			l.oldest, l.lost = lines[0].At, lines[0].ID != firstTrafficID
+		}
+		for _, e := range lines {
+			if e.Kind == teams.KindReopen {
+				l.reopens = append(l.reopens, e.At)
+			}
+		}
+		logs[id] = l
+		return l
+	}
+	return func(f *teams.File, room teams.Team) bool {
+		chain := append([]teams.Team{room}, f.Ancestors(room.ID)...)
+		if top := chain[len(chain)-1]; top.Parent != "" {
+			return true
+		}
+		for _, t := range chain {
+			l := read(t.ID)
+			if l.err != nil || l.lost && !l.oldest.Before(room.Made) {
+				return true
+			}
+			for _, at := range l.reopens {
+				if !at.Before(room.Made) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 }
