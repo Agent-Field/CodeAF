@@ -293,7 +293,9 @@ func upgradable(r *http.Request) bool {
 	return false
 }
 
-func wantsWebSocket(r *http.Request) bool { return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") }
+func wantsWebSocket(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+}
 
 // takeOver answers the upgrade and hands back the connection the carrier
 // reads, whichever of the two the client asked for. On failure the answer has
