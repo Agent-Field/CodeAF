@@ -538,16 +538,14 @@ func involved(p Packet, teams ...string) []string {
 // directive to that party. A party with no team or a team no longer in the
 // file is skipped; a log that cannot be written costs that line and never the
 // decision, which is written already.
-func rule(profileDir string, _ *File, p Packet, prov Provenance) {
-	// The parties' teams may be anywhere below the decider; they are read by id.
+func rule(profileDir string, f *File, p Packet, prov Provenance) {
+	// The parties' teams may be anywhere below the decider; those the
+	// decider's lineage does not hold are read by id.
 	ids := []string{p.Team}
 	for _, party := range p.Parties {
 		ids = append(ids, party.Team)
 	}
-	f, err := LoadTeams(profileDir, ids...)
-	if err != nil {
-		return
-	}
+	f = withTeams(profileDir, f, ids)
 	from, by := FromManager, "◆ @"+p.DecidedBy
 	switch p.DecidedBy {
 	case Person:
@@ -770,6 +768,30 @@ func rotateDecisions(path string) error {
 	return os.Rename(name, path)
 }
 
+// withTeams is f and the teams of ids it does not hold, read by id. A read
+// that fails costs only those: the lines to the teams f holds still go out.
+func withTeams(profileDir string, f *File, ids []string) *File {
+	var missing []string
+	for _, id := range ids {
+		if _, ok := f.Team(id); !ok && id != "" && id != Person {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return f
+	}
+	more, err := teamsByID(profileDir, missing...)
+	if err != nil || len(more.Teams) == 0 {
+		return f
+	}
+	out := *f
+	out.Teams = append(append([]Team(nil), f.Teams...), more.Teams...)
+	return &out
+}
+
+// teamsByID is [LoadTeams], which a test makes fail.
+var teamsByID = LoadTeams
+
 func decisionCarryLine(p Packet) ([]byte, error) {
 	return json.Marshal(decisionEvent{Op: opCarry, At: p.At, Packet: &p})
 }
@@ -787,13 +809,10 @@ func writeDecisionCarry(dst *bytes.Buffer, p Packet) error {
 // logPacket appends a [KindPacket] line to the Traffic of each distinct team
 // in teams that is a team (not [Person], not ""). A log that cannot be written
 // costs the line and never the packet, which is written already.
-func logPacket(profileDir string, _ *File, p Packet, teams []string, text string, prov Provenance) {
-	// A party's team may be anywhere below; the teams the line goes to are
-	// read by id.
-	f, err := LoadTeams(profileDir, teams...)
-	if err != nil {
-		return
-	}
+func logPacket(profileDir string, f *File, p Packet, teams []string, text string, prov Provenance) {
+	// A party's team may be anywhere below; those the lineage does not hold
+	// are read by id.
+	f = withTeams(profileDir, f, teams)
 	seen := map[string]bool{}
 	for _, id := range teams {
 		if id == "" || id == Person || seen[id] {
