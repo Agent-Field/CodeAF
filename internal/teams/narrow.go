@@ -221,8 +221,37 @@ var errReadWhole = errors.New("teams: read the whole store")
 // tab names it. A factory room a person closed, or archived, is theirs to
 // find, and is in.
 func LoadClosedCrews(profileDir string) (*File, error) {
-	return loadWithHomes(profileDir, `SELECT id FROM teams WHERE closed = 1 AND (factory = 0
- OR json_extract(doc, '$.job_ended') IS NOT 1 OR json_extract(doc, '$.archived_at') IS NOT NULL)`)
+	return loadWithHomes(profileDir, "SELECT id FROM teams WHERE "+closedCrews)
+}
+
+// closedCrews is the condition [LoadClosedCrews] lists by.
+const closedCrews = `closed = 1 AND (factory = 0
+ OR json_extract(doc, '$.job_ended') IS NOT 1 OR json_extract(doc, '$.archived_at') IS NOT NULL)`
+
+// ClosedCrewRevisions is [Revisions] of the teams [LoadClosedCrews] lists,
+// keyed by id. It reads no team.
+func ClosedCrewRevisions(profileDir string) (map[string]int64, error) {
+	out := map[string]int64{}
+	err := readPage(context.Background(), profileDir, func(r *pageReader) error {
+		if r.missing {
+			return nil
+		}
+		rows, err := r.q.QueryContext(r.ctx, "SELECT id, rev FROM teams WHERE "+closedCrews)
+		if err != nil {
+			return r.fail(err)
+		}
+		for rows.Next() {
+			var id string
+			var rev int64
+			if err := rows.Scan(&id, &rev); err != nil {
+				rows.Close()
+				return r.fail(err)
+			}
+			out[id] = rev
+		}
+		return r.fail(errors.Join(rows.Err(), rows.Close()))
+	})
+	return out, err
 }
 
 // LoadWithHomes is the teams ids name with what their members' rows are drawn

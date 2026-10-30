@@ -182,3 +182,46 @@ func TestARoomItsJobClosedLeavesTheWatch(t *testing.T) {
 		t.Fatalf("watched after the close: the job's room %v, the person's crew %v", job, person)
 	}
 }
+
+// A CREW ALREADY CLOSED WHEN THE WATCH STARTS IS FOLLOWED TOO. The closed and
+// archived lists hold it, so another door deleting or archiving it is said, as
+// for a crew that closed while the watch held it, and an unchanged one costs
+// its revision only.
+func TestTheWatchFollowsCrewsClosedBeforeItStarted(t *testing.T) {
+	for _, door := range []string{"archive", "delete"} {
+		t.Run(door, func(t *testing.T) {
+			backend, rec, profile, _ := closedCrewRig(t)
+			run := &appCrewRun{
+				ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
+				prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
+				acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
+				held: map[string][]string{}, opening: map[string]bool{},
+			}
+			backend.factoryRooms.Do(func() {})
+			backend.crewTick(run, true)
+			before := crewClosedReads.Load()
+			backend.crewTick(run, false)
+			if got := crewClosedReads.Load() - before; got != 0 {
+				t.Fatalf("an unchanged closed crew was read %d times", got)
+			}
+			if err := teamstore.Update(profile, func(f *teamstore.File) error {
+				if door == "archive" {
+					return f.Archive("0a0a0a0a0a0a", time.Now())
+				}
+				f.Teams = slices.DeleteFunc(f.Teams, func(t teamstore.Team) bool { return t.ID == "0a0a0a0a0a0a" })
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			backend.crewTick(run, false)
+			rec.waitFor(t, time.Second, func(_ string, data any) bool {
+				if door == "archive" {
+					c, ok := data.(appwire.CrewChanged)
+					return ok && c.Crew.ID == "0a0a0a0a0a0a" && c.Crew.ArchivedAt != nil
+				}
+				c, ok := data.(appwire.CrewRemoved)
+				return ok && c.ID == "0a0a0a0a0a0a"
+			})
+		})
+	}
+}
