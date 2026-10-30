@@ -1705,9 +1705,13 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	if notice.State.settled() && notice.CostUSD == 0 {
 		notice.CostUSD = a.beltRunSpent(notice.ID)
 	}
-	a.emitTaskUpdate(notice)
+	// Persist the row in the graph checkpoint and project index before
+	// announcing it on the live lane, so any reader or close triggered by the
+	// update finds the settled record already on disk and no index write
+	// trails behind the announcement.
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
 	a.indexRunRow(notice)
+	a.emitTaskUpdate(notice)
 }
 
 // carryRunRow preserves the durable identity fields across partial updates.
@@ -1795,6 +1799,29 @@ func (a *Agent) cutBeltRun() <-chan struct{} {
 		return run.over
 	}
 	return nil
+}
+
+// waitEndingBeltRun joins a run whose engine has already answered so its final
+// checkpoint, project index write, storage park, and plan store close finish
+// before Close shuts the session's stores and returns the folder to its caller.
+// A run still inside its engine is left unawaited so an interactive quit never
+// blocks on a live worker or external program.
+func (a *Agent) waitEndingBeltRun(done <-chan struct{}, grace time.Duration) {
+	if done == nil {
+		return
+	}
+	a.beltMu.Lock()
+	ending := a.beltRun == nil || a.beltRun.over != done || a.beltRun.ending
+	a.beltMu.Unlock()
+	if !ending {
+		return
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
 }
 
 // waitForBeltAdmission keeps a newly seeded run queued until the machine gate
