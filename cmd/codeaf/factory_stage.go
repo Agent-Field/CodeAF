@@ -295,7 +295,7 @@ func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief stri
 	}
 	key = filepath.Clean(key)
 	now := time.Now()
-	return teams.Update(profileDir, func(f *teams.File) error {
+	return teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: handle, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
 	})
 }
@@ -668,6 +668,12 @@ func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Execu
 		}
 		if job.Item.Stream != nil {
 			if room := strings.TrimSpace(job.Item.Stream.Room); room != "" {
+				// A live job's room that its end closed opens again here, should
+				// the reopen that followed the job's return have been lost
+				// (factory_room_follow.go).
+				if !jobOver(job.Item) {
+					_ = reopenJobRoom(profileDir, job.Item)
+				}
 				local, err := factoryEnsureRoom(profileDir, job.Item, room)
 				if err != nil {
 					return factory.StageResult{}, err
@@ -841,7 +847,7 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 	name := talkTeamName(it)
 	now := time.Now()
 	id := ""
-	err := teams.Update(profileDir, func(f *teams.File) error {
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		id = itemTeamIn(f, name, now)
 		return nil
 	})

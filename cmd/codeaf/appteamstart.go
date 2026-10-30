@@ -221,7 +221,7 @@ func (b *appBackend) startAnswer(claim appStartClaim, replayed bool, goal appwir
 // teamCommitted says whether a team with id is in the teams file, and errors
 // when the file cannot be read: a failed read is not an absent team.
 func (b *appBackend) teamCommitted(id string) (bool, error) {
-	file, err := teamstore.Load(b.crewProfile())
+	file, err := teamstore.LoadTeams(b.crewProfile(), id)
 	if err != nil {
 		return false, err
 	}
@@ -412,12 +412,11 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 	if err != nil {
 		// A WRITE THAT FAILED MAY HAVE LANDED: it is looked for by the key of
 		// the conversation it would have seated.
-		file, lookErr := teamstore.Load(b.crewProfile())
+		root, ok, lookErr := teamstore.LoadRoot(b.crewProfile())
 		if lookErr != nil {
 			return appwire.RootStartResult{}, appwire.Errorf(appwire.CodeUncertain,
 				"the global manager may have been made; look at All teams before starting it again")
 		}
-		root, ok := file.Root()
 		if !ok || root.Manager != manager.Key {
 			b.takeBack(transcript)
 			return appwire.RootStartResult{}, err
@@ -445,11 +444,10 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 // still there: the answer to a start that has nothing left to make. A
 // conversation that cannot be checked is an error, not a missing manager.
 func (b *appBackend) rootHeld() (appwire.RootStartResult, bool, error) {
-	file, err := teamstore.Load(b.crewProfile())
+	root, ok, err := teamstore.LoadRoot(b.crewProfile())
 	if err != nil {
 		return appwire.RootStartResult{}, false, appEngineError(err)
 	}
-	root, ok := file.Root()
 	if !ok || root.Manager == "" {
 		return appwire.RootStartResult{}, false, nil
 	}

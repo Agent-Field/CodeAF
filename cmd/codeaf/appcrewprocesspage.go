@@ -564,9 +564,14 @@ func crewRosterOf(ctx context.Context, teams []teamstore.Team, sel crewSelection
 	return out, nil
 }
 
-// roster reads the stored teams once and the selection's roster from them.
+// roster reads the stored teams once and the selection's roster from them:
+// one crew's corner of the tree (the crew, the crews above and below it, its
+// members' other crews), open or closed, or for every crew the open ones.
 func (b *appBackend) crewRoster(ctx context.Context, sel crewSelection) (*crewRoster, error) {
 	file, err := b.teamsSnapshot(ctx)
+	if !sel.all && err == nil {
+		file, err = teamstore.LoadAround(b.crewProfile(), sel.crew)
+	}
 	if err != nil {
 		return nil, err
 	}

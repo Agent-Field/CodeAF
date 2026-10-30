@@ -79,12 +79,12 @@ func TestDissolveRefusesATeamThatWasUsed(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := leadOnly(t)
 			c.used(t, dir)
-			before, err := os.ReadFile(Path(dir))
+			before, err := storedRaw(dir)
 			must(t, err)
 			if err := Dissolve(dir, "aaaaaaaaaaaa", c.manager); err == nil {
 				t.Fatal("a used team was dissolved")
 			}
-			after, err := os.ReadFile(Path(dir))
+			after, err := storedRaw(dir)
 			must(t, err)
 			if string(before) != string(after) {
 				t.Fatal("a refused dissolve wrote the teams file")

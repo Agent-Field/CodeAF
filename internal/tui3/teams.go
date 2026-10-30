@@ -49,12 +49,8 @@ import (
 // [app.teamsEnsure], on an opening (the wall, an alt+digit, the strip chip);
 // every function a frame calls reads only what that loaded.
 
-// teamsFile is the file's name inside the profile directory, and
-// teamsLegacyFile the first build's.
-const (
-	teamsFile       = teamstore.FileName
-	teamsLegacyFile = teamstore.LegacyFileName
-)
+// teamsFile is the store's name inside the profile directory.
+const teamsFile = teamstore.FileName
 
 // teamNameCells is the widest a suggested name may be, in cells.
 const teamNameCells = session.OrganizeNameCells
