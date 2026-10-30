@@ -369,6 +369,14 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 	case errors.Is(msg.err, directory.ErrRevoked):
 		a.removedComputer()
 		return chatlist.Removed
+	case errors.Is(msg.err, cellstore.ErrStoreBusy):
+		var busy *cellstore.StoreBusyError
+		if errors.As(msg.err, &busy) {
+			if who := busy.Holder.Describe(); who != "" {
+				return continueFails + " because the engine store is busy (held by " + who + ")"
+			}
+		}
+		return continueStoreBusy
 	case strings.Contains(msg.err.Error(), "rewind cancelled"), strings.Contains(msg.err.Error(), "changed during rewind"):
 		return continueFails + " because the folder changed during the move; your words are still in the box"
 	default:

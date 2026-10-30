@@ -73,8 +73,10 @@ func TestHomeLiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "2 turns from host-a") {
-		t.Fatalf("a branch that appeared is not listed:\n%s", text)
+	// A branch of the chat folds into the chat's own row (#2070): the row keeps
+	// its state and counts the copy rather than standing a second row beside it.
+	if text := homeText(a); !strings.Contains(text, "host-a offline · 1 copy") || strings.Count(text, "Port the picker") != 1 {
+		t.Fatalf("a branch that appeared is not counted on its chat's row:\n%s", text)
 	}
 
 	live.down = true

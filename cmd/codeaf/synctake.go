@@ -32,6 +32,9 @@ var surfaceNotices = tui3.NewNotices()
 // when it cannot start, it adds nothing and the home screen must not fail to
 // start over a relay setting: every seam stays nil, and a nil seam is absent.
 func wireSync(o *tui3.Options) {
+	if o.Host != "" {
+		return
+	}
 	if o.Notices == nil {
 		o.Notices = surfaceNotices
 	}
@@ -67,6 +70,70 @@ func wireSync(o *tui3.Options) {
 
 // surfaceMachines keeps display hints out of the decision to send a message.
 type surfaceMachines struct{ *syncsetup.Sync }
+
+// RowsAt enriches branch rows with whether their turns already exist in the
+// local main chat, off the surface loop, so Home can tell when discarding a
+// collapsed copy loses nothing.
+func (s surfaceMachines) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	rows, version, err := s.Sync.RowsAt(ctx)
+	if err != nil || len(rows) == 0 {
+		return rows, version, err
+	}
+	markLocalRedundantBranches(rows)
+	return rows, version, nil
+}
+
+func (s surfaceMachines) Rows(ctx context.Context) ([]chatlist.Row, error) {
+	rows, _, err := s.RowsAt(ctx)
+	return rows, err
+}
+
+func markLocalRedundantBranches(rows []chatlist.Row) {
+	byCell := make(map[string]chatlist.Row, len(rows))
+	hasBranch := false
+	for _, r := range rows {
+		byCell[r.Cell] = r
+		if r.Status == chatlist.Branch && r.Parent != "" && r.Head != "" {
+			hasBranch = true
+		}
+	}
+	if !hasBranch {
+		return
+	}
+	turnSets := map[string]map[string]bool{}
+	turnsOf := func(id string) map[string]bool {
+		if set, seen := turnSets[id]; seen {
+			return set
+		}
+		var set map[string]bool
+		if c, err := openCellByID(id); err == nil {
+			if logRecs, err := cellstore.Log(c); err == nil {
+				set = make(map[string]bool, len(logRecs))
+				for _, rec := range logRecs {
+					set[rec.Turn.ID] = true
+				}
+			}
+		}
+		turnSets[id] = set
+		return set
+	}
+	for i := range rows {
+		if rows[i].Status != chatlist.Branch || rows[i].Parent == "" || rows[i].Head == "" {
+			continue
+		}
+		root := rows[i].Parent
+		for hops := 0; root != "" && hops < 16; hops++ {
+			parent, ok := byCell[root]
+			if !ok || parent.Status != chatlist.Branch || parent.Parent == "" || parent.Parent == root {
+				break
+			}
+			root = parent.Parent
+		}
+		if turns := turnsOf(root); turns[rows[i].Head] {
+			rows[i].BranchRedundant = true
+		}
+	}
+}
 
 // RowsForChatSend uses a live writer's receipt or a never-shared chat before asking the relay.
 // A known outage keeps unknown copies unsent without repeating the network wait.

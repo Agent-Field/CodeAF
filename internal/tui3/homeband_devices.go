@@ -67,6 +67,9 @@ type rosterMsg struct {
 
 // askRoster lists the devices, off the update loop. One ask is out at a time.
 func (a *app) askRoster() tea.Cmd {
+	if a.hosted() {
+		return nil
+	}
 	src, ok := a.fleet.(Roster)
 	if !ok || a.devRow.asking {
 		return nil
@@ -107,6 +110,9 @@ func (a *app) presence() (online map[string]bool, known bool) {
 // devicesWanted says the row is drawn: a roster of more than one device and a
 // feed that can say who is online.
 func (a *app) devicesWanted() bool {
+	if a.hosted() {
+		return false
+	}
 	_, known := a.presence()
 	return known && len(a.devRow.devices) > 1
 }
@@ -170,6 +176,9 @@ func (a *app) newestBringable(device string) (chatlist.Row, bool) {
 // bringWork is the chord: nothing to bring says so, one device goes straight to
 // the takeover card, and several ask which.
 func (a *app) bringWork() tea.Cmd {
+	if a.hosted() {
+		return nil
+	}
 	picks := a.devicePicks()
 	switch len(picks) {
 	case 0:
