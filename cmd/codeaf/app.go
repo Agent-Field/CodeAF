@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -600,8 +601,23 @@ type appBackend struct {
 	turns         atomic.Uint64
 	assembled     atomic.Bool
 
+	// unreadSay is held from working an agent's unread out to saying it,
+	// so the last unread the window hears is the last one worked out
+	// (appunread.go). It is taken before mu and the app file's lock, never
+	// under them.
+	unreadSay sync.Mutex
+
 	mu               sync.Mutex
 	referenceWorkers int
+	// unreadStart is when this process first asked about unread, the moment an
+	// agent with no seen mark is read up to until the app file keeps one
+	// (appunread.go); under mu.
+	unreadStart time.Time
+	// openAsks are the questions put to the person that are still open, by
+	// agent and ask, with when each was first put (appunread.go); under mu.
+	// They are kept apart from the agents' records, so a crew's ask said
+	// before agents.list has made its agent's record still counts.
+	openAsks map[string]map[string]time.Time
 	// reportReads are the report reads in flight and reportCtx the context they
 	// all run under, cancelled by Close (appprogramreport.go); both under mu.
 	reportReads  int
@@ -715,6 +731,13 @@ type appAgent struct {
 	viewOpen bool
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
+	// What it has said to the person (appunread.go): repliedAt its last
+	// sealed answer and askedElsewhere the question another process is
+	// waiting on (its open asks here are [appBackend.openAsks]); and
+	// saidUnread the unread the app was last told.
+	repliedAt      time.Time
+	askedElsewhere time.Time
+	saidUnread     bool
 
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
@@ -749,8 +772,13 @@ type appAgent struct {
 	boot *appBoot
 	// dials are what agents.create asked to set on the conversation before
 	// its first turn, kept until an open has set them ([bootDials]).
-	dials   *appDials
-	opening bool
+	dials *appDials
+	// jobEffort is the effort of the factory job whose own conversation this
+	// is, read as it is opened: a job's chat its page left closed takes the
+	// job's effort when a send or Reopen opens it again
+	// ([appBackend.FactoryJobChats]).
+	jobEffort func() string
+	opening   bool
 	// starting says agents.create took a first message whose turn has not
 	// started yet: the conversation is still being opened (bootAgent). While
 	// it lasts the agent reads starting, and nothing waits on the gate the
@@ -1084,6 +1112,7 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
+	a.noteRowLocked(row.ReplyAt, appRowAskedAt(row))
 	defer func() {
 		b.mu.Unlock()
 		b.flushSync(a)
@@ -1201,14 +1230,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		}
 		return false
 	}
-	// AN AGENT NOBODY HAS TOUCHED FOR THE SETTING'S DAYS READS CLOSED: its
-	// journal is kept, and opening or sending to it opens it again.
-	idleDays := appIdleCloseDays
-	_ = b.state.read(func(f *appStateFile) { idleDays = f.idleDays() })
-	stale := time.Time{}
-	if idleDays > 0 {
-		stale = b.now().Add(-time.Duration(idleDays) * 24 * time.Hour)
-	}
+	stale := b.idleCut()
 	seen := map[string]bool{}
 	var agents []appwire.Agent
 	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
@@ -1216,13 +1238,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 			continue
 		}
 		seen[row.ID] = true
-		view := b.remember(row)
-		if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) && !b.crewKeeps(view.ID) {
-			view.State = appwire.StateClosed
-		}
-		view.SpentUSD, view.LastActiveAt = row.Spend, row.At
-		b.tidyMarks(&view, row.Archived)
-		agents = append(agents, view)
+		agents = append(agents, b.listedView(row, stale))
 	}
 	// A CONVERSATION THE WALK DID NOT FIND IS LISTED ONLY ONCE SOMEBODY HAS
 	// SAID SOMETHING IN IT. The walk skips a folder the person never spoke in,
@@ -1250,10 +1266,37 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	}
 	b.nameUntitled(agents)
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].UpdatedAt.After(agents[j].UpdatedAt) })
+	// UNREAD IS LEFT TO WHAT GOES TO THE WINDOW (agents.list): working it out
+	// remembers it as said, and an agent only read here was told nothing.
 	for i := range agents {
-		b.dress(&agents[i])
+		b.dressState(&agents[i])
 	}
 	return agents, nil
+}
+
+// idleCut is the moment before which an idle agent nobody touched reads
+// closed, and zero when the setting keeps every agent open.
+func (b *appBackend) idleCut() time.Time {
+	// AN AGENT NOBODY HAS TOUCHED FOR THE SETTING'S DAYS READS CLOSED: its
+	// journal is kept, and opening or sending to it opens it again.
+	idleDays := appIdleCloseDays
+	_ = b.state.read(func(f *appStateFile) { idleDays = f.idleDays() })
+	if idleDays <= 0 {
+		return time.Time{}
+	}
+	return b.now().Add(-time.Duration(idleDays) * 24 * time.Hour)
+}
+
+// listedView is one conversation on disk as agents.list says it, before it
+// is dressed: stale is [appBackend.idleCut].
+func (b *appBackend) listedView(row session.SessionRow, stale time.Time) appwire.Agent {
+	view := b.remember(row)
+	if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) && !b.crewKeeps(view.ID) {
+		view.State = appwire.StateClosed
+	}
+	view.SpentUSD, view.LastActiveAt = row.Spend, row.At
+	b.tidyMarks(&view, row.Archived)
+	return view
 }
 
 // CreateAgent answers a new agent AT ONCE and assembles its conversation
@@ -1759,7 +1802,15 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		return appwire.Agent{}, false, appEngineError(err)
 	}
 	var dials *appDials
-	b.locked(func() { dials = a.dials })
+	var jobEffort func() string
+	b.locked(func() { dials, jobEffort = a.dials, a.jobEffort })
+	if jobEffort != nil {
+		if word := jobEffort(); word != "" {
+			if dial, ok := conn.Conv.(interface{ SetConversationEffort(string) bool }); ok {
+				dial.SetConversationEffort(word)
+			}
+		}
+	}
 	if err := bootDials(conn.Conv, dials); err != nil {
 		conn.Release()
 		return appwire.Agent{}, false, err
@@ -1810,7 +1861,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		var id, known string
 		b.locked(func() { id, known = a.view.ID, a.view.Title })
 		if strings.TrimSpace(known) == "" {
-			title = b.memberNames()[id]
+			title = b.memberName(id)
 		}
 	}
 	users := conn.UserMessages
@@ -3154,16 +3205,22 @@ func (b *appBackend) closeAgentLocked(a *appAgent) (view appwire.Agent) {
 // hold a.gate.
 func (b *appBackend) release(a *appAgent) {
 	var live *appLive
+	var id string
 	b.locked(func() {
+		id = a.view.ID
 		live, a.live, a.viewOpen = a.live, nil, false
 		if live != nil {
 			a.lastLive = b.now()
+			// Its conversation's open questions go with it, unanswered and
+			// unsaid, the way a restart reads them.
+			b.dropAsksLocked(a.view.ID, live.asks)
 		}
 	})
 	if live == nil {
 		return
 	}
 	b.finish(live)
+	b.forgetAsksOf(id, live)
 }
 
 // finish gives a conversation that is no longer held back, and shuts its
@@ -3873,6 +3930,8 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	// The answer says unread as agent.changed does.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 
@@ -3915,6 +3974,8 @@ func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	// The answer says unread as agent.changed does.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 
@@ -4048,6 +4109,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 		if row.ListedAt > 0 {
 			model.ListedAt = row.ListedAt
 		}
+		appModelFacts(&model, row)
 		if model.ProviderName == "" && provider == modelsource.DefaultID {
 			model.ProviderName = modelsource.DefaultSource("").Name
 		}
@@ -4604,4 +4666,34 @@ func appTeamDelivery(lines []session.TeamLine) string {
 		out = append(out, who+": "+strings.TrimSpace(line.Text))
 	}
 	return redact.Secrets(strings.Join(out, "\n"))
+}
+
+// appModelFacts copies the catalog's per-model facts onto a models.list row:
+// prices per million tokens, the context length and the Arena Elo.
+//
+// A PRICE IS SENT ONLY WHEN IT IS KNOWN. The picker rows carry PriceKnown where
+// the catalog said its figures are real (a zero then is a free model); a row
+// without it counts only when both figures are positive, the terminal's own
+// rule for its in/M and out/M cells. Anything else sends no price, so the app
+// shows a blank and never $0.
+func appModelFacts(model *appwire.Model, row tui3.Model) {
+	// A MODEL PRICED BY THE REQUEST has no per-million figure: a 0 there
+	// would read as free.
+	if row.RequestPrice <= 0 && row.PromptPrice >= 0 && row.CompletionPrice >= 0 && (row.PriceKnown || (row.PromptPrice > 0 && row.CompletionPrice > 0)) {
+		in, out := appPerMillion(row.PromptPrice), appPerMillion(row.CompletionPrice)
+		model.PriceInPerM, model.PriceOutPerM = &in, &out
+	}
+	if row.ContextLength > 0 {
+		model.ContextLength = row.ContextLength
+	}
+	if row.ArenaElo > 0 {
+		model.ArenaElo = row.ArenaElo
+	}
+}
+
+// appPerMillion is a per-token price per million tokens, rounded to a
+// billionth of a dollar so the float's noise (0.09999999999999999 for $0.10)
+// never goes out.
+func appPerMillion(perToken float64) float64 {
+	return math.Round(perToken*1e6*1e9) / 1e9
 }

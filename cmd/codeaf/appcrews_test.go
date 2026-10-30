@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // crewBackend is a work backend whose crews are the teams of a profile of its
@@ -83,10 +83,7 @@ func TestAppCrewIsItsTeamAndTheLayerStaysOutOfTheTeamsFile(t *testing.T) {
 	if len(items) != 1 || items[0].Ref != "#1830" {
 		t.Fatalf("the items = %+v", items)
 	}
-	raw, err := os.ReadFile(teamstore.Path(backend.profileDir))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := teamstest.JSON(t, backend.profileDir)
 	if strings.Contains(string(raw), goal) || strings.Contains(string(raw), "#1830") {
 		t.Fatalf("the app layer reached the teams file:\n%s", raw)
 	}

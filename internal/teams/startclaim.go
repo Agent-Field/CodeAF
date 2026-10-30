@@ -57,7 +57,7 @@ func AppendClaimedStart(profileDir, teamID string, e Entry) (string, error) {
 		if err != nil {
 			return err
 		}
-		_, err = updateLocked(profileDir, func(f *File) error {
+		_, err = updateOpenLocked(profileDir, func(f *File) error {
 			if !f.ClaimStart(teamID, id) {
 				return errors.New("teams: start could not be claimed")
 			}

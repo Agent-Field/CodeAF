@@ -3606,6 +3606,11 @@ type Agent struct {
 	// not let a request that was already on the disk before this turn started
 	// end it (takeover.go says why that request has had its chance).
 	turnBegan time.Time
+	// answeredSinceSeal says an answer to the person was recorded since the
+	// last seal, which is what lets the seal stamp [Meta.LastReplyAt] for this
+	// turn's answer and never again for an older one (placemeta.go's
+	// [Agent.stampSealed]).
+	answeredSinceSeal bool
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be

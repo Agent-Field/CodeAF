@@ -27,7 +27,7 @@ func TestC29CopyCarriesTruthAndReplacesTheListRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	at := time.Unix(1700000000, 0)
-	if err := SaveMeta(original, Meta{ID: "old-session", Title: "The older conversation", Effort: "high", Approval: "allow", LastUserAt: at, Workspace: bucket}); err != nil {
+	if err := SaveMeta(original, Meta{ID: "old-session", Title: "The older conversation", Effort: "high", Approval: "allow", LastUserAt: at, LastReplyAt: at.Add(time.Minute), Workspace: bucket}); err != nil {
 		t.Fatal(err)
 	}
 	brain, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
@@ -49,6 +49,11 @@ func TestC29CopyCarriesTruthAndReplacesTheListRow(t *testing.T) {
 	}
 	if meta.Effort != "high" || meta.Approval != "allow" || meta.Title != "The older conversation" || !meta.LastUserAt.Equal(at) {
 		t.Fatalf("copy lost truth: %+v", meta)
+	}
+	// The older chat's last answer is not the copy's: a copy is never born
+	// with something new for the person.
+	if !meta.LastReplyAt.IsZero() {
+		t.Fatalf("the copy carries the older chat's answer time %v", meta.LastReplyAt)
 	}
 	events, err := ReadMemoryEvents(c.Root)
 	if err != nil || len(events) != 1 {

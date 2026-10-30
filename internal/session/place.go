@@ -303,6 +303,14 @@ type Meta struct {
 	// file is not a person returning to a conversation
 	// (internal/store/session_rooms.go holds the original of this law).
 	LastUserAt time.Time `json:"lastUserAt,omitempty"`
+	// LastReplyAt is when the conversation last FINISHED SPEAKING TO THE
+	// PERSON: a turn that sealed on an answer, a harness run's report among
+	// them. A turn that ended on tool steps or thinking alone does not move it.
+	// It is stamped beside the spend at the seal (placemeta.go's
+	// [Agent.stampSealed]) so a surface can say "something new here" without
+	// opening the journal. Zero is a conversation that has not answered since
+	// the field arrived.
+	LastReplyAt time.Time `json:"lastReplyAt,omitempty"`
 	// SpentUSD and Tokens are WHAT THE TALKING HAS COST — this conversation's
 	// own running total, every turn and every auxiliary call beside it, as
 	// [Usage] holds it while the session is open.

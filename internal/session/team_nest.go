@@ -302,7 +302,7 @@ func subTeamBriefLine(file *teams.File, entry teams.Entry, brief string) string 
 func (a *Agent) claimSubTeams(profile string, claims []subTeamClaim) {
 	for _, claim := range claims {
 		var why string
-		err := teams.Update(profile, func(f *teams.File) error {
+		err := teams.UpdateOpen(profile, func(f *teams.File) error {
 			child, ok := f.Team(claim.team)
 			if !ok || child.Closed() {
 				why = "the team is gone or closed"
@@ -544,6 +544,12 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	if role.handle == "" {
 		return "You have no handle in " + strconv.Quote(role.name) + " yet, so the decider could not tell who raised it. It is given once this conversation has a title.", true, nil
 	}
+	// A party may be anywhere in the open tree (a sibling team, another top
+	// team), which this conversation's own view does not hold: the open teams
+	// are read for the parties and the manager common to them.
+	if open, err := teams.LoadOpen(profile); err == nil {
+		file = open
+	}
 	parties := []teams.Party{{Key: role.key, Handle: role.handle, Team: role.id, Context: strings.TrimSpace(parsed.Context)}}
 	partyKeys := []string{role.key}
 	for _, words := range parsed.Parties {
@@ -657,7 +663,7 @@ func partyTold(role teamRole, entry teams.Entry, p teams.Packet) string {
 // (team/@handle, or a handle only one conversation under team has), for a
 // read. false is nobody there.
 func readableBelow(profile string, team teams.Team, words string) (teams.Member, bool) {
-	file, err := teams.Load(profile)
+	file, err := teams.LoadSubtree(profile, team.ID)
 	if err != nil {
 		return teams.Member{}, false
 	}

@@ -328,7 +328,8 @@ func raiseLocked(profileDir string, p Packet, prov Provenance) (Packet, error) {
 	if err := safeTeamID(p.Origin); err != nil || p.Origin == Person {
 		return Packet{}, errors.New("teams: a packet is raised from a team")
 	}
-	f, err := Load(profileDir)
+	// The origin and every team above it: a packet waits on one of them.
+	f, err := LoadLineage(profileDir, p.Origin)
 	if err != nil {
 		return Packet{}, err
 	}
@@ -368,11 +369,13 @@ func decideLocked(profileDir, id, by, decision, reason string, prov Provenance) 
 		return Packet{}, errors.New("teams: a decision needs an answer")
 	}
 	var out Packet
-	f, err := Load(profileDir)
+	origin, err := packetOrigin(profileDir, id)
 	if err != nil {
 		return Packet{}, err
 	}
-	origin, err := packetOrigin(profileDir, id)
+	// A packet waits on its origin or a team above it, which is all deciding
+	// it reads.
+	f, err := LoadLineage(profileDir, origin)
 	if err != nil {
 		return Packet{}, err
 	}
@@ -438,11 +441,12 @@ func toldLocked(profileDir, id string) error {
 // [ErrSideways]; a decided packet is [ErrDecided].
 func escalateLocked(profileDir, id, by, to, reason string, prov Provenance) (Packet, error) {
 	var out Packet
-	f, err := Load(profileDir)
+	origin, err := packetOrigin(profileDir, id)
 	if err != nil {
 		return Packet{}, err
 	}
-	origin, err := packetOrigin(profileDir, id)
+	// It goes up, so every team it may go to is above its origin.
+	f, err := LoadLineage(profileDir, origin)
 	if err != nil {
 		return Packet{}, err
 	}
@@ -535,6 +539,13 @@ func involved(p Packet, teams ...string) []string {
 // file is skipped; a log that cannot be written costs that line and never the
 // decision, which is written already.
 func rule(profileDir string, f *File, p Packet, prov Provenance) {
+	// The parties' teams may be anywhere below the decider; those the
+	// decider's lineage does not hold are read by id.
+	ids := []string{p.Team}
+	for _, party := range p.Parties {
+		ids = append(ids, party.Team)
+	}
+	f = withTeams(profileDir, f, ids)
 	from, by := FromManager, "◆ @"+p.DecidedBy
 	switch p.DecidedBy {
 	case Person:
@@ -637,9 +648,9 @@ func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Pack
 	if err := safeTeamID(teamID); err != nil {
 		return err
 	}
-	if f, _, _, err := read(profileDir); err != nil {
+	if f, exists, err := lookTeams(profileDir, "", teamID); err != nil {
 		return err
-	} else if f != nil {
+	} else if exists {
 		if t, ok := f.Team(teamID); !ok || t.Closed() {
 			return ErrClosed
 		}
@@ -757,6 +768,30 @@ func rotateDecisions(path string) error {
 	return os.Rename(name, path)
 }
 
+// withTeams is f and the teams of ids it does not hold, read by id. A read
+// that fails costs only those: the lines to the teams f holds still go out.
+func withTeams(profileDir string, f *File, ids []string) *File {
+	var missing []string
+	for _, id := range ids {
+		if _, ok := f.Team(id); !ok && id != "" && id != Person {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return f
+	}
+	more, err := teamsByID(profileDir, missing...)
+	if err != nil || len(more.Teams) == 0 {
+		return f
+	}
+	out := *f
+	out.Teams = append(append([]Team(nil), f.Teams...), more.Teams...)
+	return &out
+}
+
+// teamsByID is [LoadTeams], which a test makes fail.
+var teamsByID = LoadTeams
+
 func decisionCarryLine(p Packet) ([]byte, error) {
 	return json.Marshal(decisionEvent{Op: opCarry, At: p.At, Packet: &p})
 }
@@ -775,6 +810,9 @@ func writeDecisionCarry(dst *bytes.Buffer, p Packet) error {
 // in teams that is a team (not [Person], not ""). A log that cannot be written
 // costs the line and never the packet, which is written already.
 func logPacket(profileDir string, f *File, p Packet, teams []string, text string, prov Provenance) {
+	// A party's team may be anywhere below; those the lineage does not hold
+	// are read by id.
+	f = withTeams(profileDir, f, teams)
 	seen := map[string]bool{}
 	for _, id := range teams {
 		if id == "" || id == Person || seen[id] {

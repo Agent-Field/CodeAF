@@ -40,17 +40,22 @@ func appOrdersStamp(store *automation.Store) string {
 // through disk. A day boundary also changes the spending view without a write.
 func (b *appBackend) crewInputs(run *appCrewRun) string {
 	profile := b.crewProfile()
-	stamp := teamstore.Today() + "|" + appInputStamp(teamstore.Path(profile), config.ProfilePath(profile, "config.json"), b.crewLayer().path, b.state.where(), teamstore.UsageLedgerPath())
+	// One builder for the whole stamp: adding to a string per crew copied the
+	// stamp so far each time, which grew with the square of the crews.
+	var stamp strings.Builder
+	// The crews store by its own count of writes: in WAL mode its file need
+	// not grow, and a coarse clock can leave its time where it was.
+	stamp.WriteString(teamstore.Today() + "|" + teamstore.Stamp(profile) + "|" + appInputStamp(config.ProfilePath(profile, "config.json"), b.crewLayer().path, b.state.where(), teamstore.UsageLedgerPath()))
 	var teams []teamstore.Team
 	run.locked(func() {
 		teams = run.teams
 		cursors, _ := json.Marshal(run.cursors)
-		stamp += "|" + string(cursors)
+		stamp.WriteString("|" + string(cursors))
 	})
 	for _, team := range teams {
-		stamp += "|" + appInputStamp(teamstore.TrafficPath(profile, team.ID), teamstore.DecisionsPath(profile, team.ID))
+		stamp.WriteString("|" + appInputStamp(teamstore.TrafficPath(profile, team.ID), teamstore.DecisionsPath(profile, team.ID)))
 		if team.Parent != "" {
-			stamp += "|" + appInputStamp(teamstore.TrafficPath(profile, team.Parent))
+			stamp.WriteString("|" + appInputStamp(teamstore.TrafficPath(profile, team.Parent)))
 		}
 	}
 	live := map[string]any{}
@@ -65,7 +70,7 @@ func (b *appBackend) crewInputs(run *appCrewRun) string {
 		}
 	})
 	raw, _ := json.Marshal(live)
-	return stamp + "|" + string(raw)
+	return stamp.String() + "|" + string(raw)
 }
 
 // crewRefresh leaves the operational watch alive while the client is open,

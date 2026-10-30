@@ -21,6 +21,12 @@ An `uncertain` mutation may already have happened. Read its receipt or current
 state before taking further action; never blindly repeat an uncertain write.
 Use the operation's client/request id where it supports replay.
 
+An `unreadable` error refuses a read of a store this engine cannot read: one a
+newer build wrote, or a file that is not the store. `crews.overview` answers it
+for the crews store. Trying again does not help, so the app says so instead of
+offering a retry. It is additive: an app that does not know the code treats it
+as any other failure.
+
 ## Schema and method index
 
 `codeaf app --schema` prints the complete JSON Schema directly from the Go
@@ -48,6 +54,7 @@ decides which combinations are accepted.
 | `agents.labels` | `{ids}` | `AgentLabels` |
 | `agents.list` | `in.AgentsListParams` | `AgentsResult` |
 | `agents.manual` | `{client_id, id, question}` | `TurnResult` |
+| `agents.mark_seen` | `in.IDParams` | `Empty` |
 | `agents.move_to_closed` | `in.tidyIDs` | `Empty` |
 | `agents.move_to_task` | `{id, turn}` | `MoveResult` |
 | `agents.take` | `in.TakeParams` | `TakeResult` |
@@ -381,6 +388,17 @@ and cancels and joins the initial catalog waiter and wire sender.
 |---|---|---|
 | `models.list` | `{}` | `ModelsResult` |
 | `models.pin` | `{ids}` | `SettingsResult` |
+
+Each `Model` in `ModelsResult` carries `id`, `name`, `provider`, and, when
+known, `provider_name`, `default`, `listed_at` (the catalog's listing time, Unix
+seconds), `price_in_per_m` and `price_out_per_m` (US dollars per million input
+and output tokens), `context_length` (tokens) and `arena_elo` (the best Design
+Arena Elo the catalog carries). Every one of these facts is absent when nobody
+published it. A price is never sent as `0` for an unknown price; a present `0`
+is a model the catalog says is free. A model priced by the request has no
+per-million figure, so both prices are absent, from a connected service as
+from any other. Prices are rounded to a billionth of a dollar per million, so
+$0.10 goes out as `0.1`.
 
 ## orders methods
 
@@ -796,3 +814,50 @@ established open crew holds and kept services retain their conversations.
 `warm` marks a window's guess at a view (a hover's prefetch): a warm open of an
 agent in Closed or the archive is refused with `conflict` and the mark stays.
 Only an open without `warm` (the person's own, Reopen) takes it out.
+
+## Unread
+
+Every Agent carries `unread: bool`: it said something new to the person after
+the last time they saw it. New output is an answer a turn ended on (a harness
+run's report included), or a question put to the person; tool steps and
+thinking alone never set it, nor does a partial reply a stop cut short or a
+checkpoint's hand-over note. The answer's time is the conversation's own
+`lastReplyAt` on its meta.json, stamped when the turn seals; a question's is
+its own record's: a crew proposal's time, a crew decision's raising, when an
+order run began to wait (its slot, for a run an older build parked), or its
+presence file's `asked`, so a question asked again after a restart keeps its
+time. A question counts from before the window is told of it, so a mark sent
+once the window has it covers it. A question counts only while it is open: once
+answered, wherever it was answered (its chat, the Inbox, another window, the
+terminal), or gone with an agent that was closed or let go, needs-you clears without
+turning into unread, and output after it still counts. A copied conversation
+starts read. Output another process says (a turn sealed, a question put or
+answered there) is said live for an agent this engine last saw working or
+waiting in that process, with its state as `agents.list` reads it; one it last
+saw idle is said at the next `agents.list`. A restart reads the agent the same
+way.
+
+`agents.mark_seen {id}` records "seen up to now" for that agent in the app's
+state file (`seen`), so it survives restarts, and clears `unread`. The mark is
+never ahead of the engine's clock: output the person saw that was stamped
+ahead of it, by a device whose clock runs ahead, reads seen by its own instant
+(`seen_ahead_at`), so the dot clears. Each answer and question is judged by
+its own instant, so a question put after the mark still counts whatever the
+stamps beside it. While the engine runs, a conversation's answer stamped ahead
+stays its last answer, so a later answer stamped below it reads seen until a
+restart reads the conversation's new stamp. It only
+writes the mark: it never opens or warms the agent, and a Closed or archived
+agent stays where it is. An unknown id answers `not_found`. The engine cannot
+know which agent is on screen, so a window calls it when it shows an agent and
+again when output lands while it is shown. `agent.changed` is sent when
+`unread` turns true and when it turns false, `agents.mark_seen` included,
+against what the window was last told; a mark never says the agent's state
+otherwise. Each `agent.changed` works its `unread` out as it is sent, one at a
+time, so the last one the window gets says what `agents.list` would. The
+Agent that `agents.rename`, `agents.set_model` and `agents.set_effort` answer
+carries `unread` too, and `agents.list` works it out only for the agents it
+returns. An agent with no
+mark is read up to the moment the engine first kept unread (`unread_from` in
+the state file), so on upgrade every agent starts read, and a new agent starts
+read because it has said nothing. Engines that serve it announce
+`agents.mark_seen` in `hello.features`.

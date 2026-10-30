@@ -14,10 +14,12 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
-// overviewRig is a real appwire server over an appBackend whose profile holds
-// the given teams file bytes, spoken to by its registered method table.
+// overviewRig is a real appwire server over an appBackend whose profile's store
+// holds the given teams (in the old file's JSON shape), spoken to by its
+// registered method table.
 type overviewRig struct {
 	t       *testing.T
 	backend *appBackend
@@ -68,9 +70,7 @@ func (r *overviewRig) line(into any) {
 
 func (r *overviewRig) write(body string) {
 	r.t.Helper()
-	if err := os.WriteFile(filepath.Join(r.profile, teamstore.FileName), []byte(body), 0o600); err != nil {
-		r.t.Fatal(err)
-	}
+	teamstest.Write(r.t, r.profile, []byte(body))
 }
 
 // call sends crews.overview and answers the raw result text and the error.
@@ -150,7 +150,7 @@ func TestCrewsOverviewServesTheRootAndItsTopTeamsOverTheWire(t *testing.T) {
 		t.Fatalf("hello features = %v", features)
 	}
 	o, raw := rig.page(`{}`)
-	if o.Kind != "teams" || o.Parent != "root" || o.Total != 2 || o.Next != "" || len(o.Members) != 0 || len(o.Revision) != 64 {
+	if o.Kind != "teams" || o.Parent != "root" || o.Total != 2 || o.Next != "" || len(o.Members) != 0 || o.Revision == "" || o.Revision == teamstore.MissingStamp {
 		t.Fatalf("overview = %+v", o)
 	}
 	if o.Root == nil || !o.Root.Root || o.Root.Manager == nil || o.Root.Manager.Handle != "boss" || o.Root.ChildCount != 2 || o.Root.MemberCount != 1 {
@@ -233,8 +233,8 @@ func TestCrewsOverviewMembersAreOneTeamsDirectMembersOnce(t *testing.T) {
 	noCrewRun(t, rig.backend)
 }
 
-// A CURSOR BELONGS TO THE BYTES, KIND AND PARENT IT WAS CUT FROM.
-func TestCrewsOverviewCursorIsBoundToTheBytesTheKindAndTheParent(t *testing.T) {
+// A CURSOR BELONGS TO THE REVISION, KIND AND PARENT IT WAS CUT FROM.
+func TestCrewsOverviewCursorIsBoundToTheRevisionTheKindAndTheParent(t *testing.T) {
 	rig := newOverviewRig(t, ovTree(t))
 	first, _ := rig.page(`{"limit":1}`)
 	if first.Next == "" || len(first.Teams) != 1 || first.Total != 2 {
@@ -254,11 +254,11 @@ func TestCrewsOverviewCursorIsBoundToTheBytesTheKindAndTheParent(t *testing.T) {
 	rig.refuses(`{"limit":1,`+cursor+`}`, appwire.CodeStaleCursor, "stale cursor")
 	again, _ := rig.page(`{"limit":1}`)
 	if again.Revision == first.Revision {
-		t.Fatal("the revision did not follow the bytes")
+		t.Fatal("the revision did not follow the write")
 	}
 }
 
-// LIMITS AND KINDS ARE CHECKED BEFORE THE FILE IS READ.
+// LIMITS AND KINDS ARE CHECKED BEFORE THE STORE IS READ.
 func TestCrewsOverviewChecksLimitKindAndParentShape(t *testing.T) {
 	rig := newOverviewRig(t, ovTree(t))
 	for _, bad := range []string{`{"limit":0}`, `{"limit":-1}`, `{"limit":101}`, `{"limit":"x"}`} {
@@ -289,43 +289,9 @@ func TestCrewsOverviewWithoutARootHasNullRootAndNoGlobalManager(t *testing.T) {
 	}
 }
 
-// A FILE THAT BREAKS THE TREE IS AN ERROR, NEVER A FLATTENED LIST.
-func TestCrewsOverviewRefusesFilesThatBreakTheTree(t *testing.T) {
-	made := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	cases := map[string]struct {
-		teams []teamstore.Team
-		says  string
-	}{
-		"duplicate ids":      {[]teamstore.Team{{ID: "a", Made: made}, {ID: "a", Made: made}}, "used twice"},
-		"empty id":           {[]teamstore.Team{{ID: "", Made: made}}, "no id"},
-		"missing":            {[]teamstore.Team{{ID: "a", Parent: "ghost", Made: made}}, "not a team"},
-		"self":               {[]teamstore.Team{{ID: "a", Parent: "a", Made: made}}, "its own parent"},
-		"cycle":              {[]teamstore.Team{{ID: "a", Parent: "b", Made: made}, {ID: "b", Parent: "c", Made: made}, {ID: "c", Parent: "a", Made: made}}, "its own ancestor"},
-		"two roots":          {[]teamstore.Team{{ID: "r", Root: true}, {ID: "s", Root: true}}, "more than one"},
-		"root parent":        {[]teamstore.Team{{ID: "r", Root: true, Parent: "x"}, {ID: "x", Parent: "r"}}, "has a parent"},
-		"loose top":          {[]teamstore.Team{{ID: "r", Root: true}, {ID: "x"}}, "beside the root"},
-		"ghost manager":      {[]teamstore.Team{{ID: "a", Made: made, Manager: "/s/ghost/transcript.jsonl", Members: []teamstore.Member{ovMember("/s/real/transcript.jsonl", "r", "x")}}}, "not one of its members"},
-		"ghost root manager": {[]teamstore.Team{{ID: "r", Root: true, Manager: "/s/ghost/transcript.jsonl"}, {ID: "a", Parent: "r", Made: made}}, "not one of its members"},
-		// An open team under a closed one: without the check the top answered
-		// total 0 ("No teams yet") while "a" was still open.
-		"open under closed": {[]teamstore.Team{{ID: "p", Made: made, State: teamstore.TeamClosed, ClosedAt: made}, {ID: "a", Parent: "p", Made: made}}, "under closed team"},
-		"open under closed below the root": {[]teamstore.Team{{ID: "r", Root: true}, {ID: "p", Parent: "r", Made: made, State: teamstore.TeamClosed, ClosedAt: made},
-			{ID: "a", Parent: "p", Made: made}}, "under closed team"},
-		// A closed root: without the check the plain first ask was bad_params.
-		"closed root": {[]teamstore.Team{{ID: "r", Root: true, State: teamstore.TeamClosed, ClosedAt: made}}, "root \"r\" is closed"},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			rig := newOverviewRig(t, ovTeams(t, c.teams...))
-			rig.refuses(`{}`, appwire.CodeEngine, c.says)
-			rig.refuses(`{"kind":"members","parent":"a"}`, appwire.CodeEngine, c.says)
-		})
-	}
-}
-
-// THE FILE IS READ AS IT IS: missing is empty, anything else that is wrong is
-// said, and the answer carries no path.
-func TestCrewsOverviewReadsTheFileHonestly(t *testing.T) {
+// THE STORE IS READ AS IT IS: missing is empty, anything else that is wrong is
+// said, the answer carries no path, and nothing caps how large it may be.
+func TestCrewsOverviewReadsTheStoreHonestly(t *testing.T) {
 	t.Run("missing is empty", func(t *testing.T) {
 		rig := newOverviewRig(t, "")
 		o, raw := rig.page(`{}`)
@@ -333,23 +299,16 @@ func TestCrewsOverviewReadsTheFileHonestly(t *testing.T) {
 			t.Fatalf("empty = %s", raw)
 		}
 		if _, err := os.Stat(filepath.Join(rig.profile, teamstore.FileName)); !os.IsNotExist(err) {
-			t.Fatalf("the read made the file: %v", err)
+			t.Fatalf("the read made the store: %v", err)
 		}
 	})
-	t.Run("malformed", func(t *testing.T) {
-		rig := newOverviewRig(t, `{"version":2,"teams":[`)
-		rig.refuses(`{}`, appwire.CodeEngine, "unreadable")
-	})
-	// A file that is just null is not an empty one: the store always writes
-	// an object with a teams list.
-	t.Run("literal null", func(t *testing.T) {
-		rig := newOverviewRig(t, "null")
-		rig.refuses(`{}`, appwire.CodeEngine, "unreadable")
-		rig.refuses(`{"kind":"members","parent":"a"}`, appwire.CodeEngine, "unreadable")
-	})
-	t.Run("a newer build's file", func(t *testing.T) {
-		rig := newOverviewRig(t, fmt.Sprintf(`{"version":%d,"teams":[{"id":"a","name":"a","parent":""}]}`, teamstore.Version+1))
-		rig.refuses(`{}`, appwire.CodeEngine, "newer")
+	t.Run("not a database", func(t *testing.T) {
+		rig := newOverviewRig(t, "")
+		if err := os.WriteFile(filepath.Join(rig.profile, teamstore.FileName), []byte(`{"version":2,"teams":[`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		rig.refuses(`{}`, appwire.CodeUnreadable, "cannot be read by this version")
+		rig.refuses(`{"kind":"members","parent":"a"}`, appwire.CodeUnreadable, "cannot be read by this version")
 	})
 	t.Run("read error is not empty", func(t *testing.T) {
 		rig := newOverviewRig(t, "")
@@ -357,29 +316,42 @@ func TestCrewsOverviewReadsTheFileHonestly(t *testing.T) {
 			t.Fatal(err)
 		}
 		raw, rpcErr := rig.call(`{}`)
-		if rpcErr == nil || rpcErr.Code != appwire.CodeEngine || strings.Contains(rpcErr.Message, rig.profile) {
-			t.Fatalf("a directory in the file's place answered %s / %v", raw, rpcErr)
+		if rpcErr == nil || rpcErr.Code != appwire.CodeUnreadable || strings.Contains(rpcErr.Message, rig.profile) {
+			t.Fatalf("a directory in the store's place answered %s / %v", raw, rpcErr)
 		}
 	})
-	t.Run("too large", func(t *testing.T) {
-		rig := newOverviewRig(t, `{"version":2,"teams":[],"pad":"`+strings.Repeat("x", appwire.OverviewMaxBytes)+`"}`)
-		rig.refuses(`{}`, appwire.CodeTooLarge, "larger than")
-	})
-	t.Run("the first build's file", func(t *testing.T) {
+	// The JSON file this store replaced was refused past 2 MB, which a few
+	// factory briefs reached. Briefs are rows of their own now, and a store
+	// holding megabytes of them pages like any other.
+	t.Run("no size cap", func(t *testing.T) {
 		rig := newOverviewRig(t, "")
-		legacy := filepath.Join(rig.profile, teamstore.LegacyFileName)
-		if err := os.WriteFile(legacy, []byte(`{"spaces":[{"id":"old","name":"old","made":"2026-01-01T00:00:00Z"}]}`), 0o600); err != nil {
+		big := strings.Repeat("brief words ", 300_000) // ~3.6 MB
+		if err := teamstore.Save(rig.profile, []teamstore.Team{
+			{ID: "a", Name: "a", Made: time.Now(), Members: []teamstore.Member{{Key: "/s/a/transcript.jsonl", Handle: "aa", FactoryStage: true, FactoryBrief: big}}},
+		}); err != nil {
 			t.Fatal(err)
 		}
-		o, _ := rig.page(`{}`)
-		if o.Total != 1 || o.Teams[0].ID != "old" {
-			t.Fatalf("legacy = %+v", o)
+		o, raw := rig.page(`{}`)
+		if o.Total != 1 || o.Teams[0].MemberCount != 1 || len(raw) > 4096 {
+			t.Fatalf("a store with a large brief answered %d bytes: %+v", len(raw), o)
 		}
-		if _, err := os.Stat(legacy); err != nil {
-			t.Fatalf("the read moved the first build's file: %v", err)
+	})
+	// There is no migration: a teams.json the store replaced is not read, and
+	// the read leaves it and its directory as they were.
+	t.Run("a leftover teams.json", func(t *testing.T) {
+		rig := newOverviewRig(t, "")
+		old := filepath.Join(rig.profile, "teams.json")
+		if err := os.WriteFile(old, []byte(`{"version":2,"teams":[{"id":"old","name":"old","made":"2026-01-01T00:00:00Z"}]}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if o, _ := rig.page(`{}`); o.Total != 0 {
+			t.Fatalf("the old file was read: %+v", o)
+		}
+		if _, err := os.Stat(old); err != nil {
+			t.Fatalf("the read moved the old file: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(rig.profile, teamstore.FileName)); !os.IsNotExist(err) {
-			t.Fatalf("the read migrated: %v", err)
+			t.Fatalf("the read made a store: %v", err)
 		}
 	})
 }
@@ -399,12 +371,15 @@ func TestCrewsOverviewHonoursItsContext(t *testing.T) {
 	}
 }
 
-// THE READ CHANGES NOTHING: the file's bytes and time, and the directory's
-// listing, are what they were, and no watch or crew was started.
+// THE READ CHANGES NOTHING: the store's rows, revision and time, and the
+// directory's listing, are what they were, and no watch or crew was started.
 func TestCrewsOverviewWritesNothingAndStartsNothing(t *testing.T) {
-	rig := newOverviewRig(t, ovTree(t)+"  ") // untidy bytes a Load would rewrite
+	made := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	// Untidy rows a Load would repair: a manager who is not a member.
+	rig := newOverviewRig(t, ovTeams(t, teamstore.Team{ID: "alpha", Name: "alpha", Made: made, Manager: "/s/ghost/transcript.jsonl",
+		Members: []teamstore.Member{ovMember("/s/a1/transcript.jsonl", "", "lead")}}))
 	path := filepath.Join(rig.profile, teamstore.FileName)
-	before, _ := os.ReadFile(path)
+	before, stamp := teamstest.JSON(t, rig.profile), teamstore.Stamp(rig.profile)
 	stat, _ := os.Stat(path)
 	names := func() string {
 		entries, _ := os.ReadDir(rig.profile)
@@ -418,12 +393,11 @@ func TestCrewsOverviewWritesNothingAndStartsNothing(t *testing.T) {
 	for _, params := range []string{`{}`, `{"parent":"alpha"}`, `{"kind":"members","parent":"alpha"}`, `{"cursor":"x"}`} {
 		rig.call(params)
 	}
-	after, _ := os.ReadFile(path)
-	if string(after) != string(before) {
-		t.Fatal("the bytes changed")
+	if after := teamstest.JSON(t, rig.profile); string(after) != string(before) || teamstore.Stamp(rig.profile) != stamp {
+		t.Fatal("the rows changed")
 	}
 	if now, _ := os.Stat(path); !now.ModTime().Equal(stat.ModTime()) || names() != listing {
-		t.Fatalf("the file's time or the directory changed: %s -> %s", listing, names())
+		t.Fatalf("the store's time or the directory changed: %s -> %s", listing, names())
 	}
 	noCrewRun(t, rig.backend)
 }

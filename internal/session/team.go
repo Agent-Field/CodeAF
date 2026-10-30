@@ -79,6 +79,26 @@ import (
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
+// teamView is the teams this conversation's own view reads: the ones its keys
+// are in, the ones above and the open ones below ([teams.LoadConversationView]),
+// never every team in the profile.
+func teamView(profile string, keys []string) (*teams.File, error) {
+	convs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		convs = append(convs, teams.ConversationName(key))
+	}
+	return teams.LoadConversationView(profile, convs...)
+}
+
+// A team names a member's conversation the way the app names an agent: by the
+// folder its transcript lives in, as this package lays folders out. The store
+// indexes memberships by that name (internal/teams conv.go).
+func init() {
+	teams.SetConversationName(func(transcript string) string {
+		return filepath.Base(DirOf(filepath.Clean(transcript)))
+	})
+}
+
 // teamRole is one team this conversation is in, as teams.json says right now.
 type teamRole struct {
 	id   string
@@ -135,14 +155,27 @@ type teamRole struct {
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
-// decides a read is worth doing: a teams file or a Traffic log whose size and
-// modification time have not moved has nothing new in it. present is false for
-// a file that is not there.
+// decides a read is worth doing: a Traffic log whose size and modification
+// time have not moved has nothing new in it. The teams store's is its own
+// count of writes instead ([teamsStampOf]). present is false for a file that
+// is not there.
 type fileStamp struct {
 	size    int64
 	mod     time.Time
+	rev     string
 	present bool
 	read    bool
+}
+
+// teamsStampOf is the teams store's stamp ([teams.Stamp]): its count of
+// writes moves on every write, where teams.db's stat need not (WAL mode does
+// not grow the file, and a coarse clock may not move its time).
+func teamsStampOf(profile string) fileStamp {
+	rev := teams.Stamp(profile)
+	if rev == teams.MissingStamp {
+		return fileStamp{read: true}
+	}
+	return fileStamp{rev: rev, present: true, read: true}
 }
 
 func stampOf(path string) fileStamp {
@@ -320,7 +353,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	if len(keys) == 0 {
 		return nil
 	}
-	now := stampOf(teams.Path(profile))
+	now := teamsStampOf(profile)
 	settings := a.teamDefaultsMovedLocked(profile)
 	if now == a.team.teamsAt && !settings {
 		return a.team.roles
@@ -330,7 +363,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		a.team.events.member.Store(false)
 		return nil
 	}
-	file, err := teams.Load(profile)
+	file, err := teamView(profile, keys)
 	if err != nil {
 		// AN UNREADABLE FILE IS THE INTERFACE'S TO SET ASIDE ([teams.SetAside]),
 		// never this reader's. What was known a moment ago stays known, and the

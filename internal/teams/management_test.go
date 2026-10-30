@@ -83,7 +83,7 @@ func TestLegacyManagerConflictsRemainAndCanBeRepairedExplicitly(t *testing.T) {
 	}
 	raw, err := json.Marshal(disk{Version: Version, Teams: f.Teams})
 	must(t, err)
-	must(t, os.WriteFile(Path(dir), raw, 0600))
+	must(t, storeRaw(dir, raw))
 	loaded, err := Load(dir)
 	must(t, err)
 	if len(loaded.ManagedTeams("manager")) != 2 {

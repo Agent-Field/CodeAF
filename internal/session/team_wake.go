@@ -71,19 +71,11 @@ func (a *Agent) watchTeamStart() {
 
 // teamsHaveManager reports whether any team in the profile has a manager.
 func teamsHaveManager(profile string) bool {
-	if !stampOf(teams.Path(profile)).present {
+	if !teamsStampOf(profile).present {
 		return false
 	}
-	file, err := teams.Load(profile)
-	if err != nil {
-		return false
-	}
-	for _, t := range file.Teams {
-		if t.Manager != "" {
-			return true
-		}
-	}
-	return false
+	any, err := teams.AnyManager(profile)
+	return err == nil && any
 }
 
 // teamWakeState is how many messages the transcript holds past its system

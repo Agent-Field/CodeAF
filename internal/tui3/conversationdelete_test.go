@@ -12,6 +12,7 @@ import (
 	"time"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -319,9 +320,7 @@ func TestConversationDeleteBlockedUntilEveryActiveManagerChangedInTeams(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(teamstore.Path(a.profileDir), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Write(t, a.profileDir, raw)
 	a.teamsDisk.queue, a.teamsDisk.queueSeq = nil, nil
 
 	called := false

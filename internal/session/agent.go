@@ -3004,6 +3004,7 @@ func (a *Agent) recordLocked(message ai.Message) {
 	}
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.answeredSinceSeal = a.answeredSinceSeal || isAnswer(message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	if a.file != nil {
 		a.file.appendMessage(message)

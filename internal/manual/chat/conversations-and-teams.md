@@ -358,11 +358,13 @@ or `no file matches`. After a chosen mention, a space or punctuation such as
 
 ## Where teams are kept
 
-Teams are saved in your profile, in `teams.json`, every time one changes, and never in
-`config.json`. Over `--host` that is the far machine's profile, where the conversations run. A `spaces.json` from an earlier build is read once, its groups keep their
-names, members and colours, and it is renamed to `spaces.json.migrated`. A teams file that
-cannot be read is moved aside as `teams.json.unreadable-<number>` rather than written over,
-so nothing you made is lost.
+Teams are saved in your profile, in `teams.db`, every time one changes, and never in
+`config.json`. Over `--host` that is the far machine's profile, where the conversations run.
+A change writes only the teams it touched, and nothing but a full disk limits how many
+teams, members or briefs the store holds. A `teams.json` or `spaces.json` from an earlier
+build is not read: teams made before the store start over, and the old file is left where
+it is. A teams store that cannot be read is moved aside as `teams.db.unreadable-<number>`
+rather than written over, so nothing you made is lost.
 
 ## The wall said my team was not saved
 

@@ -188,16 +188,13 @@ func (b *appBackend) sayHolds(run *appCrewRun) {
 		return
 	}
 	sort.Slice(news, func(i, j int) bool { return news[i].agent < news[j].agent })
-	f, err := teamstore.Load(b.crewProfile())
 	for _, n := range news {
 		who, crew := "a member", "its crew"
 		var manager teamstore.Member
 		seated := false
-		if err == nil {
-			if t, m, ok := appCrewSeat(f, n.agent); ok {
-				who, crew = appMemberWho(m), t.Name
-				manager, seated = t.Member(t.Manager)
-			}
+		if t, m, ok := b.crewSeatOf(n.agent); ok {
+			who, crew = appMemberWho(m), t.Name
+			manager, seated = t.Member(t.Manager)
 		}
 		if n.healed {
 			appCrewWarn("codeaf app: crew member %s (agent %s) of %q is open again", who, n.agent, crew)

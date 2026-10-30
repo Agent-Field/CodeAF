@@ -1811,8 +1811,9 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
 	// holds, and a surface listing every session on disk cannot open every
-	// transcript to find it (placemeta.go's [Agent.stampSpend]).
-	a.stampSpend()
+	// transcript to find it (placemeta.go's [Agent.stampSpend]). A turn that
+	// ended on an answer says so in the same write ([Agent.stampSealed]).
+	a.stampSealed()
 	a.noticeNewerBuild()
 	// THE TURN'S LAST LINES ARE SEALED BEFORE THE SYNC SIDE IS TOLD: the closing
 	// answer and the usage line were written above, and an upload asked for

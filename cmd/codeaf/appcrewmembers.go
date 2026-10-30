@@ -658,7 +658,7 @@ func appProposalAskOf(p appwire.Proposal) appwire.Ask {
 		ID: appProposalAskPrefix + p.ID, Agent: p.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewProposal,
 		Title: "Bring in helpers: " + p.Name, Detail: strings.Join(detail, "\n"), Reason: p.Goal,
 		Subject:  &appwire.AskSubject{Kind: appwire.SubjectCrewProposal, Ref: p.ID},
-		Proposal: &p,
+		Proposal: &p, Asked: p.At,
 		Options: []appwire.AskOption{
 			{ID: appwire.ProposalCreate, Label: "Make the crew"},
 			{ID: appwire.ProposalEdit, Label: "Edit"},
@@ -993,6 +993,11 @@ func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error
 
 func (b *appBackend) memberBrief(t teamstore.Team, m teamstore.Member) (appwire.MemberBrief, error) {
 	var out appwire.MemberBrief
+	// A load leaves briefs out; they are read here, where they are shown.
+	m, err := teamstore.WithBriefs(b.crewProfile(), t.ID, m)
+	if err != nil {
+		return appwire.MemberBrief{}, appEngineError(err)
+	}
 	// A FACTORY STAGE'S BRIEF IS THE ONE THE FACTORY RECORDED when it started
 	// the stage: no manager started it, so no sender is named. A stage recovered
 	// from an old build may still carry edits a person made BEFORE it was
@@ -1071,6 +1076,9 @@ func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (app
 	}
 	// The words it replaces, when it was never changed: its start line.
 	before := ""
+	if m, err = teamstore.WithBriefs(b.crewProfile(), t.ID, m); err != nil {
+		return appwire.MemberBrief{}, appEngineError(err)
+	}
 	if _, has := m.CurrentBrief(); !has {
 		e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
 		if err != nil {

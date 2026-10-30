@@ -59,22 +59,29 @@ func (a *Agent) mentionNote(text string) string {
 	return strings.Join(blocks, "\n\n")
 }
 
+// mentionTeam is the first team match picks: among the open teams, and only
+// when none is, among every team, closed ones included. A mention is a
+// person's word in one message, and most name a crew that is still open.
+func mentionTeam(profile string, match func(teams.Team) bool) (teams.Team, bool) {
+	for _, load := range []func(string) (*teams.File, error){teams.LoadOpen, teams.Snapshot} {
+		file, err := load(profile)
+		if err != nil || file == nil {
+			continue
+		}
+		for _, t := range file.Teams {
+			if match(t) {
+				return t, true
+			}
+		}
+	}
+	return teams.Team{}, false
+}
+
 func mentionTeamBlock(profile, self, slug string, now time.Time) string {
 	if profile == "" {
 		return ""
 	}
-	file, err := teams.Load(profile)
-	if err != nil || file == nil || len(file.Teams) == 0 {
-		return ""
-	}
-	var team teams.Team
-	found := false
-	for _, t := range file.Teams {
-		if TaskSlug(t.Name) == slug {
-			team, found = t, true
-			break
-		}
-	}
+	team, found := mentionTeam(profile, func(t teams.Team) bool { return TaskSlug(t.Name) == slug })
 	if !found {
 		return ""
 	}
@@ -126,17 +133,18 @@ type mentionChatHit struct {
 
 func mentionFindChat(profile, bucket, self, token string) (mentionChatHit, bool) {
 	if profile != "" {
-		if file, err := teams.Load(profile); err == nil && file != nil {
-			for _, t := range file.Teams {
-				for _, m := range t.Members {
-					if m.File == self || m.Key == self {
-						continue
-					}
-					if mentionNames(token, m.Handle, m.Word) {
-						return mentionHit(m.File, m.Word), true
-					}
+		var hit teams.Member
+		named := func(t teams.Team) bool {
+			for _, m := range t.Members {
+				if m.File != self && m.Key != self && mentionNames(token, m.Handle, m.Word) {
+					hit = m
+					return true
 				}
 			}
+			return false
+		}
+		if _, ok := mentionTeam(profile, named); ok {
+			return mentionHit(hit.File, hit.Word), true
 		}
 	}
 	if bucket == "" {

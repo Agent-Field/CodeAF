@@ -50,6 +50,11 @@ const (
 	// memory budget. It is additive: an app that does not know the word treats
 	// it as any failure, and one that does reads Error.Detail.
 	CodeTooLarge = "too_large"
+	// CodeUnreadable refuses a read of a store this engine cannot read: one a
+	// newer build wrote, or a file that is not the store. Trying again does not
+	// help; the app says so instead of offering it. It is additive like
+	// CodeTooLarge: an app that does not know the word treats it as any failure.
+	CodeUnreadable = "unreadable"
 	// CodeUncertain answers a mutation whose effect the engine itself cannot
 	// confirm: it may have happened. A caller MUST NOT retry it blind, which
 	// could do it twice; it looks at the state again first. It is the same word
@@ -197,6 +202,10 @@ type Agent struct {
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at,omitzero"`
 	SpentUSD     float64    `json:"spent_usd,omitempty"`
+	// Unread says it has said something new to the person since they last saw
+	// it (agents.mark_seen): an answer, a question waiting on them, or a run's
+	// result. Tool steps and thinking alone never set it (unread.go).
+	Unread bool `json:"unread"`
 	// Context is what the conversation weighs against its window
 	// (compaction.go); absent when nothing holds the conversation.
 	Context *AgentContext `json:"context,omitempty"`
@@ -399,6 +408,10 @@ type Ask struct {
 	// exact command and folder, its one check, the proposed policy, and the
 	// fixed timings it will run under.
 	KeepRunning *KeepRunning `json:"keep_running,omitempty"`
+	// Asked is when the question was first put, by its own record (a
+	// proposal's, a run's), so an ask said again after a restart keeps its
+	// time for unread. It is the engine's own and never on the wire.
+	Asked time.Time `json:"-"`
 }
 
 // AskSubject is the thing an ask is about: its kind and the id the app knows
@@ -615,6 +628,15 @@ type Model struct {
 	Provider string `json:"provider"`
 	// ListedAt is the provider catalog listing time in Unix seconds; absent is unknown.
 	ListedAt int64 `json:"listed_at,omitempty"`
+	// PriceInPerM and PriceOutPerM are the catalog's input and output prices in
+	// US dollars per million tokens. Absent is unknown and never $0; a present
+	// zero is a model the catalog says is free.
+	PriceInPerM  *float64 `json:"price_in_per_m,omitempty"`
+	PriceOutPerM *float64 `json:"price_out_per_m,omitempty"`
+	// ContextLength is how many tokens the model accepts; absent is unknown.
+	ContextLength int `json:"context_length,omitempty"`
+	// ArenaElo is the best Design Arena Elo the catalog carries; absent is unknown.
+	ArenaElo float64 `json:"arena_elo,omitempty"`
 	// ProviderName is the provider's own name, as the picker heads its group.
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.

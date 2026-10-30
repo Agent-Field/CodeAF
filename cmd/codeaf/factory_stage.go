@@ -288,6 +288,13 @@ func (g stageApprovalGate) Standing() string { return g.posture }
 // IT IS THE OPENING BRIEF AND ONLY THAT: a resumed stage is never joined again
 // (Open skips this), because what a resume is given is a carry-on note
 // ([session.CarryOn]) and not the brief the stage began on.
+//
+// A ROOM CLOSED UNDER A RUNNING ROUND STILL TAKES ITS STAGES. A person may
+// close the job's room, or the `factory` crew above it, while a round is
+// going, and a job may end with a round still opening stages: the stage joins
+// the room closed, as it always has, and the room stays as it was left. The
+// open crews are written first, which is where the room almost always is; only
+// a room not among them is joined through the whole list.
 func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief string) error {
 	key := transcript
 	if real, err := filepath.EvalSymlinks(transcript); err == nil {
@@ -295,9 +302,20 @@ func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief stri
 	}
 	key = filepath.Clean(key)
 	now := time.Now()
-	return teams.Update(profileDir, func(f *teams.File) error {
+	join := func(f *teams.File) error {
 		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: handle, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
+	}
+	open := false
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
+		if _, open = f.Team(team); !open {
+			return nil
+		}
+		return join(f)
 	})
+	if err != nil || open {
+		return err
+	}
+	return teams.Update(profileDir, join)
 }
 
 // stageSettle is how long the conversation must have been still before it
@@ -668,6 +686,12 @@ func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Execu
 		}
 		if job.Item.Stream != nil {
 			if room := strings.TrimSpace(job.Item.Stream.Room); room != "" {
+				// A live job's room that its end closed opens again here, should
+				// the reopen that followed the job's return have been lost
+				// (factory_room_follow.go).
+				if !jobOver(job.Item) {
+					_ = reopenJobRoom(profileDir, job.Item)
+				}
 				local, err := factoryEnsureRoom(profileDir, job.Item, room)
 				if err != nil {
 					return factory.StageResult{}, err
@@ -841,7 +865,7 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 	name := talkTeamName(it)
 	now := time.Now()
 	id := ""
-	err := teams.Update(profileDir, func(f *teams.File) error {
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		id = itemTeamIn(f, name, now)
 		return nil
 	})
