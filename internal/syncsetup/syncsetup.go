@@ -63,6 +63,7 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
+	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
 	removed           atomic.Bool
 	memberRetries     uint64
 	clock             func() time.Time

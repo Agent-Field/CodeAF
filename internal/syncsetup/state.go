@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
@@ -80,6 +81,10 @@ func (s *Sync) SyncState(ctx context.Context) error {
 		return err
 	}
 	return s.withVault(func(v vaultsync.Syncer) error {
+		// A continuation may leave only local paths to repair, with identical
+		// portable values and no new vault pointer to pull. Apply those
+		// bindings before capture; a failed repair waits for the next round.
+		teams.SharingError(s.profile(), (teamKeys{s.profile(), s.Home, s.Device.ID(), s.teamsCache}).Refresh())
 		if err := v.Capture(); err != nil {
 			return err
 		}
