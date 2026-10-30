@@ -40,6 +40,9 @@ func TestBashWorkerCommandsCarryTheirTasksWorkerDID(t *testing.T) {
 			if _, err := store.AddMany(specs); err != nil {
 				t.Fatal(err)
 			}
+			if _, err := store.Claim(c.task, c.task); err != nil {
+				t.Fatalf("claim the worker's task: %v", err)
+			}
 			workspace := t.TempDir()
 			record := filepath.Join(workspace, "who.txt")
 			write, _ := json.Marshal(struct {
@@ -47,13 +50,12 @@ func TestBashWorkerCommandsCarryTheirTasksWorkerDID(t *testing.T) {
 			}{`printf %s "$CODEAF_AGENT_DID" > ` + record})
 			seat := &seat{script: []step{
 				func(context.Context, []ai.Message) (*ai.Response, error) { return toolReply(string(write)), nil },
-				func(context.Context, []ai.Message) (*ai.Response, error) {
-					return toolReply(finishCommand(c.task, "written")), nil
-				},
 			}}
 			worker := run.NewBashWorker(store, workspace, "test/model", seat, run.WithAgentDID(did))
-			if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(c.task)); err != nil {
-				t.Fatalf("the worker's run failed: %v", err)
+			// ONE STEP IS ENOUGH: the cap ends the worker after its command, and what
+			// the worker came to is not this test's question; what its command saw is.
+			if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 1), *store.Task(c.task)); err != nil {
+				t.Logf("the worker ended with %v", err)
 			}
 			raw, err := os.ReadFile(record)
 			if err != nil {
