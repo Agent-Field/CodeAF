@@ -133,6 +133,10 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// Computer and RemoteEvent identify a mirrored call independently of cursor
+	// checkpoints, so a replay cannot charge the same call twice.
+	Computer    string `json:"computer,omitempty"`
+	RemoteEvent string `json:"remote_event,omitempty"`
 	// At is the instant the call was journaled, RFC3339 with nanoseconds.
 	At time.Time `json:"at"`
 	// Day is At's LOCAL calendar day, "2006-01-02". It is written down rather
@@ -942,10 +946,10 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // now happens on a writer goroutine ([RecordUsage]), the lock is still released
 // before the hand-off so no reader of the session's totals ever queues behind
 // the ledger at all.
-func (a *Agent) recordUsageLine(call bankedCall) {
+func (a *Agent) recordUsageLine(call bankedCall) error {
 	used := call.used
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
-		return
+		return nil
 	}
 	path := strings.TrimSpace(a.config.usageLedger)
 	if path == "" {
@@ -994,6 +998,11 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		seat, _ = SeatOfAgent(a.agentKind())
 	}
 	line = TagUsage(line, roles.Role(call.role), seat)
+	if remote := call.remote; remote != nil {
+		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
+		line.Seat = remote.Seat
+		return appendRemoteUsage(path, line)
+	}
 
 	// THE LANE HALF OF THE LINE GOES ON THROUGH ONE DOOR, and it comes in as an
 	// argument rather than being read from anywhere here — because the only
@@ -1018,6 +1027,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 	if a.config.mayBashBelt() {
 		a.recordPlanSpend(used, call.model)
 	}
+	return nil
 }
 
 // usageTaskID spells a node's id the way the task index spells it, and answers

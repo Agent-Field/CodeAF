@@ -451,6 +451,11 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Placement is separate from the state word: empty Computer means here.
+	Computer     string
+	Unreachable  bool
+	RanElsewhere bool
+	Remote       *TaskRemoteRecord
 	// Thinking is the effective setup, including a saved continuation choice.
 	Thinking string
 	// ID is the proposal's token: a surface hands it back to

@@ -23,6 +23,7 @@ func (a *Agent) recoverBeltRun() {
 	if g == nil || g.planPath() == "" {
 		return
 	}
+	defer a.retrySavedRemoteAcks(g)
 	if _, err := os.Stat(g.planPath()); err != nil {
 		return
 	}
@@ -38,6 +39,41 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	kept, found := runRowOf(g, id)
+	if found {
+		remote := readRemoteRecord(store, kept.Remote)
+		if remote != nil {
+			kept.Remote = remote
+
+			if remote.Settled && !remote.Abandoned {
+				return
+			}
+			if !remote.Abandoned {
+				if kept.PendingRun != nil && remote.Attempt == "" {
+					a.resumePendingRun(g, kept)
+					return
+				}
+				if remote.StartFailed {
+					kept.State = TaskFailed
+					a.publishRunRow(g, kept)
+					return
+				}
+				if kept.State.settled() && kept.State != TaskInterrupted && !kept.EndedAt.IsZero() {
+					// A persisted final row already completed landing; only its ack can
+					// remain after a crash between settlement and acknowledgement.
+					if remote.Finished && remote.Restored {
+						remote.Settled = true
+						remote.AckPending = true
+						_ = writeRemoteRecord(store, *remote)
+						kept.Remote = remote
+
+					}
+					return
+				}
+				_, _ = a.continueRemoteRun(a.rootContext(), kept)
+				return
+			}
+		}
+	}
 	if !found || kept.State != TaskInterrupted {
 		return
 	}
@@ -171,10 +207,24 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 		admission:   newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, g.lanes),
 		machineHeld: map[string]bool{planStoreID(reopened.RootID()): true},
 	}
+	engine := chatRunEngine
+	if kept.Remote != nil && !kept.Remote.Abandoned && a.config.TaskComputers != nil {
+		remote, err := a.taskExecutorEngine(ctx, kept.Remote.Executor)
+		if err != nil {
+			cut()
+			reopened.Close()
+			a.interruptUnrecoverableRun(g, kept, err.Error())
+			return
+		}
+		engine = remote
+		run.remoteEngine = remote
+		run.remote = cloneTaskRemote(kept.Remote)
+		run.placement.computer = &TaskComputer{Device: kept.Remote.Executor.Device, Name: kept.Remote.Executor.Name, CanTakeTasks: true}
+	}
 	a.installBeltRun(g, run)
 	kept.State, kept.Waiting = TaskQueued, waitingMachineBusy
 	a.publishRunRow(g, kept)
-	go a.driveBeltRun(ctx, chatRunEngine, run, RunSpec{})
+	go a.driveBeltRun(ctx, engine, run, RunSpec{})
 }
 
 // invalidPendingRun refuses incomplete or obsolete records instead of guessing

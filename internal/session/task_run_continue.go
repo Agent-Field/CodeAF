@@ -50,6 +50,9 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		return "", errRunRoadUnavailable
 	}
 
+	if kept, found := runRowOf(g, row); found && kept.Remote != nil && !kept.Remote.Abandoned {
+		return a.continueRemoteRun(ctx, kept)
+	}
 	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the start lock, held
 	// until the carried-on run is registered, because a run installed between
 	// this look and the work below would be a second run on one conversation's

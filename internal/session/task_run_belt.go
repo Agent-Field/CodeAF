@@ -32,6 +32,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -119,6 +120,18 @@ func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
 // the working copy its workers share, the run's own words, the conversation's
 // two limits, and the provider its workers are seated on.
 type RunSpec struct {
+	// Remote is the durable attempt being followed. SaveRemote fences abandoned
+	// attempts; WithRemoteCopy serializes result restore against running here.
+	Remote                  *TaskRemoteRecord
+	SaveRemote              func(TaskRemoteRecord, bool) error
+	WithRemoteCopy          func(func() error) error
+	OnRemoteStep            func(uint64, json.RawMessage) error
+	OnRemoteCharge          func(uint64, RunCharge, string) error
+	OnRemotePhase           func(string)
+	RemoteStopped           func() bool
+	TaskNumber              uint64
+	NamedModel, NamedEffort string
+	NoProgress              int
 	// Store is the plan the run drives. The door opened it and keeps it open
 	// for the life of the run; the engine reads and writes it like any other
 	// writer of the store.
@@ -280,6 +293,11 @@ const (
 // the engine's outcome word, the root's result, the run's size, and the limit
 // that ended it when one did.
 type RunSummary struct {
+	Model string
+	// KeepCopy preserves the untouched origin copy after a start refusal or a
+	// result conflict. NeedsDecision says both copies need the person's choice.
+	KeepCopy      bool
+	NeedsDecision bool
 	// StorageSafe means every worker closed its jobs and no owned process group
 	// remained alive when the run returned. Missing proof keeps copies resident.
 	StorageSafe bool
@@ -358,13 +376,19 @@ var beltRunSummaryDeadline = 6 * time.Second
 // on the Agent and nowhere else, so ownership of a running run is this
 // process's.
 type beltRun struct {
-	plan  *planState
-	store *plandb.Store
-	root  string
-	row   uint64
-	title string
-	brief string
-	stand taskStand
+	remoteMu     sync.Mutex
+	remote       *TaskRemoteRecord
+	remoteEngine TaskRunEngine
+	remoteResume bool
+	remoteSaved  time.Time
+	placement    taskPlacement
+	plan         *planState
+	store        *plandb.Store
+	root         string
+	row          uint64
+	title        string
+	brief        string
+	stand        taskStand
 	// pending is true until the run's machine admission has passed. A pending
 	// run has a plan store but no folder or working copy, so stopping it cannot
 	// leave a repository lock or branch behind.
@@ -582,6 +606,24 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			return false, err
 		}
 	}
+	placement := taskPlacementOf(ctx)
+	if _, resolved := ctx.Value(taskPlacementKey{}).(taskPlacement); !resolved {
+		placement, err = a.resolveTaskComputer(ctx, "", stand, "", via != nil)
+		if err != nil {
+			return false, err
+		}
+		ctx = withTaskPlacement(ctx, placement)
+	}
+	if placement.computer != nil {
+		remote, remoteErr := a.config.TaskComputers.Engine(ctx, placement.computer.Device)
+		if remoteErr != nil {
+			return false, remoteErr
+		}
+		if remote == nil {
+			return false, errors.New("this computer cannot run that task elsewhere right now")
+		}
+		engine = remote
+	}
 	path := g.planPath()
 	storeID := strconv.FormatUint(id, 10)
 	dependencies := make([]plandb.Dependency, 0, len(dependsOn))
@@ -712,6 +754,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		delegate: via, folder: folder, asked: asked, crew: crew,
 	}
 	run.wishedFrom(ctx)
+	a.placeBeltRun(ctx, engine, run)
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
 	// the branch it names exists only in this variable until it is: the road that
@@ -723,6 +766,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	// `via` — so every later publish carries it forward from here
 	// ([TaskNotice.Program], [Agent.publishRunRow]).
 	a.publishRunRow(g, TaskNotice{
+		Remote: cloneTaskRemote(run.remote), Computer: run.taskComputerName(),
 		ID: id, Title: title, State: TaskRunning, StartedAt: born,
 		Copy: runCopyOf(tree), WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet), Program: programName(via),
 		// THE ROOT'S ROW NAMES THE STORE'S ROOT, which is this same number: the
@@ -746,7 +790,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission) (bool, error) {
 	var crew *taskCrew
 	var err error
-	if via == nil {
+	if via == nil && taskPlacementOf(ctx).computer == nil {
 		crew, err = a.routeTaskCrew(ctx, id, title, brief)
 		if err != nil {
 			return false, err
@@ -776,12 +820,13 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 		delegate: via, asked: asked, crew: crew,
 	}
 	run.wishedFrom(ctx)
+	a.placeBeltRun(ctx, engine, run)
 	a.installBeltRun(g, run)
 	// A HELD RUN IS QUEUED, not working: there is no worker and deliberately no
 	// copy yet. Its plan id is present from the first publish, which gives stop
 	// and recovery one persisted identity to reconcile.
 	a.publishRunRow(g, TaskNotice{
-		ID: id, Title: title, State: TaskQueued, Program: programName(via),
+		ID: id, Title: title, State: TaskQueued, Program: programName(via), Remote: cloneTaskRemote(run.remote), Computer: run.taskComputerName(),
 		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(), Waiting: waitingMachineBusy,
 		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
@@ -797,7 +842,7 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 func (a *Agent) prepareBeltRunStart(ctx context.Context, id uint64, title, brief, sessionDir string, stand taskStand, via *delegate.Delegate) (*taskCrew, *ProgramFolder, error) {
 	var crew *taskCrew
 	var err error
-	if via == nil {
+	if via == nil && taskPlacementOf(ctx).computer == nil {
 		crew, err = a.routeTaskCrew(ctx, id, title, brief)
 		if err != nil {
 			return nil, nil, err
@@ -913,6 +958,12 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 		}
 		over := live.over
 		if !live.ending && !live.closing && !live.stopped {
+			// Remote attempts have a frozen instruction; the wire has no add-work verb.
+			// Refuse any join involving one instead of losing a joined obligation.
+			if live.remoteEngine != nil || taskPlacementOf(ctx).computer != nil {
+				a.beltMu.Unlock()
+				return nil, errRemotePlacementBusy
+			}
 			if refusal := programJoinRefusal(via, live); refusal != nil {
 				a.beltMu.Unlock()
 				return nil, refusal
@@ -1688,6 +1739,14 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	notice = carryRunRow(g, notice)
+	if notice.Remote == nil {
+		if kept, ok := runRowOf(g, notice.ID); ok {
+			notice.Remote = cloneTaskRemote(kept.Remote)
+			notice.Computer = kept.Computer
+			notice.Unreachable = kept.Unreachable
+			notice.RanElsewhere = kept.RanElsewhere
+		}
+	}
 	if crew := a.crews.get(notice.ID); crew != nil {
 		crew.persistMu.Lock()
 		defer crew.persistMu.Unlock()
@@ -1774,6 +1833,7 @@ func keptRunProgram(g *TaskGraph, notice TaskNotice) string {
 // all. A crash writes nothing either way; that store is ended by the next
 // process to find it ([endOrphanedProgramRun]).
 func (a *Agent) cutBeltRun() <-chan struct{} {
+	a.remoteAckJobs.Wait()
 	a.beltMu.Lock()
 	run := a.beltRun
 	var cut context.CancelFunc
@@ -1951,9 +2011,29 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	// and whatever the run's running total holds beyond those — a bash
 	// worker's spend, which arrives only as a total.
 	fold := &beltFold{agent: a}
-	spec.OnSpend = fold.total
-	spec.OnCharge = fold.charge
-	summary := startRunWithTaskStorageProof(ctx, engine, spec)
+	// Remote charges enter both origin books by event identity; a total reading
+	// must never fold them again through the local worker's accounting road.
+	if run.remoteEngine == nil {
+		spec.OnSpend = fold.total
+		spec.OnCharge = fold.charge
+	}
+	spec = a.remoteBeltSpec(run, spec)
+	var summary RunSummary
+	if run.remoteResume {
+		summary = run.remoteEngine.Resume(ctx, spec)
+	} else {
+		summary = startRunWithTaskStorageProof(ctx, engine, spec)
+	}
+	if run.remoteEngine != nil {
+		engine = chatRunEngine
+	}
+	run.remoteMu.Lock()
+	abandoned := run.remote != nil && run.remote.Abandoned
+	run.remoteMu.Unlock()
+	if abandoned {
+		a.releaseBeltRun(run)
+		return
+	}
 	// THE RUN'S WORK IS OVER THE MOMENT THE ENGINE ANSWERS, and that instant is
 	// taken now, before the landing, the summary refresh and the note — which
 	// can take a quarter of a minute between them and are not the work.
@@ -1965,14 +2045,24 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	// what the deferred release says once.
 	a.beltMu.Lock()
 	run.ended, run.spent = a.taskClockNow(), summary.USD
+	if run.remoteEngine != nil && summary.Outcome == "stopped" {
+		run.stopped = true
+	}
 	run.ending = true
 	closing := run.closing
 	a.beltMu.Unlock()
 	defer a.releaseBeltRun(run)
-	defer a.parkBeltRunStorage(run, summary)
+	if !summary.KeepCopy && run.remoteEngine == nil {
+		defer a.parkBeltRunStorage(run, summary)
+	}
+	if run.remoteEngine != nil && !summary.KeepCopy {
+		defer a.ackRemoteRun(run)
+	}
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
-	fold.total(summary.USD)
+	if run.remoteEngine == nil {
+		fold.total(summary.USD)
+	}
 	// AND meta.json IS TOLD NOW, not at the next turn's seal. Home reads this
 	// conversation's bill as the larger of its stamped books and its index rows
 	// (tui3's homeFacts), which is exact only while the books on disk already
@@ -1981,6 +2071,14 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	a.stampSpend()
 	if run.cut != nil {
 		defer run.cut()
+	}
+	if closing && run.remoteEngine != nil {
+		run.remoteMu.Lock()
+		finished := run.remote != nil && run.remote.Finished
+		run.remoteMu.Unlock()
+		if !finished {
+			return
+		}
 	}
 	if a.settleBeltStopIfNeeded(run, summary) {
 		return
@@ -2000,7 +2098,15 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// branch below — never merged into the person's.
 		return
 	}
-	landing := a.finishBeltRunLanding(ctx, engine, run, summary)
+	var landing RunLanding
+	if summary.KeepCopy {
+		// Refusing a transfer leaves the copy ready, not the plan still running.
+		// Closing only the root records the ending without landing any files.
+		_ = run.store.EndRoot(summary.Outcome)
+		landing = RunLanding{Home: mergeKept, Branch: run.tree.branch, Refused: summary.Result}
+	} else {
+		landing = a.finishBeltRunLanding(ctx, engine, run, summary)
+	}
 	if a.settleBeltStopIfNeeded(run, summary) {
 		return
 	}
@@ -2010,7 +2116,9 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	// beyond that bound. RefreshRunSummary itself declines without a store.
 	if !a.beltRunQuiet(run) {
 		refreshCtx, cancelRefresh := context.WithTimeout(withCrewTask(ctx, run.crew), beltRunSummaryDeadline)
-		a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
+		if run.remoteEngine == nil {
+			a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
+		}
 		cancelRefresh()
 	}
 	note := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
@@ -2497,6 +2605,12 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 		report += line
 	}
+	if summary.NeedsDecision {
+		state = TaskUnverified
+	}
+	if summary.Outcome == "interrupted" {
+		state = TaskInterrupted
+	}
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: state,
 		// A LIMIT ITS PERSON SET IS THE ROW'S ENDING, so the reason a surface
@@ -2511,11 +2625,23 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
 	}
+	if run.remoteEngine != nil {
+		if summary.Outcome == "stopped" {
+			notice.Stopped = true
+			notice.Ending = TaskEndingStopped
+		}
+		run.remoteMu.Lock()
+		notice.Remote = cloneTaskRemote(run.remote)
+		notice.Computer = run.remote.Executor.Name
+		notice.RanElsewhere = !run.remote.StartFailed
+		run.remoteMu.Unlock()
+		notice.Model = summary.Model
+	}
 	if state == TaskFailed && run.crew != nil {
 		decision := run.crew.stoppedIfCutOff()
 		notice.Crew = &decision
 	}
-	if run.crew != nil && !run.crew.anyStarted() {
+	if run.remoteEngine == nil && run.crew != nil && !run.crew.anyStarted() {
 		// A CREW NO SEAT OF WHICH EVER ANSWERED WROTE NOTHING: whatever the
 		// landing counted is the run's own scaffolding, and "1 file" under a
 		// run that never started claims work nobody did.
@@ -2692,6 +2818,11 @@ func (run *beltRun) crewWorker() string {
 
 // initialCrewRecord records the accepted seats even when routing is disabled.
 func (a *Agent) initialCrewRecord(run *beltRun) *TaskCrewRecord {
+	// B seats its own crew. Recording A's ladder would claim models that never
+	// worked and could spend on an origin-side route the target cannot use.
+	if run.remoteEngine != nil {
+		return &TaskCrewRecord{Version: 1, Work: run.placement.model}
+	}
 	if run.crew != nil {
 		return run.crew.record()
 	}

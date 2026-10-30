@@ -1572,6 +1572,9 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
+	// TaskComputers is nil when this home cannot send tasks to paired computers.
+	TaskComputers TaskComputers
+
 	// Automations is the door to the automations store (automation_tool.go).
 	// Nil is off: no `automation` tool and no card — which is what a run of an
 	// automation is given, because nothing an automation does may arm another.
@@ -2410,6 +2413,7 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	remoteAckJobs    sync.WaitGroup
 	knowledgeMu      sync.RWMutex
 	knowledgeRetired []*knowledgeJournal
 	knowledgeVault   *knowledge.Vault

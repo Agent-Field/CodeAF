@@ -256,6 +256,7 @@ type taskArguments struct {
 	Brief        string               `json:"brief"`
 	Deliverable  string               `json:"deliverable"`
 	Where        string               `json:"where"`
+	Computer     string               `json:"computer,omitempty"`
 	Ground       string               `json:"ground"`
 	WorkspaceSet *WorkspaceSetRequest `json:"workspace_set,omitempty"`
 	Acceptance   string               `json:"acceptance"`
@@ -293,6 +294,7 @@ type taskArguments struct {
 type taskSpec struct {
 	workspaceSet *WorkspaceSetRequest
 	title        string
+	computer     string
 	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
 	// door cutting one out of a sentence it had to hand. It is the whole of what
 	// decides whether the work is named again (taskname.go): a name the shaper
@@ -606,6 +608,9 @@ func (a *Agent) taskTools() []bare.Tool {
 	if a.config.mayDelegate() {
 		schema = taskSchemaJSON
 	}
+	if a.config.TaskComputers != nil {
+		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+taskComputerSchema, 1)
+	}
 	if WorkspaceOwnershipEnabled(a.config.Place) {
 		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+workspaceSetTaskSchema+`,`, 1)
 	}
@@ -713,6 +718,11 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 			problem = proposalProblems(problem, a.resolveTaskGround(spec))
 		}
 		return bare.Settled(problem, true)
+	}
+	if spec.computer != "" {
+		if _, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false); err != nil {
+			return bare.Settled(err.Error(), true)
+		}
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
 	// program the person named, a trivial ask and a depends_on that can never
@@ -938,7 +948,11 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 	if via != nil && via.Words {
 		return programWords(spec.brief, *via)
 	}
-	return composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	brief := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	if len(spec.checks) > 0 {
+		brief += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
+	}
+	return brief
 }
 
 // commitProposalToRun is the run road of an approved proposal: an approved
@@ -963,7 +977,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		return runDidNotStart(p.id, err), true, true
 	}
 
-	if !(bashBeltAsked() || spec.via != "") || chatRunEngine == nil || a.config.InTask {
+	if !(bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")) || chatRunEngine == nil || a.config.InTask {
 		return "", false, false
 	}
 	a.mu.Lock()
@@ -977,6 +991,24 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		}
 		via = &m
 	}
+	placementStand := stand
+	// The explicit in-place request controls computer placement even when the
+	// repository's existing isolation law still prepares a local branch.
+	if strings.EqualFold(strings.TrimSpace(spec.where), "in place") {
+		placementStand.mode = TaskModeInPlace
+	}
+	placement, err := a.resolveTaskComputer(ctx, spec.computer, placementStand, spec.kind(), via != nil)
+	if err != nil {
+		return err.Error(), true, true
+	}
+	placement.model = namedModel(spec)
+	placement.effort = string(spec.crewEffort)
+	if spec.thinking != effort.None {
+		placement.effort = spec.thinking.String()
+	}
+	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
+	ctx = withTaskPlacement(ctx, placement)
+	elsewhere = withReport(elsewhere, placement.sentence)
 	description := proposalBrief(spec, via)
 	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
 	// This context is the turn's, and the turn cancels it on its way out
@@ -1139,7 +1171,8 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{
-		title: strings.TrimSpace(parsed.Title),
+		title:    strings.TrimSpace(parsed.Title),
+		computer: strings.TrimSpace(parsed.Computer),
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
 		named:        strings.TrimSpace(parsed.Title) != "",
@@ -1564,6 +1597,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		hold:   make(chan struct{}),
 		notice: TaskNotice{
 			ID:         id,
+			Computer:   spec.computer,
 			Title:      spec.title,
 			Summary:    spec.summary,
 			Brief:      spec.brief,
