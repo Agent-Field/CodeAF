@@ -142,3 +142,43 @@ func TestTheClosedListsHideOnlyRoomsTheirJobsEnded(t *testing.T) {
 		t.Fatalf("archived list %v", got)
 	}
 }
+
+// A ROOM ITS JOB'S END CLOSED LEAVES THE WATCH once its close is said: there
+// is one for every job the factory finishes, so the watch's looks never grow
+// with them. A crew a person closes stays, so archiving or deleting it from
+// another window is said too.
+func TestARoomItsJobClosedLeavesTheWatch(t *testing.T) {
+	backend, rec, profile, _ := closedCrewRig(t)
+	if err := teamstore.Update(profile, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: "0e0e0e0e0e0e", Name: "#4", Made: time.Now(), FactoryManaged: true})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run := &appCrewRun{
+		ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
+		prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
+		acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
+		held: map[string][]string{}, opening: map[string]bool{},
+	}
+	backend.factoryRooms.Do(func() {})
+	backend.crewTick(run, true)
+	if err := teamstore.UpdateOpen(profile, func(f *teamstore.File) error {
+		if err := f.CloseForJob("0e0e0e0e0e0e", time.Now()); err != nil {
+			return err
+		}
+		return f.Close("0d0d0d0d0d0d", time.Now(), "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	backend.crewTick(run, false)
+	rec.waitFor(t, time.Second, func(_ string, data any) bool {
+		c, ok := data.(appwire.CrewChanged)
+		return ok && c.Crew.ID == "0e0e0e0e0e0e" && c.Crew.State == appwire.CrewClosed
+	})
+	var job, person bool
+	run.locked(func() { _, job = run.prints["0e0e0e0e0e0e"]; _, person = run.prints["0d0d0d0d0d0d"] })
+	if job || !person {
+		t.Fatalf("watched after the close: the job's room %v, the person's crew %v", job, person)
+	}
+}
