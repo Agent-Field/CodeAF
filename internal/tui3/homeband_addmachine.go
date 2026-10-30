@@ -91,6 +91,9 @@ type addMachine struct {
 
 // wanted says the card is on: a door that can approve, and a fleet known to be one.
 func (a *app) addMachineWanted() bool {
+	if a.hosted() {
+		return false
+	}
 	m := a.addMachine
 	return a.approvals != nil && m.known && m.size < fleetEnough
 }
@@ -105,7 +108,7 @@ type fleetMsg struct {
 // card has no more job and nothing is asked again.
 func (a *app) askFleet() tea.Cmd {
 	m := &a.addMachine
-	if a.fleet == nil || m.asking || (m.known && m.size >= fleetEnough) {
+	if a.hosted() || a.fleet == nil || m.asking || (m.known && m.size >= fleetEnough) {
 		return nil
 	}
 	m.asking = true

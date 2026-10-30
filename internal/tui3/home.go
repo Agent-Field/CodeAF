@@ -2528,6 +2528,9 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.cancelTakeover() {
 			return nil
 		}
+		if a.cancelHomeTake() {
+			return nil
+		}
 		// THE @ LIST IS INNER TO THE BOX, and so it goes first. It is drawn
 		// under home's box and belongs to the half-typed token in it
 		// (homeat.go), so esc over an open list means "not that one" and must
@@ -3109,7 +3112,8 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	if line.row.Transcript == a.file {
 		a.rememberOpen(a.frontTabKey())
 		a.closeHome()
-		return a.homeLandOnTask(line)
+		said := a.spendHomeTakeFor(line)
+		return tea.Batch(a.homeLandOnTask(line), said)
 	}
 	// THE ORDER OF THESE CHECKS IS THE FEATURE. Identity comes first, because a
 	// transcript THIS PROCESS holds answers [session.InUse] true about itself —
@@ -3130,7 +3134,8 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// surface narrating a door it just walked through.
 		cmd, _ := a.bringForward(line.row.Transcript)
 		a.closeHome()
-		return tea.Batch(cmd, a.homeLandOnTask(line))
+		said := a.spendHomeTakeFor(line)
+		return tea.Batch(cmd, a.homeLandOnTask(line), said)
 	case !a.canOpen():
 		h.say(resumeUnavailableWord, "")
 		return nil

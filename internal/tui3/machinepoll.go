@@ -98,7 +98,7 @@ func (a *app) attended(now time.Time) bool {
 // pollMachines asks the directory if, and only if, the schedule allows: home is
 // showing, somebody is at the window, and the wait is over.
 func (a *app) pollMachines(now time.Time) tea.Cmd {
-	wanted := (a.at(pageHome) || a.watchesConversation()) && a.attended(now)
+	wanted := !a.hosted() && (a.at(pageHome) || a.watchesConversation()) && a.attended(now)
 	followed := a.tendWatch(wanted)
 	if !wanted || !a.machinePoll.ready(now) {
 		return followed

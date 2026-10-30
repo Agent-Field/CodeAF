@@ -1592,7 +1592,7 @@ a negative count is refused too. The command's own usage follows the line, and t
 short block of labelled rows. It needs no key and spends nothing.
 
 ```
-codeaf doctor [--db path]
+codeaf doctor [--db path] [--fix]
 ```
 
 Every row is labelled in the words a developer would search for:
@@ -1623,6 +1623,12 @@ machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
+
+## Repair a busy engine store or sync state — codeaf doctor --fix
+
+When an engine store lock or cross-computer sync issue exists on this computer, `codeaf doctor` adds `engine store` and `sync` rows naming a busy store holder (`busy · held by <command>, pid <pid>`), an `unfinished continue · chat <id>`, `duplicate rows · chat <id>`, or a `lapsed hold on this computer · chat <id>`. Healthy stores and clean sync state print nothing.
+
+Without `--fix`, `codeaf doctor` changes nothing. `codeaf doctor --fix` releases unfinished continues started by this computer, and retires duplicate branch copies whose turns are all already in the main chat, printing one `fixed:` line for each repair. A store lock whose process has ended is already free, so doctor neither reports nor removes it, and a busy store waits for its holder to finish or quit. It never touches another computer's live hold and never deletes a turn that exists only in the copy or scratch folder it inspects.
 
 ## codeaf help, and the verbs that take no flags at all
 

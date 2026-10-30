@@ -1485,8 +1485,15 @@ type app struct {
 	homeTakenSaid func() tea.Cmd
 	// homeTaking keeps a retiring session on its own continuation until arrival.
 	homeTaking string
+	// homeTakeSeq numbers takeovers so a cancelled attempt's late answer is ignored.
+	homeTakeSeq uint64
+	// homeTakeCancel stops the in-flight takeover context when the person cancels.
+	homeTakeCancel context.CancelFunc
 	// homeTakeDraft moves the source composer only after the arriving door opens.
 	homeTakeDraft *homeTakenMsg
+	// continueAskSeq gives each surface card its own token so re-raising inside
+	// an answer closure is not wiped by closeQuestion.
+	continueAskSeq uint64
 	// teamsDisk is where the teams are kept and the edits not yet written
 	// there (teamseam.go).
 	teamsDisk teamsDisk

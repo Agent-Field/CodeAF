@@ -579,7 +579,7 @@ Look at what happened — read-only, no key, nothing spent
       the models this machine will use, and what each has been measured at
   codeaf pool [show|status|verify] [--json] [--key key]
       the Model Pool: what is resolved and cached; verify fetches with a key
-  codeaf doctor [--db path]
+  codeaf doctor [--db path] [--fix]
       is this install healthy, and where does it keep things
   codeaf manual
       every page of codeaf's own manual, one per line

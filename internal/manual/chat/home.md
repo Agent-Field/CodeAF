@@ -528,6 +528,15 @@ not offered on this build**. The row says
 `<K> turns from <device>: open separately / discard`. If the other
 machines cannot be reached, enter says `other machines unreachable` and does nothing.
 
+## Why do I see the same chat twice on Home — the same chat twice on Home, one row per chat id and collapsed branch copies
+
+Home keys every conversation row by the chat's id rather than its transcript path, both directly on this computer and over `codeaf chat --host`. A chat known both locally on disk and through sync appears once on Home instead of twice. Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never appears a second time as held elsewhere.
+
+When a chat also has kept branch copies, Home collapses those copies into the main chat's row instead of listing separate duplicate rows for the same chat. The row and its continue card count the copies, say what a copy is, and state whether discarding loses anything:
+
+- `1 copy (unsent turns set aside; already in this chat, so discarding loses nothing)` — or `1 copy · unsent, loses nothing` in a narrow column — when every turn in the copy is already in the main chat.
+- `2 copies (unsent turns set aside; discarding archives 3 turns not in this chat)` — or `2 copies · unsent, 3 turns not here` in a narrow column — when a copy holds turns that are not in the main chat.
+
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
 **A conversation nothing has named yet reads `new conversation`** on home's sessions

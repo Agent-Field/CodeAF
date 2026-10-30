@@ -50,6 +50,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// R25/R29 keep older-client refusals and failed quit saves reachable.
 		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
 		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},
+		// #2070 keeps continue-here troubleshooting, duplicate Home rows and sync repair reachable.
+		{"continue here does nothing", "continuing-a-chat-on-another-computer"},
+		{"the same chat twice on Home", "home"},
+		{"why do I see the same chat twice on Home", "home"},
+		{"repair sync", "continuing-a-chat-on-another-computer"},
+		{"how do I repair sync", "continuing-a-chat-on-another-computer"},
 		// C29.4/C30.2/C31.5 must be reachable in the person's own words.
 		{"can I rewind an old chat on my new laptop", "continuing-a-chat-on-another-computer"},
 		{"I quit on my laptop and opened my desktop", "continuing-a-chat-on-another-computer"},

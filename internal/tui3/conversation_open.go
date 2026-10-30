@@ -137,6 +137,9 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 				a.conversationPreview = nil
 			}
 			if !current || !here || !a.at(page) {
+				if current {
+					a.finishHomeTake(true)
+				}
 				if conv.Agent != nil {
 					leaveOffFrame(conv.Agent)
 				}
@@ -173,10 +176,7 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 }
 
 func (a *app) cancelConversationOpening() {
-	if a.homeTakeDraft != nil {
-		a.restoreTakeDraft(*a.homeTakeDraft)
-		a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
-	}
+	a.finishHomeTake(true)
 	hadDraft := a.conversationPreview != nil && (!a.conversationPreview.view.input.empty() || len(a.conversationPreview.view.pasted) > 0)
 	if a.conversationPreview == nil {
 		defer a.tabSettleTeam()
@@ -328,12 +328,10 @@ func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
 		if a.homeTakenSaid != nil {
 			said, a.homeTakenSaid = a.homeTakenSaid(), nil
 		}
+		a.finishHomeTake(false)
 		return tea.Batch(opened, a.homeLandOnTask(line), said)
 	}, func(err error) tea.Cmd {
-		if a.homeTakeDraft != nil {
-			a.restoreTakeDraft(*a.homeTakeDraft)
-			a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
-		}
+		a.finishHomeTake(true)
 		if errors.Is(err, session.ErrSessionLocked) || err.Error() == sessionBusyWord {
 			if takeover {
 				return a.homeTakeoverEnter(line)

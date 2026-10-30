@@ -2,7 +2,7 @@
 
 To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
-## Continue on another computer — why can't I type in this chat, my message did not send and home opened with a question
+## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -184,18 +184,19 @@ only shows it` notice still applies.
 
 When unsent turns were kept as a separate copy, reopening that copy checks who holds the copy itself. Another computer may still hold the original chat. The previous window finishes saving and stops syncing before the reopened copy starts its own sync, so a late save cannot change which copy it opens. Taking that copy elsewhere still stops new tool work in its older window.
 
-## Continue here did nothing — another device continued first or the sync service is unreachable
+## Continue here does nothing — continue here did nothing, the engine store is busy, or a chat is already continuing here
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-If nothing happens when you press `Continue here`, the cause is one of these:
+While a chat is moving here, the card says `continuing here…`. Pressing `continue here` again before it finishes says `a chat is already continuing here; wait for it to open` on the card instead of doing nothing. Every failure is shown where you are looking — on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window — never only on Home's bottom line after the card closes:
 
 - `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
-- `could not continue this chat here`: the move failed. The row stays where it was; try again.
+- `could not continue this chat here because the engine store is busy` or `could not continue this chat here because the engine store is busy (held by codeaf chat, pid 4321)`: another `codeaf` process holds this computer's engine store writer. Close or finish that process, then choose `retry`.
+- `could not continue this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
 - `could not continue this chat here because other machines are unreachable; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
 - `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here` means the chat is open on another computer and the sync service is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `continue here` again.
-- With no way to continue set up, an off row has no `continue here`: enter says why.
+- Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never shows as held elsewhere. With no way to continue set up, an off row has no `continue here`: enter says why.
 
 ## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees
 
@@ -398,3 +399,22 @@ A new chat can send its first message normally. A sleeping computer can also res
 If something changes the chat's files while a move is putting them in place, codeaf stops the move and lets go of the chat. It says the move could not finish and that your words are still in the box. The window keeps showing the chat or returns to Home, and it cannot send on the old copy. Try **continue here** again.
 
 Every failed move keeps the captured draft, including its whitespace, caret, pasted text and attachments, even if the old session closed during the move. Losing a race, a connection failure or a refused move does the same. A failed move never sends those words by itself.
+
+## Repair sync — codeaf doctor and codeaf doctor --fix for unfinished continues, duplicate rows and a busy engine store
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Run `codeaf doctor` from a terminal to inspect this computer's engine store and cross-computer sync state without changing anything. When an issue is present, `engine store` and `sync` rows report:
+
+- `busy · held by <command>, pid <pid>`: another live process holds the engine store writer.
+- `unfinished continue · chat <id>`: a continue started on this computer never completed or let go.
+- `duplicate rows · chat <id> (2 local folders)`: more than one local folder on disk shares one chat id.
+- `duplicate rows · chat <id> (branch copy <branch>, all turns in main chat)` or `duplicate rows · chat <id> (branch copy <branch>, 3 turns not in main chat)`: branch copies exist for a chat.
+- `lapsed hold on this computer · chat <id>`: an expired hold from this computer would raise a question on open.
+
+Run `codeaf doctor --fix` to repair what is safe. It prints one line per repair:
+
+- `fixed: released unfinished continue for chat <id>`
+- `fixed: retired duplicate branch copy <branch> of chat <id>`
+
+`codeaf doctor --fix` never touches another computer's live hold, never disturbs a live store writer (quit the program `busy` names, or wait for it, and continue again), and never removes a branch copy or `.taking` scratch folder that holds a turn not already in the main chat.
