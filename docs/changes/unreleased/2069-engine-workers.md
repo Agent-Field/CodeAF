@@ -1,8 +1,8 @@
 ---
 kind: fixed
-title: Run workers act as their task, task rows name their worker, clock starts and report turns read correctly
-pr: 0
-surface: [engine, chat, app, docs]
+title: Run workers act as their task, and clock starts and report turns read right
+pr: 2069
+surface: [engine, chat, docs]
 invalidates:
   - "Workers a run seats (tasks that joined shared work) carried no CODEAF_AGENT_DID, so a tool recorded them as the folder they typed in. Each now carries the conversation's DID with its task's #w<n>; a part split off under a task acts as that task."
   - "A proposal its clock started could close before its task's update reached the app and leave the receipt `No longer needed`. The question's withdrawal now says it started (Withdrawal.started), and the receipt reads `Started on its own after Ns`."
