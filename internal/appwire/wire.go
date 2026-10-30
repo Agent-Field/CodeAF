@@ -192,6 +192,10 @@ type Agent struct {
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at,omitzero"`
 	SpentUSD     float64    `json:"spent_usd,omitempty"`
+	// Unread says it has said something new to the person since they last saw
+	// it (agents.mark_seen): an answer, a question waiting on them, or a run's
+	// result. Tool steps and thinking alone never set it (unread.go).
+	Unread bool `json:"unread"`
 	// Context is what the conversation weighs against its window
 	// (compaction.go); absent when nothing holds the conversation.
 	Context *AgentContext `json:"context,omitempty"`

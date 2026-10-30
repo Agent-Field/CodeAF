@@ -58,6 +58,7 @@ func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 
 // ListAgentsIn is agents.list with its state and query.
 func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Agent, error) {
+	b.keepUnreadFrom()
 	all, err := b.ListAgents(workspace)
 	if err != nil {
 		return nil, err
@@ -302,6 +303,7 @@ func (b *appBackend) sayAgent(a *appAgent) appwire.Agent {
 	var view appwire.Agent
 	b.locked(func() { view = a.view })
 	b.tidyMarks(&view, view.State == appwire.StateArchived)
+	b.dressUnread(&view)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	return view
 }
@@ -411,6 +413,7 @@ func (b *appBackend) dress(view *appwire.Agent) {
 		view.Line = agentLineLocked(a, view.State)
 	})
 	b.dressChatLocation(view)
+	b.dressUnread(view)
 }
 
 // agentLineLocked is an agent's live one-liner for its state: the step it is

@@ -222,6 +222,7 @@ func (a *Agent) recordPresentedAssistant(message ai.Message, reasoning provider.
 	a.presentation.remember(message, mark)
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.answeredSinceSeal = a.answeredSinceSeal || isAnswer(message)
 	a.messageReasoning = append(a.messageReasoning, reasoning)
 	if a.file != nil {
 		a.file.appendReasonedMessage(message, reasoning)

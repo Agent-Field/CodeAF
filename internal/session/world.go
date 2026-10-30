@@ -241,6 +241,9 @@ type SessionRow struct {
 	// this codebase (place.go's [Meta.LastUserAt]) and deliberately not the
 	// file's modification time.
 	At time.Time
+	// ReplyAt is when the conversation last finished an answer to the person
+	// ([Meta.LastReplyAt]); zero when it has not said.
+	ReplyAt time.Time
 	// Created is when the folder was minted.
 	Created time.Time
 	// Open reports that a window is holding this journal AT THIS INSTANT. It is
@@ -572,6 +575,7 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 		Model:         firstWord(seed.Model, meta.Model),
 		ModelIdentity: meta.ModelIdentity,
 		At:            meta.LastUserAt,
+		ReplyAt:       meta.LastReplyAt,
 		Created:       meta.Created,
 		Spend:         meta.SpentUSD,
 		Tokens:        meta.Tokens,
@@ -794,6 +798,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Model:           strings.TrimSpace(meta.Model),
 		ModelIdentity:   meta.ModelIdentity,
 		At:              at,
+		ReplyAt:         meta.LastReplyAt,
 		Created:         meta.Created,
 		Spend:           meta.SpentUSD,
 		Tokens:          meta.Tokens,
