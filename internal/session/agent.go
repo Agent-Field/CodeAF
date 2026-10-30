@@ -3042,6 +3042,13 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		}
 		if user.authored {
 			mark = &messagePresentation{Audience: "operational", RoutineCompletion: user.completionOnly, Attention: user.attention, CompletionTasks: append([]TaskReplyTag(nil), user.replyTags...)}
+			// AN OWED LANDING SHOWS ITS OUTCOME, NOT THE QUESTION. The model is
+			// handed the person's question above the report so it can answer it
+			// (owedLandingDocument), but the question is the person's earlier
+			// words, and a receipt drawn whole would show them saying it twice.
+			if outcome := strings.TrimSpace(user.landingOutcome); outcome != "" && strings.TrimSpace(user.landingQuestion) != "" {
+				mark.Text = &outcome
+			}
 		} else if mark == nil {
 			mark = &messagePresentation{Audience: "human"}
 		} else {
@@ -5556,6 +5563,9 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 		}
 		if mark := presentation.of(msg); mark != nil && msg.Role == "user" && mark.RoutineCompletion {
 			role, routineCompletion = "aside", true
+			if mark.Text != nil {
+				displayText = *mark.Text
+			}
 		}
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID

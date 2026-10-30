@@ -252,6 +252,7 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 		ID:        appTaskID(agent, notice.ID), Agent: agent, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: now,
 		Irreversible: notice.Irreversible, YourCall: state == appwire.TaskUnverified,
 		Result: redact.Secrets(strings.TrimSpace(notice.Result)), Files: appFiles(notice.Changed), SpentUSD: appFigure(notice.CostUSD),
+		Worker: strings.TrimSpace(notice.Worker),
 	}
 	// A FAILED TASK SAYS WHAT STOPPED IT. A run row that ended without working
 	// carries its reason as the report and no result — a hand-off whose run never
@@ -420,6 +421,10 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		// A PROGRAM IS A FACT OF THE ROW'S WHOLE LIFE: an update that leaves it out has not changed it.
 		if task.Program == "" {
 			task.Program = before.Program
+		}
+		// So is who it acts as.
+		if task.Worker == "" {
+			task.Worker = before.Worker
 		}
 		// THE GROUP'S LABEL IS ITS RUN'S OWN ROW'S TITLE: the row with the run's
 		// id and no parent is the run itself.

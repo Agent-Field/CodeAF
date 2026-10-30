@@ -119,6 +119,9 @@ func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
 // the working copy its workers share, the run's own words, the conversation's
 // two limits, and the provider its workers are seated on.
 type RunSpec struct {
+	// AgentDID is the conversation's agent DID, which each run worker hangs its
+	// task's fragment from (internal/run's workerDID). Empty names nobody.
+	AgentDID string
 	// Store is the plan the run drives. The door opened it and keeps it open
 	// for the life of the run; the engine reads and writes it like any other
 	// writer of the store.
@@ -1099,6 +1102,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	}
 	return RunSpec{
 		Store:        run.store,
+		AgentDID:     a.config.agentDID,
 		Workspace:    run.workspace,
 		WorkspaceURI: run.tree.workerWorkspaceURI(),
 		Title:        run.title,

@@ -3502,7 +3502,10 @@ A copied or branched conversation gets a new one.
 
 Each command the conversation runs sees it as `CODEAF_AGENT_DID`, so a tool can
 record which agent acted. A task's commands see the conversation's DID followed
-by `#w` and the task's number, for example `did:key:z7QE…#w3`. The desktop app
-reads the same DID in the agent list as `did`.
+by `#w` and the task's number, for example `did:key:z7QE…#w3`. This holds for
+tasks that join shared work too; a part the work split off under a task acts
+as that task. The desktop app reads the DID in the agent list as `did`, and
+each task's own name as `worker`, so it can release whatever that task held
+once the task ends.
 
 The DID is a name, not a credential: no key is kept and nothing is signed with it.
