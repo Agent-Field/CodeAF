@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -446,6 +447,13 @@ const (
 	// before the row existed: a node is the same worker doing the same job
 	// somewhere quieter.
 	KeyTaskModel = "task.model"
+
+	// KeyTaskRunsOn remembers a device rather than its name, so a rename does
+	// not move the person's default. Blank keeps tasks on this computer.
+	KeyTaskRunsOn = "task.runs_on"
+
+	// TaskRunsHere is the setting's empty value in the person's words.
+	TaskRunsHere = "this computer"
 
 	// KeyTaskSettle is WHO DECIDES a task that finished but that nobody could
 	// check (internal/session's task_contract.go). It sits under `task.` beside
@@ -2412,6 +2420,13 @@ func (s *Settings) build() []Setting {
 		// in — and none of them is a rule about how this conversation's own calls
 		// are made.
 		Setting{
+			Key: KeyTaskRunsOn, Category: CategoryTasks, Kind: SettingText,
+			Label: "Run tasks on", EmptyLabel: TaskRunsHere,
+			Hint:  "The paired computer for tasks that work in their own copy. Leave it blank for " + TaskRunsHere + ".",
+			read:  func() string { return TaskRunsOnAt(dir) },
+			write: func(raw string) error { return WriteTaskRunsOn(dir, raw) },
+		},
+		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "the crew's worker",
 			Hint: "the model a task's worker runs on when you have not asked for another one — " +
@@ -4311,6 +4326,27 @@ func TaskModelAt(profileDir string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
+}
+
+// TaskRunsOnAt reads the stable placement preference. A removed device is
+// resolved to this computer by the session against its current roster.
+func TaskRunsOnAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyTaskRunsOn)
+	return strings.TrimSpace(value)
+}
+
+// WriteTaskRunsOn accepts only a device identity. The computer picker resolves
+// shown names before reaching this writer, keeping renames harmless.
+func WriteTaskRunsOn(profileDir, raw string) error {
+	value := strings.TrimSpace(raw)
+	if value != "" {
+		hexID, ok := strings.CutPrefix(value, "dev_")
+		_, err := hex.DecodeString(hexID)
+		if !ok || len(hexID) != 32 || err != nil {
+			return fmt.Errorf("choose a paired computer or %s", TaskRunsHere)
+		}
+	}
+	return writeText(profileDir, KeyTaskRunsOn, value)
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock
