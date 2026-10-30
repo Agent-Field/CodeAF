@@ -377,6 +377,20 @@ var methods = map[string]method{
 		if err := CheckAttachSources(p.Attachments); err != nil {
 			return nil, err
 		}
+		if p.Effort != "" {
+			rung, ok := effort.Parse(p.Effort)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "effort is low, medium or high")
+			}
+			p.Effort = rung.String()
+		}
+		if p.ApprovalPosture != "" {
+			posture, ok := AppApprovalPosture(p.ApprovalPosture)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "approval_posture is ask, guardian, allow or auto")
+			}
+			p.ApprovalPosture = posture
+		}
 		agent, err := e.CreateAgent(p)
 		if err != nil {
 			return nil, err
@@ -475,6 +489,31 @@ var methods = map[string]method{
 		}
 		return &agentResult{agent}, nil
 	}),
+	// Block is never set from the app: it is Settings' answer, and a chat that
+	// wants it follows Settings. auto hands the conversation back to Settings.
+	"agents.set_approval_posture": typed(func(e Engine, p struct {
+		ID      string `json:"id"`
+		Posture string `json:"posture" enum:"ask,guardian,allow,auto"`
+	}) (*agentResult, error) {
+		if strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "agents.set_approval_posture needs an id")
+		}
+		posture, ok := AppApprovalPosture(p.Posture)
+		if !ok {
+			return nil, Errorf(CodeBadParams, "posture is ask, guardian, allow or auto")
+		}
+		door, ok := e.(interface {
+			SetApprovalPosture(id, posture string) (Agent, error)
+		})
+		if !ok {
+			return nil, Errorf(CodeBadParams, "approval postures require a newer engine")
+		}
+		agent, err := door.SetApprovalPosture(p.ID, posture)
+		if err != nil {
+			return nil, err
+		}
+		return &agentResult{agent}, nil
+	}),
 	"agents.retry": typed(func(e Engine, p IDParams) (*TurnResult, error) {
 		id, err := required("id", p.ID)
 		if err != nil {
@@ -507,12 +546,24 @@ var methods = map[string]method{
 		}
 		return &SpendResult{spend}, nil
 	}),
-	"agents.open": typed(func(e Engine, p IDParams) (*agentResult, error) {
+	"agents.open": typed(func(e Engine, p struct {
+		ID string `json:"id"`
+		// Warm is a window's guess at a view: it never reopens a closed agent ([WarmOpener]).
+		Warm bool `json:"warm,omitempty"`
+	}) (*agentResult, error) {
 		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		agent, err := e.OpenAgent(id)
+		open := e.OpenAgent
+		if p.Warm {
+			w, ok := e.(WarmOpener)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "a warm open requires a newer engine")
+			}
+			open = w.WarmAgent
+		}
+		agent, err := open(id)
 		if err != nil {
 			return nil, err
 		}

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/workgraph"
@@ -197,7 +198,39 @@ type Agent struct {
 	// Budget is this agent's own spend limit (budget.go), which is never
 	// settings.budget_usd; absent from an engine that does not say.
 	Budget *AgentBudget `json:"budget,omitempty"`
+	// Approval is what this conversation does before it acts, as of the last
+	// time it was held; absent before then, or where its engine has no gate.
+	Approval *AgentApproval `json:"approval,omitempty"`
 }
+
+// AgentApproval is the gate a conversation stands at. Posture is the resolved
+// word (internal/session's approvalposture.go): ask, guardian, allow, or deny.
+// Source says who decided it: "settings" when the conversation follows
+// Settings, "chat" when it was set in this conversation.
+type AgentApproval struct {
+	Posture string `json:"posture" enum:"ask,guardian,allow,deny"`
+	Source  string `json:"source" enum:"settings,chat"`
+	// Follows is what this chat stands at when it follows (auto): its
+	// repository's approval mode where one is set, else Settings. A pick equal
+	// to it is auto; any other is the chat's own.
+	Follows string `json:"follows,omitempty" enum:"ask,guardian,allow,deny"`
+}
+
+// AppApprovalPosture is a posture the app may set on a conversation, spelled
+// the engine's way: ask, guardian, allow, or auto. deny is refused.
+func AppApprovalPosture(word string) (string, bool) {
+	switch posture := strings.ToLower(strings.TrimSpace(word)); posture {
+	case session.PostureAsk, session.PostureGuardian, session.PostureAllow, session.PostureAuto:
+		return posture, true
+	}
+	return "", false
+}
+
+// The two answers to who decided a conversation's posture.
+const (
+	ApprovalFromSettings = "settings"
+	ApprovalFromChat     = "chat"
+)
 
 // Task is one node of an agent's task graph.
 type Task struct {
@@ -620,6 +653,10 @@ type Settings struct {
 	ChecksModel   string   `json:"checks_model"`
 	PlannerModel  string   `json:"planner_model"`
 	FallbackModel string   `json:"fallback_model"`
+	// ApprovalPosture is what asks_before and the guardian row amount to in
+	// the posture ladder: the gate a conversation that follows Settings
+	// stands at. Read only; settings.set changes it through asks_before.
+	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,deny"`
 }
 
 // SettingsPatch is settings.set's params: only the fields present change. A
@@ -1017,6 +1054,14 @@ type CreateAsk struct {
 	// Said is the person's own words for the first message: what its entry and
 	// the record show in place of Text, as agents.send's said does. Absent is Text.
 	Said *string `json:"said,omitempty"`
+	// Effort is the new conversation's own thinking rung, set as
+	// agents.set_effort sets it before the first turn runs. Absent (or auto)
+	// leaves the conversation on the scopes above it.
+	Effort string `json:"effort,omitempty" enum:"auto,low,medium,high,xhigh,max"`
+	// ApprovalPosture is the new conversation's own gate, set as
+	// agents.set_approval_posture sets it before the first turn runs. Absent
+	// (or auto) follows Settings.
+	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,auto"`
 }
 
 // Warmer is an engine with something slow it can start on before anything is

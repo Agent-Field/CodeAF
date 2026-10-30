@@ -465,8 +465,15 @@ func (b *appBackend) carryCloseWork(a *appAgent, work appCloseWork) {
 	r.attempted["pending/"+id] = true
 	tasks := b.closeRunningTasks(a, work.presence)
 	if resume {
-		_, _, err = b.ensure(a)
+		_, _, err = b.keepOpen(a)
 		live := b.liveOf(a)
+		if errors.Is(err, errAppKeptClosed) {
+			// Closed by the person since: the work waits for their own open.
+			undo()
+			delete(r.attempted, attempt)
+			r.attempted["pending/"+id] = alreadyHandled
+			return
+		}
 		if appCloseOwnershipConflict(err) || (live != nil && !live.conn.Assembled) {
 			undo()
 			delete(r.attempted, attempt)

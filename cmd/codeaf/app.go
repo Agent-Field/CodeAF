@@ -746,7 +746,10 @@ type appAgent struct {
 	step string
 	// boot is what agents.create asked of a conversation not yet open, taken
 	// by whichever road opens it first; opening says one is being assembled.
-	boot    *appBoot
+	boot *appBoot
+	// dials are what agents.create asked to set on the conversation before
+	// its first turn, kept until an open has set them ([bootDials]).
+	dials   *appDials
 	opening bool
 	// starting says agents.create took a first message whose turn has not
 	// started yet: the conversation is still being opened (bootAgent). While
@@ -805,6 +808,13 @@ type appBoot struct {
 	automatic *bool
 	model     string
 	budget    *float64
+}
+
+// appDials are the conversation's own dials agents.create named ("" leaves
+// each to the scopes above it). Unlike the boot they stay until an open has
+// set them, so a retry after a failed first open never runs without them.
+type appDials struct {
+	effort, posture string
 }
 
 // appEarlySteer is a steer that came while the agent was starting, kept for
@@ -1409,6 +1419,10 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		}
 		a.view.UpdatedAt = b.now()
 		a.boot = &appBoot{model: model, budget: ask.BudgetUSD, automatic: ask.AutomaticModels, models: ask.Models}
+		a.dials = nil
+		if ask.Effort != "" || ask.ApprovalPosture != "" {
+			a.dials = &appDials{effort: ask.Effort, posture: ask.ApprovalPosture}
+		}
 		a.opening, a.minted = true, true
 		a.users, a.counted = 0, true
 		view = a.view
@@ -1599,7 +1613,15 @@ func appSendUnsure(err error) bool {
 }
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
-func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
+func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) { return b.openAgent(id, false) }
+
+// WarmAgent is OpenAgent for a window's guess at a view (a hover's prefetch):
+// an agent in Closed or the archive is refused, never taken out again
+// ([appwire.WarmOpener]). The check holds the agent's gate, as a close's mark
+// does, so a warm open asked before a close and run after it is refused too.
+func (b *appBackend) WarmAgent(id string) (appwire.Agent, error) { return b.openAgent(id, true) }
+
+func (b *appBackend) openAgent(id string, warm bool) (appwire.Agent, error) {
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.Agent{}, err
@@ -1620,6 +1642,9 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	}
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	if warm && b.tidied(id) {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeConflict, "%s is closed; only opening it yourself or Reopen takes it out", id)
+	}
 	b.locked(func() { a.viewOpen = true })
 	view, opened, err := b.ensureLocked(a)
 	if err != nil {
@@ -1728,6 +1753,17 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		conn.Release()
 		return appwire.Agent{}, false, appEngineError(err)
 	}
+	var dials *appDials
+	b.locked(func() { dials = a.dials })
+	if err := bootDials(conn.Conv, dials); err != nil {
+		conn.Release()
+		return appwire.Agent{}, false, err
+	}
+	b.locked(func() {
+		if a.dials == dials {
+			a.dials = nil
+		}
+	})
 	return b.hold(a, conn, workspace), true, nil
 }
 
@@ -1761,6 +1797,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
 		effort = dial.ConversationEffort()
 	}
+	approval := appApprovalOf(conn.Conv, replayTranscript)
 	// A CONVERSATION WITH NO NAME OF ITS OWN THAT A CREW KNOWS goes by the
 	// word its crew calls it, which for a member a manager started is its
 	// brief's first words: held again after a relaunch, nothing else names it.
@@ -1779,6 +1816,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 			a.users, a.counted = users, true
 		}
 		a.view.Effort = effort
+		a.view.Approval = approval
 		a.view.ModelIdentity = modelIdentity
 		if conn.Transcript != "" {
 			a.transcript = conn.Transcript
@@ -3094,6 +3132,11 @@ func (b *appBackend) CloseAgent(id string) error {
 func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	return b.closeAgentLocked(a)
+}
+
+// closeAgentLocked is [appBackend.closeAgent] for a caller holding a.gate.
+func (b *appBackend) closeAgentLocked(a *appAgent) (view appwire.Agent) {
 	b.release(a)
 	b.locked(func() {
 		a.view.State = appwire.StateClosed

@@ -795,25 +795,65 @@ func (b *appBackend) isHeld(agent string) bool {
 // crewMemberOpen holds a started member's conversation and gives it the
 // approval posture its start named, or else its manager's.
 func (b *appBackend) crewMemberOpen(manager teamstore.Member, handle, agent, posture string) {
-	_, live, err := b.heldLive(agent)
+	a, live, err := b.heldLive(agent)
 	if err != nil {
 		if !b.isClosing() {
 			b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		}
 		return
 	}
+	// A manager the person closed since is not opened to read its posture:
+	// its saved word is read instead.
 	if posture == "" {
-		if _, mlive, err := b.heldLive(appMemberAgent(manager)); err == nil {
+		_, mlive, err := b.keptLive(appMemberAgent(manager))
+		switch {
+		case err == nil:
 			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
 				posture = door.ResolvedApprovalPosture()
 			}
+		case errors.Is(err, errAppKeptClosed):
+			posture = b.savedPosture(manager)
 		}
 	}
 	if posture != "" {
-		if door, ok := live.conn.Conv.(appPostureDoor); ok {
-			_ = door.SetApprovalPosture(posture)
+		if door, ok := live.conn.Conv.(appPostureDoor); ok && door.SetApprovalPosture(posture) == nil {
+			// The view the open said was the posture before this one.
+			var transcript string
+			b.locked(func() { transcript = a.transcript })
+			approval := appApprovalOf(live.conn.Conv, transcript)
+			var view appwire.Agent
+			said := false
+			b.locked(func() {
+				a.view.Approval = approval
+				view, said = a.view, a.saidLocked()
+			})
+			if said {
+				b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+			}
 		}
 	}
+}
+
+// savedPosture is the posture a crew member that is not held stands at, read
+// without opening it: its own stored word, else the one its view last said.
+func (b *appBackend) savedPosture(member teamstore.Member) string {
+	transcript := member.File
+	if strings.TrimSpace(transcript) == "" {
+		transcript = member.Key
+	}
+	if stored := appStoredApproval(transcript); stored != "" && stored != session.PostureAuto {
+		return stored
+	}
+	var last *appwire.AgentApproval
+	b.locked(func() {
+		if a := b.agents[appMemberAgent(member)]; a != nil {
+			last = a.view.Approval
+		}
+	})
+	if last != nil {
+		return last.Posture
+	}
+	return ""
 }
 
 // appPostureDoor is a conversation whose approval posture can be read or set.
@@ -970,6 +1010,11 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 			b.holdRecovered(run, agent)
 			continue
 		}
+		// AN AGENT THE PERSON CLOSED IS NOT KEPT: holding it would take it out
+		// of Closed, and its row would come back the moment it left.
+		if b.tidied(agent) {
+			continue
+		}
 		start := false
 		run.locked(func() {
 			if !run.opening[agent] && run.holdDueLocked(agent, now) {
@@ -988,7 +1033,10 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 				b.holdFailed(run, agent, err, true)
 				return
 			}
-			view, opened, err := b.ensure(a)
+			view, opened, err := b.keepOpen(a)
+			if errors.Is(err, errAppKeptClosed) {
+				return
+			}
 			if err != nil {
 				b.holdFailed(run, agent, err, false)
 				return

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -278,8 +279,12 @@ func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
 	// open holds the agent's gate for as long as it takes, and a caller that
 	// only reads or stops answers from what is there instead of queueing.
 	// At quit nothing is opened again either, and the gates are the wrap-up's.
+	// A member the person closed is answered from what is there too: opening
+	// it would take it out of Closed.
 	if b.crewKeeps(id) && !b.held(id) && !b.isClosing() {
-		_, _, err = b.heldLive(id)
+		if _, _, err = b.keptLive(id); errors.Is(err, errAppKeptClosed) {
+			err = nil
+		}
 	}
 	return a, err
 }

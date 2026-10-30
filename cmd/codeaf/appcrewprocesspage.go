@@ -882,8 +882,10 @@ func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*ap
 			a = candidate
 		}
 	})
+	// A member the person closed is read as saved: opening it would take it
+	// out of Closed.
 	if a != nil && b.crewKeeps(o.id) {
-		if _, _, err := b.heldLive(o.id); err != nil {
+		if _, _, err := b.keptLive(o.id); err != nil && !errors.Is(err, errAppKeptClosed) {
 			return nil, err
 		}
 	}
