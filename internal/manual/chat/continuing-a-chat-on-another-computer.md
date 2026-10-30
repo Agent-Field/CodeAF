@@ -59,9 +59,11 @@ A continue card previews only that chat's unsent words, or nothing when no draft
 
 Home says `other machines did not answer in time` when its ownership listing reaches a deadline. Your words stay unsent. This sentence does not establish a network failure.
 
-## Why does continue here say this chat was last held here
+## Why does continue here say this chat was last held here — my only computer asks to continue
 
-When this computer was the chat's last holder and its hold expired, the card says `this chat was last held here; last saved turn 2h ago`, with the age of its saved turn. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
+A chat this computer held last, whose hold expired with no other computer holding it, opens without a question: there is nothing to continue from. Enter sends, and turns this computer saved while it could not reach your other devices are sent to them when the chat opens. Earlier builds asked `Continue this chat here?` on the only computer that used the chat.
+
+The card still says `this chat was last held here; last saved turn 2h ago` when this window's own earlier move failed. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
 
 If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
@@ -188,7 +190,7 @@ If nothing happens when you press `Continue here`, the cause is one of these:
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here`: the move failed. The row stays where it was; try again.
 - `could not continue this chat here because other machines are unreachable; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
-- A sentence starting `the sync service must be updated before chats can move` means the service is too old to move chats safely. The operators update the hosted service; for your own service, follow the update command in that sentence on the terminal. Pairing, listing and viewing still work. Reopen codeaf after the service is updated.
+- `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here` means the chat is open on another computer and the sync service is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `continue here` again.
 - With no way to continue set up, an off row has no `continue here`: enter says why.
 
 ## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees

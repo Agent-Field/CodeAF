@@ -22,7 +22,7 @@ var Capabilities = []Capability{
 
 // conditionalTakeFeature is what waits on a service without conditional takes:
 // displacing a live holder. A lapsed chat is taken on every service.
-const conditionalTakeFeature = "continuing a chat that another computer is using right now"
+const conditionalTakeFeature = "taking an open chat from another computer"
 
 // missingFrom answers the capabilities a response did not promise.
 func missingFrom(h http.Header) []Capability {

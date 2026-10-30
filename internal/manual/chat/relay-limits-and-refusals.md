@@ -1,8 +1,8 @@
 # Relay limits and refusals
 
-## The sync service must be updated before chats can move
+## Taking an open chat from another computer waits for a sync service update
 
-If an old service cannot safely decide which computer continues a chat first, no move is sent. The sentence is `the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service`. Pairing, listing and viewing keep working. codeaf's operators update the hosted service; update your own `codeaf relay` to this build. Reopen codeaf after the update.
+An older service cannot promise that taking a chat displaces only the computer you saw holding it, so this build never sends that take to it. The sentence is `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Writing, saving, pairing, listing, viewing and continuing a chat the other computer closed keep working. Close the chat on that computer and continue here; update your own `codeaf relay` to this build.
 
 ## Is there a storage limit on the relay — how much can I sync
 
