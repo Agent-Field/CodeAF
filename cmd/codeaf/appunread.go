@@ -9,6 +9,12 @@ package main
 // move it. When the person saw it is agents.mark_seen's mark in the app's
 // state file, so it survives a restart.
 //
+// A QUESTION IS OUTPUT ONLY WHILE IT IS OPEN. Once answered, from its chat,
+// the Inbox, another window or the terminal, it no longer counts: needs-you
+// clears instead of turning into unread, an answer that came after it still
+// counts, and a restart, which only sees the questions still waiting, reads
+// the agent the same way.
+//
 // NOBODY GETS A WALL OF DOTS. An agent with no mark is read up to the moment
 // this build first asked ([appStateFile.UnreadFrom]), so on upgrade every
 // agent starts read, and a new one starts read because it has said nothing.
@@ -28,12 +34,33 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// appRowOutputAt is when a conversation on disk last said something to the
-// person: its last sealed answer, or the question it is waiting on now.
-func appRowOutputAt(row session.SessionRow) time.Time {
-	at := row.ReplyAt
-	if row.NeedsPerson() && row.Presence.Question.Asked.After(at) {
-		at = row.Presence.Question.Asked
+// appRowAskedAt is when the question a conversation on disk is waiting on the
+// person for was put, or zero when none is.
+func appRowAskedAt(row session.SessionRow) time.Time {
+	if row.NeedsPerson() {
+		return row.Presence.Question.Asked
+	}
+	return time.Time{}
+}
+
+// noteRowLocked takes what the conversation's folder says it said: its last
+// sealed answer and the question it is waiting on. The question is another
+// process's only while this one holds no conversation for the agent; one held
+// here says its questions as asks. Callers hold b.mu.
+func (a *appAgent) noteRowLocked(replied, asked time.Time) {
+	a.repliedAt = laterOf(a.repliedAt, replied)
+	if a.live != nil {
+		asked = time.Time{}
+	}
+	a.askedElsewhere = asked
+}
+
+// outputLocked is when the agent last said something to the person that still
+// counts: its last answer or a question still open. Callers hold b.mu.
+func (a *appAgent) outputLocked() time.Time {
+	at := laterOf(a.repliedAt, a.askedElsewhere)
+	for _, asked := range a.asking {
+		at = laterOf(at, asked)
 	}
 	return at
 }
@@ -97,13 +124,13 @@ func (b *appBackend) unreadAt(id string, outputAt time.Time) bool {
 }
 
 // dressUnread fills the view's unread and remembers it as said, so a later
-// change of it alone is said too ([appBackend.noteOutput]).
+// change of it alone is said too ([appBackend.restateUnread]).
 func (b *appBackend) dressUnread(view *appwire.Agent) {
 	var at time.Time
 	var a *appAgent
 	b.locked(func() {
 		if a = b.agents[view.ID]; a != nil {
-			at = a.outputAt
+			at = a.outputLocked()
 		}
 	})
 	view.Unread = b.unreadAt(view.ID, at)
@@ -112,18 +139,18 @@ func (b *appBackend) dressUnread(view *appwire.Agent) {
 	}
 }
 
-// noteOutput moves when the agent last said something to the person, and says
-// it again when that turns it unread.
-func (b *appBackend) noteOutput(id string, at time.Time) {
+// restateUnread says the agent again when its unread is no longer what the
+// app was last told.
+func (b *appBackend) restateUnread(id string) {
 	var a *appAgent
+	var at time.Time
 	var said bool
 	b.locked(func() {
 		if a = b.agents[id]; a != nil {
-			a.outputAt = laterOf(a.outputAt, at)
-			at, said = a.outputAt, a.saidUnread
+			at, said = a.outputLocked(), a.saidUnread
 		}
 	})
-	if a == nil || said || !b.unreadAt(id, at) {
+	if a == nil || said == b.unreadAt(id, at) {
 		return
 	}
 	b.sayListed(a, id)
@@ -145,17 +172,69 @@ func (b *appBackend) noteTurnOutput(id string) {
 	if err != nil || meta.LastReplyAt.IsZero() {
 		return
 	}
-	b.noteOutput(id, meta.LastReplyAt)
+	b.locked(func() {
+		if a := b.agents[id]; a != nil {
+			a.repliedAt = laterOf(a.repliedAt, meta.LastReplyAt)
+		}
+	})
+	b.restateUnread(id)
 }
 
-// unreadSaw follows the events that are output: a turn's end, whose answer the
-// session has stamped, and a question put to the person.
+// noteAsk keeps a question this process put while it is open, from the moment
+// it was first put: an ask said again, put aside or restated, keeps its time.
+func (b *appBackend) noteAsk(id, ask string, open bool) {
+	b.locked(func() {
+		a := b.agents[id]
+		if a == nil {
+			return
+		}
+		if !open {
+			delete(a.asking, ask)
+			return
+		}
+		if _, known := a.asking[ask]; !known {
+			if a.asking == nil {
+				a.asking = map[string]time.Time{}
+			}
+			a.asking[ask] = b.now()
+		}
+	})
+	b.restateUnread(id)
+}
+
+// noteElsewhere reads what an agent another process holds has said off its
+// folder, so a turn sealed or a question put or answered there is said here
+// as agents.list would say it.
+func (b *appBackend) noteElsewhere(a *appAgent) {
+	var dir string
+	b.locked(func() {
+		if a.live == nil && a.transcript != "" {
+			dir = session.DirOf(a.transcript)
+		}
+	})
+	if dir == "" {
+		return
+	}
+	var replied, asked time.Time
+	if meta, err := session.LoadMeta(dir); err == nil {
+		replied = meta.LastReplyAt
+	}
+	if p, live := session.ReadSessionPresence(dir, b.now()); live && p.NeedsPerson() {
+		asked = p.Question.Asked
+	}
+	b.locked(func() { a.noteRowLocked(replied, asked) })
+}
+
+// unreadSaw follows the events that move output: a turn's end, whose answer
+// the session has stamped, and a question put to the person or closed.
 func (b *appBackend) unreadSaw(data any) {
 	switch v := data.(type) {
 	case appwire.TurnDone:
 		b.noteTurnOutput(v.Agent)
 	case appwire.AskOpened:
-		b.noteOutput(v.Ask.Agent, b.now())
+		b.noteAsk(v.Ask.Agent, v.Ask.ID, true)
+	case appwire.AskClosed:
+		b.noteAsk(v.Agent, v.ID, false)
 	}
 }
 
@@ -169,7 +248,7 @@ func (b *appBackend) MarkSeen(id string) error {
 	}
 	b.keepUnreadFrom()
 	var outputAt time.Time
-	b.locked(func() { outputAt = a.outputAt })
+	b.locked(func() { outputAt = a.outputLocked() })
 	was := b.unreadAt(id, outputAt)
 	// SEEN UP TO NOW, and never short of what it has already said: a clock
 	// behind the session's own stamp must not leave the dot it was asked to
