@@ -48,7 +48,11 @@ func TestAnExpiredHoldCannotAuthorizeTools(t *testing.T) {
 	}
 }
 
-func TestReleasedOlderHeadIsNotAcquiredOverLocalWork(t *testing.T) {
+// TestReleasedHeadIsContinuedWithThisComputersNewerTurns pins #2072: turns
+// this computer sealed on top of a released head are its own work, so the
+// drive takes the free lease and publishes them instead of opening the chat
+// read-only. It replaces a law that locked the only computer out of its chat.
+func TestReleasedHeadIsContinuedWithThisComputersNewerTurns(t *testing.T) {
 	r := newDriveRig(t)
 	first, err := r.engine.Seal(t.Context(), r.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
@@ -60,7 +64,7 @@ func TestReleasedOlderHeadIsNotAcquiredOverLocalWork(t *testing.T) {
 	drive, err := r.a.Drive(t.Context(), r.engine, r.cell, DriveOptions{})
 	mustNil(t, err)
 	defer drive.Close(t.Context())
-	if drive.Gate() == nil {
-		t.Error("a released older head was silently acquired over local work")
+	if err := drive.Gate(); err != nil {
+		t.Errorf("this computer's newer turns opened read-only: %v", err)
 	}
 }

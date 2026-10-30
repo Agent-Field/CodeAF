@@ -123,12 +123,35 @@ func TestDevicesRevokeNamesThatCannotPickOne(t *testing.T) {
 	if l, _ := dir.List(devicesCtx); l.Devices[otherComputer].Revoked || l.Devices[thisComputer].Revoked {
 		t.Fatalf("a refused name still stopped a computer: %+v", l.Devices)
 	}
-	// --all is the remote-access kind's word, so the name means that kind.
+	// --all means every device of that name, whichever kind it is (#2072).
 	if _, err := captureStdout(t, func() error { return stopDevice(kinds, []string{"phone", "--all"}) }); err != nil {
 		t.Fatal(err)
 	}
-	if l, _ := dir.List(devicesCtx); l.Devices[otherComputer].Revoked {
-		t.Fatal("--all stopped a computer that holds the chats")
+	if l, _ := dir.List(devicesCtx); !l.Devices[otherComputer].Revoked || l.Devices[thisComputer].Revoked {
+		t.Fatalf("--all did not stop the computer of that name: %+v", l.Devices)
+	}
+	if left, _ := kinds[1].(bookKind).book.Devices(); len(left) != 0 {
+		t.Fatalf("--all left the remote device of that name: %v", left)
+	}
+}
+
+// TestDevicesRevokeAllFindsAComputerThatSyncsChats pins #2072: a computer that
+// `codeaf devices` lists is removed by `revoke <name> --all` as by
+// `revoke <name>`, though no device of that name can use this machine.
+func TestDevicesRevokeAllFindsAComputerThatSyncsChats(t *testing.T) {
+	chats, dir := chatsWith(t, "laptop")
+	kinds := []deviceKind{chats, bookKind{bookWith(t, "phone")}}
+	if _, err := captureStdout(t, func() error { return stopDevice(kinds, []string{"laptop", "--all"}) }); err != nil {
+		t.Fatalf("revoke laptop --all: %v", err)
+	}
+	if l, _ := dir.List(devicesCtx); !l.Devices[otherComputer].Revoked {
+		t.Fatal("--all missed the computer that syncs the chats")
+	}
+	if left, _ := kinds[1].(bookKind).book.Devices(); len(left) != 1 {
+		t.Fatalf("--all stopped a device of another name: %v", left)
+	}
+	if _, err := captureStdout(t, func() error { return stopDevice(kinds, []string{"ghost", "--all"}) }); err == nil || !strings.Contains(err.Error(), "no device is called") {
+		t.Fatalf("revoke ghost --all: %v", err)
 	}
 }
 

@@ -267,17 +267,15 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	if !known {
 		return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 	}
-	var localHead string
+	// Turns sealed here on top of the record's head are this computer's own
+	// work, not an older tree: taking the free lease publishes them (catchUp).
 	wasFree := view.Cell.Lease.Expires <= view.Now
 	if wasFree {
-		head, err := cellstore.Head(c)
+		extends, err := cellstore.Extends(c, view.Cell.Head)
 		if err != nil {
 			return drv, "", err
 		}
-		if head != nil {
-			localHead = head.Turn.ID
-		}
-		if localHead != view.Cell.Head {
+		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 		}
 	}
@@ -293,7 +291,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		return drv, "", err
 	}
 	known, err = cellstore.KnowsHead(c, v.Cell.Head)
-	if err != nil || !known || (wasFree && localHead != v.Cell.Head) {
+	if err != nil || !known || (wasFree && view.Cell.Head != v.Cell.Head) {
 		_ = s.Dir.Release(ctx, drv.ID(), v.Cell.Lease.Fence)
 		return drv, nonemptyHolder(view.Cell.Lease.Device), err
 	}
