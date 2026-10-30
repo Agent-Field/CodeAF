@@ -106,3 +106,39 @@ func TestTheWatchReadsAClosedCrewOnlyWhenItMoves(t *testing.T) {
 		t.Fatalf("the archived crew was read %d times, want once", got)
 	}
 }
+
+// A FACTORY ROOM A PERSON CLOSED OR ARCHIVED IS LISTED; only a room its job's
+// end closed is left to be read where its job names it.
+func TestTheClosedListsHideOnlyRoomsTheirJobsEnded(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	made := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	if err := teamstore.Save(profile, []teamstore.Team{
+		{ID: "0f0f0f0f0f0f", Name: "factory", Made: made, FactoryManaged: true},
+		{ID: "0b0b0b0b0b0b", Name: "#1 closed by hand", Parent: "0f0f0f0f0f0f", Made: made, FactoryManaged: true, State: teamstore.TeamClosed, ClosedAt: made},
+		{ID: "0c0c0c0c0c0c", Name: "#2 archived by hand", Parent: "0f0f0f0f0f0f", Made: made, FactoryManaged: true, State: teamstore.TeamClosed, ClosedAt: made, ArchivedAt: made},
+		{ID: "0e0e0e0e0e0e", Name: "#3 its job ended", Parent: "0f0f0f0f0f0f", Made: made, FactoryManaged: true, State: teamstore.TeamClosed, ClosedAt: made, JobEnded: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	backend := newAppBackend(newAppRecorder(), nil)
+	backend.profileDir = profile
+	t.Cleanup(func() { backend.Close() })
+	ids := func(list []appwire.Crew, err error) []string {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, c := range list {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+	if got := ids(backend.CrewList(true)); !slices.Equal(got, []string{"0b0b0b0b0b0b"}) {
+		t.Fatalf("closed list %v", got)
+	}
+	if got := ids(backend.CrewListArchived()); !slices.Equal(got, []string{"0c0c0c0c0c0c"}) {
+		t.Fatalf("archived list %v", got)
+	}
+}

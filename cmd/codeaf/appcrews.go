@@ -1350,14 +1350,15 @@ func (b *appBackend) CrewList(closed bool) ([]appwire.Crew, error) {
 	}
 	teams := read.file.Open()
 	if closed {
-		// The person's closed crews, with the crews above them; a finished
-		// factory job's room is read where its job names it, never listed.
+		// The person's closed crews, with the crews above them; a room its
+		// factory job's end closed is read where its job names it, never
+		// listed.
 		if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
 			return nil, appEngineError(err)
 		}
 		teams = nil
 		for _, t := range read.file.ClosedTeams() {
-			if !t.Archived() && !t.FactoryManaged {
+			if !t.Archived() && !t.JobEnded {
 				teams = append(teams, t)
 			}
 		}
@@ -1379,12 +1380,8 @@ func (b *appBackend) CrewListArchived() ([]appwire.Crew, error) {
 	if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
 		return nil, appEngineError(err)
 	}
-	var teams []teamstore.Team
-	for _, t := range read.file.ArchivedTeams() {
-		if !t.FactoryManaged {
-			teams = append(teams, t)
-		}
-	}
+	// Only a person archives a crew, so every one is theirs to find.
+	teams := read.file.ArchivedTeams()
 	out := make([]appwire.Crew, 0, len(teams))
 	for _, t := range teams {
 		out = append(out, b.crewView(read, t))

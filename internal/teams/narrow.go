@@ -214,13 +214,15 @@ SELECT id FROM down UNION SELECT id FROM up
 // errReadWhole is a narrow read finding it must read the whole store.
 var errReadWhole = errors.New("teams: read the whole store")
 
-// LoadClosedCrews is every closed team the factory did not make, archived or
-// not, with what its members' rows are drawn from ([LoadWithHomes]). A
-// finished factory job's room is closed too, and there is one for every job
-// the factory ever ran: those are read by id, where a job or a tab names one,
-// never listed.
+// LoadClosedCrews is every closed team a person may look for, archived or not,
+// with what its members' rows are drawn from ([LoadWithHomes]). A room its
+// factory job's end closed ([Team.JobEnded]) is left out: there is one for
+// every job the factory ever ran, and each is read by id, where a job or a
+// tab names it. A factory room a person closed, or archived, is theirs to
+// find, and is in.
 func LoadClosedCrews(profileDir string) (*File, error) {
-	return loadWithHomes(profileDir, "SELECT id FROM teams WHERE closed = 1 AND factory = 0")
+	return loadWithHomes(profileDir, `SELECT id FROM teams WHERE closed = 1 AND (factory = 0
+ OR json_extract(doc, '$.job_ended') IS NOT 1 OR json_extract(doc, '$.archived_at') IS NOT NULL)`)
 }
 
 // LoadWithHomes is the teams ids name with what their members' rows are drawn
