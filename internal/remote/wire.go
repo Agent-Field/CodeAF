@@ -1194,6 +1194,9 @@ type Welcome struct {
 	TaskRetry     bool `json:"taskRetry,omitempty"`
 	TaskWorkspace bool `json:"taskWorkspace,omitempty"`
 	TaskSetup     bool `json:"taskSetup,omitempty"`
+	// TaskComputers enables named starts, proposal choices and local recovery.
+	// Absence keeps these controls off a window attached to an older engine.
+	TaskComputers bool `json:"taskComputers,omitempty"`
 	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
 	// right, one more merge round, the hand-over and the take-back
 	// ([MethodTaskSettle]).

@@ -1094,6 +1094,9 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// names the surfaces that have already drawn it (held.go).
 	s.name = machineLabel(hello.Surface)
 	s.clientID = strings.TrimSpace(hello.ClientID)
+	// Read-only controls must already be absent from the initial welcome;
+	// recording this after it was built advertised controls a watcher cannot use.
+	s.watching = hello.Watch
 	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
 	// watching, and a pipe that tears on the way in — or a getter that
 	// no longer crosses the wire — must not read as nobody having been
@@ -1116,7 +1119,6 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// new one (driver.go states the whole rule, [Hello.Back] states why the
 	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
 	// flag is recorded so no later hand-on can give it the keyboard either.
-	s.watching = hello.Watch
 	if hello.Join {
 		// WHAT THIS CONNECTION IS BOUND TO is the conversation it named, confirmed
 		// against the one open under this same lock a few lines above. The engine's
@@ -1296,6 +1298,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		SteerOwner:    true,
 		TaskSetup:     taskSetupKnown(sess.agent),
 		TaskRetry:     taskRetryKnown(sess.agent),
+		TaskComputers: !s.watching && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent),
 		TaskWorkspace: taskWorkspaceKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
@@ -2133,13 +2136,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply:
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskStartOn, MethodTaskRunHere:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskStartOn, MethodTaskRunHere:
+		return s.taskComputerInvoke(call)
 	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskWorkspaceCancel:
 		args, err := arg[taskWorkspaceArgs](call)
 		if err != nil {
@@ -2437,7 +2442,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session has no task proposals to answer")
 		}
 		door.ResolveTask(args.ID, session.TaskAnswer{
-			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
+			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model, Computer: args.Computer,
 		})
 		return nil, nil
 	case MethodTaskSettle:
