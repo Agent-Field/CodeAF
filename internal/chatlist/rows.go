@@ -41,6 +41,9 @@ type Row struct {
 	// Released distinguishes a real release from a revoked or offline holder.
 	Released    bool
 	ReleasedAgo time.Duration
+	// HolderRemoved says the last holder was removed from the person's
+	// devices: its lease reads as released and it is never offered (#2072).
+	HolderRemoved bool
 }
 
 // Quiet is the row of a chat whose live holder has gone: a lease that still
@@ -144,6 +147,8 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		DurableAt:   c.DurableAt,
 		Pending:     c.Lease.Pending,
 		OrphanTurns: c.OrphanTurns,
+
+		HolderRemoved: l.Devices[c.Lease.Device].Revoked,
 	}
 }
 
@@ -158,7 +163,9 @@ func heldStatus(c directory.Cell, l directory.Listing, self string) Status {
 	return st
 }
 
-// statusOf applies the precedence Branch, Here, Running, Off, Idle.
+// statusOf applies the precedence Branch, Here, Running, Off, Idle. A lapsed
+// lease of this device's own is free, not off: nobody else holds the chat, so
+// there is nothing to continue from and it opens without a question (#2072).
 func statusOf(c directory.Cell, now int64, self string) Status {
 	switch {
 	case c.OrphanTurns > 0:
@@ -167,7 +174,7 @@ func statusOf(c directory.Cell, now int64, self string) Status {
 		return Here
 	case c.Lease.Expires > now:
 		return Running
-	case c.Lease.Expires != 0:
+	case c.Lease.Expires != 0 && c.Lease.Device != self:
 		return Off
 	}
 	return Idle

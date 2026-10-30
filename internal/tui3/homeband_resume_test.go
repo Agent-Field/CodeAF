@@ -13,6 +13,10 @@ func leftOffRow(cell, device string, status chatlist.Status, ago time.Duration) 
 	return chatlist.Row{Cell: cell, Title: cell, Device: device, DeviceID: "dev_" + device, Status: status, DurableAgo: ago}
 }
 
+// removedRow is a row whose holder was removed from the person's devices: its
+// lease reads as released, and it is never offered (#2072).
+func removedRow(r chatlist.Row) chatlist.Row { r.HolderRemoved = true; return r }
+
 // TestResumePicksTheNewestRecentChatOnAnOfflineDevice proves D6 for released and offline chats.
 func TestResumePicksTheNewestRecentChatOnAnOfflineDevice(t *testing.T) {
 	cases := []struct {
@@ -28,6 +32,7 @@ func TestResumePicksTheNewestRecentChatOnAnOfflineDevice(t *testing.T) {
 		{"online and let go", resumeState{feedUp: true, online: []string{"dev_tower"}, rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Idle, time.Minute)}}, "a"},
 		{"too old", resumeState{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, 3*resumeRecent)}}, ""},
 		{"this device", resumeState{rows: []chatlist.Row{leftOffRow("a", "mac", chatlist.Here, time.Minute)}}, ""},
+		{"a removed device", resumeState{rows: []chatlist.Row{removedRow(leftOffRow("a", "tower", chatlist.Idle, time.Minute))}}, ""},
 		{"newest wins", resumeState{rows: []chatlist.Row{
 			leftOffRow("old", "desk", chatlist.Off, 5*time.Hour), leftOffRow("new", "tower", chatlist.Off, time.Hour)}}, "new"},
 	}

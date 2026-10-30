@@ -27,6 +27,30 @@ func CopyRoot(original string) string {
 	return filepath.Join(filepath.Dir(original), ".moving", encode128(raw))
 }
 
+// CopyFolderReadme is the note in the folder that holds moved chats. The
+// folder's name reads like a transfer in progress, and removing it by hand
+// would delete those chats, so the folder says what it is (#2072). The name is
+// kept: older builds and copies already made look for it.
+const CopyFolderReadme = "README.txt"
+
+const copyFolderNote = `This folder holds your codeaf chats. They are the live copies codeaf writes to,
+not a move in progress. Do not delete it or anything in it: that deletes those
+chats. The older originals beside it stay untouched for older codeaf builds.
+`
+
+// explainCopyFolder writes the note once; an existing note is left as it is.
+func explainCopyFolder(dir string) error {
+	f, err := os.OpenFile(filepath.Join(dir, CopyFolderReadme), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(copyFolderNote)
+	return errors.Join(err, f.Close())
+}
+
 // Copied resolves only a fully prepared, durable copy. A crash before the
 // completion marker leaves the original as the only visible conversation.
 func Copied(original string) string {
@@ -53,6 +77,9 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	}
 	root := CopyRoot(original)
 	if err := os.MkdirAll(filepath.Dir(root), 0700); err != nil {
+		return Cell{}, err
+	}
+	if err := explainCopyFolder(filepath.Dir(root)); err != nil {
 		return Cell{}, err
 	}
 	lock, err := os.OpenFile(root+".lock", os.O_CREATE|os.O_RDWR, 0600)

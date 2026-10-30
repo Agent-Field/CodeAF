@@ -353,7 +353,7 @@ func TestC7HomeExplainsAnOldSyncService(t *testing.T) {
 	a := continueHome(t, &fakeTaker{err: directory.ErrConditionalTake}, continueRows, 220)
 	standOn(t, a, "c-off")
 	confirm(t, a)
-	if !strings.Contains(homeText(a), "the sync service must be updated before chats can move") {
+	if !strings.Contains(homeText(a), "waits for a sync service update") {
 		t.Fatalf("old service refusal missing:\n%s", homeText(a))
 	}
 }

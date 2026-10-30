@@ -140,7 +140,7 @@ func listDevices(kinds []deviceKind, now time.Time) error {
 // `codeaf devices revoke --help`, and named in the one usage table.
 func stopDevice(kinds []deviceKind, args []string) error {
 	flags := commandFlags("devices revoke")
-	all := flags.Bool("all", false, "remove every device of that name that can use this machine, not just the one")
+	all := flags.Bool("all", false, "remove every device of that name, computers that sync your chats included, not just the one")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -148,16 +148,16 @@ func stopDevice(kinds []deviceKind, args []string) error {
 		return errors.New("usage: codeaf devices revoke <name> [--all] — `codeaf devices` lists the names")
 	}
 	name := flags.Arg(0)
+	// A partial --all still says what it did stop before what it could not.
 	said, err := stopByName(kinds, name, *all)
-	if err != nil {
-		return err
+	if said != "" {
+		fmt.Println(said)
 	}
-	fmt.Println(said)
-	return nil
+	return err
 }
 
 // stopByName finds the one kind that has the name and stops it there. With
-// --all the name is taken to mean the kind that can stop several at once.
+// --all it stops every device of that name, in every kind that has one.
 func stopByName(kinds []deviceKind, name string, all bool) (string, error) {
 	if all {
 		return stopAllByName(kinds, name)
@@ -169,13 +169,32 @@ func stopByName(kinds []deviceKind, name string, all bool) (string, error) {
 	return kind.stop(name)
 }
 
+// stopAllByName stops every device called name. A kind that can stop several
+// stops them all; any other kind stops its one, so --all never misses a device
+// that `codeaf devices` lists (#2072).
 func stopAllByName(kinds []deviceKind, name string) (string, error) {
+	var said []string
+	var failed error
 	for _, kind := range kinds {
-		if many, ok := kind.(allStopper); ok {
-			return many.stopAll(name)
+		n, err := kind.find(name)
+		failed = cmp.Or(failed, err)
+		if n == 0 {
+			continue
 		}
+		stop := kind.stop
+		if many, ok := kind.(allStopper); ok {
+			stop = many.stopAll
+		}
+		line, err := stop(name)
+		if err != nil {
+			return strings.Join(said, "\n"), err
+		}
+		said = append(said, line)
 	}
-	return "", unknownDevice(name)
+	if len(said) == 0 {
+		return "", cmp.Or(failed, unknownDevice(name))
+	}
+	return strings.Join(said, "\n"), nil
 }
 
 // kindOf is the one kind that has a device called name. A name in two kinds is

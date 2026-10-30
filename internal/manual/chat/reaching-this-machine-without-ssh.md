@@ -334,6 +334,11 @@ the name or after it; `codeaf devices revoke --help` prints it. It used to be re
 it came first, so `codeaf devices revoke laptop --all` was refused with a usage line that did
 not mention `--all` at all.
 
+`--all` reaches every device `codeaf devices` lists under that name, of either kind: a
+computer that syncs your chats as well as a device that can use this machine. It used to look
+only at devices that can use this machine, so `codeaf devices revoke <name> --all` said `no
+device called "<name>" is paired with this machine` for a computer the list showed.
+
 Removing one device with `--all` answers in the ordinary sentence — `laptop was removed — it
 can no longer open a chat here, and it needs a new pairing code to come back.` Removing
 several answers `2 devices called laptop were removed — each needs a new pairing code to come

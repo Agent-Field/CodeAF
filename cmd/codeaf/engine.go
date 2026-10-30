@@ -429,9 +429,11 @@ func nothingHolds(workspace string) bool {
 
 // differentEngineEnvironmentSentence names the host's workspace so the command
 // stops the folder actually holding the old environment, including from Home.
+// It offers --no-host first: that opens this window with this terminal's
+// environment and never interrupts the other window (#2072).
 func differentEngineEnvironmentSentence(workspace string) string {
 	stop := engineStopWords(workspace)
-	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
+	return "the background engine for this folder started with a different environment than this terminal and is still in use — codeaf chat --no-host opens this window on its own and leaves the other one running; or, after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
 }
 
 // settleCellsMode checks the capability of an already-running host before

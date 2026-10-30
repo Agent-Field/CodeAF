@@ -56,4 +56,6 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 ## My sync service is too old to move chats — update before continuing here
 
-An older service can still pair computers and list or show chats, but this build refuses to move a chat through it. It says `the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service`. The hosted service is updated by codeaf's operators. For your own service, replace the running `codeaf relay` with this build. Reopen codeaf after the update; the service's answer is remembered for the current run.
+An older sync service still pairs computers, lists and shows chats, saves every chat you write, and continues a chat another computer has closed. Only taking a chat that is open on another computer waits for it, because only an updated service can promise that the take displaces the holder you saw. This build says `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Close the chat on that computer and continue here. For your own service, replace the running `codeaf relay` with this build; the next attempt uses the update without reopening codeaf.
+
+A chat you write on this computer is never held back by an older service. Releases of codeaf check that the hosted service answers what they need before they ship.

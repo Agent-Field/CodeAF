@@ -102,7 +102,7 @@ func (s resumeState) pick() *chatlist.Row {
 // offered says a row is a chat to rescue.
 func (s resumeState) offered(row chatlist.Row) bool {
 	live := row.Status == chatlist.Running || row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine)
-	return live && !row.Mine && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
+	return live && !row.Mine && !row.HolderRemoved && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
 // away says the chat's device has let go of it or is gone: its lease lapsed,
