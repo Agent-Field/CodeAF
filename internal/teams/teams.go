@@ -627,7 +627,12 @@ func (f *File) SetHandle(id, key, h string) error {
 // and no valid unique handle, a manager that is a member, overrides inside
 // their bands, and one home for every conversation that has a manager to
 // report to (home.go). Colour is not its business ([File.Colour] is).
-func tidy(teams []Team) bool {
+func tidy(teams []Team) bool { return tidyWithin(teams, nil) }
+
+// tidyWithin is [tidy] of a list that is part of the store: a parent in
+// elsewhere is a team the list leaves out ([UpdateOpen]'s closed teams), not a
+// missing one, and is kept.
+func tidyWithin(teams []Team, elsewhere map[string]bool) bool {
 	changed := false
 	seen := map[string]bool{}
 	for i := range teams {
@@ -638,7 +643,7 @@ func tidy(teams []Team) bool {
 		seen[teams[i].ID] = true
 	}
 	for i := range teams {
-		if p := teams[i].Parent; p != "" && (!seen[p] || p == teams[i].ID) {
+		if p := teams[i].Parent; p != "" && ((!seen[p] && !elsewhere[p]) || p == teams[i].ID) {
 			teams[i].Parent = ""
 			changed = true
 		}

@@ -205,10 +205,11 @@ func updateOpenLocked(profileDir string, fn func(*File) error) (*File, error) {
 	}
 	missing := s == nil
 	f := &File{Version: Version, localIdentities: true}
+	var elsewhere map[string]bool
 	if !missing {
-		f = s.file()
+		f, elsewhere = s.file(), s.elsewhere
 	}
-	tidy(f.Teams)
+	tidyWithin(f.Teams, elsewhere)
 	previous := f.ManagementSnapshot()
 	if err := fn(f); err != nil {
 		return nil, err
@@ -216,7 +217,7 @@ func updateOpenLocked(profileDir string, fn func(*File) error) (*File, error) {
 	if missing && len(f.Teams) == 0 {
 		return f, nil
 	}
-	tidy(f.Teams)
+	tidyWithin(f.Teams, elsewhere)
 	if err := f.checkIntroducedConversations(previous); err != nil {
 		return nil, err
 	}
@@ -254,30 +255,57 @@ func Inspect(profileDir string, fn func(*File) error) error {
 	})
 }
 
-// SetAside moves an unreadable teams store out of the way, to
-// <name>.unreadable-<nanos> beside it (with its WAL and shared-memory files),
-// so that starting again does not write over a store that may hold every team
-// a person made. A store that reads is not moved: the error that sent the
-// caller here was something else (a busy peer), and the answer says so.
+// SetAside moves a teams.db that is not this store's (bytes that are not a
+// database, or another program's database) out of the way, to
+// <name>.unreadable-<nanos> beside it with its WAL and shared-memory files, so
+// that starting again does not write over a file that may hold every team a
+// person made. ANY OTHER STORE IS NOT MOVED, and the answer says why: one that
+// reads (the error that sent the caller here was something else, a busy
+// peer), a newer build's ([ErrNewer]), which that build still reads, a damaged
+// store of this one's own, and one that could not be reached for the moment.
+//
+// It holds the teams lock, so no writer comes between its look and its
+// renames, and moves the WAL before the store: a writer that found teams.db
+// gone would take a WAL left behind for a dead store's and remove it.
 func SetAside(profileDir string) (string, error) {
 	path := Path(profileDir)
-	if _, err := readPath(context.Background(), path); !errors.Is(err, ErrUnreadable) {
-		if err == nil {
-			err = errors.New("teams: the store reads; nothing was set aside")
+	aside := ""
+	err := withLock(profileDir, lockWait, func() error {
+		forget(path)
+		_, err := readPath(context.Background(), path)
+		var not *notOursError
+		if !errors.As(err, &not) {
+			if err == nil {
+				err = errors.New("teams: the store reads; nothing was set aside")
+			}
+			return err
 		}
-		return "", err
-	}
-	forget(path)
-	aside := path + ".unreadable-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	if err := os.Rename(path, aside); err != nil {
-		return "", err
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		if _, err := os.Lstat(path + suffix); err == nil {
-			_ = os.Rename(path+suffix, aside+suffix)
+		forget(path)
+		to := path + ".unreadable-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+		var moved []string
+		undo := func() {
+			for _, suffix := range moved {
+				_ = os.Rename(to+suffix, path+suffix)
+			}
 		}
-	}
-	return aside, nil
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if _, err := os.Lstat(path + suffix); err != nil {
+				continue
+			}
+			if err := os.Rename(path+suffix, to+suffix); err != nil {
+				undo()
+				return err
+			}
+			moved = append(moved, suffix)
+		}
+		if err := os.Rename(path, to); err != nil {
+			undo()
+			return err
+		}
+		aside = to
+		return nil
+	})
+	return aside, err
 }
 
 // ── THE LOCK ────────────────────────────────────────────────────────────────
