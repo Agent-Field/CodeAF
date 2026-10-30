@@ -267,7 +267,11 @@ func decorateCellWithCopies(cell *homeCell, copies []chatlist.BranchCopy, desc b
 			baseShort = cell.note
 		}
 		cell.note = cell.note + " · " + full
-		cell.noteShort = baseShort + " · " + short
+		// THE CHAT'S OWN STATE OUTRANKS THE STORY OF ITS COPIES. Where the whole
+		// sentence does not fit, the narrow spelling keeps the state and only counts
+		// the copies, so a row never loses `host-a offline` to the sentence about
+		// what a copy is; the painter drops a narrow note that is still too wide.
+		cell.noteShort = baseShort + " · " + chatlist.CopiesCount(copies)
 	} else {
 		cell.note = full
 		cell.noteShort = short

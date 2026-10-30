@@ -230,6 +230,15 @@ func CopiesShort(copies []BranchCopy) string {
 	return count + " · unsent turns"
 }
 
+// CopiesCount is the count alone, for a row whose own state already fills the
+// narrow spelling and has room for nothing more about its copies.
+func CopiesCount(copies []BranchCopy) string {
+	if len(copies) == 0 {
+		return ""
+	}
+	return copiesWord(len(copies))
+}
+
 func copiesWord(n int) string {
 	if n == 1 {
 		return "1 copy"
