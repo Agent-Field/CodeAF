@@ -619,6 +619,15 @@ type Model struct {
 	Provider string `json:"provider"`
 	// ListedAt is the provider catalog listing time in Unix seconds; absent is unknown.
 	ListedAt int64 `json:"listed_at,omitempty"`
+	// PriceInPerM and PriceOutPerM are the catalog's input and output prices in
+	// US dollars per million tokens. Absent is unknown and never $0; a present
+	// zero is a model the catalog says is free.
+	PriceInPerM  *float64 `json:"price_in_per_m,omitempty"`
+	PriceOutPerM *float64 `json:"price_out_per_m,omitempty"`
+	// ContextLength is how many tokens the model accepts; absent is unknown.
+	ContextLength int `json:"context_length,omitempty"`
+	// ArenaElo is the best Design Arena Elo the catalog carries; absent is unknown.
+	ArenaElo float64 `json:"arena_elo,omitempty"`
 	// ProviderName is the provider's own name, as the picker heads its group.
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.

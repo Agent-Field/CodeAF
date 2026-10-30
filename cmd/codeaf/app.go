@@ -4064,6 +4064,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 		if row.ListedAt > 0 {
 			model.ListedAt = row.ListedAt
 		}
+		appModelFacts(&model, row)
 		if model.ProviderName == "" && provider == modelsource.DefaultID {
 			model.ProviderName = modelsource.DefaultSource("").Name
 		}
@@ -4620,4 +4621,25 @@ func appTeamDelivery(lines []session.TeamLine) string {
 		out = append(out, who+": "+strings.TrimSpace(line.Text))
 	}
 	return redact.Secrets(strings.Join(out, "\n"))
+}
+
+// appModelFacts copies the catalog's per-model facts onto a models.list row:
+// prices per million tokens, the context length and the Arena Elo.
+//
+// A PRICE IS SENT ONLY WHEN IT IS KNOWN. The picker rows carry PriceKnown where
+// the catalog said its figures are real (a zero then is a free model); a row
+// without it counts only when both figures are positive, the terminal's own
+// rule for its in/M and out/M cells. Anything else sends no price, so the app
+// shows a blank and never $0.
+func appModelFacts(model *appwire.Model, row tui3.Model) {
+	if row.PromptPrice >= 0 && row.CompletionPrice >= 0 && (row.PriceKnown || (row.PromptPrice > 0 && row.CompletionPrice > 0)) {
+		in, out := row.PromptPrice*1e6, row.CompletionPrice*1e6
+		model.PriceInPerM, model.PriceOutPerM = &in, &out
+	}
+	if row.ContextLength > 0 {
+		model.ContextLength = row.ContextLength
+	}
+	if row.ArenaElo > 0 {
+		model.ArenaElo = row.ArenaElo
+	}
 }
