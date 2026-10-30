@@ -341,7 +341,7 @@ command).
 | `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, and shows three words to compare while it waits |
 | `/pair` | `/sync`, `/link`, `/laptop` | `<code> --replace` | on the other computer: like `<code>`, but a computer with chats of its own is asked first, and an explicit yes replaces them with the shared ones — chats sealed under the old identity cannot be read afterwards |
 | `/pair` | `/sync`, `/link`, `/laptop` | `<link>` | on a device that is already paired: opens a new device's request from the link it shows, with its name, system, time and a check number to compare, then `a` approves and `d` declines |
-| `/devices` | — | — | lists your devices with `●` online and `○` away; `n` renames this device, `r` removes the one under the cursor at once, and a removed device can only return as a new request you approve |
+| `/devices` | — | — | lists your devices with `●` online and `○` away; `n` renames this device, `r` removes the one under the cursor at once, and a removed device can only return as a new request you approve (`/settings` → `Devices` holds the same list plus `Add another device`) |
 
 The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal `codeaf pair --code` shows a code and `codeaf pair <code>` uses one; bare `codeaf pair` requests approval by link instead. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
 
@@ -1817,7 +1817,7 @@ this split when it opens; configure the remote profile on that machine.
 ## /settings, /set, /config — opening and navigating settings
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
-codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
+codeaf settings, plus tabs for connected accounts and paired devices. It was the first of the three fullscreen
 pages here — the others are `/history` (the activity page, ctrl+.) and `/home` — and **only one
 of the three is ever up at a time**: opening any one closes the other two.
 
@@ -1844,7 +1844,7 @@ and saves. Text and number editors offer adjacent Save/Cancel controls. Invalid
 input keeps the draft and shows its error beside it. Escape cancels an open editor
 or choice list without saving.
 
-esc backs out one layer at a time: the search first, then anything the `Connections` tab
+esc backs out one layer at a time: the search first, then anything the `Connections` or `Devices` tab
 has open, then the panel. The head line says `esc close` on the right. The
 bottom legend normally reads
 `↑↓ move · ←→ tabs · enter change · type to search · esc close`.
@@ -1918,7 +1918,7 @@ Refusals inside the panel, exactly as written:
   they say `that model is chosen where its session is opened`.
 - Any refusal from the settings registry is shown on the foot line in the registry's own
   words. Nothing is swallowed.
-- A search that matches nothing says `nothing matches`. The `Connections` tab has its own
+- A search that matches nothing says `nothing matches`. The `Connections` and `Devices` tabs have their own
   sentences.
 
 ## config.json keys are not read — why codeaf says a setting I wrote is ignored
@@ -1943,7 +1943,7 @@ value to the key a settings row names (`settings` lists every one), or delete th
 
 Settings now groups controls by what you want to change:
 
-`General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy`
+`General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Devices · Privacy`
 
 General holds appearance, input and updates. Models holds model selection and
 advanced routing/context controls. Memory holds `notice things to remember` —
@@ -1951,6 +1951,8 @@ whether codeaf may keep a line on its own after a turn you typed — and a link 
 the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
+Devices lists your paired computers, renames this one, removes another, and starts
+`/pair` from `Add another device`.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,
@@ -1965,7 +1967,7 @@ a scrolling category bar. The selected category remains visible; `…` indicates
 more categories. Left and right change category and the bar follows. Only
 visible controls can be clicked. Hover shows row help without changing its value.
 
-Type to search across settings and connection services. Escape clears the
+Type to search across settings, connection services and paired devices. Escape clears the
 search before leaving settings. Advanced controls remain searchable while
 collapsed. Escape from an editor cancels its unfinished edit.
 
@@ -2014,7 +2016,7 @@ have no provider row behind them, so nothing unfolds there and the legend does n
 key.
 
 While any of those layers is up — the value box, the model picker, the key box on the
-Connections tab — the foot drops `tab next place`, because the layer has taken that key.
+Connections tab, the device rename box on the Devices tab — the foot drops `tab next place`, because the layer has taken that key.
 
 ## Task model seats and their limits in Settings
 

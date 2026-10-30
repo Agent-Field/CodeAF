@@ -164,6 +164,20 @@ desk was removed — it can no longer reach your chats.
 
 The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `tower #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself — choose another row.` A computer that is already removed does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `removed` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
+## Devices in /settings — where your computers are on the settings page, add another device, rename this one, or remove (revoke) one from settings
+
+Open `/settings` (or `ctrl+,`) and walk with `←` and `→` to `Devices`, between `Connections` and `Privacy` — or type `devices`, `remove`, `revoke`, `pair` or `add device` in settings search.
+
+While loading, the tab says `looking up your devices…`. Loaded, it lists your paired computers in the same order and words as `/devices` — `●` online, `○` away (`seen 3h ago`, or `offline`), `this device`, and `removed` — followed by `Add another device`. The open tab refreshes on its own when a computer joins, renames itself or is removed.
+
+The key line shrinks to what works on the row (`↑↓ choose` when there is more than one row, `r remove` only on a removable computer, `←→ categories`, `esc close`):
+
+- `enter add` on `Add another device` leaves `/settings` and starts `/pair`.
+- `n rename` on `this device` opens `name this device: ` under the row with `enter save · ctrl+u clear · esc cancel`. While typing, `esc` cancels the edit without closing `/settings`; a second `esc` leaves `/settings`. On another row `n` says `a device renames itself — choose this device's row, or open /devices on the one you mean.`
+- `r remove` (called `codeaf devices revoke <name>` on the CLI) removes the computer under the cursor at once, marks its row `removed`, and says `desk was removed — it can no longer reach your chats.` On your own row `r` says `this device cannot remove itself — choose another row.` On `Add another device` or a `removed` row, `r` does nothing.
+
+When devices cannot work here, the tab shows one sentence and no list or `Add another device` row: `pairing is not available here` without a pairing door (such as `--host` or `--at`), `moving chats needs a newer furrow engine than this build carries` without a compatible engine, or the read error if loading fails.
+
 ## A device was removed but refreshing the list failed
 
 After a successful removal, its confirmation stays visible even if refreshing the device list fails. The card shows the refresh error too, then clears that error when a later refresh succeeds. A failed refresh does not restore the removed computer's access. If the removal itself fails, the card shows that error and does not confirm a removal.

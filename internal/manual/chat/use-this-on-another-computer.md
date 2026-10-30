@@ -16,7 +16,7 @@ This page is the code way. A new computer can also ask to join and be approved f
 
 There are two doors. Pick one.
 
-1. On the computer that has your chats, type `/pair` in the chat. Or run `codeaf pair --code` in a terminal. It shows a code and how to use it:
+1. On the computer that has your chats, type `/pair` in the chat (or choose `Add another device` in `/settings` → `Devices`). Or run `codeaf pair --code` in a terminal. It shows a code and how to use it:
 
 ```
   this shares your chats with the device you pair
@@ -215,7 +215,7 @@ There is no phone app for continuing chats. A phone browser can open the `/p/` p
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-When moving chats is available, `codeaf devices` lists every device linked to this computer, in up to two groups. A group with nothing in it does not show. With nothing of either kind it says:
+When moving chats is available, `codeaf devices` lists every device linked to this computer, in up to two groups (in the chat, `/devices` and `/settings` → `Devices` list your paired computers). A group with nothing in it does not show. With nothing of either kind it says:
 
 ```
 nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine.
@@ -242,7 +242,7 @@ devices that can use this machine
 
 ## Remove a paired computer — revoke and the chats it already downloaded
 
-To remove a computer, run `codeaf devices revoke <name>` with the name from the list. It works on both groups. When you remove a device that holds your chats, it says:
+To remove a computer from a terminal, run `codeaf devices revoke <name>` with the name from the list (in the chat, press `r` on its row in `/devices` or `/settings` → `Devices`). In the terminal, `revoke` works on both groups. When you remove a device that holds your chats, it says:
 
 ```
 desktop was removed — it can no longer sync your chats.

@@ -1966,10 +1966,10 @@ into… picker, typing filters, `↑` `↓` walk, `enter` moves, `esc` cancels. 
 the *teams page* page.
 
 **Settings panel** (`ctrl+,`): `esc` backs out one layer at a time — search, then an
-open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab ·
+open account or device rename, then the panel · `left`/`shift+tab` and `right`/`tab` change tab ·
 `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown`, `home`, `end` walk · `enter` activates,
 and `space` activates too — except while a search is on, when it goes into the box, so
-a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` edit the
+a phrase like `shell command` can be written · on the **Devices** tab without a search, `n` renames this device and `r` removes the selected computer · `backspace`, `ctrl+u`, `ctrl+w` edit the
 search · anything else types into it.
 
 **Sessions place** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
