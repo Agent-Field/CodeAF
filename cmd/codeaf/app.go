@@ -602,6 +602,10 @@ type appBackend struct {
 
 	mu               sync.Mutex
 	referenceWorkers int
+	// unreadStart is when this process first asked about unread, the moment an
+	// agent with no seen mark is read up to until the app file keeps one
+	// (appunread.go); under mu.
+	unreadStart time.Time
 	// reportReads are the report reads in flight and reportCtx the context they
 	// all run under, cancelled by Close (appprogramreport.go); both under mu.
 	reportReads  int
@@ -715,6 +719,10 @@ type appAgent struct {
 	viewOpen bool
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
+	// outputAt is when it last said something to the person, and saidUnread
+	// the unread the app was last told (appunread.go).
+	outputAt   time.Time
+	saidUnread bool
 
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
@@ -1084,6 +1092,7 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
+	a.outputAt = laterOf(a.outputAt, appRowOutputAt(row))
 	defer func() {
 		b.mu.Unlock()
 		b.flushSync(a)
@@ -1196,14 +1205,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		}
 		return false
 	}
-	// AN AGENT NOBODY HAS TOUCHED FOR THE SETTING'S DAYS READS CLOSED: its
-	// journal is kept, and opening or sending to it opens it again.
-	idleDays := appIdleCloseDays
-	_ = b.state.read(func(f *appStateFile) { idleDays = f.idleDays() })
-	stale := time.Time{}
-	if idleDays > 0 {
-		stale = b.now().Add(-time.Duration(idleDays) * 24 * time.Hour)
-	}
+	stale := b.idleCut()
 	seen := map[string]bool{}
 	var agents []appwire.Agent
 	for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
@@ -1211,13 +1213,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 			continue
 		}
 		seen[row.ID] = true
-		view := b.remember(row)
-		if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) && !b.crewKeeps(view.ID) {
-			view.State = appwire.StateClosed
-		}
-		view.SpentUSD, view.LastActiveAt = row.Spend, row.At
-		b.tidyMarks(&view, row.Archived)
-		agents = append(agents, view)
+		agents = append(agents, b.listedView(row, stale))
 	}
 	// A CONVERSATION THE WALK DID NOT FIND IS LISTED ONLY ONCE SOMEBODY HAS
 	// SAID SOMETHING IN IT. The walk skips a folder the person never spoke in,
@@ -1249,6 +1245,31 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 		b.dress(&agents[i])
 	}
 	return agents, nil
+}
+
+// idleCut is the moment before which an idle agent nobody touched reads
+// closed, and zero when the setting keeps every agent open.
+func (b *appBackend) idleCut() time.Time {
+	// AN AGENT NOBODY HAS TOUCHED FOR THE SETTING'S DAYS READS CLOSED: its
+	// journal is kept, and opening or sending to it opens it again.
+	idleDays := appIdleCloseDays
+	_ = b.state.read(func(f *appStateFile) { idleDays = f.idleDays() })
+	if idleDays <= 0 {
+		return time.Time{}
+	}
+	return b.now().Add(-time.Duration(idleDays) * 24 * time.Hour)
+}
+
+// listedView is one conversation on disk as agents.list says it, before it
+// is dressed: stale is [appBackend.idleCut].
+func (b *appBackend) listedView(row session.SessionRow, stale time.Time) appwire.Agent {
+	view := b.remember(row)
+	if !stale.IsZero() && view.State == appwire.StateIdle && !view.UpdatedAt.IsZero() && view.UpdatedAt.Before(stale) && !b.held(view.ID) && !b.crewKeeps(view.ID) {
+		view.State = appwire.StateClosed
+	}
+	view.SpentUSD, view.LastActiveAt = row.Spend, row.At
+	b.tidyMarks(&view, row.Archived)
+	return view
 }
 
 // CreateAgent answers a new agent AT ONCE and assembles its conversation

@@ -48,6 +48,7 @@ decides which combinations are accepted.
 | `agents.labels` | `{ids}` | `AgentLabels` |
 | `agents.list` | `in.AgentsListParams` | `AgentsResult` |
 | `agents.manual` | `{client_id, id, question}` | `TurnResult` |
+| `agents.mark_seen` | `in.IDParams` | `Empty` |
 | `agents.move_to_closed` | `in.tidyIDs` | `Empty` |
 | `agents.move_to_task` | `{id, turn}` | `MoveResult` |
 | `agents.take` | `in.TakeParams` | `TakeResult` |
@@ -796,3 +797,24 @@ established open crew holds and kept services retain their conversations.
 `warm` marks a window's guess at a view (a hover's prefetch): a warm open of an
 agent in Closed or the archive is refused with `conflict` and the mark stays.
 Only an open without `warm` (the person's own, Reopen) takes it out.
+
+## Unread
+
+Every Agent carries `unread: bool`: it said something new to the person after
+the last time they saw it. New output is an answer a turn ended on (a harness
+run's report included), or a question put to the person; tool steps and
+thinking alone never set it. The answer's time is the conversation's own
+`lastReplyAt` on its meta.json, stamped when the turn seals; a question's is
+when it opened, or its presence file's `asked`.
+
+`agents.mark_seen {id}` records "seen up to now" for that agent in the app's
+state file (`seen`), so it survives restarts, and clears `unread`. It only
+writes the mark: it never opens or warms the agent, and a Closed or archived
+agent stays where it is. An unknown id answers `not_found`. The engine cannot
+know which agent is on screen, so a window calls it when it shows an agent and
+again when output lands while it is shown. `agent.changed` is sent when
+`unread` turns true and when `agents.mark_seen` clears it. An agent with no
+mark is read up to the moment the engine first kept unread (`unread_from` in
+the state file), so on upgrade every agent starts read, and a new agent starts
+read because it has said nothing. Engines that serve it announce
+`agents.mark_seen` in `hello.features`.

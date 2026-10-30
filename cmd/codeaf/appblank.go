@@ -158,8 +158,8 @@ func (b *appBackend) reapBlank(a *appAgent) bool {
 }
 
 // forgetMarks drops what the app's own file kept about an agent that is gone:
-// its budget, a raise of it, and when it was closed or put away. The file is
-// written only when it named the agent.
+// its budget, a raise of it, when it was closed or put away, and when it was
+// last seen. The file is written only when it named the agent.
 func (b *appBackend) forgetMarks(id string) {
 	named := false
 	_ = b.state.read(func(f *appStateFile) {
@@ -167,7 +167,8 @@ func (b *appBackend) forgetMarks(id string) {
 		_, raise := f.Raises["agent:"+id]
 		_, closed := f.Closed[id]
 		_, archived := f.Archived[id]
-		named = budget || raise || closed || archived
+		_, seen := f.Seen[id]
+		named = budget || raise || closed || archived || seen
 	})
 	if !named {
 		return
@@ -177,6 +178,7 @@ func (b *appBackend) forgetMarks(id string) {
 		delete(f.Raises, "agent:"+id)
 		delete(f.Closed, id)
 		delete(f.Archived, id)
+		delete(f.Seen, id)
 		return nil
 	})
 }

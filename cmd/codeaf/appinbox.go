@@ -72,13 +72,14 @@ type appInboxTap struct {
 
 func (t *appInboxTap) Emit(event string, data any) {
 	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
-	// its crews, its live line, and working while a turn runs.
+	// its crews, its live line, working while a turn runs, and unread.
 	if changed, ok := data.(appwire.AgentChanged); ok {
 		t.b.dress(&changed.Agent)
 		data = changed
 	}
 	t.next.Emit(event, data)
 	t.b.inboxSaw(event, data)
+	t.b.unreadSaw(data)
 }
 
 // newAppInbox listens on emit and answers the emitter the backend uses.
