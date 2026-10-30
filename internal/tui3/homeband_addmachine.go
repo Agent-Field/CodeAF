@@ -46,7 +46,10 @@ const (
 	// fleetAskTimeout bounds one ask, so a silent directory is an unknown fleet.
 	fleetAskTimeout = 5 * time.Second
 
-	addMachineHeading = "+ Add another device"
+	// addDeviceWord is the one person-facing name for adding a computer, shared
+	// between the home card and the /settings Devices tab so the two never drift.
+	addDeviceWord     = "Add another device"
+	addMachineHeading = "+ " + addDeviceWord
 	addMachinePitch   = "Pick up your work anywhere, exactly where you left it."
 	addMachineStepRun = "1. On the new device, install and run: codeaf pair"
 	addMachineStepPut = "2. It shows a link. Paste it here:"

@@ -9,7 +9,7 @@ You learn one thing: **a code shown on a screen you own, typed on the other comp
 | What the other computer gets | a key to this machine's tools: a hand on that one machine | your identity: your chats, your saved keys and your sync, on every computer you own |
 | The code | six digits, shown `715 302`, typed with the name of the machine | a number, then six digits, shown `42-715-302`; the number is the place, so the code carries it |
 | This machine must | stay on and stay connected | be there only while you pair |
-| Who can undo it | this machine alone, with `codeaf devices revoke <name>`, at once | you, with `codeaf devices revoke <name>`, but it cuts the relay only; see the page *Pairing your chats with a second computer* |
+| Who can undo it | this machine alone, with `codeaf devices revoke <name>`, at once | you, with `r` in `/devices` or `/settings` → `Devices`, or `codeaf devices revoke <name>`, but it cuts the relay only; see the page *Pairing your chats with a second computer* |
 
 **One code never gives both.** A code for your chats does not give a shell on any machine. A code for a machine does not give your chats.
 

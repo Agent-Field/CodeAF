@@ -3089,7 +3089,7 @@ Open **Spending** for monetary limits. There is no practice limit: codeaf no lon
 The settings panel's tab bar reads, in order:
 
 ```
-General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy
+General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Devices · Privacy
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two

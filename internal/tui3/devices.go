@@ -85,9 +85,33 @@ type revokedMsg struct {
 	err  error
 }
 
+// openDevicesCard is the device list currently on screen, whether opened as
+// /devices or hosted on the /settings sheet.
+func (a *app) openDevicesCard() *deviceCard {
+	if a.pair.open {
+		if card, ok := a.pair.card.(*deviceCard); ok {
+			return card
+		}
+	}
+	if a.at(pageSettings) && a.sheet.dev != nil {
+		return a.sheet.dev
+	}
+	return nil
+}
+
+// ownsDeviceCard reports whether c is still held by /devices or by the open
+// /settings sheet, so a late answer from a closed view is dropped.
+func (a *app) ownsDeviceCard(c *deviceCard) bool {
+	return c != nil && (a.pair.card == panelCard(c) || (a.at(pageSettings) && a.sheet.dev == c))
+}
+
 func (m devicesMsg) land(a *app) tea.Cmd {
-	if a.pair.card != panelCard(m.card) {
+	if !a.ownsDeviceCard(m.card) {
 		return nil
+	}
+	wasAdd := a.at(pageSettings) && a.sheet.dev == m.card && a.sheet.onAddDeviceRow()
+	if a.at(pageSettings) && a.sheet.dev == m.card {
+		a.sheet.syncDeviceCursor()
 	}
 	if m.err != nil {
 		if !m.card.loaded {
@@ -95,6 +119,7 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 		} else {
 			m.card.readErr = m.err
 		}
+		a.syncSheetDeviceCard(m.card, wasAdd)
 		return nil
 	}
 	m.card.readErr = nil
@@ -105,6 +130,7 @@ func (m devicesMsg) land(a *app) tea.Cmd {
 	picked, had := m.card.pick()
 	m.card.rowsOf, m.card.loaded = orderDevices(m.rows), true
 	m.card.keepCursorOn(picked.ID, had)
+	a.syncSheetDeviceCard(m.card, wasAdd)
 	return nil
 }
 
@@ -128,27 +154,33 @@ func (c *deviceCard) livePresence() (map[string]bool, bool) {
 }
 
 func (m renamedMsg) land(a *app) tea.Cmd {
-	if a.pair.card != panelCard(m.card) {
+	if !a.ownsDeviceCard(m.card) {
 		return nil
 	}
+	wasAdd := a.at(pageSettings) && a.sheet.dev == m.card && a.sheet.onAddDeviceRow()
 	if m.err != nil {
 		m.card.line = m.err.Error()
+		a.syncSheetDeviceCard(m.card, wasAdd)
 		return nil
 	}
 	m.card.naming, m.card.line = nil, m.said
+	a.syncSheetDeviceCard(m.card, wasAdd)
 	return a.reloadDevices(m.card)
 }
 
 func (m revokedMsg) land(a *app) tea.Cmd {
-	if a.pair.card != panelCard(m.card) {
+	if !a.ownsDeviceCard(m.card) {
 		return nil
 	}
+	wasAdd := a.at(pageSettings) && a.sheet.dev == m.card && a.sheet.onAddDeviceRow()
 	if m.err != nil {
 		m.card.line = m.err.Error()
+		a.syncSheetDeviceCard(m.card, wasAdd)
 		return nil
 	}
 	m.card.mark(m.row.ID)
 	m.card.line = fmt.Sprintf(devicesRevoked, m.row.Name)
+	a.syncSheetDeviceCard(m.card, wasAdd)
 	return a.forgetDevice(m.row.ID)
 }
 
@@ -292,8 +324,8 @@ func (a *app) reloadDevices(c *deviceCard) tea.Cmd {
 // refreshOnChange reads the list again when the feed has announced a directory version the open
 // card has not read, so what another computer did to a device shows here without closing the card.
 func (a *app) refreshOnChange() tea.Cmd {
-	card, open := a.pair.card.(*deviceCard)
-	if !open || !a.pair.open || a.dirFeed == nil || a.approvals == nil {
+	card := a.openDevicesCard()
+	if card == nil || a.dirFeed == nil || a.approvals == nil {
 		return nil
 	}
 	version := a.dirFeed.State().Version
@@ -348,9 +380,11 @@ func (c *deviceCard) waiting() string {
 	return devicesLoading
 }
 
-// row is one device: its dot, name, system and, when it is off, when it was
-// last seen. The cursor row is ink; the others are dim.
-func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palette) string {
+// rowText is one device's words without the card's own cursor gutter: its dot,
+// name, system and, when it is off, when it was last seen. The card frames it
+// with `› `, and the /settings Devices tab hands the same string to the sheet's
+// row painter so neither list can drift from the other.
+func (c *deviceCard) rowText(d DeviceRow, now time.Time, pal palette) string {
 	online, _ := c.livePresence()
 	d.Online = online[d.ID] && !d.Revoked
 	nameW, wordW := c.columns()
@@ -358,6 +392,13 @@ func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palet
 	for _, tail := range d.tails(now) {
 		text += "  " + tail
 	}
+	return text
+}
+
+// row is one device: its dot, name, system and, when it is off, when it was
+// last seen. The cursor row is ink; the others are dim.
+func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palette) string {
+	text := c.rowText(d, now, pal)
 	if i == c.cursor {
 		return pal.ink(fit("› "+text, width))
 	}
@@ -374,10 +415,12 @@ func (c *deviceCard) columns() (nameW, wordW int) {
 	return nameW, wordW
 }
 
-// dot is `●` for a device online now, `○` otherwise.
+// dot is the filled circle for a device online now, and the resting circle
+// otherwise, both resolved through the palette's glyph door so ASCII and Nerd
+// Font terminals render their own repertoire.
 func (d DeviceRow) dot(pal palette) string {
 	if !d.Revoked && (d.Online || d.Self) {
-		return "●"
+		return pal.glyph(tokens.GStepDone)
 	}
 	return pal.glyph(tokens.GQueued)
 }

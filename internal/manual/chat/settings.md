@@ -3,13 +3,13 @@
 ## Find a setting — categories, search and advanced controls
 
 Open `/settings` or press `ctrl+,`. Settings is organized into General, Models,
-Memory, Tasks, AI teams, Permissions, Spending, Connections and Privacy. Wide
+Memory, Tasks, AI teams, Permissions, Spending, Connections, Devices and Privacy. Wide
 terminals keep the categories beside the controls; narrow terminals show a
 category bar. Left and right change category, up and down choose a row, and
 Enter changes it. The pointer can select the same controls.
 
-Type to search across categories, including advanced controls and connection
-services. Old setting names and configuration keys remain searchable. Clear the
+Type to search across categories, including advanced controls, connection
+services and paired devices. Old setting names and configuration keys remain searchable. Clear the
 query to return to browsing; Escape clears it first, then closes settings. Model
 pickers have their own **Filter models** box. Each category keeps uncommon controls behind
 `Advanced`; search can find them without opening that section first.
@@ -137,6 +137,10 @@ configuration and advanced remote-connection or custom OAuth application setting
 Ordinary account connection does not require you to create your own OAuth app.
 **Models** selects supported models and reasoning effort; advanced controls hold
 routing, internal role overrides and context limits.
+
+**Devices** lists your paired computers in the same words and order as `/devices`,
+renames this device with `n`, removes another with `r`, and starts `/pair` from
+`Add another device`.
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
 and **shared model recommendations** (formerly Model Pool). Recommendations can
