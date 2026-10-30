@@ -209,7 +209,9 @@ func Run(workspace string, opts Options) error {
 	// THE ENVIRONMENT IS RECORDED BEFORE THE SOCKET ANSWERS. Only the lock
 	// owner writes it, so a replacement cannot publish the previous host's
 	// fingerprint during its birth. A failed write leaves the answer unknown.
-	_ = os.Remove(filepath.Join(dir, environmentName))
+	for _, name := range []string{environmentName, syncEnvironmentName, syncUnnamedName} {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 	_ = writeEnvironment(dir, workspace)
 
 	// Whatever socket file is lying there belongs to a host that is gone: the

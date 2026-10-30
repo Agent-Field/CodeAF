@@ -462,7 +462,9 @@ other machines cannot be reached it starts with `other machines unreachable`.
 
 ## A different sync setting on an existing engine
 
-The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run codeaf engine --stop --workspace <folder>`. The command names the exact folder. Let that work finish or stop the engine explicitly before reopening with the new setting.
+The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run codeaf engine --stop --workspace <folder>`. The command names the exact folder. Let that work finish or stop the engine explicitly before reopening with the new setting.
+
+Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different relay. A window with the variable unset — `codeaf chat --host` reaching this computer over ssh, whose shell usually does not carry what you exported, or a terminal you never set it in — joins the running engine and its relay as it is. It restarts the engine only when the relay a pairing saved on this computer has changed since the engine started.
 
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
