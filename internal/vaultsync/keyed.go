@@ -16,8 +16,8 @@ import (
 // vault before a push or pull, and restored from it after a merge.
 type Carrier interface {
 	capture(v VaultFile) error
-	// captureEdits is capture that never records a removal, for the moment
-	// before a pull, when a gap here may only mean the state was never sent.
+	// captureEdits preserves this writer's edits before a pull. Ownership
+	// checks distinguish removals from state this computer never held.
 	captureEdits(v VaultFile) error
 	restore(v VaultFile) error
 }
@@ -51,13 +51,15 @@ type Keyed struct {
 	scope  string
 	set    Keyset
 	ledger string
+	// Captured values guard an apply across the network round, not only the write.
+	baseline *map[string]string
 }
 
 // Keys carries set under the reserved scope named by kind, remembering digests
 // in the file at ledgerPath. The scope matches no project, so a workspace .env
 // never receives these entries.
 func Keys(kind string, set Keyset, ledgerPath string) Keyed {
-	return Keyed{scope: "home:keys:" + kind, set: set, ledger: ledgerPath}
+	return Keyed{scope: "home:keys:" + kind, set: set, ledger: ledgerPath, baseline: new(map[string]string)}
 }
 
 func (k Keyed) id(name string) string { return k.scope + "/" + name }
@@ -87,6 +89,9 @@ func (k Keyed) capture(v VaultFile) error {
 	}
 	if err != nil {
 		return err
+	}
+	if k.baseline != nil {
+		*k.baseline = run.held
 	}
 	return run.finish(run.captureAll())
 }
@@ -124,7 +129,7 @@ func (r *keyedRun) captureAll() error {
 		}
 	}
 	for name := range r.digests {
-		if _, still := r.held[name]; !still {
+		if _, still := r.held[name]; !still && r.set.Holds(name) {
 			remove := func() error { return r.v.Delete(r.id(name)) }
 			if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
 				if vault, ok := r.v.(interface{ DeleteAt(string, time.Time) error }); ok {
@@ -176,7 +181,30 @@ func (r *keyedRun) restoreAll() error {
 		if guarded, ok := r.set.(interface {
 			ApplyIf(map[string]string, map[string]string) error
 		}); ok {
-			apply = func() error { return guarded.ApplyIf(changes, r.held) }
+			expected := r.held
+			if r.baseline != nil && *r.baseline != nil {
+				expected = *r.baseline
+			}
+			apply = func() error {
+				if err := guarded.ApplyIf(changes, expected); err != nil {
+					return err
+				}
+				// A CAS retry may restore twice in one network round. Advance
+				// only keys this restore could apply, so its own writes are
+				// not mistaken for local edits on the second merge.
+				if r.baseline != nil && *r.baseline != nil {
+					for name, value := range changes {
+						if r.held[name] == expected[name] {
+							if value == "" {
+								delete(expected, name)
+							} else {
+								expected[name] = value
+							}
+						}
+					}
+				}
+				return nil
+			}
 		}
 		if err := apply(); err != nil {
 			return err

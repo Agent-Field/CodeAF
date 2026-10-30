@@ -11,19 +11,22 @@
 // a tombstone, and two machines that edited different files keep both. The file
 // is written back at the same path with the same bytes and mode (files.go).
 //
-// The carried-state rule. Two kinds of profile state ride in the vault beside
-// the secrets, sealed with the cell key, pushed when they change, deleted by a
-// tombstone and merged by the newer stamp exactly like a secret. credentials.json
-// is one whole-file slot, stamped with the file's save time. The provider keys of
-// the profile config (syncsetup) are one entry per key, like a secret's name: a key is
-// stamped only when its value changed since the last capture (a local ledger of
-// digests remembers), so an edit to anything else in config.json never ages a
-// key; a machine with no place for a key has no opinion on it, and only a key
-// this machine once shared can be tombstoned by it. Everything is captured
-// before every push and pull and restored after every merge. A damaged copy is
-// never captured, so it cannot bury a good one. The rest of config.json
-// (budgets, rails, model picks) is never carried: those belong to the machine
-// they were set on.
+// THE CARRIED-STATE LAW. Credentials, provider keys, profile preferences,
+// shared memories and portable teams ride beside secrets. Whole files use
+// their save time; Keyed gives individual fields independent clocks and
+// deletion tombstones. Only a key this machine once shared can be removed by
+// it. A guarded apply preserves edits made during a network round. A damaged
+// copy is neither captured nor overwritten.
+//
+// ONE TRAFFIC VALUE PER WRITING DEVICE AND TEAM. DeviceWindows replaces a
+// writer's bounded window without republishing received history. The source
+// owns the limits (internal/teams): 32 lines and 16 KiB per team, text shortened
+// past 2 KiB, 64 KiB across a device's teams, publication at most every 30
+// seconds. Team records are never rate-limited. Removing a team's own value
+// happens on the next round; no writer deletes another writer's value. A
+// receiving source replaces its display mirror from locally known paired
+// writers, or every other writer when no local roster is available. Optional
+// team sharing uses BestEffort so its failures cannot block other carried state.
 //
 // Nothing here ever logs, returns or notifies a secret value; only names.
 package vaultsync
