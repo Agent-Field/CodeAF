@@ -1,5 +1,7 @@
 # Reaching a machine with a pairing code
 
+For an always-on computer on your own Railway account, see [A dev box](a-dev-box-on-your-own-railway.md) and `codeaf devbox up <name>`.
+
 ## Two codes, two grants — remote access and your chats
 
 You learn one thing: **a code shown on a screen you own, typed on the other computer.** A code can grant two different things. They stay two things, because they are two different powers.
@@ -44,6 +46,8 @@ way, use that; the two doors are compared at the bottom of this page.
 
 ## codeaf serve, and the name a machine gets
 
+`codeaf serve` keeps the identity's saved keys and settings in step the way an open terminal does only when it is started with `CODEAF_SERVE_SYNC=1`, which a dev box sets. Without it, serve syncs nothing while it serves, as it always has.
+
 Run it on the machine that owns the work — the one with the files, the API key and the
 things you have set up:
 
@@ -58,9 +62,10 @@ It prints, exactly:
   let a device use this machine with code   715 302   (valid 10 minutes)
 ```
 
-**The name is not chosen, it is derived from that machine's own key.** Two words and two
-digits, the same every time, on any relay. You cannot pick a nicer one, and nobody else
-can register under yours while your machine is connected.
+**The relay name is derived from that machine's own key.** Two words and two
+digits, the same every time, on any relay. Nobody else can register under yours
+while your machine is connected. A dev box also has the chosen alias saved on
+the laptop that created it; `codeaf devices` shows that alias for `--at`.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
 means the directory you ran the command in. For `codeaf serve`, the relay is, in order:

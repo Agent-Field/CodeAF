@@ -86,12 +86,15 @@ func init() {
 	pair.LinkOrigin = LinkOriginOf(HostedRelayURL)
 }
 
-// savedURLFile is where a computer keeps the relay another device told it to
+// SavedURLFile is where a computer keeps the relay another device told it to
 // sync through when they were paired. It is a file beside the identity and not a
 // settings row, because CODEAF_SYNC_URL is deliberately never a row: a persisted
 // value would point a machine at a relay it was never told about, and this one
-// was told, once, by the device the person had just approved.
-const savedURLFile = "sync-url"
+// was told, once, by the device the person had just approved. It is exported
+// because a dev box's boot script writes it before its first join (the laptop
+// that created the box told it, through Terraform), and the devbox package
+// holds that script to this one spelling.
+const SavedURLFile = "sync-url"
 
 // offWord is the value of CODEAF_SYNC_URL that turns sync off.
 const offWord = "off"
@@ -160,7 +163,7 @@ func fromVariable(string) (Relay, bool) {
 }
 
 func fromSavedFile(home string) (Relay, bool) {
-	raw, err := os.ReadFile(filepath.Join(home, savedURLFile))
+	raw, err := os.ReadFile(filepath.Join(home, SavedURLFile))
 	saved := strings.TrimSpace(string(raw))
 	return Relay{URL: saved}, err == nil && saved != ""
 }
@@ -175,5 +178,5 @@ func SaveRelayURL(home, url string) error {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(home, savedURLFile), []byte(url+"\n"), 0o600)
+	return os.WriteFile(filepath.Join(home, SavedURLFile), []byte(url+"\n"), 0o600)
 }
