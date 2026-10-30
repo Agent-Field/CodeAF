@@ -109,14 +109,34 @@ func (f *File) Disband(id string, at time.Time, report string) error {
 // Its behavior follows disbanding: no session is stopped or implicitly reassigned.
 func (f *File) Close(id string, at time.Time, report string) error { return f.Disband(id, at, report) }
 
-// CloseForJob closes team id, quietly, because the factory job it is the room
-// of ended: no report, and the team is marked [Team.JobEnded], so that the job
-// coming back opens it again ([File.ReopenForJob]) and nothing else does.
+// CloseForJob closes team id, and the teams under it, quietly, because the
+// factory job it is the room of ended. It is not a disband: there is no
+// report, and nobody's reporting is changed, so no member is made independent
+// and the room's managers stay where they were. The teams are marked
+// [Team.JobEnded], so that the job coming back opens them again
+// ([File.ReopenForJob]) with their reporting as it was, and nothing else does.
+// While the room is closed a member's home is in no open team, as it is for
+// any closed team; reopened, [tidy] gives it its home there again.
 func (f *File) CloseForJob(id string, at time.Time) error {
-	if err := f.Disband(id, at, ""); err != nil {
+	i, err := f.at(id)
+	if err != nil {
 		return err
 	}
-	f.Teams[Index(f.Teams, id)].JobEnded = true
+	if f.Teams[i].Root {
+		return ErrRoot
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	ids := map[string]bool{id: true}
+	for _, d := range f.Descendants(id) {
+		ids[d.ID] = true
+	}
+	for j := range f.Teams {
+		if t := &f.Teams[j]; ids[t.ID] && !t.Closed() {
+			t.State, t.ClosedAt, t.ClosedWith, t.Wrap, t.JobEnded = TeamClosed, at, id, nil, true
+		}
+	}
 	return nil
 }
 

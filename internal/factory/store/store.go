@@ -367,17 +367,19 @@ func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
 }
 
 // written is told of every item write; see [WhenWritten].
-var written atomic.Pointer[func(root string, before, after factory.Item)]
+var written atomic.Pointer[func(st *Store, before, after factory.Item)]
 
 // WhenWritten has fn told of every item a write lands, as it was before the
-// write and as it is after, with the root of the store written. It is told
-// after the item's lock is let go, so fn may write elsewhere (the crews store,
-// where a job's room follows the job). A later fn replaces an earlier one.
-func WhenWritten(fn func(root string, before, after factory.Item)) { written.Store(&fn) }
+// write and as it is after, with the store written. It is told after the
+// item's lock is let go, so fn may write elsewhere (the crews store, where a
+// job's room follows the job), and two writes of one item may be told in
+// either order: fn that acts on the item reads it again from st. A later fn
+// replaces an earlier one.
+func WhenWritten(fn func(st *Store, before, after factory.Item)) { written.Store(&fn) }
 
 func (st *Store) tellWritten(before, after factory.Item) {
 	if fn := written.Load(); fn != nil {
-		(*fn)(st.root, before, after)
+		(*fn)(st, before, after)
 	}
 }
 

@@ -2,24 +2,35 @@ package main
 
 // factory_room_follow.go — a factory job's crew follows the job.
 //
-// A JOB'S ROOM CLOSES WHEN THE JOB ENDS. Every factory job makes a crew, and a
-// job that is over never needs it open again: left open, every crew list, every
-// write and every watch carried it for good, and a store a year old held
-// thousands of them. When a write takes a job to its end ([factory.JobState]
-// "done": merged, closed, answered, dropped, closed locally), its room is
-// closed quietly, the way a dismissed job's always was ([talkPutAway]): no
-// closing report and no traffic line. A closed room stays. The job's page, its
-// crew tab and its history read it by id; the job's steps come from the job's
-// own record and are drawn as before.
+// A JOB'S ROOM CLOSES WHEN THE JOB IS OVER. Every factory job makes a crew, and
+// a job that is over never needs it open again: left open, every crew list,
+// every write and every watch carried it for good, and a store a year old held
+// thousands of them. A job is over on a fact that does not change by itself
+// ([jobOver]): an end recorded on it (answered, dropped, closed locally), a
+// dismissal, or its pull request merged or closed. An approved job still
+// publishing is not over. Its room is then closed quietly, without a report,
+// a traffic line or any change to who reports to whom
+// ([teams.File.CloseForJob]). A closed room stays: the job's page, its crew
+// tab and its history read it by id; the job's steps come from the job's own
+// record and are drawn as before.
 //
-// THE JOB COMING BACK REOPENS IT. When a write takes the job out of its end,
-// whether a person brought it back or it came back by itself (a pull request
-// reopened on the forge), its room opens again, so its next round joins its
-// crew as before. Only a room its job's end closed is reopened
-// ([teams.File.CloseForJob]): a crew a person closed or archived by hand stays
-// as they left it, and no keeper or recovery path reopens a room.
+// THE JOB COMING BACK REOPENS IT. When the job stops being over, whether a
+// person brought it back or it came back by itself (a pull request reopened
+// on the forge), its room opens again with its reporting as it was, so its
+// next round joins its crew. Only a room its job's end closed is reopened: a
+// crew a person closed or archived by hand stays as they left it.
+//
+// THE ROOM FOLLOWS THE JOB'S STATE, NOT ITS LAST WRITE. The store tells of a
+// write after the item's lock is let go, so two writes may be told in either
+// order, and the crews store may be busy: each telling reads the job again and
+// makes the room match it, and one the crews store refused is tried again. A
+// round that starts also reopens a room its job's end closed
+// ([factoryChatStage]), so a live job never runs teamless for a reopen that
+// was lost.
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,24 +38,59 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
-func init() {
-	store.WhenWritten(func(_ string, before, after factory.Item) {
-		factoryRoomFollowsJob(factoryProfile(config.ProfileDir()), before, after)
-	})
+func init() { store.WhenWritten(factoryRoomHook) }
+
+// factoryRoomHook is what the store tells of every item write: a write that
+// takes a job across its end makes its room follow.
+func factoryRoomHook(st *store.Store, before, after factory.Item) {
+	if jobOver(before) != jobOver(after) {
+		factoryRoomFollow(factoryProfile(config.ProfileDir()), st, after)
+	}
 }
 
-// factoryRoomFollowsJob closes job after's room when the write before→after
-// ended the job, and reopens it when a person brought the job back.
-func factoryRoomFollowsJob(profile string, before, after factory.Item) {
-	switch {
-	case factory.JobState(after) == "done" && factory.JobState(before) != "done":
-		_ = closeJobRooms(profile, after)
-	case factory.JobState(before) == "done" && factory.JobState(after) != "done":
-		_ = reopenJobRoom(profile, after)
+// jobOver reports whether job it is over for its room: an end recorded on it,
+// a dismissal, or its pull request merged or closed. [factory.JobState] also
+// calls a shipped job with no pull request done, which an approved job is
+// until its publish records one; that is not an end.
+func jobOver(it factory.Item) bool {
+	if it.DoneHow != "" || it.State == factory.StateDismissed {
+		return true
 	}
+	pr := it.PullRequest
+	return pr != nil && (pr.State == factory.PRMerged || pr.State == factory.PRClosed)
+}
+
+// roomRetries is how often, and how far apart, a room the crews store
+// refused to follow its job is tried again.
+var roomRetries = []time.Duration{time.Second, 5 * time.Second, 30 * time.Second, 2 * time.Minute}
+
+// factoryRoomFollow makes job it's room match the job as the store now holds
+// it, and tries again later when the crews store refused.
+func factoryRoomFollow(profile string, st *store.Store, it factory.Item) {
+	follow := func() error {
+		if now, err := st.Get(it.ID); err == nil {
+			it = now
+		}
+		if jobOver(it) {
+			return closeJobRooms(profile, nil, it)
+		}
+		return reopenJobRoom(profile, it)
+	}
+	if err := follow(); err == nil || !errors.Is(err, teams.ErrBusy) {
+		return
+	}
+	guard.Go("factory/room-follow", func() {
+		for _, wait := range roomRetries {
+			time.Sleep(wait)
+			if err := follow(); err == nil || !errors.Is(err, teams.ErrBusy) {
+				return
+			}
+		}
+	})
 }
 
 // jobRoomRecorded is the room job it recorded, "" for none.
@@ -67,13 +113,14 @@ func jobTalkKey(it factory.Item) string {
 	return filepath.Clean(key)
 }
 
-// closeJobRooms closes the open room of each job in one write. ONLY WHAT THE
-// FACTORY RECORDED IS CLOSED: the job's own Stream.Room, else a factory-made
-// item team holding the job's conversation. An ordinary crew that holds the
-// same conversation, the root and the `factory` parent are the person's, and
-// stay open. A recorded room that is here but not open (closed already, or a
-// crew that is not the factory's) is not looked for any other way.
-func closeJobRooms(profile string, jobs ...factory.Item) error {
+// closeJobRooms closes the open room of each job in one write, and leaves
+// alone any room keep holds back (nil holds none back). ONLY WHAT THE FACTORY
+// RECORDED IS CLOSED: the job's own Stream.Room, else a factory-made item
+// team holding the job's conversation. An ordinary crew that holds the same
+// conversation, the root and the `factory` parent are the person's, and stay
+// open. A recorded room that is here but not open (closed already, or a crew
+// that is not the factory's) is not looked for any other way.
+func closeJobRooms(profile string, keep func(room string) bool, jobs ...factory.Item) error {
 	var recorded []string
 	for _, it := range jobs {
 		if room := jobRoomRecorded(it); room != "" {
@@ -92,14 +139,16 @@ func closeJobRooms(profile string, jobs ...factory.Item) error {
 	}
 	return teams.UpdateOpen(profile, func(f *teams.File) error {
 		closable := func(t teams.Team) bool {
-			return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID)
+			return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID) && (keep == nil || !keep(t.ID))
 		}
 		now := time.Now()
 		for _, it := range jobs {
 			room := jobRoomRecorded(it)
-			if t, ok := f.Team(room); ok && room != "" && closable(t) {
-				if err := f.CloseForJob(t.ID, now); err != nil {
-					return err
+			if t, ok := f.Team(room); ok && room != "" {
+				if closable(t) {
+					if err := f.CloseForJob(t.ID, now); err != nil {
+						return err
+					}
 				}
 				continue
 			}
@@ -125,38 +174,60 @@ func closeJobRooms(profile string, jobs ...factory.Item) error {
 
 // reopenJobRoom opens again the room job it's end closed: its recorded room,
 // else the factory-made item team holding its conversation that its end
-// closed. It reads every team, closed ones included, as a write that reopens
-// one must; a room closed or archived by a person is left
-// ([teams.File.ReopenForJob]).
+// closed. A room closed or archived by a person, or closed for any other
+// reason, is left ([teams.File.ReopenForJob]). The rooms are looked at by id
+// first, and the store is written, with every team in hand as a reopen needs,
+// only when one is to be reopened.
 func reopenJobRoom(profile string, it factory.Item) error {
 	room, key := jobRoomRecorded(it), jobTalkKey(it)
-	if room == "" && key == "" {
+	var candidates *teams.File
+	var err error
+	switch {
+	case room != "":
+		candidates, err = teams.LoadTeams(profile, room)
+	case key != "":
+		candidates, err = teams.LoadTeamsOf(profile, teams.ConversationName(key), false)
+	default:
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	due := ""
+	for _, t := range candidates.Teams {
+		if (room != "" && t.ID == room || room == "" && t.Holds(key)) && t.FactoryManaged && t.Closed() && t.JobEnded && !t.Archived() {
+			due = t.ID
+			break
+		}
+	}
+	if due == "" {
 		return nil
 	}
 	return teams.Update(profile, func(f *teams.File) error {
-		if t, ok := f.Team(room); ok && room != "" {
-			if t.Root || !t.FactoryManaged || factoryIsParent(f, room) {
-				return nil
-			}
-			return f.ReopenForJob(room)
+		if t, ok := f.Team(due); !ok || t.Root || factoryIsParent(f, due) {
+			return nil
 		}
-		for _, t := range f.Teams {
-			if key != "" && t.Holds(key) && t.FactoryManaged && t.JobEnded && t.Parent != "" && !factoryIsParent(f, t.ID) {
-				return f.ReopenForJob(t.ID)
-			}
-		}
-		return nil
+		return f.ReopenForJob(due)
 	})
 }
 
-// factorySweepEndedRooms closes the rooms of the jobs that had already ended
-// before rooms followed their jobs, in one write, and answers how many jobs it
-// looked at. It reads the floor's items once; a room already closed is left.
+// sweptMarker is the profile file that says [factorySweepEndedRooms] ran.
+const sweptMarker = "factory-rooms-swept"
+
+// factorySweepEndedRooms closes, once per profile, the rooms of the jobs that
+// were already over before rooms followed their jobs, and answers how many
+// jobs it looked at (0 when it had run already). A room a person reopened by
+// hand (its traffic holds a reopen line) is left open. It marks the profile
+// once it has run, and never runs again there.
 //
 // TODO(crews-store): a one-time fix for stores from before 2026-10-29, when an
 // ended job's room stayed open. Remove once every developer's store has been
 // swept; nothing else calls it.
 func factorySweepEndedRooms(profile, root string) int {
+	marker := config.ProfilePath(profile, sweptMarker)
+	if _, err := os.Stat(marker); err == nil {
+		return 0
+	}
 	st, err := store.Open(root)
 	if err != nil {
 		return 0
@@ -165,14 +236,31 @@ func factorySweepEndedRooms(profile, root string) int {
 	if err != nil {
 		return 0
 	}
-	var ended []factory.Item
+	var over []factory.Item
 	for _, it := range items {
-		if factory.JobState(it) == "done" {
-			ended = append(ended, it)
+		if jobOver(it) {
+			over = append(over, it)
 		}
 	}
-	if len(ended) > 0 {
-		_ = closeJobRooms(profile, ended...)
+	reopened := func(room string) bool {
+		lines, err := teams.ReadTraffic(profile, room, "", 0)
+		if err != nil {
+			return true
+		}
+		for _, e := range lines {
+			if e.Kind == teams.KindReopen {
+				return true
+			}
+		}
+		return false
 	}
-	return len(ended)
+	if len(over) > 0 {
+		if err := closeJobRooms(profile, reopened, over...); err != nil {
+			return len(over)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(marker), 0o700); err == nil {
+		_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+	}
+	return len(over)
 }

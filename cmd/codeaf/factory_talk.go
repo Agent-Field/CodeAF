@@ -624,7 +624,7 @@ func talkPutAway(seam factory.Seam, st *store.Store, profileDir string) factory.
 		_ = session.SetArchived(filepath.Dir(it.Talk), true)
 		// The dismissal ended the job, which closed its room already
 		// (factory_room_follow.go); this closes it if that write was not seen.
-		_ = closeJobRooms(profileDir, it)
+		_ = closeJobRooms(profileDir, nil, it)
 		return nil
 	}
 	return seam

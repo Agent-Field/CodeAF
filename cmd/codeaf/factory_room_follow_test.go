@@ -159,11 +159,9 @@ func TestTheSweepClosesOnlyEndedJobsRooms(t *testing.T) {
 	live := r.job("0e0e0e0e0e0e", factory.Item{Title: "live", State: factory.StateRunning})
 	// The job ended while nothing followed it: its document says so, its room
 	// is still open.
-	store.WhenWritten(func(string, factory.Item, factory.Item) {})
+	store.WhenWritten(func(*store.Store, factory.Item, factory.Item) {})
 	r.update(ended.ID, func(it *factory.Item) { it.DoneHow = "answered" })
-	store.WhenWritten(func(_ string, before, after factory.Item) {
-		factoryRoomFollowsJob(factoryProfile(config.ProfileDir()), before, after)
-	})
+	store.WhenWritten(factoryRoomHook)
 	if r.closed("0d0d0d0d0d0d") {
 		t.Fatal("the room closed without the hook")
 	}
@@ -187,9 +185,8 @@ func TestTheSweepClosesOnlyEndedJobsRooms(t *testing.T) {
 		t.Fatalf("open after the sweep: %d", len(open.Teams))
 	}
 	stamp := teams.Stamp(r.profile)
-	factorySweepEndedRooms(r.profile, r.st.Root())
-	if teams.Stamp(r.profile) != stamp {
-		t.Fatal("a second sweep wrote")
+	if n := factorySweepEndedRooms(r.profile, r.st.Root()); n != 0 || teams.Stamp(r.profile) != stamp {
+		t.Fatalf("a second sweep ran (%d) or wrote", n)
 	}
 	_ = live
 }

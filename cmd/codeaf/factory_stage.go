@@ -668,6 +668,12 @@ func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Execu
 		}
 		if job.Item.Stream != nil {
 			if room := strings.TrimSpace(job.Item.Stream.Room); room != "" {
+				// A live job's room that its end closed opens again here, should
+				// the reopen that followed the job's return have been lost
+				// (factory_room_follow.go).
+				if !jobOver(job.Item) {
+					_ = reopenJobRoom(profileDir, job.Item)
+				}
 				local, err := factoryEnsureRoom(profileDir, job.Item, room)
 				if err != nil {
 					return factory.StageResult{}, err
