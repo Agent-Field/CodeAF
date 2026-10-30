@@ -23,6 +23,10 @@ An attended window keeps following your other devices while the chat is open, so
 
 If you continue it, the other device's window stops taking new turns and says `<device> continued this chat; this window now only shows it`. The page *Home* has the rest of that card.
 
+## Where an older chat's copy lives — the .moving folder, README.txt, can I delete it
+
+An older chat's copy is kept in a folder called `.moving` beside the original, in codeaf's state folder for that project. The name is historical: nothing in it is a move in progress. It holds the live copies this build writes to, so deleting it deletes those chats. The folder carries a `README.txt` that says so. The originals beside it stay untouched for older codeaf builds.
+
 ## My typed message after continue here — is it kept, does it send by itself
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

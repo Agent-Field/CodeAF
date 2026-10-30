@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -179,5 +180,19 @@ func TestC29LinkedFolderCannotAliasTheOriginal(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, copyFingerprint(t, original)) {
 		t.Fatal("copy through a folder link changed the original")
+	}
+}
+
+// TestTheCopyFolderSaysItIsTheLiveStore pins #2072: the folder holding moved
+// chats is named for a move in progress, so it says, to anyone who looks, that
+// it holds the chats themselves and must not be removed.
+func TestTheCopyFolderSaysItIsTheLiveStore(t *testing.T) {
+	original := olderFixture(t)
+	if _, err := CopyLegacy(t.Context(), original, func(context.Context, Cell) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(CopyRoot(original)), CopyFolderReadme))
+	if err != nil || !strings.Contains(string(raw), "Do not delete it") {
+		t.Fatalf("the copy folder does not explain itself: %q, %v", raw, err)
 	}
 }
