@@ -33,10 +33,18 @@ type Executor interface {
 type Journal interface{ Append(event any) error }
 
 type State struct {
-	Phase      string    `json:"phase"`
-	PID        int       `json:"pid,omitempty"`
-	StartedAt  time.Time `json:"started_at,omitzero"`
-	FinishedAt time.Time `json:"finished_at,omitzero"`
+	Phase           string    `json:"phase"`
+	PID             int       `json:"pid,omitempty"`
+	StartedAt       time.Time `json:"started_at,omitzero"`
+	FinishedAt      time.Time `json:"finished_at,omitzero"`
+	ChildStartedAt  time.Time `json:"child_started_at,omitzero"`
+	ProcessStart    string    `json:"process_start,omitempty"`
+	CommandHash     string    `json:"command_hash,omitempty"`
+	ExitCode        *int      `json:"exit_code,omitempty"`
+	StopRequestedAt time.Time `json:"stop_requested_at,omitzero"`
+	LedgerOffset    int64     `json:"ledger_offset,omitempty"`
+	LaunchStartedAt time.Time `json:"launch_started_at,omitzero"`
+	Abandoned       bool      `json:"abandoned,omitempty"`
 }
 
 // Attempt is an admitted immutable request and its private working folder.
@@ -110,6 +118,7 @@ func openAttempts(root string, clock Clock) (*attemptStore, error) {
 		if err := readJSON(filepath.Join(a.Dir, "state.json"), &a.state); err != nil {
 			return nil, err
 		}
+		a.removed = a.state.Abandoned
 		events, err := readEvents(a.Dir)
 		if err != nil {
 			return nil, err
@@ -214,6 +223,19 @@ func (s *attemptStore) forget(id string) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// A real child can still write its private run after SIGINT. Keep a
+	// durable tombstone until it is joined, including across a serving restart.
+	if a.state.Phase == "running" && (a.state.PID > 0 || !a.state.LaunchStartedAt.IsZero() || !a.state.StopRequestedAt.IsZero()) {
+		next := a.state
+		next.Abandoned = true
+		if err := atomicJSON(filepath.Join(a.Dir, "state.json"), next); err != nil {
+			return err
+		}
+		a.state = next
+		a.removed = true
+		a.notify()
+		return nil
+	}
 	if err := os.RemoveAll(a.Dir); err != nil {
 		return err
 	}
@@ -230,6 +252,7 @@ func (s *attemptStore) released(a *Attempt) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.removed {
+		_ = os.RemoveAll(a.Dir)
 		delete(s.attempts, a.ID)
 	}
 }

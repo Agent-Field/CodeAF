@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/head"
@@ -39,6 +40,7 @@ import (
 	runengine "github.com/Agent-Field/codeaf/internal/run"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/taskdoor"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -327,6 +329,9 @@ func runDo(args []string) error {
 		"(older engine only; the run engine refuses it)")
 	keep := flags.Bool("keep", false, "keep the run's store instead of deleting it on the way out, "+
 		"and say where it is")
+	// This private flag is the task door's process boundary, hidden from help
+	// and the manual because only serve supplies an owned attempt directory.
+	runStore := flags.String(taskdoor.TaskStoreFlag, "", hiddenShorthand+taskdoor.TaskStoreFlag)
 	workspace := flags.String("dir", "", "the directory to work in, edited in place (default: the current directory)")
 	shorthandFlag(flags, "w", "dir")
 	wall := wallFlag{wall: defaultDoWall}
@@ -364,6 +369,9 @@ func runDo(args []string) error {
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	if err := waitTaskLaunch(*runStore); err != nil {
+		return refuseDoBeforeRun(*asJSON, "", err)
+	}
 	noteRenamedFlags(flags)
 	slots, err := parseSlots(*slotsRaw)
 	if err != nil {
@@ -400,7 +408,7 @@ func runDo(args []string) error {
 	}
 	return doErrand(doRequest{
 		effort: effort, pins: pins.pins,
-		task: next.brief, assignment: next.assignment, cellRoot: next.cellRoot, run: run, database: *database, keep: *keep, workspace: *workspace,
+		task: next.brief, assignment: next.assignment, cellRoot: next.cellRoot, run: run, database: *database, keep: *keep, workspace: *workspace, runStore: *runStore,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
 		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
@@ -439,6 +447,7 @@ type doRequest struct {
 	run        string
 	database   string
 	keep       bool
+	runStore   string
 	workspace  string
 	timeout    time.Duration
 	asJSON     bool
@@ -768,6 +777,9 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// with it set not one byte of that road moves.
 	if session.BashBeltAsked() {
 		return runErrand(request, seats)
+	}
+	if request.runStore != "" {
+		return headlessOutcome{}, errors.New("this computer's task belt cannot take tasks from another computer")
 	}
 	path, home, ephemeral, err := headlessStore(request.database)
 	if err != nil {
@@ -3638,6 +3650,15 @@ func parseSlots(raw string) (*int, error) {
 // door was handed is the whole assignment, which is the same verbatim contract
 // the resident road keeps.
 func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, runErr error) {
+	if request.runStore != "" {
+		// The task door reads per-call ledger rows after this process exits;
+		// queued final charges must reach disk before its receipt is printed.
+		defer session.CloseUsage()
+	}
+	remote, rung, err := doTaskControls(request.runStore)
+	if err != nil {
+		return headlessOutcome{}, err
+	}
 	// A FLAG THIS ROAD CANNOT HONOUR IS REFUSED IN WORDS, NEVER DROPPED. `--db`
 	// names a store the older engine works in; a run keeps its plan in its own
 	// private folder instead, and a run that quietly worked somewhere
@@ -3657,6 +3678,9 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	bound, err := runSpendBound(request, settings.ProfileDir, time.Now())
 	if err != nil {
 		return headlessOutcome{}, err
+	}
+	if remote.Limits.USD > 0 && (bound.usd <= 0 || remote.Limits.USD < bound.usd) {
+		bound.usd, bound.stop, bound.words = remote.Limits.USD, stopBudget, "the task reached the spending limit set on the other computer"
 	}
 	if bound.refused {
 		// A CEILING OF NOTHING IS A RUN THAT MAY SPEND NOTHING. Refused here,
@@ -3697,7 +3721,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// run's business ([session.RunTreeSnapshot]).
 	before := session.SnapshotRunTree(workspace)
 	title := topicTitle(request.headline())
-	_, recordDir, _, err := headlessStore("")
+	recordDir, err := doRunStore(request.runStore)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -3705,6 +3729,10 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// The record is private and unique per invocation. The existing headless
 	// home owns both its location and the rule for when it survives a run.
 	defer func() {
+		if request.runStore != "" {
+			outcome.recordKept = recordDir
+			return
+		}
 		if !admitted {
 			_ = os.RemoveAll(recordDir)
 			return
@@ -3747,7 +3775,11 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// THE REVIEW ROUND IS ON for every `do` run: a leaf that lands done is
 	// checked against its acceptance, and a check that does not hold becomes a
 	// fix task under the leaf's parent the run waits on.
-	limits := runengine.Limits{ReviewRound: true, CostUSD: bound.usd}
+	limits := runengine.Limits{ReviewRound: true, CostUSD: bound.usd, StepsPerTask: remote.MaxSteps}
+	workerOptions := inCell.workerOptions()
+	if rung != effort.None || remote.NoProgress > 0 {
+		workerOptions = append(workerOptions, runengine.WithTaskControls(rung, remote.NoProgress))
+	}
 	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT, the same way it must on the
 	// resident road: routed through the context, the supervisor stops launching,
 	// drains what is in flight, and what it reached is composed and printed.
@@ -3781,7 +3813,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, memorySection, spendPreauthorized(request.yesSpend, env.Value), completerFor, inCell.workerOptions(), settings.Sources),
+		}, memorySection, spendPreauthorized(request.yesSpend, env.Value), completerFor, workerOptions, settings.Sources),
 	})
 	errand := runErrandOutcome(summary, workspace, bound)
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -55,6 +56,10 @@ const observationHeadBytes = 2048
 // line: Kind says which one a line is.
 type Step struct {
 	Kind string `json:"kind"`
+	// RecordedAt retains append timing. RecordedOrder lets a follower wait
+	// for an earlier append observed later in another task's file.
+	RecordedAt    time.Time `json:"recorded_at,omitzero"`
+	RecordedOrder uint64    `json:"recorded_order,omitempty"`
 	// Step is the step's number, counted from one over the task across its wakes.
 	Step int `json:"step"`
 	// Tool identifies the native action; older records leave it empty.
@@ -185,11 +190,38 @@ func Trajectory(storeDir, id string) ([]Step, error) {
 	return steps, nil
 }
 
+// One writer orders all trajectories of a run. The follower can wait for a
+// missing order when a directory scan observes a later task's append first.
+var trajectoryWriter = struct {
+	sync.Mutex
+	orders map[string]uint64
+}{orders: map[string]uint64{}}
+
 // appendTrajectory appends one line to the task's trajectory file, creating
 // the task's record folder when the first line arrives. Appends are one
 // write: the record grows in the order the worker took its steps, and a
 // reader walking the file sees the run the way it happened.
 func appendTrajectory(storeDir, id string, step Step) error {
+	trajectoryWriter.Lock()
+	defer trajectoryWriter.Unlock()
+	order, known := trajectoryWriter.orders[storeDir]
+	if !known {
+		paths, _ := filepath.Glob(filepath.Join(storeDir, "tasks", "*", trajectoryName))
+		for _, path := range paths {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, encoded := range strings.Split(string(raw), "\n") {
+				var line Step
+				if json.Unmarshal([]byte(encoded), &line) == nil && line.RecordedOrder > order {
+					order = line.RecordedOrder
+				}
+			}
+		}
+	}
+	step.RecordedAt = time.Now()
+	step.RecordedOrder = order + 1
 	dir := plandb.TaskDir(storeDir, id)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -205,6 +237,9 @@ func appendTrajectory(storeDir, id string, step Step) error {
 	}
 	defer f.Close()
 	_, err = f.Write(append(line, '\n'))
+	if err == nil {
+		trajectoryWriter.orders[storeDir] = step.RecordedOrder
+	}
 	return err
 }
 

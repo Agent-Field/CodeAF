@@ -45,6 +45,11 @@ func Serve(ctx context.Context, config Config) error {
 	if config.Root == "" {
 		return errors.New("taskdoor: an attempt store folder is required")
 	}
+	root, err := filepath.Abs(config.Root)
+	if err != nil {
+		return err
+	}
+	config.Root = root
 	if err := os.MkdirAll(config.Root, 0o700); err != nil {
 		return err
 	}
@@ -248,7 +253,11 @@ func (d *door) execute(ctx context.Context, a *Attempt, adopt bool) {
 	d.workers.Add(1)
 	go func() {
 		defer d.workers.Done()
-		defer d.store.released(a)
+		defer func() {
+			if ctx.Err() == nil {
+				d.store.released(a)
+			}
+		}()
 		journal := attemptJournal{a: a}
 		var err error
 		if adopt {

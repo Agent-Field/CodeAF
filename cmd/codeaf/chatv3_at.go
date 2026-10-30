@@ -300,6 +300,7 @@ func runServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	defer startServeKeeping(ctx, service)()
+	defer serveTasks(ctx, service)()
 	host := &pair.Host{
 		Service: service,
 		Device:  device,
