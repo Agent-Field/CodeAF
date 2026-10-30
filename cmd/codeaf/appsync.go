@@ -356,6 +356,11 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 		}
 		a.live, a.windowMoved = nil, true
 		a.lastLive = b.now()
+		// Its conversation's open questions go with the window; the new
+		// holder's presence says them now.
+		for _, ask := range live.asks {
+			delete(a.asking, ask.ID)
+		}
 		a.view.State = appwire.StateIdle
 		live.stopping, mine = true, true
 	})

@@ -719,10 +719,14 @@ type appAgent struct {
 	viewOpen bool
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
-	// outputAt is when it last said something to the person, and saidUnread
-	// the unread the app was last told (appunread.go).
-	outputAt   time.Time
-	saidUnread bool
+	// What it has said to the person (appunread.go): repliedAt its last
+	// sealed answer, asking the questions this process put that are still
+	// open, and askedElsewhere the one another process is waiting on; and
+	// saidUnread the unread the app was last told.
+	repliedAt      time.Time
+	asking         map[string]time.Time
+	askedElsewhere time.Time
+	saidUnread     bool
 
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
@@ -1092,7 +1096,7 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
-	a.outputAt = laterOf(a.outputAt, appRowOutputAt(row))
+	a.noteRowLocked(row.ReplyAt, appRowAskedAt(row))
 	defer func() {
 		b.mu.Unlock()
 		b.flushSync(a)

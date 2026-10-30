@@ -805,7 +805,12 @@ the last time they saw it. New output is an answer a turn ended on (a harness
 run's report included), or a question put to the person; tool steps and
 thinking alone never set it. The answer's time is the conversation's own
 `lastReplyAt` on its meta.json, stamped when the turn seals; a question's is
-when it opened, or its presence file's `asked`.
+when it opened, or its presence file's `asked`. A question counts only while
+it is open: once answered, wherever it was answered (its chat, the Inbox,
+another window, the terminal), needs-you clears without turning into unread,
+and output after it still counts. Output another process says (a turn sealed,
+a question put or answered there) is said live with the agent's state, as
+`agents.list` reads it, and a restart reads the agent the same way.
 
 `agents.mark_seen {id}` records "seen up to now" for that agent in the app's
 state file (`seen`), so it survives restarts, and clears `unread`. It only
