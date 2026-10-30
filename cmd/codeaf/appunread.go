@@ -55,14 +55,30 @@ func (a *appAgent) noteRowLocked(replied, asked time.Time) {
 	a.askedElsewhere = asked
 }
 
-// outputLocked is when the agent last said something to the person that still
-// counts: its last answer or a question still open. Callers hold b.mu.
-func (a *appAgent) outputLocked() time.Time {
-	at := laterOf(a.repliedAt, a.askedElsewhere)
-	for _, asked := range a.asking {
+// outputLocked is when the agent id last said something to the person that
+// still counts: its last answer or a question still open. Its record a may be
+// nil: a crew's ask can be said before agents.list has made one. Callers hold
+// b.mu.
+func (b *appBackend) outputLocked(id string, a *appAgent) time.Time {
+	var at time.Time
+	if a != nil {
+		at = laterOf(a.repliedAt, a.askedElsewhere)
+	}
+	for _, asked := range b.openAsks[id] {
 		at = laterOf(at, asked)
 	}
 	return at
+}
+
+// dropAsksLocked forgets the agent's open asks that went with a conversation
+// no longer held here, which says no ask.closed for them. Callers hold b.mu.
+func (b *appBackend) dropAsksLocked(id string, asks []appwire.Ask) {
+	for _, ask := range asks {
+		delete(b.openAsks[id], ask.ID)
+	}
+	if len(b.openAsks[id]) == 0 {
+		delete(b.openAsks, id)
+	}
 }
 
 // laterOf is the later of two instants.
@@ -129,9 +145,8 @@ func (b *appBackend) dressUnread(view *appwire.Agent) {
 	var at time.Time
 	var a *appAgent
 	b.locked(func() {
-		if a = b.agents[view.ID]; a != nil {
-			at = a.outputLocked()
-		}
+		a = b.agents[view.ID]
+		at = b.outputLocked(view.ID, a)
 	})
 	view.Unread = b.unreadAt(view.ID, at)
 	if a != nil {
@@ -147,7 +162,7 @@ func (b *appBackend) restateUnread(id string) {
 	var said bool
 	b.locked(func() {
 		if a = b.agents[id]; a != nil {
-			at, said = a.outputLocked(), a.saidUnread
+			at, said = b.outputLocked(id, a), a.saidUnread
 		}
 	})
 	if a == nil || said == b.unreadAt(id, at) {
@@ -180,26 +195,52 @@ func (b *appBackend) noteTurnOutput(id string) {
 	b.restateUnread(id)
 }
 
-// noteAsk keeps a question this process put while it is open, from the moment
-// it was first put: an ask said again, put aside or restated, keeps its time.
-func (b *appBackend) noteAsk(id, ask string, open bool) {
+// noteAsk keeps a question put to the person while it is open, from when it
+// was first put: its own record's time where it keeps one, so an ask said
+// again after a restart, put aside or restated, keeps its time.
+func (b *appBackend) noteAsk(ask appwire.Ask) {
+	at := b.askedAt(ask)
 	b.locked(func() {
-		a := b.agents[id]
-		if a == nil {
+		if _, known := b.openAsks[ask.Agent][ask.ID]; known {
 			return
 		}
-		if !open {
-			delete(a.asking, ask)
-			return
+		if b.openAsks == nil {
+			b.openAsks = map[string]map[string]time.Time{}
 		}
-		if _, known := a.asking[ask]; !known {
-			if a.asking == nil {
-				a.asking = map[string]time.Time{}
-			}
-			a.asking[ask] = b.now()
+		if b.openAsks[ask.Agent] == nil {
+			b.openAsks[ask.Agent] = map[string]time.Time{}
 		}
+		b.openAsks[ask.Agent][ask.ID] = at
 	})
+	b.restateUnread(ask.Agent)
+}
+
+// noteAskClosed forgets a question once it is answered, taken back or gone
+// with its conversation.
+func (b *appBackend) noteAskClosed(id, ask string) {
+	b.locked(func() { b.dropAsksLocked(id, []appwire.Ask{{ID: ask}}) })
 	b.restateUnread(id)
+}
+
+// askedAt is when an ask was first put: its own record's time (a proposal's,
+// an order run's, a crew decision's raising), and only a question with none,
+// which lives no longer than the conversation this process holds, now.
+func (b *appBackend) askedAt(ask appwire.Ask) time.Time {
+	if !ask.Asked.IsZero() {
+		return ask.Asked
+	}
+	if ask.Subkind == appwire.SubkindCrewDecision && ask.Subject != nil {
+		var run *appCrewRun
+		b.locked(func() { run = b.crewRun })
+		var raised time.Time
+		if run != nil {
+			run.locked(func() { raised = run.packets[ask.Subject.Ref].Raised })
+		}
+		if !raised.IsZero() {
+			return raised
+		}
+	}
+	return b.now()
 }
 
 // noteElsewhere reads what an agent another process holds has said off its
@@ -232,9 +273,9 @@ func (b *appBackend) unreadSaw(data any) {
 	case appwire.TurnDone:
 		b.noteTurnOutput(v.Agent)
 	case appwire.AskOpened:
-		b.noteAsk(v.Ask.Agent, v.Ask.ID, true)
+		b.noteAsk(v.Ask)
 	case appwire.AskClosed:
-		b.noteAsk(v.Agent, v.ID, false)
+		b.noteAskClosed(v.Agent, v.ID)
 	}
 }
 
@@ -242,19 +283,17 @@ func (b *appBackend) unreadSaw(data any) {
 // the mark is written: the agent is not opened or warmed, and one in Closed or
 // the archive stays there.
 func (b *appBackend) MarkSeen(id string) error {
-	a, err := b.find(id)
-	if err != nil {
+	if _, err := b.seenTarget(id); err != nil {
 		return err
 	}
 	b.keepUnreadFrom()
 	var outputAt time.Time
-	b.locked(func() { outputAt = a.outputLocked() })
-	was := b.unreadAt(id, outputAt)
+	b.locked(func() { outputAt = b.outputLocked(id, b.agents[id]) })
 	// SEEN UP TO NOW, and never short of what it has already said: a clock
 	// behind the session's own stamp must not leave the dot it was asked to
 	// clear.
 	at := laterOf(b.now(), outputAt)
-	err = b.state.write(func(f *appStateFile) error {
+	err := b.state.write(func(f *appStateFile) error {
 		if f.Seen == nil {
 			f.Seen = map[string]time.Time{}
 		}
@@ -264,10 +303,34 @@ func (b *appBackend) MarkSeen(id string) error {
 	if err != nil {
 		return appEngineError(err)
 	}
-	if was {
-		b.sayListed(a, id)
-	}
+	// SAID AGAINST WHAT THE APP WAS LAST TOLD, not against what it read
+	// before the write: a turn that ended between the read and the write has
+	// already said unread, and this mark takes it back.
+	b.restateUnread(id)
 	return nil
+}
+
+// seenTarget is the agent a mark is for, found without refreshing what
+// another process says of it: a mark never says an agent's state, so a closed
+// one a crashed terminal left a presence for is never said idle.
+func (b *appBackend) seenTarget(id string) (*appAgent, error) {
+	var a *appAgent
+	b.locked(func() {
+		if have := b.agents[id]; have != nil && have.transcript != "" {
+			a = have
+		}
+	})
+	if a != nil {
+		return a, nil
+	}
+	row, ok := appRowOnDisk(id)
+	if !ok {
+		return nil, appwire.Errorf(appwire.CodeNotFound, "there is no conversation with id %s", id)
+	}
+	b.remember(row)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.agents[id], nil
 }
 
 // sayListed says an agent whose unread changed exactly as agents.list says

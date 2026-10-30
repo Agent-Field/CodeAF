@@ -606,6 +606,11 @@ type appBackend struct {
 	// agent with no seen mark is read up to until the app file keeps one
 	// (appunread.go); under mu.
 	unreadStart time.Time
+	// openAsks are the questions put to the person that are still open, by
+	// agent and ask, with when each was first put (appunread.go); under mu.
+	// They are kept apart from the agents' records, so a crew's ask said
+	// before agents.list has made its agent's record still counts.
+	openAsks map[string]map[string]time.Time
 	// reportReads are the report reads in flight and reportCtx the context they
 	// all run under, cancelled by Close (appprogramreport.go); both under mu.
 	reportReads  int
@@ -720,11 +725,10 @@ type appAgent struct {
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
 	// What it has said to the person (appunread.go): repliedAt its last
-	// sealed answer, asking the questions this process put that are still
-	// open, and askedElsewhere the one another process is waiting on; and
+	// sealed answer and askedElsewhere the question another process is
+	// waiting on (its open asks here are [appBackend.openAsks]); and
 	// saidUnread the unread the app was last told.
 	repliedAt      time.Time
-	asking         map[string]time.Time
 	askedElsewhere time.Time
 	saidUnread     bool
 
@@ -3191,6 +3195,9 @@ func (b *appBackend) release(a *appAgent) {
 		live, a.live, a.viewOpen = a.live, nil, false
 		if live != nil {
 			a.lastLive = b.now()
+			// Its conversation's open questions go with it, unanswered and
+			// unsaid, the way a restart reads them.
+			b.dropAsksLocked(a.view.ID, live.asks)
 		}
 	})
 	if live == nil {
@@ -4649,7 +4656,9 @@ func appTeamDelivery(lines []session.TeamLine) string {
 // rule for its in/M and out/M cells. Anything else sends no price, so the app
 // shows a blank and never $0.
 func appModelFacts(model *appwire.Model, row tui3.Model) {
-	if row.PromptPrice >= 0 && row.CompletionPrice >= 0 && (row.PriceKnown || (row.PromptPrice > 0 && row.CompletionPrice > 0)) {
+	// A MODEL PRICED BY THE REQUEST has no per-million figure: a 0 there
+	// would read as free.
+	if row.RequestPrice <= 0 && row.PromptPrice >= 0 && row.CompletionPrice >= 0 && (row.PriceKnown || (row.PromptPrice > 0 && row.CompletionPrice > 0)) {
 		in, out := row.PromptPrice*1e6, row.CompletionPrice*1e6
 		model.PriceInPerM, model.PriceOutPerM = &in, &out
 	}

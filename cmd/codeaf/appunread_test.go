@@ -4,12 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // unreadDisk is one conversation on disk under an isolated home, read by a
@@ -629,5 +633,158 @@ func TestOutputFromAnotherDoorIsSaidLiveAsAgentsListSaysIt(t *testing.T) {
 	d.start()
 	if d.listed().Unread {
 		t.Fatal("a restart reads a question answered in the terminal unread")
+	}
+}
+
+// proposeTo keeps a crew proposal for the agent in the app layer, the way an
+// unanswered one outlives a quit, and asks it again as a start does.
+func (d *unreadDisk) proposeTo(at time.Time) {
+	d.t.Helper()
+	p := &appwire.Proposal{ID: "p1", Agent: d.id, Name: "helpers", At: at}
+	if err := d.backend.crewLayer().write(func(f *appCrewLayerFile) error {
+		f.Proposals = map[string]*appwire.Proposal{p.ID: p}
+		return nil
+	}); err != nil {
+		d.t.Fatal(err)
+	}
+	d.backend.reopenProposals(&appCrewRun{asks: map[string]appwire.Ask{}})
+}
+
+// A CREW PROPOSAL THE PERSON SAW STAYS READ AFTER A RESTART: asked again at
+// every start, it keeps the time it was proposed, never the start's.
+func TestAProposalThePersonSawStaysReadAfterARestart(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	d.proposeTo(time.Now())
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	d.start()
+	d.listed()
+	d.backend.reopenProposals(&appCrewRun{asks: map[string]appwire.Ask{}})
+	if d.listed().Unread {
+		t.Fatal("a proposal the person saw reads unread again after a restart")
+	}
+}
+
+// A CREW'S ASK SAID BEFORE AGENTS.LIST STILL COUNTS: the crews may start
+// before the list has made the agent's record.
+func TestACrewAskSaidBeforeAgentsListStillCounts(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	d.start()
+	d.proposeTo(time.Now().Add(time.Second))
+	if !d.listed().Unread {
+		t.Fatal("a proposal said before agents.list was dropped")
+	}
+}
+
+// A CREW DECISION KEEPS THE TIME IT WAS RAISED: one raised before the person
+// looked stays read when a start asks it again.
+func TestACrewDecisionKeepsTheTimeItWasRaised(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	raised := time.Now().Add(-time.Minute)
+	run := &appCrewRun{asks: map[string]appwire.Ask{}, packets: map[string]teamstore.Packet{"k1": {ID: "k1", Raised: raised}}}
+	d.backend.locked(func() { d.backend.crewRun = run })
+	ask := appwire.Ask{ID: appCrewAskPrefix + "k1", Agent: d.id, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewDecision, Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewDecision, Ref: "k1"}}
+	d.backend.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	// The fake watch is never started, so no backend may close it.
+	d.backend.locked(func() { d.backend.crewRun = nil })
+	d.start()
+	d.listed()
+	d.backend.locked(func() { d.backend.crewRun = run })
+	d.backend.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	if d.listed().Unread {
+		t.Fatal("a decision the person saw reads unread again after a restart")
+	}
+	d.backend.locked(func() { d.backend.crewRun = nil })
+}
+
+// A TURN THAT ENDS WHILE A MARK IS BEING WRITTEN LEAVES NO STALE DOT: the
+// mark is said against what the app was last told, so the turn's unread:true
+// is taken back and the last word agrees with agents.list.
+func TestATurnEndingMidMarkLeavesNoStaleDot(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	// The clock MarkSeen reads for its mark is where the turn ends: its stamp
+	// is written and its end said between the mark's read and its write.
+	var fired atomic.Bool
+	backend := d.backend
+	backend.now = func() time.Time {
+		caller, _, _, _ := runtime.Caller(1)
+		if strings.HasSuffix(runtime.FuncForPC(caller).Name(), ".MarkSeen") && fired.CompareAndSwap(false, true) {
+			d.replied(time.Now())
+			backend.noteTurnOutput(d.id)
+		}
+		return time.Now().Add(2 * time.Second)
+	}
+	from := appRecorded(d.rec)
+	if err := backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	if !fired.Load() {
+		t.Fatal("the turn never ended inside the mark")
+	}
+	appUnreadSaidFrom(t, d.rec, from, d.id, true, "")
+	unread, said := appLastSaidUnread(d.rec, d.id)
+	if !said || unread || d.listed().Unread {
+		t.Fatalf("last said unread=%v (said %v), listed %v", unread, said, d.listed().Unread)
+	}
+}
+
+// AGENTS.MARK_SEEN NEVER SAYS A PERSON-CLOSED AGENT IDLE, even when a
+// crashed terminal left its presence behind.
+func TestMarkSeenNeverSaysAClosedAgentIdle(t *testing.T) {
+	d := newUnreadDisk(t)
+	if err := d.backend.state.write(func(f *appStateFile) error {
+		f.Closed = map[string]time.Time{d.id: time.Now().Add(-time.Hour)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d.present(session.SessionPresence{State: session.PresenceIdle})
+	d.start()
+	if got := d.listed(); got.State != appwire.StateClosed {
+		t.Fatalf("listed = %s", got.State)
+	}
+	from := appRecorded(d.rec)
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	d.rec.mu.Lock()
+	defer d.rec.mu.Unlock()
+	for _, data := range d.rec.data[from:] {
+		if c, ok := data.(appwire.AgentChanged); ok && c.Agent.ID == d.id && c.Agent.State != appwire.StateClosed {
+			t.Fatalf("agents.mark_seen said the closed agent %s", c.Agent.State)
+		}
+	}
+}
+
+// CLOSING AN AGENT WITH AN OPEN QUESTION TAKES THE QUESTION WITH IT: unread is
+// the same live and after a restart.
+func TestClosingAnAgentWithAnOpenQuestionClearsItsUnread(t *testing.T) {
+	backend, rec, conv, agent, _ := askingLive(t)
+	raiseApproval(t, backend, rec, conv, agent.ID, 6)
+	from := appRecorded(rec)
+	if err := backend.CloseAgent(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	appUnreadSaidFrom(t, rec, from, agent.ID, false, appwire.StateClosed)
+	if unread, _ := appLastSaidUnread(rec, agent.ID); unread {
+		t.Fatal("the closed agent was last said unread")
+	}
+	if listedUnread(t, backend, agent.ID) || restartedUnread(t, backend, agent.ID) {
+		t.Fatal("a closed agent's unanswered question still reads unread")
 	}
 }

@@ -403,6 +403,10 @@ type Ask struct {
 	// exact command and folder, its one check, the proposed policy, and the
 	// fixed timings it will run under.
 	KeepRunning *KeepRunning `json:"keep_running,omitempty"`
+	// Asked is when the question was first put, by its own record (a
+	// proposal's, a run's), so an ask said again after a restart keeps its
+	// time for unread. It is the engine's own and never on the wire.
+	Asked time.Time `json:"-"`
 }
 
 // AskSubject is the thing an ask is about: its kind and the id the app knows

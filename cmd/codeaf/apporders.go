@@ -558,6 +558,7 @@ func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
 		ID: appOrderAskID(run.ID), Agent: view.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindOrderRun,
 		Title: "Run " + view.Title + " now?", Detail: view.Does,
 		Subject: &appwire.AskSubject{Kind: appwire.SubjectAutomation, Ref: view.ID},
+		Asked:   run.Due,
 		Options: []appwire.AskOption{
 			{ID: appwire.VerdictGo, Label: "Go"},
 			{ID: appwire.VerdictSkip, Label: "Skip this one"},

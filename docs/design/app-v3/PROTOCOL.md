@@ -389,7 +389,8 @@ seconds), `price_in_per_m` and `price_out_per_m` (US dollars per million input
 and output tokens), `context_length` (tokens) and `arena_elo` (the best Design
 Arena Elo the catalog carries). Every one of these facts is absent when nobody
 published it. A price is never sent as `0` for an unknown price; a present `0`
-is a model the catalog says is free.
+is a model the catalog says is free. A model priced by the request has no
+per-million figure, so both prices are absent.
 
 ## orders methods
 
@@ -813,12 +814,17 @@ the last time they saw it. New output is an answer a turn ended on (a harness
 run's report included), or a question put to the person; tool steps and
 thinking alone never set it. The answer's time is the conversation's own
 `lastReplyAt` on its meta.json, stamped when the turn seals; a question's is
-when it opened, or its presence file's `asked`. A question counts only while
-it is open: once answered, wherever it was answered (its chat, the Inbox,
-another window, the terminal), needs-you clears without turning into unread,
-and output after it still counts. Output another process says (a turn sealed,
-a question put or answered there) is said live with the agent's state, as
-`agents.list` reads it, and a restart reads the agent the same way.
+its own record's: a crew proposal's time, a crew decision's raising, an order
+run's slot, or its presence file's `asked`, so a question asked again after a
+restart keeps its time. A question counts only while it is open: once
+answered, wherever it was answered (its chat, the Inbox, another window, the
+terminal), or gone with an agent that was closed, needs-you clears without
+turning into unread, and output after it still counts. A copied conversation
+starts read. Output another process says (a turn sealed, a question put or
+answered there) is said live for an agent this engine last saw working or
+waiting in that process, with its state as `agents.list` reads it; one it last
+saw idle is said at the next `agents.list`. A restart reads the agent the same
+way.
 
 `agents.mark_seen {id}` records "seen up to now" for that agent in the app's
 state file (`seen`), so it survives restarts, and clears `unread`. It only
@@ -826,7 +832,9 @@ writes the mark: it never opens or warms the agent, and a Closed or archived
 agent stays where it is. An unknown id answers `not_found`. The engine cannot
 know which agent is on screen, so a window calls it when it shows an agent and
 again when output lands while it is shown. `agent.changed` is sent when
-`unread` turns true and when `agents.mark_seen` clears it. An agent with no
+`unread` turns true and when it turns false, `agents.mark_seen` included,
+against what the window was last told; a mark never says the agent's state
+otherwise. An agent with no
 mark is read up to the moment the engine first kept unread (`unread_from` in
 the state file), so on upgrade every agent starts read, and a new agent starts
 read because it has said nothing. Engines that serve it announce
