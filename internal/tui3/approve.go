@@ -34,6 +34,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // PendingDevice is a request to join as the person sees it. Code is what the
@@ -93,9 +94,20 @@ const (
 )
 
 // linkShape is what link pairing is typed as (contract section 2): a short
-// code with an optional key, or a codeaf URL. The six-digit code of the
-// older pairing never matches.
-var linkShape = regexp.MustCompile(`(?i)^(https?://)?(codeaf\.agentfield\.ai/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^(https?://)?(codeaf\.agentfield\.ai|codeaf\.link)/p/.+$`)
+// code with an optional key, or a codeaf URL from any channel's hosted origin
+// (plus the retired host). The six-digit code of the older pairing never matches.
+var linkShape = buildLinkShape()
+
+func buildLinkShape() *regexp.Regexp {
+	hosts := syncsetup.HostedLinkHosts()
+	quoted := make([]string, 0, len(hosts)+1)
+	for _, h := range hosts {
+		quoted = append(quoted, regexp.QuoteMeta(h))
+	}
+	live := strings.Join(quoted, "|")
+	all := strings.Join(append(quoted, regexp.QuoteMeta("codeaf.link")), "|")
+	return regexp.MustCompile(`(?i)^(https?://)?((?:` + live + `)/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^(https?://)?(?:` + all + `)/p/.+$`)
+}
 
 // isPairLink is the one recogniser for a link pasted or typed where no pairing
 // was asked for: it carries the key, or it is a codeaf URL (the retired host too, so it is answered, not typed into a chat). A bare

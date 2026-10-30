@@ -49,6 +49,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = runPrune(args[1:], stdin, stdout)
 	case "service":
 		err = runService(args[1:], stdout)
+	case "relay-url":
+		err = runRelayURL(args[1:], stdout)
 	case "promotion-plan":
 		err = runPromotionPlan(args[1:], stdout)
 	case "promotion-message":
@@ -93,9 +95,8 @@ func usage(w io.Writer) {
       Print stable, rc, dev, staging, or other.
   prune --channel dev|staging
       Read <tag><tab><RFC3339 createdAt> lines and print expired tags.
-  service [--url <sync service>]
-      Fail unless the live sync service (the hosted one by default) promises
-      every capability this build needs.
+  service [--url <sync service>] | relay-url --channel stable|rc|staging|dev
+      Check a live sync service's capabilities, or print a channel's hosted URL.
   promotion-plan|promotion-decision|promotion-recheck|promotion-release|promotion-published|promotion-jobs|promotion-push-error|promotion-message
       Plan, check, and report the staging promotion. See docs/rules/promotion.md.
 `)

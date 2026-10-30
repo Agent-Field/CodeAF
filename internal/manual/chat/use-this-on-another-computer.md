@@ -290,12 +290,12 @@ Your chats live on your own computer first. They are also copied, sealed,
 to a relay, so your other computers can open them. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
-- **Unset** uses codeaf's hosted relay (`https://codeaf.agentfield.ai/fabric`) when this build has one, and says so once, in one
+- **Unset** uses this build's channel relay when it has one — `https://codeaf.agentfield.ai/fabric` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev` on staging builds, and `https://caf-fabric-dev.instrument-santosh.workers.dev` on dev builds and local builds from source — and says so once, in one
   line, the first time your chats are copied: `Your chats sync end-to-end encrypted through
-  codeaf's hosted relay, which only ever sees ciphertext; turn that off with
-  CODEAF_SYNC_URL=off, or use your own relay with CODEAF_SYNC_URL=<url>.` A computer you
-  paired with another one uses the relay that pairing saved instead. A build with no
-  hosted relay has no default, and nothing is copied until you name a relay.
+  codeaf's fabric (<address>), a sync service that only ever sees ciphertext; turn that off with
+  CODEAF_SYNC_URL=off, or use your own with CODEAF_SYNC_URL=<url>.` Channels do not sync with each
+  other. A computer you paired with another one uses the relay that pairing saved instead. A build
+  with no hosted relay has no default, and nothing is copied until you name a relay.
 - **`CODEAF_SYNC_URL=off`** turns the copying off. Nothing leaves the computer, and `codeaf pair`
   says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
 - **`CODEAF_SYNC_URL=https://relay.example.com`** is your own relay. You run it with
@@ -317,7 +317,7 @@ A relay is a small service that passes bytes between the two computers. Your cha
 
 What the relay does see is short: the number at the start of the code, the time, how long each message is, and the network address of each computer. It never sees the six digits.
 
-Pairing goes through the relay this computer syncs through. The first that answers wins: the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved, else codeaf's hosted relay (`https://codeaf.agentfield.ai/fabric`) when this build has one. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
+Pairing goes through the relay this computer syncs through. The first that answers wins: the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved, else this channel's hosted relay (`https://codeaf.agentfield.ai/fabric` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev` on staging builds, or `https://caf-fabric-dev.instrument-santosh.workers.dev` on dev and local source builds) when this build has one. Channels do not sync with each other, so both computers must run the same channel or point `CODEAF_SYNC_URL` at the same relay. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
 
 ```
 no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>
