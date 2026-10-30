@@ -256,11 +256,7 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 	}
 	key = filepath.Clean(key)
 	now := time.Now()
-	return teams.UpdateOpen(profileDir, func(f *teams.File) error {
-		id := recordedRoomIn(f, it)
-		if id == "" {
-			id = itemTeamIn(f, name, now)
-		}
+	join := func(f *teams.File, id string) error {
 		if err := f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now}); err != nil {
 			return err
 		}
@@ -271,6 +267,36 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 			_ = f.SetManager(id, key)
 		}
 		return nil
+	}
+	// A RECORDED ROOM THAT IS NOT OPEN IS STILL THE JOB'S ROOM. A live job's
+	// room its end closed opens again first; an ended job's Talk joins it
+	// closed, as a stage does ([stageJoinTeam]), and never makes a new room
+	// that nothing would close.
+	recorded := jobRoomRecorded(it)
+	if recorded != "" && !jobOver(it) {
+		_ = reopenJobRoom(profileDir, it)
+	}
+	notOpen := false
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
+		id := recordedRoomIn(f, it)
+		_, here := f.Team(recorded)
+		if notOpen = id == "" && recorded != "" && !here; notOpen {
+			return nil
+		}
+		if id == "" {
+			id = itemTeamIn(f, name, now)
+		}
+		return join(f, id)
+	})
+	if err != nil || !notOpen {
+		return err
+	}
+	return teams.Update(profileDir, func(f *teams.File) error {
+		if i := teams.Index(f.Teams, recorded); i >= 0 && !f.Teams[i].Root && !factoryIsParent(f, recorded) {
+			f.Teams[i].FactoryManaged = true
+			return join(f, recorded)
+		}
+		return join(f, itemTeamIn(f, name, now))
 	})
 }
 

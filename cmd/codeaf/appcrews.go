@@ -401,6 +401,25 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 		}
 	}
 
+	// A CREW CLOSED BEFORE THE WATCH STARTED is followed the same way from
+	// its first look: the closed and archived lists hold it, so archiving or
+	// deleting it from another door is said. It is kept by its revision only
+	// and read when that moves; a room its job's end closed is not kept.
+	if first {
+		if revs, err := teamstore.ClosedCrewRevisions(b.crewProfile()); err == nil {
+			run.locked(func() {
+				if run.closedAt == nil {
+					run.closedAt = map[string]int64{}
+				}
+				for id, rev := range revs {
+					if _, held := run.prints[id]; !held {
+						run.prints[id], run.closedAt[id] = "", rev
+					}
+				}
+			})
+		}
+	}
+
 	// AN AGENT WHOSE CREWS CHANGED IS SAID AGAIN, so its row's crews are
 	// never older than the crews' own.
 	for _, id := range moved {

@@ -102,7 +102,7 @@ func reindexIn(ctx context.Context, tx *sql.Tx) error {
 		rows = append(rows, r)
 		members[r.team] = append(members[r.team], r.m)
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return err
 	}
 	for _, r := range rows {
@@ -133,7 +133,7 @@ func reindexIn(ctx context.Context, tx *sql.Tx) error {
 			changed = append(changed, found{id, founder, c})
 		}
 	}
-	if err := teams.Close(); err != nil {
+	if err := errors.Join(teams.Err(), teams.Close()); err != nil {
 		return err
 	}
 	for _, f := range changed {
@@ -152,8 +152,27 @@ func LoadTeamsOf(profileDir, conv string, former bool) (*File, error) {
 		query = "SELECT DISTINCT team_id FROM members WHERE conv = ?"
 	}
 	return loadIndexed(profileDir, conv, query, func(q querier, ctx context.Context) ([]string, error) {
-		return scanMembers(ctx, q, conv, former)
+		return scanMembers(ctx, q, former, func(m Member) bool { return memberConv(m) == conv })
 	})
+}
+
+// teamsNaming is every team, open or closed, with a membership now or before
+// of the conversation whose transcript is at transcript: named by the folder
+// of its file ([memberConv]), or keyed by that transcript or the file it
+// resolves to. A key spelled through a link to the folder its file is in is
+// found as reading every team found it.
+func teamsNaming(profileDir, transcript string) (*File, error) {
+	conv := ConversationName(transcript)
+	keys := distinct([]string{filepath.Clean(transcript), ConversationIdentity(transcript)})
+	marks, args := placeholders(keys)
+	query := "SELECT team_id FROM members WHERE conv = ? UNION SELECT team_id FROM members WHERE key IN (" + marks + ")"
+	keyed := map[string]bool{}
+	for _, k := range keys {
+		keyed[k] = true
+	}
+	return loadIndexed(profileDir, conv, query, func(q querier, ctx context.Context) ([]string, error) {
+		return scanMembers(ctx, q, true, func(m Member) bool { return memberConv(m) == conv || keyed[m.Key] })
+	}, args...)
 }
 
 // LoadFoundedBy is every team made under conversation conv, in the store's
@@ -166,7 +185,7 @@ func LoadFoundedBy(profileDir, conv string) (*File, error) {
 
 // loadIndexed is [LoadTeams] of the ids query answers for conv, or, on a
 // store whose names an earlier build left behind, of the ids scan finds.
-func loadIndexed(profileDir, conv, query string, scan func(querier, context.Context) ([]string, error)) (*File, error) {
+func loadIndexed(profileDir, conv, query string, scan func(querier, context.Context) ([]string, error), more ...any) (*File, error) {
 	out := &File{Version: Version, localIdentities: true}
 	if strings.TrimSpace(conv) == "" {
 		return out, nil
@@ -190,7 +209,7 @@ func loadIndexed(profileDir, conv, query string, scan func(querier, context.Cont
 	var ids []string
 	if rev == indexed {
 		r := &pageReader{ctx: ctx, q: tx, path: path}
-		ids, err = r.strings(query, conv)
+		ids, err = r.strings(query, append([]any{conv}, more...)...)
 	} else {
 		ids, err = scan(tx, ctx)
 	}
@@ -204,7 +223,7 @@ func loadIndexed(profileDir, conv, query string, scan func(querier, context.Cont
 	return LoadTeams(profileDir, ids...)
 }
 
-func scanMembers(ctx context.Context, q querier, conv string, former bool) ([]string, error) {
+func scanMembers(ctx context.Context, q querier, former bool, match func(Member) bool) ([]string, error) {
 	rows, err := q.QueryContext(ctx, "SELECT team_id, former, doc FROM members")
 	if err != nil {
 		return nil, err
@@ -219,7 +238,7 @@ func scanMembers(ctx context.Context, q querier, conv string, former bool) ([]st
 			return nil, err
 		}
 		var m Member
-		if (was && !former) || seen[team] || json.Unmarshal([]byte(doc), &m) != nil || memberConv(m) != conv {
+		if (was && !former) || seen[team] || json.Unmarshal([]byte(doc), &m) != nil || !match(m) {
 			continue
 		}
 		seen[team] = true
@@ -245,7 +264,7 @@ func scanFounders(ctx context.Context, q querier, conv string) ([]string, error)
 			members[team] = append(members[team], m)
 		}
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, err
 	}
 	teams, err := q.QueryContext(ctx, "SELECT id, doc FROM teams ORDER BY pos")
@@ -274,10 +293,11 @@ func scanFounders(ctx context.Context, q querier, conv string) ([]string, error)
 // InspectConversation answers, under the writer's lock as [Inspect] does,
 // whether any team, open or closed, names the conversation whose transcript
 // is at transcript ([File.ReferencedConversations]), and runs fn with that.
-// Only the teams the store's index finds for that conversation are read.
+// Only the teams the store's index finds for that conversation are read
+// ([teamsNaming]).
 func InspectConversation(profileDir, transcript string, fn func(referenced bool) error) error {
 	return strictlyLockedAt(lockPath(profileDir), lockWait, func() error {
-		f, err := LoadTeamsOf(profileDir, ConversationName(transcript), true)
+		f, err := teamsNaming(profileDir, transcript)
 		if err != nil {
 			return err
 		}
@@ -288,7 +308,7 @@ func InspectConversation(profileDir, transcript string, fn func(referenced bool)
 // ConversationReferenced is [InspectConversation]'s answer without the lock:
 // whether any team names the conversation whose transcript is at transcript.
 func ConversationReferenced(profileDir, transcript string) (bool, error) {
-	f, err := LoadTeamsOf(profileDir, ConversationName(transcript), true)
+	f, err := teamsNaming(profileDir, transcript)
 	if err != nil {
 		return false, err
 	}

@@ -266,7 +266,7 @@ func (r *pageReader) teams(ids []string) ([]Team, error) {
 		t.ID, t.Members, t.FormerMembers = id, nil, nil
 		byID[id] = t
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, r.fail(err)
 	}
 	for _, id := range ids {

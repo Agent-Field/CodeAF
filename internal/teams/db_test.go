@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -582,4 +583,88 @@ func TestUpdateOpenKeepsIndependenceInClosedCrews(t *testing.T) {
 			t.Fatalf("x is in the reopened C with home=%v independent=%v, want independent", m.Home, m.Independent)
 		}
 	})
+}
+
+// A STORE PUT BACK TO AN OLDER COPY IS READ AS IT IS, NOT AS IT WAS HELD. A
+// backup or sync tool puts back an older teams.db (same store id, a lower
+// revision) and another process writes it forward to a revision this one
+// already holds: the snapshot held from before is not that store. A copy that
+// replaces the file is a different file; one written over it in place is seen
+// by its revision going back.
+func TestARestoredOlderCopyIsNotServedFromTheHeldSnapshot(t *testing.T) {
+	forward := func(t *testing.T, dir string) {
+		t.Helper()
+		child := exec.Command(os.Args[0], "-test.run=^TestRenameHelperProcess$", "-test.count=1")
+		child.Env = append(os.Environ(), "TEAMS_TEST_RENAME_DIR="+dir)
+		if out, err := child.CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+	}
+	// rig is a store at "one", copied, then written to "old-two" and held.
+	rig := func(t *testing.T) (dir string, copied []byte) {
+		t.Helper()
+		dir = t.TempDir()
+		must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Name: "one"}}))
+		Close()
+		copied, err := os.ReadFile(Path(dir))
+		must(t, err)
+		must(t, Update(dir, func(f *File) error { f.Teams[0].Name = "old-two"; return nil }))
+		if f := mustLoad(t, dir); f.Teams[0].Name != "old-two" {
+			t.Fatal(f.Teams[0].Name)
+		}
+		Close()
+		return dir, copied
+	}
+
+	t.Run("a copy that replaces the file", func(t *testing.T) {
+		dir, copied := rig(t)
+		spare := Path(dir) + ".restore"
+		must(t, os.WriteFile(spare, copied, 0o600))
+		must(t, os.Rename(spare, Path(dir)))
+		forward(t, dir)
+		if f := mustLoad(t, dir); f.Teams[0].Name != "after" {
+			t.Fatalf("read %q where the store holds %q", f.Teams[0].Name, "after")
+		}
+	})
+
+	t.Run("a copy written over it in place", func(t *testing.T) {
+		dir, copied := rig(t)
+		must(t, os.WriteFile(Path(dir), copied, 0o600))
+		if f := mustLoad(t, dir); f.Teams[0].Name != "one" {
+			t.Fatalf("read %q where the store holds %q", f.Teams[0].Name, "one")
+		}
+		Close()
+		forward(t, dir)
+		if f := mustLoad(t, dir); f.Teams[0].Name != "after" {
+			t.Fatalf("read %q where the store holds %q", f.Teams[0].Name, "after")
+		}
+	})
+}
+
+// A READ CUT SHORT IS AN ERROR, NOT A SHORTER STORE. A damaged page part way
+// through a scan ends it early; the scan's error is the store's, so a load
+// answers unreadable instead of the teams before the damage as if they were
+// all of them.
+func TestAScanCutShortIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	must(t, Save(dir, manyTeams(3000)))
+	h, err := acquire(Path(dir), false)
+	must(t, err)
+	var page, size int64
+	err = h.db.QueryRow("SELECT MAX(pageno) FROM dbstat WHERE name = 'teams_order'").Scan(&page)
+	if err == nil {
+		err = h.db.QueryRow("PRAGMA page_size").Scan(&size)
+	}
+	h.release()
+	must(t, err)
+	Close()
+	junk := bytes.Repeat([]byte{0xA5}, int(size))
+	f, err := os.OpenFile(Path(dir), os.O_RDWR, 0)
+	must(t, err)
+	_, err = f.WriteAt(junk, (page-1)*size)
+	must(t, errors.Join(err, f.Close()))
+	dropHeld(Path(dir))
+	if got, err := Load(dir); err == nil {
+		t.Fatalf("a scan cut short loaded %d of 3000 teams with no error", len(got.Teams))
+	}
 }

@@ -135,11 +135,12 @@ const indexes = `
 CREATE INDEX IF NOT EXISTS teams_root ON teams(root) WHERE root = 1;
 CREATE INDEX IF NOT EXISTS teams_open ON teams(closed, pos);
 CREATE INDEX IF NOT EXISTS members_conv ON members(conv, former);
+CREATE INDEX IF NOT EXISTS members_key ON members(key, former);
 CREATE INDEX IF NOT EXISTS teams_founder ON teams(founder);
 `
 
 // indexNames are [indexes]' names, to see whether a store has them all.
-var indexNames = []string{"teams_root", "teams_open", "members_conv", "teams_founder"}
+var indexNames = []string{"teams_root", "teams_open", "members_conv", "members_key", "teams_founder"}
 
 // addedColumns are the columns an earlier build of this schema made without,
 // each with what adds it. Every one has a default, so that build still writes.
@@ -167,6 +168,10 @@ var handles struct {
 	sync.Mutex
 	open map[string]*handle
 	tick uint64
+	// seen is the file each path's last handle opened. A handle that opens
+	// another file there (a copy put in its place) drops the snapshots held
+	// of the one before ([dropHeld]): its revisions are not this file's.
+	seen map[string]os.FileInfo
 }
 
 // acquire is the database at path, opened or shared. A file that is not there
@@ -213,11 +218,15 @@ func acquire(path string, create bool) (*handle, error) {
 		return h, nil
 	}
 	if handles.open == nil {
-		handles.open = map[string]*handle{}
+		handles.open, handles.seen = map[string]*handle{}, map[string]os.FileInfo{}
 	}
 	if old := handles.open[path]; old != nil {
 		retire(old)
 	}
+	if was := handles.seen[path]; was != nil && !os.SameFile(was, info) {
+		dropHeld(path)
+	}
+	handles.seen[path] = info
 	handles.tick++
 	h := &handle{db: db, path: path, file: info, refs: 1, used: handles.tick}
 	handles.open[path] = h
@@ -681,6 +690,15 @@ func hold(path string, s *snapshot) {
 	}
 }
 
+// dropHeld forgets the snapshots held of path, both of every team and of the
+// open ones: the store there is not the one they were read from.
+func dropHeld(path string) {
+	held.Lock()
+	defer held.Unlock()
+	delete(held.by, heldKey(path, false))
+	delete(held.by, heldKey(path, true))
+}
+
 // querier is a transaction or anything else that answers queries.
 type querier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -742,6 +760,13 @@ func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, 
 	if other != nil && other.store != store {
 		other = nil
 	}
+	// A revision behind one held is the store put back to an older copy in
+	// place: what is held is not its history, and a write may carry it past
+	// the held revision with other rows.
+	if held != nil && rev < held.rev || other != nil && rev < other.rev {
+		dropHeld(path)
+		held, other = nil, nil
+	}
 	if held != nil && held.rev == rev {
 		return held, nil
 	}
@@ -772,7 +797,7 @@ func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, 
 		}
 		s.rows[id] = r
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return nil, unreadable(err, path)
 	}
 	if open {
@@ -889,7 +914,7 @@ func decodeTeams(ctx context.Context, q querier, path string, s *snapshot, ids [
 		t.ID, t.Members, t.FormerMembers = id, nil, nil
 		s.teams[r.at], r.doc = t, doc
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return unreadable(err, path)
 	}
 	return readMembers(ctx, q, path, s, "SELECT team_id, former, key, conv, doc FROM members WHERE team_id IN ("+marks+") ORDER BY team_id, former, pos", args...)
