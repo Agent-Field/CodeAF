@@ -30,6 +30,24 @@
 //   - The Traffic log is append-only JSON lines, one file per team, rotated
 //     once past a few megabytes.
 //
+// THE SYNC LAWS. Portable identities name cells, never another computer's
+// paths. A team's deletion beats a stale copy. Merge repairs parents, handles,
+// managers and reporting homes deterministically; teams sort by Made then id.
+// Unpaired computers retain their existing file order and encodings.
+//
+// THE LOCAL LOG HOLDS ONLY LOCAL LINES. AppendTraffic clears Origin. Received
+// windows replace elsewhere.jsonl atomically; that mirror is display-only.
+// ReadTraffic never reads it. ReadHistory is the display reader, and a display
+// cursor remains a local line id. Old builds cannot execute mirror history.
+//
+// THE TRAFFIC BOUNDS. TrafficSyncLines, TrafficSyncBytes, TrafficSyncTextBytes,
+// TrafficSyncDeviceBytes and TrafficSyncEvery own the transport limits. Only
+// each writing device publishes its bounded local tail across rotation. Eviction trims shared
+// windows, never local history; deleted teams remove their writers' values on
+// the next round. Mirrors filter writers through the locally available paired
+// roster; without one, they include every other writer without a network read.
+// Sharing failures are logged once and retried without blocking other state.
+//
 // WHAT THIS PACKAGE DOES NOT KNOW. It imports neither the interface nor the
 // session. A team's colour is kept here as data (a hue angle and a tier) with
 // the pure arithmetic that spaces colours apart; which hues a palette reserves
