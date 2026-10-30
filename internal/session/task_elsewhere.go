@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // TaskComputerControlWithin bounds best-effort stop and acknowledgement calls.
@@ -164,12 +165,19 @@ func (a *Agent) resolveTaskComputer(ctx context.Context, named string, stand tas
 
 // StartTaskOn is the shared session entry for a person's explicit placement.
 // Model proposals reach the same resolver through their normal admission road.
-func (a *Agent) StartTaskOn(ctx context.Context, brief string, solo bool, computer string) (uint64, string, string, error) {
+// The optional effort belongs to this task and leaves the standing crew alone.
+func (a *Agent) StartTaskOn(ctx context.Context, brief string, solo bool, computer string, namedEffort ...string) (uint64, string, string, error) {
+	wish := crewWishOf(ctx)
+	if len(namedEffort) > 0 {
+		wish.effort, _ = crewroute.ParseEffort(namedEffort[0])
+		ctx = withCrewWish(ctx, wish)
+	}
 	stand := a.taskGroundOrStandingIn(taskSpec{title: taskPersonTitle(brief), request: brief, brief: brief, acceptance: taskPersonAcceptance})
 	p, err := a.resolveTaskComputer(ctx, computer, stand, "", false)
 	if err != nil {
 		return 0, "", "", err
 	}
+	p.effort = string(wish.effort)
 	var id uint64
 	var title, note string
 	if p.computer != nil {
@@ -179,6 +187,10 @@ func (a *Agent) StartTaskOn(ctx context.Context, brief string, solo bool, comput
 	}
 	return id, title, withReport(note, p.sentence), err
 }
+
+// TaskComputersSupported lets a connected window omit controls that this
+// conversation cannot honor, even though the agent has the method shapes.
+func (a *Agent) TaskComputersSupported() bool { return a.config.TaskComputers != nil }
 
 var errRemotePlacementBusy = errors.New("the work already underway uses another computer; let it finish before starting this task")
 

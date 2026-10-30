@@ -863,6 +863,9 @@ type TaskAnswer struct {
 	Approved bool
 	Redirect string
 	Model    string
+	// Computer is an explicit card choice. Empty preserves the proposal and
+	// default; the local alias overrides both without naming another device.
+	Computer string `json:",omitempty"`
 }
 
 // ── the phases of a running node ────────────────────────────────────────────
