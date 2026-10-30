@@ -3492,3 +3492,17 @@ conversation's own folder, with file reservations rather than a separate branch.
 If the request explicitly names a plain folder outside a repository, that exact
 folder is used. The resolved place is a fact on the task, not guessed from your
 terminal's current folder after the task has started.
+
+## Which agent ran this command — CODEAF_AGENT_DID, the agent's identity, and a task's `#w` suffix
+
+Every conversation has its own identity, a DID such as `did:key:z7QE…`. It is
+made when the conversation opens, saved with it by the end of its first turn,
+and stays the same after a restart.
+A copied or branched conversation gets a new one.
+
+Each command the conversation runs sees it as `CODEAF_AGENT_DID`, so a tool can
+record which agent acted. A task's commands see the conversation's DID followed
+by `#w` and the task's number, for example `did:key:z7QE…#w3`. The desktop app
+reads the same DID in the agent list as `did`.
+
+The DID is a name, not a credential: no key is kept and nothing is signed with it.

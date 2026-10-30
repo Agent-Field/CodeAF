@@ -171,9 +171,14 @@ type Agent struct {
 	Retryable    bool   `json:"retryable"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Workspace    string `json:"workspace"`
-	Model        string `json:"model,omitempty"`
+	// DID is the agent's identity: what its commands carry as
+	// $CODEAF_AGENT_DID and a worker's `<did>#w<n>` hangs from. It never
+	// changes once written, and is absent for a conversation that has not
+	// taken a turn since agents were given one.
+	DID       string `json:"did,omitempty"`
+	Title     string `json:"title"`
+	Workspace string `json:"workspace"`
+	Model     string `json:"model,omitempty"`
 	// Effort is the conversation override: low, medium, high, xhigh or max.
 	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`

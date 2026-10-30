@@ -2607,6 +2607,13 @@ type Config struct {
 	// worker.
 	rootSession string
 
+	// agentDID is the conversation's agent DID and actorDID who this agent's
+	// commands act as: the same DID in a conversation, `<did>#w<task id>` in a
+	// task worker (agent_identity.go). A child agent inherits both from the
+	// agent that built it ([Agent.newChildAgent]); no surface sets them.
+	agentDID string
+	actorDID string
+
 	// automationID is the id of the automation whose run this agent IS
 	// (automation_run.go), and empty in every conversation and every ordinary
 	// task. It rides on the config for [Config.taskID]'s reason: the money a run
