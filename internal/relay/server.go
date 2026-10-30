@@ -19,6 +19,7 @@ package relay
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"net"
@@ -57,10 +58,15 @@ type Server struct {
 	// no payload in this package to hand it.
 	Note func(name, what string)
 
-	mu    sync.Mutex
-	live  map[string]*registration
-	dials map[string]*bucket
-	regs  map[string]*bucket
+	// probeWithin overrides [ProbeWithin] in tests so a silent older carrier
+	// can be replaced without waiting five real seconds.
+	probeWithin time.Duration
+
+	mu       sync.Mutex
+	live     map[string]*registration
+	claiming map[string]bool
+	dials    map[string]*bucket
+	regs     map[string]*bucket
 }
 
 // registration is one machine's held carrier.
@@ -79,6 +85,13 @@ func (s *Server) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+func (s *Server) probeTimeout() time.Duration {
+	if s.probeWithin > 0 {
+		return s.probeWithin
+	}
+	return ProbeWithin
 }
 
 func (s *Server) note(name, what string) {
@@ -145,7 +158,7 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := takeOver(w, r)
+	conn, err := takeOver(w, r, messageLimit)
 	if err != nil {
 		return
 	}
@@ -153,7 +166,7 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 
 	// RULE TWO: possession is proved. A machine that cannot answer the
 	// challenge never reaches the table.
-	_ = conn.SetDeadline(s.now().Add(HandshakeWithin))
+	_ = conn.SetDeadline(time.Now().Add(HandshakeWithin))
 	if err := challengeMachine(conn, name, key); err != nil {
 		_ = writeVerdict(conn, err.Error())
 		s.note(name, "registration refused")
@@ -164,17 +177,35 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 	carrier := newCarrier(conn, false)
 	reg := &registration{name: name, key: key, carrier: carrier, since: s.now()}
 
-	// RULE THREE: a live registration is never taken over. Whoever is
-	// connected under this name stays connected under it.
+	// RULE THREE: a live registration is never taken over. A different key is
+	// refused outright even if the current socket is stalled; the SAME key may
+	// probe the older socket and replace it only when it has gone silent.
 	s.mu.Lock()
 	if s.live == nil {
 		s.live = map[string]*registration{}
 	}
-	if _, taken := s.live[name]; taken {
+	if s.claiming == nil {
+		s.claiming = map[string]bool{}
+	}
+	older := s.live[name]
+	if s.claiming[name] || (older != nil && subtle.ConstantTimeCompare(older.key, key) != 1) {
 		s.mu.Unlock()
 		_ = writeVerdict(conn, "that machine is already connected to the relay under this name")
 		s.note(name, "registration refused, name already connected")
 		return
+	}
+	if older != nil {
+		s.claiming[name] = true
+		s.mu.Unlock()
+		alive := older.carrier.probe(s.probeTimeout())
+		s.mu.Lock()
+		delete(s.claiming, name)
+		if alive {
+			s.mu.Unlock()
+			_ = writeVerdict(conn, "that machine is already connected to the relay under this name")
+			s.note(name, "registration refused, name already connected")
+			return
+		}
 	}
 	s.live[name] = reg
 	s.mu.Unlock()
@@ -192,6 +223,9 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 	if err := writeVerdict(conn, ""); err != nil {
 		return
 	}
+	if older != nil {
+		older.carrier.shutdown(nil)
+	}
 	s.note(name, "connected")
 
 	// THE CARRIER IS ONLY ALIVE WHILE IT IS SAYING SOMETHING. The relay pings a
@@ -199,8 +233,8 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 	// pushed out by an ARRIVING frame, so a connection that has stopped
 	// answering — a NAT that forgot the mapping, a machine that was unplugged —
 	// ends at [IdleAfter] instead of being held for ever.
-	carrier.onFrame = func() { _ = conn.SetReadDeadline(s.now().Add(IdleAfter)) }
-	_ = conn.SetReadDeadline(s.now().Add(IdleAfter))
+	carrier.onFrame = func() { _ = conn.SetReadDeadline(time.Now().Add(IdleAfter)) }
+	_ = conn.SetReadDeadline(time.Now().Add(IdleAfter))
 	go carrier.keepAlive()
 	carrier.pump()
 }
@@ -241,7 +275,7 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 	}
 	defer func() { _ = stream.Close() }()
 
-	conn, err := takeOver(w, r)
+	conn, err := takeOver(w, r, MaxPayload)
 	if err != nil {
 		return
 	}
@@ -300,7 +334,7 @@ func wantsWebSocket(r *http.Request) bool {
 // takeOver answers the upgrade and hands back the connection the carrier
 // reads, whichever of the two the client asked for. On failure the answer has
 // already been written.
-func takeOver(w http.ResponseWriter, r *http.Request) (net.Conn, error) {
+func takeOver(w http.ResponseWriter, r *http.Request, maxWrite int) (net.Conn, error) {
 	if wantsWebSocket(r) {
 		socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			Subprotocols:    []string{Protocol},
@@ -309,8 +343,11 @@ func takeOver(w http.ResponseWriter, r *http.Request) (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
+		// websocket.NetConn clears the read limit on entry, so SetReadLimit has
+		// to come after it or an oversized frame is buffered without bound.
+		nc := websocket.NetConn(context.Background(), socket, websocket.MessageBinary)
 		socket.SetReadLimit(messageLimit)
-		return websocket.NetConn(context.Background(), socket, websocket.MessageBinary), nil
+		return &wsConn{Conn: nc, socket: socket, maxWrite: maxWrite}, nil
 	}
 	conn, err := hijack(w)
 	if err != nil {

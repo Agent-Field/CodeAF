@@ -63,8 +63,11 @@ digits, the same every time, on any relay. You cannot pick a nicer one, and nobo
 can register under yours while your machine is connected.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
-means the directory you ran the command in. The relay is, in order: `--via`, the
-`CODEAF_RELAY` environment variable, then the relay this machine syncs through.
+means the directory you ran the command in. For `codeaf serve`, the relay is, in order:
+`--via`, the `CODEAF_RELAY` environment variable, `~/.codeaf/v3/remote/relay`, then the
+relay this machine syncs through. For `codeaf chat --at`, it is `CODEAF_RELAY`, the relay
+that machine was paired through, `~/.codeaf/v3/remote/relay`, then the relay this machine
+syncs through.
 
 Running it twice on one machine is refused, because there is only one of it:
 
@@ -80,8 +83,22 @@ If the network drops while it runs, it says once:
 lost sync — trying again
 ```
 
-and keeps trying, waiting a little longer each time up to a minute, until it prints its
-name and code again. It does not need restarting, and devices reach it as soon as it has.
+and keeps trying, waiting a little longer each time up to a minute, resetting that wait
+only after a connection has held for at least a minute. When it reconnects, it says once:
+
+```
+back — reachable as otter-lamp-42 again
+```
+
+It prints its name and code again only if the name or code changed. It does not need
+restarting, and devices reach it as soon as it is back.
+
+If the relay turns registrations away — it allows 10 registrations a minute from one
+address — `codeaf serve` backs off the same way and says once:
+
+```
+the service is turning registrations away right now — waiting before trying again
+```
 
 A relay that answers but cannot connect machines, such as an older sync service, stops
 it with:
@@ -410,7 +427,9 @@ Two more you may meet. A machine that does not answer the handshake at all:
 `otter-lamp-42 did not answer this device's handshake, so nothing was sent — if that machine was rebuilt it has a new key and this device has to pair with it again`.
 And a relay that is turning connections away:
 `the service is turning connections away right now — try again in a minute` — it allows
-30 connections a minute from one address.
+30 connections a minute from one address. If a proxy or wrong path at the relay address
+refuses the upgrade, it names the full address it tried:
+`the relay at https://service.example.com/wrong-prefix refused this connection (404) — check the address it was given`.
 
 **A pairing that says the code was wrong when you are sure it was right** has one other
 cause, and it is the machine's own disk. The machine writes a device into its list

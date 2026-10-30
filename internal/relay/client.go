@@ -159,31 +159,38 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 		return nil, fmt.Errorf("%q is not a relay address — it looks like https://relay.example.com", service)
 	}
 	// The relay address may carry a path of its own (https://host/fabric), and
-	// the door is beneath it, as every other client's route is.
+	// the door is beneath it, as every other client's route is. Refusals name
+	// the full base address with that path intact so a mistyped prefix is
+	// visible in the error.
+	base := (&url.URL{
+		Scheme: address.Scheme,
+		Host:   address.Host,
+		Path:   strings.TrimRight(address.Path, "/"),
+	}).String()
 	door := *address
 	door.Path = wireauth.Endpoint(address.Path, path)
 	door.RawPath, door.RawQuery, door.Fragment = "", "", ""
 
-	conn, err := upgradeWebSocket(ctx, &door, path, header)
+	conn, err := upgradeWebSocket(ctx, &door, base, path, header)
 	if !errors.Is(err, errRawOnly) {
 		return conn, err
 	}
-	return upgradeRaw(ctx, &door, path, header)
+	return upgradeRaw(ctx, &door, base, path, header)
 }
 
 // upgradeRaw is the original carrier: an HTTP upgrade to [Protocol] on one TCP
 // connection.
-func upgradeRaw(ctx context.Context, address *url.URL, path string, header http.Header) (net.Conn, error) {
+func upgradeRaw(ctx context.Context, address *url.URL, base, path string, header http.Header) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: dialWithin}
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort(address))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
 	if address.Scheme == "https" {
 		secure := tls.Client(conn, &tls.Config{ServerName: address.Hostname()})
 		if err := secure.HandshakeContext(ctx); err != nil {
 			_ = conn.Close()
-			return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+			return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 		}
 		conn = secure
 	}
@@ -201,18 +208,18 @@ func upgradeRaw(ctx context.Context, address *url.URL, path string, header http.
 	_ = conn.SetDeadline(time.Now().Add(HandshakeWithin))
 	if err := request.Write(conn); err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
 	reader := bufio.NewReader(conn)
 	response, err := http.ReadResponse(reader, request)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
 	if response.StatusCode != http.StatusSwitchingProtocols {
 		said := strings.TrimSpace(readBounded(response.Body))
 		_ = conn.Close()
-		return nil, refusal(address.Host, path, response.StatusCode, said)
+		return nil, refusal(base, path, response.StatusCode, said)
 	}
 	_ = conn.SetDeadline(time.Time{})
 	// A 101 has no body, so there should be nothing left in the reader — but
@@ -225,26 +232,45 @@ func upgradeRaw(ctx context.Context, address *url.URL, path string, header http.
 }
 
 // refusal turns a relay's non-101 answer into the fact a caller above can act
-// on. ONLY A RELAY'S OWN 4xx SENTENCE IS PASSED ON: a 5xx is the relay or the
-// proxy in front of it being down, and that proxy's body ("error code: 522")
-// is not a sentence anybody should be shown.
-func refusal(host, path string, status int, said string) error {
+// on. ONLY A RELAY'S OWN SENTENCE IS PASSED ON: an upstream proxy, WAF or
+// web server answering with HTML or its own 4xx/5xx body becomes a one-sentence
+// fact naming the relay address with its base path, never the raw body.
+func refusal(base, path string, status int, said string) error {
 	switch {
-	case status == http.StatusNotFound && (path == EnginePath || strings.HasPrefix(said, "{")):
-		// The relay answers, but not at a machine door: an engine path is
-		// never "no machine", and a JSON body is the hosted wire's not_found.
-		return fmt.Errorf("%w: %s", ErrNoDoor, host)
-	case status == http.StatusNotFound:
+	case status == http.StatusNotFound && path != EnginePath && said == "no machine is connected under that name":
 		return ErrNoMachine
+	case status == http.StatusNotFound && (strings.HasPrefix(said, "{") || said == "not a relay door"):
+		// The relay answers, but not at a machine door: the hosted wire's JSON
+		// not_found, or a self-hosted relay hit outside its two paths.
+		return fmt.Errorf("%w: %s", ErrNoDoor, base)
 	case status == http.StatusTooManyRequests:
 		return ErrTooMany
+	case status == http.StatusServiceUnavailable && strings.Contains(said, "connections open, which is as many as the relay carries at once"):
+		// Older self-hosted relays answered 503 when a machine reached its
+		// stream ceiling; that machine is busy, not unreachable.
+		return ErrTooMany
 	case status >= 500:
-		return fmt.Errorf("%w: %s answered %d", ErrUnreachable, host, status)
-	case said == "":
-		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", host, status)
-	default:
+		return fmt.Errorf("%w: %s answered %d", ErrUnreachable, base, status)
+	case relaySentence(said):
 		return errors.New(said)
+	default:
+		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", base, status)
 	}
+}
+
+// relaySentence reports whether said is one of the plain-text validation
+// sentences our own relay doors write before upgrading. Anything else — HTML
+// from a proxy, a captive portal, or an upstream web server — is withheld.
+func relaySentence(said string) bool {
+	switch said {
+	case "that is not a machine name",
+		"that name does not belong to that key",
+		"that key is not readable",
+		"that key is not a usable machine key":
+		return true
+	}
+	return strings.HasPrefix(said, "a machine key is 32 bytes and that one is ") ||
+		strings.HasPrefix(said, "this door speaks ")
 }
 
 // joinedConn is a connection whose first bytes were already read into a buffer.

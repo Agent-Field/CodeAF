@@ -49,5 +49,15 @@ export async function nameFor(publicKey) {
   return `${WORDS[sum[0]]}-${WORDS[sum[1]]}-${10 + (sum[2] % 90)}`;
 }
 
-/** validName is the shape of a machine name: two lowercase words of up to 12 letters and two digits. */
-export const validName = (name) => typeof name === 'string' && /^[a-z]{1,12}-[a-z]{1,12}-[0-9]{2}$/.test(name);
+const WORD_SET = new Set(WORDS);
+
+/**
+ * validName reports whether name is one nameFor can produce: two words from WORDS and a number 10–99. Unlike the Go
+ * relay's in-memory table lookup, each distinct name on Workers addresses a Durable Object, so anything outside the
+ * real name space is refused at the front door before idFromName can create an object for it.
+ */
+export function validName(name) {
+  if (typeof name !== 'string') return false;
+  const parts = name.split('-');
+  return parts.length === 3 && WORD_SET.has(parts[0]) && WORD_SET.has(parts[1]) && /^[1-9][0-9]$/.test(parts[2]);
+}

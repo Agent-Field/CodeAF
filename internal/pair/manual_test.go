@@ -34,6 +34,7 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		// The four ways `--at` fails, each naming its own cause.
 		NoRelay("otter-lamp-42").Error(),
 		Unreachable("https://service.example.com").Error(),
+		NoDoor("https://service.example.com").Error(),
 		NotConnected("otter-lamp-42").Error(),
 		NotPaired("otter-lamp-42").Error(),
 		// And the ones a person meets less often.
@@ -43,6 +44,9 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		Busy().Error(),
 		Stopped(),
 		RevokedLine("laptop"),
+		LostSyncLine,
+		BackLine("otter-lamp-42"),
+		TooManyRegistrationsLine,
 		// The join words on the machine being opened, and what its own screen
 		// says about the attempts it turned away.
 		WaitingLine("otter-lamp-42", "amber fox dune"),
@@ -117,11 +121,13 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 		t.Fatal("the page reaching-this-machine-without-ssh is not in the corpus")
 	}
 	for _, quoted := range []string{
-		"10 minutes",              // CodeValidFor
-		"1 attempt",               // CodeAttempts
-		"up to 16",                // relay.MaxStreams
-		"30 connections a minute", // relay.DialsPerMinute
+		"10 minutes",                // CodeValidFor
+		"1 attempt",                 // CodeAttempts
+		"up to 16",                  // relay.MaxStreams
+		"30 connections a minute",   // relay.DialsPerMinute
+		"10 registrations a minute", // relay.RegistrationsPerMinute
 		"~/.codeaf/v3/remote/device.key",
+		"~/.codeaf/v3/remote/relay",
 	} {
 		if !strings.Contains(page, quoted) {
 			t.Errorf("the page does not quote %q", quoted)
@@ -132,6 +138,9 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 	}
 	if relay.DialsPerMinute != 30 {
 		t.Fatalf("relay.DialsPerMinute is %d and the page says 30", relay.DialsPerMinute)
+	}
+	if relay.RegistrationsPerMinute != 10 {
+		t.Fatalf("relay.RegistrationsPerMinute is %d and the page says 10", relay.RegistrationsPerMinute)
 	}
 	if int(CodeValidFor.Minutes()) != 10 {
 		t.Fatalf("CodeValidFor is %v and the page says 10 minutes", CodeValidFor)

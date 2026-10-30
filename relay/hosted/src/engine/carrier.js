@@ -9,11 +9,16 @@ export const HEADER_KEY = 'aforge-key'; // legacy-name: persisted on the wire.
 
 const LABEL = new TextEncoder().encode('aforge relay registration v1'); // legacy-name
 
-// The tuning of relay.go, in the same names.
-export const MAX_PAYLOAD = 1 << 17;
-export const MAX_STREAMS = 16;
-export const DIALS_PER_MINUTE = 30;
-export const REGISTRATIONS_PER_MINUTE = 10;
+// The tuning of internal/relay/relay.go, kept in lockstep under the same names.
+export const MAX_PAYLOAD = 1 << 17; // relay.MaxPayload
+export const MAX_STREAMS = 16; // relay.MaxStreams
+export const HANDSHAKE_MS = 20000; // relay.HandshakeWithin
+export const PROBE_MS = 5000; // relay.ProbeWithin
+export const DIALS_PER_MINUTE = 30; // relay.DialsPerMinute (and MACHINE_DIAL_LIMIT in wrangler.toml)
+export const REGISTRATIONS_PER_MINUTE = 10; // relay.RegistrationsPerMinute (and MACHINE_REGISTER_LIMIT in wrangler.toml)
+
+export const TOO_MANY_DIALS = 'too many connections from here — wait a minute';
+export const TOO_MANY_REGISTRATIONS = 'too many registrations from here — wait a minute';
 
 /** The two doors, beneath the deployment's base path. */
 export const ENGINE_PATH = '/v1/engine';

@@ -8,6 +8,7 @@ package pair
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -276,7 +277,8 @@ func TestServeApproveGetsTheDeviceLabel(t *testing.T) {
 
 // A DROPPED NETWORK IS ONE LINE, NOT ONE LINE A RETRY. While the relay is gone
 // the machine says once that it lost sync and is trying again, keeps trying
-// without being restarted, and shows its name again when the relay is back.
+// without being restarted, and is reachable again when the relay is back
+// without reprinting a banner whose name and code have not changed.
 func TestServeSaysOnceThatItLostSyncAndComesBack(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	var down atomic.Bool
@@ -304,25 +306,57 @@ func TestServeSaysOnceThatItLostSyncAndComesBack(t *testing.T) {
 	wire.cut()
 	time.Sleep(4 * time.Second) // the first retries come at one and two seconds
 	down.Store(false)
-	lines := screen.until(t, "its name again", func(l []string) bool { return len(codes(l)) == 2 })
+	waitForCondition(t, "the machine to register again", func() bool {
+		return len(door.Ledgers()) == 1
+	})
+	lines := screen.all()
 	lost := 0
 	for _, line := range lines {
-		if line == "lost sync — trying again" {
+		if line == LostSyncLine {
 			lost++
 		}
 	}
 	if lost != 1 {
 		t.Fatalf("the machine said it lost sync %d times over one outage; want once: %q", lost, lines)
 	}
+	if got := len(codes(lines)); got != 1 {
+		t.Fatalf("the unchanged banner was printed %d times across one brief outage; want 1: %q", got, lines)
+	}
+	// The lost line is answered by exactly one back line, so the screen of a
+	// machine that recovered never ends on "lost sync".
+	screen.until(t, "the back line", func(l []string) bool {
+		for _, line := range l {
+			if line == BackLine(host.Device.Name()) {
+				return true
+			}
+		}
+		return false
+	})
+	back := 0
+	for _, line := range screen.all() {
+		if line == BackLine(host.Device.Name()) {
+			back++
+		}
+	}
+	if back != 1 {
+		t.Fatalf("the machine said it was back %d times after one outage; want once: %q", back, screen.all())
+	}
 }
 
-// A RELAY THAT STILL HOLDS THE OLD CONNECTION IS WAITED OUT. After a network
-// drop the relay may keep this machine's name for the dead connection until it
-// times out; a machine that was serving keeps trying instead of quitting as if
-// a second `codeaf serve` had taken its name.
+// A RELAY THAT STILL HOLDS A LIVE SOCKET FOR THIS NAME IS WAITED OUT. While
+// another live carrier holds this machine's name after a drop, a machine that
+// was already serving keeps trying instead of quitting, and comes back as soon
+// as that carrier ends.
 func TestServeWaitsOutItsOwnStaleName(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	door := &relay.Server{}
+	var connected atomic.Int32
+	door := &relay.Server{
+		Note: func(_, what string) {
+			if what == "connected" {
+				connected.Add(1)
+			}
+		},
+	}
 	server := httptest.NewUnstartedServer(door)
 	wire := &cuttable{Listener: server.Listener}
 	server.Listener = wire
@@ -350,7 +384,343 @@ func TestServeWaitsOutItsOwnStaleName(t *testing.T) {
 		t.Fatalf("serve quit while its own old name was still held: %v", runErr)
 	default:
 	}
-	screen.until(t, "its name again", func(l []string) bool { return len(codes(l)) == 2 })
+	waitForCondition(t, "the machine to retake its name", func() bool {
+		return connected.Load() >= 3 && len(door.Ledgers()) == 1
+	})
+}
+
+// Contract item 1: SILENT DIALS END AT THE HANDSHAKE DEADLINE. Sixteen silent
+// dials fill a served machine's stream ceiling only until the handshake
+// deadline fires; once it does, the serving machine closes all sixteen and a
+// real `--at` dial succeeds.
+func TestSilentDialsCannotHoldAMachine(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	door, address := liveRelay(t)
+	t.Setenv(RelayEnv, address)
+
+	screen := &screenLog{}
+	devices := BookAt(filepath.Join(t.TempDir(), "devices.json"))
+	machines := BookAt(filepath.Join(t.TempDir(), "machines.json"))
+	host := &Host{
+		Service:   address,
+		Device:    aDevice(t),
+		Devices:   devices,
+		Desk:      &Desk{},
+		Approve:   func(string, string) bool { return true },
+		Say:       screen.say,
+		handshake: 60 * time.Millisecond,
+		Open: func(pipe io.ReadWriteCloser) {
+			defer func() { _ = pipe.Close() }()
+			_, _ = io.Copy(pipe, pipe)
+		},
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	ended := make(chan struct{})
+	go func() { _ = host.Run(ctx); close(ended) }()
+	t.Cleanup(func() { stop(); <-ended })
+	first := codes(screen.until(t, "its first code", func(l []string) bool { return len(codes(l)) == 1 }))[0]
+
+	// Pair one device first so the post-flood check exercises an ordinary
+	// paired `--at` dial.
+	reach := Reach{
+		Name:     host.Device.Name(),
+		Device:   aDevice(t),
+		Machines: machines,
+		Label:    "laptop",
+		AskCode:  func(string) (string, error) { return first, nil },
+	}
+	warm, err := reach.Open(context.Background())
+	if err != nil {
+		t.Fatalf("initial pairing failed: %v", err)
+	}
+	_ = warm.Close()
+
+	// Open 16 silent streams (relay.MaxStreams) and send zero bytes on each.
+	silent := make([]io.ReadWriteCloser, 0, relay.MaxStreams)
+	t.Cleanup(func() {
+		for _, s := range silent {
+			_ = s.Close()
+		}
+	})
+	for i := 0; i < relay.MaxStreams; i++ {
+		s, err := relay.Dial(context.Background(), address, host.Device.Name())
+		if err != nil {
+			t.Fatalf("silent dial %d: %v", i, err)
+		}
+		silent = append(silent, s)
+	}
+
+	// Without waiting thirty real seconds, the short handshake deadline closes
+	// every silent stream and frees the machine's slots on the relay.
+	waitForCondition(t, "all 16 silent streams to close at the handshake deadline", func() bool {
+		ledgers := door.Ledgers()
+		return len(ledgers) == 1 && ledgers[0].Streams == 0
+	})
+
+	tunnel, err := reach.Open(context.Background())
+	if err != nil {
+		t.Fatalf("real --at dial after 16 silent dials failed: %v", err)
+	}
+	defer func() { _ = tunnel.Close() }()
+	const want = "still reachable"
+	if _, err := tunnel.Write([]byte(want)); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, len(want))
+	if _, err := io.ReadFull(tunnel, buf); err != nil {
+		t.Fatal(err)
+	}
+	if string(buf) != want {
+		t.Fatalf("echoed %q, want %q", string(buf), want)
+	}
+}
+
+// Contract item 2: A DIAL THAT ONLY SAYS "PAIR" CANNOT FREEZE PAIRING. Sending
+// the single `P` intent byte and then nothing spends the live code before the
+// exchange (preserving the one-attempt rule), hits the handshake deadline,
+// retires that code, and prints a fresh code that pairs a real device.
+func TestHalfStartedPairIntentRotatesTheCode(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	_, address := liveRelay(t)
+	t.Setenv(RelayEnv, address)
+
+	screen := &screenLog{}
+	devices := BookAt(filepath.Join(t.TempDir(), "devices.json"))
+	machines := BookAt(filepath.Join(t.TempDir(), "machines.json"))
+	host := &Host{
+		Service:   address,
+		Device:    aDevice(t),
+		Devices:   devices,
+		Desk:      &Desk{},
+		Approve:   func(string, string) bool { return true },
+		Say:       screen.say,
+		handshake: 60 * time.Millisecond,
+		Open: func(pipe io.ReadWriteCloser) {
+			defer func() { _ = pipe.Close() }()
+			_, _ = io.Copy(pipe, pipe)
+		},
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	ended := make(chan struct{})
+	go func() { _ = host.Run(ctx); close(ended) }()
+	t.Cleanup(func() { stop(); <-ended })
+	first := codes(screen.until(t, "its first code", func(l []string) bool { return len(codes(l)) == 1 }))[0]
+
+	half, err := relay.Dial(context.Background(), address, host.Device.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = half.Close() })
+	if _, err := half.Write([]byte{intentPair}); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := screen.until(t, "the next code after a stalled P intent", func(l []string) bool {
+		return len(codes(l)) >= 2
+	})
+	if firstWith(lines, burnLine) < 0 {
+		t.Fatalf("the machine never reported the burned attempt: %q", lines)
+	}
+	second := codes(lines)[1]
+	if second == first {
+		t.Fatalf("the rotated code %q matched the spent code", second)
+	}
+
+	reach := Reach{
+		Name:     host.Device.Name(),
+		Device:   aDevice(t),
+		Machines: machines,
+		Label:    "laptop",
+		AskCode:  func(string) (string, error) { return second, nil },
+	}
+	tunnel, err := reach.Open(context.Background())
+	if err != nil {
+		t.Fatalf("pairing with the rotated code failed: %v", err)
+	}
+	_ = tunnel.Close()
+	if list, _ := devices.Devices(); len(list) != 1 {
+		t.Fatalf("the machine admitted %v, want 1 paired device", list)
+	}
+}
+
+// Contract item 5: A DROPPED REGISTRATION BACKS OFF, PRINTS AN UNCHANGED BANNER
+// ONCE, AND PHRASES RATE LIMITS FOR A PERSON.
+func TestDroppedRegistrationBacksOffAndPrintsBannerOnce(t *testing.T) {
+	t.Run("ten immediate drops grow the wait each time up to the cap and print the banner once", func(t *testing.T) {
+		t.Setenv("CODEAF_HOME", t.TempDir())
+		var clockMu sync.Mutex
+		now := time.Now()
+		clock := func() time.Time {
+			clockMu.Lock()
+			defer clockMu.Unlock()
+			return now
+		}
+		advance := func(d time.Duration) {
+			clockMu.Lock()
+			now = now.Add(d)
+			clockMu.Unlock()
+		}
+
+		connected := make(chan struct{}, 32)
+		door := &relay.Server{
+			Now: clock,
+			Note: func(_, what string) {
+				if what == "connected" {
+					connected <- struct{}{}
+				}
+			},
+		}
+		server := httptest.NewUnstartedServer(door)
+		wire := &cuttable{Listener: server.Listener}
+		server.Listener = wire
+		server.Start()
+		t.Cleanup(server.Close)
+
+		slept := make(chan time.Duration, 32)
+		screen := &screenLog{}
+		host := &Host{
+			Service: server.URL,
+			Device:  aDevice(t),
+			Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")),
+			Desk:    &Desk{Now: clock},
+			Say:     screen.say,
+			Now:     clock,
+			sleep: func(ctx context.Context, d time.Duration) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				advance(d)
+				slept <- d
+				return nil
+			},
+		}
+		ctx, stop := context.WithCancel(context.Background())
+		ended := make(chan struct{})
+		go func() { _ = host.Run(ctx); close(ended) }()
+		t.Cleanup(func() { stop(); <-ended })
+
+		screen.until(t, "its first code", func(l []string) bool { return len(codes(l)) == 1 })
+		awaitStep(t, connected, "initial registration")
+
+		var waits []time.Duration
+		for i := 0; i < 10; i++ {
+			wire.cut()
+			waits = append(waits, awaitStep(t, slept, fmt.Sprintf("backoff %d", i+1)))
+			awaitStep(t, connected, fmt.Sprintf("reconnect %d", i+1))
+		}
+
+		wantWaits := []time.Duration{
+			1 * time.Second,
+			2 * time.Second,
+			4 * time.Second,
+			8 * time.Second,
+			16 * time.Second,
+			32 * time.Second,
+			time.Minute,
+			time.Minute,
+			time.Minute,
+			time.Minute,
+		}
+		for i, want := range wantWaits {
+			if waits[i] != want {
+				t.Fatalf("backoff %d was %v, want %v (all: %v)", i+1, waits[i], want, waits)
+			}
+		}
+		if got := len(codes(screen.all())); got != 1 {
+			t.Fatalf("banner printed %d times across 10 immediate drops; want 1: %q", got, screen.all())
+		}
+
+		// Confirm Host.Run has entered hold (and recorded `since := h.now()`)
+		// before advancing the clock, by sending an unknown intent byte that
+		// Host.answer immediately closes without touching the code or screen.
+		probe, err := relay.Dial(context.Background(), server.URL, host.Device.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = probe.Write([]byte{'?'})
+		_, _ = io.Copy(io.Discard, probe)
+		_ = probe.Close()
+
+		// Once a registration stays up for at least one minute, a later drop
+		// resets the backoff to 1s.
+		advance(steadyAfter + time.Second)
+		wire.cut()
+		if reset := awaitStep(t, slept, "backoff after steady registration"); reset != time.Second {
+			t.Fatalf("backoff after holding >= %v was %v, want 1s", steadyAfter, reset)
+		}
+	})
+
+	t.Run("ErrTooMany gets a person-facing sentence and backs off without leaking the sentinel", func(t *testing.T) {
+		t.Setenv("CODEAF_HOME", t.TempDir())
+		throttled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "too many registrations from here — wait a minute", http.StatusTooManyRequests)
+		}))
+		t.Cleanup(throttled.Close)
+
+		ctx, stop := context.WithCancel(context.Background())
+		defer stop()
+		var waits []time.Duration
+		screen := &screenLog{}
+		host := &Host{
+			Service: throttled.URL,
+			Device:  aDevice(t),
+			Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")),
+			Desk:    &Desk{},
+			Say:     screen.say,
+			sleep: func(ctx context.Context, d time.Duration) error {
+				waits = append(waits, d)
+				if len(waits) == 3 {
+					stop()
+					return context.Canceled
+				}
+				return nil
+			},
+		}
+		if err := host.Run(ctx); err != nil {
+			t.Fatalf("Host.Run under 429 returned %v, want nil on context cancel", err)
+		}
+		lines := screen.all()
+		if len(lines) != 1 || lines[0] != TooManyRegistrationsLine {
+			t.Fatalf("screen under 429 said %q; want [%q] once", lines, TooManyRegistrationsLine)
+		}
+		for _, line := range lines {
+			if strings.Contains(line, "relay:") {
+				t.Fatalf("raw package sentinel leaked to screen: %q", line)
+			}
+		}
+		want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+		for i := range want {
+			if waits[i] != want[i] {
+				t.Fatalf("429 backoff %d was %v, want %v (all: %v)", i+1, waits[i], want[i], waits)
+			}
+		}
+	})
+}
+
+func waitForCondition(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if ok() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+func awaitStep[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		var zero T
+		t.Fatalf("timed out waiting for %s", what)
+		return zero
+	}
 }
 
 // cuttable is a listener whose connections a test can drop, hijacked ones
