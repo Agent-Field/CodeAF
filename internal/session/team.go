@@ -155,14 +155,27 @@ type teamRole struct {
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
-// decides a read is worth doing: a teams file or a Traffic log whose size and
-// modification time have not moved has nothing new in it. present is false for
-// a file that is not there.
+// decides a read is worth doing: a Traffic log whose size and modification
+// time have not moved has nothing new in it. The teams store's is its own
+// count of writes instead ([teamsStampOf]). present is false for a file that
+// is not there.
 type fileStamp struct {
 	size    int64
 	mod     time.Time
+	rev     string
 	present bool
 	read    bool
+}
+
+// teamsStampOf is the teams store's stamp ([teams.Stamp]): its count of
+// writes moves on every write, where teams.db's stat need not (WAL mode does
+// not grow the file, and a coarse clock may not move its time).
+func teamsStampOf(profile string) fileStamp {
+	rev := teams.Stamp(profile)
+	if rev == teams.MissingStamp {
+		return fileStamp{read: true}
+	}
+	return fileStamp{rev: rev, present: true, read: true}
 }
 
 func stampOf(path string) fileStamp {
@@ -340,7 +353,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	if len(keys) == 0 {
 		return nil
 	}
-	now := stampOf(teams.Path(profile))
+	now := teamsStampOf(profile)
 	settings := a.teamDefaultsMovedLocked(profile)
 	if now == a.team.teamsAt && !settings {
 		return a.team.roles

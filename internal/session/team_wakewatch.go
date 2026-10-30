@@ -786,7 +786,8 @@ type memoStamp struct {
 	taken time.Time
 }
 
-// sharedTeamsStamp is the teams file's stamp, at most [teamWatchEvery] old.
+// sharedTeamsStamp is the teams store's stamp ([teamsStampOf]), at most
+// [teamWatchEvery] old.
 func sharedTeamsStamp(profile string) fileStamp {
 	path := teams.Path(profile)
 	teamsStampMemo.mu.Lock()
@@ -797,7 +798,7 @@ func sharedTeamsStamp(profile string) fileStamp {
 	if held, ok := teamsStampMemo.at[path]; ok && time.Since(held.taken) < teamWatchInterval() {
 		return held.stamp
 	}
-	stamp := stampOf(path)
+	stamp := teamsStampOf(profile)
 	teamsStampMemo.at[path] = memoStamp{stamp: stamp, taken: time.Now()}
 	return stamp
 }

@@ -43,7 +43,9 @@ func (b *appBackend) crewInputs(run *appCrewRun) string {
 	// One builder for the whole stamp: adding to a string per crew copied the
 	// stamp so far each time, which grew with the square of the crews.
 	var stamp strings.Builder
-	stamp.WriteString(teamstore.Today() + "|" + appInputStamp(teamstore.Path(profile), config.ProfilePath(profile, "config.json"), b.crewLayer().path, b.state.where(), teamstore.UsageLedgerPath()))
+	// The crews store by its own count of writes: in WAL mode its file need
+	// not grow, and a coarse clock can leave its time where it was.
+	stamp.WriteString(teamstore.Today() + "|" + teamstore.Stamp(profile) + "|" + appInputStamp(config.ProfilePath(profile, "config.json"), b.crewLayer().path, b.state.where(), teamstore.UsageLedgerPath()))
 	var teams []teamstore.Team
 	run.locked(func() {
 		teams = run.teams

@@ -312,10 +312,10 @@ func (g *appWorkGraph) locked(fn func()) {
 
 // crewFile is what crew id's graph reads of the crews ([teamstore.LoadAround]:
 // it, the crews around it and its members' other crews), read once per change
-// of the store.
+// of the store ([teamstore.Stamp]).
 func (g *appWorkGraph) crewFile(profile, id string) (*teamstore.File, string, error) {
 	g.init()
-	sig := session.FileStamp(teamstore.Path(profile))
+	sig := teamstore.Stamp(profile)
 	var held *teamstore.File
 	g.locked(func() {
 		if g.crews.file != nil && g.crews.stamp == sig && g.crews.scope == id {

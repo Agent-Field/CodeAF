@@ -71,7 +71,7 @@ func (a *Agent) watchTeamStart() {
 
 // teamsHaveManager reports whether any team in the profile has a manager.
 func teamsHaveManager(profile string) bool {
-	if !stampOf(teams.Path(profile)).present {
+	if !teamsStampOf(profile).present {
 		return false
 	}
 	any, err := teams.AnyManager(profile)
