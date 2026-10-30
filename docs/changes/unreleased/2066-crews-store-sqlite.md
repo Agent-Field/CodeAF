@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Crews are kept in teams.db, an SQLite store with no size cap, and teams.json is no longer read
-pr: 0
+pr: 2066
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: teams lived in <profile>/teams.json, rewritten whole on every change, and the crews overview, union and organize reads refused a file over 2 MB with `the teams file is larger than 2097152 bytes`. Is true now: teams live in <profile>/teams.db (SQLite, WAL), a write changes only the rows that differ, and no read has a size cap."

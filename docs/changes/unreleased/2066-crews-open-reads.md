@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: A factory job's crew closes when the job ends, and crews read only what they need
-pr: 0
+pr: 2066
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: a factory job's room stayed open after the job ended, so every factory job added an open crew for good. Is true now: when a job is over (an end recorded on it, a dismissal, or its pull request merged or closed; an approved job still publishing is not) its room closes quietly, with no report, no traffic line and no change to who reports to whom, and is marked job_ended; the job coming back (a person's door or by itself, such as a pull request reopened) reopens a room so marked, never one a person closed or archived; and a sweep that runs once per profile closes the rooms of jobs already over, leaving any a person reopened."
