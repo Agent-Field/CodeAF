@@ -21,6 +21,12 @@ An `uncertain` mutation may already have happened. Read its receipt or current
 state before taking further action; never blindly repeat an uncertain write.
 Use the operation's client/request id where it supports replay.
 
+An `unreadable` error refuses a read of a store this engine cannot read: one a
+newer build wrote, or a file that is not the store. `crews.overview` answers it
+for the crews store. Trying again does not help, so the app says so instead of
+offering a retry. It is additive: an app that does not know the code treats it
+as any other failure.
+
 ## Schema and method index
 
 `codeaf app --schema` prints the complete JSON Schema directly from the Go
