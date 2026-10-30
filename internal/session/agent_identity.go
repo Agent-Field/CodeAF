@@ -107,3 +107,15 @@ func (a *Agent) AgentDID() string {
 	defer a.mu.Unlock()
 	return a.config.actorDID
 }
+
+// withWorker names who a task's commands act as on its notice
+// ([TaskNotice.Worker]), so a surface that keeps something under that name
+// knows what to let go of when the task ends. The id is the task's own, which
+// is the fragment its worker carries (and a run worker carries its row's,
+// internal/run's workerDID), so the two cannot disagree.
+func (a *Agent) withWorker(notice TaskNotice) TaskNotice {
+	if notice.Worker == "" && notice.ID != 0 && notice.Kind != TaskKindQuick && a.config.agentDID != "" {
+		notice.Worker = agentdid.Worker(a.config.agentDID, notice.ID)
+	}
+	return notice
+}

@@ -460,6 +460,13 @@ type TaskNotice struct {
 	// Retryable says this producer supports a fresh attempt; admission is checked when requested.
 	Retryable bool
 
+	// Worker is who this task's commands act as: its conversation's agent DID
+	// with the task's fragment, `<did>#w<id>` (internal/agentdid), the same
+	// value its worker's commands see as $CODEAF_AGENT_DID. It is empty when the
+	// conversation has no DID. A surface that keeps anything under that name
+	// (a writer's lease, a claim) lets it go when the task ends.
+	Worker string `json:"worker,omitempty"`
+
 	// Thinking is the effective setup, including a saved continuation choice.
 	Thinking string
 	// ID is the proposal's token: a surface hands it back to

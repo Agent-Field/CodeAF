@@ -314,6 +314,13 @@ type Task struct {
 	Program string `json:"program,omitempty"`
 	Ending  string `json:"ending,omitempty"`
 	Branch  string `json:"branch,omitempty"`
+	// Worker is who this task's commands act as: the agent's DID with the
+	// task's fragment, `<did>#w<n>`, the value its commands see as
+	// $CODEAF_AGENT_DID. Once the task has ended (done, failed, your_call, or a
+	// declined or withdrawn proposal) nothing runs under that name any more,
+	// so whatever an app keeps under it (a writer's lease) is the app's to let
+	// go. Absent when the agent has no DID.
+	Worker string `json:"worker,omitempty"`
 }
 
 // TaskSource is [workgraph.TaskSource]: one spelling on both wires.

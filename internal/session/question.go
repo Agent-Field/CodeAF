@@ -661,6 +661,11 @@ type Withdrawal struct {
 	By AskerKind `json:"by,omitempty"`
 	// At is when.
 	At time.Time `json:"at,omitzero"`
+	// Started says the question's own clock took its pick and the work it
+	// asked about is starting: a proposal nobody answered in time. It rides on
+	// the withdrawal itself because a surface reads the questions and the tasks
+	// on two lanes, and the task's own update may reach it after this does.
+	Started bool `json:"started,omitempty"`
 }
 
 // Exchange is one round of asking back: a person's question about one of the
@@ -1852,11 +1857,23 @@ func (a *Agent) WithdrawQuestion(kind QuestionKind, token, reason string) {
 // once that lock is down (steerquestion.go), and there must not be two spellings
 // of what a withdrawal looks like.
 func (a *Agent) sayWithdrawn(q Question, reason string) {
-	q.Withdrawn = &Withdrawal{
-		Reason: strings.TrimSpace(reason),
-		By:     q.Asker.Kind,
-		At:     time.Now(),
+	a.sayWithdrawal(q, Withdrawal{Reason: strings.TrimSpace(reason), By: q.Asker.Kind, At: time.Now()})
+}
+
+// withdrawStarted retires a proposal its clock has just started, saying so on
+// the withdrawal ([Withdrawal.Started]). It claims the words first, so the
+// lane's own letting-go finds nothing and says nothing a second time.
+func (a *Agent) withdrawStarted(q Question) {
+	claimed, said := a.claimQuestion(q.Kind, q.Token(), false)
+	if !said {
+		return
 	}
+	a.sayWithdrawal(claimed, Withdrawal{Reason: questionGoneReason(claimed), By: claimed.Asker.Kind, At: time.Now(), Started: true})
+}
+
+// sayWithdrawal says one withdrawal, whole, to every surface.
+func (a *Agent) sayWithdrawal(q Question, withdrawal Withdrawal) {
+	q.Withdrawn = &withdrawal
 	a.emitQuestion(EventQuestionWithdrawn, q, nil)
 	// AND EVERY OTHER WINDOW LEARNS AT ONCE, for the reason the raise does
 	// ([Agent.raiseQuestion]): a question that is no longer being asked must not
