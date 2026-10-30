@@ -285,3 +285,62 @@ func TestTwoQuickWritesLeaveTheRoomAsTheJobIs(t *testing.T) {
 		t.Fatal("a close read before the job came back left its room closed")
 	}
 }
+
+// A JOB'S TALK JOINS ITS RECORDED ROOM, OPEN OR NOT. An ended job's room is
+// closed; opening its page makes its Talk, which joins that room closed
+// instead of making a new open one nothing would close. A live job whose
+// reopen was lost has its room opened again, so its Talk and its stages share
+// one room.
+func TestATalkJoinsItsRecordedRoomEvenClosed(t *testing.T) {
+	r := newRoomFollowRig(t)
+	open := func() int {
+		t.Helper()
+		f, err := teams.LoadOpen(r.profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(f.Teams)
+	}
+	holds := func(room, key string) bool {
+		t.Helper()
+		f, _ := teams.LoadTeams(r.profile, room)
+		return len(f.Teams) == 1 && f.Teams[0].Holds(key)
+	}
+
+	ended := r.job("0f0f0f0f0f0f", factory.Item{Title: "ended", State: factory.StateRunning})
+	r.update(ended.ID, func(it *factory.Item) { it.DoneHow, it.DoneAt = "closed_locally", time.Now() })
+	if !r.closed("0f0f0f0f0f0f") {
+		t.Fatal("the job's end did not close its room")
+	}
+	before := open()
+	it, _ := r.st.Get(ended.ID)
+	talk := filepath.Join(r.root, "talk-ended", "transcript.jsonl")
+	if err := talkJoinTeam(r.profile, it, talk, r.root, talkTeamName(it)); err != nil {
+		t.Fatal(err)
+	}
+	if got := open(); got != before {
+		t.Fatalf("an ended job's Talk made %d open crews", got-before)
+	}
+	if !r.closed("0f0f0f0f0f0f") || !holds("0f0f0f0f0f0f", talk) {
+		t.Fatal("an ended job's Talk did not join its closed room")
+	}
+
+	// Lost: the job came back but nothing reopened its room.
+	live := r.job("1e1e1e1e1e1e", factory.Item{Title: "live", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen}})
+	r.update(live.ID, func(it *factory.Item) { it.PullRequest.State = factory.PRMerged })
+	store.WhenWritten(func(*store.Store, factory.Item, factory.Item) {})
+	r.update(live.ID, func(it *factory.Item) { it.PullRequest.State = factory.PROpen })
+	store.WhenWritten(factoryRoomHook)
+	before = open()
+	it, _ = r.st.Get(live.ID)
+	talk = filepath.Join(r.root, "talk-live", "transcript.jsonl")
+	if err := talkJoinTeam(r.profile, it, talk, r.root, talkTeamName(it)); err != nil {
+		t.Fatal(err)
+	}
+	if r.closed("1e1e1e1e1e1e") || !holds("1e1e1e1e1e1e", talk) {
+		t.Fatal("a live job's Talk did not reopen and join its room")
+	}
+	if got := open(); got != before+1 {
+		t.Fatalf("open crews went from %d to %d, want its room alone back", before, got)
+	}
+}
