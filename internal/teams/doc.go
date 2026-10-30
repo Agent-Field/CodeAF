@@ -21,7 +21,8 @@
 //   - A missing store is no teams and no error. A store that is there but
 //     unreadable is an error ([ErrUnreadable]), and nothing here writes to
 //     it: [SetAside] moves it out of the way when the caller decides to start
-//     again.
+//     again, if it is not this store's at all. A newer build's store is
+//     [ErrNewer], and is neither written nor moved.
 //   - Every field a later build wrote survives a load and a save.
 //   - A team is a row and each membership is a row; a write changes only the
 //     rows that differ. A member's briefs are rows of their own that a load

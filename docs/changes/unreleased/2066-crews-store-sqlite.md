@@ -13,6 +13,10 @@ invalidates:
 
 `teams.ReadSnapshot` takes no byte limit, `appwire.OverviewMaxBytes`,
 `teams.SnapshotMaxBytes`, `teams.ErrSnapshot*` and `teams.LegacyFileName` are
-gone, and an unreadable store is `teams.ErrUnreadable`. `teams.SetAside` moves
-only a store that does not read. Tests outside the package state a store with
-`internal/teams/teamstest`.
+gone, and an unreadable store is `teams.ErrUnreadable`. A store a newer build
+wrote is the separate `teams.ErrNewer`, and an I/O failure is neither.
+`teams.SetAside` takes the teams lock and moves only a file that is not a
+database or is another program's, WAL first; a newer build's store and a
+damaged store of this one's own stay where they are. A foreign database is
+inspected read-only before WAL is turned on, so it is left byte for byte.
+Tests outside the package state a store with `internal/teams/teamstest`.

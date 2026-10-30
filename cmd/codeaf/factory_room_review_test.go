@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -161,5 +163,92 @@ func TestTheRoomFollowsTheJobsStateWhateverItIsTold(t *testing.T) {
 	}
 	if r.closed("4d4d4d4d4d4d") {
 		t.Fatal("a live job's round left its room closed")
+	}
+}
+
+// A STAGE STILL JOINS A ROOM CLOSED UNDER ITS ROUND. A person may close a live
+// job's room, or the `factory` crew above it, while a round is going, and a
+// job may end with a round still opening stages; the stage joins the closed
+// room, as it always has, and the room stays as the person or the job left it.
+func TestAStageJoinsARoomClosedUnderItsRound(t *testing.T) {
+	r := newRoomFollowRig(t)
+	byHand := r.job("5e5e5e5e5e5e", factory.Item{Title: "closed by hand", State: factory.StateRunning})
+	parent := r.job("6f6f6f6f6f6f", factory.Item{Title: "parent closed", State: factory.StateRunning})
+	ended := r.job("7a7a7a7a7a7a", factory.Item{Title: "ended", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 8, State: factory.PROpen}})
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Close("5e5e5e5e5e5e", time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	room, _ := teams.LoadTeams(r.profile, "6f6f6f6f6f6f")
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Close(room.Teams[0].Parent, time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	r.update(ended.ID, func(it *factory.Item) { it.PullRequest.State = factory.PRMerged })
+	for _, it := range []factory.Item{byHand, parent, ended} {
+		room := it.Stream.Room
+		if !r.closed(room) {
+			t.Fatalf("%s: the rig did not close the room", it.Title)
+		}
+		next := filepath.Join(r.root, "later-"+room, "transcript.jsonl")
+		if err := stageJoinTeam(r.profile, room, next, r.root, "fix", "fix", "Fix it."); err != nil {
+			t.Fatalf("%s: the stage could not join: %v", it.Title, err)
+		}
+		f, _ := teams.LoadTeams(r.profile, room)
+		if !f.Teams[0].Closed() || len(f.Teams[0].Members) != 2 {
+			t.Fatalf("%s: after the join: closed=%v members=%d", it.Title, f.Teams[0].Closed(), len(f.Teams[0].Members))
+		}
+	}
+}
+
+// THE SWEEP LEAVES A ROOM A PERSON MAY HAVE REOPENED, whatever door it came
+// through: a reopen of a crew above it, which writes its line there, and a
+// reopen whose line has since rotated out of the room's log. A room made
+// after every such line is still closed.
+func TestTheSweepLeavesRoomsReopenedAboveOrLongAgo(t *testing.T) {
+	r := newRoomFollowRig(t)
+	unseen := func(it factory.Item) {
+		store.WhenWritten(func(*store.Store, factory.Item, factory.Item) {})
+		r.update(it.ID, func(it *factory.Item) { it.DoneHow, it.DoneAt = "answered", time.Now() })
+		store.WhenWritten(factoryRoomHook)
+	}
+	above := r.job("8a8a8a8a8a8a", factory.Item{Title: "reopened above", State: factory.StateRunning})
+	unseen(above)
+	room, _ := teams.LoadTeams(r.profile, "8a8a8a8a8a8a")
+	parent := room.Teams[0].Parent
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Close(parent, time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Reopen(parent) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.AppendTraffic(r.profile, parent, teams.Entry{Kind: teams.KindReopen, From: teams.FromYou, To: teams.ToRoom, Text: "reopened"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rotated := r.job("8b8b8b8b8b8b", factory.Item{Title: "reopen rotated out", State: factory.StateRunning})
+	unseen(rotated)
+	// Its log's first lines, the reopen among them, are gone: what is left
+	// begins well past the first id.
+	log := teams.TrafficPath(r.profile, "8b8b8b8b8b8b")
+	if err := os.MkdirAll(filepath.Dir(log), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line, _ := json.Marshal(teams.Entry{ID: "000000000050", At: time.Now(), Kind: teams.KindNote, From: teams.FromYou, To: teams.ToRoom, Text: "later"})
+	if err := os.WriteFile(log, append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(5 * time.Millisecond)
+	later := r.job("8c8c8c8c8c8c", factory.Item{Title: "made after the reopen", State: factory.StateRunning})
+	unseen(later)
+
+	factorySweepEndedRooms(r.profile, r.st.Root())
+	if r.closed("8a8a8a8a8a8a") {
+		t.Fatal("the sweep closed a room a person reopened through the crew above it")
+	}
+	if r.closed("8b8b8b8b8b8b") {
+		t.Fatal("the sweep closed a room whose reopen line rotated out")
+	}
+	if !r.closed("8c8c8c8c8c8c") {
+		t.Fatal("the sweep left open a room made after every reopen")
 	}
 }

@@ -64,10 +64,30 @@ const busyTimeout = 10 * time.Second
 // handlesKept is how many profiles' databases one process keeps open.
 const handlesKept = 16
 
-// ErrUnreadable is a teams.db that is not this store's: not a database, some
-// other program's, or written by a newer build. Nothing here writes to it;
-// [SetAside] moves it out of the way when the caller decides to start again.
+// ErrUnreadable is a teams.db this build cannot read: not a database, some
+// other program's, or this store's with rows it cannot make sense of. Nothing
+// here writes to it. [SetAside] moves it out of the way when the caller
+// decides to start again, but only when the file is not this store's at all
+// ([notOursError]): a damaged store of its own stays for a person to look at.
 var ErrUnreadable = errors.New("teams: the store is unreadable")
+
+// ErrNewer is a teams.db a newer build wrote. This build neither reads nor
+// writes it, and [SetAside] never moves it: the newer build still reads it.
+// It is not [ErrUnreadable].
+var ErrNewer = errors.New("teams: the store was written by a newer codeaf")
+
+// notOursError is an [ErrUnreadable] that is the file itself: bytes that are
+// not a database, or a database some other program made. It is the one store
+// [SetAside] moves.
+type notOursError struct{ msg string }
+
+func (e *notOursError) Error() string { return e.msg }
+func (e *notOursError) Unwrap() error { return ErrUnreadable }
+
+// notOurs is the error for path, which is not this store's for why.
+func notOurs(path, why string) error {
+	return &notOursError{fmt.Sprintf("%v: %s %s", ErrUnreadable, filepath.Base(path), why)}
+}
 
 const schema = `
 CREATE TABLE meta (
@@ -174,7 +194,7 @@ func acquire(path string, create bool) (*handle, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: %s is not a file", ErrUnreadable, filepath.Base(path))
+		return nil, notOurs(path, "is not a file")
 	}
 	if h := shared(path, info); h != nil {
 		return h, nil
@@ -358,13 +378,16 @@ func foreign(path string) error {
 	case n == 0 && errors.Is(err, io.EOF):
 		return nil
 	case string(head[:n]) != sqliteMagic:
-		return fmt.Errorf("%w: %s is not a database", ErrUnreadable, filepath.Base(path))
+		return notOurs(path, "is not a database")
 	}
 	return nil
 }
 
 func openDB(path string) (*sql.DB, error) {
 	if err := foreign(path); err != nil {
+		return nil, err
+	}
+	if err := lookAt(path); err != nil {
 		return nil, err
 	}
 	q := make(url.Values)
@@ -389,6 +412,25 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// lookAt is [inspectSchema] over a read-only connection that turns nothing
+// on. A FILE IS LOOKED AT BEFORE ANYTHING IS TURNED ON IN IT: WAL rewrites the
+// header and makes the -wal and -shm files, so [openDB] turns it on only once
+// this look found a blank store or this store's own. A database some other
+// program made, or a newer build's, keeps every byte.
+func lookAt(path string) error {
+	q := make(url.Values)
+	q.Set("mode", "ro")
+	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
+	db, err := sql.Open("sqlite", sqlitefile.URI(path, q.Encode()))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	_, err = inspectSchema(context.Background(), db, &sql.TxOptions{ReadOnly: true}, path)
+	return err
 }
 
 // ensureSchema checks the file is this store's at this version, and builds a
@@ -508,27 +550,41 @@ func inspectIn(ctx context.Context, tx *sql.Tx, path string) (schemaState, error
 		}
 		return schemaReady, nil
 	case app == applicationID && version > schemaVersion:
-		return schemaReady, fmt.Errorf("%w: %s was written by a newer codeaf", ErrUnreadable, filepath.Base(path))
+		return schemaReady, fmt.Errorf("%w: %s", ErrNewer, filepath.Base(path))
 	case app != 0 || version != 0:
-		return schemaReady, fmt.Errorf("%w: %s belongs to something else", ErrUnreadable, filepath.Base(path))
+		return schemaReady, notOurs(path, "belongs to something else")
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
 		return schemaBlank, unreadable(err, path)
 	}
 	if tables != 0 {
-		return schemaReady, fmt.Errorf("%w: %s belongs to something else", ErrUnreadable, filepath.Base(path))
+		return schemaReady, notOurs(path, "belongs to something else")
 	}
 	return schemaBlank, nil
 }
 
 // unreadable is err as this package says it: a peer holding the file too long
-// is [ErrBusy], anything else SQLite refuses to read is [ErrUnreadable].
+// is [ErrBusy]; a file SQLite says is not a database is not this store's
+// ([notOurs]); a failure to reach the file (it cannot be opened, an I/O
+// error, no memory or no room) is the error it is, since trying again may
+// read it; and anything else SQLite refuses to read is [ErrUnreadable].
 func unreadable(err error, path string) error {
 	if err = storeError(err); err == nil || errors.Is(err, ErrBusy) {
 		return err
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
+	}
+	var e *sqlite.Error
+	if errors.As(err, &e) {
+		switch e.Code() & 0xff {
+		case sqlite3.SQLITE_NOTADB:
+			return notOurs(path, "is not a database")
+		case sqlite3.SQLITE_IOERR, sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_PERM, sqlite3.SQLITE_FULL,
+			sqlite3.SQLITE_NOMEM, sqlite3.SQLITE_READONLY, sqlite3.SQLITE_INTERRUPT, sqlite3.SQLITE_NOLFS,
+			sqlite3.SQLITE_PROTOCOL, sqlite3.SQLITE_AUTH:
+			return fmt.Errorf("teams: %s: %w", filepath.Base(path), err)
+		}
 	}
 	return fmt.Errorf("%w: %s: %w", ErrUnreadable, filepath.Base(path), err)
 }
@@ -566,6 +622,9 @@ type snapshot struct {
 	// open is a snapshot of the open teams only ([LoadOpen]); a write never
 	// diffs against one.
 	open bool
+	// elsewhere, in an open snapshot, is every closed team an open team sits
+	// under: left out of the teams, but there ([tidyWithin]).
+	elsewhere map[string]bool
 }
 
 // teamRows is one team's rows as stored: rev is the store revision the team or
@@ -716,6 +775,11 @@ func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, 
 	if err := list.Close(); err != nil {
 		return nil, unreadable(err, path)
 	}
+	if open {
+		if s.elsewhere, err = closedParents(ctx, q, path); err != nil {
+			return nil, err
+		}
+	}
 	storeReads.Add(int64(len(stale)))
 	for len(stale) > 0 {
 		n := min(len(stale), 400)
@@ -726,6 +790,28 @@ func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, 
 	}
 	hold(heldKey(path, open), s)
 	return s, nil
+}
+
+// closedParents is every closed team an open team sits under, nil for none:
+// one look per open team with a parent, by the closed team's id.
+func closedParents(ctx context.Context, q querier, path string) (map[string]bool, error) {
+	rows, err := q.QueryContext(ctx, "SELECT DISTINCT p.id FROM teams o JOIN teams p ON p.id = o.parent WHERE o.closed = 0 AND p.closed = 1")
+	if err != nil {
+		return nil, unreadable(err, path)
+	}
+	defer rows.Close()
+	var out map[string]bool
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, unreadable(err, path)
+		}
+		if out == nil {
+			out = map[string]bool{}
+		}
+		out[id] = true
+	}
+	return out, unreadable(rows.Err(), path)
 }
 
 // reusable is the first held snapshot that has team id's rows at revision
@@ -891,7 +977,7 @@ func writeScoped(profileDir string, before *snapshot, teams []Team, open bool) (
 			return nil, err
 		}
 	}
-	next := &snapshot{store: store, rev: rev, rows: make(map[string]*teamRows, len(teams)), open: open}
+	next := &snapshot{store: store, rev: rev, rows: make(map[string]*teamRows, len(teams)), open: open, elsewhere: before.elsewhere}
 	// A team that needs a place goes after every team in the store, so its
 	// place is never one a team outside this write already holds.
 	var free int64

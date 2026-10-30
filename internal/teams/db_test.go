@@ -455,3 +455,25 @@ func mustOpen(t *testing.T, dir string) *File {
 	must(t, err)
 	return f
 }
+
+// UPDATEOPEN KEEPS AN OPEN TEAM UNDER A CLOSED PARENT WHERE IT IS. The
+// closed parent is not in what fn is handed, but it is in the store, so the
+// open team's parent is not a missing one: it is neither cleared nor moved
+// under the root, whatever else the write changes.
+func TestUpdateOpenKeepsAParentItCannotSee(t *testing.T) {
+	dir := t.TempDir()
+	must(t, Save(dir, []Team{
+		{ID: "root00000000", Name: "All", Root: true},
+		{ID: "shut00000000", Name: "shut", Parent: "root00000000", State: TeamClosed, ClosedAt: time.Unix(5, 0).UTC()},
+		{ID: "kid000000000", Name: "kid", Parent: "shut00000000"},
+		{ID: "other0000000", Name: "other", Parent: "root00000000"},
+	}))
+	if f := mustLoad(t, dir); func() string { k, _ := f.Team("kid000000000"); return k.Parent }() != "shut00000000" {
+		t.Fatal("the rig did not keep the open team under its closed parent")
+	}
+	must(t, UpdateOpen(dir, func(f *File) error { f.Teams[Index(f.Teams, "other0000000")].Name = "renamed"; return nil }))
+	f := mustLoad(t, dir)
+	if k, _ := f.Team("kid000000000"); k.Parent != "shut00000000" {
+		t.Fatalf("an open-only write moved the open team to %q", k.Parent)
+	}
+}

@@ -342,10 +342,14 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 	for _, m := range members {
 		b.emit.Emit(appwire.EventMemberChanged, appwire.MemberChanged{Member: m})
 	}
-	// A CREW THAT CLOSED WHILE THIS WATCH HELD IT, or was deleted. It is kept,
-	// so archiving or deleting it later, from any door or process, is said
-	// too, but it costs its revision, one indexed row: only a crew whose row
-	// moved is read again and said again, and one that is gone is removed.
+	// A CREW THAT CLOSED WHILE THIS WATCH HELD IT, or was deleted. A crew a
+	// person closed is kept, so archiving or deleting it later, from any door
+	// or process, is said too, but it costs its revision, one indexed row:
+	// only a crew whose row moved is read again and said again, and one that
+	// is gone is removed. A ROOM ITS JOB'S END CLOSED LEAVES THE WATCH once
+	// its close is said: there is one for every job the factory finishes, so
+	// keeping them would grow every look with the factory's work. Its job
+	// coming back reopens it, and the open crews are read on every look.
 	if len(removed) > 0 {
 		sort.Strings(removed)
 		revs, err := teamstore.Revisions(b.crewProfile(), removed...)
@@ -381,6 +385,13 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 						}
 						said = run.prints[id] == string(raw)
 						run.prints[id], run.closedAt[id] = string(raw), revs[id]
+						if t.JobEnded {
+							delete(run.prints, id)
+							delete(run.closedAt, id)
+							for _, m := range view.Members {
+								delete(run.members, appMemberKey(id, m.Agent))
+							}
+						}
 					})
 					if !said {
 						b.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: view})
@@ -1350,14 +1361,15 @@ func (b *appBackend) CrewList(closed bool) ([]appwire.Crew, error) {
 	}
 	teams := read.file.Open()
 	if closed {
-		// The person's closed crews, with the crews above them; a finished
-		// factory job's room is read where its job names it, never listed.
+		// The person's closed crews, with the crews above them; a room its
+		// factory job's end closed is read where its job names it, never
+		// listed.
 		if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
 			return nil, appEngineError(err)
 		}
 		teams = nil
 		for _, t := range read.file.ClosedTeams() {
-			if !t.Archived() && !t.FactoryManaged {
+			if !t.Archived() && !t.JobEnded {
 				teams = append(teams, t)
 			}
 		}
@@ -1379,12 +1391,8 @@ func (b *appBackend) CrewListArchived() ([]appwire.Crew, error) {
 	if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
 		return nil, appEngineError(err)
 	}
-	var teams []teamstore.Team
-	for _, t := range read.file.ArchivedTeams() {
-		if !t.FactoryManaged {
-			teams = append(teams, t)
-		}
-	}
+	// Only a person archives a crew, so every one is theirs to find.
+	teams := read.file.ArchivedTeams()
 	out := make([]appwire.Crew, 0, len(teams))
 	for _, t := range teams {
 		out = append(out, b.crewView(read, t))

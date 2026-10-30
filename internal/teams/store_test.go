@@ -135,10 +135,14 @@ func TestAForeignOrNewerStoreIsUnreadable(t *testing.T) {
 			h.release()
 			must(t, err)
 			forget(Path(dir))
-			if _, err := Load(dir); !errors.Is(err, ErrUnreadable) {
+			want := ErrUnreadable
+			if name == "newer" {
+				want = ErrNewer
+			}
+			if _, err := Load(dir); !errors.Is(err, want) {
 				t.Fatalf("loaded with %v", err)
 			}
-			if err := Update(dir, func(*File) error { return nil }); !errors.Is(err, ErrUnreadable) {
+			if err := Update(dir, func(*File) error { return nil }); !errors.Is(err, want) {
 				t.Fatalf("updated with %v", err)
 			}
 		})
