@@ -46,7 +46,7 @@ Check number: 4821 — the other device shows the same number.
 Waiting for approval (10 minutes). Press ctrl+c to cancel.
 ```
 
-A device with no screen or no browser, such as a server, does the same: run `codeaf pair` there and approve from your laptop. Two things name the same request: the link `https://codeaf.agentfield.ai/p/<code>#<key>`, which opens in a browser and hands over to the installed app (the part after `#` never leaves the browser), and the bare token `<code>.<key>`, for a terminal where nobody can click. `codeaf pair approve` takes either one, and so does pasting into home. When it is approved it says how many workspaces it can now reach:
+A device with no screen or no browser, such as a server, does the same: run `codeaf pair` there and approve from your laptop. Two things name the same request: the link (`https://codeaf.agentfield.ai/p/<code>#<key>` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev/p/<code>#<key>` on staging builds, or `https://caf-fabric-dev.instrument-santosh.workers.dev/p/<code>#<key>` on dev and local source builds), which opens in a browser and hands over to the installed app (the part after `#` never leaves the browser), and the bare token `<code>.<key>`, for a terminal where nobody can click. Channels do not sync with each other: pair computers on the same release channel (or with the same `CODEAF_SYNC_URL`). `codeaf pair approve` takes either form, and so does pasting into home. When it is approved it says how many workspaces it can now reach:
 
 ```
 Paired. 3 workspaces available.

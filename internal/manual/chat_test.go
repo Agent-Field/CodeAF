@@ -4461,6 +4461,8 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
+		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
+		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

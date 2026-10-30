@@ -1,6 +1,6 @@
 # Hosted relay or your own relay
 
-## Hosted relay or my own — which one do I use, and where does sync go by default
+## Hosted relay or my own — which one do I use, where does sync go by default, and which relay each channel uses
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -13,7 +13,7 @@ A relay is the small service your computers sync through. There are two kinds. B
 
 Either way the relay sees only ciphertext and the short list on "What can the relay see".
 
-**Where sync goes by default.** Unset, a computer syncs through codeaf's hosted relay at `https://codeaf.agentfield.ai/fabric`, once this build carries that address. The address lives in one place in the program, `HostedRelayURL`; a build whose value is empty has no default, and then nothing is copied and pairing says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
+**Where sync goes by default.** Unset, each release channel syncs through its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 

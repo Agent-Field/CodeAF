@@ -5,6 +5,11 @@ compatibility_date = "2026-09-01"
 # Local development and the base of every deployment: `wrangler dev --local` runs this in workerd
 # with a simulated R2 bucket and Durable Objects. See README.md for what a deployment changes.
 
+# THE RELAY KEEPS NO LOGS. Observability is off, as it is on the live production
+# Worker, so no deploy turns on persisted request logs or traces for any channel.
+[observability]
+enabled = false
+
 [[r2_buckets]]
 binding = "FRAMES"
 bucket_name = "codeaf-relay-frames"
