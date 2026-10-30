@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -107,21 +108,24 @@ type appCrewRun struct {
 	// settled recovery is revisited for new traffic, never for its old claim.
 	recovering map[string]bool
 
-	read    appCrewRead
-	inputs  string
-	teams   []teamstore.Team
-	mu      sync.Mutex
-	stop    chan struct{}
-	done    chan struct{}
-	watch   teamstore.Watch
-	prints  map[string]string
-	members map[string]string
-	cursors map[string]string
-	acted   map[string]bool
-	packets map[string]teamstore.Packet
-	asks    map[string]appwire.Ask
-	held    map[string][]string
-	opening map[string]bool
+	read   appCrewRead
+	inputs string
+	teams  []teamstore.Team
+	mu     sync.Mutex
+	stop   chan struct{}
+	done   chan struct{}
+	watch  teamstore.Watch
+	prints map[string]string
+	// closedAt is the store revision a crew that closed while watched was
+	// last said at ([teamstore.Revisions]).
+	closedAt map[string]int64
+	members  map[string]string
+	cursors  map[string]string
+	acted    map[string]bool
+	packets  map[string]teamstore.Packet
+	asks     map[string]appwire.Ask
+	held     map[string][]string
+	opening  map[string]bool
 	// proposing is every agent whose model is being asked for a crew
 	// proposal right now (appcrewmembers.go's CrewPropose); nil until the
 	// first press.
@@ -338,34 +342,54 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 	for _, m := range members {
 		b.emit.Emit(appwire.EventMemberChanged, appwire.MemberChanged{Member: m})
 	}
-	// A CREW THAT LEFT THE OPEN CREWS while this watch held it closed, or was
-	// deleted. It is kept and read by id on every look, so archiving or
-	// deleting it later is said too: only crews that closed while the app
-	// watched are kept, never every closed crew.
+	// A CREW THAT CLOSED WHILE THIS WATCH HELD IT, or was deleted. It is kept,
+	// so archiving or deleting it later, from any door or process, is said
+	// too, but it costs its revision, one indexed row: only a crew whose row
+	// moved is read again and said again, and one that is gone is removed.
 	if len(removed) > 0 {
 		sort.Strings(removed)
-		gone, err := teamstore.LoadLineage(b.crewProfile(), removed...)
+		revs, err := teamstore.Revisions(b.crewProfile(), removed...)
 		if err == nil {
+			var moved []string
 			for _, id := range removed {
-				t, ok := gone.Team(id)
+				rev, ok := revs[id]
 				if !ok {
-					run.locked(func() { delete(run.prints, id) })
+					run.locked(func() { delete(run.prints, id); delete(run.closedAt, id) })
 					b.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
 					continue
 				}
-				view := b.crewView(appCrewRead{file: gone, defaults: read.defaults, layer: read.layer, waiting: read.waiting}, t)
-				raw, _ := json.Marshal(view)
-				said := false
-				run.locked(func() {
-					said = run.prints[id] == string(raw)
-					run.prints[id] = string(raw)
-				})
-				if !said {
-					b.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: view})
+				seen := false
+				run.locked(func() { at, ok := run.closedAt[id]; seen = ok && at == rev })
+				if !seen {
+					moved = append(moved, id)
+				}
+			}
+			if len(moved) > 0 {
+				crewClosedReads.Add(int64(len(moved)))
+				gone, err := teamstore.LoadWithHomes(b.crewProfile(), moved...)
+				for _, id := range moved {
+					t, ok := gone.Team(id)
+					if err != nil || !ok {
+						continue
+					}
+					view := b.crewView(appCrewRead{file: gone, defaults: read.defaults, layer: read.layer, waiting: read.waiting}, t)
+					raw, _ := json.Marshal(view)
+					said := false
+					run.locked(func() {
+						if run.closedAt == nil {
+							run.closedAt = map[string]int64{}
+						}
+						said = run.prints[id] == string(raw)
+						run.prints[id], run.closedAt[id] = string(raw), revs[id]
+					})
+					if !said {
+						b.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: view})
+					}
 				}
 			}
 		}
 	}
+
 	// AN AGENT WHOSE CREWS CHANGED IS SAID AGAIN, so its row's crews are
 	// never older than the crews' own.
 	for _, id := range moved {
@@ -389,6 +413,10 @@ func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
 	}
 	return true
 }
+
+// crewClosedReads counts the crews that closed while watched and were read
+// again, for a test to see one whose row did not move is not.
+var crewClosedReads atomic.Int64
 
 // appMembershipMoved is every agent whose open crews differ between two looks.
 func appMembershipMoved(before, after map[string][]string) []string {
@@ -1376,8 +1404,8 @@ func (b *appBackend) CrewGet(id string) (appwire.Crew, error) {
 	}
 	t, ok := read.file.Team(id)
 	if !ok {
-		// Not open: read by id, with the crews above it.
-		if read.file, err = teamstore.LoadLineage(b.crewProfile(), id); err != nil {
+		// Not open: read by id, with what its members' rows are drawn from.
+		if read.file, err = teamstore.LoadWithHomes(b.crewProfile(), id); err != nil {
 			return appwire.Crew{}, appEngineError(err)
 		}
 		if t, ok = read.file.Team(id); !ok {

@@ -215,22 +215,98 @@ SELECT id FROM down UNION SELECT id FROM up
 var errReadWhole = errors.New("teams: read the whole store")
 
 // LoadClosedCrews is every closed team the factory did not make, archived or
-// not, and every team above them (what their settings inherit). A finished
-// factory job's room is closed too, and there is one for every job the
-// factory ever ran: those are read by id, where a job or a tab names one,
+// not, with what its members' rows are drawn from ([LoadWithHomes]). A
+// finished factory job's room is closed too, and there is one for every job
+// the factory ever ran: those are read by id, where a job or a tab names one,
 // never listed.
 func LoadClosedCrews(profileDir string) (*File, error) {
+	return loadWithHomes(profileDir, "SELECT id FROM teams WHERE closed = 1 AND factory = 0")
+}
+
+// LoadWithHomes is the teams ids name with what their members' rows are drawn
+// from: every team above them (what their settings inherit), every open team
+// their members are also in (where a member is also, and where its home and
+// so its manager may be), and every team above those. A store whose
+// conversation names an earlier build left behind ([reindexIn]) is read whole.
+func LoadWithHomes(profileDir string, ids ...string) (*File, error) {
+	ids = distinct(ids)
+	if len(ids) == 0 {
+		return &File{Version: Version, localIdentities: true}, nil
+	}
+	marks, args := placeholders(ids)
+	return loadWithHomes(profileDir, "SELECT id FROM teams WHERE id IN ("+marks+")", args...)
+}
+
+// loadWithHomes is [LoadWithHomes] of the teams base selects.
+func loadWithHomes(profileDir, base string, args ...any) (*File, error) {
 	var ids []string
 	err := readPage(context.Background(), profileDir, func(r *pageReader) error {
+		if r.missing {
+			return nil
+		}
+		var rev, indexed int64
+		if err := r.q.QueryRowContext(r.ctx, "SELECT rev, indexed FROM meta WHERE id = 1").Scan(&rev, &indexed); err != nil {
+			return r.fail(err)
+		}
+		if rev != indexed {
+			return errReadWhole
+		}
 		var err error
 		ids, err = r.strings(`WITH RECURSIVE
- up(id) AS (SELECT id FROM teams WHERE closed = 1 AND factory = 0
+ base(id) AS (`+base+`),
+ others(id) AS (SELECT DISTINCT o.team_id FROM members m JOIN members o ON o.conv = m.conv AND o.former = 0
+  JOIN teams t ON t.id = o.team_id AND t.closed = 0
+  WHERE m.former = 0 AND m.conv <> '-' AND m.team_id IN (SELECT id FROM base)),
+ up(id) AS (SELECT id FROM base UNION SELECT id FROM others
   UNION SELECT t.parent FROM teams t JOIN up ON t.id = up.id WHERE t.parent <> '')
-SELECT id FROM up`)
+SELECT id FROM up`, args...)
 		return err
 	})
+	if errors.Is(err, errReadWhole) {
+		return Snapshot(profileDir)
+	}
 	if err != nil || len(ids) == 0 {
 		return &File{Version: Version, localIdentities: true}, err
 	}
 	return LoadTeams(profileDir, ids...)
+}
+
+// Revisions is the store revision each of the teams ids name last changed at
+// ([teamRows]), keyed by id; a team the store does not hold is left out. It
+// reads no team: a reader that keeps a few teams in view asks it to learn
+// which moved.
+func Revisions(profileDir string, ids ...string) (map[string]int64, error) {
+	out := map[string]int64{}
+	ids = distinct(ids)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	err := readPage(context.Background(), profileDir, func(r *pageReader) error {
+		if r.missing {
+			return nil
+		}
+		for len(ids) > 0 {
+			n := min(len(ids), 400)
+			marks, args := placeholders(ids[:n])
+			rows, err := r.q.QueryContext(r.ctx, "SELECT id, rev FROM teams WHERE id IN ("+marks+")", args...)
+			if err != nil {
+				return r.fail(err)
+			}
+			for rows.Next() {
+				var id string
+				var rev int64
+				if err := rows.Scan(&id, &rev); err != nil {
+					rows.Close()
+					return r.fail(err)
+				}
+				out[id] = rev
+			}
+			if err := rows.Close(); err != nil {
+				return r.fail(err)
+			}
+			ids = ids[n:]
+		}
+		return nil
+	})
+	return out, err
 }
