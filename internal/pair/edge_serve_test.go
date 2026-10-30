@@ -8,12 +8,18 @@ package pair
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 // screenLog is everything the machine has said, in order.
@@ -266,4 +272,110 @@ func TestServeApproveGetsTheDeviceLabel(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A DROPPED NETWORK IS ONE LINE, NOT ONE LINE A RETRY. While the relay is gone
+// the machine says once that it lost sync and is trying again, keeps trying
+// without being restarted, and shows its name again when the relay is back.
+func TestServeSaysOnceThatItLostSyncAndComesBack(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	var down atomic.Bool
+	door := &relay.Server{}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "error code: 502", http.StatusBadGateway)
+			return
+		}
+		door.ServeHTTP(w, r)
+	}))
+	wire := &cuttable{Listener: server.Listener}
+	server.Listener = wire
+	server.Start()
+	t.Cleanup(server.Close)
+	screen := &screenLog{}
+	host := &Host{Service: server.URL, Device: aDevice(t), Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")), Desk: &Desk{}, Say: screen.say}
+	ctx, stop := context.WithCancel(context.Background())
+	ended := make(chan struct{})
+	go func() { _ = host.Run(ctx); close(ended) }()
+	t.Cleanup(func() { stop(); <-ended })
+	screen.until(t, "its first code", func(l []string) bool { return len(codes(l)) == 1 })
+
+	down.Store(true)
+	wire.cut()
+	time.Sleep(4 * time.Second) // the first retries come at one and two seconds
+	down.Store(false)
+	lines := screen.until(t, "its name again", func(l []string) bool { return len(codes(l)) == 2 })
+	lost := 0
+	for _, line := range lines {
+		if line == "lost sync — trying again" {
+			lost++
+		}
+	}
+	if lost != 1 {
+		t.Fatalf("the machine said it lost sync %d times over one outage; want once: %q", lost, lines)
+	}
+}
+
+// A RELAY THAT STILL HOLDS THE OLD CONNECTION IS WAITED OUT. After a network
+// drop the relay may keep this machine's name for the dead connection until it
+// times out; a machine that was serving keeps trying instead of quitting as if
+// a second `codeaf serve` had taken its name.
+func TestServeWaitsOutItsOwnStaleName(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	door := &relay.Server{}
+	server := httptest.NewUnstartedServer(door)
+	wire := &cuttable{Listener: server.Listener}
+	server.Listener = wire
+	server.Start()
+	t.Cleanup(server.Close)
+	screen := &screenLog{}
+	device := aDevice(t)
+	host := &Host{Service: server.URL, Device: device, Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")), Desk: &Desk{}, Say: screen.say}
+	ctx, stop := context.WithCancel(context.Background())
+	ended := make(chan struct{})
+	var runErr error
+	go func() { runErr = host.Run(ctx); close(ended) }()
+	t.Cleanup(func() { stop(); <-ended })
+	screen.until(t, "its first code", func(l []string) bool { return len(codes(l)) == 1 })
+
+	wire.cut()
+	stale, err := relay.Register(context.Background(), server.URL, device.Private())
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * time.Second)
+	_ = stale.Close()
+	select {
+	case <-ended:
+		t.Fatalf("serve quit while its own old name was still held: %v", runErr)
+	default:
+	}
+	screen.until(t, "its name again", func(l []string) bool { return len(codes(l)) == 2 })
+}
+
+// cuttable is a listener whose connections a test can drop, hijacked ones
+// included, the way a network that goes away drops them.
+type cuttable struct {
+	net.Listener
+	mu    sync.Mutex
+	conns []net.Conn
+}
+
+func (c *cuttable) Accept() (net.Conn, error) {
+	conn, err := c.Listener.Accept()
+	if err == nil {
+		c.mu.Lock()
+		c.conns = append(c.conns, conn)
+		c.mu.Unlock()
+	}
+	return conn, err
+}
+
+func (c *cuttable) cut() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, conn := range c.conns {
+		_ = conn.Close()
+	}
+	c.conns = nil
 }

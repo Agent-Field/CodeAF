@@ -81,10 +81,20 @@ func (h *Host) Run(ctx context.Context) error {
 	}
 	wait := time.Second
 	announced := false
+	// lost is an outage already told: one line per outage, not one per retry.
+	lost := false
 	for {
 		registration, err := relay.Register(ctx, h.Service, h.Device.Private())
 		switch {
 		case err == nil:
+		case errors.Is(err, relay.ErrNameTaken) && announced:
+			// This machine held the name a moment ago, so what holds it now is
+			// its own dead connection, which the relay forgets when it times
+			// out. That is the outage still going on, and is waited out.
+			if !lost {
+				h.say("lost sync — trying again")
+			}
+			lost = true
 		case errors.Is(err, relay.ErrNameTaken):
 			// RULE THREE OF THE NAME POLICY, MET FROM THIS SIDE. Something is
 			// already connected under this machine's name, which in practice
@@ -95,7 +105,13 @@ func (h *Host) Run(ctx context.Context) error {
 			if !announced {
 				return Unreachable(h.Service)
 			}
-			h.say("lost sync — trying again")
+			if !lost {
+				h.say("lost sync — trying again")
+			}
+			lost = true
+		case errors.Is(err, relay.ErrNoDoor):
+			// Trying again cannot add a door the service does not have.
+			return NoDoor(h.Service)
 		default:
 			if !announced {
 				return err
@@ -105,6 +121,7 @@ func (h *Host) Run(ctx context.Context) error {
 
 		if err == nil {
 			wait = time.Second
+			lost = false
 			if !announced {
 				announced = true
 			}

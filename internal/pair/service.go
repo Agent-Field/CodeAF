@@ -2,12 +2,12 @@ package pair
 
 // Which relay this machine uses.
 //
-// THERE IS NO BUILT-IN DEFAULT, AND THAT IS DELIBERATE. The relay service is
-// not deployed; a default pointing at an address that does not answer would
-// turn "nothing is set up" — which has a next step — into "the network is
-// broken", which does not. So an unset relay is its own state with its own
-// sentence ([NoRelay]), and the day the service goes live is the day a default
-// belongs in this file and not before.
+// THE RELAY A MACHINE IS REACHED THROUGH IS THE ONE IT SYNCS THROUGH unless
+// somebody said otherwise. Sync already found an address — the person's
+// variable, the relay a pairing saved, or the hosted default — and a second
+// answer here would be a machine whose chats sync while `codeaf serve` says
+// there is nowhere to be reachable from. So the caller hands in sync's answer
+// and it is the last word, after the overrides this package has always read.
 //
 // A MACHINE REMEMBERS THE RELAY IT WAS PAIRED THROUGH, so a device that has
 // used two of them reaches each machine through the right one without anybody
@@ -30,27 +30,27 @@ const RelayEnv = "CODEAF_RELAY"
 // a shell.
 func RelayFile() string { return filepath.Join(Dir(), "relay") }
 
-// Relay is the address this machine uses when nothing else says otherwise.
+// Relay is the address this machine uses: the override, the saved file, then
+// sync, the address this machine syncs through (empty when sync is off).
 // Empty means none is set up.
-func Relay() string {
+func Relay(sync string) string {
 	if set := strings.TrimSpace(env.Get(RelayEnv)); set != "" {
 		return set
 	}
-	raw, err := os.ReadFile(RelayFile())
-	if err != nil {
-		return ""
+	if raw, err := os.ReadFile(RelayFile()); err == nil && strings.TrimSpace(string(raw)) != "" {
+		return strings.TrimSpace(string(raw))
 	}
-	return strings.TrimSpace(string(raw))
+	return strings.TrimSpace(sync)
 }
 
 // RelayFor is the address to reach one machine through: the override, then the
-// relay that machine was paired through, then the configured one.
-func RelayFor(known Known, found bool) string {
+// relay that machine was paired through, then [Relay].
+func RelayFor(known Known, found bool, sync string) string {
 	if set := strings.TrimSpace(env.Get(RelayEnv)); set != "" {
 		return set
 	}
 	if found && strings.TrimSpace(known.Service) != "" {
 		return strings.TrimSpace(known.Service)
 	}
-	return Relay()
+	return Relay(sync)
 }

@@ -72,6 +72,9 @@ type Reach struct {
 	AskCode func(name string) (string, error)
 	// Say is where the pairing's own lines go. Nil says nothing.
 	Say func(string)
+	// Sync is the relay this device syncs through, used when nothing more
+	// particular names one; see [Relay].
+	Sync string
 	// Now is the clock, swapped by tests.
 	Now func() time.Time
 }
@@ -102,7 +105,7 @@ func (r Reach) Open(ctx context.Context) (*Tunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	service := RelayFor(known, found)
+	service := RelayFor(known, found, r.Sync)
 	if strings.TrimSpace(service) == "" {
 		return nil, NoRelay(r.Name)
 	}
@@ -204,6 +207,8 @@ func (r Reach) dial(ctx context.Context, service string) (io.ReadWriteCloser, er
 		return nil, NotConnected(r.Name)
 	case errors.Is(err, relay.ErrUnreachable):
 		return nil, Unreachable(service)
+	case errors.Is(err, relay.ErrNoDoor):
+		return nil, NoDoor(service)
 	case errors.Is(err, relay.ErrTooMany):
 		return nil, Busy()
 	default:

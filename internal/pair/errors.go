@@ -45,6 +45,12 @@ func Unreachable(service string) error {
 	return fmt.Errorf("the service at %s cannot be reached from here — check this machine's network, or reach that machine with --host over ssh", service)
 }
 
+// NoDoor is a service that answers but cannot connect machines: one that only
+// syncs chats, or one from before machines could register with it.
+func NoDoor(service string) error {
+	return fmt.Errorf("the service at %s syncs chats but does not connect machines — run your own with `codeaf relay` and set %s to it, or reach that machine with --host over ssh", service, RelayEnv)
+}
+
 // NotConnected is the third: the relay is fine and that machine is not there.
 func NotConnected(name string) error {
 	return fmt.Errorf("%s is not connected to the service right now — run `codeaf serve` on that machine", name)

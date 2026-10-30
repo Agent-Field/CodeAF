@@ -18,6 +18,7 @@ package relay
 // test asserts the payloads never appear in it.
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -25,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 // Ledger is everything the relay knows about one connected machine. IT IS THE
@@ -118,7 +121,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // serveEngine takes a machine's registration and then holds its carrier.
 func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
-	if !strings.EqualFold(r.Header.Get("Upgrade"), Protocol) {
+	if !upgradable(r) {
 		http.Error(w, "this door speaks "+Protocol, http.StatusUpgradeRequired)
 		return
 	}
@@ -142,15 +145,11 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := hijack(w)
+	conn, err := takeOver(w, r)
 	if err != nil {
-		http.Error(w, "this server cannot hold a connection open", http.StatusInternalServerError)
 		return
 	}
 	defer func() { _ = conn.Close() }()
-	if err := writeUpgraded(conn); err != nil {
-		return
-	}
 
 	// RULE TWO: possession is proved. A machine that cannot answer the
 	// challenge never reaches the table.
@@ -208,7 +207,7 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 
 // serveDial matches a surface to a machine and then gets out of the way.
 func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) {
-	if !strings.EqualFold(r.Header.Get("Upgrade"), Protocol) {
+	if !upgradable(r) {
 		http.Error(w, "this door speaks "+Protocol, http.StatusUpgradeRequired)
 		return
 	}
@@ -240,15 +239,11 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 	}
 	defer func() { _ = stream.Close() }()
 
-	conn, err := hijack(w)
+	conn, err := takeOver(w, r)
 	if err != nil {
-		http.Error(w, "this server cannot hold a connection open", http.StatusInternalServerError)
 		return
 	}
 	defer func() { _ = conn.Close() }()
-	if err := writeUpgraded(conn); err != nil {
-		return
-	}
 	s.note(name, "a surface arrived")
 	defer s.note(name, "a surface left")
 
@@ -277,6 +272,42 @@ func (r *registration) add(up, down int64) {
 	r.up += up
 	r.down += down
 	r.mu.Unlock()
+}
+
+// upgradable is a request for either carrier: the raw upgrade, or a WebSocket
+// offering this protocol.
+func upgradable(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Upgrade"), Protocol) {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") && strings.Contains(r.Header.Get("Sec-WebSocket-Protocol"), Protocol)
+}
+
+// takeOver answers the upgrade and hands back the connection the carrier
+// reads, whichever of the two the client asked for. On failure the answer has
+// already been written.
+func takeOver(w http.ResponseWriter, r *http.Request) (net.Conn, error) {
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			Subprotocols:    []string{Protocol},
+			CompressionMode: websocket.CompressionDisabled,
+		})
+		if err != nil {
+			return nil, err
+		}
+		socket.SetReadLimit(messageLimit)
+		return websocket.NetConn(context.Background(), socket, websocket.MessageBinary), nil
+	}
+	conn, err := hijack(w)
+	if err != nil {
+		http.Error(w, "this server cannot hold a connection open", http.StatusInternalServerError)
+		return nil, err
+	}
+	if err := writeUpgraded(conn); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return conn, nil
 }
 
 // hijack takes the raw connection out from under the HTTP server.

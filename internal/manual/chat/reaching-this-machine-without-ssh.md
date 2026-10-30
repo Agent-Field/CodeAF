@@ -34,12 +34,10 @@ laptop$ codeaf chat --at otter-lamp-42
 router setting. That machine dials *out* to a relay and stays connected, which is why
 firewalls and NAT stop mattering.
 
-**This needs a relay service, and there is not one running yet.** Until one is switched
-on, `--at` prints:
-
-```
-no service address is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a service address, or reach that machine with --host over ssh
-```
+**There is nothing to set up.** Both machines go through the relay their chats already
+sync through: the hosted relay, unless sync was pointed somewhere else with
+`CODEAF_SYNC_URL` or by pairing. `CODEAF_RELAY`, or `--via` on `codeaf serve`, picks a
+different relay for this door alone, such as one you run yourself.
 
 `--host` works today and is not going anywhere. If you can already reach the machine that
 way, use that; the two doors are compared at the bottom of this page.
@@ -65,19 +63,39 @@ digits, the same every time, on any relay. You cannot pick a nicer one, and nobo
 can register under yours while your machine is connected.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
-means the directory you ran the command in. `--via` beats the `CODEAF_RELAY`
-environment variable.
+means the directory you ran the command in. The relay is, in order: `--via`, the
+`CODEAF_RELAY` environment variable, then the relay this machine syncs through.
 
 Running it twice on one machine is refused, because there is only one of it:
 
 ```
-this machine is already connected to the service as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
+this machine is already connected to sync as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
 ```
 
-With no relay set up at all it says:
+## codeaf serve when the network drops or the relay says no
+
+If the network drops while it runs, it says once:
 
 ```
-no service address is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your service address, or let people in over ssh with `codeaf chat --host` from their side
+lost sync — trying again
+```
+
+and keeps trying, waiting a little longer each time up to a minute, until it prints its
+name and code again. It does not need restarting, and devices reach it as soon as it has.
+
+A relay that answers but cannot connect machines, such as an older sync service, stops
+it with:
+
+```
+the service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
+```
+
+A relay that cannot be reached when it starts stops it with the sentence in *When --at
+will not open*. With sync turned off (`CODEAF_SYNC_URL=off`) and no `CODEAF_RELAY`, there
+is no relay at all:
+
+```
+no sync address is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your sync address, or let people in over ssh with `codeaf chat --host` from their side
 ```
 
 Ctrl+c ends it, and the machine gives its name back on the way out:
@@ -351,9 +369,9 @@ that still has it in the list, which is what revoking removes.
 
 ## When --at will not open
 
-There are four different reasons, and each says which one it is, in one sentence.
+There are five different reasons, and each says which one it is, in one sentence.
 
-**No relay is set up on this machine:**
+**No relay is set up on this machine** (sync is off and `CODEAF_RELAY` is empty):
 
 ```
 no service address is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a service address, or reach that machine with --host over ssh
@@ -363,6 +381,12 @@ no service address is set up on this machine, so --at has nowhere to look for ot
 
 ```
 the service at https://service.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
+```
+
+**The relay answers but cannot connect machines:**
+
+```
+the service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
 ```
 
 **The relay is fine and that machine is not connected to it:**
@@ -464,14 +488,17 @@ sitting at. They differ only in how the two halves reach each other.
 
 | | `--host` | `--at` |
 | --- | --- | --- |
-| Needs | `ssh <machine>` already works | a relay service, and one pairing |
+| Needs | `ssh <machine>` already works | one pairing; the relay is the one sync uses |
 | Set up on the far machine | nothing | `codeaf serve` running |
 | Works through NAT and firewalls | only if ssh does | yes — that machine dials out |
 | Anything in the middle | nothing of ours | a relay that cannot read the conversation |
-| Available today | yes | not until a relay is running |
+| Available today | yes | yes |
 
 **Prefer `--host` when ssh works.** It has nothing between the two machines, nothing to
 set up, and no service to depend on. `--at` is for the machine ssh cannot reach.
+
+Both machines must use the same relay. If one syncs through a relay of your own and the
+other through the hosted one, set `CODEAF_RELAY` to the same address on both.
 
 Both open the same surface with the same limits — what does and does not work over a
 connection is a property of the connection, not of which of these two doors opened it.
