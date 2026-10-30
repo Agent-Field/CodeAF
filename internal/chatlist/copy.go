@@ -179,15 +179,73 @@ func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanT
 func TakeoverLine(r Row) string {
 	line := fmt.Sprintf(takeoverLine, agoWord(r.DurableAgo))
 	if r.Mine {
-		return lastHeldHere + "; " + line
+		line = lastHeldHere + "; " + line
+	} else {
+		if r.Pending > 0 {
+			line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
+		}
+		if r.Status == Off && r.Device != "" {
+			line = fmt.Sprintf("%s offline; %s", r.Device, line)
+		} else {
+			line = holderLead(r) + line
+		}
 	}
-	if r.Pending > 0 {
-		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
+	if extra := CopiesLine(r.Copies); extra != "" {
+		line += "; " + extra
 	}
-	if r.Status == Off && r.Device != "" {
-		return fmt.Sprintf("%s offline; %s", r.Device, line)
+	return line
+}
+
+// CopiesLine summarizes branch copies collapsed into a main chat row: how many
+// copies exist, what a copy is, and whether discarding loses anything. Empty
+// when there are no copies (the emptiness law).
+func CopiesLine(copies []BranchCopy) string {
+	if len(copies) == 0 {
+		return ""
 	}
-	return holderLead(r) + line
+	count := copiesWord(len(copies))
+	allRedundant, extraTurns := copiesLoss(copies)
+	if allRedundant {
+		return fmt.Sprintf("%s (unsent turns set aside; already in this chat, so discarding loses nothing)", count)
+	}
+	if extraTurns > 0 {
+		return fmt.Sprintf("%s (unsent turns set aside; discarding archives %s not in this chat)", count, turns(extraTurns))
+	}
+	return fmt.Sprintf("%s (unsent turns set aside; discarding archives turns not in this chat)", count)
+}
+
+// CopiesShort is the narrow-column spelling for collapsed branch copies.
+func CopiesShort(copies []BranchCopy) string {
+	if len(copies) == 0 {
+		return ""
+	}
+	count := copiesWord(len(copies))
+	allRedundant, extraTurns := copiesLoss(copies)
+	if allRedundant {
+		return count + " · unsent, loses nothing"
+	}
+	if extraTurns > 0 {
+		return fmt.Sprintf("%s · unsent, %s not here", count, turns(extraTurns))
+	}
+	return count + " · unsent turns"
+}
+
+func copiesWord(n int) string {
+	if n == 1 {
+		return "1 copy"
+	}
+	return fmt.Sprintf("%d copies", n)
+}
+
+func copiesLoss(copies []BranchCopy) (allRedundant bool, extraTurns uint32) {
+	allRedundant = true
+	for _, c := range copies {
+		if !c.Redundant {
+			allRedundant = false
+			extraTurns += c.OrphanTurns
+		}
+	}
+	return allRedundant, extraTurns
 }
 
 // agoWord spells an age in its largest whole unit, so an hour reads `1h` and
