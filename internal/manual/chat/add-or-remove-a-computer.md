@@ -176,7 +176,7 @@ The key line shrinks to what works on the row (`↑↓ choose` when there is mor
 - `n rename` on `this device` opens `name this device: ` under the row with `enter save · ctrl+u clear · esc cancel`. While typing, `esc` cancels the edit without closing `/settings`; a second `esc` leaves `/settings`. On another row `n` says `a device renames itself — choose this device's row, or open /devices on the one you mean.`
 - `r remove` (called `codeaf devices revoke <name>` on the CLI) removes the computer under the cursor at once, marks its row `removed`, and says `desk was removed — it can no longer reach your chats.` On your own row `r` says `this device cannot remove itself — choose another row.` On `Add another device` or a `removed` row, `r` does nothing.
 
-When devices cannot work here, the tab shows one sentence and no list or `Add another device` row: `pairing is not available here` without a pairing door (such as `--host` or `--at`), `moving chats needs a newer furrow engine than this build carries` without a compatible engine, or the read error if loading fails.
+Where devices cannot work, the tab shows one sentence and no rows: `pairing is not available here` (a chat over `--host` or `--at`), `moving chats needs a newer furrow engine than this build carries`, or the read error. With `CODEAF_SYNC_URL=off` it lists no computers, and `enter add` answers `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`, as `/pair` does.
 
 ## A device was removed but refreshing the list failed
 
