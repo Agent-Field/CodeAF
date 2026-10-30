@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/taskdoor"
 )
@@ -75,6 +76,9 @@ func doTaskControls(record string) (taskdoor.Start, effort.Rung, error) {
 	}
 	if err := json.Unmarshal(raw, &request); err != nil {
 		return request, effort.None, err
+	}
+	if choice, ok := crewroute.ParseEffort(request.Effort); ok && choice != crewroute.EffortKnee {
+		return request, effort.None, nil
 	}
 	rung, ok := effort.Parse(request.Effort)
 	if !ok {

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/run"
 )
@@ -97,6 +98,10 @@ func (e *ChildExecutor) Run(ctx context.Context, a *Attempt, j Journal) error {
 	args := []string{"do", "--dir", work, "--json", "--" + TaskStoreFlag, record, "--timeout", wall.String()}
 	if a.Request.Model != "" {
 		args = append(args, "--model", a.Request.Model)
+	}
+	// A named quality preference belongs to B's crew and provider catalog.
+	if choice, ok := crewroute.ParseEffort(a.Request.Effort); ok && choice != crewroute.EffortKnee {
+		args = append(args, "--"+string(choice))
 	}
 	// A brief can itself be a flag-shaped word; it remains positional text.
 	args = append(args, "--", a.Request.Instruction)

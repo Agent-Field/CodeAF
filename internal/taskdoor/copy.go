@@ -385,3 +385,18 @@ func copyFingerprint(ctx context.Context, root string) (string, error) {
 	_, _ = hash.Write([]byte(digest))
 	return hex.EncodeToString(hash.Sum(nil)), ctx.Err()
 }
+
+// CheckCopy fences a person's local replacement before any remote abandonment
+// is recorded or stop is sent. It uses the same fingerprint as result restore.
+func CheckCopy(ctx context.Context, path, fingerprint string) error {
+	if fingerprint == "" {
+		return errors.New("the sent task copy's fingerprint is missing")
+	}
+	return unchangedCopy(ctx, path, fingerprint)
+}
+
+// CopyFingerprint lets a failed transfer retain a local replacement check
+// even when no input head reached the other computer.
+func CopyFingerprint(ctx context.Context, path string) (string, error) {
+	return copyFingerprint(ctx, path)
+}

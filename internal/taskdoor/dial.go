@@ -210,3 +210,7 @@ func (c *Conn) Send(attempt string, payload any) error {
 	}
 	return c.sendFrame(frame)
 }
+
+// LastActivity includes keepalive replies, so the origin distinguishes a quiet
+// worker from a computer whose connection stopped answering.
+func (c *Conn) LastActivity() time.Time { return time.Unix(0, c.lastFrame.Load()) }
