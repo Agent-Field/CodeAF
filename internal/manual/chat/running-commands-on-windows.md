@@ -35,6 +35,14 @@ The WSL-launcher answer is:
 
 `"CODEAF_BASH names <path>, which is WSL's launcher and runs commands in a different system. Set it to a Git for Windows or MSYS2 bash.exe, or unset it and codeaf will look for Git Bash."`
 
+## Why did a command fail to start on Windows — Defender, access denied and command line too long
+
+Microsoft Defender sometimes judges a command's text suspicious and stops the shell from starting. The command then fails with `Microsoft Defender or another antivirus blocked it.`, or with `Microsoft Defender likely blocked it (access denied).` when Windows reports only that access was denied. Check **Protection history** in **Windows Security** to see what was flagged. The agent is told to say what it was trying to run rather than reword the command to get past the security block.
+
+A command longer than **32,767 characters**, the most Windows accepts on one command line, fails with `too long for Windows' 32,767-character command line.` Write the script to a file in the working folder and run that file.
+
+Foreground commands and background jobs both lead with the reason, then the advice, then Windows' own error. Other start errors keep their usual wording.
+
 ## How do I write Windows drive paths in Git Bash?
 
 Git Bash uses `/c/…`, `/d/…` for Windows drives, for example `/c/Users/me/project`. codeaf converts paths it places in shell PATH lists and command targets to this form. Relative Windows paths such as `C:skills\bin`, `\tools\bin` and `skills\bin` are first made absolute using Windows' current drive and folder. Already POSIX-shaped paths beginning with `/` stay as written. Values read by native Windows programs keep their Windows form. The worker's project facts name its selected shell and the drive path form. Cygwin's `/cygdrive/` prefix is not supported.

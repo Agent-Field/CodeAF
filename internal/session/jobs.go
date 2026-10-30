@@ -57,6 +57,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1191,6 +1192,17 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	return r.startIn(command, "")
 }
 
+// jobStartError is a background job's start error. A refusal the platform can
+// explain leads with that reason, which the background-job tool puts on its
+// first line; the original error stays wrapped either way.
+func jobStartError(goos string, err error) error {
+	reason, advice := shell.StartFailure(goos, err)
+	if reason == "" {
+		return fmt.Errorf("could not start the command: %w", err)
+	}
+	return fmt.Errorf("%s\n%s\nWindows said: %w", reason, advice, err)
+}
+
 // startIn is [jobRegistry.start] held to one folder ([jobRegistry.newJobIn]).
 func (r *jobRegistry) startIn(command, want string) (*job, error) {
 	return r.startInUnder(context.Background(), command, want)
@@ -1262,7 +1274,7 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 	}
 	if err := process.Start(); err != nil {
 		started.sink.close()
-		return nil, fmt.Errorf("could not start the command: %w", err)
+		return nil, jobStartError(runtime.GOOS, err)
 	}
 	started.cmd = process
 	started.group = processgroup.CaptureGroup(process.Process.Pid)
