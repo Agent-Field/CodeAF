@@ -43,3 +43,13 @@ func TestAppModelFactsSendOnlyKnownPrices(t *testing.T) {
 		t.Fatalf("negative facts were sent: %+v", model)
 	}
 }
+
+// A PER-MILLION PRICE GOES OUT AS THE CATALOG MEANT IT, never with the float's
+// noise: $0.10 and $0.40 per million are 0.1 and 0.4 exactly.
+func TestAppModelFactsSendRoundPrices(t *testing.T) {
+	var model appwire.Model
+	appModelFacts(&model, tui3.Model{PromptPrice: 0.0000001, CompletionPrice: 0.0000004, PriceKnown: true})
+	if model.PriceInPerM == nil || model.PriceOutPerM == nil || *model.PriceInPerM != 0.1 || *model.PriceOutPerM != 0.4 {
+		t.Fatalf("prices = %v, %v", model.PriceInPerM, model.PriceOutPerM)
+	}
+}

@@ -378,6 +378,7 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 		}
 	}
 	b.finish(live)
+	b.forgetAsksOf(id, live)
 }
 
 func (b *appBackend) windowMoved(id string, live *appLive, takeover bool, line string) {

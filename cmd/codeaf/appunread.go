@@ -28,6 +28,7 @@ package main
 // showing may read unread for a moment.
 
 import (
+	"slices"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -55,19 +56,20 @@ func (a *appAgent) noteRowLocked(replied, asked time.Time) {
 	a.askedElsewhere = asked
 }
 
-// outputLocked is when the agent id last said something to the person that
-// still counts: its last answer or a question still open. Its record a may be
-// nil: a crew's ask can be said before agents.list has made one. Callers hold
-// b.mu.
-func (b *appBackend) outputLocked(id string, a *appAgent) time.Time {
-	var at time.Time
+// outputsLocked is every instant the agent id said something to the person
+// that still counts: its last answer and each question still open, each
+// judged on its own, so one stamped ahead never hides another. Its record a
+// may be nil: a crew's ask can be said before agents.list has made one.
+// Callers hold b.mu.
+func (b *appBackend) outputsLocked(id string, a *appAgent) []time.Time {
+	var out []time.Time
 	if a != nil {
-		at = laterOf(a.repliedAt, a.askedElsewhere)
+		out = append(out, a.repliedAt, a.askedElsewhere)
 	}
 	for _, asked := range b.openAsks[id] {
-		at = laterOf(at, asked)
+		out = append(out, asked)
 	}
-	return at
+	return out
 }
 
 // dropAsksLocked forgets the agent's open asks that went with a conversation
@@ -79,6 +81,14 @@ func (b *appBackend) dropAsksLocked(id string, asks []appwire.Ask) {
 	if len(b.openAsks[id]) == 0 {
 		delete(b.openAsks, id)
 	}
+}
+
+// forgetAsksOf drops a let-go conversation's questions again once its outbox
+// has said its last: an ask.opened still queued when the agent was let go
+// came out after the first drop, and no ask.closed follows it.
+func (b *appBackend) forgetAsksOf(id string, live *appLive) {
+	b.locked(func() { b.dropAsksLocked(id, live.asks) })
+	b.restateUnread(id)
 }
 
 // laterOf is the later of two instants.
@@ -125,13 +135,20 @@ func (b *appBackend) keepUnreadFrom() {
 	})
 }
 
-// unreadAt says output at outputAt is unread for the agent id. Output the
-// person saw stamped ahead of this clock is read while it is still the last.
-func (b *appBackend) unreadAt(id string, outputAt time.Time) bool {
-	if outputAt.IsZero() {
+// unreadAt says the agent id has output it has not seen: one instant after
+// its mark that is not one the person saw stamped ahead of this clock.
+func (b *appBackend) unreadAt(id string, outputs []time.Time) bool {
+	var said []time.Time
+	for _, at := range outputs {
+		if !at.IsZero() {
+			said = append(said, at)
+		}
+	}
+	if len(said) == 0 {
 		return false
 	}
-	var seen, ahead time.Time
+	var seen time.Time
+	var ahead []time.Time
 	marked := false
 	_ = b.state.read(func(f *appStateFile) {
 		seen, marked = f.Seen[id]
@@ -140,7 +157,22 @@ func (b *appBackend) unreadAt(id string, outputAt time.Time) bool {
 	if !marked {
 		seen = b.unreadFrom()
 	}
-	return outputAt.After(seen) && !outputAt.Equal(ahead)
+	for _, at := range said {
+		if at.After(seen) && !slices.ContainsFunc(ahead, at.Equal) {
+			return true
+		}
+	}
+	return false
+}
+
+// unreadOf is the agent's unread for a method's answer. The answer is not an
+// agent.changed, so it neither waits for one being said nor counts as what
+// the window was told: an event writer the window has stalled never holds a
+// method up.
+func (b *appBackend) unreadOf(id string) bool {
+	var at []time.Time
+	b.locked(func() { at = b.outputsLocked(id, b.agents[id]) })
+	return b.unreadAt(id, at)
 }
 
 // sayingUnread runs fn holding [appBackend.unreadSay].
@@ -159,11 +191,11 @@ func (b *appBackend) dressUnread(view *appwire.Agent) {
 // dressUnreadLocked is [appBackend.dressUnread] for a caller holding
 // unreadSay.
 func (b *appBackend) dressUnreadLocked(view *appwire.Agent) {
-	var at time.Time
+	var at []time.Time
 	var a *appAgent
 	b.locked(func() {
 		a = b.agents[view.ID]
-		at = b.outputLocked(view.ID, a)
+		at = b.outputsLocked(view.ID, a)
 	})
 	view.Unread = b.unreadAt(view.ID, at)
 	if a != nil {
@@ -179,11 +211,11 @@ func (b *appBackend) restateUnread(id string) {
 	var a *appAgent
 	stale := false
 	b.sayingUnread(func() {
-		var at time.Time
+		var at []time.Time
 		var said bool
 		b.locked(func() {
 			if a = b.agents[id]; a != nil {
-				at, said = b.outputLocked(id, a), a.saidUnread
+				at, said = b.outputsLocked(id, a), a.saidUnread
 			}
 		})
 		stale = a != nil && said != b.unreadAt(id, at)
@@ -309,23 +341,29 @@ func (b *appBackend) MarkSeen(id string) error {
 		return err
 	}
 	b.keepUnreadFrom()
-	var outputAt time.Time
-	b.locked(func() { outputAt = b.outputLocked(id, b.agents[id]) })
+	var outputs []time.Time
+	b.locked(func() { outputs = b.outputsLocked(id, b.agents[id]) })
 	// SEEN UP TO NOW, NEVER AHEAD OF IT: a stamp from a clock running ahead
-	// must not hide the answers that come after it. Output stamped ahead is
-	// kept as seen by its own instant, so the dot this was asked to clear
-	// does not stay, and the next output, whatever its stamp, still counts.
+	// must not hide the output that comes after it. Each output stamped ahead
+	// is kept as seen by its own instant, so the dot this was asked to clear
+	// does not stay, and other output, whatever its stamp, still counts.
 	now := b.now()
+	var ahead []time.Time
+	for _, at := range outputs {
+		if at.After(now) {
+			ahead = append(ahead, at)
+		}
+	}
 	err := b.state.write(func(f *appStateFile) error {
 		if f.Seen == nil {
 			f.Seen = map[string]time.Time{}
 		}
 		f.Seen[id] = now
-		if outputAt.After(now) {
+		if len(ahead) > 0 {
 			if f.SeenAhead == nil {
-				f.SeenAhead = map[string]time.Time{}
+				f.SeenAhead = map[string][]time.Time{}
 			}
-			f.SeenAhead[id] = outputAt
+			f.SeenAhead[id] = ahead
 		} else {
 			delete(f.SeenAhead, id)
 		}

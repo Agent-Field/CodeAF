@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -1260,8 +1261,10 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	}
 	b.nameUntitled(agents)
 	sort.SliceStable(agents, func(i, j int) bool { return agents[i].UpdatedAt.After(agents[j].UpdatedAt) })
+	// UNREAD IS LEFT TO WHAT GOES TO THE WINDOW (agents.list): working it out
+	// remembers it as said, and an agent only read here was told nothing.
 	for i := range agents {
-		b.dress(&agents[i])
+		b.dressState(&agents[i])
 	}
 	return agents, nil
 }
@@ -3197,7 +3200,9 @@ func (b *appBackend) closeAgentLocked(a *appAgent) (view appwire.Agent) {
 // hold a.gate.
 func (b *appBackend) release(a *appAgent) {
 	var live *appLive
+	var id string
 	b.locked(func() {
+		id = a.view.ID
 		live, a.live, a.viewOpen = a.live, nil, false
 		if live != nil {
 			a.lastLive = b.now()
@@ -3210,6 +3215,7 @@ func (b *appBackend) release(a *appAgent) {
 		return
 	}
 	b.finish(live)
+	b.forgetAsksOf(id, live)
 }
 
 // finish gives a conversation that is no longer held back, and shuts its
@@ -3919,6 +3925,8 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	// The answer says unread as agent.changed does.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 
@@ -3961,6 +3969,8 @@ func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
 		view = a.view
 	})
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+	// The answer says unread as agent.changed does.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 
@@ -4665,7 +4675,7 @@ func appModelFacts(model *appwire.Model, row tui3.Model) {
 	// A MODEL PRICED BY THE REQUEST has no per-million figure: a 0 there
 	// would read as free.
 	if row.RequestPrice <= 0 && row.PromptPrice >= 0 && row.CompletionPrice >= 0 && (row.PriceKnown || (row.PromptPrice > 0 && row.CompletionPrice > 0)) {
-		in, out := row.PromptPrice*1e6, row.CompletionPrice*1e6
+		in, out := appPerMillion(row.PromptPrice), appPerMillion(row.CompletionPrice)
 		model.PriceInPerM, model.PriceOutPerM = &in, &out
 	}
 	if row.ContextLength > 0 {
@@ -4674,4 +4684,11 @@ func appModelFacts(model *appwire.Model, row tui3.Model) {
 	if row.ArenaElo > 0 {
 		model.ArenaElo = row.ArenaElo
 	}
+}
+
+// appPerMillion is a per-token price per million tokens, rounded to a
+// billionth of a dollar so the float's noise (0.09999999999999999 for $0.10)
+// never goes out.
+func appPerMillion(perToken float64) float64 {
+	return math.Round(perToken*1e6*1e9) / 1e9
 }

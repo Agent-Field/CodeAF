@@ -87,6 +87,9 @@ func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Age
 		}
 		out = append(out, a)
 	}
+	for i := range out {
+		b.dressUnread(&out[i])
+	}
 	return out, nil
 }
 
@@ -271,6 +274,9 @@ func (b *appBackend) Rename(id, title string) (appwire.Agent, error) {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
 	})
+	// The answer says unread as agent.changed does, so a window that takes
+	// it over its row keeps the agent's dot.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 

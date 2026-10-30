@@ -439,7 +439,9 @@ func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
 // AN ANSWER IS THE TURN'S LAST WORD TO THE PERSON: an answer was recorded
 // since the last seal and the journal still ends on it, an assistant message
 // with words and no tool call. A turn that stopped on a tool step, on
-// thinking, or before saying anything leaves the stamp where it was.
+// thinking, or before saying anything leaves the stamp where it was, and so
+// does one that ends on a partial reply a stop cut short or on a line the
+// harness wrote in the model's place ([Agent.answeredLocked]).
 func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
 
 func (a *Agent) stampTurnEnd(sealed bool) {
@@ -449,7 +451,7 @@ func (a *Agent) stampTurnEnd(sealed bool) {
 	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
 	replied := false
 	if sealed {
-		replied = a.answeredSinceSeal && len(a.messages) > 0 && isAnswer(a.messages[len(a.messages)-1])
+		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
 		a.answeredSinceSeal = false
 	}
 	a.mu.Unlock()
@@ -467,6 +469,18 @@ func (a *Agent) stampTurnEnd(sealed bool) {
 		}
 		meta.LastReplyAt = at
 	})
+}
+
+// answeredLocked says a recorded message answered the person: [isAnswer], and
+// not marked as a reply cut short (a stop, a steer) or as an operational line
+// (a checkpoint's hand-over note), which the model did not finish saying to
+// them. Callers hold a.mu.
+func (a *Agent) answeredLocked(message ai.Message) bool {
+	if !isAnswer(message) {
+		return false
+	}
+	mark := a.presentation.of(message)
+	return mark == nil || (!mark.Interrupted && mark.Audience != "operational")
 }
 
 // isAnswer says a message is an answer: the assistant's words, with no tool

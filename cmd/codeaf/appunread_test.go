@@ -928,3 +928,155 @@ func TestAnOrderRunIsDatedWhenItAsked(t *testing.T) {
 		t.Fatalf("a run an older build parked is dated %v, want its slot %v", got, due)
 	}
 }
+
+// unreadLive is an open agent the person saw, which then answered: unread.
+func unreadLive(t *testing.T) (*appBackend, *appRecorder, appwire.Agent) {
+	t.Helper()
+	backend, rec, agent, dir := liveUnread(t, &fakeConversation{})
+	if err := backend.MarkSeen(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.LastReplyAt = time.Now()
+	if err := session.SaveMeta(dir, meta); err != nil {
+		t.Fatal(err)
+	}
+	backend.noteTurnOutput(agent.ID)
+	if unread, _ := appLastSaidUnread(rec, agent.ID); !unread {
+		t.Fatal("the answer never said unread")
+	}
+	return backend, rec, agent
+}
+
+// RENAMING, A MODEL OR AN EFFORT ANSWERS UNREAD AS AGENT.CHANGED SAYS IT: a
+// window that takes the answer over its row keeps the agent's dot.
+func TestAgentMethodAnswersSayUnread(t *testing.T) {
+	backend, _, agent := unreadLive(t)
+	renamed, err := backend.Rename(agent.ID, "a new name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	modeled, err := backend.SetModel(agent.ID, "some/model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	effortful, err := backend.SetEffort(agent.ID, "high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !renamed.Unread || !modeled.Unread || !effortful.Unread {
+		t.Fatalf("answers said unread: rename %v, model %v, effort %v", renamed.Unread, modeled.Unread, effortful.Unread)
+	}
+}
+
+// A FILTERED AGENTS.LIST SETS WHAT THE WINDOW WAS TOLD ONLY FOR WHAT IT
+// RETURNS: an agent left out of the Closed list is told of its unread when
+// it next moves.
+func TestAFilteredListTellsOnlyWhatItReturns(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	d.replied(time.Now())
+	closed, err := d.backend.ListAgentsIn("", appwire.ListClosed, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range closed {
+		if a.ID == d.id {
+			t.Fatal("the open agent was listed closed")
+		}
+	}
+	from := appRecorded(d.rec)
+	d.backend.restateUnread(d.id)
+	appUnreadSaidFrom(t, d.rec, from, d.id, true, "")
+}
+
+// A QUESTION STILL QUEUED WHEN ITS AGENT IS LET GO DOES NOT OUTLIVE IT: the
+// outbox says it after the agent's questions were dropped, and no
+// ask.closed follows, so it is dropped again once the outbox is shut.
+func TestAQuestionQueuedAtCloseDoesNotOutliveItsAgent(t *testing.T) {
+	backend, rec, conv, agent, _ := askingLive(t)
+	a, err := backend.find(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := backend.liveOf(a)
+	// The window's writer stalls on a line ahead of the question, so the
+	// question waits in the outbox while the agent is let go.
+	rec.mu.Lock()
+	held := true
+	defer func() {
+		if held {
+			rec.mu.Unlock()
+		}
+	}()
+	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{ID: "ahead", Agent: agent.ID, Kind: appwire.EntryReceipt, At: time.Now(), Text: "ahead"}})
+	approval := session.Question{ConsentScopes: []string{"bash"}, ID: 9, Kind: session.QuestionConsent, Head: "bash rm -rf build", Reason: "bash asks first", Options: session.AnswerOptions(session.QuestionConsent)}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &approval})
+	waitUntil := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !ok() {
+			if time.Now().After(deadline) {
+				rec.mu.Unlock()
+				held = false
+				t.Fatalf("never %s", what)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	waitUntil("held the question", func() bool {
+		asking := false
+		backend.locked(func() { asking = len(live.asks) > 0 })
+		return asking
+	})
+	closed := make(chan error, 1)
+	go func() { closed <- backend.CloseAgent(agent.ID) }()
+	waitUntil("let the agent go", func() bool {
+		gone := false
+		backend.locked(func() { gone = a.live == nil })
+		return gone
+	})
+	rec.mu.Unlock()
+	held = false
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+	backend.locked(func() {
+		if n := len(backend.openAsks[agent.ID]); n != 0 {
+			t.Errorf("the let-go agent still has %d open asks", n)
+		}
+	})
+	if unread, _ := appLastSaidUnread(rec, agent.ID); unread || listedUnread(t, backend, agent.ID) {
+		t.Fatalf("the closed agent reads unread for a question that went with it (last said %v)", unread)
+	}
+}
+
+// OUTPUT IS JUDGED INSTANT BY INSTANT: after a mark that saw an answer
+// stamped ahead of this clock, a question put here, stamped below that
+// answer, still reads unread.
+func TestAQuestionAfterAnAnswerStampedAheadIsUnread(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	d.replied(time.Now().Add(time.Hour))
+	d.backend.noteTurnOutput(d.id)
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	if d.listed().Unread {
+		t.Fatal("seeing an answer stamped ahead left its dot")
+	}
+	time.Sleep(5 * time.Millisecond)
+	ask := appwire.Ask{ID: "q2", Agent: d.id, Kind: appwire.AskQuestion, Title: "which branch?"}
+	d.backend.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	if !d.listed().Unread {
+		t.Fatal("a question put after the mark reads seen because an answer before it was stamped ahead")
+	}
+}
