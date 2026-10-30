@@ -749,8 +749,13 @@ type appAgent struct {
 	boot *appBoot
 	// dials are what agents.create asked to set on the conversation before
 	// its first turn, kept until an open has set them ([bootDials]).
-	dials   *appDials
-	opening bool
+	dials *appDials
+	// jobEffort is the effort of the factory job whose own conversation this
+	// is, read as it is opened: a job's chat its page left closed takes the
+	// job's effort when a send or Reopen opens it again
+	// ([appBackend.FactoryJobChats]).
+	jobEffort func() string
+	opening   bool
 	// starting says agents.create took a first message whose turn has not
 	// started yet: the conversation is still being opened (bootAgent). While
 	// it lasts the agent reads starting, and nothing waits on the gate the
@@ -1754,7 +1759,15 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		return appwire.Agent{}, false, appEngineError(err)
 	}
 	var dials *appDials
-	b.locked(func() { dials = a.dials })
+	var jobEffort func() string
+	b.locked(func() { dials, jobEffort = a.dials, a.jobEffort })
+	if jobEffort != nil {
+		if word := jobEffort(); word != "" {
+			if dial, ok := conn.Conv.(interface{ SetConversationEffort(string) bool }); ok {
+				dial.SetConversationEffort(word)
+			}
+		}
+	}
 	if err := bootDials(conn.Conv, dials); err != nil {
 		conn.Release()
 		return appwire.Agent{}, false, err
