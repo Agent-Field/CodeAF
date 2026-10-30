@@ -394,6 +394,13 @@ type appSearchWords func(terms string, limit int) ([]store.ConversationHit, erro
 // was made, so it is dressed with the state as it is when it goes out; it is
 // only ever moved up from idle, never down from what a road said.
 func (b *appBackend) dress(view *appwire.Agent) {
+	b.dressState(view)
+	b.dressUnread(view)
+}
+
+// dressState is [appBackend.dress] short of unread, which an agent.changed
+// works out in the same step it is said in (appInboxTap.Emit).
+func (b *appBackend) dressState(view *appwire.Agent) {
 	view.Crews = b.crewsOf(view.ID)
 	// Its own budget as the app's file keeps it (appbudget.go); the open
 	// conversation's own reading is agents.budget.get's, never a list's.
@@ -413,7 +420,6 @@ func (b *appBackend) dress(view *appwire.Agent) {
 		view.Line = agentLineLocked(a, view.State)
 	})
 	b.dressChatLocation(view)
-	b.dressUnread(view)
 }
 
 // agentLineLocked is an agent's live one-liner for its state: the step it is

@@ -179,6 +179,7 @@ func (b *appBackend) forgetMarks(id string) {
 		delete(f.Closed, id)
 		delete(f.Archived, id)
 		delete(f.Seen, id)
+		delete(f.SeenAhead, id)
 		return nil
 	})
 }

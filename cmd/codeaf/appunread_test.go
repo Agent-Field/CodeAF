@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -786,5 +787,144 @@ func TestClosingAnAgentWithAnOpenQuestionClearsItsUnread(t *testing.T) {
 	}
 	if listedUnread(t, backend, agent.ID) || restartedUnread(t, backend, agent.ID) {
 		t.Fatal("a closed agent's unanswered question still reads unread")
+	}
+}
+
+// appUnreadHook hands each event to on before passing it to next, as the
+// window would get it.
+type appUnreadHook struct {
+	next appwire.Emitter
+	on   func(event string, data any)
+}
+
+func (h appUnreadHook) Emit(event string, data any) {
+	h.on(event, data)
+	h.next.Emit(event, data)
+}
+
+// A QUESTION COUNTS BEFORE THE WINDOW HEARS OF IT: a mark the window sends
+// once it has the question is never stamped ahead of it, so the question it
+// showed the person reads seen.
+func TestAMarkSentOnceTheWindowHasAQuestionCoversIt(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	// Every reading of the clock is later than the one before.
+	var ticks atomic.Int64
+	start := time.Now().Add(time.Second)
+	d.backend.now = func() time.Time { return start.Add(time.Duration(ticks.Add(1)) * time.Millisecond) }
+	backend := d.backend
+	backend.emit = backend.newAppInbox(appUnreadHook{next: d.rec, on: func(_ string, data any) {
+		if opened, ok := data.(appwire.AskOpened); ok && opened.Ask.Agent == d.id {
+			if err := backend.MarkSeen(d.id); err != nil {
+				t.Error(err)
+			}
+		}
+	}})
+	ask := appwire.Ask{ID: "q1", Agent: d.id, Kind: appwire.AskQuestion, Title: "which branch?"}
+	backend.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	if unread, _ := appLastSaidUnread(d.rec, d.id); unread || d.listed().Unread {
+		t.Fatalf("a question the window had when it marked reads unread (last said %v)", unread)
+	}
+}
+
+// UNREAD NOTICES NEVER LEAVE THE WINDOW WITH THE OLDER READING: a mark that
+// lands while a turn's unread:true is on its way is said after it, so the
+// last word agrees with agents.list.
+func TestAMarkCrossingATurnsNoticeIsTheLastWord(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	backend := d.backend
+	var marked sync.WaitGroup
+	var crossed atomic.Bool
+	backend.emit = backend.newAppInbox(appUnreadHook{next: d.rec, on: func(_ string, data any) {
+		c, ok := data.(appwire.AgentChanged)
+		if !ok || c.Agent.ID != d.id || !c.Agent.Unread || !crossed.CompareAndSwap(false, true) {
+			return
+		}
+		// The person looks while the turn's notice is on its way: the mark
+		// gets as far as it can before the notice goes out.
+		done := make(chan struct{})
+		marked.Add(1)
+		go func() {
+			defer marked.Done()
+			defer close(done)
+			if err := backend.MarkSeen(d.id); err != nil {
+				t.Error(err)
+			}
+		}()
+		select {
+		case <-done:
+		case <-time.After(300 * time.Millisecond):
+		}
+	}})
+	d.replied(time.Now())
+	backend.noteTurnOutput(d.id)
+	marked.Wait()
+	if !crossed.Load() {
+		t.Fatal("the turn never said unread")
+	}
+	unread, said := appLastSaidUnread(d.rec, d.id)
+	if !said || unread || d.listed().Unread {
+		t.Fatalf("last said unread=%v (said %v), listed %v", unread, said, d.listed().Unread)
+	}
+}
+
+// A MARK IS NEVER SET AHEAD OF NOW: an answer stamped by a clock running
+// ahead clears when seen, and the answer after it, stamped by a clock that is
+// right, reads unread once its stamp is the conversation's last. (While this
+// process runs, the earlier stamp ahead still stands as its last answer.)
+func TestAMarkNeverRunsAheadOfNow(t *testing.T) {
+	d := newUnreadDisk(t)
+	d.listed()
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	d.replied(time.Now().Add(time.Hour))
+	d.backend.noteTurnOutput(d.id)
+	if !d.listed().Unread {
+		t.Fatal("an answer stamped ahead reads read before it was seen")
+	}
+	if err := d.backend.MarkSeen(d.id); err != nil {
+		t.Fatal(err)
+	}
+	var seen time.Time
+	_ = d.backend.state.read(func(f *appStateFile) { seen = f.Seen[d.id] })
+	if seen.After(time.Now()) {
+		t.Fatalf("the mark %v is ahead of now", seen)
+	}
+	if d.listed().Unread {
+		t.Fatal("seeing an answer stamped ahead left its dot")
+	}
+	d.start()
+	if d.listed().Unread {
+		t.Fatal("a restart reads the seen answer stamped ahead unread")
+	}
+	time.Sleep(5 * time.Millisecond)
+	d.replied(time.Now())
+	d.start()
+	if !d.listed().Unread {
+		t.Fatal("an answer after the mark reads read because one before it was stamped ahead")
+	}
+}
+
+// AN ORDER RUN'S QUESTION IS DATED WHEN IT BEGAN TO WAIT, not by its slot: a
+// run the clock parked late, after the person looked, still reads new. A run
+// an older build parked has no such time and reads its slot.
+func TestAnOrderRunIsDatedWhenItAsked(t *testing.T) {
+	due := time.Now().Add(-3 * time.Hour)
+	asked := time.Now()
+	view := appwire.Order{ID: "o1", Agent: "a1", Title: "weekly update"}
+	if got := appOrderRunAsk(view, automation.Run{ID: 7, Due: due, Asked: asked}).Asked; !got.Equal(asked) {
+		t.Fatalf("a run parked late is dated %v, want %v", got, asked)
+	}
+	if got := appOrderRunAsk(view, automation.Run{ID: 8, Due: due}).Asked; !got.Equal(due) {
+		t.Fatalf("a run an older build parked is dated %v, want its slot %v", got, due)
 	}
 }

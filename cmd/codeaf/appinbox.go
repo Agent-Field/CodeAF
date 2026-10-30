@@ -71,13 +71,25 @@ type appInboxTap struct {
 }
 
 func (t *appInboxTap) Emit(event string, data any) {
-	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
-	// its crews, its live line, working while a turn runs, and unread.
-	if changed, ok := data.(appwire.AgentChanged); ok {
-		t.b.dress(&changed.Agent)
-		data = changed
+	// A QUESTION COUNTS FOR UNREAD BEFORE THE WINDOW HEARS OF IT, so a mark
+	// sent once the window has it is never stamped ahead of it.
+	if opened, ok := data.(appwire.AskOpened); ok {
+		t.b.noteAsk(opened.Ask)
 	}
-	t.next.Emit(event, data)
+	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
+	// its crews, its live line, working while a turn runs, and unread. Its
+	// unread is worked out and said in one step, so two roads saying the
+	// agent at once cannot leave the window with the older reading.
+	if changed, ok := data.(appwire.AgentChanged); ok {
+		t.b.dressState(&changed.Agent)
+		t.b.sayingUnread(func() {
+			t.b.dressUnreadLocked(&changed.Agent)
+			t.next.Emit(event, changed)
+		})
+		data = changed
+	} else {
+		t.next.Emit(event, data)
+	}
 	t.b.inboxSaw(event, data)
 	t.b.unreadSaw(data)
 }

@@ -600,6 +600,12 @@ type appBackend struct {
 	turns         atomic.Uint64
 	assembled     atomic.Bool
 
+	// unreadSay is held from working an agent's unread out to saying it,
+	// so the last unread the window hears is the last one worked out
+	// (appunread.go). It is taken before mu and the app file's lock, never
+	// under them.
+	unreadSay sync.Mutex
+
 	mu               sync.Mutex
 	referenceWorkers int
 	// unreadStart is when this process first asked about unread, the moment an
