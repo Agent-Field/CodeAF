@@ -102,6 +102,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"do my teams show on my other computer?", "conversations-and-teams"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams"},
+		{"does Traffic sync between computers?", "conversations-and-teams"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost"},
 		{"create an empty team and add several saved conversations", "teams-page"},
 		{"how do I choose another manager before deleting its conversation", "teams-page"},
 		{"where is the model name and working spinner on team cards", "teams-page"},
@@ -4450,6 +4454,10 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 // C30.5 replaces the old chat-only memory promise with independent encrypted sync.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
+		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},
+		{"does Traffic sync between computers?", "conversations-and-teams", "32 lines per team"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost", "each pin's provider route"},
 		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
 		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
 		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},

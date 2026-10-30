@@ -561,7 +561,18 @@ member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
-`teams/<id>/traffic.jsonl`, one line per message, only ever added to.
+`teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
+messages written on this computer. On paired computers, Traffic also shows recent
+history from the other computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
+cannot deliver a message, start, stop, answer or wake a chat here. A message to a
+member or manager known to be on another computer is refused before writing;
+continue that chat here from Home first, then send again. A room post or send to
+several members reaches local recipients and names those not reached. If all
+recipients are elsewhere, nothing is written. An unavailable relay does not
+block local delivery. Decisions and escalations also check their recipients
+before changing anything. Over `--host` or `--at`, a remote member shows an
+"on the other computer" notice; open it there. A history link whose message
+cannot be found says it is on the other computer's history.
 
 ## Which approval rules do new members inherit?
 

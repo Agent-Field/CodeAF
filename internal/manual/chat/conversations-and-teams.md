@@ -99,7 +99,7 @@ A tile reads top to bottom:
   same as the conversation itself
 - a small **activity line** on the bottom border while there is activity to show
 
-A conversation this window can only show as a snapshot (over a shared connection only the one
+A conversation this window can only show as a saved copy (over a shared connection only the one
 in front is live) says `seen 6m ago` and draws no spinner.
 
 **A tile that needs you** has the amber border, the only amber in the view, and its body ends
@@ -447,3 +447,60 @@ when that is the desired handoff.
 For a teammate, the manager's `team_start` also takes `model`, including for a new
 sub-team's manager. Omitting it keeps the profile default. Neither tool rewrites the
 profile or changes the requesting chat's model.
+
+## Do my teams show on my other computer?
+
+Yes, after you pair the computers. Teams, members, handles, the manager and team
+settings show on every paired computer within a few seconds, even with no chat
+open. The Teams dropdown, Teams page and `@` list refresh without a restart.
+Both computers need to be running codeaf and able to reach the relay. An
+unpaired computer keeps all of this to itself and sends no relay requests.
+
+Open a member whose chat is on another paired computer to see
+`Continue this chat here?` on Home. Choose **continue here** to move the chat
+and open it. Choose **leave it there** to stay on Home with nothing changed.
+A chat that is not shared names the computer that has it: open it there. Until
+its name is known, it says `the other computer`. Under `--host` or `--at`, a
+member on another computer shows that notice; open it on its computer.
+
+A send to one member or manager whose chat is known to be on another computer
+is refused: it would not reach that chat. Continue the chat here first, then
+send again. A room post or send to several members still reaches local members
+and names anyone not reached, such as `Not reached: @web (on desktop).` If every
+recipient is elsewhere, nothing is written. An unavailable relay never blocks
+local messages.
+
+## Will deleting a team on my laptop delete it on my desktop?
+
+Yes, on paired computers a deleted team stays deleted. A desktop that was
+offline catches up when it reconnects. Renaming its old copy while offline does
+not bring the team back. Deleting a team does not delete its conversations.
+An unpaired computer keeps its teams to itself.
+
+Edits to different members or different parts of a team can both survive. If
+both computers change the same detail, the later change wins. Teams appear in
+creation order on both computers. Conflicting handles and parents are repaired
+consistently, and a removed member cannot remain the manager.
+
+## Does Traffic sync between computers?
+
+Yes, between paired computers. Traffic from another computer shows its newest
+history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
+at most 64 KiB, with the most recently active teams first. It can take up to
+about 30 seconds to appear. Text longer than 2 KiB is shortened, with ` …` at
+the end. Your original local lines keep their full text.
+
+This is history only: it cannot be answered or acted on here. It never delivers
+a directive or question, starts or stops a chat, or wakes a member here. Replies
+within the shared history stay linked. As a computer shares newer lines, its
+older lines leave this view. They remain on the computer that wrote them until
+its ordinary log rotation.
+
+A send only to chats known to be elsewhere is refused. A send with local
+recipients is written once and names those not reached. Open a remote chat and
+choose **continue here** on Home before sending to it. Under `--host` or `--at`,
+open it on its computer. Decision details, spending records and working copies
+do not travel with Traffic. A decision or escalation whose recipient is
+elsewhere is refused before it changes anything. An unpaired computer keeps
+its Traffic to itself. A history link that cannot find its message says it is
+on the other computer's history.
