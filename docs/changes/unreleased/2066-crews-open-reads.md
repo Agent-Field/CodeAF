@@ -15,5 +15,8 @@ New store reads: `LoadOpen`, `LoadTeams`, `LoadLineage`, `LoadSubtree`,
 `LoadConversationView`, `LoadClosedCrews`, `ConversationReferenced`,
 `InspectConversation` and `AnyManager`. `UpdateOpen` writes over the open
 crews only; reopening, archiving, deleting and the terminal's whole-list edits
-keep `Update`. The session package names member conversations for the index
+keep `Update`. A write through `UpdateOpen` that adds or removes a member, or
+changes its home or independence, where that conversation is also in a closed
+crew, is made over every crew instead, so independence stays one fact across
+open and closed crews. The session package names member conversations for the index
 (`teams.SetConversationName`). `factorySweepEndedRooms` is marked for removal.

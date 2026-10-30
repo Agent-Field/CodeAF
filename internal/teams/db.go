@@ -814,6 +814,44 @@ func closedParents(ctx context.Context, q querier, path string) (map[string]bool
 	return out, unreadable(rows.Err(), path)
 }
 
+// inClosedTeams says whether any of keys is a member of a closed team. convs
+// are the conversations those memberships name: on a store whose lookup
+// columns say what its rows hold they find the rows by index, and otherwise
+// every closed team's members are looked at.
+func inClosedTeams(profileDir string, keys, convs []string) (bool, error) {
+	path := Path(profileDir)
+	h, err := acquire(path, false)
+	if err != nil || h == nil {
+		return false, err
+	}
+	defer h.release()
+	ctx := context.Background()
+	tx, err := h.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return false, unreadable(err, path)
+	}
+	defer tx.Rollback()
+	var rev, indexed int64
+	if err := tx.QueryRowContext(ctx, "SELECT rev, indexed FROM meta WHERE id = 1").Scan(&rev, &indexed); err != nil {
+		return false, unreadable(err, path)
+	}
+	keyMarks, args := placeholders(keys)
+	query := "SELECT 1 FROM members m JOIN teams t ON t.id = m.team_id WHERE m.former = 0 AND t.closed = 1 AND m.key IN (" + keyMarks + ")"
+	if rev == indexed {
+		convMarks, more := placeholders(distinct(convs))
+		query += " AND m.conv IN (" + convMarks + ")"
+		args = append(args, more...)
+	}
+	var one int
+	switch err := tx.QueryRowContext(ctx, query+" LIMIT 1", args...).Scan(&one); {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, unreadable(err, path)
+	}
+	return true, nil
+}
+
 // reusable is the first held snapshot that has team id's rows at revision
 // at, and those rows.
 func reusable(id string, at int64, held ...*snapshot) (*snapshot, *teamRows) {

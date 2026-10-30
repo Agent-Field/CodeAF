@@ -190,6 +190,14 @@ func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
 //
 // A write that acts on a closed team (reopening, archiving or deleting one)
 // uses [Update], which hands fn every team.
+//
+// A MEMBER IN A CLOSED TEAM TOO IS WRITTEN OVER EVERY TEAM. Whether a
+// conversation is independent is written on each of its memberships, closed
+// teams' too, and read from any of them ([File.AddMember], [File.RemoveMember],
+// [File.Disband]). A write that adds or removes a member, or changes its home
+// or independence, where that conversation also sits in a closed team, is
+// made again as [Update] would make it, under the same lock: fn is then
+// handed every team, so it must not count on seeing only the open ones.
 func UpdateOpen(profileDir string, fn func(*File) error) error {
 	return withLock(profileDir, lockWait, func() error {
 		_, err := updateOpenLocked(profileDir, fn)
@@ -211,6 +219,7 @@ func updateOpenLocked(profileDir string, fn func(*File) error) (*File, error) {
 	}
 	tidyWithin(f.Teams, elsewhere)
 	previous := f.ManagementSnapshot()
+	marks := markMembers(f.Teams)
 	if err := fn(f); err != nil {
 		return nil, err
 	}
@@ -218,6 +227,15 @@ func updateOpenLocked(profileDir string, fn func(*File) error) (*File, error) {
 		return f, nil
 	}
 	tidyWithin(f.Teams, elsewhere)
+	if keys, convs := marks.changed(f.Teams); !missing && len(keys) > 0 {
+		closed, err := inClosedTeams(profileDir, keys, convs)
+		if err != nil {
+			return nil, err
+		}
+		if closed {
+			return updateLocked(profileDir, fn)
+		}
+	}
 	if err := f.checkIntroducedConversations(previous); err != nil {
 		return nil, err
 	}
@@ -228,6 +246,54 @@ func updateOpenLocked(profileDir string, fn func(*File) error) (*File, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+// memberMark is one membership's place in a list: its home and independence
+// flags, and the conversation it names ([memberConv]).
+type memberMark struct {
+	home, independent bool
+	conv              string
+}
+
+// memberMarks is every membership in teams by team and key, for a write to
+// find, after fn, the memberships it changed.
+type memberMarks map[[2]string]memberMark
+
+func markMembers(teams []Team) memberMarks {
+	out := memberMarks{}
+	for _, t := range teams {
+		for _, m := range t.Members {
+			out[[2]string{t.ID, m.Key}] = memberMark{m.Home, m.Independent, memberConv(m)}
+		}
+	}
+	return out
+}
+
+// changed is every key whose memberships teams added, removed, or gave
+// another home or independence flag since the marks, and the conversations
+// those memberships name.
+func (before memberMarks) changed(teams []Team) (keys, convs []string) {
+	seen := map[string]bool{}
+	note := func(key, conv string) {
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+			convs = append(convs, memberConv(Member{Key: key}))
+		}
+		convs = append(convs, conv)
+	}
+	after := markMembers(teams)
+	for at, m := range after {
+		if old, ok := before[at]; !ok || old.home != m.home || old.independent != m.independent {
+			note(at[1], m.conv)
+		}
+	}
+	for at, m := range before {
+		if _, ok := after[at]; !ok {
+			note(at[1], m.conv)
+		}
+	}
+	return keys, convs
 }
 
 // Snapshot reads references without repairs, locking or writes. Launch

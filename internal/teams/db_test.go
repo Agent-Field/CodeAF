@@ -477,3 +477,109 @@ func TestUpdateOpenKeepsAParentItCannotSee(t *testing.T) {
 		t.Fatalf("an open-only write moved the open team to %q", k.Parent)
 	}
 }
+
+// AN OPEN-ONLY WRITE KEEPS A MEMBER INDEPENDENT WHERE A CLOSED CREW SAYS SO.
+// Independence is one fact about a conversation, written on each of its
+// memberships, closed crews' too: a member made independent in a crew that
+// has since closed is added to another as independent, and one made
+// independent while it also sits in a closed crew is independent there when
+// that crew reopens. [UpdateOpen] reads only the open crews, so a write that
+// changes such a member's memberships is made over every crew instead.
+func TestUpdateOpenKeepsIndependenceInClosedCrews(t *testing.T) {
+	ma, mb, mc, x := "/p/ma/transcript.jsonl", "/p/mb/transcript.jsonl", "/p/mc/transcript.jsonl", "/p/x/transcript.jsonl"
+	in := func(t *testing.T, dir, team string) Member {
+		t.Helper()
+		f := mustLoad(t, dir)
+		crew, ok := f.Team(team)
+		if !ok {
+			t.Fatalf("no crew %s", team)
+		}
+		m, ok := crew.Member(x)
+		if !ok {
+			t.Fatalf("x is not in %s", crew.Name)
+		}
+		return m
+	}
+
+	t.Run("added", func(t *testing.T) {
+		dir := t.TempDir()
+		must(t, Save(dir, []Team{{ID: "root00000000", Name: "All", Root: true},
+			{ID: "teamA0000000", Name: "A", Parent: "root00000000", Manager: ma, Members: []Member{{Key: ma}, {Key: x, Independent: true}}},
+			{ID: "teamB0000000", Name: "B", Parent: "root00000000", Manager: mb, Members: []Member{{Key: mb}}}}))
+		must(t, Update(dir, func(f *File) error { return f.Close("teamA0000000", time.Now(), "") }))
+		must(t, UpdateOpen(dir, func(f *File) error { return f.AddMember("teamB0000000", Member{Key: x}) }))
+		if m := in(t, dir, "teamB0000000"); m.Home || !m.Independent {
+			t.Fatalf("x joined B with home=%v independent=%v, want independent", m.Home, m.Independent)
+		}
+	})
+
+	// A store an earlier build wrote last has lookup columns that may not say
+	// what its rows hold: the closed teams' members are looked at instead.
+	t.Run("added, on a store an earlier build wrote", func(t *testing.T) {
+		dir := t.TempDir()
+		must(t, Save(dir, []Team{{ID: "root00000000", Name: "All", Root: true},
+			{ID: "teamA0000000", Name: "A", Parent: "root00000000", Manager: ma, Members: []Member{{Key: ma}, {Key: x, Independent: true}}},
+			{ID: "teamB0000000", Name: "B", Parent: "root00000000", Manager: mb, Members: []Member{{Key: mb}}}}))
+		must(t, Update(dir, func(f *File) error { return f.Close("teamA0000000", time.Now(), "") }))
+		h, err := acquire(Path(dir), false)
+		must(t, err)
+		_, err = h.db.Exec("UPDATE meta SET indexed = 0; UPDATE members SET conv = 'stale'")
+		h.release()
+		must(t, err)
+		must(t, UpdateOpen(dir, func(f *File) error { return f.AddMember("teamB0000000", Member{Key: x}) }))
+		if m := in(t, dir, "teamB0000000"); m.Home || !m.Independent {
+			t.Fatalf("x joined B with home=%v independent=%v, want independent", m.Home, m.Independent)
+		}
+	})
+
+	// The rest stay open-only: a member in no closed team costs one look, and
+	// no closed team is read.
+	t.Run("a member in no closed team", func(t *testing.T) {
+		dir := t.TempDir()
+		must(t, Save(dir, []Team{{ID: "root00000000", Name: "All", Root: true},
+			{ID: "teamA0000000", Name: "A", Parent: "root00000000", Manager: ma, Members: []Member{{Key: ma}, {Key: x, Independent: true}}},
+			{ID: "teamB0000000", Name: "B", Parent: "root00000000", Manager: mb, Members: []Member{{Key: mb}}}}))
+		must(t, Update(dir, func(f *File) error { return f.Close("teamA0000000", time.Now(), "") }))
+		held.Lock()
+		delete(held.by, heldKey(Path(dir), false))
+		held.Unlock()
+		y := "/p/y/transcript.jsonl"
+		must(t, UpdateOpen(dir, func(f *File) error { return f.AddMember("teamB0000000", Member{Key: y}) }))
+		if heldAt(heldKey(Path(dir), false)) != nil {
+			t.Fatal("adding a member in no closed team read every team")
+		}
+		must(t, UpdateOpen(dir, func(f *File) error { return f.AddMember("teamB0000000", Member{Key: x}) }))
+		if heldAt(heldKey(Path(dir), false)) == nil {
+			t.Fatal("adding a member of a closed team was not made over every team")
+		}
+	})
+
+	t.Run("removed from its home", func(t *testing.T) {
+		dir := t.TempDir()
+		must(t, Save(dir, []Team{{ID: "root00000000", Name: "All", Root: true},
+			{ID: "teamA0000000", Name: "A", Parent: "root00000000", Manager: ma, Members: []Member{{Key: ma}, {Key: x, Home: true}}},
+			{ID: "teamC0000000", Name: "C", Parent: "root00000000", Manager: mc, Members: []Member{{Key: mc}, {Key: x}}}}))
+		must(t, Update(dir, func(f *File) error { return f.Close("teamC0000000", time.Now(), "") }))
+		if m := in(t, dir, "teamA0000000"); !m.Home {
+			t.Fatal("the rig did not make A x's home")
+		}
+		must(t, UpdateOpen(dir, func(f *File) error { return f.RemoveMember("teamA0000000", x) }))
+		must(t, Update(dir, func(f *File) error { return f.Reopen("teamC0000000") }))
+		if m := in(t, dir, "teamC0000000"); m.Home || !m.Independent {
+			t.Fatalf("x is in the reopened C with home=%v independent=%v, want independent", m.Home, m.Independent)
+		}
+	})
+
+	t.Run("its home disbanded", func(t *testing.T) {
+		dir := t.TempDir()
+		must(t, Save(dir, []Team{{ID: "root00000000", Name: "All", Root: true},
+			{ID: "teamA0000000", Name: "A", Parent: "root00000000", Manager: ma, Members: []Member{{Key: ma}, {Key: x, Home: true}}},
+			{ID: "teamC0000000", Name: "C", Parent: "root00000000", Manager: mc, Members: []Member{{Key: mc}, {Key: x}}}}))
+		must(t, Update(dir, func(f *File) error { return f.Close("teamC0000000", time.Now(), "") }))
+		must(t, UpdateOpen(dir, func(f *File) error { return f.Disband("teamA0000000", time.Now(), "") }))
+		must(t, Update(dir, func(f *File) error { return f.Reopen("teamC0000000") }))
+		if m := in(t, dir, "teamC0000000"); m.Home || !m.Independent {
+			t.Fatalf("x is in the reopened C with home=%v independent=%v, want independent", m.Home, m.Independent)
+		}
+	})
+}
