@@ -18,6 +18,10 @@ var ErrSuperseded = fmt.Errorf("cellsync: another device continued this chat: %w
 // Publisher makes turns durable: objects into the store first, the head in the
 // directory last. Dir is already bound to this device.
 type Publisher struct {
+	// CheckHeld makes even a small independent upload ask which objects the
+	// relay lacks. Task-only cells use it because they have no directory head
+	// from which to assume what another sender has already published.
+	CheckHeld bool
 	// WarmFrameHints opts into the bounded existing-frame prototype.
 	WarmFrameHints bool
 	Engine         Engine

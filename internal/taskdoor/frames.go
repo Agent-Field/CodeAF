@@ -31,8 +31,9 @@ func (f Frame) Decode(into any) error { return json.Unmarshal(f.Payload, into) }
 
 // Head identifies a task-only cell, independently of the chat's own head.
 type Head struct {
-	Head string `json:"head"`
-	Cell string `json:"cell"`
+	Head        string `json:"head"`
+	Cell        string `json:"cell"`
+	Fingerprint string `json:"-"`
 }
 type Limits struct {
 	USD   float64 `json:"usd,omitempty"`
@@ -66,7 +67,9 @@ type Watch struct {
 	From uint64 `json:"from"`
 }
 type Step struct {
-	Step run.Step `json:"step"`
+	Step   run.Step `json:"step"`
+	Source string   `json:"source,omitempty"`
+	Offset int64    `json:"offset,omitempty"`
 }
 
 // SpendLine carries one charge, so the origin can attribute it once rather
@@ -80,7 +83,9 @@ type SpendLine struct {
 	USD          float64 `json:"usd,omitempty"`
 }
 type Spend struct {
-	Line SpendLine `json:"line"`
+	Line   SpendLine `json:"line"`
+	Source string    `json:"source,omitempty"`
+	Offset int64     `json:"offset,omitempty"`
 }
 type Phase struct {
 	Words string `json:"words"`
