@@ -145,90 +145,14 @@ func (h *Host) Run(ctx context.Context) error {
 	if h.Desk != nil && h.Desk.Now == nil && h.Now != nil {
 		h.Desk.Now = h.Now
 	}
-	wait := time.Second
-	announced := false
-	// told and throttled are each said once per spell, not once per retry.
-	// told is set when the person has been told sync was lost and not yet
-	// that it came back, so the two lines always arrive as a pair.
-	told := false
-	throttled := false
-	tellLost := func() {
-		if !told {
-			h.say(LostSyncLine)
-		}
-		told = true
-	}
-	for {
-		registration, err := relay.Register(ctx, h.Service, h.Device.Private())
-		switch {
-		case err == nil:
-		case errors.Is(err, relay.ErrTooMany):
-			if !throttled {
-				h.say(TooManyRegistrationsLine)
-			}
-			throttled = true
-		case errors.Is(err, relay.ErrNameTaken) && announced:
-			// This machine held the name a moment ago, so what holds it now is
-			// its own dead connection, which the relay forgets when it times
-			// out. That is the outage still going on, and is waited out.
-			tellLost()
-		case errors.Is(err, relay.ErrNameTaken):
-			// RULE THREE OF THE NAME POLICY, MET FROM THIS SIDE. Something is
-			// already connected under this machine's name, which in practice
-			// means a second `codeaf serve` on this same machine. Trying again
-			// forever would be two processes fighting over one name.
-			return fmt.Errorf("this machine is already connected to sync as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
-		case errors.Is(err, relay.ErrUnreachable):
-			if !announced {
-				return Unreachable(h.Service)
-			}
-			tellLost()
-		case errors.Is(err, relay.ErrNoDoor) && announced:
-			// The door was there a moment ago, so this is a relay being
-			// redeployed, and is waited out like any other outage.
-			tellLost()
-		case errors.Is(err, relay.ErrNoDoor):
-			// Trying again cannot add a door the service does not have.
-			return NoDoor(h.Service)
-		default:
-			if !announced {
-				return err
-			}
-			h.say("sync refused this machine: " + err.Error())
-		}
-
-		if err == nil {
-			announced = true
-			// A LOST LINE IS ANSWERED BY A BACK LINE. The banner is reprinted only
-			// when the name or code changed, so without this the last thing on
-			// the screen of a machine that recovered would still say it was lost.
-			if told {
-				h.say(BackLine(registration.Name()))
-				told = false
-			}
+	return (&RegistrationLoop{
+		Service: h.Service, Key: h.Device.Private(), Say: h.Say,
+		Now: h.now, Wait: h.wait, Hold: h.hold,
+		Ready: func(registration *relay.Registration) {
 			code, codeErr := h.Desk.Offer()
-			// Reprints happen only when the name or pairing code actually
-			// changed, so a brief network blip neither spams the screen nor
-			// disguises a flapping carrier as a fresh start.
 			h.sayBanner(h.banner(registration.Name(), code, codeErr), false)
-			since := h.now()
-			h.hold(ctx, registration)
-			// Backoff resets only after the carrier stayed up for a meaningful
-			// stretch; an upgrade that drops right after Register keeps
-			// backing off instead of hammering the relay every second.
-			if h.now().Sub(since) >= steadyAfter {
-				wait = time.Second
-				throttled = false
-			}
-		}
-
-		if err := h.wait(ctx, wait); err != nil {
-			return nil
-		}
-		if wait *= 2; wait > time.Minute {
-			wait = time.Minute
-		}
-	}
+		},
+	}).Run(ctx)
 }
 
 // hold answers arrivals until the registration ends, and returns only after
