@@ -163,3 +163,36 @@ func TestTheRoomFollowsTheJobsStateWhateverItIsTold(t *testing.T) {
 		t.Fatal("a live job's round left its room closed")
 	}
 }
+
+// A STAGE STILL JOINS A ROOM CLOSED UNDER ITS ROUND. A person may close a live
+// job's room, or the `factory` crew above it, while a round is going, and a
+// job may end with a round still opening stages; the stage joins the closed
+// room, as it always has, and the room stays as the person or the job left it.
+func TestAStageJoinsARoomClosedUnderItsRound(t *testing.T) {
+	r := newRoomFollowRig(t)
+	byHand := r.job("5e5e5e5e5e5e", factory.Item{Title: "closed by hand", State: factory.StateRunning})
+	parent := r.job("6f6f6f6f6f6f", factory.Item{Title: "parent closed", State: factory.StateRunning})
+	ended := r.job("7a7a7a7a7a7a", factory.Item{Title: "ended", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 8, State: factory.PROpen}})
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Close("5e5e5e5e5e5e", time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	room, _ := teams.LoadTeams(r.profile, "6f6f6f6f6f6f")
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Close(room.Teams[0].Parent, time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	r.update(ended.ID, func(it *factory.Item) { it.PullRequest.State = factory.PRMerged })
+	for _, it := range []factory.Item{byHand, parent, ended} {
+		room := it.Stream.Room
+		if !r.closed(room) {
+			t.Fatalf("%s: the rig did not close the room", it.Title)
+		}
+		next := filepath.Join(r.root, "later-"+room, "transcript.jsonl")
+		if err := stageJoinTeam(r.profile, room, next, r.root, "fix", "fix", "Fix it."); err != nil {
+			t.Fatalf("%s: the stage could not join: %v", it.Title, err)
+		}
+		f, _ := teams.LoadTeams(r.profile, room)
+		if !f.Teams[0].Closed() || len(f.Teams[0].Members) != 2 {
+			t.Fatalf("%s: after the join: closed=%v members=%d", it.Title, f.Teams[0].Closed(), len(f.Teams[0].Members))
+		}
+	}
+}
