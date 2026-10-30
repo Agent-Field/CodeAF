@@ -11,6 +11,7 @@ import (
 func PreferenceKey(key string) bool {
 	switch key {
 	case KeyDailyBudget, KeyPlanConsent, KeySpendRail, KeyToolApprovalMode, KeyToolApprovals, KeyEffort, KeyTaskModel, KeyTaskAutoApprove, KeyTaskRepairRounds, KeyTaskSettle, KeyCrewAllowed, KeyCrewCap, KeyCrewTaskCap, KeyCrewFreeRoutes,
+		KeyCrewRouteWorker, KeyCrewRoutePlanner, KeyCrewRouteChecker, KeyCrewProvidersOff,
 		KeyGuardian, KeyConsentTimeout, KeyMouse, KeyTimestamps, KeyTaskColumn,
 		KeyQuickSwitch, KeyHints, KeyWork, KeyIcons, KeyHistoryEnabled, KeyDraftPersist,
 		KeyTaskAudit, KeyReplyGuard, KeyTaskStart, KeyMemoryEnabled, KeyPromptProfile,
