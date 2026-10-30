@@ -47,11 +47,25 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "there is no job %d in this factory", p.Job)
 	}
 	out := appwire.FactoryJobChats{Factory: p.Factory, Job: p.Job, Agent: appAgentID(talk), Steps: []appwire.FactoryJobStepChat{}}
+	// Whenever the job's agent is opened, by this read or later by a send or
+	// Reopen, it takes the job's effort as the job then has it.
+	if a, err := b.find(out.Agent); err == nil && a != nil {
+		floor, job := host.floor, p.Job
+		b.locked(func() {
+			a.jobEffort = func() string {
+				it, err := floor.Get(job)
+				if err != nil {
+					return ""
+				}
+				return it.Effort
+			}
+		})
+	}
 	held, err := b.holdJobChat(out.Agent)
 	if err != nil {
 		return appwire.FactoryJobChats{}, err
 	}
-	// The effort is set through an open, so a closed job's agent keeps its own.
+	// A held agent takes it now; a closed one keeps its own until it is opened.
 	if held && it.Effort != "" {
 		_, _ = b.SetEffort(out.Agent, it.Effort)
 	}
