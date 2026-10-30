@@ -24,6 +24,16 @@ import (
 // wait and this client never cuts a healthy one short.
 const pairPollTimeout = pairbox.MaxWait + 10*time.Second
 
+// syncRelayURL is the relay this computer syncs through, empty when sync is
+// off. `codeaf serve` and `--at` fall back to it, so a machine whose chats sync
+// is reachable through the same relay with nothing else set up.
+func syncRelayURL() string {
+	if relay := syncsetup.Resolve(home.Dir()); relay.On() {
+		return relay.URL
+	}
+	return ""
+}
+
 // pairMailbox is the relay a pairing runs through: the --relay flag, else the
 // relay this computer syncs through. A relay named by flag is the one the other
 // device is told to pass, so it is `Shown`; the default needs no telling.

@@ -157,14 +157,15 @@ canonical names, so the stricter side is the safe one.
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
 | `LINK_GATE` | Durable Object `LinkGate` (SQLite) | link-request codes, per-IP counters, one object |
 | `LINK_REQUEST` | Durable Object `LinkRequest` | one pending request, one per code |
+| `MACHINE` | Durable Object `MachineDO` (SQLite) | one machine name's `codeaf serve` socket and the surfaces dialled to it |
 | `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews) or `stage1` (30 s leases) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
 | `BASE_PATH` | var, optional | a path prefix every route is served beneath (for example, `/fabric`); empty, the default, serves from the root. A request outside the prefix is `404 not_found` |
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
-SQLite-backed; migration `v2` adds the link classes and `v3-raft-members` adds the three-anchor
-namespace. A deployment's own configuration must carry the `RAFT_MEMBERS` binding, the
+SQLite-backed; migration `v2` adds the link classes, `v3-raft-members` adds the three-anchor
+namespace and `v4-machines` adds `MachineDO`. A deployment's own configuration must carry the `RAFT_MEMBERS` binding, the
 `v3-raft-members` migration, the `src/raft-worker.js` entry and the build command that
 `wrangler.toml` declares; the first authenticated use of an existing identity then upgrades it in place, and that upgrade cannot
 be rolled back to the single-object writer.
@@ -175,6 +176,24 @@ requests return HTTP 500 `internal`, with the storage error
 Running an older relay after the upgrade is not supported. Restore current code
 with the same complete storage to resume; the original directory and encrypted
 frames remain retained.
+
+## Machine doors
+
+`codeaf serve` registers at `/v1/engine` and `codeaf chat --at <name>` dials at `/v1/dial/<name>`, the
+two doors of the self-hosted `codeaf relay` (`internal/relay`). A Worker answers only WebSocket
+upgrades, so both doors take a WebSocket offering the `aforge-relay/1` subprotocol and answer anything
+else with `426`, which is what tells a client to use the WebSocket. Over it run the same bytes as
+over the self-hosted relay's raw upgrade: the registration proof, then the carrier's frames, one frame
+to a message (`src/engine/carrier.js`, a port of `handshake.go` and `mux.go`).
+
+Each machine name has one `MachineDO` (`src/engine/machine.js`). It checks that the name is the one
+the machine's key derives and that the machine holds that key, then holds the machine's socket and
+splices each dialled socket onto it as one stream. It reads no payload. Every socket hibernates, and
+the routing lives in socket tags and attachments, so a quiet machine costs nothing: the machine
+proves the socket alive with WebSocket pings, which the platform answers without waking the object.
+A second registration under a live name is refused; one under a name whose socket stopped answering
+(a pong is asked for and not given within 5 s) replaces it, which is how a machine whose network
+dropped comes back before the platform has closed its old socket.
 
 ## Base path
 
@@ -229,6 +248,8 @@ npx wrangler deploy --config wrangler.custom.toml
 | link requests: creates an hour, pending at once, per IP | 10, 3 | `429 rate_limited`, `Retry-After` |
 | link requests: reads a minute, misses a minute, open polls, per IP | 60, 20, 4 | `429 rate_limited` |
 | link requests: live in all | 2,000 | `503 full` |
+| machine doors: surfaces on one machine at once (`MAX_STREAMS`) | 16 | `429` |
+| machine doors: dials and registrations a minute, per network and machine name (in memory) | 30, 10 | `429` |
 
 Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused

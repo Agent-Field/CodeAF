@@ -33,6 +33,10 @@ class_name = "LinkGate"
 name = "LINK_REQUEST"
 class_name = "LinkRequest"
 
+[[durable_objects.bindings]]
+name = "MACHINE"
+class_name = "MachineDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
@@ -55,3 +59,7 @@ class_name = "RaftMemberDO"
 [[migrations]]
 tag = "v3-raft-members"
 new_sqlite_classes = ["RaftMemberDO"]
+
+[[migrations]]
+tag = "v4-machines"
+new_sqlite_classes = ["MachineDO"]

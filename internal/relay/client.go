@@ -26,6 +26,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // dialWithin is replaceable by the dead-relay test because WSL2 mirrored
@@ -45,6 +47,9 @@ var (
 	ErrNameTaken = errors.New("relay: that name is already connected")
 	// ErrTooMany is a rate limit, either door.
 	ErrTooMany = errors.New("relay: too many connections from here")
+	// ErrNoDoor is a relay that answers but offers no machine door: a sync
+	// service that only stores, or one from before machines could register.
+	ErrNoDoor = errors.New("relay: that service does not offer machine connections")
 )
 
 // Registration is a machine's held connection to the relay and the surfaces
@@ -93,6 +98,9 @@ func Register(ctx context.Context, service string, private *ecdh.PrivateKey) (*R
 	carrier.onFrame = func() { _ = conn.SetReadDeadline(time.Now().Add(IdleAfter)) }
 	_ = conn.SetReadDeadline(time.Now().Add(IdleAfter))
 	go carrier.pump()
+	if alive, ok := conn.(pinger); ok {
+		go proveAlive(carrier, alive)
+	}
 	return &Registration{name: name, carrier: carrier, conn: conn}, nil
 }
 
@@ -139,12 +147,33 @@ func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error)
 }
 
 // upgrade dials the service and takes the connection over.
+//
+// The carrier rides a WebSocket first, because a WebSocket is the one upgrade
+// every front end passes: the hosted relay is a Cloudflare Worker, which
+// answers no other. A relay from before that door answers a WebSocket with
+// 426, and this end then takes the raw upgrade it always spoke, so a
+// self-hosted relay keeps working without being upgraded.
 func upgrade(ctx context.Context, service, path string, header http.Header) (net.Conn, error) {
 	address, err := url.Parse(strings.TrimSpace(service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
 		return nil, fmt.Errorf("%q is not a relay address — it looks like https://relay.example.com", service)
 	}
+	// The relay address may carry a path of its own (https://host/fabric), and
+	// the door is beneath it, as every other client's route is.
+	door := *address
+	door.Path = wireauth.Endpoint(address.Path, path)
+	door.RawPath, door.RawQuery, door.Fragment = "", "", ""
 
+	conn, err := upgradeWebSocket(ctx, &door, path, header)
+	if !errors.Is(err, errRawOnly) {
+		return conn, err
+	}
+	return upgradeRaw(ctx, &door, path, header)
+}
+
+// upgradeRaw is the original carrier: an HTTP upgrade to [Protocol] on one TCP
+// connection.
+func upgradeRaw(ctx context.Context, address *url.URL, path string, header http.Header) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: dialWithin}
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort(address))
 	if err != nil {
@@ -161,7 +190,7 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 
 	request := &http.Request{
 		Method: http.MethodGet,
-		URL:    &url.URL{Path: path},
+		URL:    &url.URL{Path: address.Path},
 		Host:   address.Host,
 		Header: header.Clone(),
 		Proto:  "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
@@ -183,17 +212,7 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 	if response.StatusCode != http.StatusSwitchingProtocols {
 		said := strings.TrimSpace(readBounded(response.Body))
 		_ = conn.Close()
-		switch response.StatusCode {
-		case http.StatusNotFound:
-			return nil, ErrNoMachine
-		case http.StatusTooManyRequests:
-			return nil, ErrTooMany
-		default:
-			if said == "" {
-				said = response.Status
-			}
-			return nil, errors.New(said)
-		}
+		return nil, refusal(address.Host, path, response.StatusCode, said)
 	}
 	_ = conn.SetDeadline(time.Time{})
 	// A 101 has no body, so there should be nothing left in the reader — but
@@ -203,6 +222,29 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 		return &joinedConn{Conn: conn, head: io.MultiReader(io.LimitReader(reader, int64(reader.Buffered())), conn)}, nil
 	}
 	return conn, nil
+}
+
+// refusal turns a relay's non-101 answer into the fact a caller above can act
+// on. ONLY A RELAY'S OWN 4xx SENTENCE IS PASSED ON: a 5xx is the relay or the
+// proxy in front of it being down, and that proxy's body ("error code: 522")
+// is not a sentence anybody should be shown.
+func refusal(host, path string, status int, said string) error {
+	switch {
+	case status == http.StatusNotFound && (path == EnginePath || strings.HasPrefix(said, "{")):
+		// The relay answers, but not at a machine door: an engine path is
+		// never "no machine", and a JSON body is the hosted wire's not_found.
+		return fmt.Errorf("%w: %s", ErrNoDoor, host)
+	case status == http.StatusNotFound:
+		return ErrNoMachine
+	case status == http.StatusTooManyRequests:
+		return ErrTooMany
+	case status >= 500:
+		return fmt.Errorf("%w: %s answered %d", ErrUnreachable, host, status)
+	case said == "":
+		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", host, status)
+	default:
+		return errors.New(said)
+	}
 }
 
 // joinedConn is a connection whose first bytes were already read into a buffer.
