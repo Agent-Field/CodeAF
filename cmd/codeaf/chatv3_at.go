@@ -299,6 +299,7 @@ func runServe(args []string) error {
 	// out instead of leaving the relay to notice.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	defer startServeKeeping(ctx, service)()
 	host := &pair.Host{
 		Service: service,
 		Device:  device,

@@ -2,15 +2,69 @@ package syncsetup
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
 var stateMu sync.Mutex
+
+// RunHomeState keeps a serving computer's saved keys, preferences and shared
+// memories current without starting a cluster member. The caller owns and joins
+// its lifetime. Quiet, unpaired and removed homes end silently; other failures
+// retry after the sync interval and are reported once per distinct error.
+func RunHomeState(ctx context.Context, home string, report func(error)) {
+	interval, err := flushInterval()
+	if err != nil {
+		interval = DefaultInterval
+	}
+	ticks := time.NewTicker(interval)
+	defer ticks.Stop()
+	var current *Sync
+	reported := make(map[string]bool)
+	for ctx.Err() == nil {
+		if cell.UnavailableReason() != "" || Quiet(home) {
+			return
+		}
+		next, ok, err := Open(home)
+		if errors.Is(err, ErrNoIdentity) || (err == nil && !ok) {
+			return
+		}
+		if err == nil {
+			if current == nil || next.Identity.ID() != current.Identity.ID() || next.Device.ID() != current.Device.ID() || next.Relay != current.Relay {
+				current = next
+			}
+			if current.isRemoved() {
+				return
+			}
+			err = current.SyncState(ctx)
+		}
+		// A pairing can be removed while a request is in flight. Its quiet
+		// refusal ends this lifetime without turning it into a sync warning.
+		if Quiet(home) || errors.Is(err, ErrQuiet) {
+			return
+		}
+		if errors.Is(err, directory.ErrRevoked) || (current != nil && current.isRemoved()) {
+			return
+		}
+		if err != nil && ctx.Err() == nil && !reported[err.Error()] {
+			reported[err.Error()] = true
+			if report != nil {
+				report(err)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks.C:
+		}
+	}
+}
 
 // SyncState completes one encrypted home-state round even when no chat is
 // open. The quiet gate is checked before any capture or request (C30.4).
