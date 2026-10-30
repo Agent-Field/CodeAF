@@ -57,9 +57,10 @@ func TestNarrowReadsAnswerTheirCorner(t *testing.T) {
 		{"subtree", func() (*File, error) { return LoadSubtree(dir, "alpha0000000") }, "alpha,beta,gone"},
 		{"a member's teams", func() (*File, error) { return LoadTeamsOf(dir, "web", false) }, "alpha,shut"},
 		{"another's", func() (*File, error) { return LoadTeamsOf(dir, "shared", false) }, "alpha,delta"},
-		// web: its own teams, open or closed, the root above, beta below, and
-		// alpha's closed child (whether alpha can be dissolved).
-		{"a conversation's view", func() (*File, error) { return LoadConversationView(dir, "web") }, "root,alpha,beta,gone,shut"},
+		// web: its own teams, open or closed, the root above, beta below,
+		// alpha's closed child (whether alpha can be dissolved), and delta,
+		// where alpha's member shared is too (where its home may be).
+		{"a conversation's view", func() (*File, error) { return LoadConversationView(dir, "web") }, "root,alpha,beta,gone,delta,shut"},
 		{"a view of nobody", func() (*File, error) { return LoadConversationView(dir, "stranger") }, ""},
 		{"around a crew", func() (*File, error) { return LoadAround(dir, "beta00000000") }, "root,alpha,beta"},
 	} {
@@ -120,7 +121,7 @@ func TestTheIndexIsRebuiltAfterAnEarlierBuildWrote(t *testing.T) {
 	if unnamed != 0 || rev != indexed {
 		t.Fatalf("%d rows unnamed, rev %d indexed %d", unnamed, rev, indexed)
 	}
-	if f, err := LoadConversationView(dir, "web"); err != nil || ids(f) != "root,alpha,beta,gone,shut" {
+	if f, err := LoadConversationView(dir, "web"); err != nil || ids(f) != "root,alpha,beta,gone,delta,shut" {
 		t.Fatalf("after the write: %q %v", ids(f), err)
 	}
 }

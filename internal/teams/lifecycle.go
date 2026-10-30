@@ -91,7 +91,7 @@ func (f *File) Disband(id string, at time.Time, report string) error {
 	for j := range f.Teams {
 		t := &f.Teams[j]
 		if ids[t.ID] && !t.Closed() {
-			t.State, t.ClosedAt, t.ClosedWith, t.Wrap = TeamClosed, at, id, nil
+			t.State, t.ClosedAt, t.ClosedWith, t.Wrap, t.JobEnded = TeamClosed, at, id, nil, false
 			if t.ID == id {
 				t.Report = report
 			}
@@ -108,6 +108,29 @@ func (f *File) Disband(id string, at time.Time, report string) error {
 // Close preserves the old store door for closing reports and older callers.
 // Its behavior follows disbanding: no session is stopped or implicitly reassigned.
 func (f *File) Close(id string, at time.Time, report string) error { return f.Disband(id, at, report) }
+
+// CloseForJob closes team id, quietly, because the factory job it is the room
+// of ended: no report, and the team is marked [Team.JobEnded], so that the job
+// coming back opens it again ([File.ReopenForJob]) and nothing else does.
+func (f *File) CloseForJob(id string, at time.Time) error {
+	if err := f.Disband(id, at, ""); err != nil {
+		return err
+	}
+	f.Teams[Index(f.Teams, id)].JobEnded = true
+	return nil
+}
+
+// ReopenForJob opens team id again because its factory job came back, when
+// that job's end is what closed it ([File.CloseForJob]) and nobody put it away
+// since. A team a person closed, or archived, stays as they left it, and so
+// does one closed for any other reason; none of those is an error.
+func (f *File) ReopenForJob(id string) error {
+	t, ok := f.Team(id)
+	if !ok || !t.Closed() || !t.JobEnded || t.Archived() {
+		return nil
+	}
+	return f.Reopen(id)
+}
 
 // Reopen opens team id again, and every team under it that its own close
 // closed. Its closing report stays recorded; a team reopened and closed again
@@ -127,7 +150,7 @@ func (f *File) Reopen(id string) error {
 	}
 	reopen := func(j int) {
 		t := &f.Teams[j]
-		t.State, t.ClosedAt, t.ClosedWith, t.ArchivedAt = "", time.Time{}, "", time.Time{}
+		t.State, t.ClosedAt, t.ClosedWith, t.ArchivedAt, t.JobEnded = "", time.Time{}, "", time.Time{}, false
 	}
 	for _, d := range f.Descendants(id) {
 		if d.Closed() && d.ClosedWith == id {

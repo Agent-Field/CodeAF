@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -67,8 +69,9 @@ func (r *roomFollowRig) update(id int, change func(*factory.Item)) {
 }
 
 // A JOB'S ROOM CLOSES WHEN THE JOB ENDS, quietly: no closing report and no
-// traffic line. It stays closed when the job comes back by itself, and a
-// person bringing the job back reopens it.
+// traffic line. When the job comes back, by itself (a pull request reopened
+// on the forge) or by a person's Reopen, its room opens again and the next
+// round joins its crew.
 func TestAJobsRoomFollowsTheJob(t *testing.T) {
 	r := newRoomFollowRig(t)
 	merged := r.job("0a0a0a0a0a0a", factory.Item{Title: "merged", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen}})
@@ -83,28 +86,67 @@ func TestAJobsRoomFollowsTheJob(t *testing.T) {
 	}
 	for _, room := range []string{"0a0a0a0a0a0a", "0b0b0b0b0b0b"} {
 		f, _ := teams.LoadTeams(r.profile, room)
-		if f.Teams[0].Report != "" {
-			t.Fatalf("%s closed with a report", room)
+		if f.Teams[0].Report != "" || !f.Teams[0].JobEnded {
+			t.Fatalf("%s closed with a report or unmarked: %+v", room, f.Teams[0])
 		}
 		if lines, err := teams.ReadTraffic(r.profile, room, "", 0); err != nil || len(lines) != 0 {
 			t.Fatalf("%s's close said something: %+v %v", room, lines, err)
 		}
 	}
 
-	// A pull request reopened on the forge brings the job back by itself.
+	// A pull request reopened on the forge brings the job back by itself, and
+	// its room with it.
 	r.update(merged.ID, func(it *factory.Item) { it.PullRequest.State = factory.PROpen })
-	if !r.closed("0a0a0a0a0a0a") {
-		t.Fatal("a job that came back by itself reopened its room")
+	if r.closed("0a0a0a0a0a0a") {
+		t.Fatal("a job that came back kept its room closed")
 	}
-	// A round of it runs teamless: nothing reopens the room.
-	if got, err := factoryEnsureRoom(r.profile, merged, "0a0a0a0a0a0a"); err != nil || got != "" || !r.closed("0a0a0a0a0a0a") {
-		t.Fatalf("a round on the closed room: %q %v", got, err)
+	// Its next round joins the crew, as before the job ended.
+	back, err := r.st.Get(merged.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := filepath.Join(r.root, "next-round", "transcript.jsonl")
+	exec := factoryChatStage(r.st, r.profile, factoryrun.ExecutorFunc(func(_ context.Context, j factoryrun.Job) (factory.StageResult, error) {
+		if j.Item.Stream.Room != "0a0a0a0a0a0a" {
+			t.Fatalf("the next round ran in %q", j.Item.Stream.Room)
+		}
+		return factory.StageResult{}, stageJoinTeam(r.profile, j.Item.Stream.Room, next, r.root, "fix", "fix", "Answer the review.")
+	}))
+	if _, err := exec.Run(context.Background(), factoryrun.Job{Item: back}); err != nil {
+		t.Fatal(err)
+	}
+	room, _ := teams.LoadTeams(r.profile, "0a0a0a0a0a0a")
+	if len(room.Teams) != 1 || room.Teams[0].Closed() || room.Teams[0].JobEnded || len(room.Teams[0].Members) != 2 {
+		t.Fatalf("the next round's crew: %+v", room.Teams)
 	}
 
-	// A person's Reopen clears DoneHow: its room opens with it.
+	// A person's Reopen brings the job back too.
 	r.update(local.ID, func(it *factory.Item) { it.DoneHow, it.DoneAt = "", time.Time{} })
 	if r.closed("0b0b0b0b0b0b") {
 		t.Fatal("a job a person reopened kept its room closed")
+	}
+}
+
+// A CREW A PERSON CLOSED OR ARCHIVED STAYS AS THEY LEFT IT when its job comes
+// back: only a room its job's end closed is reopened.
+func TestAJobsReturnLeavesAPersonsCloseAndArchive(t *testing.T) {
+	r := newRoomFollowRig(t)
+	shut := r.job("0d0d0d0d0d0d", factory.Item{Title: "shut by hand", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 8, State: factory.PROpen}})
+	kept := r.job("0e0e0e0e0e0e", factory.Item{Title: "archived by hand", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 9, State: factory.PROpen}})
+	// The person closes one crew while its job still runs, and archives the
+	// other once its job's end closed it.
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Close("0d0d0d0d0d0d", time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	r.update(shut.ID, func(it *factory.Item) { it.PullRequest.State = factory.PRClosed })
+	r.update(kept.ID, func(it *factory.Item) { it.PullRequest.State = factory.PRMerged })
+	if err := teams.Update(r.profile, func(f *teams.File) error { return f.Archive("0e0e0e0e0e0e", time.Now()) }); err != nil {
+		t.Fatal(err)
+	}
+	r.update(shut.ID, func(it *factory.Item) { it.PullRequest.State = factory.PROpen })
+	r.update(kept.ID, func(it *factory.Item) { it.PullRequest.State = factory.PROpen })
+	if !r.closed("0d0d0d0d0d0d") || !r.closed("0e0e0e0e0e0e") {
+		t.Fatal("a job's return reopened a crew a person closed or archived")
 	}
 }
 

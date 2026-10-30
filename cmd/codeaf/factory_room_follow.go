@@ -12,12 +12,12 @@ package main
 // crew tab and its history read it by id; the job's steps come from the job's
 // own record and are drawn as before.
 //
-// ONLY A PERSON REOPENS IT. A job a person brings back to work (Reopen, Run
-// again, a word to the job: every door that clears its DoneHow) has its room
-// reopened with it. A job that comes back by itself, a pull request reopened on
-// the forge, does not: its next round runs teamless, as a round on any closed
-// room does ([factoryChatStage]), and no keeper or recovery path reopens a
-// closed room.
+// THE JOB COMING BACK REOPENS IT. When a write takes the job out of its end,
+// whether a person brought it back or it came back by itself (a pull request
+// reopened on the forge), its room opens again, so its next round joins its
+// crew as before. Only a room its job's end closed is reopened
+// ([teams.File.CloseForJob]): a crew a person closed or archived by hand stays
+// as they left it, and no keeper or recovery path reopens a room.
 
 import (
 	"path/filepath"
@@ -42,7 +42,7 @@ func factoryRoomFollowsJob(profile string, before, after factory.Item) {
 	switch {
 	case factory.JobState(after) == "done" && factory.JobState(before) != "done":
 		_ = closeJobRooms(profile, after)
-	case before.DoneHow != "" && after.DoneHow == "" && factory.JobState(after) != "done":
+	case factory.JobState(before) == "done" && factory.JobState(after) != "done":
 		_ = reopenJobRoom(profile, after)
 	}
 }
@@ -98,7 +98,7 @@ func closeJobRooms(profile string, jobs ...factory.Item) error {
 		for _, it := range jobs {
 			room := jobRoomRecorded(it)
 			if t, ok := f.Team(room); ok && room != "" && closable(t) {
-				if err := f.Close(t.ID, now, ""); err != nil {
+				if err := f.CloseForJob(t.ID, now); err != nil {
 					return err
 				}
 				continue
@@ -112,7 +112,7 @@ func closeJobRooms(profile string, jobs ...factory.Item) error {
 			}
 			for _, t := range f.Teams {
 				if t.Holds(key) && t.FactoryManaged && t.Parent != "" && closable(t) {
-					if err := f.Close(t.ID, now, ""); err != nil {
+					if err := f.CloseForJob(t.ID, now); err != nil {
 						return err
 					}
 					break
@@ -123,20 +123,29 @@ func closeJobRooms(profile string, jobs ...factory.Item) error {
 	})
 }
 
-// reopenJobRoom reopens job it's recorded room when it is the factory's and
-// closed: a person brought the job back. It reads every team, closed ones
-// included, as a write that reopens one must.
+// reopenJobRoom opens again the room job it's end closed: its recorded room,
+// else the factory-made item team holding its conversation that its end
+// closed. It reads every team, closed ones included, as a write that reopens
+// one must; a room closed or archived by a person is left
+// ([teams.File.ReopenForJob]).
 func reopenJobRoom(profile string, it factory.Item) error {
-	room := jobRoomRecorded(it)
-	if room == "" {
+	room, key := jobRoomRecorded(it), jobTalkKey(it)
+	if room == "" && key == "" {
 		return nil
 	}
 	return teams.Update(profile, func(f *teams.File) error {
-		t, ok := f.Team(room)
-		if !ok || !t.Closed() || t.Root || !t.FactoryManaged || factoryIsParent(f, room) {
-			return nil
+		if t, ok := f.Team(room); ok && room != "" {
+			if t.Root || !t.FactoryManaged || factoryIsParent(f, room) {
+				return nil
+			}
+			return f.ReopenForJob(room)
 		}
-		return f.Reopen(room)
+		for _, t := range f.Teams {
+			if key != "" && t.Holds(key) && t.FactoryManaged && t.JobEnded && t.Parent != "" && !factoryIsParent(f, t.ID) {
+				return f.ReopenForJob(t.ID)
+			}
+		}
+		return nil
 	})
 }
 

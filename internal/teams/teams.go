@@ -133,6 +133,11 @@ type Team struct {
 	// person called `factory` stays unmarked. False is also what a file from
 	// before the field was kept reads as.
 	FactoryManaged bool
+	// JobEnded says the team was closed because the factory job it is the room
+	// of ended ([File.CloseForJob]), and by nothing else: only such a team is
+	// opened again when the job comes back ([File.ReopenForJob]). Any other
+	// close, and any reopen, clears it.
+	JobEnded bool
 
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
@@ -160,7 +165,7 @@ var knownFields = map[string]bool{
 	"state": true, "closed_at": true, "closed_with": true, "archived_at": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
 	"wrap": true, "former_members": true, "former_manager": true, "starts": true, "founder": true,
-	"factory_managed": true,
+	"factory_managed": true, "job_ended": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -193,6 +198,8 @@ type wireTeam struct {
 	Starts []string `json:"starts,omitempty"`
 	// FactoryManaged is written only for a team the factory stamped.
 	FactoryManaged bool `json:"factory_managed,omitempty"`
+	// JobEnded is written only for a room its job's end closed.
+	JobEnded bool `json:"job_ended,omitempty"`
 	// The overrides are written flat beside the fields above, each only when
 	// set, so a team with none is written exactly as before.
 	Settings
@@ -209,7 +216,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Founder: w.Founder, Manager: w.Manager, Made: w.Made,
-		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts, FactoryManaged: w.FactoryManaged}
+		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts, FactoryManaged: w.FactoryManaged, JobEnded: w.JobEnded}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
 	}
@@ -241,7 +248,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
 	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Founder: t.Founder, Manager: t.Manager, Made: t.Made,
-		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts, FactoryManaged: t.FactoryManaged}
+		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts, FactoryManaged: t.FactoryManaged, JobEnded: t.JobEnded}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
 	if t.State != "" && t.State != TeamOpen {
