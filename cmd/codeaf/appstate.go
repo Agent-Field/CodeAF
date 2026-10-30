@@ -99,6 +99,9 @@ type appStateFile struct {
 	// read up to then (appunread.go).
 	Seen       map[string]time.Time `json:"seen,omitempty"`
 	UnreadFrom time.Time            `json:"unread_from,omitzero"`
+	// SeenAhead is the output a mark saw that was stamped ahead of the
+	// mark's clock, which reads seen by its own instant (appunread.go).
+	SeenAhead map[string]time.Time `json:"seen_ahead,omitempty"`
 	// The Settings window's General rows and pinned models (appsettings.go);
 	// a nil row is one nobody set, which reads as its default.
 	Appearance   string   `json:"appearance,omitempty"`
@@ -225,6 +228,10 @@ func (f appStateFile) clone() appStateFile {
 	out.Seen = make(map[string]time.Time, len(f.Seen))
 	for k, v := range f.Seen {
 		out.Seen[k] = v
+	}
+	out.SeenAhead = make(map[string]time.Time, len(f.SeenAhead))
+	for k, v := range f.SeenAhead {
+		out.SeenAhead[k] = v
 	}
 	out.ResumeAfterQuit = append([]string(nil), f.ResumeAfterQuit...)
 	out.QuitReplies = append([]string(nil), f.QuitReplies...)

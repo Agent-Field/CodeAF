@@ -125,23 +125,40 @@ func (b *appBackend) keepUnreadFrom() {
 	})
 }
 
-// unreadAt says output at outputAt is unread for the agent id.
+// unreadAt says output at outputAt is unread for the agent id. Output the
+// person saw stamped ahead of this clock is read while it is still the last.
 func (b *appBackend) unreadAt(id string, outputAt time.Time) bool {
 	if outputAt.IsZero() {
 		return false
 	}
-	var seen time.Time
+	var seen, ahead time.Time
 	marked := false
-	_ = b.state.read(func(f *appStateFile) { seen, marked = f.Seen[id] })
+	_ = b.state.read(func(f *appStateFile) {
+		seen, marked = f.Seen[id]
+		ahead = f.SeenAhead[id]
+	})
 	if !marked {
 		seen = b.unreadFrom()
 	}
-	return outputAt.After(seen)
+	return outputAt.After(seen) && !outputAt.Equal(ahead)
+}
+
+// sayingUnread runs fn holding [appBackend.unreadSay].
+func (b *appBackend) sayingUnread(fn func()) {
+	b.unreadSay.Lock()
+	defer b.unreadSay.Unlock()
+	fn()
 }
 
 // dressUnread fills the view's unread and remembers it as said, so a later
 // change of it alone is said too ([appBackend.restateUnread]).
 func (b *appBackend) dressUnread(view *appwire.Agent) {
+	b.sayingUnread(func() { b.dressUnreadLocked(view) })
+}
+
+// dressUnreadLocked is [appBackend.dressUnread] for a caller holding
+// unreadSay.
+func (b *appBackend) dressUnreadLocked(view *appwire.Agent) {
 	var at time.Time
 	var a *appAgent
 	b.locked(func() {
@@ -155,20 +172,25 @@ func (b *appBackend) dressUnread(view *appwire.Agent) {
 }
 
 // restateUnread says the agent again when its unread is no longer what the
-// app was last told.
+// app was last told. What it was last told is read in the same step as an
+// agent.changed sets it, so the saying it starts, worked out afresh, is the
+// last word whichever road spoke in between.
 func (b *appBackend) restateUnread(id string) {
 	var a *appAgent
-	var at time.Time
-	var said bool
-	b.locked(func() {
-		if a = b.agents[id]; a != nil {
-			at, said = b.outputLocked(id, a), a.saidUnread
-		}
+	stale := false
+	b.sayingUnread(func() {
+		var at time.Time
+		var said bool
+		b.locked(func() {
+			if a = b.agents[id]; a != nil {
+				at, said = b.outputLocked(id, a), a.saidUnread
+			}
+		})
+		stale = a != nil && said != b.unreadAt(id, at)
 	})
-	if a == nil || said == b.unreadAt(id, at) {
-		return
+	if stale {
+		b.sayListed(a, id)
 	}
-	b.sayListed(a, id)
 }
 
 // noteTurnOutput reads the answer stamp the session wrote when its turn
@@ -197,7 +219,8 @@ func (b *appBackend) noteTurnOutput(id string) {
 
 // noteAsk keeps a question put to the person while it is open, from when it
 // was first put: its own record's time where it keeps one, so an ask said
-// again after a restart, put aside or restated, keeps its time.
+// again after a restart, put aside or restated, keeps its time. It is noted
+// before the window hears of it and said after ([appBackend.unreadSaw]).
 func (b *appBackend) noteAsk(ask appwire.Ask) {
 	at := b.askedAt(ask)
 	b.locked(func() {
@@ -212,7 +235,6 @@ func (b *appBackend) noteAsk(ask appwire.Ask) {
 		}
 		b.openAsks[ask.Agent][ask.ID] = at
 	})
-	b.restateUnread(ask.Agent)
 }
 
 // noteAskClosed forgets a question once it is answered, taken back or gone
@@ -273,7 +295,7 @@ func (b *appBackend) unreadSaw(data any) {
 	case appwire.TurnDone:
 		b.noteTurnOutput(v.Agent)
 	case appwire.AskOpened:
-		b.noteAsk(v.Ask)
+		b.restateUnread(v.Ask.Agent)
 	case appwire.AskClosed:
 		b.noteAskClosed(v.Agent, v.ID)
 	}
@@ -289,15 +311,24 @@ func (b *appBackend) MarkSeen(id string) error {
 	b.keepUnreadFrom()
 	var outputAt time.Time
 	b.locked(func() { outputAt = b.outputLocked(id, b.agents[id]) })
-	// SEEN UP TO NOW, and never short of what it has already said: a clock
-	// behind the session's own stamp must not leave the dot it was asked to
-	// clear.
-	at := laterOf(b.now(), outputAt)
+	// SEEN UP TO NOW, NEVER AHEAD OF IT: a stamp from a clock running ahead
+	// must not hide the answers that come after it. Output stamped ahead is
+	// kept as seen by its own instant, so the dot this was asked to clear
+	// does not stay, and the next output, whatever its stamp, still counts.
+	now := b.now()
 	err := b.state.write(func(f *appStateFile) error {
 		if f.Seen == nil {
 			f.Seen = map[string]time.Time{}
 		}
-		f.Seen[id] = at
+		f.Seen[id] = now
+		if outputAt.After(now) {
+			if f.SeenAhead == nil {
+				f.SeenAhead = map[string]time.Time{}
+			}
+			f.SeenAhead[id] = outputAt
+		} else {
+			delete(f.SeenAhead, id)
+		}
 		return nil
 	})
 	if err != nil {
