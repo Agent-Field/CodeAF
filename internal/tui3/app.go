@@ -3756,7 +3756,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// message, and this is the one place every one of them has happened by
 	// (teamtraffic.go). It costs a walk of the loaded teams when it is not
 	// turning and nothing when it is.
-	if tick := a.trafficArm(); tick != nil {
+	if tick := tea.Batch(a.trafficArm(), a.teamsRefreshArm()); tick != nil {
 		cmd = tea.Batch(cmd, tick)
 	}
 	// AND AN EDIT TO THE TEAMS IS WRITTEN HERE, off the loop, for the same
@@ -4287,6 +4287,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case wallTickMsg:
 		return a, a.wallTick()
+
+	case teamsRefreshTickMsg:
+		return a, a.teamsRefreshTick()
 
 	case trafficTickMsg:
 		// A TURN THAT FOUND NOTHING DRAWS NOTHING: the frame before it stands

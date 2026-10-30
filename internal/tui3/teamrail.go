@@ -204,7 +204,12 @@ func (a *app) trafficMarkSeen(t team) {
 	if a.traffic.seen == nil {
 		a.traffic.seen = map[string]string{}
 	}
-	a.traffic.seen[t.ID] = rows[len(rows)-1].ID
+	// Read-only history must not hide the next local unread message.
+	for _, e := range rows {
+		if e.Origin == "" && e.ID > a.traffic.seen[t.ID] {
+			a.traffic.seen[t.ID] = e.ID
+		}
+	}
 }
 
 // trafficRulingText is a ruling's words without the lead the store writes
@@ -219,4 +224,32 @@ func trafficRulingText(text string) string {
 		return rest[at+2:]
 	}
 	return rest
+}
+
+// Provenance is read from the already-held device roster, never from disk or
+// the relay during paint. History controls can still navigate to a chat.
+func (a *app) trafficComputer(e teamstore.Entry) string {
+	if e.Origin == "" {
+		return ""
+	}
+	device, _, _ := strings.Cut(e.Origin, "/")
+	return "from " + a.teamComputerName(device)
+}
+
+// Traffic history has independent writers. Their ids identify lines, while
+// event time and a stable identity tie-break choose the display order.
+func trafficLater(a, b teamstore.Entry) bool {
+	if a.ID == "" {
+		return false
+	}
+	if b.ID == "" {
+		return true
+	}
+	if !a.At.Equal(b.At) {
+		return a.At.After(b.At)
+	}
+	if a.Origin != b.Origin {
+		return a.Origin > b.Origin
+	}
+	return a.ID > b.ID
 }

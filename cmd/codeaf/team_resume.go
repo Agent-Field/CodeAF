@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // ── A TEAM CONVERSATION NOBODY HOLDS IS OPENED BY ITS HOST ──────────────────
@@ -70,4 +74,18 @@ func resumeTeamConversation(file, workspace string, attach func(string) (net.Con
 		return err
 	}
 	return client.Close()
+}
+
+// The same lookup serves hosted and in-process sessions. A quiet unpaired
+// computer neither creates an identity nor sends a directory request here.
+// One call opens one synchronization handle and checks all its targets together.
+func teamComputers(ctx context.Context, members []teams.Member) (map[string]string, error) {
+	if !syncsetup.MayTalk(home.Dir()) {
+		return nil, nil
+	}
+	s, ok, err := syncsetup.Open(home.Dir())
+	if err != nil || !ok {
+		return nil, err
+	}
+	return s.TeamComputers(ctx, members)
 }

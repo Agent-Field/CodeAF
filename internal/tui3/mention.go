@@ -305,6 +305,17 @@ func (a *app) mentionChatsExcept(front string) []mentionChat {
 		chat.open = false
 		out = append(out, chat)
 	}
+	if a.wall.loaded {
+		for _, t := range a.wall.teams {
+			for _, m := range t.Members {
+				if m.Key == "" || m.Key == front || seen[m.Key] {
+					continue
+				}
+				seen[m.Key] = true
+				out = append(out, mentionChat{key: m.Key, file: m.File, where: m.Where, title: m.Word, handle: m.Handle, slug: mentionSlug(m.Word), note: m.Word})
+			}
+		}
+	}
 	return out
 }
 
@@ -795,7 +806,13 @@ func mentionTextRefs(flat string, teams []mentionTeam, chats []mentionChat) []ta
 }
 
 func (a *app) mentionChatPress(key string) tea.Cmd {
-	if key == "" || key == a.frontTabKey() {
+	if key == "" {
+		return nil
+	}
+	if cmd, remote := a.teamsRemoteFront(key); remote {
+		return cmd
+	}
+	if key == a.frontTabKey() {
 		return nil
 	}
 	for _, tab := range a.tabList() {

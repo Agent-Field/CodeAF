@@ -76,6 +76,14 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 		if limit <= 0 || limit > teamsPage {
 			limit = teamsPage
 		}
+		if args.History {
+			entries, cursor, mirror, reset, err := teamsWatch.History(dir, args.Team, args.After, args.Mirror, limit)
+			if err != nil {
+				return nil, true, err
+			}
+			payload, err := json.Marshal(TeamsTraffic{Entries: entries, Cursor: cursor, Mirror: mirror, Reset: reset})
+			return payload, true, err
+		}
 		entries, stamp, err := teamsWatch.Traffic(dir, args.Team, args.After, limit)
 		if err != nil {
 			return nil, true, err
@@ -98,6 +106,16 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 	stamp := teamstore.Stamp(dir)
 	if args.Stamp != "" && args.Stamp == stamp {
 		return TeamsReading{Stamp: stamp, Same: true}, nil
+	}
+	if args.Stamp != "" {
+		// Refresh is observational. Persisted repairs remain at the
+		// explicit opening and write boundaries, even over a host connection.
+		f, err := teamstore.Snapshot(dir)
+		if err != nil {
+			return TeamsReading{}, err
+		}
+		f.Colour(args.Reserved)
+		return TeamsReading{Stamp: stamp, Teams: f.Teams}, nil
 	}
 	f, err := teamstore.LoadHued(dir, args.Reserved)
 	if err != nil {
@@ -181,6 +199,18 @@ func (c *Client) TeamsUpdate(base string, teams []teamstore.Team) (TeamsReading,
 // TeamsTraffic reads one team's log on the engine machine after a cursor.
 func (c *Client) TeamsTraffic(team, after string, limit int) (TeamsTraffic, error) {
 	payload, err := c.call(nil, MethodTeamsTraffic, TeamsTrafficArgs{Team: team, After: after, Limit: limit})
+	if err != nil {
+		return TeamsTraffic{}, err
+	}
+	var out TeamsTraffic
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+// TeamsHistory uses the existing Traffic door with an optional display flag.
+// An older engine ignores the flag and still returns its local history safely.
+func (c *Client) TeamsHistory(team, after, version string, limit int) (TeamsTraffic, error) {
+	payload, err := c.call(nil, MethodTeamsTraffic, TeamsTrafficArgs{Team: team, After: after, Limit: limit, History: true, Mirror: version})
 	if err != nil {
 		return TeamsTraffic{}, err
 	}

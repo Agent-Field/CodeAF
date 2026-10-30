@@ -394,6 +394,16 @@ func (a *app) teamAdopt(teams []team) {
 		teams[i].Made = teams[i].Made.Round(0)
 	}
 	a.wall.teams = teams
+	// An already-open @ list holds its own ranked catalog, so adopting a
+	// changed file must refresh that reading as well as the dropdown.
+	if a.comp.open {
+		a.fillMentions()
+		a.comp.rank()
+	}
+	if a.home.comp.open {
+		a.fillHomeMentions()
+		a.home.comp.rank()
+	}
 	if a.wall.activeID != "" && teamIndex(teams, a.wall.activeID) < 0 {
 		a.wall.activeID = ""
 	}
