@@ -5010,6 +5010,7 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 	// move goes through, so no road that builds a notice by hand can un-hide a task
 	// by forgetting to say so (task_dismiss.go).
 	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub
@@ -5169,6 +5170,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
 		notice := node.noticeLocked(costs[i])
+		notice = a.withWorker(notice)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
 	}
 	// AND THE ADAPTIVE RUNS GO OUT UNDER THE SAME HOLD, for the same reason and
@@ -5206,6 +5208,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 			stream.send(Event{Kind: EventJobUpdate, Job: &job})
 			continue
 		}
+		row = a.withWorker(row)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
 	}
 }

@@ -1543,6 +1543,11 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			// nothing, so nothing is appended to the brief.
 			silent := TaskAnswer{Approved: true}
 			w.decided(silent)
+			// AND THE QUESTION CLOSES SAYING THE WORK STARTED, before the turn is
+			// handed the yes. The card above already says so, but on the task
+			// lane; a surface reading the question lane would otherwise see a
+			// bare withdrawal first and call a starting task no longer needed.
+			w.agent.withdrawStarted(w.proposed)
 			w.settled <- taskSettled{answer: silent}
 			return
 		case <-ctx.Done():
@@ -1886,6 +1891,7 @@ func (a *Agent) proposalAsk(id uint64, notice TaskNotice) Question {
 
 // A proposal stays visible after its originating turn ends, like a running task.
 func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice}
 	if hub != nil {
 		hub.send(event)

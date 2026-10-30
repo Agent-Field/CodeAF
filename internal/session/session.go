@@ -2614,6 +2614,13 @@ type Config struct {
 	agentDID string
 	actorDID string
 
+	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
+	// conversation's DID with the task number its row wears. A run builds its
+	// workers outside the conversation's own tree ([NewBeltWorker]), so the
+	// run states the name rather than the worker inheriting it. Empty leaves a
+	// run worker with no identity, as before.
+	WorkerDID string
+
 	// automationID is the id of the automation whose run this agent IS
 	// (automation_run.go), and empty in every conversation and every ordinary
 	// task. It rides on the config for [Config.taskID]'s reason: the money a run
