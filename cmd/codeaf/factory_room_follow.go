@@ -23,7 +23,8 @@ package main
 // THE ROOM FOLLOWS THE JOB'S STATE, NOT ITS LAST WRITE. The store tells of a
 // write after the item's lock is let go, so two writes may be told in either
 // order, and the crews store may be busy: each telling reads the job again and
-// makes the room match it, and one the crews store refused is tried again. A
+// makes the room match it, one telling at a time in this process, and one the
+// crews store refused is tried again. A
 // round that starts also reopens a room its job's end closed
 // ([factoryChatStage]), so a live job never runs teamless for a reopen that
 // was lost.
@@ -34,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -69,10 +71,19 @@ func jobOver(it factory.Item) bool {
 // refused to follow its job is tried again.
 var roomRetries = []time.Duration{time.Second, 5 * time.Second, 30 * time.Second, 2 * time.Minute}
 
+// roomFollowing is held while a telling reads a job and makes its room match.
+// The read and the crews write are two stores, so two tellings of one job
+// at once could each read before the other wrote: a close that read the job
+// over landing after a reopen that found the room not yet closed. One at a
+// time, the telling that follows last reads the job last.
+var roomFollowing sync.Mutex
+
 // factoryRoomFollow makes job it's room match the job as the store now holds
 // it, and tries again later when the crews store refused.
 func factoryRoomFollow(profile string, st *store.Store, it factory.Item) {
 	follow := func() error {
+		roomFollowing.Lock()
+		defer roomFollowing.Unlock()
 		if now, err := st.Get(it.ID); err == nil {
 			it = now
 		}

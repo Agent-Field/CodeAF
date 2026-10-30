@@ -252,3 +252,36 @@ func TestTheSweepLeavesRoomsReopenedAboveOrLongAgo(t *testing.T) {
 		t.Fatal("the sweep left open a room made after every reopen")
 	}
 }
+
+// TWO QUICK WRITES TO ONE JOB LEAVE ITS ROOM AS THE JOB IS. The job ends, and
+// its close reads it over and waits on the crews store; meanwhile the job
+// comes back, and its reopen finds the room not yet closed. The close landing
+// after must not leave a live job's room closed: each telling follows the job
+// in turn, so the one told last reads the job last.
+func TestTwoQuickWritesLeaveTheRoomAsTheJobIs(t *testing.T) {
+	r := newRoomFollowRig(t)
+	job := r.job("5e5e5e5e5e5e", factory.Item{Title: "quick", State: factory.StateShipped, PullRequest: &factory.PullRequest{Number: 6, State: factory.PROpen}})
+	held, release := make(chan struct{}), make(chan struct{})
+	go func() {
+		_ = teams.Inspect(r.profile, func(*teams.File) error { close(held); <-release; return nil })
+	}()
+	<-held
+	ended, back := make(chan error, 1), make(chan error, 1)
+	go func() {
+		ended <- r.st.Update(job.ID, func(it *factory.Item) error { it.PullRequest.State = factory.PRMerged; return nil })
+	}()
+	time.Sleep(200 * time.Millisecond)
+	go func() {
+		back <- r.st.Update(job.ID, func(it *factory.Item) error { it.PullRequest.State = factory.PROpen; return nil })
+	}()
+	time.Sleep(300 * time.Millisecond)
+	close(release)
+	for _, done := range []chan error{ended, back} {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r.closed("5e5e5e5e5e5e") {
+		t.Fatal("a close read before the job came back left its room closed")
+	}
+}
