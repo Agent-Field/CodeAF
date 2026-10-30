@@ -611,6 +611,10 @@ type appBackend struct {
 	agents       map[string]*appAgent
 	closing      bool
 
+	// lineSays is when each working agent's live line was last said, under mu
+	// (appliveline.go).
+	lineSays map[*appAgent]*appLineSay
+
 	sweepStop chan struct{}
 	sweepDone chan struct{}
 	// left closes when Close begins, whatever started the leaving: the app's
@@ -2736,7 +2740,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
-			b.locked(func() { a.step = title })
+			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
 			live.box.Event(appwire.EventTurnTool, row)
@@ -2872,6 +2876,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		live.running = false
 		live.lastUse = b.now()
 		a.step = ""
+		b.lineSettledLocked(a)
 		// Let go or closed while the turn ran: that road has said the state.
 		if held = a.live == live; held {
 			a.view.State = live.restingState()
