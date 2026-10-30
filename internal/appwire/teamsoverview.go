@@ -58,9 +58,9 @@ type OverviewMember struct {
 
 // TeamSummary is one team and the facts the file holds about it. MemberCount is
 // its direct members by distinct conversation; ChildCount its direct open
-// teams. Manager is present only when the team stores a manager, and that
-// manager is always one of its members: a file naming a manager who is not a
-// member is refused as inconsistent, never answered as "no manager".
+// teams. Manager is present only when the team stores a manager who is one
+// of its members; a stored manager who is not a member is answered as no
+// manager (the store keeps a team's manager among its members).
 // FaceMembers is who the team's face shows: the manager first when there is
 // one, then up to [OverviewFaceMax] distinct stored members in all, absent for
 // a team with none. Hue and MadeAt are present only when stored.
