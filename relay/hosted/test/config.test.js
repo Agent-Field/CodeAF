@@ -18,4 +18,6 @@ test('R30 the base config uses the Raft entry and an append-only v3-raft-members
   assert.match(text, /name = "IDENTITY"\s+class_name = "IdentityDO"/);
   assert.match(text, /name = "MACHINE"\s+class_name = "MachineDO"/);
   assert.match(text, /tag = "v4-machines"\s+new_sqlite_classes = \["MachineDO"\]/);
+  assert.match(text, /name = "MACHINE_DIAL_LIMIT"[\s\S]*?limit = 30,\s*period = 60/);
+  assert.match(text, /name = "MACHINE_REGISTER_LIMIT"[\s\S]*?limit = 10,\s*period = 60/);
 });

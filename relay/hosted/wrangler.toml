@@ -63,3 +63,16 @@ new_sqlite_classes = ["RaftMemberDO"]
 [[migrations]]
 tag = "v4-machines"
 new_sqlite_classes = ["MachineDO"]
+
+# Front-door per-network rate limits for /v1/dial/<name> and /v1/engine,
+# matching DialsPerMinute (30) and RegistrationsPerMinute (10) in
+# internal/relay/relay.go before any MachineDO wakes.
+[[ratelimits]]
+name = "MACHINE_DIAL_LIMIT"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+[[ratelimits]]
+name = "MACHINE_REGISTER_LIMIT"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }

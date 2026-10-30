@@ -158,6 +158,8 @@ canonical names, so the stricter side is the safe one.
 | `LINK_GATE` | Durable Object `LinkGate` (SQLite) | link-request codes, per-IP counters, one object |
 | `LINK_REQUEST` | Durable Object `LinkRequest` | one pending request, one per code |
 | `MACHINE` | Durable Object `MachineDO` (SQLite) | one machine name's `codeaf serve` socket and the surfaces dialled to it |
+| `MACHINE_DIAL_LIMIT` | Rate limit (`30` / `60 s`) | per-network dial ceiling at the Worker front door before `MACHINE` wakes |
+| `MACHINE_REGISTER_LIMIT` | Rate limit (`10` / `60 s`) | per-network registration ceiling at the Worker front door before `MACHINE` wakes |
 | `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews) or `stage1` (30 s leases) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
 | `BASE_PATH` | var, optional | a path prefix every route is served beneath (for example, `/fabric`); empty, the default, serves from the root. A request outside the prefix is `404 not_found` |
@@ -191,9 +193,10 @@ the machine's key derives and that the machine holds that key, then holds the ma
 splices each dialled socket onto it as one stream. It reads no payload. Every socket hibernates, and
 the routing lives in socket tags and attachments, so a quiet machine costs nothing: the machine
 proves the socket alive with WebSocket pings, which the platform answers without waking the object.
-A second registration under a live name is refused; one under a name whose socket stopped answering
-(a pong is asked for and not given within 5 s) replaces it, which is how a machine whose network
-dropped comes back before the platform has closed its old socket.
+A second registration under a live name is refused; one with the **same public key** under a name whose
+socket stopped answering (a pong is asked for and not given within 5 s) replaces it, which is how a
+machine whose network dropped comes back before the platform has closed its old socket. A colliding
+key never replaces an existing registration, silent or live.
 
 ## Base path
 
@@ -249,7 +252,7 @@ npx wrangler deploy --config wrangler.custom.toml
 | link requests: reads a minute, misses a minute, open polls, per IP | 60, 20, 4 | `429 rate_limited` |
 | link requests: live in all | 2,000 | `503 full` |
 | machine doors: surfaces on one machine at once (`MAX_STREAMS`) | 16 | `429` |
-| machine doors: dials and registrations a minute, per network and machine name (in memory) | 30, 10 | `429` |
+| machine doors: dials and registrations a minute, per network at the Worker front (`MACHINE_DIAL_LIMIT`, `MACHINE_REGISTER_LIMIT`) and per machine name in memory | 30, 10 | `429` |
 
 Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused
