@@ -46,21 +46,21 @@ const frameHeader = 1 + 8 + 4
 // surface's read and a surface's write agree about what happened.
 var errCarrierGone = errors.New("the connection to the relay ended")
 
-// writeFrame puts one frame on a carrier, in ONE write, so a carrier that is a
-// WebSocket carries each frame as one message (see transport.go). Callers hold
-// the carrier's write mutex; the mutex is not taken here because a frame is
-// sometimes written as part of a longer critical section.
-func writeFrame(w io.Writer, op byte, stream uint64, payload []byte) error {
+// writeFrame puts one frame on a carrier in one write, so a carrier that is a
+// WebSocket carries each frame as one message (see transport.go). The frame is
+// assembled in scratch, which is handed back for the next frame so a carrier
+// does not allocate one per write. Callers hold the carrier's write mutex,
+// which also guards scratch.
+func writeFrame(w io.Writer, scratch []byte, op byte, stream uint64, payload []byte) ([]byte, error) {
 	if len(payload) > MaxPayload {
-		return fmt.Errorf("relay: frame of %d bytes is over the %d-byte limit", len(payload), MaxPayload)
+		return scratch, fmt.Errorf("relay: frame of %d bytes is over the %d-byte limit", len(payload), MaxPayload)
 	}
-	frame := make([]byte, frameHeader+len(payload))
-	frame[0] = op
-	binary.BigEndian.PutUint64(frame[1:9], stream)
-	binary.BigEndian.PutUint32(frame[9:13], uint32(len(payload)))
-	copy(frame[frameHeader:], payload)
+	frame := append(scratch[:0], op)
+	frame = binary.BigEndian.AppendUint64(frame, stream)
+	frame = binary.BigEndian.AppendUint32(frame, uint32(len(payload)))
+	frame = append(frame, payload...)
 	_, err := w.Write(frame)
-	return err
+	return frame, err
 }
 
 // readFrame takes one frame off a carrier. The payload is freshly allocated
@@ -199,6 +199,7 @@ type carrier struct {
 	conn io.ReadWriteCloser
 
 	writeMu sync.Mutex
+	scratch []byte // the frame being written, reused under writeMu
 
 	mu      sync.Mutex
 	streams map[uint64]*muxStream
@@ -243,7 +244,9 @@ func (c *carrier) send(op byte, stream uint64, payload []byte) error {
 	if gone {
 		return errCarrierGone
 	}
-	if err := writeFrame(c.conn, op, stream, payload); err != nil {
+	scratch, err := writeFrame(c.conn, c.scratch, op, stream, payload)
+	c.scratch = scratch
+	if err != nil {
 		return err
 	}
 	return nil

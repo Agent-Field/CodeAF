@@ -55,6 +55,9 @@ func upgradeWebSocket(ctx context.Context, address *url.URL, path string, header
 		CompressionMode: websocket.CompressionDisabled, // the payloads are ciphertext
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if response == nil {
 			return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
 		}

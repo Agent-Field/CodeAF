@@ -84,3 +84,8 @@ func TestAHostedRelayKeepsANameForItsLiveMachine(t *testing.T) {
 		t.Fatalf("dialling a name nothing holds gave %v; want ErrNoMachine", err)
 	}
 }
+
+// The stream ceiling reads the same on the hosted relay: busy, not unreachable.
+func TestAHostedRelayTurnsAFullMachineAwayAsBusy(t *testing.T) {
+	fullMachineIsBusy(t, hostedRelay(t))
+}

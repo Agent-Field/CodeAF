@@ -148,7 +148,7 @@ func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error)
 
 // upgrade dials the service and takes the connection over.
 //
-// THE CARRIER RIDES A WEBSOCKET FIRST, because a WebSocket is the one upgrade
+// The carrier rides a WebSocket first, because a WebSocket is the one upgrade
 // every front end passes: the hosted relay is a Cloudflare Worker, which
 // answers no other. A relay from before that door answers a WebSocket with
 // 426, and this end then takes the raw upgrade it always spoke, so a
@@ -241,7 +241,7 @@ func refusal(host, path string, status int, said string) error {
 	case status >= 500:
 		return fmt.Errorf("%w: %s answered %d", ErrUnreachable, host, status)
 	case said == "":
-		return fmt.Errorf("the relay at %s refused with %d", host, status)
+		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", host, status)
 	default:
 		return errors.New(said)
 	}

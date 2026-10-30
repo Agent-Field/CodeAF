@@ -109,6 +109,13 @@ func (h *Host) Run(ctx context.Context) error {
 				h.say("lost sync — trying again")
 			}
 			lost = true
+		case errors.Is(err, relay.ErrNoDoor) && announced:
+			// The door was there a moment ago, so this is a relay being
+			// redeployed, and is waited out like any other outage.
+			if !lost {
+				h.say("lost sync — trying again")
+			}
+			lost = true
 		case errors.Is(err, relay.ErrNoDoor):
 			// Trying again cannot add a door the service does not have.
 			return NoDoor(h.Service)

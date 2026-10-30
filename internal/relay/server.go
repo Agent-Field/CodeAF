@@ -234,7 +234,9 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 
 	stream, err := reg.carrier.open()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		// 429, as a rate limit is: the machine is full now, and a surface
+		// that tries again in a minute may find room.
+		http.Error(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
 	defer func() { _ = stream.Close() }()
@@ -280,14 +282,24 @@ func upgradable(r *http.Request) bool {
 	if strings.EqualFold(r.Header.Get("Upgrade"), Protocol) {
 		return true
 	}
-	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") && strings.Contains(r.Header.Get("Sec-WebSocket-Protocol"), Protocol)
+	if !wantsWebSocket(r) {
+		return false
+	}
+	for _, offered := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+		if strings.TrimSpace(offered) == Protocol {
+			return true
+		}
+	}
+	return false
 }
+
+func wantsWebSocket(r *http.Request) bool { return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") }
 
 // takeOver answers the upgrade and hands back the connection the carrier
 // reads, whichever of the two the client asked for. On failure the answer has
 // already been written.
 func takeOver(w http.ResponseWriter, r *http.Request) (net.Conn, error) {
-	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+	if wantsWebSocket(r) {
 		socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			Subprotocols:    []string{Protocol},
 			CompressionMode: websocket.CompressionDisabled,

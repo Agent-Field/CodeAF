@@ -7,10 +7,18 @@
 // EVERY SOCKET HIBERNATES. Each frame is one WebSocket message (the Go client writes a frame in one write), so the
 // object keeps no half-read bytes across a wake-up, and the routing lives in socket tags and attachments, which
 // survive hibernation. A quiet machine therefore costs nothing: its liveness is proved by WebSocket pings from the
-// machine, which the platform answers without waking the object, and the object sets no timer.
+// machine, which the platform answers without waking the object. The one timer is a registration's bounded wait for
+// an older socket's pong, while the object is awake anyway.
+//
+// The per-address ceilings of relay.go are counted in memory, as the Worker's other per-minute rates are: an eviction
+// can only forgive a burst. One object serves one machine name, so they bound what one address can do to one machine.
 import { DurableObject } from 'cloudflare:workers';
 import { nameFor } from './names.js';
-import { MAX_PAYLOAD, MAX_STREAMS, OP, PROTOCOL, HEADER_NAME, HEADER_KEY, challenge, frame, readFrame, verdict } from './carrier.js';
+import { ipOf } from '../wire.js';
+import {
+  DIALS_PER_MINUTE, ENGINE_PATH, HEADER_KEY, HEADER_NAME, MAX_PAYLOAD, MAX_STREAMS, OP, PROTOCOL, REGISTRATIONS_PER_MINUTE,
+  challenge, frame, plain as refuse, readFrame, verdict,
+} from './carrier.js';
 
 /** How long a registration waits for an older socket under the same name to prove it is still there. */
 const PROBE_MS = 5000;
@@ -22,18 +30,35 @@ const sameBytes = (a, b) => a.length === b.length && a.every((x, i) => x === b[i
 const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const unb64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 const bytesOf = (message) => (typeof message === 'string' ? new TextEncoder().encode(message) : new Uint8Array(message));
-const refuse = (status, sentence) => new Response(sentence, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 
 export class MachineDO extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     /** Registrations waiting for an older socket's pong, which is in-memory because the object is awake while they wait. */
     this.probes = new Set();
+    /** claiming is a registration between its proof and its verdict; a second one meanwhile is refused. */
+    this.claiming = false;
+    /** buckets are this minute's counts per caller network and door. */
+    this.buckets = new Map();
   }
 
   async fetch(request) {
-    const path = new URL(request.url).pathname;
-    return path === '/v1/engine' ? this.#register(request) : this.#dial();
+    const register = new URL(request.url).pathname === ENGINE_PATH;
+    if (!this.#allow(ipOf(request, this.env), register ? 'register' : 'dial', register ? REGISTRATIONS_PER_MINUTE : DIALS_PER_MINUTE)) {
+      return refuse(429, register ? 'too many registrations from here — wait a minute' : 'too many connections from here — wait a minute');
+    }
+    return register ? this.#register(request) : this.#dial();
+  }
+
+  /** allow spends one of a caller's per-minute allowance at a door. */
+  #allow(ip, door, perMinute) {
+    const minute = Math.floor(Date.now() / 60000);
+    for (const [key, bucket] of this.buckets) if (bucket.minute !== minute) this.buckets.delete(key);
+    const key = door + ' ' + ip;
+    const bucket = this.buckets.get(key) ?? { minute, count: 0 };
+    bucket.count += 1;
+    this.buckets.set(key, bucket);
+    return bucket.count <= perMinute;
   }
 
   /** register accepts a machine's socket and sends the challenge; the proof arrives as its first message. */
@@ -66,7 +91,7 @@ export class MachineDO extends DurableObject {
     const engine = this.#engine();
     if (!engine) return refuse(404, 'no machine is connected under that name');
     if (this.ctx.getWebSockets(DIAL).length >= MAX_STREAMS) {
-      return refuse(503, `that machine already has ${MAX_STREAMS} connections open, which is as many as the relay carries at once`);
+      return refuse(429, `that machine already has ${MAX_STREAMS} connections open, which is as many as the relay carries at once`);
     }
     const id = String((this.ctx.storage.kv.get('next') ?? 0) + 1);
     this.ctx.storage.kv.put('next', Number(id));
@@ -106,7 +131,7 @@ export class MachineDO extends DurableObject {
     const surface = this.ctx.getWebSockets('s:' + got.stream)[0];
     if (!surface) return;
     if (got.op === OP.data) surface.send(got.payload);
-    if (got.op === OP.close) surface.close(1000, 'closed');
+    if (got.op === OP.close) this.#closeStream(got.stream, 1000, 'closed');
   }
 
   /** proof checks the machine's answer and, rule three, never lets a live registration be taken over. */
@@ -114,13 +139,20 @@ export class MachineDO extends DurableObject {
     if (!sameBytes(bytes, unb64(seen.want))) {
       return this.#refuseRegistration(ws, 'that machine did not prove it holds the key its name is derived from');
     }
+    // RULE THREE: a live registration is never taken over, and neither is one being decided.
     const older = this.#engine(ws);
-    if (older && (await this.#answers(older))) {
-      return this.#refuseRegistration(ws, 'that machine is already connected to the relay under this name');
+    if (this.claiming) return this.#refuseRegistration(ws, 'that machine is already connected to the relay under this name');
+    this.claiming = true;
+    try {
+      if (older && (await this.#answers(older))) {
+        return this.#refuseRegistration(ws, 'that machine is already connected to the relay under this name');
+      }
+      if (older) this.#endEngine(older, 1001, 'replaced by a newer registration after it stopped answering');
+      ws.serializeAttachment({ role: 'engine', name: seen.name });
+      ws.send(verdict());
+    } finally {
+      this.claiming = false;
     }
-    if (older) this.#endEngine(older, 1001, 'replaced by a newer registration after it stopped answering');
-    ws.serializeAttachment({ role: 'engine', name: seen.name });
-    ws.send(verdict());
   }
 
   /**

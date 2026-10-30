@@ -12,6 +12,15 @@ const LABEL = new TextEncoder().encode('aforge relay registration v1'); // legac
 // The tuning of relay.go, in the same names.
 export const MAX_PAYLOAD = 1 << 17;
 export const MAX_STREAMS = 16;
+export const DIALS_PER_MINUTE = 30;
+export const REGISTRATIONS_PER_MINUTE = 10;
+
+/** The two doors, beneath the deployment's base path. */
+export const ENGINE_PATH = '/v1/engine';
+export const DIAL_PREFIX = '/v1/dial/';
+
+/** plain is a refusal in the relay's own sentence, which the Go client passes on as it is. */
+export const plain = (status, sentence) => new Response(sentence, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 const FRAME_HEADER = 13;
 
 export const OP = { open: 1, data: 2, close: 3, ping: 4, pong: 5 };

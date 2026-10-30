@@ -124,3 +124,29 @@ func TestUpstreamFailuresBecomeFacts(t *testing.T) {
 		t.Fatalf("a relay with no machine door: %v; want ErrNoDoor", err)
 	}
 }
+
+// A machine at its stream ceiling is busy, not unreachable: the relay answers
+// 429 and the surface hears that it is being turned away for now.
+func TestAFullMachineIsBusyNotUnreachable(t *testing.T) {
+	_, address := live(t)
+	fullMachineIsBusy(t, address)
+}
+
+func fullMachineIsBusy(t *testing.T, address string) {
+	t.Helper()
+	registration, err := Register(context.Background(), address, aKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = registration.Close() }()
+	for i := 0; i < MaxStreams; i++ {
+		surface, err := Dial(context.Background(), address, registration.Name())
+		if err != nil {
+			t.Fatalf("surface %d: %v", i, err)
+		}
+		defer func() { _ = surface.Close() }()
+	}
+	if _, err := Dial(context.Background(), address, registration.Name()); !errors.Is(err, ErrTooMany) {
+		t.Fatalf("a dial past %d streams gave %v; want ErrTooMany", MaxStreams, err)
+	}
+}

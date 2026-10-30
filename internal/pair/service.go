@@ -2,7 +2,7 @@ package pair
 
 // Which relay this machine uses.
 //
-// THE RELAY A MACHINE IS REACHED THROUGH IS THE ONE IT SYNCS THROUGH unless
+// The relay a machine is reached through is the one it syncs through, unless
 // somebody said otherwise. Sync already found an address — the person's
 // variable, the relay a pairing saved, or the hosted default — and a second
 // answer here would be a machine whose chats sync while `codeaf serve` says
