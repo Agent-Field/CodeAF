@@ -50,6 +50,11 @@ const (
 	// memory budget. It is additive: an app that does not know the word treats
 	// it as any failure, and one that does reads Error.Detail.
 	CodeTooLarge = "too_large"
+	// CodeUnreadable refuses a read of a store this engine cannot read: one a
+	// newer build wrote, or a file that is not the store. Trying again does not
+	// help; the app says so instead of offering it. It is additive like
+	// CodeTooLarge: an app that does not know the word treats it as any failure.
+	CodeUnreadable = "unreadable"
 	// CodeUncertain answers a mutation whose effect the engine itself cannot
 	// confirm: it may have happened. A caller MUST NOT retry it blind, which
 	// could do it twice; it looks at the state again first. It is the same word

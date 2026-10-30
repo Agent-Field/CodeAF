@@ -89,7 +89,7 @@ func overviewReadError(err error, parent string) error {
 	case errors.Is(err, teamstore.ErrClosed):
 		return appwire.Errorf(appwire.CodeBadParams, "team %q is closed", clipID(parent))
 	case errors.Is(err, teamstore.ErrUnreadable):
-		return appwire.Errorf(appwire.CodeEngine, "the crews store is unreadable")
+		return appwire.Errorf(appwire.CodeUnreadable, "the crews store cannot be read by this version: a newer one wrote it, or it is not a crews store")
 	}
 	return err
 }

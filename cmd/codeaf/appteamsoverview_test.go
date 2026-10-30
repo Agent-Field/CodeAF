@@ -307,8 +307,8 @@ func TestCrewsOverviewReadsTheStoreHonestly(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(rig.profile, teamstore.FileName), []byte(`{"version":2,"teams":[`), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		rig.refuses(`{}`, appwire.CodeEngine, "unreadable")
-		rig.refuses(`{"kind":"members","parent":"a"}`, appwire.CodeEngine, "unreadable")
+		rig.refuses(`{}`, appwire.CodeUnreadable, "cannot be read by this version")
+		rig.refuses(`{"kind":"members","parent":"a"}`, appwire.CodeUnreadable, "cannot be read by this version")
 	})
 	t.Run("read error is not empty", func(t *testing.T) {
 		rig := newOverviewRig(t, "")
@@ -316,7 +316,7 @@ func TestCrewsOverviewReadsTheStoreHonestly(t *testing.T) {
 			t.Fatal(err)
 		}
 		raw, rpcErr := rig.call(`{}`)
-		if rpcErr == nil || rpcErr.Code != appwire.CodeEngine || strings.Contains(rpcErr.Message, rig.profile) {
+		if rpcErr == nil || rpcErr.Code != appwire.CodeUnreadable || strings.Contains(rpcErr.Message, rig.profile) {
 			t.Fatalf("a directory in the store's place answered %s / %v", raw, rpcErr)
 		}
 	})
