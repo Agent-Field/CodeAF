@@ -2573,6 +2573,7 @@ func (a *Agent) Close() (saveErr error) {
 	// cancellations were cut above; join their accepted lifetimes before any
 	// store is closed. Setup may have created the graph since the first snapshot.
 	a.waitOrchestrations()
+	a.waitEndingBeltRun(beltDone, closeGrace)
 	a.mu.Lock()
 	tasks = a.tasks
 	a.mu.Unlock()

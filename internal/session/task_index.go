@@ -691,6 +691,13 @@ func (a *Agent) recordTaskIndex(node *TaskNode) {
 // regular task reaches it through [Agent.recordTaskIndex]; an adaptive run has
 // no TaskNode, so its completion seam supplies the same citation directly.
 func (a *Agent) recordTaskIndexEntry(entry TaskIndexEntry) {
+	select {
+	case <-a.closeDone:
+		// A goroutine that outlived Close must not create index or lock files
+		// after the session has handed its directories back to the caller.
+		return
+	default:
+	}
 	path := a.config.taskIndexFile()
 	if path == "" || strings.TrimSpace(entry.Title) == "" {
 		return
