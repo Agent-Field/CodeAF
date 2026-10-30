@@ -90,7 +90,7 @@ var teamReadSchema = `{"type":"object","properties":{"handle":{"type":"string","
 	`"messages":{"type":"integer","description":"How many of the last messages. Default ` + strconv.Itoa(teamReadDefault) + `, maximum ` + strconv.Itoa(teamReadMax) + `."},` +
 	teamArgSchema + `},"required":["handle"],"additionalProperties":false}`
 
-const teamSendDescription = "Send a message to one member, to several (one message with every handle in to), or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. " +
+const teamSendDescription = "Send a message to one member, to several (one message with every handle in to), or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. Sends only to chats known to be on another computer are refused before writing; continue them here first. Mixed sends reach local recipients and name those not reached. " +
 	"kind note is information and waits for the member's next turn; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation, and it starts an idle member's turn. " +
 	"A member busy in a long tool call reads it when that returns; use team_stop to end its turn first."
 
@@ -267,7 +267,7 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
-	log, _ := teams.ReadTraffic(profile, team.ID, "", teamStateLook)
+	log, _ := teams.ReadHistory(profile, team.ID, teamStateLook)
 	file, _, _, _ := a.teamSnapshot(profile)
 	states := memberStates(team, keys, time.Now(), log, &a.team.journals)
 	markShared(file, team, states)
@@ -428,7 +428,13 @@ func journalRow(entry sessionEntry) string {
 
 // ── team_send ───────────────────────────────────────────────────────────────
 
-func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (said string, failed bool, callErr error) {
+	missedReceipt := ""
+	defer func() {
+		if !failed && callErr == nil {
+			said += missedReceipt
+		}
+	}()
 	var parsed struct {
 		To   string `json:"to"`
 		Text string `json:"text"`
@@ -475,6 +481,11 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		}
 	}
 	entry.Kind, entry.From, entry.Text = kind, teams.FromManager, text
+	refusal, missed, local := a.teamSendPreflight(ctx, teamSendTargets(team, entry))
+	missedReceipt = missed
+	if refusal != "" {
+		return refusal, true, nil
+	}
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
 	if err != nil {
 		return "The message could not be written to the team's traffic: " + err.Error(), true, nil
@@ -490,7 +501,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
 		// (team_wakewatch.go). The answer says what will happen and no more:
 		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry), id)
+		a.teamRouse(a.config.teamProfile(), team, role.wakes, local, id)
 		if len(shared) > 0 {
 			return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
 				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", ")), false, nil
@@ -600,12 +611,21 @@ func linkRefusal(member teams.Member, where, what string) string {
 		"Nothing was sent. Send it a note (kind note), or raise it with its manager.", member.Handle, where, what)
 }
 
-// teamSendTargets is who a manager's message is addressed to: the members it
-// names, or every member but the manager.
+// teamSendTargets follows local delivery: a member's post reaches its manager,
+// and room posts reach teammates as well as explicitly addressed messages.
 func teamSendTargets(team teams.Team, entry teams.Entry) []teams.Member {
 	var out []teams.Member
 	for _, member := range team.Members {
-		if member.Key != team.Manager && entry.Addressed(member.Handle) {
+		if member.Key == team.Manager {
+			if entry.From != teams.FromManager && entry.From != teams.FromYou && entry.From != teams.FromSystem {
+				out = append(out, member)
+			}
+			continue
+		}
+		if member.Handle == entry.From && entry.From != "" {
+			continue
+		}
+		if entry.To == teams.ToRoom || entry.Addressed(member.Handle) {
 			out = append(out, member)
 		}
 	}
@@ -641,6 +661,9 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	reason := strings.TrimSpace(parsed.Reason)
 	if reason == "" {
 		reason = "stopped by the manager"
+	}
+	if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{member}); refusal != "" {
+		return refusal, true, nil
 	}
 	entry := teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: member.Handle, Member: member.Key, Text: reason}
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
@@ -680,6 +703,11 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
+	}
+	if member, taken := team.ByHandle(handle); taken {
+		if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{member}); refusal != "" {
+			return refusal, true, nil
+		}
 	}
 	model := ""
 	if word := strings.TrimSpace(parsed.Model); word != "" {
@@ -764,7 +792,13 @@ func teamStartGloss(arguments string) string {
 
 // ── team_post ───────────────────────────────────────────────────────────────
 
-func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (said string, failed bool, callErr error) {
+	missedReceipt := ""
+	defer func() {
+		if !failed && callErr == nil {
+			said += missedReceipt
+		}
+	}()
 	var parsed struct {
 		To     string `json:"to"`
 		Text   string `json:"text"`
@@ -829,6 +863,20 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		return a.teamPostUp(team, role, entry)
 	}
 	entry.Answers = thread
+	targets := teamSendTargets(team, entry)
+	// A specifically named destination must be reachable even when the
+	// manager would also observe that post in its ordinary local news.
+	if entry.To != teams.ToRoom && entry.To != teams.ToManager {
+		targets = nil
+		if member, ok := team.ByHandle(entry.To); ok {
+			targets = []teams.Member{member}
+		}
+	}
+	refusal, missed, _ := a.teamSendPreflight(ctx, targets)
+	if refusal != "" {
+		return refusal, true, nil
+	}
+	missedReceipt = missed
 	// THE POST'S OWN NUMBER IS IN ITS ANSWER, ` as #N`, so the surface can find
 	// this call in the member's transcript when somebody asks to be taken to
 	// the message (tui3's teamjump.go).

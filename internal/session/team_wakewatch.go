@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -835,9 +836,12 @@ func SetTeamResume(open func(file, workspace string) error) {
 // says in the Traffic when one could not be. A conversation that is open
 // somewhere watches for itself and is left alone. answers is the entry that
 // asked for the wake, which a failure to wake answers, "" for none.
-func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) {
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) string {
+	if refusal := a.teamDeliveryRefusal(context.Background(), targets); refusal != "" {
+		return refusal
+	}
 	if profile == "" || !wakes || len(targets) == 0 {
-		return
+		return ""
 	}
 	a.team.mu.Lock()
 	self := append([]string(nil), a.teamKeysLocked()...)
@@ -850,7 +854,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 		absent = append(absent, member)
 	}
 	if len(absent) == 0 {
-		return
+		return ""
 	}
 	guard.Go("team rouse", func() {
 		for _, member := range absent {
@@ -869,6 +873,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 			}
 		}
 	})
+	return ""
 }
 
 // rouseMember opens one conversation when nothing holds it, and says why not

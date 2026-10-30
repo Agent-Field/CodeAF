@@ -141,6 +141,13 @@ func (a *Agent) askUp(q Question) (string, bool) {
 		if member.handle == "" {
 			return "", false
 		}
+		if target, ok := file.Team(home.Team); ok {
+			if manager, ok := target.Member(target.Manager); ok {
+				if refusal := a.teamDeliveryRefusal(context.Background(), []teams.Member{manager}); refusal != "" {
+					return refusal, true
+				}
+			}
+		}
 		packet.Team, packet.Origin, packet.RaisedBy = home.Team, member.id, member.handle
 		packet.Parties = []teams.Party{{Key: member.key, Handle: member.handle, Team: member.id, Context: strings.TrimSpace(q.Reason)}}
 		raised, err := teams.Raise(profile, packet)
@@ -296,6 +303,10 @@ func (a *Agent) teamDecideTool(ctx context.Context, args json.RawMessage) (strin
 	case teams.PacketCap, teams.PacketClosing:
 		return fmt.Sprintf("A %s is the person's to decide, never a manager's. Nothing was done.", p.Kind), true, nil
 	}
+	file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
+	if refusal := a.teamDeliveryRefusal(ctx, teamPacketRecipients(file, p)); refusal != "" {
+		return refusal, true, nil
+	}
 	// AN OPTION MAY BE NAMED BY ITS LABEL: a model that writes "JSON" for
 	// option 1 means option 1.
 	for _, option := range p.Options {
@@ -336,6 +347,11 @@ func (a *Agent) teamEscalateTool(ctx context.Context, args json.RawMessage) (str
 		if home, ok := homeOf(file, []string{team.Manager}); ok {
 			to = home.Team
 			if at, ok := file.Team(home.Team); ok {
+				if manager, ok := at.Member(at.Manager); ok {
+					if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{manager}); refusal != "" {
+						return refusal, true, nil
+					}
+				}
 				where = fmt.Sprintf("the manager of %q", at.Name)
 			}
 		}
@@ -554,4 +570,39 @@ func teamPacketWakes(profile string, role teamRole, entry teams.Entry) bool {
 		return false
 	}
 	return packetLineFor(role, entry, p) != "" && (role.manager || entry.State == teams.PacketDecided)
+}
+
+// Packet decisions travel only in local Traffic, including rulings to conflict
+// parties. Check those exact destinations before changing a packet's state.
+func teamPacketRecipients(file *teams.File, p teams.Packet) []teams.Member {
+	var out []teams.Member
+	seen := map[string]bool{}
+	for _, party := range p.Parties {
+		if party.Key == "" || seen[party.Key] {
+			continue
+		}
+		seen[party.Key] = true
+		member := teams.Member{Key: party.Key, Handle: party.Handle}
+		if file != nil {
+			for _, t := range file.Teams {
+				if found, ok := t.Member(party.Key); ok {
+					member = found
+					break
+				}
+			}
+		}
+		out = append(out, member)
+	}
+	if len(out) == 0 && file != nil {
+		if origin, ok := file.Team(p.Origin); ok {
+			if p.RaisedBy == teams.FromManager {
+				if m, ok := origin.Member(origin.Manager); ok {
+					out = append(out, m)
+				}
+			} else if m, ok := origin.ByHandle(p.RaisedBy); ok {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
 }

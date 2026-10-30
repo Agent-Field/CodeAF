@@ -588,6 +588,13 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	if origin == "" {
 		origin = role.id
 	}
+	// A remote decider cannot read this computer's packet or its wake. Refuse
+	// before Raise records either, rather than claiming it reached a manager.
+	if manager, ok := lca.Member(lca.Manager); ok {
+		if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{manager}); refusal != "" {
+			return refusal, true, nil
+		}
+	}
 	raised, err := teams.Raise(profile, teams.Packet{
 		Team: decider, Origin: origin, Kind: teams.PacketConflict, RaisedBy: role.handle,
 		Parties: parties, Question: question, Options: options, Recommendation: recommendation,
@@ -689,6 +696,15 @@ func readableBelow(profile string, team teams.Team, words string) (teams.Member,
 // to, marked with the sub-team it came from, and that manager roused.
 func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (string, bool, error) {
 	profile := a.config.teamProfile()
+	if file, _, _, _ := a.teamSnapshot(profile); file != nil {
+		if boss, ok := file.Team(role.boss); ok {
+			if m, ok := boss.Member(boss.Manager); ok {
+				if refusal := a.teamDeliveryRefusal(context.Background(), []teams.Member{m}); refusal != "" {
+					return refusal, true, nil
+				}
+			}
+		}
+	}
 	entry.Member = role.key
 	entry.Text = fmt.Sprintf("(from %q, a team under yours with no manager of its own) %s", team.Name, entry.Text)
 	if err := teams.AppendTraffic(profile, role.boss, entry); err != nil {
