@@ -135,6 +135,8 @@ func (i tasksItem) pick() bool { return true }
 // ([app.recordRuns], asked once in place_tasks.go), because a reading that could
 // ask the app a question would be a reading that could ask it at paint time.
 type tasksMine struct {
+	// The capability travels with the reading so old records cannot enable it.
+	taskComputers bool
 	// row is this conversation, as a row of the world — what a row of this
 	// project's index is labelled with when the world scan has never seen the
 	// conversation that ran it.
@@ -182,6 +184,7 @@ type tasksChatView struct {
 // tasksReading is everything drawing and routing need from one world reading.
 // The seen stamp travels with the snapshot across place adapters.
 type tasksReading struct {
+	taskComputers bool
 	// layouts is optional scratch owned by one body's paint, never a reading
 	// retained across input. Cursor, pane, and body readers share each width.
 	layouts    map[int][]tasksLine
@@ -267,7 +270,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
 	by = tasksSort{back: by.back}
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by, taskComputers: mine.taskComputers}
 	// THE ROWS THE RUN'S STORE ANSWERS FOR ARE TAKEN OUT FIRST, before anything
 	// reads them: they are drawn as the store's own plan rows below, and this is
 	// the one line that keeps the pair from being drawn twice or drawn as the
@@ -1626,6 +1629,11 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		return ""
 	}
 	line, lead := lines[i], tasksBareLead
+	if !r.taskComputers && line.item != nil && line.item.entry.Computer != "" {
+		item := *line.item
+		item.entry.Computer, item.entry.Unreachable, item.entry.RanElsewhere = "", false, false
+		line.item = &item
+	}
 	room := width - ansi.StringWidth(lead)
 	if room < 1 {
 		room = 1
@@ -2028,6 +2036,9 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 		state, second = planStateField(item), planSpendField(item)
 	}
 	label := tasksLabel(item.entry)
+	if words := taskComputerWords(item.entry.Computer, item.entry.Unreachable, item.entry.RanElsewhere, session.TaskState(item.entry.Status)); words != "" {
+		label += rowSep + words
+	}
 	if item.plan != nil && item.plan.Total > 0 {
 		label += "  " + planProgress(*item.plan, width, pal)
 	}
@@ -2157,10 +2168,17 @@ func tasksEntryAt(entry session.TaskIndexEntry, now time.Time) time.Time {
 // GRADES it was the state word again in different clothes.
 func tasksMiddle(item tasksItem) string {
 	entry := item.entry
+	placement := taskComputerWords(entry.Computer, entry.Unreachable, entry.RanElsewhere, session.TaskState(entry.Status))
 	if activity := strings.TrimSpace(entry.Activity); activity != "" {
+		if placement != "" {
+			return placement + rowSep + activity
+		}
 		return activity
 	}
 	var parts []string
+	if placement != "" {
+		parts = append(parts, placement)
+	}
 	// A PLAN ROW CARRIES WHAT THE STORE KNOWS: its steps and its money
 	// (taskplan.go), the two figures a phone card otherwise has no room for.
 	if item.plan != nil {

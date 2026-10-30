@@ -2,6 +2,7 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // sheetChoice keeps navigation separate from the persisted value. Opening or
@@ -80,6 +81,9 @@ func (s *sheet) choiceRows(width, room int, pal palette, hovered int) []placeRow
 	for i := top; i < top+count; i++ {
 		raw := c.item.row.Choices[i]
 		label := settingChoiceWord(c.item.row.Key, raw, raw)
+		if c.item.row.Key == config.KeyTaskRunsOn {
+			label = taskComputerName(s.taskComputerRows, raw)
+		}
 		current := ""
 		if raw == c.current {
 			current = " · current"

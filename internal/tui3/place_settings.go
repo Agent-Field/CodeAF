@@ -42,8 +42,8 @@ func (placeSettings) open(a *app) tea.Cmd {
 	// bar counting while it was up ([placeSettings.tick]).
 	//
 	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
-	// local launch asks for nothing.
-	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults(), a.ensureSheetDevices())
+	// local launch reads its paired task computers through the same off-loop road.
+	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults(), a.ensureSheetDevices(), a.readTaskComputers())
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].

@@ -55,6 +55,9 @@ import (
 // [app.task], the lane that answers it — so the answer and the row can never
 // disagree about what was decided.
 type taskCard struct {
+	computerPicked                           bool
+	computerPreference                       string
+	computer                                 string
 	id                                       uint64
 	title, summary, brief, acceptance, where string
 	// name is the two-or-three-word NAME cut from the title, sub the one-line
@@ -150,6 +153,9 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
+	computer                  string
+	unreachable, ranElsewhere bool
+	remote                    *session.TaskRemoteRecord
 	// workTurn records the request that admitted this live work, independently of completion time.
 	workTurn  int
 	workOwned bool
@@ -905,6 +911,7 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		a.note(ev.Text)
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
+		pilot = a.readTaskComputers()
 	case session.EventTaskUpdate:
 		pilot = a.taskUpdate(ev)
 		mentions = a.refreshTasks()
@@ -1290,22 +1297,24 @@ func (a *app) proposeTask(ev session.Event) {
 	brief := strings.TrimSpace(notice.Brief)
 	name := taskTitleOf(title, firstNonEmpty(summary, brief), notice.ID)
 	card := &taskCard{
-		id:         notice.ID,
-		title:      title,
-		summary:    summary,
-		brief:      brief,
-		acceptance: strings.TrimSpace(notice.Acceptance),
-		where:      strings.TrimSpace(notice.Where),
-		name:       name,
-		sub:        taskSubtitleOf(name, firstNonEmpty(summary, brief)),
-		ident:      identFor(notice.ID),
-		dependsOn:  notice.DependsOn,
-		model:      strings.TrimSpace(notice.Model),
-		program:    strings.TrimSpace(notice.Program),
-		ceiling:    strings.TrimSpace(notice.Ceiling),
-		elsewhere:  strings.TrimSpace(notice.Elsewhere),
-		deadline:   notice.Deadline,
-		born:       a.now(),
+		id:                 notice.ID,
+		computer:           strings.TrimSpace(notice.Computer),
+		computerPreference: config.TaskRunsOnAt(a.profileDir),
+		title:              title,
+		summary:            summary,
+		brief:              brief,
+		acceptance:         strings.TrimSpace(notice.Acceptance),
+		where:              strings.TrimSpace(notice.Where),
+		name:               name,
+		sub:                taskSubtitleOf(name, firstNonEmpty(summary, brief)),
+		ident:              identFor(notice.ID),
+		dependsOn:          notice.DependsOn,
+		model:              strings.TrimSpace(notice.Model),
+		program:            strings.TrimSpace(notice.Program),
+		ceiling:            strings.TrimSpace(notice.Ceiling),
+		elsewhere:          strings.TrimSpace(notice.Elsewhere),
+		deadline:           notice.Deadline,
+		born:               a.now(),
 	}
 	a.task = card
 	a.closeLive()
@@ -1593,11 +1602,12 @@ const (
 // something is being asked, which is what its readers actually want to know.
 func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 
-// taskKey is the ONE key the proposal still owns, and it is not an answer.
+// taskKey handles the proposal's disclosure and computer keys. Neither answers
+// the shared question, whose own keys still decide whether the work starts.
 //
-// The three answers and the clock went to the question block with every other
-// decision on this surface (question.go), and what is left here is the key that
-// opens the assignment in the transcript: `ctrl+e` is what this surface means
+// The answers and clock belong to the shared question. These keys change what
+// its assignment shows: `ctrl+d` cycles eligible computers before acceptance,
+// while `ctrl+e` is what this surface means
 // "show me the rest of this" by, and the brief is the rest of a proposal. It
 // belongs to the lane rather than to the block because it acts on the BLOCK IN
 // THE TRANSCRIPT — the question above the box has nothing to unfold.
@@ -1606,10 +1616,20 @@ func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 // is the rule input.go applies to the thinking block, and it is applied here for
 // the same reason: ctrl+e is end-of-line in every shell a person has used.
 func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.awaitingTask() || msg.String() != "ctrl+e" {
+	if !a.awaitingTask() {
 		return nil, false
 	}
 	if !a.input.empty() {
+		return nil, false
+	}
+	if msg.String() == taskComputerCycleKey {
+		if a.questionOffFrame() || !a.canCycleTaskComputer(a.task) {
+			return nil, false
+		}
+		a.cycleTaskComputer()
+		return nil, true
+	}
+	if msg.String() != "ctrl+e" {
 		return nil, false
 	}
 	a.toggleCard()
@@ -1644,6 +1664,12 @@ func (a *app) taskAnswered(id uint64, answer session.Answer) session.Answer {
 	}
 	card.verdict = taskVerdict(approve, redirect)
 	card.answer = word
+	if approve && card.computerPicked && a.taskComputersAvailable() {
+		if answer.Blanks == nil {
+			answer.Blanks = map[string]string{}
+		}
+		answer.Blanks[session.TaskComputerBlank] = card.computer
+	}
 	// A YES OPENS THE FORMING BLOCK. The task the card names does not exist
 	// until its first update arrives, and the person who just said yes is owed
 	// something moving in that pause rather than nothing (taskcommand.go's
@@ -1961,6 +1987,9 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	if card.where != "" {
 		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
 	}
+	if computer := a.proposalComputerName(card); computer != "" {
+		out = append(out, stem+a.pal.dim(fit("runs on "+computer, room)))
+	}
 	if point := a.taskBranchPoint(); point != "" && card.program == "" {
 		// The branch point is the last of the facts about the work, and it is the
 		// one thing on the card a person cannot find out afterwards without
@@ -2196,6 +2225,9 @@ func (a *app) taskMetaWord(card *taskCard, width int) string {
 	}
 	if card.model != "" {
 		parts = append(parts, taskModelTag+card.model)
+	}
+	if a.canCycleTaskComputer(card) {
+		parts = append(parts, taskComputerCycleHint)
 	}
 	if !card.open && card.brief != "" {
 		parts = append(parts, taskExpandHint)
@@ -4390,6 +4422,15 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // handles back to work that is not on screen, and half of one of those is worth
 // nothing at all.
 func (a *app) railUnder(node *taskNode, width int) []string {
+	if words := a.taskComputerWords(node); words != "" {
+		rows := []string{a.pal.dim(fit(words, width))}
+		if node.state == session.TaskRunning {
+			if figures := a.railTelemetry(node, width); figures != "" {
+				rows = append(rows, a.pal.dim(figures))
+			}
+		}
+		return rows
+	}
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
@@ -4760,10 +4801,13 @@ func planLiveRow(command string, parts []session.PlanCommandPart, width int, pal
 // is doing, in the only vocabulary it has — so a prefix would be the surface
 // explaining a plain English word with a second plain English word.
 func (a *app) railDoing(node *taskNode, width int) []string {
-	if node.doing == "" {
+	if words := a.taskComputerWords(node); words != "" {
+		return []string{a.pal.dim(fit(words, width))}
+	}
+	if taskDoingWords(node) == "" {
 		return nil
 	}
-	return []string{a.pal.dim(fit(node.doing, width))}
+	return []string{a.pal.dim(fit(taskDoingWords(node), width))}
 }
 
 // railProgramRow is the run's own plan row for a node whose run was handed to
@@ -5291,6 +5335,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		resumed = a.resumeRetriedRoom(node)
 	}
 	node.state = notice.State
+	node.computer, node.unreachable, node.ranElsewhere = notice.Computer, notice.Unreachable, notice.RanElsewhere
+	node.remote = notice.Remote
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
 	}

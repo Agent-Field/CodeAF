@@ -321,6 +321,12 @@ var settingUI = map[string]settingMeta{
 		about: "the model a task's worker runs on when you have not asked for another. " +
 			"Blank leaves it to the crew: your /crew pin, or the model picked for each task.",
 	},
+	// Placement sits beside the worker model because both describe the work
+	// handed out from this conversation rather than the chat's own calls.
+	config.KeyTaskRunsOn: {
+		tab: tabTasks, label: "Run tasks on", widget: widgetCycle,
+		about: taskComputerHint,
+	},
 	// THE CREW'S THREE SEATS ARE REGISTRY ROWS AND ARE NOT DRAWN AS THREE ROWS.
 	// Each is empty for AUTO — codeaf routes that seat per task — and a model id
 	// written there is a PIN, the same pin `/crew pin` writes (internal/config's
@@ -858,7 +864,7 @@ func (s *sheet) finishCategory() {
 	}
 	// Lead with the controls a developer commonly changes, not registry order.
 	if title == tabTasks {
-		priority := map[string]int{config.KeyTaskParallel: 0, config.KeyTaskModel: 1, config.KeyTaskAudit: 2, config.KeyTaskSettle: 3, config.KeyTaskRepairRounds: 4}
+		priority := map[string]int{config.KeyTaskParallel: 0, config.KeyTaskModel: 1, config.KeyTaskRunsOn: 2, config.KeyTaskAudit: 3, config.KeyTaskSettle: 4, config.KeyTaskRepairRounds: 5}
 		rank := func(item sheetItem) int {
 			if n, ok := priority[item.row.Key]; ok {
 				return n
@@ -952,8 +958,10 @@ func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 // sheet is the panel's whole state. The zero value is closed and costs the
 // frame nothing.
 type sheet struct {
-	advanced map[string]bool
-	tab      int
+	taskComputers    bool
+	taskComputerRows []session.TaskComputer
+	advanced         map[string]bool
+	tab              int
 	// host is the machine the session runs on over --host, "" otherwise.
 	host string
 	// teamDefaultsWrite says the teams seam can change that machine's `teams.`
@@ -1281,7 +1289,7 @@ func (a *app) slotRefusal() error {
 
 // openSettings is /settings and ctrl+,, and it is THE ROUTER'S DOOR like every
 // other way into a place (pages.go's [app.showPage]).
-func (a *app) openSettings() { a.showPage(pageSettings) }
+func (a *app) openSettings() tea.Cmd { return a.showPage(pageSettings) }
 
 // raiseSettings builds the panel. It is [placeSettings]'s `open` and nothing
 // else calls it, which is what makes the router the one road in.
@@ -1300,6 +1308,8 @@ func (a *app) raiseSettings() {
 		write = true
 	}
 	a.sheet = sheet{
+		taskComputers:     a.taskComputersAvailable(),
+		taskComputerRows:  a.taskComputerRows,
 		host:              a.host,
 		teamDefaultsWrite: write,
 		registry:          a.registry(),
@@ -1581,7 +1591,7 @@ func (s *sheet) build() {
 			if len(s.items) == start {
 				s.items = append(s.items, sheetItem{head: title})
 			}
-			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta, hitAt: one.hitAt, hitLen: one.hitLen})
+			s.items = append(s.items, sheetItem{row: s.taskComputerSetting(one.row), meta: one.meta, hitAt: one.hitAt, hitLen: one.hitLen})
 		}
 		// A ROLE IS FOUND BY ITS OWN NAME, or by the line that says what it does.
 		// Somebody searching for "planner" is not searching for a registry key —
@@ -1655,6 +1665,9 @@ func (s *sheet) build() {
 // sheet rebuilds after every write, so the selected search row follows keys and
 // pins immediately while ordinary frame rendering stays read-only.
 func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
+	if row.Key == config.KeyTaskRunsOn && !s.taskComputers {
+		return settingMeta{}, false
+	}
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
@@ -1681,8 +1694,8 @@ func (s *sheet) tabRows() []config.Setting {
 	title := settingTabs[s.tab]
 	mine := make([]config.Setting, 0, len(s.rows))
 	for _, row := range s.rows {
-		if meta, ok := settingMetaFor(row); ok && meta.tab == title {
-			mine = append(mine, row)
+		if meta, ok := s.metaFor(row); ok && meta.tab == title {
+			mine = append(mine, s.taskComputerSetting(row))
 		}
 	}
 	led := map[string]bool{}
@@ -1770,7 +1783,7 @@ func (s *sheet) settingMatch(row config.Setting, meta settingMeta, tab string, t
 	fields[4] = tab
 	presentation := row.ChatPresentation()
 	fields = append(fields, presentation.Aliases...)
-	fields = append(fields, settingValueWord(row))
+	fields = append(fields, s.settingValueWord(row))
 	if old, ok := settingUI[row.Key]; ok {
 		fields = append(fields, old.label, old.tab)
 	}
@@ -2620,6 +2633,12 @@ func (a *app) activate() tea.Cmd {
 			return nil
 		}
 		choice := &sheetChoice{item: item, current: item.row.Value()}
+		if item.row.Key == config.KeyTaskRunsOn {
+			choice.current = config.TaskRunsOnAt(s.profileDir)
+			if taskComputerName(s.taskComputerRows, choice.current) == config.TaskRunsHere {
+				choice.current = ""
+			}
+		}
 		for i, value := range item.row.Choices {
 			if value == choice.current {
 				choice.cursor = i
@@ -2822,6 +2841,11 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 	// banked rule through, and it rebuilds the policy from these same three rows.
 	note := ""
 	switch item.row.Key {
+	case config.KeyTaskRunsOn:
+		if a.task != nil {
+			a.task.computerPreference = config.TaskRunsOnAt(a.profileDir)
+			a.markCardStale(a.task)
+		}
 	case config.KeyUpdateAuto:
 		// THE LIVE SESSION SEES THE ROW IT JUST CHANGED. The grace re-reads
 		// this flag, so turning it off in the panel must reach the running
@@ -3773,7 +3797,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// The unit is the registry's ([config.Setting.Unit]), so it is stated once,
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
-	value := settingValueWord(item.row)
+	value := s.settingValueWord(item.row)
 
 	if hosted, ok := s.hostedTeamReading(item); ok {
 		value = hosted

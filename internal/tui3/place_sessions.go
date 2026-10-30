@@ -484,7 +484,7 @@ const taskSheetDays = 14
 // that could ask it at paint time.
 func (a *app) taskSheetMine() tasksMine {
 	rows := a.taskSheetOwnRows()
-	mine := tasksMine{row: a.taskSheetSelfRow(), tilde: a.tilde, rows: make([]tasksMineRow, 0, len(rows))}
+	mine := tasksMine{row: a.taskSheetSelfRow(), tilde: a.tilde, rows: make([]tasksMineRow, 0, len(rows)), taskComputers: a.taskComputersAvailable()}
 	for _, entry := range rows {
 		row := tasksMineRow{entry: entry, runs: a.recordRuns(&entry)}
 		if node := a.taskSheetNodeFor(&entry); node != nil {
@@ -600,6 +600,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			label = node.title
 		}
 		rows = append(rows, session.TaskIndexEntry{
+			Computer: node.computer, Unreachable: node.unreachable, RanElsewhere: node.ranElsewhere,
 			ID:        strconv.FormatUint(node.id, 10),
 			Parent:    node.parent,
 			Label:     label,

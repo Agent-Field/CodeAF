@@ -349,6 +349,11 @@ func (a *app) taskPaneRecord(item tasksItem, width int) []taskPaneRow {
 	}
 
 	var facts []string
+	if placement := a.taskEntryComputerWords(entry); placement != "" {
+		for _, row := range wrap(placement, width) {
+			facts = append(facts, pal.dim(row))
+		}
+	}
 	if line := a.taskPaneFacts(entry, width); line != "" {
 		facts = append(facts, fit(pal.dim(line), width))
 	}

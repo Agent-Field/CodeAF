@@ -473,10 +473,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Batch(cmd, a.takeRoomPump())
 	}
 
-	// AND THE ONE KEY THE PROPOSAL STILL OWNS, which is not an answer: ctrl+e
-	// unfolds the assignment in the transcript (task.go). It is below the block
-	// because the block is where the proposal is answered and a key it draws
-	// must reach it first.
+	// The proposal's own keys disclose its brief or choose its computer without
+	// answering it (task.go). The question block comes first because a key it
+	// draws must reach the place where the proposal is answered.
 	if cmd, taken := a.taskKey(msg); taken {
 		return cmd
 	}
@@ -1041,8 +1040,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+,":
 		// The settings key every application on this machine already has. The
 		// slash is the other door onto the same panel (settings.go).
-		a.openSettings()
-		return nil
+		return a.openSettings()
 
 	case effortKey:
 		// WALK THE THINKING LADDER (effortchip.go). It is bound here, in the plain

@@ -886,6 +886,10 @@ type (
 )
 
 type app struct {
+	taskComputerHere    string
+	taskHerePending     tasksKey
+	taskComputerRows    []session.TaskComputer
+	taskComputers       session.TaskComputers
 	waitForRelease      func() bool
 	chatStarts          map[string]bool
 	conversationRequest uint64
@@ -3095,6 +3099,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		pairing:             opts.Pairing,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
+		taskComputers:       opts.TaskComputers,
 		fleet:               opts.Fleet,
 		branches:            opts.Branches,
 		ctx:                 ctx,
@@ -3625,7 +3630,7 @@ func (a *app) Init() tea.Cmd {
 		// raised, and on the settings page — and reading it on the way up means
 		// neither of those ever pays a round trip. The fold re-stamps whatever
 		// questions the attach already replayed.
-		a.readAutonomy(),
+		a.readAutonomy(), a.readTaskComputers(),
 		// AND THE PULSE'S OWN BEAT, whose first reading is taken now rather than
 		// ten seconds from now (pulsebeat.go).
 		pulseNow,

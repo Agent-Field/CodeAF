@@ -82,6 +82,9 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Restart = restart
 	}
 	options.CellsUnavailable = cell.UnavailableReason()
+	if options.TaskComputers == nil && options.Host == "" {
+		options.TaskComputers = v3TaskComputers(options.ProfileDir)
+	}
 	if options.CellsUnavailable == "" && options.Host == "" {
 		wireSync(&options)
 		options.WaitForRelease = func() bool {
