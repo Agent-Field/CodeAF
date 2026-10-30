@@ -382,6 +382,14 @@ and cancels and joins the initial catalog waiter and wire sender.
 | `models.list` | `{}` | `ModelsResult` |
 | `models.pin` | `{ids}` | `SettingsResult` |
 
+Each `Model` in `ModelsResult` carries `id`, `name`, `provider`, and, when
+known, `provider_name`, `default`, `listed_at` (the catalog's listing time, Unix
+seconds), `price_in_per_m` and `price_out_per_m` (US dollars per million input
+and output tokens), `context_length` (tokens) and `arena_elo` (the best Design
+Arena Elo the catalog carries). Every one of these facts is absent when nobody
+published it. A price is never sent as `0` for an unknown price; a present `0`
+is a model the catalog says is free.
+
 ## orders methods
 
 | method | params | result |
