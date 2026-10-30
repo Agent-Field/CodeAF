@@ -59,6 +59,22 @@ func Resolve(home string) Relay {
 	return Relay{}
 }
 
+// ResolveUnnamed is the relay this computer syncs through when the process
+// asking names none of its own: the address a pairing saved, else the hosted
+// default. CODEAF_SYNC_URL is a word said in ONE shell, and a process started
+// somewhere that never said it — `codeaf engine` under ssh for --host, most of
+// all — has not chosen a different relay by staying quiet. The session host
+// compares such a process against this answer and never against the variable
+// the terminal that started it happened to carry (internal/enginehost).
+func ResolveUnnamed(home string) Relay {
+	for _, from := range sources[1:] {
+		if relay, ok := from(home); ok {
+			return relay
+		}
+	}
+	return Relay{}
+}
+
 // Named is url when it is an address someone chose, and empty when it is the
 // hosted default, which needs no naming to another computer.
 func Named(url string) string {
