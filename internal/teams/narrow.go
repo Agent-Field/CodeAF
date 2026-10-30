@@ -138,7 +138,7 @@ func loadTeamsIn(ctx context.Context, q querier, path string, s *snapshot, ids [
 		s.teams = append(s.teams, Team{ID: id})
 		found = append(found, id)
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return unreadable(err, path)
 	}
 	if len(found) == 0 {
@@ -303,7 +303,7 @@ func Revisions(profileDir string, ids ...string) (map[string]int64, error) {
 				}
 				out[id] = rev
 			}
-			if err := rows.Close(); err != nil {
+			if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 				return r.fail(err)
 			}
 			ids = ids[n:]

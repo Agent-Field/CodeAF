@@ -796,7 +796,7 @@ func readIn(ctx context.Context, q querier, path string, open bool) (*snapshot, 
 		}
 		s.rows[id] = r
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return nil, unreadable(err, path)
 	}
 	if open {
@@ -913,7 +913,7 @@ func decodeTeams(ctx context.Context, q querier, path string, s *snapshot, ids [
 		t.ID, t.Members, t.FormerMembers = id, nil, nil
 		s.teams[r.at], r.doc = t, doc
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return unreadable(err, path)
 	}
 	return readMembers(ctx, q, path, s, "SELECT team_id, former, key, conv, doc FROM members WHERE team_id IN ("+marks+") ORDER BY team_id, former, pos", args...)

@@ -102,7 +102,7 @@ func reindexIn(ctx context.Context, tx *sql.Tx) error {
 		rows = append(rows, r)
 		members[r.team] = append(members[r.team], r.m)
 	}
-	if err := list.Close(); err != nil {
+	if err := errors.Join(list.Err(), list.Close()); err != nil {
 		return err
 	}
 	for _, r := range rows {
@@ -133,7 +133,7 @@ func reindexIn(ctx context.Context, tx *sql.Tx) error {
 			changed = append(changed, found{id, founder, c})
 		}
 	}
-	if err := teams.Close(); err != nil {
+	if err := errors.Join(teams.Err(), teams.Close()); err != nil {
 		return err
 	}
 	for _, f := range changed {
@@ -245,7 +245,7 @@ func scanFounders(ctx context.Context, q querier, conv string) ([]string, error)
 			members[team] = append(members[team], m)
 		}
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, err
 	}
 	teams, err := q.QueryContext(ctx, "SELECT id, doc FROM teams ORDER BY pos")

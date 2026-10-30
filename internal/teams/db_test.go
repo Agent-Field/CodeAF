@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -638,4 +639,32 @@ func TestARestoredOlderCopyIsNotServedFromTheHeldSnapshot(t *testing.T) {
 			t.Fatalf("read %q where the store holds %q", f.Teams[0].Name, "after")
 		}
 	})
+}
+
+// A READ CUT SHORT IS AN ERROR, NOT A SHORTER STORE. A damaged page part way
+// through a scan ends it early; the scan's error is the store's, so a load
+// answers unreadable instead of the teams before the damage as if they were
+// all of them.
+func TestAScanCutShortIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	must(t, Save(dir, manyTeams(3000)))
+	h, err := acquire(Path(dir), false)
+	must(t, err)
+	var page, size int64
+	err = h.db.QueryRow("SELECT MAX(pageno) FROM dbstat WHERE name = 'teams_order'").Scan(&page)
+	if err == nil {
+		err = h.db.QueryRow("PRAGMA page_size").Scan(&size)
+	}
+	h.release()
+	must(t, err)
+	Close()
+	junk := bytes.Repeat([]byte{0xA5}, int(size))
+	f, err := os.OpenFile(Path(dir), os.O_RDWR, 0)
+	must(t, err)
+	_, err = f.WriteAt(junk, (page-1)*size)
+	must(t, errors.Join(err, f.Close()))
+	dropHeld(Path(dir))
+	if got, err := Load(dir); err == nil {
+		t.Fatalf("a scan cut short loaded %d of 3000 teams with no error", len(got.Teams))
+	}
 }
