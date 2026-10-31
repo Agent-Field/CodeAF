@@ -450,15 +450,16 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-Team sharing is off by default. On each paired computer, open
-**Settings → General → share teams** and choose **on**.
-Both paired computers must turn it on. This shares teams, members, handles, the
+Team sharing is on by default for paired computers. The local switch is
+**Settings → General → share teams**. Sharing includes teams, members, handles, the
 manager and team settings, plus recent Traffic as read-only history. Team changes
 show within a few seconds, even with no chat open. The Teams dropdown, Teams page
 and `@` list refresh without a restart.
 Both computers need to be running codeaf and able to reach the relay. An
 unpaired computer or a computer with sharing off keeps its teams to itself.
-Turning sharing off stops sharing immediately and keeps teams already received.
+Turning it off on either computer stops sharing between them: that computer
+stops sending and receiving teams and Traffic. What was already exchanged stays,
+including teams and encrypted copies in the vault. Unpaired computers are unaffected.
 
 Open a member whose chat is on another paired computer to see
 `Continue this chat here?` on Home. Choose **continue here** to move the chat
@@ -467,20 +468,25 @@ A chat that is not shared names the computer that has it: open it there. Until
 its name is known, it says `the other computer`. Under `--host` or `--at`, a
 member on another computer shows that notice; open it on its computer.
 
+A local member opens through the same path as its chat on Home, without an added
+ownership lookup or relay refusal. A chat positively known to be elsewhere still
+needs continuation.
+
 A send to one member or manager whose chat is known to be on another computer
 is refused: it would not reach that chat. Continue the chat here first, then
 send again. A room post or send to several members still reaches local members
 and names anyone not reached, such as `Not reached: @web (on desktop).` If every
-recipient is elsewhere, nothing is written. An unavailable relay never blocks
-local messages.
+recipient is elsewhere, nothing is written. If the relay is unavailable, local messages still work. A local message may
+wait while this computer finishes sending an earlier change to the relay.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
-Once both paired computers share teams (Settings → General → **share teams** set
-to **on** on each), a deleted team stays deleted. Sharing is off by default. A desktop that was
+Team sharing is on by default for paired computers. With **Settings → General →
+share teams** enabled on both computers, a deleted team stays deleted. A desktop that was
 offline catches up when it reconnects. Renaming its old copy while offline does
 not bring the team back. Deleting a team does not delete its conversations.
-An unpaired computer or one with sharing off keeps its teams to itself.
+Turning it off on either computer stops sharing between them. An unpaired
+computer keeps its teams to itself.
 
 Edits to different members or different parts of a team can both survive. If
 both computers change the same detail, the later change wins. Teams appear in
@@ -489,10 +495,11 @@ consistently, and a removed member cannot remain the manager.
 
 ## Does Traffic sync between computers?
 
-Traffic sharing is off by default. Once both paired computers turn on **share teams**
-in Settings → General, Traffic from another computer shows its newest history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
+Traffic sharing is on by default for paired computers through **Settings → General →
+share teams**. Turning it off on either computer stops sharing between them.
+Traffic from another computer shows its newest history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
 at most 64 KiB, with the most recently active teams first. It can take up to
-about 30 seconds to appear. Text longer than 2 KiB is shortened, with ` …` at
+about 2 minutes to appear. Text longer than 2 KiB is shortened, with ` …` at
 the end. Your original local lines keep their full text.
 
 This is history only: it cannot be answered or acted on here. It never delivers
@@ -512,12 +519,72 @@ on the other computer's history.
 
 ## How do I turn on team sharing?
 
-Team sharing is **off by default**. Pair your computers, then open
-**Settings → General → share teams** and choose **on** on each computer. Both computers must
-turn it on to exchange teams, members, manager choices and settings, and recent Traffic as read-only history.
+Team sharing is on by default for paired computers. If it was turned off, open
+**Settings → General → share teams** on that computer and choose **on** to resume.
+Sharing exchanges teams, members, manager choices and settings, and recent Traffic as read-only history
+while the switch stays enabled on both paired computers.
 This setting belongs to each computer and does not follow synced preferences.
 An unpaired computer or one with sharing off keeps its teams to itself.
 
 Once both computers share teams, team changes arrive within a few seconds while
-codeaf runs and can reach the relay; recent Traffic can take about 30 seconds.
+codeaf runs and can reach the relay; recent Traffic can take about 2 minutes.
 Turn **share teams** to **off** to stop all team sharing immediately. Teams already received stay as they are.
+
+## Stop sharing teams with my other computer
+
+Team sharing is on by default for paired computers. Open **Settings → General →
+share teams** on either computer and choose **off**. Turning it off on either computer stops sharing
+teams, members, manager choices and settings, and recent Traffic between them immediately.
+That computer stops sending and receiving teams and Traffic. Teams already received
+stay as they are, including encrypted copies in the vault. Local chats and Traffic
+remain available. Retained history from the other computer is hidden until sharing resumes.
+This choice stays on that computer and does not follow synced preferences.
+An unpaired computer keeps its teams to itself.
+
+To resume sharing, choose **on** on any computer where you turned it off. Both
+computers need to be running codeaf and able to reach the relay. Team changes
+arrive within a few seconds; recent Traffic can take about 2 minutes.
+
+## First team sharing: backup, duplicate names and global managers
+
+Teams share automatically between paired computers while **Settings → General →
+share teams** is on, its default. An unpaired computer is unaffected. Before the
+first sharing round, this computer copies its original team file to
+`teams.before-sharing.json` beside it, once, without replacing an existing copy.
+If that copy cannot be saved, incoming team changes wait and a sync notice says
+sharing will retry.
+
+If both computers had a team with the same name, both appear with their names
+unchanged. Rename one in its Settings to tell them apart.
+
+If both computers had a global manager, the older global team stays global. The
+other becomes an ordinary team under it and keeps its active manager. That
+manager is not added to former-manager history just because the team changed.
+When a conflicting appointment must be cleared, it is recorded in former-manager
+history only if that slot is empty or already holds the same appointment. An
+existing former appointment stays; the first-sharing backup preserves the
+original file. Review manager choices in Teams.
+
+## Does a shared team's spending cap cover both computers?
+
+A team's spending cap counts spending on each computer separately. Sharing the
+team and its cap does not combine the usage meters. A member continued on the
+other computer is metered there, while members still running here count here.
+For example, a $5 team cap uses separate local totals on the two computers.
+Review spending on each computer when work is split between them.
+
+## Pairing with replace: what happens to my teams?
+
+With team sharing on, pairing with `--replace` sets this computer's team file
+aside and clears its team-sharing ledgers. Teams from the newly joined computers
+then supply the active list. Local chats and Traffic files stay here. The receipt
+names the preserved file: `This computer's teams were set aside to <path>.`
+Its name is `teams.json.unreadable-<timestamp>` beside the original (or the legacy
+file's corresponding name). Keep it if you need to recover the original teams.
+
+The chat and terminal ask before replacement even when this computer has teams
+and no chats: `Pair with your other devices? This computer's existing chats stay
+here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set
+aside while the other devices supply theirs. Provider keys saved on this computer
+stay here.` Only an explicit yes proceeds. With share teams off, replacement
+preserves this computer's team file and team-sharing ledgers.
