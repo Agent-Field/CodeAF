@@ -153,7 +153,9 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
-	computer                  string
+	computer string
+	// A later local replacement clears placement; an older silent node cannot.
+	computerKnown             bool
 	unreachable, ranElsewhere bool
 	remote                    *session.TaskRemoteRecord
 	// workTurn records the request that admitted this live work, independently of completion time.
@@ -1949,6 +1951,10 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	}
 	head := a.taskHead(card, width, sel)
 	if card.settled() {
+		if words := a.taskComputerWords(a.tasks[card.id]); words != "" {
+			stem := a.blockStem()
+			return []string{head, a.pal.dim(stem + fit(words, max(1, width-ansi.StringWidth(stem)))), a.taskFoot(card, width)}
+		}
 		return []string{head, a.taskFoot(card, width)}
 	}
 	stem := a.pal.ask(a.blockStem())
@@ -5337,8 +5343,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		resumed = a.resumeRetriedRoom(node)
 	}
 	node.state = notice.State
-	node.computer, node.unreachable, node.ranElsewhere = notice.Computer, notice.Unreachable, notice.RanElsewhere
-	node.remote = notice.Remote
+	node.takeComputerNotice(notice)
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
 	}

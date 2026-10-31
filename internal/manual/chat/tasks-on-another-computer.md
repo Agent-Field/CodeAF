@@ -58,7 +58,10 @@ On a task, `running on <computer>` means its worker runs on that paired
 computer while this chat stays here. Its steps appear here in order as it
 works. `ran on <computer>` records where completed work ran;
 `interrupted on <computer>` means the worker stopped without leaving an answer.
-These words appear on task cards, the rail, Tasks rows and the task page.
+These words appear on task cards and notice lines, the rail, Background work's
+`open result` row, Tasks on Home and the task page. They stay with a saved task
+even in a window opened before pairing or a window only watching the chat.
+A task that ran here gains no computer words.
 
 The task's change returns to its copy here and follows normal landing. Private
 task copies wait for Review and Apply here. Conflicting changes are kept for
@@ -69,6 +72,17 @@ This differs from a whole chat held on another computer: task placement keeps
 your conversation and transcript here, and only sends the task's own copy.
 The remote worker uses that computer's provider keys; its spend is attributed
 to this chat and task on this computer too.
+
+## Models without thinking on the other computer
+
+A task sent to another computer uses that computer's saved model catalog.
+When the model's published supported parameters exclude reasoning, its task
+worker sends no reasoning effort. The worker reads already available catalog
+rows; it does not fetch a catalog to make this choice. If the model's supported
+parameters are unknown, its existing effort behavior stays in place.
+
+This applies to tasks sent to that computer. Plain `codeaf do` still sends
+its chosen effort.
 
 ## My other computer stopped answering
 

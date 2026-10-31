@@ -70,7 +70,11 @@ func TestATaskRunsOnTheOtherHomeAndLandsHere(t *testing.T) {
 	})
 	close(f.brainB.gate)
 	f.waitDone(t, a, id)
-	f.waitNotice(t, a, id, func(n session.TaskNotice) bool { return n.Computer == "work computer" && n.RanElsewhere })
+	// R9.1 requires the finished A-side reading to carry the placement words,
+	// rather than merely retaining an executor field that no row can draw.
+	f.waitNotice(t, a, id, func(n session.TaskNotice) bool {
+		return n.Computer == "work computer" && n.RanElsewhere && n.Doing == "ran on work computer"
+	})
 
 	t.Run("model_calls_reach_only_the_other_home", func(t *testing.T) {
 		// Contract 1 distinguishes actual worker prompts from naming and chat calls.

@@ -135,8 +135,6 @@ func (i tasksItem) pick() bool { return true }
 // ([app.recordRuns], asked once in place_tasks.go), because a reading that could
 // ask the app a question would be a reading that could ask it at paint time.
 type tasksMine struct {
-	// The capability travels with the reading so old records cannot enable it.
-	taskComputers bool
 	// row is this conversation, as a row of the world — what a row of this
 	// project's index is labelled with when the world scan has never seen the
 	// conversation that ran it.
@@ -184,7 +182,6 @@ type tasksChatView struct {
 // tasksReading is everything drawing and routing need from one world reading.
 // The seen stamp travels with the snapshot across place adapters.
 type tasksReading struct {
-	taskComputers bool
 	// layouts is optional scratch owned by one body's paint, never a reading
 	// retained across input. Cursor, pane, and body readers share each width.
 	layouts    map[int][]tasksLine
@@ -270,7 +267,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
 	by = tasksSort{back: by.back}
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by, taskComputers: mine.taskComputers}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
 	// THE ROWS THE RUN'S STORE ANSWERS FOR ARE TAKEN OUT FIRST, before anything
 	// reads them: they are drawn as the store's own plan rows below, and this is
 	// the one line that keeps the pair from being drawn twice or drawn as the
@@ -367,7 +364,11 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		// there is one: presence carries neither, and a row that dropped the
 		// program would open a page with no badge over a program's work
 		// ([taskGuestNode]).
-		entry.Parent, entry.Program = get(key).entry.Parent, get(key).entry.Program
+		saved := get(key).entry
+		entry.Parent, entry.Program = saved.Parent, saved.Program
+		// Presence knows which window owns the work, but the saved record is
+		// still the authority for its executor.
+		entry.Computer, entry.Unreachable, entry.RanElsewhere = saved.Computer, saved.Unreachable, saved.RanElsewhere
 		put(key, tasksItem{
 			entry: entry, row: tasksRowFor(world, mine, entry), runs: true, away: true, window: task.Session,
 			here: mine.here[strings.TrimSpace(task.SessionID)],
@@ -1629,11 +1630,6 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		return ""
 	}
 	line, lead := lines[i], tasksBareLead
-	if !r.taskComputers && line.item != nil && line.item.entry.Computer != "" {
-		item := *line.item
-		item.entry.Computer, item.entry.Unreachable, item.entry.RanElsewhere = "", false, false
-		line.item = &item
-	}
 	room := width - ansi.StringWidth(lead)
 	if room < 1 {
 		room = 1

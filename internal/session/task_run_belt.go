@@ -2620,16 +2620,7 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
 	}
 	if run.remoteEngine != nil {
-		if summary.Outcome == "stopped" {
-			notice.Stopped = true
-			notice.Ending = TaskEndingStopped
-		}
-		run.remoteMu.Lock()
-		notice.Remote = cloneTaskRemote(run.remote)
-		notice.Computer = run.remote.Executor.Name
-		notice.RanElsewhere = !run.remote.StartFailed
-		run.remoteMu.Unlock()
-		notice.Model = summary.Model
+		run.fillRemoteLandingNotice(&notice, summary)
 	}
 	if state == TaskFailed && run.crew != nil {
 		decision := run.crew.stoppedIfCutOff()
@@ -2652,6 +2643,24 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	return notice
+}
+
+// A remote landing keeps the executor with its final reading, since this
+// notice replaces the worker's phase row.
+func (run *beltRun) fillRemoteLandingNotice(notice *TaskNotice, summary RunSummary) {
+	if summary.Outcome == "stopped" {
+		notice.Stopped = true
+		notice.Ending = TaskEndingStopped
+	}
+	run.remoteMu.Lock()
+	notice.Remote = cloneTaskRemote(run.remote)
+	notice.Computer = run.remote.Executor.Name
+	notice.RanElsewhere = !run.remote.StartFailed
+	if notice.RanElsewhere && notice.Computer != "" && notice.State != TaskInterrupted {
+		notice.Doing = TaskRanOn(notice.Computer)
+	}
+	run.remoteMu.Unlock()
+	notice.Model = summary.Model
 }
 
 // beltRunEnding is the run row's ending: a limit its person set, or how the

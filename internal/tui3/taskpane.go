@@ -341,6 +341,11 @@ func (a *app) taskPaneRecord(item tasksItem, width int) []taskPaneRow {
 	// width (taskrecord.go's [app.taskCardAwayRows] states it).
 	if item.away {
 		var away []string
+		if placement := a.taskEntryComputerWords(entry); placement != "" {
+			for _, row := range wrap(placement, width) {
+				away = append(away, pal.dim(row))
+			}
+		}
 		for _, wrapped := range wrap(taskAwayCardWhere(item.window), width) {
 			away = append(away, pal.ink(wrapped))
 		}

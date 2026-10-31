@@ -210,6 +210,14 @@ func (s *sheet) settingValueWord(row config.Setting) string {
 
 // Placement is a separate fact from the shared state reading. A checkpoint
 // saying running alone never supplies a computer's identity.
+// Both local and watching pages apply the same placement history, so an empty
+// later notice can clear a known remote attempt without erasing an older record.
+func (node *taskNode) takeComputerNotice(notice *session.TaskNotice) {
+	node.computerKnown = node.computerKnown || node.computer != "" || notice.Computer != "" || notice.Remote != nil
+	node.computer, node.unreachable, node.ranElsewhere = notice.Computer, notice.Unreachable, notice.RanElsewhere
+	node.remote = notice.Remote
+}
+
 func taskComputerWords(name string, unreachable, ran bool, state session.TaskState) string {
 	if name == "" {
 		return ""
@@ -229,8 +237,10 @@ func taskComputerWords(name string, unreachable, ran bool, state session.TaskSta
 	return ""
 }
 
+// Placement belongs to the record; a window without computer controls still
+// says where the recorded work ran.
 func (a *app) taskComputerWords(node *taskNode) string {
-	if !a.taskComputersAvailable() || node == nil {
+	if node == nil {
 		return ""
 	}
 	if node.remote != nil && node.remote.Abandoned {
@@ -258,11 +268,10 @@ func taskDoingWords(node *taskNode) string {
 }
 
 func (a *app) taskEntryComputerWords(entry session.TaskIndexEntry) string {
-	if !a.taskComputersAvailable() {
-		return ""
-	}
 	if node := a.taskSheetNodeFor(&entry); node != nil {
-		return a.taskComputerWords(node)
+		if words := a.taskComputerWords(node); words != "" || node.computerKnown || node.remote != nil && node.remote.Abandoned {
+			return words
+		}
 	}
 	return taskComputerWords(entry.Computer, entry.Unreachable, entry.RanElsewhere, session.TaskState(entry.Status))
 }

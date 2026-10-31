@@ -268,8 +268,8 @@ func TestTheProposalCardNamesItsExplicitOrDefaultComputer(t *testing.T) {
 	}
 }
 
-// TestNothingAboutComputersIsDrawnWhenNothingIsPaired covers the absence law:
-// nil TaskComputers leaves the old command grammar and local surface intact.
+// TestNothingAboutComputersIsDrawnWhenNothingIsPaired covers the absence law
+// for controls and local work. R9 keeps recorded placement visible regardless.
 func TestNothingAboutComputersIsDrawnWhenNothingIsPaired(t *testing.T) {
 	a, base, _ := taskApp(t)
 	f := &surfaceTaskComputerAgent{taskFake: base}
@@ -281,12 +281,12 @@ func TestNothingAboutComputersIsDrawnWhenNothingIsPaired(t *testing.T) {
 	if cmd, took := a.taskKey(key("ctrl+d")); cmd != nil || took {
 		t.Fatal("an unpaired proposal takes the computer key")
 	}
-	// A saved remote record does not enable a capability this conversation lacks.
+	// A saved executor is a fact, and does not enable unavailable controls.
 	entry := session.TaskIndexEntry{ID: "9", Title: "Earlier export", Status: string(session.TaskDone), Computer: "work computer", RanElsewhere: true}
 	reading := readTasks(session.World{}, a.taskSheetMine(), session.LastDays(a.now(), 1), tasksSort{}, a.now(), a.now())
 	line := tasksLine{kind: tasksLineTask, item: &tasksItem{entry: entry}}
-	if text := plain(reading.paint([]tasksLine{line}, 0, 160, a.pal, false)); strings.Contains(text, "work computer") {
-		t.Fatalf("an unavailable placement leaked from an old record: %s", text)
+	if text := plain(reading.paint([]tasksLine{line}, 0, 160, a.pal, false)); !strings.Contains(text, "ran on work computer") {
+		t.Fatalf("a saved executor disappeared with the controls: %s", text)
 	}
 	a.task.verdict = "approved"
 	drive(t, a, key("ctrl+,"))
