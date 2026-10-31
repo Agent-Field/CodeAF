@@ -58,28 +58,9 @@ func appendRemoteUsage(path string, line UsageLine) error {
 		memo = &remoteLedgerCursor{seen: map[string]bool{}}
 		remoteUsageMemo.ledgers[path] = memo
 	}
-	if _, err := f.Seek(memo.offset, io.SeekStart); err != nil {
+	newline, err := memo.readTail(f)
+	if err != nil {
 		return err
-	}
-	reader := bufio.NewReader(f)
-	for {
-		raw, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
-			if len(raw) > 0 {
-				if _, err := f.Write([]byte{'\n'}); err != nil {
-					return err
-				}
-			}
-			break
-		}
-		memo.offset += int64(len(raw))
-		var old UsageLine
-		if json.Unmarshal(raw, &old) == nil && old.RemoteEvent != "" {
-			memo.seen[old.RemoteEvent] = true
-		}
 	}
 	if memo.seen[line.RemoteEvent] {
 		return nil
@@ -87,6 +68,9 @@ func appendRemoteUsage(path string, line UsageLine) error {
 	raw, err := json.Marshal(line)
 	if err != nil {
 		return err
+	}
+	if newline {
+		raw = append([]byte{'\n'}, raw...)
 	}
 	if _, err = f.Write(append(raw, '\n')); err != nil {
 		return err
@@ -98,6 +82,36 @@ func appendRemoteUsage(path string, line UsageLine) error {
 	// Leave offset at the last read boundary: another process or the ordinary
 	// asynchronous ledger writer may have appended while this call was written.
 	return nil
+}
+
+// readTail recognizes complete EOF objects without turning a replay into another charge.
+// A partial object is rolled back to the last complete boundary before any new write.
+func (memo *remoteLedgerCursor) readTail(f *os.File) (bool, error) {
+	if _, err := f.Seek(memo.offset, io.SeekStart); err != nil {
+		return false, err
+	}
+	reader := bufio.NewReader(f)
+	for {
+		raw, err := reader.ReadBytes('\n')
+		if err != nil && err != io.EOF {
+			return false, err
+		}
+		if len(raw) == 0 {
+			return false, nil
+		}
+		var old UsageLine
+		readable := json.Unmarshal(raw, &old) == nil
+		if readable && old.RemoteEvent != "" {
+			memo.seen[old.RemoteEvent] = true
+		}
+		if err == io.EOF {
+			if readable {
+				return true, nil
+			}
+			return false, f.Truncate(memo.offset)
+		}
+		memo.offset += int64(len(raw))
+	}
 }
 
 // The transcript records the same event identity before changing live totals.

@@ -203,35 +203,9 @@ type remoteStepMirror struct {
 func (mirror *remoteStepMirror) append(store *plandb.Store, attempt string, seq uint64, raw json.RawMessage) error {
 	path := filepath.Join(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()), "trajectory.jsonl")
 	if mirror.seen == nil {
-		existing, err := os.ReadFile(path)
-		if err != nil && !os.IsNotExist(err) {
+		if err := mirror.readPrefix(path, attempt); err != nil {
 			return err
 		}
-		mirror.readBytes += int64(len(existing))
-		// An interrupted append cannot swallow the next complete step.
-		if len(existing) > 0 && existing[len(existing)-1] != '\n' {
-			end := bytes.LastIndexByte(existing, '\n') + 1
-			if err := os.Truncate(path, int64(end)); err != nil {
-				return err
-			}
-			existing = existing[:end]
-		}
-		mirror.seen = map[uint64]bool{}
-		scan := bufio.NewScanner(bytes.NewReader(existing))
-		scan.Buffer(make([]byte, 4096), 1<<20)
-		for scan.Scan() {
-			var line struct {
-				Attempt string `json:"remote_attempt"`
-				Seq     uint64 `json:"remote_seq"`
-			}
-			if json.Unmarshal(scan.Bytes(), &line) == nil && line.Attempt == attempt {
-				mirror.seen[line.Seq] = true
-			}
-		}
-		if err := scan.Err(); err != nil {
-			return err
-		}
-
 	}
 	if mirror.seen[seq] {
 		return nil
@@ -242,7 +216,6 @@ func (mirror *remoteStepMirror) append(store *plandb.Store, attempt string, seq 
 	}
 	delete(fields, "full_output")
 	delete(fields, "children")
-	fields["kind"] = json.RawMessage(`"step"`)
 	fields["remote_attempt"], _ = json.Marshal(attempt)
 	fields["remote_seq"], _ = json.Marshal(seq)
 	line, err := json.Marshal(fields)
@@ -269,6 +242,40 @@ func (mirror *remoteStepMirror) append(store *plandb.Store, attempt string, seq 
 		mirror.seen[seq] = true
 	}
 	return err
+}
+
+// readPrefix loads replay identities once; ordinary appends then do only new work.
+func (mirror *remoteStepMirror) readPrefix(path, attempt string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	mirror.readBytes += int64(len(existing))
+	// An interrupted append cannot swallow the next complete step.
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		end := bytes.LastIndexByte(existing, '\n') + 1
+		if err := os.Truncate(path, int64(end)); err != nil {
+			return err
+		}
+		existing = existing[:end]
+	}
+	mirror.seen = map[uint64]bool{}
+	scan := bufio.NewScanner(bytes.NewReader(existing))
+	scan.Buffer(make([]byte, 4096), 1<<20)
+	for scan.Scan() {
+		var line struct {
+			Attempt string `json:"remote_attempt"`
+			Seq     uint64 `json:"remote_seq"`
+		}
+		if json.Unmarshal(scan.Bytes(), &line) == nil && line.Attempt == attempt {
+			mirror.seen[line.Seq] = true
+		}
+	}
+	if err := scan.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // ackRemoteRun follows local settlement, so B cannot discard an unreceived
@@ -348,7 +355,7 @@ func (a *Agent) retrySavedRemoteAcks(g *TaskGraph) {
 	rows := g.runRowsLocked()
 	g.mu.Unlock()
 	for _, row := range rows {
-		if row.Remote == nil || !row.Remote.AckPending {
+		if row.Remote == nil || row.Remote.Executor.Device == "" {
 			continue
 		}
 		store, err := openRemoteTaskPlan(g, row.ID)
@@ -371,4 +378,21 @@ func (run *beltRun) taskComputerName() string {
 		return run.remote.Executor.Name
 	}
 	return ""
+}
+
+// Abandonment fences the result before the ordinary ending road is entered.
+func (run *beltRun) remoteAbandoned() bool {
+	run.remoteMu.Lock()
+	defer run.remoteMu.Unlock()
+	return run.remote != nil && run.remote.Abandoned
+}
+
+// A closing chat retains a remote watch that has not received its final receipt.
+func (run *beltRun) remoteWaitingOnClose(closing bool) bool {
+	if !closing || run.remoteEngine == nil {
+		return false
+	}
+	run.remoteMu.Lock()
+	defer run.remoteMu.Unlock()
+	return run.remote == nil || !run.remote.Finished
 }

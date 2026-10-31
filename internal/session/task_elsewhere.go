@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/devname"
 )
 
 // TaskComputerControlWithin bounds best-effort stop and acknowledgement calls.
@@ -21,6 +22,7 @@ const TaskComputerControlWithin = 10 * time.Second
 type TaskComputer struct {
 	Device       string
 	Name         string
+	OriginalName string `json:"originalName,omitempty"`
 	CanTakeTasks bool
 	Reason       string
 }
@@ -111,7 +113,7 @@ func (a *Agent) resolveTaskComputer(ctx context.Context, named string, stand tas
 		return p, nil
 	}
 	explicit := named != ""
-	if explicit && (strings.EqualFold(named, "here") || strings.EqualFold(named, config.TaskRunsHere) || strings.EqualFold(named, a.config.TaskComputers.ThisComputer())) {
+	if explicit && (strings.EqualFold(named, "here") || strings.EqualFold(named, config.TaskRunsHere)) {
 		return p, nil
 	}
 	preference := config.TaskRunsOnAt(a.config.ProfileDir)
@@ -122,45 +124,111 @@ func (a *Agent) resolveTaskComputer(ctx context.Context, named string, stand tas
 	if err != nil {
 		return p, err
 	}
-	for _, computer := range computers {
-		if explicit && strings.EqualFold(strings.TrimSpace(computer.Name), named) || !explicit && preference != "" && computer.Device == preference {
-			if !computer.CanTakeTasks {
-				if explicit {
-					p.sentence = computer.Reason
-				}
-				return p, nil
+	localName := a.config.TaskComputers.ThisComputer()
+	computer, err := chooseTaskComputer(TaskComputerNames(computers, localName), named, preference, localName)
+	if err != nil || computer == nil {
+		return p, err
+	}
+	return eligibleTaskComputer(p, *computer, stand, kind, program, explicit), nil
+}
+
+// TaskComputerNames keeps device labels consistent while retaining ambiguous bare names for refusal.
+func TaskComputerNames(rows []TaskComputer, localName string) []TaskComputer {
+	rows = append([]TaskComputer(nil), rows...)
+	counts := map[string]int{strings.ToLower(strings.TrimSpace(localName)): 1}
+	for _, row := range rows {
+		counts[taskComputerBareName(row)]++
+	}
+	for i := range rows {
+		row := &rows[i]
+		if counts[taskComputerBareName(*row)] > 1 {
+			if row.OriginalName == "" {
+				row.OriginalName = row.Name
 			}
-			reason := ""
-			switch {
-			case kind == TaskKindQuick:
-				reason = "a quick task"
-			case program:
-				reason = "a program run"
-			case !taskCopyCanTravel(stand):
-				reason = "this task"
-			}
-			if reason != "" {
-				if explicit {
-					p.sentence = reason + " runs here — only a task that works in its own copy can run on " + computer.Name
-				}
-				return p, nil
-			}
-			p.computer = &computer
-			return p, nil
+			row.Name = devname.DistinctName(row.OriginalName, row.Device)
 		}
+	}
+	return rows
+}
+func taskComputerBareName(row TaskComputer) string {
+	name := row.OriginalName
+	if name == "" {
+		name = row.Name
+	}
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// chooseTaskComputer never gives roster order authority over an ambiguous name.
+func chooseTaskComputer(computers []TaskComputer, named, preference, localName string) (*TaskComputer, error) {
+	explicit := named != ""
+	local := explicit && strings.EqualFold(named, localName)
+	var matches []TaskComputer
+	for _, computer := range computers {
+		if taskComputerMatches(computer, named, preference) {
+			matches = append(matches, computer)
+		}
+	}
+	if len(matches) > 1 || local && len(matches) > 0 {
+		choices := taskComputerChoices(matches)
+		if local {
+			choices = append(choices, config.TaskRunsHere)
+		}
+		return nil, fmt.Errorf("%q matches more than one paired computer — choose one of: %s", named, strings.Join(choices, ", "))
+	}
+	if local {
+		return nil, nil
+	}
+	if len(matches) == 1 {
+		return &matches[0], nil
 	}
 	if explicit {
-		names := make([]string, 0, len(computers))
-		for _, c := range computers {
-			names = append(names, c.Name)
-		}
-		sort.Strings(names)
-		if len(names) == 0 {
-			names = append(names, config.TaskRunsHere)
-		}
-		return p, fmt.Errorf("no paired computer is named %q — your computers are: %s", named, strings.Join(names, ", "))
+		return nil, fmt.Errorf("no paired computer is named %q — your computers are: %s", named, strings.Join(taskComputerChoices(computers), ", "))
 	}
-	return p, nil
+	return nil, nil
+}
+func taskComputerMatches(computer TaskComputer, named, preference string) bool {
+	if named == "" {
+		return preference != "" && computer.Device == preference
+	}
+	return strings.EqualFold(named, computer.Name) || strings.EqualFold(named, taskComputerBareName(computer))
+}
+func taskComputerChoices(computers []TaskComputer) []string {
+	names := make([]string, 0, len(computers))
+	for _, computer := range computers {
+		names = append(names, computer.Name)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		names = append(names, config.TaskRunsHere)
+	}
+	return names
+}
+
+// Ineligible work retains the existing local road and its explicit-choice explanation.
+func eligibleTaskComputer(p taskPlacement, computer TaskComputer, stand taskStand, kind TaskKind, program, explicit bool) taskPlacement {
+	if !computer.CanTakeTasks {
+		if explicit {
+			p.sentence = computer.Reason
+		}
+		return p
+	}
+	reason := ""
+	switch {
+	case kind == TaskKindQuick:
+		reason = "a quick task"
+	case program:
+		reason = "a program run"
+	case !taskCopyCanTravel(stand):
+		reason = "this task"
+	}
+	if reason != "" {
+		if explicit {
+			p.sentence = reason + " runs here — only a task that works in its own copy can run on " + computer.Name
+		}
+		return p
+	}
+	p.computer = &computer
+	return p
 }
 
 // StartTaskOn is the shared session entry for a person's explicit placement.
@@ -224,4 +292,28 @@ func taskCopyCanTravel(stand taskStand) bool {
 // adds placement to the model's vocabulary. Both reads are local.
 func (c Config) mayNameTaskComputer() bool {
 	return c.TaskComputers != nil && config.TaskRunsOnAt(c.ProfileDir) != ""
+}
+
+// The selected engine is resolved before start admission without changing local placement.
+func (a *Agent) placeTaskRunEngine(ctx context.Context, engine RunEngine, stand taskStand, program bool) (context.Context, RunEngine, error) {
+	placement := taskPlacementOf(ctx)
+	if _, resolved := ctx.Value(taskPlacementKey{}).(taskPlacement); !resolved {
+		var err error
+		placement, err = a.resolveTaskComputer(ctx, "", stand, "", program)
+		if err != nil {
+			return ctx, nil, err
+		}
+		ctx = withTaskPlacement(ctx, placement)
+	}
+	if placement.computer == nil {
+		return ctx, engine, nil
+	}
+	remote, err := a.config.TaskComputers.Engine(ctx, placement.computer.Device)
+	if err != nil {
+		return ctx, nil, err
+	}
+	if remote == nil {
+		return ctx, nil, errors.New("this computer cannot run that task elsewhere right now")
+	}
+	return ctx, remote, nil
 }

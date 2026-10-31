@@ -122,3 +122,9 @@ func Set(dir, typed string) (string, error) {
 }
 
 func path(dir string) string { return filepath.Join(dir, fileName) }
+
+// DistinctName is the devices page's label when computers share a shown name.
+func DistinctName(name, id string) string {
+	const tail = 4
+	return name + " #" + id[max(len(id)-tail, 0):]
+}

@@ -44,6 +44,12 @@ func (c *Computers) List(ctx context.Context) ([]session.TaskComputer, error) {
 		}
 		out = append(out, row)
 	}
+	out = session.TaskComputerNames(out, c.ThisComputer())
+	for i := range out {
+		if !out[i].CanTakeTasks {
+			out[i].Reason = UnsupportedTarget(out[i].Name)
+		}
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Name == out[j].Name {
 			return out[i].Device < out[j].Device

@@ -29,6 +29,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -45,7 +46,6 @@ const (
 	devicesRevoked  = "%s was removed — it can no longer reach your chats."
 	devicesSelf     = "this device"
 	devicesOwnRow   = "this device cannot remove itself — choose another row."
-	idTail          = 4
 )
 
 // deviceCard is the list's state. Online comes from the feed when the card opens.
@@ -226,7 +226,7 @@ func (d DeviceRow) before(o DeviceRow) bool {
 func (c *deviceCard) shownName(d DeviceRow) string {
 	for _, o := range c.rowsOf {
 		if o.ID != d.ID && o.Name == d.Name {
-			return d.Name + " #" + d.ID[max(len(d.ID)-idTail, 0):]
+			return devname.DistinctName(d.Name, d.ID)
 		}
 	}
 	return d.Name
