@@ -467,7 +467,7 @@ func TestSettingsGeneralHasLocalTeamSharingChoiceAndSearch(t *testing.T) {
 	if item.row.Value() != "on" {
 		t.Fatal("sharing must start on", item.row.Value())
 	}
-	for _, want := range []string{"teams", "members and settings", "recent Traffic as read-only history", "paired computers", "On by default", "turning it off on either computer stops sharing"} {
+	for _, want := range []string{"teams", "members and settings", "recent Traffic as read-only history", "pairing required", "On by default", "turning it off on either computer stops sharing"} {
 		if !strings.Contains(item.meta.about, want) {
 			t.Fatal("sharing explanation omitted", want, item.meta.about)
 		}

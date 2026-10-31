@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: team sharing on by default for paired computers
-pr: 0000
+pr: 2095
 surface: [chat]
 invalidates:
   - >-

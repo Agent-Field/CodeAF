@@ -87,7 +87,7 @@ shares teams, their members and settings, and recent Traffic as read-only histor
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
 was already exchanged stays, including encrypted copies in the vault. Received
-history is hidden while sharing is off; its file is kept for turning sharing back
+history is hidden while sharing is off and is kept for when it is turned back
 on. Unpaired computers are unaffected. A missing or empty choice reads on; a
 damaged configuration or invalid value reads off, as shown in Settings.
 

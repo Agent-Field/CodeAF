@@ -547,12 +547,12 @@ arrive within a few seconds; recent Traffic can take about 2 minutes.
 
 ## First team sharing: backup, duplicate names and global managers
 
-Teams share automatically between paired computers while **Settings → General →
+Paired computers exchange teams automatically while **Settings → General →
 share teams** is on, its default. An unpaired computer is unaffected. Before the
-first sharing round, this computer copies its original team file to
-`teams.before-sharing.json` beside it, once, without replacing an existing copy.
-If that copy cannot be saved, incoming team changes wait and a sync notice says
-sharing will retry.
+first exchange, this computer keeps a copy of its teams as
+`teams.before-sharing.json` beside the original, once, never replacing an earlier
+copy. If that copy cannot be saved, incoming team changes wait and a sync notice
+says it will try again.
 
 If both computers had a team with the same name, both appear with their names
 unchanged. Rename one in its Settings to tell them apart.
@@ -562,8 +562,8 @@ other becomes an ordinary team under it and keeps its active manager. That
 manager is not added to former-manager history just because the team changed.
 When a conflicting appointment must be cleared, it is recorded in former-manager
 history only if that slot is empty or already holds the same appointment. An
-existing former appointment stays; the first-sharing backup preserves the
-original file. Review manager choices in Teams.
+existing former appointment stays; the copy made before the first exchange keeps
+the original teams. Review manager choices in Teams.
 
 ## Does a shared team's spending cap cover both computers?
 
@@ -575,16 +575,17 @@ Review spending on each computer when work is split between them.
 
 ## Pairing with replace: what happens to my teams?
 
-With team sharing on, pairing with `--replace` sets this computer's team file
-aside and clears its team-sharing ledgers. Teams from the newly joined computers
-then supply the active list. Local chats and Traffic files stay here. The receipt
-names the preserved file: `This computer's teams were set aside to <path>.`
-Its name is `teams.json.unreadable-<timestamp>` beside the original (or the legacy
-file's corresponding name). Keep it if you need to recover the original teams.
+With share teams on, pairing with `--replace` puts this computer's teams aside,
+and the newly joined computers supply the team list. Local chats and Traffic stay
+here. The receipt says where the teams went:
+`This computer's teams were set aside to <path>.`
+That copy is named `teams.json.unreadable-<timestamp>` beside the original (or the
+older layout's equivalent name). Keep it to recover the original teams.
 
-The chat and terminal ask before replacement even when this computer has teams
+The chat and a terminal ask before replacement, even when this computer has teams
 and no chats: `Pair with your other devices? This computer's existing chats stay
 here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set
 aside while the other devices supply theirs. Provider keys saved on this computer
-stay here.` Only an explicit yes proceeds. With share teams off, replacement
-preserves this computer's team file and team-sharing ledgers.
+stay here.` Only an explicit yes proceeds (`y` or `yes` in a terminal). Without a
+terminal, `--replace` goes ahead without asking and prints the receipt. With share
+teams off, replacement leaves this computer's teams as they are.

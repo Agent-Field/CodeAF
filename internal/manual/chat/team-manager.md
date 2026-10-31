@@ -618,7 +618,7 @@ separate from every ordinary team's manager. Choose AI manager or a team move re
 change that introduces conflicting responsibilities, naming the teams. A sharing merge
 clears conflicting appointments automatically. A cleared appointment goes into
 former-manager history only when that slot is empty or already holds it. An existing
-former appointment stays; the first-sharing backup preserves the original file.
+former appointment stays; the copy made before the first exchange keeps the original teams.
 Review manager choices in Teams.
 
 ## Shared team spending caps and continued members
@@ -631,8 +631,8 @@ each computer's spending when work is split between them.
 
 ## First sharing merge and two global managers
 
-Before the first team-sharing round, this computer copies its original team file
-to `teams.before-sharing.json` beside it, once and without overwriting a copy.
+Before the first exchange, this computer keeps a copy of its teams as
+`teams.before-sharing.json` beside the original, once, never replacing an earlier copy.
 If both computers had a team with the same name, both appear unchanged. Rename
 one in its Settings to tell them apart.
 
@@ -640,5 +640,5 @@ If both computers had a global manager, the older global team stays global; the
 other becomes an ordinary team under it and keeps its active manager. Demotion
 does not add that active manager to former-manager history. Cleared conflicting
 appointments enter that history only if the slot is empty or already holds the
-same appointment. An existing former appointment stays; the first-sharing backup
-is the record of the original file. Review manager choices in Teams.
+same appointment. An existing former appointment stays; the copy made before the
+first exchange keeps the original teams. Review manager choices in Teams.
