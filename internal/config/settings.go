@@ -295,6 +295,8 @@ const (
 	KeyWork = "ui.work"
 	// KeyIcons selects the step icon repertoire independently of colour.
 	KeyIcons = "ui.icons"
+	// KeyTeamsShare stays local because every computer chooses whether its teams travel.
+	KeyTeamsShare = "teams.share"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -2260,6 +2262,18 @@ func (s *Settings) build() []Setting {
 			Hint:  "auto uses rich icons, with plain symbols on terminals that need them. rich requires a Nerd Font. Choose plain if your font shows empty boxes. The change applies immediately.",
 			read:  func() string { return IconsAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyIcons, raw, IconModes) },
+		},
+		Setting{
+			Key: KeyTeamsShare, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "share teams", Choices: teamsShareChoices,
+			Hint: "Share teams, their members and settings, and recent Traffic as read-only history; off until turned on, and both computers must turn it on (pairing required).",
+			read: func() string {
+				if TeamsShareAt(dir) {
+					return "on"
+				}
+				return "off"
+			},
+			write: func(raw string) error { return writeChoice(dir, KeyTeamsShare, raw, teamsShareChoices) },
 		},
 		// Before the audit row, because it comes first in the life of a task: this
 		// says what STARTS when you type /task, the audit row says what has to be

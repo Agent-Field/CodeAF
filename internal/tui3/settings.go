@@ -594,6 +594,9 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "turn work", widget: widgetCycle,
 		about: "fold completed turn machinery into one worked chip, or keep it open.",
 	},
+	config.KeyTeamsShare: {
+		tab: tabGeneral, label: "share teams", widget: widgetCycle,
+	},
 	config.KeyIcons: {
 		tab: tabDisplay, label: "step icons",
 		about:  "Rich icons normally; plain symbols when your terminal needs them.",

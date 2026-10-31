@@ -119,6 +119,7 @@ var settingReaders = map[string]string{
 	KeyChatModelRotation: "ChatModelRotationAt",
 	KeyWork:              "workMode",
 	KeyIcons:             "iconMode",
+	KeyTeamsShare:        "TeamsShareAt",
 	KeyDailyBudget:       "DailyBudgetUSD",
 	KeyPlanConsent:       "PlanConsentUSD",
 	KeyDocumentEngine:    "DocumentEngine",

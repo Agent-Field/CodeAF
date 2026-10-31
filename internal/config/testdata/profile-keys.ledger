@@ -104,6 +104,7 @@ task.start
 teams.cap_usd_day
 teams.depth_limit
 teams.questions_up
+teams.share
 teams.sub_share_pct
 teams.wake
 telemetry
