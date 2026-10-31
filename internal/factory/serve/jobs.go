@@ -345,6 +345,11 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 		cur.PullRequest = nil
 		cur.Approval = nil
 		cur.Failure = nil
+		// The last run's change check spoke for that change: the new run's
+		// change is checked when it lands.
+		if cur.RuleChecks != nil {
+			cur.RuleChecks.Publish, cur.RuleChecks.PublishHead = "", ""
+		}
 	})
 }
 
