@@ -47,6 +47,10 @@ func (a *app) saveSheetChoice() tea.Cmd {
 	}
 	if a.applySetting(c.item, c.item.row.Choices[c.cursor]) {
 		a.sheet.choice = nil
+		if c.item.row.Key == config.KeyTaskRunsOn {
+			a.touch()
+			return a.readTaskComputers()
+		}
 	}
 	a.touch()
 	return nil

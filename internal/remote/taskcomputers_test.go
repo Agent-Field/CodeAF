@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -9,6 +10,34 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// S9 keeps the watcher's welcome bytes unchanged when task controls are absent.
+func TestAWatcherWelcomeIsUnchanged(t *testing.T) {
+	taskComputerWireHome(t)
+	file := t.TempDir() + "/chat.jsonl"
+	welcome := func(paired bool) []byte {
+		far := &pairedTaskWireAgent{fakeAgent: &fakeAgent{}, available: paired}
+		loop, err := Loopback(Hello{Version: Version, Watch: true}, Options{Boot: func(Hello) (*Engine, error) {
+			return &Engine{Agent: far, SessionFile: file}, nil
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer loop.Close()
+		welcome := loop.Client.Welcome()
+		// Each live owner mints its own cursor scope, independently of capabilities.
+		welcome.SessionInstance = ""
+		raw, err := json.Marshal(welcome)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	original, paired := welcome(false), welcome(true)
+	if !bytes.Equal(original, paired) || bytes.Contains(paired, []byte(`"taskComputers"`)) {
+		t.Fatalf("a watcher's welcome changed:\n%s\n%s", original, paired)
+	}
+}
 
 type pairedTaskWireAgent struct {
 	*fakeAgent

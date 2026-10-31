@@ -911,7 +911,9 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		a.note(ev.Text)
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
-		pilot = a.readTaskComputers()
+		if a.proposalComputerName(a.task) != "" {
+			pilot = a.readTaskComputers()
+		}
 	case session.EventTaskUpdate:
 		pilot = a.taskUpdate(ev)
 		mentions = a.refreshTasks()

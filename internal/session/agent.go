@@ -143,8 +143,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		config: config,
-		system: system,
+		taskComputerPrompt: config.mayNameTaskComputer(),
+		config:             config,
+		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
 		// file deciding what another door's worker is told.

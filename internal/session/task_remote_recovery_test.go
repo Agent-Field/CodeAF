@@ -278,7 +278,7 @@ func TestARefusedRemoteStartWaitsForRunItHere(t *testing.T) {
 		r := remoteRecordFor(spec)
 		r.StartFailed = true
 		_ = spec.SaveRemote(r, true)
-		return RunSummary{Outcome: "incomplete", Result: "work computer is not taking tasks right now — run codeaf serve on it", KeepCopy: true}
+		return RunSummary{Outcome: "incomplete", Result: "work computer is not taking tasks right now — run codeaf serve --take-tasks on it", KeepCopy: true}
 	}}
 	a, local := remoteTaskAgent(t, remote, nil)
 	if _, _, _, err := a.StartTaskOn(context.Background(), "Repair export", false, "work computer"); err != nil {

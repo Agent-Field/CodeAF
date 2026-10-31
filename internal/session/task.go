@@ -608,7 +608,7 @@ func (a *Agent) taskTools() []bare.Tool {
 	if a.config.mayDelegate() {
 		schema = taskSchemaJSON
 	}
-	if a.config.TaskComputers != nil {
+	if a.config.mayNameTaskComputer() {
 		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+taskComputerSchema, 1)
 	}
 	if WorkspaceOwnershipEnabled(a.config.Place) {
@@ -710,6 +710,12 @@ func proposalProblems(contract string, stand taskStand) string {
 // started early (the quality law of an early start: the same brief, sooner).
 func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged {
 	spec, problem := parseTaskArguments(args)
+	// A model cannot opt into placement through an argument its belt did not
+	// offer. Preserve the original treatment of that unknown field; a person
+	// can still choose a computer in the later proposal answer.
+	if !a.config.mayNameTaskComputer() {
+		spec.computer = ""
+	}
 	if problem != "" {
 		// A CONTRACT PROBLEM DOES NOT HIDE A PLACEMENT PROBLEM. Once the call has
 		// enough of a task to place, both readings are already available and each
@@ -954,11 +960,7 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 	if via != nil && via.Words {
 		return programWords(spec.brief, *via)
 	}
-	brief := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
-	if len(spec.checks) > 0 {
-		brief += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
-	}
-	return brief
+	return composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
 }
 
 // commitProposalToRun is the run road of an approved proposal: an approved
@@ -1016,6 +1018,9 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	ctx = withTaskPlacement(ctx, placement)
 	elsewhere = withReport(elsewhere, placement.sentence)
 	description := proposalBrief(spec, via)
+	if placement.computer != nil && len(spec.checks) > 0 {
+		description += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
+	}
 	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
 	// This context is the turn's, and the turn cancels it on its way out
 	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped

@@ -8,9 +8,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -33,14 +33,17 @@ func v3TaskComputers(profile string) session.TaskComputers {
 	if !route.On() {
 		return nil
 	}
-	client, id, err := homeDirectory(profile, pair.Mailbox{URL: route.URL})
+	id, err := identity.Load(profile)
 	if err != nil {
 		return nil
 	}
 	device, err := identity.LoadDevice(profile)
-	if err != nil {
+	if err != nil || device.Cert.Verify(id.PublicKey()) != nil {
 		return nil
 	}
+	// This factory is called for every conversation. Only existing keys are
+	// read here; directory requests belong to an explicit placement choice.
+	client := directory.NewHTTP(route.URL, reqsign.SignFor(homeSigner{id, device}, time.Now), &http.Client{Timeout: linkTimeout})
 	engine := cellstore.EngineFor("")
 	engine.DataRoot = filepath.Join(profile, "v3", "stores")
 	engine.Guard.Home = profile

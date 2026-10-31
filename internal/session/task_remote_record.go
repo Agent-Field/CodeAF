@@ -62,6 +62,11 @@ func atomicRemoteFile(path string, data []byte) error {
 	return directory.Sync()
 }
 func readRemoteRecord(store *plandb.Store, fallback *TaskRemoteRecord) *TaskRemoteRecord {
+	// A local row is authoritative about being local. A stray task-door file
+	// must not change recovery or cause any new I/O for an ordinary run.
+	if fallback == nil || fallback.Executor.Device == "" {
+		return nil
+	}
 	raw, err := os.ReadFile(taskRemotePath(store))
 	if err != nil {
 		return cloneTaskRemote(fallback)

@@ -86,8 +86,8 @@ func (a *app) runTaskHere(entry session.TaskIndexEntry) tea.Cmd {
 	})
 }
 
-// The roster is read on entry, never while drawing. A failed refresh retains
-// the last names rather than claiming a paired computer was removed.
+// The roster is read for a placement choice, never while drawing. A failed
+// refresh retains the last names rather than claiming a computer was removed.
 func (a *app) readTaskComputers() tea.Cmd {
 	if !a.taskComputersAvailable() {
 		return nil
@@ -110,6 +110,20 @@ func (a *app) readTaskComputers() tea.Cmd {
 			if a.sheet.registry != nil {
 				a.sheet.taskComputerRows = a.taskComputerRows
 				a.sheet.build()
+				if choice := a.sheet.choice; choice != nil && choice.item.row.Key == config.KeyTaskRunsOn {
+					choice.item.row = a.sheet.taskComputerSetting(choice.item.row)
+					choice.current = config.TaskRunsOnAt(a.sheet.profileDir)
+					choice.cursor = 0
+					if taskComputerName(a.sheet.taskComputerRows, choice.current) == config.TaskRunsHere {
+						choice.current = ""
+					}
+					for i, value := range choice.item.row.Choices {
+						if value == choice.current {
+							choice.cursor = i
+							break
+						}
+					}
+				}
 			}
 			if a.task != nil {
 				a.markCardStale(a.task)
@@ -121,7 +135,7 @@ func (a *app) readTaskComputers() tea.Cmd {
 }
 
 func (a *app) proposalComputerName(card *taskCard) string {
-	if !a.taskComputersAvailable() {
+	if card == nil || !a.taskComputersAvailable() || (card.computer == "" && card.computerPreference == "") {
 		return ""
 	}
 	named := strings.TrimSpace(card.computer)
@@ -140,7 +154,7 @@ func (a *app) proposalComputerName(card *taskCard) string {
 }
 
 func (a *app) canCycleTaskComputer(card *taskCard) bool {
-	return card != nil && !card.forming && !card.settled() && a.taskComputersAvailable() && len(a.taskComputerRows) > 0
+	return card != nil && !card.forming && !card.settled() && a.proposalComputerName(card) != "" && len(a.taskComputerRows) > 0
 }
 
 // A pick belongs to this proposal, not to the standing preference. The answer
@@ -251,4 +265,13 @@ func (a *app) taskEntryComputerWords(entry session.TaskIndexEntry) string {
 		return a.taskComputerWords(node)
 	}
 	return taskComputerWords(entry.Computer, entry.Unreachable, entry.RanElsewhere, session.TaskState(entry.Status))
+}
+
+// A saved remote default is itself the person's choice to consult the roster.
+// An unchanged paired home must make no task-computer call at startup.
+func (a *app) readPreferredTaskComputers() tea.Cmd {
+	if config.TaskRunsOnAt(a.profileDir) == "" {
+		return nil
+	}
+	return a.readTaskComputers()
 }

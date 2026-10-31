@@ -42,7 +42,7 @@ func (*olderTaskComputerSurface) TaskComputersSupported() bool { return false }
 // The wire compatibility law requires the welcome's missing capability to
 // hide the new controls even though the client now has their Go methods.
 func TestAnOlderEngineHasNoTaskComputerFlagOrRecoveryVerb(t *testing.T) {
-	a, f, _ := computerRecoveryApp(t, session.TaskInterrupted, &session.TaskRemoteRecord{StartFailed: true}, "work computer is not taking tasks right now — run codeaf serve on it")
+	a, f, _ := computerRecoveryApp(t, session.TaskInterrupted, &session.TaskRemoteRecord{StartFailed: true}, "work computer is not taking tasks right now — run codeaf serve --take-tasks on it")
 	a.agent = &olderTaskComputerSurface{f}
 	if strings.Contains(a.taskCommandUsage(), "--on") {
 		t.Fatal("an older engine advertises --on")
@@ -240,7 +240,8 @@ func TestTaskOnWithAnUnknownNameListsTheComputers(t *testing.T) {
 // placement disclosure before approval, independent of the later run state.
 func TestTheProposalCardNamesItsExplicitOrDefaultComputer(t *testing.T) {
 	for _, tc := range []struct{ computer, preference, shown string }{
-		{"", "", "this computer"},
+		{"", "", ""},
+		{"Abir's Mac", "", "Abir's Mac"},
 		{"", surfaceComputerB, "work computer"},
 		{"here", surfaceComputerB, "this computer"},
 		{"Abir's Mac", surfaceComputerB, "Abir's Mac"},
@@ -255,7 +256,12 @@ func TestTheProposalCardNamesItsExplicitOrDefaultComputer(t *testing.T) {
 			ev := proposal(a, 7, 0)
 			ev.Task.Computer = tc.computer
 			a.proposeTask(ev)
-			if text := plain(strings.Join(a.taskCardRows(a.task, 120, false), "\n")); !strings.Contains(text, "runs on "+tc.shown) {
+			text := plain(strings.Join(a.taskCardRows(a.task, 120, false), "\n"))
+			if tc.shown == "" {
+				if strings.Contains(text, "runs on") || strings.Contains(text, "ctrl+d computer") {
+					t.Fatalf("a default proposal disclosed computers:\n%s", text)
+				}
+			} else if !strings.Contains(text, "runs on "+tc.shown) {
 				t.Fatalf("the proposal does not say where it will run:\n%s", text)
 			}
 		})
@@ -364,7 +370,7 @@ func TestAComputerThatStoppedAnsweringOffersRunItHere(t *testing.T) {
 // TestAComputerNotTakingTasksSaysToRunServeOnIt maps to DESIGN contract 8:
 // the session's actual refusal is retained beside the local replacement verb.
 func TestAComputerNotTakingTasksSaysToRunServeOnIt(t *testing.T) {
-	const words = "work computer is not taking tasks right now — run codeaf serve on it"
+	const words = "work computer is not taking tasks right now — run codeaf serve --take-tasks on it"
 	a, f, _ := computerRecoveryApp(t, session.TaskInterrupted, &session.TaskRemoteRecord{StartFailed: true}, words)
 	rows, _, _, _ := a.taskCardFrame(120, 40)
 	if text := plain(strings.Join(rows, "\n")); !strings.Contains(text, words) || strings.Count(text, "h run it here") != 1 {

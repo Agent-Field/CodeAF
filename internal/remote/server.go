@@ -1094,9 +1094,6 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// names the surfaces that have already drawn it (held.go).
 	s.name = machineLabel(hello.Surface)
 	s.clientID = strings.TrimSpace(hello.ClientID)
-	// Read-only controls must already be absent from the initial welcome;
-	// recording this after it was built advertised controls a watcher cannot use.
-	s.watching = hello.Watch
 	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
 	// watching, and a pipe that tears on the way in — or a getter that
 	// no longer crosses the wire — must not read as nobody having been
@@ -1110,6 +1107,9 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked(s)
+	// The initial capability reads the arrival directly, preserving the machine's
+	// existing point at which a watcher becomes registered.
+	welcome.TaskComputers = !hello.Watch && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
 	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
@@ -1119,6 +1119,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// new one (driver.go states the whole rule, [Hello.Back] states why the
 	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
 	// flag is recorded so no later hand-on can give it the keyboard either.
+	s.watching = hello.Watch
 	if hello.Join {
 		// WHAT THIS CONNECTION IS BOUND TO is the conversation it named, confirmed
 		// against the one open under this same lock a few lines above. The engine's

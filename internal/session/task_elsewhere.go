@@ -219,3 +219,9 @@ func taskCopyCanTravel(stand taskStand) bool {
 	}
 	return stand.mode == TaskModeWorktree
 }
+
+// Pairing supplies the person's placement door. Only a saved remote preference
+// adds placement to the model's vocabulary. Both reads are local.
+func (c Config) mayNameTaskComputer() bool {
+	return c.TaskComputers != nil && config.TaskRunsOnAt(c.ProfileDir) != ""
+}

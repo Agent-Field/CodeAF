@@ -1040,7 +1040,8 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+,":
 		// The settings key every application on this machine already has. The
 		// slash is the other door onto the same panel (settings.go).
-		return a.openSettings()
+		a.openSettings()
+		return nil
 
 	case effortKey:
 		// WALK THE THINKING LADDER (effortchip.go). It is bound here, in the plain

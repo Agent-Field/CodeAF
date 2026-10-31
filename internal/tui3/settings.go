@@ -1289,7 +1289,7 @@ func (a *app) slotRefusal() error {
 
 // openSettings is /settings and ctrl+,, and it is THE ROUTER'S DOOR like every
 // other way into a place (pages.go's [app.showPage]).
-func (a *app) openSettings() tea.Cmd { return a.showPage(pageSettings) }
+func (a *app) openSettings() { a.showPage(pageSettings) }
 
 // raiseSettings builds the panel. It is [placeSettings]'s `open` and nothing
 // else calls it, which is what makes the router the one road in.
@@ -2646,6 +2646,9 @@ func (a *app) activate() tea.Cmd {
 			}
 		}
 		s.choice = choice
+		if item.row.Key == config.KeyTaskRunsOn {
+			return a.readTaskComputers()
+		}
 
 	case widgetLane:
 		// ENTER ON THIS ROW OPENS THE MACHINES. It used to walk four words —

@@ -2605,10 +2605,10 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 		report += line
 	}
-	if summary.NeedsDecision {
+	if run.remoteEngine != nil && summary.NeedsDecision {
 		state = TaskUnverified
 	}
-	if summary.Outcome == "interrupted" {
+	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
 		state = TaskInterrupted
 	}
 	notice := TaskNotice{

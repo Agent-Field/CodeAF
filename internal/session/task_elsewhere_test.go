@@ -15,7 +15,13 @@ import (
 
 // Contract 6 makes a misspelt computer repairable at the tool boundary.
 func TestAnUnknownComputerNameIsAToolErrorListingTheComputers(t *testing.T) {
-	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.TaskComputers = testTaskComputers{} })
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.ProfileDir = t.TempDir()
+		c.TaskComputers = testTaskComputers{}
+		if err := config.WriteTaskRunsOn(c.ProfileDir, "dev_0123456789abcdef0123456789abcdef"); err != nil {
+			t.Fatal(err)
+		}
+	})
 	result, refused, err := a.stageTask(context.Background(), json.RawMessage(`{"title":"Repair export","summary":"Repair the export path","brief":"Fix the export failure in the project","deliverable":"working export","acceptance":"export succeeds","computer":"missing"}`)).Commit(context.Background())
 	if err != nil || !refused || !strings.Contains(result, `no paired computer is named "missing"`) || !strings.Contains(result, "work computer") {
 		t.Fatalf("tool result = %q, %v, %v", result, refused, err)
@@ -164,6 +170,9 @@ func TestAProposalNamingAPairedComputerRunsThere(t *testing.T) {
 		return RunSummary{Outcome: "done", Result: "done there"}
 	}}
 	a, local := remoteTaskAgent(t, remote, func(c *Config) {
+		if err := config.WriteTaskRunsOn(c.ProfileDir, "dev_0123456789abcdef0123456789abcdef"); err != nil {
+			t.Fatal(err)
+		}
 		c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) {
 			t.Error("remote work consulted the origin's crew")
 			return crewroute.Decision{}, errors.New("origin crew must stay unused")
@@ -312,7 +321,11 @@ func TestAnExplicitInPlaceTaskRunsHereEvenWhenAComputerWasNamed(t *testing.T) {
 		_ = spec.Store.CompleteRoot("wrong computer")
 		return RunSummary{Outcome: "done"}
 	}}
-	a, local := remoteTaskAgent(t, remote, nil)
+	a, local := remoteTaskAgent(t, remote, func(c *Config) {
+		if err := config.WriteTaskRunsOn(c.ProfileDir, "dev_0123456789abcdef0123456789abcdef"); err != nil {
+			t.Fatal(err)
+		}
+	})
 	args := taskOnOtherComputer()
 	args.Where = "in place"
 	args.Deliverable = "a corrected " + filepath.Join(a.config.Workspace, "output.txt")

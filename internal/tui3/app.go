@@ -3630,7 +3630,7 @@ func (a *app) Init() tea.Cmd {
 		// raised, and on the settings page — and reading it on the way up means
 		// neither of those ever pays a round trip. The fold re-stamps whatever
 		// questions the attach already replayed.
-		a.readAutonomy(), a.readTaskComputers(),
+		a.readAutonomy(), a.readPreferredTaskComputers(),
 		// AND THE PULSE'S OWN BEAT, whose first reading is taken now rather than
 		// ten seconds from now (pulsebeat.go).
 		pulseNow,
