@@ -260,11 +260,30 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 		Held []heldName `json:"held"`
 	}
 	// The restore brings the sender's policy file and record over this machine's,
-	// which would forget the names an earlier take set apart: they are read first
-	// and written back with this take's.
+	// which would forget the names an earlier take set apart and any local
+	// legacy-copy markers snapshots never carry: they are read first and
+	// written back after the head is materialized.
 	earlier := heldBefore(c, e.holdDir(c))
+	_, readyErr := os.Stat(rel(c, cell.CopyReadyPath))
+	_, lockErr := os.Stat(c.Root + ".lock")
+	keepCopyReady := readyErr == nil || (filepath.Base(filepath.Dir(c.Root)) == ".moving" && lockErr == nil)
+	_, offeredErr := os.Stat(rel(c, cell.CopyOfferedPath))
+	keepCopyOffered := offeredErr == nil
 	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
+	}
+	if keepCopyReady {
+		if err := cell.StampCopyReady(c.Root); err != nil {
+			return err
+		}
+	}
+	if keepCopyOffered {
+		offeredFile := rel(c, cell.CopyOfferedPath)
+		if _, err := os.Stat(offeredFile); os.IsNotExist(err) {
+			if err := writeFile(offeredFile, nil); err != nil {
+				return err
+			}
+		}
 	}
 	if err := noteAdopted(c, head); err != nil {
 		return err
