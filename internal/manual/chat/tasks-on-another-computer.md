@@ -42,7 +42,11 @@ over an empty draft; accepting the proposal sends that choice. The line says
 `runs on <name>`. This line and cycle key are absent from ordinary local
 proposals until the setting or proposal names a computer. The model's
 `computer` argument is available only while **Run tasks on** names a paired
-computer. A misspelt name is refused with
+computer. Two computers with the same name use their Devices labels, such as
+`mac mini #1111` and `mac mini #2222`. Include that label when choosing one.
+An ambiguous bare name says
+`"<name>" matches more than one paired computer — choose one of: <names>`.
+A misspelt name is refused with
 `no paired computer is named "<name>" — your computers are: <names>`.
 
 Both computers must run Linux or macOS, and the task needs its own copy. Sending
@@ -97,7 +101,8 @@ Choosing `run it here` abandons the old attempt and starts fresh local work in
 the unchanged copy here. A late result from the abandoned attempt never lands.
 The placement words disappear and the receipt says
 `running task <number> <title> here`. If this copy has changed, codeaf keeps
-both copies and refuses to overwrite it. A computer that dropped may still be
+both copies and refuses to overwrite it. The abandoned task’s record is archived;
+the local worker starts with a fresh record of effects in its own copy. A computer that dropped may still be
 working; a request to stop it is best effort.
 
 ## Run tasks on — when the model gets the computer argument
@@ -106,7 +111,7 @@ In `/settings` → Tasks, **Run tasks on** follows **Task model**. Its hint is
 `where a task goes when you do not name a computer`. It offers `this computer`
 (the default), then eligible paired computers by shown name. The row reads the
 computer list only when you open it. It is absent on unpaired, quiet or Windows
-homes. A removed or unsupported saved choice displays
+homes, including from the model’s `settings` and `change_setting` tools. A removed or unsupported saved choice displays
 `this computer`. Changing the row affects the next task, not work already running.
 
 An explicit `/task --on`, proposal-card computer choice, or model-supplied
@@ -121,7 +126,8 @@ Run `codeaf serve --take-tasks` on the paired computer that should take tasks. I
 `takes tasks from your paired computers`. Pairing with the same identity is
 the permission; no separate machine-access grant is needed for tasks. Quiet or
 unpaired homes do not offer this door. Linux and macOS are supported on both
-ends; Windows is not yet. Windows serving says
+ends; Windows is not yet. A named unsupported target says
+`<computer> cannot take tasks from other computers yet`. Windows serving says
 `this computer cannot take tasks from other computers yet`.
 
 At most two attempts run on that computer at once. A third is refused with
@@ -156,3 +162,178 @@ including another task on the same computer. The refusal is
 This limit applies even though the receiving computer can take two attempts
 from separate conversations. Remote tasks cannot join more work into the
 instruction already sent.
+
+## Could not check your devices right now
+
+`could not check your devices right now` means the task computer could not
+refresh your devices list. It refuses new work and ends the connection rather
+than trust an old permission. Check sync connectivity on both computers, then
+retry. Removing a device also ends an existing task watch when its cached
+permission expires, within about a minute; the worker itself may still run.
+`this computer was removed from your devices` requires pairing that computer
+again before it can send tasks.
+
+## Could not confirm this is my task computer
+
+`could not confirm this is <computer>` or `could not confirm this computer`
+means the connection could not prove it was the chosen paired computer.
+Check its entry in Devices, update codeaf on both ends, and pair again if needed.
+Do not substitute another computer just because its name looks the same.
+`<computer> runs a different codeaf that cannot take this task — update both`
+requires updating both ends before retrying.
+
+## The task copy could not be sent
+
+`the task copy changed while it was being sent; try again` keeps the copy here.
+Finish or pause the edits, then retry the task.
+`task copies need private storage and a relay blob store` means this chat's
+task transfer is not set up; reopen a supported paired chat with sync available.
+`a home folder or a folder above it cannot be sent as a task copy` requires
+choosing a project folder below your home, with an independent task copy.
+No task is silently redirected elsewhere; use `run it here` when offered.
+
+## The task copy cell or head is not readable
+
+`the task copy's cell is not readable` and
+`the task copy's head is not readable` mean the saved transfer information
+cannot identify a usable task copy. Keep the copy here and the other computer's
+work, update both ends, then retry from the task's own controls.
+`the sent task copy's fingerprint is missing` means codeaf cannot safely
+compare the returned work with what it sent. Keep both copies and choose which
+change to bring home; do not hand-edit the saved comparison.
+`the task copy's repository link is not a file` or
+`the task copy is missing its independent history` requires keeping the copies
+and preparing a new independent task copy before retrying.
+
+## The task destination already contains files
+
+`the task's destination already contains files` refuses to replace existing
+files while receiving a task copy. Keep that folder intact, inspect the old
+task's result, and retry with a fresh task copy. Do not clear a folder while a
+worker may still use it.
+`the task copy changed here while the other computer worked; both copies were kept`
+also covers an edit made just as a returned result was being installed. Your
+edit stays here and the other result stays available; inspect both before
+choosing what to bring home.
+
+## Could not put the result in place; the earlier copy is kept
+
+`could not put the result in place; the earlier copy is kept at <path>: <reason>`
+means installation and its rollback could not finish. Preserve the named path:
+it holds your earlier copy. Check free disk space and folder permissions, then
+inspect both copies before moving files or retrying. Do not delete the named
+folder as temporary clutter.
+`The result could not be brought from <computer>; the copy here was kept`
+means the remote task has no usable returned copy. Keep your local copy, restore
+connectivity, and inspect the task on the other computer before choosing
+`run it here`.
+
+## That task attempt id is not readable, still stopping, or already finished
+
+`that task attempt id is not readable` means the saved attempt cannot be
+identified; reopen the chat with an updated build and keep both task copies.
+`that task is still stopping` means an abandoned worker has not finished
+stopping; wait rather than start the same attempt again.
+`that task has already finished` refuses replay of an acknowledged attempt.
+Completed attempts keep compact replay protection for the newest 1,000
+acknowledgements, even after restarting the serving computer. Start a new task
+if you want the work performed again; resending its old attempt cannot rerun it.
+These receipts describe the saved attempt, not a reason to discard its work.
+
+## That task request is not readable
+
+`that task request is not readable` means the receiving computer cannot read
+the request. Update both ends, reopen the chat, and retry through the normal
+task controls.
+`choose landed or abandoned for this task` concerns the saved acknowledgement
+of a result. Keep both copies and reopen the chat so codeaf can retry that
+acknowledgement; do not invent an acknowledgement or resend the old start.
+`taskdoor: a frame exceeds the 1048576-byte limit` means a task message exceeded
+the transfer limit. Keep the copies, update both builds, and use a smaller
+instruction or bounded task output before starting a new attempt.
+
+## The other computer no longer has this task's answer
+
+`the other computer no longer has this task's answer` means the saved watch
+found no retained attempt. Keep the copy here; inspect the other computer's
+task files before choosing `run it here`.
+`the other computer sent an unreadable task event` means an event cannot be
+used safely. Update both ends and reopen the chat to follow its saved attempt;
+do not start another worker while the first may still run.
+Reopening follows the original attempt and never repeats its tools by itself.
+
+## The task's remote record cannot be saved here
+
+`the task's remote record cannot be saved here` or
+`the task's remote record is missing` means the conversation cannot keep the
+information needed to follow work elsewhere. Keep both task copies, check
+local disk space and permissions, and reopen the saved chat before retrying.
+`could not save the task result: <reason>` similarly requires preserving the
+other computer's task folder and fixing the named storage problem.
+`the returned task copy must be landed by this computer` means the result
+must go through the owning chat's ordinary landing or Review and Apply here;
+open that chat to bring the work home.
+
+## The task was interrupted before it left an answer
+
+`the task was interrupted on this computer before it left an answer`,
+`the task ended without an answer`, or `the task ended without a result`
+means no complete answer was left by the worker. Its partial work stayed on
+the other computer. The sent copy here remains unchanged so `run it here`
+can start fresh; inspect partial work on the other computer if you need it.
+`The work could not be sent back: <reason>` keeps that work on the other
+computer too. Fix the stated transfer problem and keep the copy there until
+you have brought the change home. A normal stop still brings partial work
+back through the usual landing road.
+
+## Could not record the task's child
+
+`could not record the task's child: <reason>` means the serving computer could
+not safely remember the worker it started. It stops that worker rather than
+lose track of it. Inspect the reason, update both builds, and retry with a new
+task after checking the retained copy.
+Recovery may instead say
+`the recorded process does not name this task's work folder`,
+`the recorded process does not name this task's private record`,
+`the child's process start is not readable`,
+`the recorded process is not this task's child`, or
+`this task's child is no longer running`.
+These refusals prevent attaching to an unrelated process. Keep the task copy;
+an interrupted attempt can be replaced with `run it here` after inspecting it.
+
+## The task's saved event is too large
+
+`the task's saved event is too large` means a recorded step or charge cannot
+fit the bounded task journal. Keep the other computer's task folder and inspect
+its output; reduce oversized output before starting a new task.
+Saved journal damage can say
+`taskdoor: the saved task events are out of order`,
+`taskdoor: saved events follow the task's finish`,
+`taskdoor: only task events belong in a journal`,
+`taskdoor: unknown task outcome`, or
+`taskdoor: that task has already finished`.
+Preserve the record, update codeaf, and inspect the retained work before
+choosing a fresh local attempt. Do not repair the journal by deleting lines.
+
+## This computer is already taking tasks
+
+`this computer is already taking tasks` means a serving process already owns
+the task folder. Use that process or close it before starting another one.
+`` this machine is already connected to sync as <connection> — there is only one of it, so close the other `codeaf serve` ``
+requires closing the duplicate serving process.
+`<computer> is already running two tasks` requires waiting for a slot; each
+remote task still runs alone in its owning conversation.
+Setup errors such as `taskdoor: a door needs a relay, roster and executor`,
+`taskdoor: this device does not belong to the identity`,
+`taskdoor: an attempt store folder is required`, or
+`taskdoor: attempt <id> is not a folder` require checking the paired profile
+and its task storage before starting `codeaf serve --take-tasks` again.
+
+## The task door says empty frame or a frame needs a type
+
+`taskdoor: empty frame` or `taskdoor: a frame needs a type` means the task
+computer sent an unreadable task message. The connection cannot safely start or
+follow that request. Update codeaf on both computers, check the chosen computer
+in Devices, and reopen the chat before retrying through its task controls.
+Keep the task copies while checking whether the original attempt started.
+A connection failure never grants permission to repeat an admitted attempt.

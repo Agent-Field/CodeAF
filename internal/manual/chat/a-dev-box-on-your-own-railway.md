@@ -151,14 +151,14 @@ to admit another computer yet; use the creating laptop.
 ## Send a task to my dev box
 
 A dev box also takes tasks. It starts `codeaf serve --take-tasks` whenever its
-installed build lists that flag, so a chat on your laptop can run one task on the
+installed build lists that option, so a chat on your laptop can run one task on the
 box while the conversation and transcript stay on the laptop:
 `/task --on <name> <brief>` names it for one task, and Settings → Run tasks on
 sends every task that can go. The box's synced provider keys pay, and the spend
-appears on the laptop too. A box whose build predates the flag starts plain
+appears on the laptop too. A box whose build predates the option starts plain
 `codeaf serve` and takes no tasks; sending one says
 `<name> is not taking tasks right now — run codeaf serve --take-tasks on it`, and
-the box picks the flag up when its channel's build has it and it restarts. See
+the box picks the option up when its channel's build has it and it restarts. See
 *Tasks on another computer* for what can go and what happens when a computer
 stops answering.
 
