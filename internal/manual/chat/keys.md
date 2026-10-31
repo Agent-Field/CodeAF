@@ -690,7 +690,8 @@ in it`. Background jobs go the same way, a moment later.
 
 Either way, what a task wrote is on its branch and stays there; a stop is an interruption
 and never a finding about the work. A headless `codeaf chat --once` leaves by the closing
-road: the turn stops, the session closes, and the process exits cleanly.
+road: the turn stops, the session closes, and the process exits cleanly. A paired chat
+also gives its final send and release the usual closing time limit before exiting.
 
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
