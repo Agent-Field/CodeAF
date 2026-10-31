@@ -40,7 +40,7 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	if b == nil {
 		return nil
 	}
-	if syncsetup.Resolve(home.Dir()).Off || !cell.Available() {
+	if !syncsetup.Resolve(home.Dir()).On() || !cell.Available() {
 		return nil
 	}
 	b.mu.Lock()

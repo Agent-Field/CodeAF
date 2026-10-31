@@ -132,6 +132,23 @@ func countHomeRowsForID(a *app, id string) int {
 	return n
 }
 
+// homeRowWordsForID is everything Home's row for one chat says, its note and
+// its description, without the layout that wraps them on the screen.
+func homeRowWordsForID(a *app, id string) string {
+	var words []string
+	for _, line := range a.home.lines {
+		if line.cell == nil {
+			continue
+		}
+		mine := line.kind == homeSession && homeSessionID(line.row) == id
+		theirs := line.kind == homeMachineRow && line.remote != nil && line.remote.Cell == id
+		if mine || theirs {
+			words = append(words, line.cell.note, line.cell.noteShort, line.cell.sub)
+		}
+	}
+	return strings.Join(words, "\n")
+}
+
 // Contract 1: In one window, continuing three different chats last written on
 // another computer, one after another, each shows `continuing here…` and opens
 // that chat with its full history.
@@ -583,14 +600,17 @@ func TestOneChatOneRowKeyedByIDAndCollapsedBranchCopies(t *testing.T) {
 	if got := countHomeRowsForID(a, sharedID); got != 1 {
 		t.Fatalf("rows for %s when held here = %d, want 1:\n%s", sharedID, got, homeText(a))
 	}
+	// The explanation is read from the row itself: on the screen it wraps
+	// wherever its column ends, and the next panel's words fill the gap.
 	screen = homeText(a)
+	said := homeRowWordsForID(a, sharedID)
 	for _, want := range []string{
 		"2 copies",
 		"unsent turns set aside",
 		"discarding archives",
 		"3 turns not in this chat",
 	} {
-		if !strings.Contains(screen, want) {
+		if !strings.Contains(said, want) {
 			t.Fatalf("Home missing non-redundant copy explanation %q:\n%s", want, screen)
 		}
 	}

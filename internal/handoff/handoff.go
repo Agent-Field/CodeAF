@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -312,6 +313,30 @@ func freshDir(dir string) error {
 // staging folder is dropped. A copy is replaced by the staging folder.
 func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) error {
 	defer Trace(t.OnPhase, "restore")()
+	// Snapshots arriving from another computer never carry this computer's local
+	// copy-ready or copy-offered markers, so installing over a `.moving` copy
+	// root must keep or re-stamp them lest its `.lock` sibling hide the chat or
+	// revive the untouched original.
+	keepCopyReady := exists(filepath.Join(c.Root, filepath.FromSlash(cell.CopyReadyPath))) ||
+		(filepath.Base(filepath.Dir(c.Root)) == ".moving" && exists(c.Root+".lock"))
+	offeredFile := filepath.Join(c.Root, filepath.FromSlash(cell.CopyOfferedPath))
+	keepCopyOffered := exists(offeredFile)
+	restoreCopyMarkers := func() error {
+		if keepCopyReady {
+			if err := cell.StampCopyReady(c.Root); err != nil {
+				return err
+			}
+		}
+		if keepCopyOffered && !exists(offeredFile) {
+			if err := os.MkdirAll(filepath.Dir(offeredFile), 0o700); err != nil {
+				return err
+			}
+			if err := os.WriteFile(offeredFile, nil, 0o600); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if t.InPlace == nil || !t.InPlace(c) {
 		if t.Prepare != nil {
 			if err := freshDir(stage.Root); err != nil {
@@ -324,9 +349,15 @@ func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) err
 				return err
 			}
 		}
-		return t.replace(ctx, stage, c)
+		if err := t.replace(ctx, stage, c); err != nil {
+			return err
+		}
+		return restoreCopyMarkers()
 	}
 	if err := t.Fetch.Fetch(ctx, c, head); err != nil {
+		return err
+	}
+	if err := restoreCopyMarkers(); err != nil {
 		return err
 	}
 	return os.RemoveAll(stage.Root)

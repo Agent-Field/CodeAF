@@ -538,7 +538,7 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 			// cannot be inherited: it is minted with the folder, below.
 			root = workspace
 		}
-		return v3MintSession(filepath.Dir(dir), root,
+		return v3MintSession(session.BucketOf(current.Transcript()), root,
 			v3StampLaunchDir(v3LaunchDir(), root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
@@ -653,16 +653,12 @@ type v3Folder struct {
 // deliverables is never empty whatever its journal says — those are somebody's
 // content, and no groom of a bookkeeping file may take them.
 func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
-	entries, err := os.ReadDir(bucket)
-	if err != nil {
+	sessionDirs := session.BucketSessionDirs(bucket)
+	if len(sessionDirs) == 0 {
 		return nil, nil
 	}
 	protected, known := v3TeamConversations()
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := cell.Copied(filepath.Join(bucket, entry.Name()))
+	for _, dir := range sessionDirs {
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
 			continue
@@ -671,7 +667,7 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 		folder.meta, _ = session.LoadMeta(dir)
 		folder.at = folder.meta.LastUserAt
 		if folder.at.IsZero() {
-			if info, err := entry.Info(); err == nil {
+			if info, err := os.Stat(dir); err == nil {
 				folder.at = info.ModTime()
 			}
 		}
