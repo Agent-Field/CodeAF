@@ -583,10 +583,15 @@ export class HostedIdentity {
       if(/target|transfer|busy|barrier not applied/.test(error.message))return false;throw error;
     }
   }
-  async control(method,actor,certificate,proof){
+  async control(method,actor,certificate,proof,names=false){
     await this.reconcileMembership();const out=await this.personal(method==='POST'?'lead':'status',{actor,certificate,proof});
     if(out.code!=='ok')return new Response('this computer is not allowed to coordinate this cluster',{status:out.code==='bad_request'?400:403});
-    if(method!=='POST')return this.jsonBytes(unb64(out.wire));
+    if(method!=='POST'){
+      // Older clients decode status strictly, so member labels require an explicit opt-in.
+      if(names)return this.jsonBytes(unb64(out.wire));
+      const status=decodeCanonical(dec.decode(unb64(out.wire)));delete status.members;
+      return this.jsonBytes(encodeCanonical(status));
+    }
     const command=decodeCanonical(dec.decode(unb64(out.wire))),result=await this.commit(unb64(out.wire));
     const refusal=code=>new Response(encodeCanonical({code,sequence:command.sequence}),{status:409,headers:{'content-type':'application/json'}});
     if(result.value.code!=='ok')return refusal(result.value.code);
