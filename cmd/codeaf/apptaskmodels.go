@@ -18,6 +18,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -82,15 +83,16 @@ func (b *appBackend) taskModelsWire(profile string, state config.TaskModelsState
 		out.OneModel = &appwire.ModelRef{ID: state.One.Model, Provider: state.One.Provider}
 		out.OneModelWarning = wireWord(state.OneWarning)
 	}
-	role := func(seat crewroute.Seat) appwire.TaskModelRole {
-		r := state.Roles[seat]
+	view := func(r config.TaskModelRole) appwire.TaskModelRole {
 		view := appwire.TaskModelRole{Warning: wireWord(r.Warning), EligibleCount: r.Eligible}
 		if r.Pin != nil {
 			view.Pin = &appwire.ModelRef{ID: r.Pin.Model, Provider: r.Pin.Provider}
 		}
 		return view
 	}
-	out.Roles = appwire.TaskModelRoles{Worker: role(crewroute.Worker), Planner: role(crewroute.Planner), Checker: role(crewroute.Checker)}
+	auxiliary := view(state.Auxiliary)
+	out.Roles = appwire.TaskModelRoles{Worker: view(state.Roles[crewroute.Worker]), Planner: view(state.Roles[crewroute.Planner]),
+		Checker: view(state.Roles[crewroute.Checker]), Auxiliary: &auxiliary}
 	sources := config.ResolveSources(profile, config.APIKeyAt(profile), config.DefaultBaseURL)
 	for _, p := range state.Providers {
 		view := appwire.TaskModelsProvider{
@@ -245,6 +247,13 @@ func (b *appBackend) SetTaskModels(p appwire.TaskModelsPatch) (appwire.TaskModel
 	if p.Pins != nil {
 		change.Pins = map[crewroute.Seat]*config.CrewPin{}
 		for role, ref := range p.Pins {
+			if role == appwire.RoleAuxiliary {
+				change.AuxiliarySet = true
+				if ref != nil {
+					change.Auxiliary = &config.CrewPin{Model: ref.ID, Provider: ref.Provider}
+				}
+				continue
+			}
 			if ref == nil {
 				change.Pins[crewroute.Seat(role)] = nil
 				continue
@@ -255,6 +264,7 @@ func (b *appBackend) SetTaskModels(p appwire.TaskModelsPatch) (appwire.TaskModel
 	for _, row := range p.Allowed {
 		change.Ticks = append(change.Ticks, config.TaskModelTick{Model: row.Model.ID, Provider: row.Model.Provider, Allowed: row.Allowed})
 	}
+	change.Served = b.servedModel()
 	ctx, cancel := context.WithTimeout(context.Background(), taskModelsReadWindow)
 	defer cancel()
 	if err := config.ApplyTaskModels(ctx, profile, change); err != nil {
@@ -270,6 +280,33 @@ func (b *appBackend) SetTaskModels(p appwire.TaskModelsPatch) (appwire.TaskModel
 		b.emit.Emit(appwire.EventSettingsChanged, appwire.SettingsChanged{Settings: settings, TaskModels: &got})
 	}
 	return got, nil
+}
+
+// servedModel answers whether models.list offers a model on a provider, so
+// the list a person picks from and the check on what they picked are one
+// source. It is read once, and only when a pin is not among the crew's rows.
+// With no process open there is no list yet, and nil leaves the rows to
+// decide alone rather than opening one for a settings write.
+func (b *appBackend) servedModel() func(model, provider string) (string, bool) {
+	if openedEngineProcess() == nil {
+		return nil
+	}
+	listed := sync.OnceValue(func() []appwire.Model {
+		models, _ := b.ListModels()
+		return models
+	})
+	return func(model, provider string) (string, bool) {
+		provider = strings.ToLower(strings.TrimSpace(provider))
+		for _, m := range listed() {
+			if provider != "" && !strings.EqualFold(m.Provider, provider) {
+				continue
+			}
+			if strings.EqualFold(m.ID, model) || (provider != "" && strings.EqualFold(m.ID, provider+"/"+model)) {
+				return m.ID, true
+			}
+		}
+		return "", false
+	}
 }
 
 // settingsChanged says settings.changed with the settings and, when the
