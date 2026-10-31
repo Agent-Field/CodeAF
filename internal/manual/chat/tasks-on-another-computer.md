@@ -58,9 +58,11 @@ On a task, `running on <computer>` means its worker runs on that paired
 computer while this chat stays here. Its steps appear here in order as it
 works. `ran on <computer>` records where completed work ran;
 `interrupted on <computer>` means the worker stopped without leaving an answer.
-These words appear on task cards and notice lines, the rail, Background work's
-`open result` row, Tasks on Home and the task page. They stay with a saved task
-even in a window opened before pairing or a window only watching the chat.
+These words appear on task cards and landing notices, the task rail,
+Background work's `open result` row, `/history` task rows and the task page.
+They stay with a saved task even in a window opened before pairing or a
+window only watching the chat. The initial `single task … started` receipt
+does not name the computer. Home has no task row.
 A task that ran here gains no computer words.
 
 The task's change returns to its copy here and follows normal landing. Private

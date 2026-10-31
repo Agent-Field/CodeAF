@@ -4291,6 +4291,14 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 	const indent = "  "
 	glyph := a.railTreeGlyph(node)
 	room := width - len(indent) - 2
+	// Placement is a recorded fact; its complete words get cells before the
+	// title or clock. A rail too narrow for the phrase leaves it off whole.
+	placement := a.taskComputerWords(node)
+	if cells := ansi.StringWidth(placement); placement != "" && room >= cells+2 {
+		room -= cells + 1
+	} else {
+		placement = ""
+	}
 	// A program's badge stays on its row when the side column is compact.
 	// The time gives up cells first, then the badge shortens, while the title
 	// keeps enough room to name the work.
@@ -4309,6 +4317,9 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 	}
 	title, w := fitWidth(node.title, room)
 	line := indent + glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
+	if placement != "" {
+		line += a.pal.dim(" " + placement)
+	}
 	if age != "" {
 		line += strings.Repeat(" ", max(room-w, 0)+1) + a.pal.dim(age)
 	}

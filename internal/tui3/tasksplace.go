@@ -32,6 +32,7 @@ package tui3
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -276,6 +277,21 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	// the same set of rows the page does — a run's row left in the name set
 	// would hide its own plan row.
 	var replaced map[tasksKey]bool
+	// The plan replaces the roster row, not its recorded executor. Keep only
+	// named placements; ordinary local readings need no extra map.
+	var placements map[tasksKey]session.TaskIndexEntry
+	for i := range mine.rows {
+		row := &mine.rows[i]
+		if row.entry.Computer != "" {
+			if placements == nil {
+				placements = make(map[tasksKey]session.TaskIndexEntry)
+			}
+			placements[tasksKeyOf(row.entry)] = row.entry
+			if row.planTask != "" {
+				placements[tasksKey{session: row.entry.SessionID, id: row.planTask}] = row.entry
+			}
+		}
+	}
 	mine.rows, replaced = planStoreDraws(mine.rows, mine.plan)
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
@@ -343,6 +359,14 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 				continue
 			}
 			item := planItem(task, mine.row.ID, kin)
+			if placements != nil {
+				key := tasksKeyOf(item.entry)
+				if task.HistoricalRun != 0 {
+					key = tasksKey{session: task.HistoricalSession, id: strconv.FormatUint(task.HistoricalRun, 10)}
+				}
+				saved := placements[key]
+				item.entry.Computer, item.entry.Unreachable, item.entry.RanElsewhere = saved.Computer, saved.Unreachable, saved.RanElsewhere
+			}
 			item.row = tasksRowFor(world, mine, item.entry)
 			put(tasksKeyOf(item.entry), item)
 		}
