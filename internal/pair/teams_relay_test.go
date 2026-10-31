@@ -1,4 +1,4 @@
-package pair
+package pair_test
 
 import (
 	"bytes"
@@ -21,10 +21,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -38,7 +38,20 @@ type relayTeamsRig struct {
 
 // Pair through an actual loopback mailbox, then use the authenticated directory
 // and sealed store on that same relay. Neither side shares a home or vault file.
-func newRelayTeamsRig(t *testing.T) relayTeamsRig {
+func setRelayTeamSharing(t *testing.T, dir, value string) {
+	t.Helper()
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyTeamsShare)
+	if !ok {
+		t.Fatal("missing sharing setting")
+	}
+	if err := row.Apply(value); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newRelayTeamsRig(t *testing.T) relayTeamsRig { return relayTeamsRigSharing(t, true) }
+
+func relayTeamsRigSharing(t *testing.T, share bool) relayTeamsRig {
 	t.Helper()
 	celltest.Available(t)
 	t.Setenv("HOME", t.TempDir())
@@ -89,20 +102,23 @@ func newRelayTeamsRig(t *testing.T) relayTeamsRig {
 	t.Cleanup(server.Close)
 	t.Setenv(syncsetup.URLVar, server.URL)
 	t.Setenv(syncsetup.IntervalVar, "")
-	route := Mailbox{Box: pairbox.NewHTTP(server.URL, server.Client()), URL: server.URL, Host: "127.0.0.1"}
-	ui := newScreen()
+	route := pair.Mailbox{Box: pairbox.NewHTTP(server.URL, server.Client()), URL: server.URL, Host: "127.0.0.1"}
+	ui := newTeamPairScreen()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, err := Offer(ctx, route, Grant{Identity: own, SyncURL: server.URL}, ui); done <- err }()
+	go func() {
+		_, err := pair.Offer(ctx, route, pair.Grant{Identity: own, SyncURL: server.URL}, ui)
+		done <- err
+	}()
 	code := ui.nextCode(t)
-	if _, err := Join(ctx, route, Joining{Home: bHome, Label: "desktop"}, code.Shown(), newScreen()); err != nil {
+	if _, err := pair.Join(ctx, route, pair.Joining{Home: bHome, Label: "desktop"}, code.Shown(), newTeamPairScreen()); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	// Offer's CLI normally ends solo; the fixture uses the same explicit door.
+	// pair.Offer's CLI normally ends solo; the fixture uses the same explicit door.
 	if err := identity.EndSolo(aHome); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +130,10 @@ func newRelayTeamsRig(t *testing.T) relayTeamsRig {
 		return s
 	}
 	a, b := open(aHome), open(bHome)
+	if share {
+		setRelayTeamSharing(t, aHome, "on")
+		setRelayTeamSharing(t, bHome, "on")
+	}
 	for i, s := range []*syncsetup.Sync{a, b} {
 		if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, []string{"laptop", "desktop"}[i]); err != nil {
 			t.Fatal(err)
@@ -266,69 +286,6 @@ func TestPairedTrafficMirrorsOnceWithoutWritingTheReceivingLog(t *testing.T) {
 	after, _ := os.ReadFile(teams.TrafficPath(r.a.Home, "alpha"))
 	if !bytes.Equal(before, after) {
 		t.Fatal("local bytes changed")
-	}
-}
-
-func TestCrewSeatPinRouteAndProvidersOffFollowPairedComputers(t *testing.T) {
-	r := newRelayTeamsRig(t)
-	// ApplyPreferences is the same guarded profile transaction used by sync;
-	// this fixture avoids requiring a live model catalog to admit a fake pin.
-	changes := map[string]string{config.CrewSeatKey(crewroute.Worker): `"stub/worker"`, config.KeyCrewRouteWorker: `"stub/worker@stub-provider"`, config.KeyCrewProvidersOff: `["off-provider"]`}
-	if err := config.ApplyPreferences(r.a.Home, changes); err != nil {
-		t.Fatal(err)
-	}
-	r.round(t)
-	got, err := config.ReadPreferences(r.b.Home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for key, value := range changes {
-		var actual, wanted any
-		if err := json.Unmarshal([]byte(got[key]), &actual); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal([]byte(value), &wanted); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(actual, wanted) {
-			t.Fatalf("crew setting %s did not travel", key)
-		}
-	}
-}
-
-func TestTeamsReplaceMovesLocalTeamsAsideAndKeepsTraffic(t *testing.T) {
-	home := t.TempDir()
-	if err := teams.Update(home, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "alpha", Name: "local"}}; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	before, _ := os.ReadFile(teams.Path(home))
-	if err := teams.AppendTraffic(home, "alpha", teams.Entry{Kind: teams.KindNote, From: teams.FromYou, To: teams.ToRoom, Text: "keep history"}); err != nil {
-		t.Fatal(err)
-	}
-	traffic, _ := os.ReadFile(teams.TrafficPath(home, "alpha"))
-	if err := os.WriteFile(filepath.Join(home, "teams-sync.ledger"), []byte(`{}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, "teams-traffic-sync.ledger"), []byte(`"2026-01-01T00:00:00Z"`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := replaceState(home, home); err != nil {
-		t.Fatal(err)
-	}
-	aside, _ := filepath.Glob(teams.Path(home) + ".unreadable-*")
-	if len(aside) != 1 {
-		t.Fatal("local teams were not moved aside")
-	}
-	kept, _ := os.ReadFile(aside[0])
-	after, _ := os.ReadFile(teams.TrafficPath(home, "alpha"))
-	if !bytes.Equal(before, kept) || !bytes.Equal(traffic, after) {
-		t.Fatal("replace discarded local history")
-	}
-	if _, err := os.Stat(filepath.Join(home, "teams-traffic-sync.ledger")); !os.IsNotExist(err) {
-		t.Fatal("replace retained Traffic rate clock")
-	}
-	if _, err := os.Stat(filepath.Join(home, "teams-sync.ledger")); !os.IsNotExist(err) {
-		t.Fatal("ledger survived replace")
 	}
 }
 
@@ -647,13 +604,13 @@ func TestUnwritableTrafficMirrorStillSharesChangedPreferences(t *testing.T) {
 	if err := os.MkdirAll(path, 0700); err != nil {
 		t.Fatal(err)
 	}
-	changes := map[string]string{config.KeyCrewRouteWorker: `"fixture-route"`}
+	changes := map[string]string{config.KeyEffort: `"low"`}
 	if err := config.ApplyPreferences(r.a.Home, changes); err != nil {
 		t.Fatal(err)
 	}
 	r.round(t)
 	got, err := config.ReadPreferences(r.b.Home)
-	if err != nil || got[config.KeyCrewRouteWorker] != changes[config.KeyCrewRouteWorker] {
+	if err != nil || got[config.KeyEffort] != changes[config.KeyEffort] {
 		t.Fatal("mirror blocked preference", got, err)
 	}
 	if err := os.Remove(path); err != nil {
@@ -675,13 +632,176 @@ func TestDamagedTeamsStillSharesChangedPreferences(t *testing.T) {
 	if err := os.WriteFile(teams.Path(r.a.Home), []byte("damaged"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	changes := map[string]string{config.KeyCrewRouteWorker: `"fixture-route"`}
+	changes := map[string]string{config.KeyEffort: `"low"`}
 	if err := config.ApplyPreferences(r.a.Home, changes); err != nil {
 		t.Fatal(err)
 	}
 	r.round(t)
 	got, err := config.ReadPreferences(r.b.Home)
-	if err != nil || got[config.KeyCrewRouteWorker] != changes[config.KeyCrewRouteWorker] {
+	if err != nil || got[config.KeyEffort] != changes[config.KeyEffort] {
 		t.Fatal("damaged team blocked unrelated state", got, err)
+	}
+}
+
+// The external-package fixture uses only the public pairing screen contract.
+type teamPairScreen struct{ codes chan *pair.Code }
+
+func newTeamPairScreen() *teamPairScreen                         { return &teamPairScreen{codes: make(chan *pair.Code, 8)} }
+func (s *teamPairScreen) Show(code *pair.Code, _ string)         { s.codes <- code }
+func (*teamPairScreen) Burned()                                  {}
+func (*teamPairScreen) Waiting(string)                           {}
+func (*teamPairScreen) Ask(context.Context, string, string) bool { return true }
+func (s *teamPairScreen) nextCode(t *testing.T) *pair.Code {
+	t.Helper()
+	select {
+	case code := <-s.codes:
+		return code
+	case <-time.After(10 * time.Second):
+		t.Fatal("no pairing code shown")
+		return nil
+	}
+}
+
+func relayTeamVaultValues(t *testing.T, s *syncsetup.Sync) map[string]string {
+	t.Helper()
+	vault, err := keys.Open(s.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, scope := range []string{"home:keys:teams", "home:windows:team-traffic"} {
+		entries, err := vault.Entries(scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			values[scope+"/"+entry.Name] = entry.Value
+		}
+		removed, err := vault.Removed(scope + "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range removed {
+			values["removed/"+id] = ""
+		}
+
+	}
+	return values
+}
+
+func TestTeamSharingNeedsBothLocalSwitchesAndOffRoundsPreserveForeignValues(t *testing.T) {
+	r := relayTeamsRigSharing(t, false)
+	setRelayTeamSharing(t, r.a.Home, "on")
+	relayTeamEdit(t, r.a, func(f *teams.File) { f.Teams = []teams.Team{{ID: "alpha", Name: "from laptop"}} })
+	relayTeamEdit(t, r.b, func(f *teams.File) { f.Teams = []teams.Team{{ID: "private", Name: "desktop only"}} })
+	if err := teams.AppendTraffic(r.a.Home, "alpha", teams.Entry{Kind: teams.KindNote, From: teams.FromYou, To: teams.ToRoom, Text: "from laptop"}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(teams.Path(r.b.Home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.a.SyncState(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	values := relayTeamVaultValues(t, r.a)
+	if len(values) == 0 {
+		t.Fatal("enabled computer published no teams")
+	}
+	r.round(t)
+	after, err := os.ReadFile(teams.Path(r.b.Home))
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("off round changed teams", err)
+	}
+	if got := relayTeamVaultValues(t, r.b); !reflect.DeepEqual(values, got) {
+		t.Fatal("off round changed foreign team values", values, got)
+	}
+	for _, name := range []string{"teams-sync.ledger", "teams-traffic-sync.ledger", "teams/alpha/elsewhere.jsonl"} {
+		if _, err := os.Stat(filepath.Join(r.b.Home, name)); !os.IsNotExist(err) {
+			t.Fatal("off round created team sharing file", name, err)
+		}
+	}
+	// The existing handle already knows this vault. Enabling must restore it
+	// without waiting for an unrelated remote change or a restart.
+	setRelayTeamSharing(t, r.b.Home, "on")
+	r.round(t)
+	f := relayTeamRead(t, r.b)
+	if _, ok := f.Team("alpha"); !ok {
+		t.Fatal("enabling did not receive the existing shared team")
+	}
+	received, err := os.ReadFile(teams.Path(r.b.Home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror, err := os.ReadFile(filepath.Join(r.b.Home, "teams/alpha/elsewhere.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	setRelayTeamSharing(t, r.b.Home, "off")
+	relayTeamEdit(t, r.a, func(f *teams.File) { f.Teams[0].Name = "changed while desktop sharing off" })
+	r.round(t)
+	after, err = os.ReadFile(teams.Path(r.b.Home))
+	if err != nil || !bytes.Equal(received, after) {
+		t.Fatal("disabling changed received teams", err)
+	}
+	afterMirror, err := os.ReadFile(filepath.Join(r.b.Home, "teams/alpha/elsewhere.jsonl"))
+	if err != nil || !bytes.Equal(mirror, afterMirror) {
+		t.Fatal("disabling rewrote mirror", err)
+	}
+}
+
+func TestPairedSharingOffKeepsLocalBytesEmptyTeamVaultAndExistingPolling(t *testing.T) {
+	r := relayTeamsRigSharing(t, false)
+	// Match the existing hosted polling fixture's ordinary preference vault,
+	// so every quiet round includes both its directory and object reads.
+	if err := config.ApplyPreferences(r.a.Home, map[string]string{config.KeyEffort: `"low"`}); err != nil {
+		t.Fatal(err)
+	}
+	relayTeamEdit(t, r.a, func(f *teams.File) {
+		f.Teams = []teams.Team{{ID: "alpha", Name: "local", Members: []teams.Member{{Key: "local-chat", File: "/local/chat", Word: "worker"}}}}
+	})
+	relayTeamEdit(t, r.b, func(f *teams.File) { f.Teams = []teams.Team{{ID: "beta", Name: "private"}} })
+	for _, s := range []*syncsetup.Sync{r.a, r.b} {
+		if err := teams.AppendTraffic(s.Home, relayTeamRead(t, s).Teams[0].ID, teams.Entry{At: time.Unix(11, 0).UTC(), Kind: teams.KindNote, From: teams.FromYou, To: teams.ToRoom, Text: "original bytes"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := map[string]string{}
+	for _, s := range []*syncsetup.Sync{r.a, r.b} {
+		for _, path := range []string{teams.Path(s.Home), teams.TrafficPath(s.Home, relayTeamRead(t, s).Teams[0].ID)} {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before[path] = string(raw)
+		}
+	}
+	r.round(t)
+	start := r.requests.Load()
+	r.round(t)
+	if got := r.requests.Load() - start; got != 8 {
+		t.Fatalf("four unchanged rounds made %d requests, want existing two-per-round polling", got)
+	}
+	for path, want := range before {
+		raw, err := os.ReadFile(path)
+		if err != nil || string(raw) != want {
+			t.Fatal("off round changed local file", path, err)
+		}
+	}
+	for _, s := range []*syncsetup.Sync{r.a, r.b} {
+		if len(relayTeamVaultValues(t, s)) != 0 {
+			t.Fatal("default-off vault contains team values")
+		}
+	}
+	raw, _ := os.ReadFile(teams.Path(r.a.Home))
+	for _, field := range []string{"sync_id", "foreign_start"} {
+		if strings.Contains(string(raw), field) {
+			t.Fatal("new field while sharing off", field)
+		}
+	}
+	traffic, _ := os.ReadFile(teams.TrafficPath(r.a.Home, "alpha"))
+	const golden = "{\"id\":\"000000000001\",\"at\":\"1970-01-01T00:00:11Z\",\"kind\":\"note\",\"from\":\"you\",\"to\":\"room\",\"text\":\"original bytes\"}\n"
+	if string(traffic) != golden {
+		t.Fatalf("local Traffic format changed: %s", traffic)
 	}
 }

@@ -55,7 +55,7 @@ func (s *Sync) TeamComputer(ctx context.Context, member teams.Member) (string, e
 
 func (s *Sync) TeamComputers(ctx context.Context, members []teams.Member) (map[string]string, error) {
 	out := map[string]string{}
-	if Quiet(s.Home) {
+	if !s.teamsSharing() || Quiet(s.Home) {
 		return out, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, teamComputerTimeout)

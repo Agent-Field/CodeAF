@@ -14,7 +14,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -331,6 +333,8 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	t.Setenv("CODEAF_TELEMETRY", "off")
 	t.Setenv("DO_NOT_TRACK", "1")
 	h := newTwoHomes(t)
+	enableSyncTeamSharing(t, h.a.Home)
+	enableSyncTeamSharing(t, h.b.Home)
 	// Land in the same home cell tree that the next profile round discovers.
 	h.rootsB = cell.Dir(h.b.Home)
 	ctx := t.Context()
@@ -560,6 +564,95 @@ func TestLegacyChatsNeverAcquireCellIdentityFromTheDiscoveryIndex(t *testing.T) 
 		values, _ := p.values(f, next)
 		if !reflect.DeepEqual(values, first) {
 			t.Fatal("identities depend on map traversal")
+		}
+	}
+}
+
+func enableSyncTeamSharing(t *testing.T, profile string) {
+	t.Helper()
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSharingOffContinuesTeamMemberWithoutRebindingOrChangingLegacyFiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	t.Setenv("DO_NOT_TRACK", "1")
+	h := newTwoHomes(t)
+	key := teams.ConversationIdentity(transcriptOf(h.cell))
+	for _, s := range []*Sync{h.a, h.b} {
+		if config.TeamsShareAt(s.Home) {
+			t.Fatal("new paired home opted into sharing")
+		}
+		if err := teams.Update(s.Home, func(f *teams.File) error {
+			f.Teams = []teams.Team{{ID: "alpha", Name: "local", Members: []teams.Member{{Key: key, File: transcriptOf(h.cell), Word: "worker"}}}}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := teams.AppendTraffic(s.Home, "alpha", teams.Entry{Kind: teams.KindNote, From: teams.FromYou, To: teams.ToRoom, Text: "local history"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := map[string]string{}
+	for _, s := range []*Sync{h.a, h.b} {
+		for _, path := range []string{teams.Path(s.Home), teams.TrafficPath(s.Home, "alpha")} {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before[path] = string(raw)
+		}
+	}
+	cursor := []byte(`{"read":{"alpha":"000000000007"}}`)
+	if err := os.MkdirAll(filepath.Join(h.cell.Root, ".cell"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.cell.Root, ".cell", "team.json"), cursor, 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := h.openA()
+	a.mustSay("publish with legacy team positions")
+	h.durable(h.cell.ID, h.cell)
+	for range 3 {
+		for _, s := range []*Sync{h.a, h.b} {
+			if err := s.SyncState(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	h.lapse()
+	took, err := h.continuerB().Take(t.Context(), h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carried, err := os.ReadFile(filepath.Join(took.Taken.Cell.Root, ".cell", "team.json"))
+	if err != nil || string(carried) != string(cursor) {
+		t.Fatalf("continuation changed legacy cursor: %s %v", carried, err)
+	}
+	for path, want := range before {
+		raw, err := os.ReadFile(path)
+		if err != nil || string(raw) != want {
+			t.Fatal("sharing-off continuation changed file", path, err)
+		}
+	}
+	for _, s := range []*Sync{h.a, h.b} {
+		vault, err := keys.Open(s.Home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, scope := range []string{"home:keys:teams", "home:windows:team-traffic"} {
+			entries, err := vault.Entries(scope)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("sharing-off continuation carried teams", entries, err)
+			}
+		}
+		for _, path := range []string{filepath.Join(s.Home, "teams-sync.ledger"), teams.TrafficMirrorPath(s.Home, "alpha")} {
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatal("sharing-off continuation created sharing file", path, err)
+			}
 		}
 	}
 }

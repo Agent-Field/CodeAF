@@ -525,7 +525,7 @@ func (p teamKeys) Refresh() error {
 }
 
 func syncedTeams(profile, home, device string, cache *teamIdentityCache) vaultsync.Keyed {
-	return vaultsync.Keys("teams", teamKeys{profile, home, device, cache}, filepath.Join(home, "teams-sync.ledger"))
+	return vaultsync.GuardedKeys("teams", teamKeys{profile, home, device, cache}, filepath.Join(home, "teams-sync.ledger"))
 }
 
 // A writer publishes only its own windows. The complete received set rebuilds

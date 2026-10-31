@@ -30,6 +30,7 @@ func (d *countedTeamDirectory) List(ctx context.Context) (directory.Listing, err
 // into a row of directory requests. Missing files are never remote evidence.
 func TestTeamOwnershipUsesOneShortCachedReadingAndFailureAllowsLocalWork(t *testing.T) {
 	root := t.TempDir()
+	enableSyncTeamSharing(t, root)
 	id, err := identity.Ensure(root)
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +66,7 @@ func TestTeamOwnershipUsesOneShortCachedReadingAndFailureAllowsLocalWork(t *test
 
 func TestTrafficRosterFilterNeverRequestsTheDirectory(t *testing.T) {
 	root := t.TempDir()
+	enableSyncTeamSharing(t, root)
 	id, err := identity.Ensure(root)
 	if err != nil {
 		t.Fatal(err)

@@ -81,10 +81,17 @@ func (s *Sync) SyncState(ctx context.Context) error {
 		return err
 	}
 	return s.withVault(func(v vaultsync.Syncer) error {
+		sharing := s.teamsSharing()
+		if sharing != s.teamsShared {
+			s.stateVaultKnown = false
+			s.teamsShared = sharing
+		}
 		// A continuation may leave only local paths to repair, with identical
 		// portable values and no new vault pointer to pull. Apply those
 		// bindings before capture; a failed repair waits for the next round.
-		teams.SharingError(s.profile(), (teamKeys{s.profile(), s.Home, s.Device.ID(), s.teamsCache}).Refresh())
+		if s.teamsSharing() {
+			teams.SharingError(s.profile(), (teamKeys{s.profile(), s.Home, s.Device.ID(), s.teamsCache}).Refresh())
+		}
 		if err := v.Capture(); err != nil {
 			return err
 		}

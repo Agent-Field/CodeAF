@@ -36,10 +36,14 @@ func replaceState(home, profile string) error {
 			return err
 		}
 	}
-	if _, err := teams.SetAside(profile); err != nil && !os.IsNotExist(err) {
-		return err
+	names := []string{"preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc"}
+	if config.TeamsShareAt(profile) {
+		if _, err := teams.SetAside(profile); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		names = append(names, "teams-sync.ledger", "teams-traffic-sync.ledger")
 	}
-	for _, name := range []string{"teams-sync.ledger", "teams-traffic-sync.ledger", "preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc"} {
+	for _, name := range names {
 		if err := os.Remove(filepath.Join(home, name)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
