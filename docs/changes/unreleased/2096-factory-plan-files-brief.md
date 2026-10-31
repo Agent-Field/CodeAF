@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A factory plan step is told the file-list shape Auto checks, and a plan without one says so plainly
-pr: 0
+pr: 2096
 surface: [engine, docs]
 invalidates:
   - "A plan step was never told the one shape of file list the factory reads (a `Files:` line, then a `- path` line per file), so a plan that named its files in its own words (a numbered \"CHANGE, PER FILE\" list) read as naming none, and under any protected path Auto paused a job that touched nothing protected. Is true now: every step called plan, the shipped one and a pipeline file's own, is told that shape in its brief, carried on or fresh. The parser is unchanged and still reads nothing else."

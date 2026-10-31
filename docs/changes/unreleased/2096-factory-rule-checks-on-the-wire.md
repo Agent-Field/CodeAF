@@ -1,5 +1,6 @@
 ---
 kind: added
+pr: 2096
 title: A job says what the factory's own two checks found
 surface: [engine]
 invalidates:
