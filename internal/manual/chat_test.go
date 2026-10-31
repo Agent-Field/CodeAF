@@ -44,6 +44,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does plain codeaf serve take tasks", "tasks-on-another-computer"},
 		{"when does the model get the computer argument", "tasks-on-another-computer"},
 		{"why did my task run here instead", "tasks-on-another-computer"},
+		{"send a task to my dev box", "a-dev-box-on-your-own-railway"},
 		{"can this conversation start other tasks while one runs on another computer", "tasks-on-another-computer"},
 		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
 		{"can I run codeaf on my own server", "a-dev-box-on-your-own-railway"},
