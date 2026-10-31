@@ -402,10 +402,14 @@ type Job struct {
 	// it also reaches AutonomyWhy but in Manual nothing else names it.
 	StartRules *factory.StartRules `json:"start_rules,omitempty"`
 	RuleHold   string              `json:"rule_hold,omitempty"`
-	AssignedTo string              `json:"assigned_to,omitempty"`
-	Step       *StepAt             `json:"step,omitempty"`
-	Steps      []Step              `json:"steps"`
-	Claims     []Claim             `json:"claims,omitempty"`
+	// RuleChecks is what the factory's own two checks found on the job
+	// (factory.RuleChecks), for its two ◆ rows; absent before either was
+	// judged.
+	RuleChecks *RuleChecks `json:"rule_checks,omitempty"`
+	AssignedTo string      `json:"assigned_to,omitempty"`
+	Step       *StepAt     `json:"step,omitempty"`
+	Steps      []Step      `json:"steps"`
+	Claims     []Claim     `json:"claims,omitempty"`
 	// PlannedFiles are the paths the current plan's explicit Files declaration
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
@@ -792,6 +796,19 @@ type PRReview struct {
 	By    string    `json:"by"`
 	State string    `json:"state"`
 	At    time.Time `json:"at"`
+}
+
+// RuleChecks is what the factory's own two checks found on a job, each
+// "passed" (nothing a rule guards, the job went on by itself) or "asked" (a
+// rule made it wait for a person), absent when not judged. Start is the start
+// rules', judged only when the factory started the job on its own; Publish is
+// the change's, judged when its run landed, on the commit PublishHead: it
+// speaks for the job's change only while that is still head_commit, which the
+// client compares (the wire sends the finding as kept, stale or not).
+type RuleChecks struct {
+	Start       string `json:"start,omitempty"`
+	Publish     string `json:"publish,omitempty"`
+	PublishHead string `json:"publish_head,omitempty"`
 }
 
 // PRChecks is the check-run summary. A zero count is omitted.

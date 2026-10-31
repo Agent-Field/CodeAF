@@ -101,6 +101,10 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 				if started != 1 || it.State != factory.StateQueued || len(events) != 1 || events[0].Kind != record.AutoStarted {
 					t.Fatalf("started %d item %+v events %+v", started, it, events)
 				}
+				// The start check passed, and the job says so for its ◆ row.
+				if it.RuleChecks == nil || it.RuleChecks.Start != factory.CheckPassed {
+					t.Fatalf("start check %+v", it.RuleChecks)
+				}
 			case tc.reason != "":
 				if started != 0 || it.State != factory.StateNeedsYou || it.QKind != factory.QKindAskFirst || !strings.Contains(it.Question, "Approval needed: start") || !strings.Contains(it.Question, tc.reason) || len(events) != 1 || events[0].Kind != record.AskedFirst {
 					t.Fatalf("item %+v events %+v", it, events)
@@ -108,9 +112,15 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 				if api.FromItem(it).Approval.Matched != it.AskedFirstReason {
 					t.Fatal("matched rule lost")
 				}
+				if c := api.FromItem(it).RuleChecks; c == nil || c.Start != factory.CheckAsked {
+					t.Fatalf("start check %+v", c)
+				}
 			default:
 				if started != 0 || it.State != factory.StateNew || len(events) != 0 {
 					t.Fatalf("no automatic start %+v %+v", it, events)
+				}
+				if it.RuleChecks != nil {
+					t.Fatalf("a job nobody started was judged: %+v", it.RuleChecks)
 				}
 			}
 		})

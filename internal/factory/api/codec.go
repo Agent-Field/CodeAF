@@ -145,6 +145,7 @@ func FromItem(it factory.Item) Job {
 		PipelineDecided:  it.PipelineDecided,
 		StartRules:       cloneStartRules(it.StartRules),
 		RuleHold:         it.RuleHold,
+		RuleChecks:       fromRuleChecks(it.RuleChecks),
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
 		PlannedFiles:     factory.PlanFilesOf(it),
@@ -476,6 +477,7 @@ func ToItem(j Job) factory.Item {
 	it.PipelineDecided = j.PipelineDecided
 	it.StartRules = cloneStartRules(j.StartRules)
 	it.RuleHold = j.RuleHold
+	it.RuleChecks = toRuleChecks(j.RuleChecks)
 	it.PublishError = j.PublishError
 	if a := j.Ask; a != nil && a.Issue == nil {
 		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
@@ -1108,4 +1110,18 @@ func cloneStartRules(r *factory.StartRules) *factory.StartRules {
 		return nil
 	}
 	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread}
+}
+
+func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {
+	if c == nil {
+		return nil
+	}
+	return &RuleChecks{Start: c.Start, Publish: c.Publish, PublishHead: c.PublishHead}
+}
+
+func toRuleChecks(c *RuleChecks) *factory.RuleChecks {
+	if c == nil {
+		return nil
+	}
+	return &factory.RuleChecks{Start: c.Start, Publish: c.Publish, PublishHead: c.PublishHead}
 }

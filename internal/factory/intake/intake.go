@@ -142,6 +142,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 			}
 			cur.State, cur.QKind = factory.StateNeedsYou, factory.QKindAskFirst
 			cur.AskedFirstReason = reason
+			cur.SetStartCheck(factory.CheckAsked)
 			cur.Question = "Approval needed: start · " + reason
 			return nil
 		})
@@ -158,6 +159,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 			// reads this one, not a copy saved in between.
 			cur.DecidePipeline(f.Copy, time.Now())
 			own(cur)
+			cur.SetStartCheck(factory.CheckPassed)
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
