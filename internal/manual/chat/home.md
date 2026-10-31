@@ -1856,7 +1856,7 @@ advertised. (Until 2026-09-17 these words were the right end of the rule above t
 **It stays when a tip is showing.** A conversation's tip covers the project at the keys
 row's right end, never the keys. Until 2026-09-24 a tip took the whole row and the
 door went with it. One of the tips is about the door itself:
-`space space takes you back to home`.
+`space space brings you back to home`.
 
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
