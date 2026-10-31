@@ -50,6 +50,8 @@ decides which combinations are accepted.
 | `agents.debug` | `in.IDParams` | `ConversationDebug` |
 | `agents.delete` | `{confirm, id}` | `Empty` |
 | `agents.entries` | `in.EntriesParams` | `EntriesResult` |
+| `agents.errand` | `in.ErrandParams` | `Errand` |
+| `agents.errand.models` | `in.ErrandModelsParams` | `ErrandModels` |
 | `agents.idle` | `{days}` | `IDsResult` |
 | `agents.labels` | `{ids}` | `AgentLabels` |
 | `agents.list` | `in.AgentsListParams` | `AgentsResult` |
@@ -861,3 +863,69 @@ mark is read up to the moment the engine first kept unread (`unread_from` in
 the state file), so on upgrade every agent starts read, and a new agent starts
 read because it has said nothing. Engines that serve it announce
 `agents.mark_seen` in `hello.features`.
+
+## Errands (`agents.errand`)
+
+An errand is one short, detached, metered model call with the app's own prompt
+on a named agent's door. It is never a turn: no tools, no journal entry, no
+message in the conversation, no event besides the usual spend receipts. It uses
+the agent's admission, provider and keys, one-model mode, job budget and
+lifetime, and its usage is booked on the agent's auxiliary ledger under
+`purpose`. The engine never branches on `purpose`; it is a ledger label and the
+key of the one-in-flight slot. `agents.suggest_reply` runs on the same core with
+codeaf's own fixed prompt (purpose `reply_suggestion`, the conversation's model as
+the naming role's floor; every answer the model gave is cached, a failed request is
+asked again).
+
+The hello carries features `agents.errand` and `agents.errand.models` and an
+`errand` object with the limits: `{v, roles[], model, efforts[], json,
+json_schema, images, max_input_bytes, max_messages, max_schema_bytes,
+max_cache_key, max_tokens, default_tokens, default_deadline_ms,
+max_deadline_ms}`. Read the limits from there, never from this page. `images` is
+false in v1; image parts will be added behind it.
+
+Request (`v` is 1; absent means 1; a higher `v` is `bad_params`; unknown fields
+are ignored):
+
+- `agent` (required): whose door, ledger and job budget pay. The agent must be
+  held by this engine (`agents.open` first); otherwise `reason: "not_open"`.
+- `purpose` (required): `^[a-z][a-z0-9_]{1,31}$`.
+- Route: `role` (any name in `caps.roles`; default `title`, the naming role,
+  first rung only, the conversation's model as floor) or `model` (an explicit
+  id). A model must be one `agents.errand.models` lists; under one-model mode
+  only the agent's own model is allowed. A role or model outside that is
+  `model_not_allowed` with a sentence naming why. `effort` is `low`, `medium`,
+  `high`, `xhigh` or `max` and is sent only where the route accepts it.
+- `system` text and `messages[]` of `{role: "user" | "assistant", text}`, the
+  last one the user's, 1 to `max_messages`, together at most `max_input_bytes`
+  of UTF-8.
+- Output: text by default; `json: true` asks for one JSON object and
+  `json_schema` (an object, at most `max_schema_bytes`) for one of that schema,
+  sent unstrict, and dropped by the provider for a route that refuses it. The
+  engine checks only that the answer is one JSON object (a single code fence is
+  unwrapped); anything else is `reason: "invalid_json"`.
+- `max_tokens` (default `default_tokens`) and `deadline_ms` (default 10000) are
+  clamped into range, not refused. `cache` (at most `max_cache_key` bytes) reuses
+  the answer to an identical ask with the same key, `cached: true`; 32 answers
+  per agent are kept, unusable answers included; a failure or refusal is not
+  kept and is asked again.
+
+Response: `{text, model, provider, role, usage: {in, out, cost_usd?}, ms,
+cached?}`. `model` is the model that answered, as the provider named it. When
+`text` is `""`, `reason` says why: `closed`, `stopped`, `over_budget`, `busy`,
+`deadline`, `cancelled`, `model_failed`, `invalid_json`, `not_open` or
+`unavailable` (an owner without the errand door). One errand per (agent,
+purpose) runs at a time; a second answers `busy` at once and never queues.
+Closing or stopping the agent, or its job running out of money, cancels one in
+flight.
+
+`agents.errand.models {agent?}` answers `{caps, one_model?, roles: [{role,
+model, provider?, effort?, json?}], models: [{id, provider, provider_name?,
+json?, json_schema?, price_in_per_m?, price_out_per_m?, context_length?}]}`
+from this engine's live configuration (the same rows and catalog facts as `models.list`): `roles` is where
+each role's errand goes now on that agent (or on the profile, with no agent),
+`models` is every model an errand may name, and `json`/`json_schema` are absent
+when no catalog knows. Under one-model mode `one_model` names the only model.
+
+Remote owners answer errands over their own connection when they advertise it;
+older ones answer `unavailable`.

@@ -1430,6 +1430,8 @@ type Welcome struct {
 	// Organize's folder pass alone.
 	TeamAsk         bool `json:"teamAsk,omitempty"`
 	ReplySuggestion bool `json:"replySuggestion,omitempty"`
+	// Errand says this engine runs [methodErrand] for the agent it has open.
+	Errand bool `json:"errand,omitempty"`
 
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from

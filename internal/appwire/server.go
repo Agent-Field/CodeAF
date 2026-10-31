@@ -210,6 +210,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withCrewsOrganizeFeature(hello, engine)
 	hello = withReplySuggestionFeature(hello, engine)
 	hello = withUnreadFeature(hello, engine)
+	hello = withErrandFeature(hello, engine)
 	hello = withProcessFeatures(hello, engine)
 	hello = withProcessActionFeature(hello, engine)
 	hello = withMemoryAppliesFeature(hello, engine)
