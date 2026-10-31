@@ -330,8 +330,7 @@ ten minutes). It asks every few seconds while the list is changing and about onc
 while it is not. Each row's age is counted from its last saved turn, so it keeps growing
 between refreshes.
 
-If the other machines cannot be reached, the last list stays on screen and the line
-`other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
+a read still waiting at five seconds keeps the last list and says `waiting for <host>; still checking`. it continues for up to 25 seconds. a deadline says `<host> did not answer in 25s; still trying`; a failed connection says `<host> is unreachable; still trying`. background retries continue, and a successful answer clears the line. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
@@ -359,9 +358,8 @@ When continuing a chat from another paired computer:
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
   branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
-- If another machine took an `offline` chat first, the row goes back to `running on <device>` with one
-  line saying another device continued it first. Nothing was changed.
-- If the other machines cannot be reached, enter says `other machines unreachable` and asks
+- If another machine took an `offline` chat first, the row goes back to `running on <device>` with a card saying `another device continued this chat first`, `1 retry` and `2 leave it there`. if the same computer picked it up again, the card instead says `<holder> picked this chat up again; press enter to continue it here` and asks for fresh confirmation.
+- if the service cannot be reached, enter names its host and says it is still trying, and asks
   nothing: no chat can be taken without them.
 - With no way to continue set up, an offline row has no `continue here`: enter says its sentence.
 
@@ -525,8 +523,7 @@ them`. Opening separately opens its own chat and workspace copy, with the kept t
 their files; the main chat stays as it is. **Discard archives** the branch: it leaves this list
 and is not deleted. **Merge is
 not offered on this build**. The row says
-`<K> turns from <device>: open separately / discard`. If the other
-machines cannot be reached, enter says `other machines unreachable` and does nothing.
+`<K> turns from <device>: open separately / discard`. if the service cannot be reached, enter names its host and says it is still trying, and does nothing.
 
 ## Why do I see the same chat twice on Home — the same chat twice on Home, one row per chat id and collapsed branch copies
 
@@ -2725,6 +2722,12 @@ from a previous visit cannot replace the current visit's selection or draft.
 After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
 If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
+
+## my chosen chat opens while a startup chat is still arriving
+
+if bare startup is already continuing a released chat, confirming a different Home row or using `alt+c` chooses the chat that opens next. Home says `continuing <Y> next; <X> is still on its way here`, using the same chat titles as the cards. the automatic move settles and is let go before your confirmed move begins. its files and kept work remain intact, and it never opens over your selection. `esc` cancels the waiting choice; the automatic chat still settles and is let go.
+
+confirming the arriving chat itself joins the existing move. opening another local chat or starting a new chat also takes precedence over the automatic arrival. moving the cursor or opening Home alone does not choose a different chat. input before the startup safety check answers still cancels that automatic choice. a move you explicitly started retains the busy sentence `a chat is already continuing here; wait for it to open` for another explicit pick.
 
 ## Empty untitled chats from your other devices — rows before the first saved turn
 

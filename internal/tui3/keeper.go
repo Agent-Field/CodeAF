@@ -1083,6 +1083,9 @@ func (a *app) holding(file string) bool {
 // conversation in the keeper is not something to open. It is something to look
 // at again.
 func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
+	if !a.homeTakeOpening {
+		a.abandonAutomaticTake()
+	}
 	if a.startingChat() {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()

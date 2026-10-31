@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // TakeOptions is what the surface tells the take side about this machine.
@@ -151,7 +153,30 @@ func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error
 	return c.take(ctx, id, nil, true)
 }
 
-func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (Continued, error) {
+func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (out Continued, err error) {
+	// Measure one attempt on its own copy: observers must not leak into another
+	// continue, and diagnostics must survive both early refusal and late failure.
+	started := time.Now()
+	phases := map[string]time.Duration{}
+	observed := *c
+	report := c.opt.OnPhase
+	observed.opt.OnPhase = func(p handoff.Phase) {
+		if !p.Ended.IsZero() {
+			phases[p.Name] += p.Ended.Sub(p.Started)
+		}
+		if report != nil {
+			report(p)
+		}
+	}
+	c = &observed
+	defer func() {
+		outcome := "done"
+		if err != nil {
+			outcome = "failed"
+		}
+		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s total=%s outcome=%s", id,
+			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)
+	}()
 	root := c.opt.RootFor(id)
 	defer handoff.Arrive(root)()
 	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
@@ -160,7 +185,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, err
 	}
 	localCapture()
+	directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
 	view, err := c.sync.Dir.Cell(ctx, id)
+	directoryRead()
 	if err != nil {
 		return Continued{}, err
 	}
@@ -197,7 +224,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
 	}
+	directoryRead = handoff.Trace(c.opt.OnPhase, "directory")
 	from := c.sync.deviceName(lease.Device)
+	directoryRead()
 	if lease.Device == c.sync.Device.ID() {
 		from = ""
 	}
@@ -205,7 +234,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	c.retireHolder(ctx, id)
 	retired()
 	sc := c.sync.scope(id)
-	defer sc.Settle()
+	defer func() {
+		defer handoff.Trace(c.opt.OnPhase, "filing")()
+		sc.Settle()
+	}()
 	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
 	if project, here := projectOf(root); here {
 		intendedPrimary = project
@@ -265,6 +297,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err != nil {
 		return Continued{}, err
 	}
+	defer handoff.Trace(c.opt.OnPhase, "filing")()
 	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
 	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
 	if err != nil {
@@ -320,7 +353,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			}
 		}
 	}
-	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
+	out = Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
@@ -764,4 +797,33 @@ func (s *Sync) Driving(ctx context.Context, c cell.Cell) (*cellsync.Driving, err
 		d.Fence, d.Head = v.Cell.Lease.Fence, v.Cell.Head
 	}
 	return d, nil
+}
+
+// ReleaseUnused gives up only the unused acquisition returned to this window.
+// The directory checks the fence, so a later writer's ownership is never released.
+func (c *Continuer) ReleaseUnused(ctx context.Context, id string, fence uint64) error {
+	// Match the close path's bounded retry: a transient refusal must not strand
+	// an otherwise successful automatic acquisition without an open conversation.
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := c.sync.Dir.Release(ctx, id, fence)
+		if errors.Is(err, directory.ErrFenceStale) {
+			return nil
+		}
+		if !errors.Is(err, directory.ErrUnreachable) && !errors.Is(err, wireauth.ErrUnavailable) {
+			return err
+		}
+		if _, bounded := ctx.Deadline(); !bounded {
+			return err
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

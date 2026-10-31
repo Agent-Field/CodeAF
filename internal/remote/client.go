@@ -2686,3 +2686,7 @@ func (c *Client) DeleteTask(file, id string) error {
 	_, err := c.call(nil, MethodPlacesTaskDelete, TaskDeleteArgs{File: file, ID: id})
 	return err
 }
+
+// WriterChanges lets an off-loop send wait for the writer's next pushed state.
+// It uses existing facts and adds neither a request nor a wire field.
+func (a *Agent) WriterChanges() <-chan struct{} { return a.c.facts.changes() }

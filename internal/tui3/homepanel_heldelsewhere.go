@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -45,30 +46,36 @@ func (a *app) heldElsewhere() (chatlist.Row, bool) {
 // tray identify what was waiting, so an answer cannot send words the person
 // changed or move a message into a different conversation.
 type ownershipReadMsg struct {
-	file, draft     string
-	chips           []chip
-	reading         homeMachinesMsg
-	resume          func() tea.Cmd
-	first           *composerState
-	head, leaseCell string
-	fence           uint64
-	proof           bool
-	local           bool
+	file, draft string
+	host        string
+	chips       []chip
+	pastes      []pasteChip
+	// A local startup timeout is not a failed Home directory listing.
+	writerWaitFailed bool
+	reading          homeMachinesMsg
+	resume           func() tea.Cmd
+	first            *composerState
+	head, leaseCell  string
+	fence            uint64
+	proof            bool
+	local            bool
 	// notHeld prevents a saved receipt from reviving a displaced writer offline.
-	notHeld bool
+	notHeld       bool
+	writerStopped bool
 }
 
 type sendHold struct {
-	fence   uint64
-	blocked bool
+	// awaitingWriter belongs only to this window's successful move, never to a listing receipt.
+	awaitingWriter bool
+	fence          uint64
+	blocked        bool
 	// seen marks a block that only news of another holder set: a listing row
 	// or the displaced notice. A fresh reading made for this send that finds
 	// the chat held here again lifts it, because that reading is newer than
 	// the news; a block a take decided, or a failed take, never lifts that way.
 	seen bool
-	// failed marks a hold whose take did not finish, so its session is a
-	// copy this window may not keep using even if a later take finds the
-	// chat already here.
+	// failed prevents reusing a stopped writer or an unfinished take, even
+	// when a later reading finds a complete chat held by this computer.
 	failed bool
 }
 
@@ -93,9 +100,12 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 	src, file, draft, agent := a.machines, a.file, a.input.String(), a.agent
 	// A read that only ran out of time does not show the connection is down,
 	// so the next Enter asks again rather than replaying the cached failure.
-	offline := a.machineRead.down && a.machineRead.unavailableWord() != chatlist.ReadTimedOut
-	blocked := a.machineRead.sendHolds[filepath.Base(session.DirOf(file))].blocked
+	offline := a.machineRead.down && !readTimedOut(a.machineRead.err)
+	hold := a.machineRead.sendHolds[filepath.Base(session.DirOf(file))]
+	blocked := hold.blocked
+	host := a.relayHost()
 	chips := slices.Clone(a.chips)
+	pastes := slices.Clone(a.pastes)
 	var first *composerState
 	if a.conversationPreview != nil && !a.conversationOpening {
 		a.conversationPreview.ownershipPending = true
@@ -103,21 +113,40 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		first = &composer
 	}
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
+		readWithin := sendOwnershipTimeout
+		ctx, cancel := context.WithTimeout(context.Background(), readWithin)
 		defer cancel()
 		var rows []chatlist.Row
 		var version uint64
 		var local bool
 		var err error
+		writerStopped := false
+		writerWaitFailed := false
 		holding, notHeld := false, false
 		if writer, ok := agent.(renewalReader); ok {
 			_, _, holding = writer.RenewalStatus()
+			if hold.awaitingWriter && !blocked && !holding {
+				// A new writer's installation is separate from taking ownership. Waiting
+				// grants no authority; its live status and receipt must still agree below.
+				cancel()
+				readWithin = writerStartTimeout
+				ctx, cancel = context.WithTimeout(context.Background(), readWithin)
+				defer cancel()
+				holding, err = awaitSendWriter(ctx, writer)
+				writerWaitFailed = err != nil
+			}
 			notHeld = !holding
+			if notHeld {
+				_, period, _ := writer.RenewalStatus()
+				writerStopped = period > 0
+			}
 		}
 		if blocked {
 			holding, notHeld = false, true
 		}
-		if scoped, ok := src.(interface {
+		if err != nil {
+			// An expired startup wait keeps the original submission unsent.
+		} else if scoped, ok := src.(interface {
 			RowsForChatSend(context.Context, string, bool, bool) ([]chatlist.Row, uint64, bool, error)
 		}); ok {
 			rows, version, local, err = scoped.RowsForChatSend(ctx, file, offline, holding)
@@ -126,7 +155,7 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		} else {
 			rows, version, err = chatlist.RowsForSend(ctx, src)
 		}
-		msg := ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, notHeld: notHeld, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
+		msg := ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, notHeld: notHeld, reading: homeMachinesMsg{rows: rows, version: version, err: err, readWithin: readWithin}, host: host, pastes: pastes, writerWaitFailed: writerWaitFailed, writerStopped: writerStopped}
 		id := filepath.Base(session.DirOf(file))
 		if local, ok := src.(sendLeaseSource); ok {
 			msg.proof = true
@@ -181,7 +210,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		next := a.liveComposer()
 		a.putComposer(*msg.first)
 		var reading tea.Cmd
-		if !msg.local || msg.reading.err != nil {
+		if !msg.writerWaitFailed && (!msg.local || msg.reading.err != nil) {
 			reading = a.recordMachines(msg.reading)
 		}
 		cmd := a.resumeOwnedSend(msg)
@@ -196,12 +225,12 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		}
 		return tea.Batch(reading, cmd)
 	}
-	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) {
+	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) || !slices.Equal(a.pastes, msg.pastes) {
 		a.note("draft changed before sending; press enter to send your current words")
 		return nil
 	}
 	var reading tea.Cmd
-	if !msg.local || msg.reading.err != nil {
+	if !msg.writerWaitFailed && (!msg.local || msg.reading.err != nil) {
 		reading = a.recordMachines(msg.reading)
 	}
 	return tea.Batch(reading, a.resumeOwnedSend(msg))
@@ -226,6 +255,10 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		a.note(chatlist.Removed)
 		return nil
 	}
+	if msg.writerWaitFailed {
+		a.note(messageKept(msg.host))
+		return nil
+	}
 	if msg.reading.err != nil {
 		// AN UNREACHABLE SERVICE DOES NOT TAKE A HELD CHAT AWAY. The window
 		// keeps working on a chat whose hold it recorded and last saw as its
@@ -235,7 +268,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if a.offlineSendHeld(id, remote, msg) {
 			return msg.resume()
 		}
-		a.note(a.machineRead.unavailableWord())
+		a.note(messageKept(msg.host))
 		return nil
 	}
 	for _, row := range msg.reading.rows {
@@ -247,7 +280,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if msg.proof {
 			fence = msg.fence
 		}
-		if row.Status == chatlist.Here && row.Fence == fence && (!held.blocked || held.seen && row.Mine && !held.failed) {
+		if row.Status == chatlist.Here && row.Fence == fence && !(msg.notHeld && (held.awaitingWriter || msg.writerStopped) && !msg.local) && (!held.blocked || held.seen && row.Mine && !held.failed) {
 			if held.blocked {
 				held.blocked, held.seen = false, false
 				a.machineRead.sendHolds[id] = held
@@ -264,7 +297,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
 			return nil
 		}
-		a.machineRead.sendHolds[id] = sendHold{fence: fence, blocked: true}
+		a.machineRead.sendHolds[id] = sendHold{fence: fence, blocked: true, failed: msg.writerStopped}
 		cmd := a.openHome()
 		return tea.Batch(cmd, a.askContinue(row))
 	}
@@ -321,7 +354,7 @@ func (a *app) rememberSendHolds(msg homeMachinesMsg) {
 		// The directory can show another local window's fence. Only the
 		// publishing receipt lets this window follow its own drive's new hold.
 		if !known || (msg.holdCell == row.Cell && msg.holdFence != 0 && msg.holdFence == row.Fence) {
-			a.machineRead.sendHolds[row.Cell] = sendHold{fence: row.Fence}
+			a.machineRead.sendHolds[row.Cell] = sendHold{fence: row.Fence, awaitingWriter: held.awaitingWriter}
 		}
 	}
 }
@@ -359,6 +392,12 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 			a.machineRead.sendHolds[current] = returned
 		}
 	}
+	return a.continueFailure(msg)
+}
+
+// continueFailure describes an error without retiring local authority. A failed
+// safety reading has not started a take and must not cancel one already running.
+func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
@@ -382,5 +421,47 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 	default:
 		log.Printf("continue chat %s: %v", msg.row.Cell, msg.err)
 		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try continue here again."
+	}
+}
+
+// awaitSendWriter waits only for an uninstalled writer. A displaced writer has
+// a renewal period already and cannot regain authority from an earlier receipt.
+func awaitSendWriter(ctx context.Context, writer renewalReader) (bool, error) {
+	var poll *time.Ticker
+	defer func() {
+		if poll != nil {
+			poll.Stop()
+		}
+	}()
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		var changed <-chan struct{}
+		if source, ok := writer.(interface{ WriterChanges() <-chan struct{} }); ok {
+			changed = source.WriterChanges()
+		} else if source, ok := writer.(interface{ RenewalChanges() <-chan struct{} }); ok {
+			changed = source.RenewalChanges()
+		}
+		_, period, holding := writer.RenewalStatus()
+		if holding || period > 0 {
+			return holding, nil
+		}
+		if changed == nil {
+			if poll == nil {
+				poll = time.NewTicker(100 * time.Millisecond)
+			}
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-poll.C:
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-changed:
+			}
+		}
 	}
 }

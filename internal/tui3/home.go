@@ -3097,6 +3097,19 @@ func (a *app) homeEnter() tea.Cmd {
 // cursor" is two answers to whether a project somewhere else may be opened, and
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
+	if !a.homeTakeOpening {
+		a.continueChecking = nil
+	}
+	if !a.homeTakeOpening && a.homeTakeAutomatic && (!a.homeTakeAbandoned || a.homeTakeResult == nil) && homeSessionID(line.row) == a.homeTaking {
+		// A local row can still be the old copy of the arriving chat. Joining the
+		// move avoids opening that copy before the replacement has settled.
+		a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
+		a.home.say(continuing, "")
+		return nil
+	}
+	if !a.homeTakeOpening {
+		a.abandonAutomaticTake()
+	}
 	if line.row.DeletionPending {
 		a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
 		return nil
@@ -3433,6 +3446,7 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	a.abandonAutomaticTake()
 	a.teamViewSet("")
 	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not
 	// run is refused the same way whichever road would have opened it.
