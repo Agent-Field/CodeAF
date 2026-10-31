@@ -271,15 +271,16 @@ func (e *Engine) follow(ctx context.Context, spec session.RunSpec, record sessio
 	if final.Result == nil && final.Outcome != "interrupted" {
 		return session.RunSummary{Outcome: "incomplete", Result: final.Report + "\nThe result could not be brought from " + e.Computer.Name + "; the copy here was kept", USD: record.USD, KeepCopy: true, NeedsDecision: true}
 	}
-	if final.Result != nil && !record.Restored {
-		apply := func() error {
-			return taskdoor.ReceiveResult(ctx, e.Copies, *final.Result, spec.Workspace, record.Fingerprint)
-		}
-		var err error
-		if spec.WithRemoteCopy != nil {
-			err = spec.WithRemoteCopy(apply)
-		} else {
-			err = apply()
+	if final.Result != nil && !record.Restored && final.Outcome != "interrupted" {
+		prepared, err := taskdoor.PrepareResult(ctx, e.Copies, *final.Result, spec.Workspace, record.Fingerprint)
+		if err == nil {
+			defer prepared.Close()
+			apply := func() error { return prepared.Install(ctx) }
+			if spec.WithRemoteCopy != nil {
+				err = spec.WithRemoteCopy(apply)
+			} else {
+				err = apply()
+			}
 		}
 		if err != nil {
 			summary := failed(err)
@@ -296,6 +297,9 @@ func (e *Engine) follow(ctx context.Context, spec session.RunSpec, record sessio
 	}
 
 	outcome := final.Outcome
+	if outcome == "interrupted" && final.Result != nil {
+		final.Report += "\nThe partial work stayed on the other computer; run it here starts from the sent copy."
+	}
 	switch outcome {
 	case "done":
 		_ = spec.Store.CompleteRoot(final.Report)

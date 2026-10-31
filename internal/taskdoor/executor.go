@@ -268,6 +268,7 @@ func (e *ChildExecutor) follow(ctx context.Context, a *Attempt, j Journal, done 
 	}
 	beat := e.clock.NewTicker(childPoll)
 	defer beat.Stop()
+	var observedExit *int
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -275,16 +276,16 @@ func (e *ChildExecutor) follow(ctx context.Context, a *Attempt, j Journal, done 
 		if err := follower.poll(j); err != nil {
 			return err
 		}
-		var code *int
-		ended := false
-		if done != nil {
+		code := observedExit
+		ended := code != nil
+		if done != nil && !ended {
 			select {
 			case exit := <-done:
 				code = &exit
 				ended = true
 			default:
 			}
-		} else {
+		} else if done == nil {
 			ended = !e.alive(a)
 			code = a.State().ExitCode
 		}
@@ -307,6 +308,9 @@ func (e *ChildExecutor) follow(ctx context.Context, a *Attempt, j Journal, done 
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-beat.C():
+		case exit := <-done:
+			// A reaped child must report its receipt without waiting for another poll tick.
+			observedExit = &exit
 		}
 	}
 }

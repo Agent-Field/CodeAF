@@ -38,6 +38,9 @@ type CopyDeps struct {
 	Engine   cellstore.Engine
 	Store    blobstore.Store
 	Measure  func(CopyMeasure)
+	// BeforeInstall observes the prepared result before filesystem replacement.
+	// Tests use this boundary to reproduce an editor racing installation.
+	BeforeInstall func()
 }
 
 type CopyMeasure struct {
@@ -196,99 +199,168 @@ func ReceiveCopy(ctx context.Context, d CopyDeps, in Input, dest string) error {
 }
 
 func receiveCopy(ctx context.Context, d CopyDeps, in Head, dest, fingerprint string) error {
-	path, err := allowedCopy(dest)
+	prepared, err := prepareCopy(ctx, d, in, dest, fingerprint)
 	if err != nil {
 		return err
+	}
+	defer prepared.Close()
+	return prepared.Install(ctx)
+}
+
+// PreparedResult owns fetched files and their cell lock until installation or discard.
+// Preparing never replaces the origin copy, so an abandonment can still fence installation.
+type PreparedResult struct {
+	deps                                         CopyDeps
+	path, stage, prepared, previous, fingerprint string
+	measure                                      CopyMeasure
+	restoreStarted                               time.Time
+	unlock                                       func()
+	keep                                         bool
+}
+
+func prepareCopy(ctx context.Context, d CopyDeps, in Head, dest, fingerprint string) (_ *PreparedResult, err error) {
+	path, err := allowedCopy(dest)
+	if err != nil {
+		return nil, err
 	}
 	c, err := d.cell(in.Cell)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if raw, err := hex.DecodeString(in.Head); err != nil || len(raw) != sha256.Size {
-		return errors.New("the task copy's head is not readable")
+		return nil, errors.New("the task copy's head is not readable")
 	}
 	unlock, err := d.lock(ctx, c.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer unlock()
+	result := &PreparedResult{deps: d, path: path, fingerprint: fingerprint, unlock: unlock}
+	defer func() {
+		if err != nil {
+			result.Close()
+		}
+	}()
 	if fingerprint != "" {
 		if err := unchangedCopy(ctx, path, fingerprint); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := os.MkdirAll(c.Root, 0700); err != nil {
-		return err
+		return nil, err
 	}
 	start := time.Now()
 	syncer := d.sync()
 	fetcher := cellsync.Fetcher{Engine: syncer, Store: d.Store, Inbox: syncer.Inbox}
 	if err := fetcher.Complete(ctx, c, in.Head); err != nil {
-		return err
+		return nil, err
 	}
-	m := CopyMeasure{Fetch: time.Since(start)}
-	start = time.Now()
+	result.measure.Fetch = time.Since(start)
+	result.restoreStarted = time.Now()
 	if err := syncer.Materialize(ctx, c, in.Head); err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
+		return nil, err
 	}
-	stage, err := os.MkdirTemp(filepath.Dir(path), ".task-arrival-")
+	result.stage, err = os.MkdirTemp(filepath.Dir(path), ".task-arrival-")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	cleanStage := true
-	defer func() {
-		if cleanStage {
-			_ = os.RemoveAll(stage)
+	result.prepared = filepath.Join(result.stage, "copy")
+	if err := taskcopy.RestoreCopy(filepath.Join(c.Root, copyCarrier), result.prepared); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if fingerprint != "" {
+		if err := taskcopy.ImportCopyHistory(path, result.prepared); err != nil {
+			return nil, err
 		}
-	}()
-	prepared := filepath.Join(stage, "copy")
-	if err := taskcopy.RestoreCopy(filepath.Join(c.Root, copyCarrier), prepared); err != nil {
-		return err
 	}
+	return result, nil
+}
+
+// Install holds no network work; the caller can guard this final boundary with its abandonment lock.
+func (r *PreparedResult) Install(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if fingerprint != "" {
-		if err := taskcopy.ImportCopyHistory(path, prepared); err != nil {
+	if r.fingerprint != "" {
+		if err := unchangedCopy(ctx, r.path, r.fingerprint); err != nil {
 			return err
 		}
-	}
-	if fingerprint != "" {
-		// Recheck after the slow fetch and restore, immediately before the swap.
-		if err := unchangedCopy(ctx, path, fingerprint); err != nil {
-			return err
-		}
-	} else if entries, err := os.ReadDir(path); err == nil && len(entries) > 0 {
+	} else if entries, err := os.ReadDir(r.path); err == nil && len(entries) > 0 {
 		return errors.New("the task's destination already contains files")
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	backup := filepath.Join(stage, "previous")
+	if r.deps.BeforeInstall != nil {
+		r.deps.BeforeInstall()
+	}
+	// A sibling keeps relative Git worktree pointers based at the same parent.
+	previous, err := os.MkdirTemp(filepath.Dir(r.path), ".task-previous-")
+	if err != nil {
+		return err
+	}
+	// Some filesystems reject renaming over even the empty reservation.
+	if err := os.Remove(previous); err != nil {
+		return err
+	}
+	moved := false
+	if err := os.Rename(r.path, previous); err == nil {
+		moved = true
+		r.previous = previous
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	// The moved original is now the installation boundary's authoritative snapshot.
+	// Check it before binding the returned branch or deleting any earlier files.
 	undo := func() error { return nil }
-	if fingerprint != "" {
-		undo, err = taskcopy.BindLinkedResult(path, prepared)
+	if r.fingerprint != "" {
+		if err := unchangedCopy(ctx, previous, r.fingerprint); err != nil {
+			return r.rollback(previous, moved, err)
+		}
+		var err error
+		undo, err = taskcopy.BindLinkedResult(previous, r.prepared)
 		if err != nil {
-			return err
+			return r.rollback(previous, moved, err)
 		}
 	}
-	if err := os.Rename(path, backup); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return errors.Join(err, undo())
+	if err := os.Rename(r.prepared, r.path); err != nil {
+		return r.rollback(previous, moved, errors.Join(err, undo()))
 	}
-	if err := os.Rename(prepared, path); err != nil {
-		if restoreErr := os.Rename(backup, path); restoreErr != nil {
-			// A failed rollback must keep the original copy, even when its
-			// parent has become unwritable while the result was arriving.
-			cleanStage = false
-			return fmt.Errorf("could not put the result in place; the earlier copy is kept at %s: %w", backup, errors.Join(err, restoreErr))
-		}
-		return errors.Join(err, undo())
-	}
-	m.Restore = time.Since(start)
-	d.measure(m)
+	r.measure.Restore = time.Since(r.restoreStarted)
+	r.deps.measure(r.measure)
 	return nil
+}
+
+func (r *PreparedResult) rollback(previous string, moved bool, cause error) error {
+	if !moved {
+		return cause
+	}
+	if err := os.Rename(previous, r.path); err != nil {
+		r.keep = true
+		return fmt.Errorf("could not put the result in place; the earlier copy is kept at %s: %w", previous, errors.Join(cause, err))
+	}
+	r.previous = ""
+	return cause
+}
+
+// Close discards an uninstalled result, but preserves a previous copy whose rollback failed.
+func (r *PreparedResult) Close() {
+	if !r.keep {
+		if r.stage != "" {
+			_ = os.RemoveAll(r.stage)
+		}
+		if r.previous != "" {
+			_ = os.RemoveAll(r.previous)
+		}
+	}
+	if r.unlock != nil {
+		r.unlock()
+		r.unlock = nil
+	}
 }
 
 func SendResult(ctx context.Context, d CopyDeps, workDir string, in Input) (Result, error) {
@@ -306,10 +378,20 @@ func SendResult(ctx context.Context, d CopyDeps, workDir string, in Input) (Resu
 var ErrCopyChanged = errors.New("the task copy changed here while the other computer worked; both copies were kept")
 
 func ReceiveResult(ctx context.Context, d CopyDeps, result Result, localCopyDir, sentFingerprint string) error {
-	if sentFingerprint == "" {
-		return errors.New("the sent task copy's fingerprint is missing")
+	prepared, err := PrepareResult(ctx, d, result, localCopyDir, sentFingerprint)
+	if err != nil {
+		return err
 	}
-	return receiveCopy(ctx, d, result, localCopyDir, sentFingerprint)
+	defer prepared.Close()
+	return prepared.Install(ctx)
+}
+
+// PrepareResult fetches and materializes outside the session's abandonment mutex.
+func PrepareResult(ctx context.Context, d CopyDeps, result Result, localCopyDir, sentFingerprint string) (*PreparedResult, error) {
+	if sentFingerprint == "" {
+		return nil, errors.New("the sent task copy's fingerprint is missing")
+	}
+	return prepareCopy(ctx, d, result, localCopyDir, sentFingerprint)
 }
 func unchangedCopy(ctx context.Context, path, fingerprint string) error {
 	now, err := copyFingerprint(ctx, path)

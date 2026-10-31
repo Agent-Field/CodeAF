@@ -18,7 +18,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/devname"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -142,10 +141,7 @@ func TestATaskSentToTheOtherHomeRunsThereAndItsChangeComesBack(t *testing.T) {
 	memory := blobstore.NewMemory()
 	blobs := httptest.NewServer(blobstore.Handler(func(*http.Request, []byte) (string, string, error) { return id.ID(), a.ID(), nil }, func(string) (blobstore.Store, error) { return memory, nil }))
 	defer blobs.Close()
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Fatal(err)
-	}
+	bin := taskEngineBinary(t)
 	makeCopy := func(home string, device identity.Dev) taskdoor.CopyDeps {
 		socketHome, err := os.MkdirTemp("", "rn-l1-")
 		if err != nil {
