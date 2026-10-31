@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -926,7 +927,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	var taskLanded func(session.TaskLanding)
 	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
 	// launch therefore leaves this optional scoring to an ordinary launch;
-	// it must neither judge new landings nor sweep earlier pending work.
+	// it must neither judge new landings nor sweep earlier pending work. The
+	// saved one-model setting can change while this process runs, so the hook
+	// and the sweep read it themselves at the moment they would ask
+	// ([poolJudgeStandsDown]).
 	if !opts.OneModel {
 		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
 			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
@@ -2475,7 +2479,43 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 			values[roles.PinKey(roles.Role(role))] = model
 		}
 	}
-	return values, nil
+	return v3SettleOneModel(values, c.profileDir), nil
+}
+
+// v3SettleOneModel answers every text tier with the saved one model while the
+// profile's task models are in one-model mode, and drops the text pins.
+//
+// ONE MODEL MEANS ONE MODEL AT EVERY RUNG, HERE AS UNDER `--one-model`. The
+// flag withholds these rows and lets each errand fall to the conversation's
+// model; the saved setting names its model, so the rows answer that model
+// instead, and the crew-only callers that pass an empty floor (the mark's
+// reader, the brief's writer) reach it too rather than a tier nobody chose.
+// The snapshot is rebuilt whenever the settings move, so a mode switched
+// mid-process reaches the next errand. Media pins stay: a media slot is
+// capability-qualified, exactly as under the flag. A one model that cannot be
+// used right now answers no tier at all, never another model.
+func v3SettleOneModel(values map[string]string, profileDir string) map[string]string {
+	send, one, err := factoryTaskOneModel(profileDir, modelsource.Set{})
+	if !one {
+		return values
+	}
+	media := map[string]bool{}
+	for _, role := range v3MediaPin {
+		media[roles.PinKey(role)] = true
+	}
+	settled := map[string]string{}
+	for key, model := range values {
+		if media[key] {
+			settled[key] = model
+		}
+	}
+	if err != nil {
+		return settled
+	}
+	for _, tier := range roles.Tiers {
+		settled[roles.TierKey(tier)] = send
+	}
+	return settled
 }
 
 // v3Catalog is the ONE question this door asks a model catalog, and it is a
