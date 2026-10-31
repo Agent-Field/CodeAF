@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -20,6 +21,11 @@ import (
 // v3TaskComputers builds no client while this home is quiet, unpaired or on an
 // unsupported platform. A nil door also keeps the proposal argument absent.
 func v3TaskComputers(profile string) session.TaskComputers {
+	// Identity storage takes a concrete home, while an unset profile means
+	// the ordinary state root to the rest of the conversation configuration.
+	if profile == "" {
+		profile = home.Dir()
+	}
 	if runtime.GOOS == "windows" || syncsetup.Quiet(profile) {
 		return nil
 	}
