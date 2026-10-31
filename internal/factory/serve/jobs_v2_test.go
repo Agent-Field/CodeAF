@@ -865,9 +865,20 @@ func TestV2ClosedPRRunAgainAndMergedRefusal(t *testing.T) {
 	if j := f.read(t, it); j.DoneHow != "closed" || j.State != "done" {
 		t.Fatalf("closed %+v", j)
 	}
+	// What the last run's change check found, on its head.
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.HeadCommit = "c0ffee"
+		cur.SetPublishCheck(factory.CheckPassed)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	f.post(t, it, "run_again", "", 200)
 	if f.read(t, it).State != "queued" {
 		t.Fatal("Run again did not queue")
+	}
+	if cur, err := f.st.Get(it.ID); err != nil || (cur.RuleChecks != nil && (cur.RuleChecks.Publish != "" || cur.RuleChecks.PublishHead != "")) {
+		t.Fatalf("the last run's change check survived Run again: %+v %v", cur.RuleChecks, err)
 	}
 	merged := f.create(t, factory.Item{State: factory.StateShipped, Assignee: "sam", PullRequest: &factory.PullRequest{State: factory.PRMerged}})
 	f.post(t, merged, "run_again", "", 409)

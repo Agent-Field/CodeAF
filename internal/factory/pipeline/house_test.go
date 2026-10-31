@@ -61,8 +61,12 @@ func TestAPlanThatTouchesAGuardedPathIsHeld(t *testing.T) {
 	if PlanHold(nil, []string{"internal/auth/login.go"}) != "" {
 		t.Error("a job with no rules was held")
 	}
-	if got := PlanHold(rules, nil); got != "protected · the plan names no files" {
+	if got := PlanHold(rules, nil); got != "protected · auth/, infra/ · the plan names no files" {
 		t.Errorf("a plan with unknown files under a path rule held as %q", got)
+	}
+	twice := &factory.StartRules{AskFirst: []string{"touch auth/"}, Never: []string{"auth/"}}
+	if got := PlanHold(twice, nil); got != "protected · auth/ · the plan names no files" {
+		t.Errorf("a path two rules protect named as %q", got)
 	}
 	if got := PlanHold(&factory.StartRules{AskFirst: []string{"don't touch auth without checking with me"}, Never: []string{}}, nil); got != "" {
 		t.Errorf("a plan with unknown files under only a sentence rule held as %q", got)

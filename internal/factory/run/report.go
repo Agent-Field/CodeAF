@@ -606,7 +606,18 @@ func landItem(it *factory.Item, now time.Time) bool {
 	// THE CHANGE IS CHECKED AGAINST THE RULES BEFORE ANYTHING IS PUBLISHED: a
 	// changed file an ask-first or never path names waits for the person, in
 	// Auto ([factory.AutonomyBlockReason]) and as a habit alike.
+	// What it found is kept for the job's ◆ Before publishing row; a change
+	// that could not be read, or a job with no rules to judge it by, found
+	// nothing, so it says nothing rather than "passed".
 	it.RuleHold = ChangeRuleHold(*it)
+	switch {
+	case it.RuleHold != "":
+		it.SetPublishCheck(factory.CheckAsked)
+	case changeJudged(*it):
+		it.SetPublishCheck(factory.CheckPassed)
+	case it.RuleChecks != nil:
+		it.RuleChecks.Publish, it.RuleChecks.PublishHead = "", ""
+	}
 	if it.FollowUp == nil && it.RuleHold == "" && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
 		it.State = factory.StateShipped
 		loopSay(it, now, "ok", logShippedHabit)
@@ -691,4 +702,12 @@ func ChangeRuleHold(it factory.Item) string {
 		files = append(files, f.Path)
 	}
 	return pipeline.ChangeHold(it.StartRules, files)
+}
+
+// changeJudged says whether [ChangeRuleHold] had anything to judge: the run's
+// change, read, with files, and the rules the job started under, read. Rules
+// the repository's file could not give ([factory.StartRules.Unread]) leave its
+// protected paths unknown, so the change was not judged against them.
+func changeJudged(it factory.Item) bool {
+	return it.Change != nil && len(it.Change.Files) > 0 && it.StartRules != nil && !it.StartRules.Unread
 }

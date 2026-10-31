@@ -29,3 +29,20 @@ func TestARuleHoldIsOnTheWireForAManualJob(t *testing.T) {
 		}
 	}
 }
+
+// WHAT THE FACTORY'S OWN CHECKS FOUND IS ON THE WIRE, for the job's two ◆
+// rows: the start rules', and the change's with the commit it was judged on.
+func TestTheChecksFindingsAreOnTheWire(t *testing.T) {
+	it := factory.Item{ID: 7, Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, HeadCommit: "c0ffee",
+		RuleChecks: &factory.RuleChecks{Start: factory.CheckPassed, Publish: factory.CheckAsked, PublishHead: "c0ffee"}}
+	raw, err := json.Marshal(FromItem(it))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"rule_checks":{"start":"passed","publish":"asked","publish_head":"c0ffee"}`; !strings.Contains(string(raw), want) {
+		t.Fatalf("the wire lacks %s: %s", want, raw)
+	}
+	if raw, _ := json.Marshal(FromItem(factory.Item{ID: 8, Kind: factory.KindIssue})); strings.Contains(string(raw), "rule_checks") {
+		t.Fatalf("a job nothing judged carries checks: %s", raw)
+	}
+}

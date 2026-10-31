@@ -151,7 +151,12 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					cur.DecidePipeline(file.Copy, h.clock())
 				}
 				if rules != nil {
+					// A person's start judges nothing: what the factory's own
+					// start found under older rules no longer speaks for it.
 					cur.StartRules, cur.RuleHold = rules, ""
+					if cur.RuleChecks != nil {
+						cur.RuleChecks.Start = ""
+					}
 					if rules.Unread {
 						cur.Note(h.clock(), "Started with the repository's rules unread; its plan will wait for you")
 					}
@@ -340,6 +345,11 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 		cur.PullRequest = nil
 		cur.Approval = nil
 		cur.Failure = nil
+		// The last run's change check spoke for that change: the new run's
+		// change is checked when it lands.
+		if cur.RuleChecks != nil {
+			cur.RuleChecks.Publish, cur.RuleChecks.PublishHead = "", ""
+		}
 	})
 }
 
@@ -433,7 +443,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.MergePolicy, it.Merging = nil, nil
 	it.Notes = nil
 	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil
-	it.StartRules, it.RuleHold = nil, ""
+	it.StartRules, it.RuleHold, it.RuleChecks = nil, "", nil
 	// The pipeline file it was decided on goes too: its next start decides
 	// afresh ([factory.Item.DecidePipeline]).
 	it.ForgetPipeline()
