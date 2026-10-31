@@ -509,7 +509,7 @@ func TestHostedSurfaceNeverOffersContinueOrShowsHeldElsewhere(t *testing.T) {
 	}
 
 	screen := homeText(a)
-	if strings.Contains(screen, "running on host-b") || strings.Contains(screen, chatlist.OfferContinue) || strings.Contains(screen, "Other Remote") {
+	if strings.Contains(screen, "held on host-b") || strings.Contains(screen, chatlist.OfferContinue) || strings.Contains(screen, "Other Remote") {
 		t.Fatalf("hosted Home showed held-elsewhere or continue offer:\n%s", screen)
 	}
 	if got := countHomeRowsForID(a, heldCell); got != 1 {

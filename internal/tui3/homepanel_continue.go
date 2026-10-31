@@ -98,7 +98,7 @@ const (
 	continueStoreBusy      = continueFails + " because the engine store is busy"
 	// continueUnreachable names what did not happen, not only why, because
 	// the box still holds words the person meant to send in the moved chat.
-	continueUnreachable = continueFails + " because other machines are unreachable; your words are still in the box"
+	continueUnreachable = continueFails + " because " + chatlist.Unreachable + "; your words are still in the box"
 	branchAsk           = "What should happen to these turns?"
 	branchLeave         = "leave them"
 	branchFails         = "could not change those turns"
@@ -172,7 +172,7 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 		return nil
 	}
 	if a.machineRead.computerRemoved {
-		a.home.say(chatlist.Removed, "")
+		a.home.say(chatlist.RemovedChat, "")
 		return nil
 	}
 	row := *line.remote
@@ -305,7 +305,7 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 		return nil
 	}
 	if a.machineRead.computerRemoved {
-		a.home.say(chatlist.Removed, "")
+		a.home.say(chatlist.RemovedChat, "")
 		return nil
 	}
 	if a.sayCellsUnavailable() {
@@ -503,7 +503,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	}
 	if a.machineRead.computerRemoved {
 		a.restoreTakeDraft(msg)
-		a.home.say(chatlist.Removed, "")
+		a.home.say(chatlist.RemovedChat, "")
 		return nil
 	}
 	if a.homeTaking != "" && a.homeTakeAutomatic {

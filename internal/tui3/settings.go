@@ -2298,6 +2298,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 	}
 	s := &a.sheet
 	defer a.touch()
+	if s.dev != nil && s.dev.removing != nil {
+		cmd, _ := s.dev.key(a, msg.String())
+		return cmd, true
+	}
 	// THE THREE BOXES THAT TAKE THE WHOLE KEYBOARD ARE READ BEFORE THE ROUTER AND
 	// ARE NOT HERE. They are [placeSettings.owns], because a layer inside a place
 	// that has claimed every key outranks even the six classes — and the router

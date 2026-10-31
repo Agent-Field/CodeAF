@@ -13,7 +13,7 @@ func DeviceLabel(name, id string, duplicate bool) string {
 	if !duplicate {
 		return name
 	}
-	return name + " #" + id[max(0, len(id)-TailLength):]
+	return DistinctName(name, id)
 }
 
 // MatchesDevice accepts both the printed label and its space-free terminal form.

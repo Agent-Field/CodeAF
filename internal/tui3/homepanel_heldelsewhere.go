@@ -272,7 +272,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if a.offlineSendHeld(id, remote, msg) {
 			return msg.resume()
 		}
-		a.note(chatlist.Removed)
+		a.note(chatlist.RemovedChat)
 		return nil
 	}
 	if msg.writerWaitFailed {
@@ -429,7 +429,7 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		return directory.ErrConditionalTake.Error()
 	case errors.Is(msg.err, directory.ErrRevoked):
 		a.removedComputer()
-		return chatlist.Removed
+		return chatlist.RemovedChat
 	case errors.Is(msg.err, cellstore.ErrStoreBusy):
 		var busy *cellstore.StoreBusyError
 		if errors.As(msg.err, &busy) {

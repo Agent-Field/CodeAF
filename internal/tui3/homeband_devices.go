@@ -139,7 +139,7 @@ func drawDevicesBand(a *app, ctx bandContext) []string {
 	online, _ := a.presence()
 	marks := make([]string, 0, len(a.devRow.devices))
 	for _, d := range a.devRow.devices {
-		marks = append(marks, paintPresence(ctx.pal, d.Mark(online[d.ID]), online[d.ID] || d.Self))
+		marks = append(marks, paintPresence(ctx.pal, d.Mark(online[d.ID], DeviceRow{Self: d.Self, Online: online[d.ID]}.dot(ctx.pal)), online[d.ID] || d.Self))
 	}
 	rows := []string{fit(strings.Join(marks, deviceGap), ctx.width)}
 	if len(a.devicePicks()) == 0 {

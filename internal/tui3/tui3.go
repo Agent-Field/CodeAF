@@ -450,6 +450,10 @@ type Options struct {
 	SaveFailure func(error)
 	// ClosingStarted retains pending cleanup until the restored terminal can report it.
 	ClosingStarted func(<-chan struct{})
+	// SavingDurability retains local-save receipt predicates for chats being closed.
+	SavingDurability func(func() bool)
+	// SavingCompatibility retains whether each remote engine negotiated saving receipts.
+	SavingCompatibility func(func() bool)
 	// ForceQuit cancels that wait when a second interrupt asks to leave immediately.
 	ForceQuit func()
 	// Takeover continues a chat from another machine here. Nil is a machine
@@ -460,6 +464,8 @@ type Options struct {
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.
 	Pairing Pairing
+	// SyncService names the service selected for this chat's sync notices.
+	SyncService string
 	// Approvals answers a new device's request to join and revokes devices
 	// (approve.go, devices.go). Nil is a connection that cannot, and the
 	// screens are then absent.
