@@ -1577,6 +1577,14 @@ weekly update" — and it is proposed on a card. `/standing` and `/orders` are g
 
 ## /task — start work you can walk away from
 
+`/task --on <computer> <brief>` runs a task in its own copy on a paired computer
+running `codeaf serve --take-tasks`, while the chat stays here. Quote shown names containing
+spaces: `/task --on "mac mini" Fix the export`. `--best` or `--cheap` may go on
+either side of `--on`; `solo` follows the flags. `here` and `this computer`
+choose this computer. The flag is offered only where paired tasks are available;
+Linux and macOS are supported on both ends, Windows not yet. See *Tasks on
+another computer* for placement, the **Run tasks on** default and `run it here`.
+
 `/task <brief>` starts work directly from the words after the command; the brief does not
 pass through the conversation model. **Nothing is waited for in front of it**: the task
 exists the moment you press enter, the ordinary started-task row appears

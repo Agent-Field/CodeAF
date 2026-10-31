@@ -256,6 +256,7 @@ type taskArguments struct {
 	Brief        string               `json:"brief"`
 	Deliverable  string               `json:"deliverable"`
 	Where        string               `json:"where"`
+	Computer     string               `json:"computer,omitempty"`
 	Ground       string               `json:"ground"`
 	WorkspaceSet *WorkspaceSetRequest `json:"workspace_set,omitempty"`
 	Acceptance   string               `json:"acceptance"`
@@ -293,6 +294,7 @@ type taskArguments struct {
 type taskSpec struct {
 	workspaceSet *WorkspaceSetRequest
 	title        string
+	computer     string
 	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
 	// door cutting one out of a sentence it had to hand. It is the whole of what
 	// decides whether the work is named again (taskname.go): a name the shaper
@@ -606,6 +608,9 @@ func (a *Agent) taskTools() []bare.Tool {
 	if a.config.mayDelegate() {
 		schema = taskSchemaJSON
 	}
+	if a.config.mayNameTaskComputer() {
+		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+taskComputerSchema, 1)
+	}
 	if WorkspaceOwnershipEnabled(a.config.Place) {
 		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+workspaceSetTaskSchema+`,`, 1)
 	}
@@ -705,6 +710,12 @@ func proposalProblems(contract string, stand taskStand) string {
 // started early (the quality law of an early start: the same brief, sooner).
 func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged {
 	spec, problem := parseTaskArguments(args)
+	// A model cannot opt into placement through an argument its belt did not
+	// offer. Preserve the original treatment of that unknown field; a person
+	// can still choose a computer in the later proposal answer.
+	if !a.config.mayNameTaskComputer() {
+		spec.computer = ""
+	}
 	if problem != "" {
 		// A CONTRACT PROBLEM DOES NOT HIDE A PLACEMENT PROBLEM. Once the call has
 		// enough of a task to place, both readings are already available and each
@@ -713,6 +724,9 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 			problem = proposalProblems(problem, a.resolveTaskGround(spec))
 		}
 		return bare.Settled(problem, true)
+	}
+	if err := a.checkProposedTaskComputer(ctx, spec); err != nil {
+		return bare.Settled(err.Error(), true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
 	// program the person named, a trivial ask and a depends_on that can never
@@ -875,6 +889,12 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		}
 		return withElsewhere("the person declined this task", elsewhere), false, nil
 	}
+	// A card choice is explicit placement for this proposal only. Admission
+	// still resolves it through the same roster and eligibility checks as a
+	// computer originally named in the tool call or the typed task command.
+	if computer := strings.TrimSpace(answer.Computer); computer != "" {
+		spec.computer = computer
+	}
 	if redirect := strings.TrimSpace(answer.Redirect); redirect != "" {
 		// APPENDED, never merged into the brief's prose. The person's words
 		// arrive last and in their own voice, so the node reads them as the
@@ -963,7 +983,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		return runDidNotStart(p.id, err), true, true
 	}
 
-	if !(bashBeltAsked() || spec.via != "") || chatRunEngine == nil || a.config.InTask {
+	if !a.proposalUsesRunRoad(spec) {
 		return "", false, false
 	}
 	a.mu.Lock()
@@ -977,7 +997,25 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		}
 		via = &m
 	}
-	description := proposalBrief(spec, via)
+	placementStand := stand
+	// The explicit in-place request controls computer placement even when the
+	// repository's existing isolation law still prepares a local branch.
+	if strings.EqualFold(strings.TrimSpace(spec.where), "in place") {
+		placementStand.mode = TaskModeInPlace
+	}
+	placement, err := a.resolveTaskComputer(ctx, spec.computer, placementStand, spec.kind(), via != nil)
+	if err != nil {
+		return err.Error(), true, true
+	}
+	placement.model = namedModel(spec)
+	placement.effort = string(spec.crewEffort)
+	if spec.thinking != effort.None {
+		placement.effort = spec.thinking.String()
+	}
+	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
+	ctx = withTaskPlacement(ctx, placement)
+	elsewhere = withReport(elsewhere, placement.sentence)
+	description := proposalRunDescription(spec, via, placement)
 	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
 	// This context is the turn's, and the turn cancels it on its way out
 	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
@@ -1139,7 +1177,8 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{
-		title: strings.TrimSpace(parsed.Title),
+		title:    strings.TrimSpace(parsed.Title),
+		computer: strings.TrimSpace(parsed.Computer),
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
 		named:        strings.TrimSpace(parsed.Title) != "",
@@ -1564,6 +1603,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		hold:   make(chan struct{}),
 		notice: TaskNotice{
 			ID:         id,
+			Computer:   spec.computer,
 			Title:      spec.title,
 			Summary:    spec.summary,
 			Brief:      spec.brief,
@@ -1835,4 +1875,27 @@ func (a *Agent) admitWorkspaceProposal(ctx context.Context, stand taskStand, spe
 }
 func singletonRunFallback(err error, stand taskStand) bool {
 	return stand.workspaceSet == nil && errors.Is(err, errRunRoadUnavailable)
+}
+
+// Placement validation precedes the proposal card without adding roster work to local proposals.
+func (a *Agent) checkProposedTaskComputer(ctx context.Context, spec taskSpec) error {
+	if spec.computer == "" {
+		return nil
+	}
+	_, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false)
+	return err
+}
+
+// The run road keeps the existing fallback condition and short-circuit order.
+func (a *Agent) proposalUsesRunRoad(spec taskSpec) bool {
+	return (bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")) && chatRunEngine != nil && !a.config.InTask
+}
+
+// Checks belong only in the instruction transported to another computer.
+func proposalRunDescription(spec taskSpec, via *delegate.Delegate, placement taskPlacement) string {
+	description := proposalBrief(spec, via)
+	if placement.computer != nil && len(spec.checks) > 0 {
+		description += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
+	}
+	return description
 }

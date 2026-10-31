@@ -48,6 +48,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/taskdoor"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
@@ -261,6 +262,7 @@ func askPairingCode(name string) (string, error) {
 // walks out to the relay and stays there.
 func runServe(args []string) error {
 	flags := commandFlags("serve")
+	takeTasks := flags.Bool(taskdoor.TakeTasksFlag, false, "take tasks from your paired computers")
 	workspace := flags.String("workspace", "", "directory a connection works in when it does not name one; empty is the directory this command was run in")
 	relayAddress := flags.String("via", "", "the sync address to be reachable through; empty reads "+pair.RelayEnv+", ~/.codeaf/v3/remote/relay, then the address this machine syncs through")
 	renamedFlag(flags, "relay", "via")
@@ -268,7 +270,7 @@ func runServe(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: codeaf serve [--workspace path] [--via https://…]")
+		return errors.New("usage: codeaf serve [--workspace path] [--via https://…] [--" + taskdoor.TakeTasksFlag + "]")
 	}
 
 	service := strings.TrimSpace(*relayAddress)
@@ -300,6 +302,9 @@ func runServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	defer startServeKeeping(ctx, service)()
+	if *takeTasks {
+		defer serveTasks(ctx, service)()
+	}
 	host := &pair.Host{
 		Service: service,
 		Device:  device,

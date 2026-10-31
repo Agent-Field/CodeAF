@@ -148,6 +148,20 @@ there is no terminal to approve it. It does not wait for a yes/no answer there.
 An unadmitted key with a saved pin is also refused. There is no unattended command
 to admit another computer yet; use the creating laptop.
 
+## Send a task to my dev box
+
+A dev box also takes tasks. It starts `codeaf serve --take-tasks` whenever its
+installed build lists that option, so a chat on your laptop can run one task on the
+box while the conversation and transcript stay on the laptop:
+`/task --on <name> <brief>` names it for one task, and Settings → Run tasks on
+sends every task that can go. The box's synced provider keys pay, and the spend
+appears on the laptop too. A box whose build predates the option starts plain
+`codeaf serve` and takes no tasks; sending one says
+`<name> is not taking tasks right now — run codeaf serve --take-tasks on it`, and
+the box picks the option up when its channel's build has it and it restarts. See
+*Tasks on another computer* for what can go and what happens when a computer
+stops answering.
+
 ## How do I remove my dev box or stop paying for it?
 
 Run `codeaf devbox down <name>` with the Railway token set. It asks

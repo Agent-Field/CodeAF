@@ -613,7 +613,7 @@ Housekeeping — changes state on disk or on the network
       approve a new device; or use or show a six-digit code for your chats
   codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
       an always-on computer of yours on your own Railway account
-  codeaf serve [--workspace path] [--via url]
+  codeaf serve [--workspace path] [--via url] [--take-tasks]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices | codeaf cluster status | lead
       list your devices and the ones that can use this machine

@@ -80,5 +80,13 @@ say 'serving the work folder'
 # A box only serves, so it asks serve to keep the identity's saved keys,
 # settings and presence in step; builds that predate the variable ignore it.
 export CODEAF_SERVE_SYNC=1
-# `--take-tasks` joins this line once serve ships it; a build without it would refuse the flag.
+# A box also takes the identity's tasks, but only from a build whose serve lists
+# `--take-tasks`: a box can follow a channel whose build predates the flag, and
+# serve refuses a flag it does not know, which would leave the box serving
+# nothing. Two exec lines rather than an array, because `set -u` rejects an
+# empty array on the bash 3.2 a Mac runs this script's test with.
+serve_help="$("$CODEAF_DEVBOX_BINARY" serve --help 2>&1 </dev/null || true)"
+if [[ "$serve_help" == *--take-tasks* ]]; then
+  exec "$CODEAF_DEVBOX_BINARY" serve --workspace "$HOME/work" --via "$CODEAF_DEVBOX_VIA" --take-tasks
+fi
 exec "$CODEAF_DEVBOX_BINARY" serve --workspace "$HOME/work" --via "$CODEAF_DEVBOX_VIA"

@@ -7,11 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/taskdoor"
 )
 
 // R6.2: the first install pins its release, retries unpinned, and later boots follow the channel.
@@ -365,5 +367,71 @@ func TestDevboxBootAsksServeToKeepStateInStep(t *testing.T) {
 	at := strings.Index(string(script), export)
 	if at < 0 || at > strings.Index(string(script), "serve --workspace") {
 		t.Fatalf("boot.sh must export %q before it starts serve", strings.TrimSpace(export))
+	}
+}
+
+// Stability: a box takes tasks only when its installed build's serve lists the
+// flag, and a build that predates it, or whose help fails, still serves.
+func TestDevboxBootTakesTasksOnlyWhenServeListsTheFlag(t *testing.T) {
+	flag := "--" + taskdoor.TakeTasksFlag
+	for _, row := range []struct {
+		name, help string
+		helpExit   int
+		want       bool
+	}{
+		{name: "build-lists-the-flag", help: "flags:\n  " + flag + "\n      take tasks from your paired computers\n", want: true},
+		{name: "build-predates-the-flag", help: "flags:\n  --via string\n  --workspace string\n"},
+		{name: "help-fails", help: "flag provided but not defined: -help\n", helpExit: 2},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			data := t.TempDir()
+			bin := filepath.Join(data, "home", ".codeaf", "bin")
+			if err := os.MkdirAll(bin, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(data, ".codeaf-devbox-joined"), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(data, "help"), []byte(row.help), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			fake := `#!/bin/bash
+if [[ "$1" == serve && "$2" == --help ]]; then
+ cat "$CODEAF_DEVBOX_DATA_ROOT/help"
+ exit "$HELP_EXIT"
+fi
+printf '%s\n' "$*" >> "$CODEAF_DEVBOX_DATA_ROOT/calls"
+`
+			if err := os.WriteFile(filepath.Join(bin, "codeaf"), []byte(fake), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(bin, "curl"), []byte("#!/bin/sh\nexit 22\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			script, err := module.ReadFile("terraform/boot.sh")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "bash")
+			cmd.Stdin = strings.NewReader(string(script))
+			cmd.Env = append(os.Environ(), "CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1", "CODEAF_DEVBOX_DATA_ROOT="+data, "CODEAF_DEVBOX_BINARY=codeaf", "CODEAF_DEVBOX_NAME=box", "CODEAF_DEVBOX_VIA=https://relay.example", "CODEAF_DEVBOX_INSTALL_URL=https://installer.example/codeaf", "CODEAF_DEVBOX_CODE=", "CODEAF_DEVBOX_REMOTE_KEY=", "CODEAF_DEVBOX_REMOTE_DEVICES=", "HELP_EXIT="+strconv.Itoa(row.helpExit))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("boot: %v %s", err, out)
+			}
+			calls, err := os.ReadFile(filepath.Join(data, "calls"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			serve := "serve --workspace " + filepath.Join(data, "home", "work") + " --via https://relay.example"
+			want := serve + "\n"
+			if row.want {
+				want = serve + " " + flag + "\n"
+			}
+			if string(calls) != want {
+				t.Fatalf("the box ran %q, want %q", calls, want)
+			}
+		})
 	}
 }

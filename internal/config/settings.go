@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -446,6 +447,13 @@ const (
 	// before the row existed: a node is the same worker doing the same job
 	// somewhere quieter.
 	KeyTaskModel = "task.model"
+
+	// KeyTaskRunsOn remembers a device rather than its name, so a rename does
+	// not move the person's default. Blank keeps tasks on this computer.
+	KeyTaskRunsOn = "task.runs_on"
+
+	// TaskRunsHere is the setting's empty value in the person's words.
+	TaskRunsHere = "this computer"
 
 	// KeyTaskSettle is WHO DECIDES a task that finished but that nobody could
 	// check (internal/session's task_contract.go). It sits under `task.` beside
@@ -1781,6 +1789,9 @@ type SettingGroup struct {
 // own: the running model slots and the surface's own divider preference.
 type SettingsOptions struct {
 	ProfileDir string
+	// Include omits controls unavailable to the caller from discovery and writes.
+	// Nil keeps the full registry for callers that supply their own presentation.
+	Include func(key string) bool
 
 	// ModelValue and SetModel front the model slots. They stay in the chat
 	// prefs file; the registry does not migrate them.
@@ -1834,9 +1845,23 @@ type Settings struct {
 // divider has nowhere to be written without [SettingsOptions.SaveSplitPct], and
 // a read-only divider is not a row somebody can read — it is a control whose
 // only behaviour is to refuse.
+//
+// [SettingsOptions.Include] is the caller's own narrowing, applied after the
+// build: a control the caller cannot offer at all (Run tasks on, in a
+// conversation with no task computers) is left out of discovery and writes
+// alike, rather than listed and refused.
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
+	if options.Include != nil {
+		rows := registry.rows[:0]
+		for _, row := range registry.rows {
+			if options.Include(row.Key) {
+				rows = append(rows, row)
+			}
+		}
+		registry.rows = rows
+	}
 	for index := range registry.rows {
 		registry.rows[index].write = registry.announce(registry.rows[index].Key, registry.rows[index].write)
 	}
@@ -2411,6 +2436,13 @@ func (s *Settings) build() []Setting {
 		// how long you get to redirect it, who checks it, and whose hands it is
 		// in — and none of them is a rule about how this conversation's own calls
 		// are made.
+		Setting{
+			Key: KeyTaskRunsOn, Category: CategoryTasks, Kind: SettingText,
+			Label: "Run tasks on", EmptyLabel: TaskRunsHere,
+			Hint:  "The paired computer for tasks that work in their own copy. Leave it blank for " + TaskRunsHere + ".",
+			read:  func() string { return TaskRunsOnAt(dir) },
+			write: func(raw string) error { return WriteTaskRunsOn(dir, raw) },
+		},
 		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "the crew's worker",
@@ -4311,6 +4343,27 @@ func TaskModelAt(profileDir string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
+}
+
+// TaskRunsOnAt reads the stable placement preference. A removed device is
+// resolved to this computer by the session against its current roster.
+func TaskRunsOnAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyTaskRunsOn)
+	return strings.TrimSpace(value)
+}
+
+// WriteTaskRunsOn accepts only a device identity. The computer picker resolves
+// shown names before reaching this writer, keeping renames harmless.
+func WriteTaskRunsOn(profileDir, raw string) error {
+	value := strings.TrimSpace(raw)
+	if value != "" {
+		hexID, ok := strings.CutPrefix(value, "dev_")
+		_, err := hex.DecodeString(hexID)
+		if !ok || len(hexID) != 32 || err != nil {
+			return fmt.Errorf("choose a paired computer or %s", TaskRunsHere)
+		}
+	}
+	return writeText(profileDir, KeyTaskRunsOn, value)
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock

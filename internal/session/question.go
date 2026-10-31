@@ -2170,6 +2170,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 			// The answers are on the row with their keys; the box is words.
 			a.ResolveTask(answer.ID, TaskAnswer{
 				Approved: true, Redirect: words, Model: answer.Blanks[TaskModelBlank],
+				Computer: answer.Blanks[TaskComputerBlank],
 			})
 			return nil
 		}
@@ -2193,6 +2194,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 			// option, which is what the card was showing.
 			task := action.Task
 			task.Model = answer.Blanks[TaskModelBlank]
+			task.Computer = answer.Blanks[TaskComputerBlank]
 			a.ResolveTask(answer.ID, task)
 		}
 		return nil
@@ -2780,6 +2782,10 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 // [TaskAnswer.Model] straight back out of it, so a label spelled twice would be
 // a choice somebody made and nothing acted on.
 const TaskModelBlank = "model"
+
+// TaskComputerBlank carries the card's placement choice through the ordinary
+// answer. Sharing the label keeps the surface and admission on the same choice.
+const TaskComputerBlank = "computer"
 
 // TaskModelPrompt is the sentence the hole sits in, with `{model}` where the
 // hole goes — so what a person reads is `run it on [ anthropic/claude-opus-5 ▾ ]`

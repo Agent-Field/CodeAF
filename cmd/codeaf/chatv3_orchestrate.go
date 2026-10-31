@@ -61,6 +61,9 @@ func v3OpenSession(cfg session.Config) (*session.Agent, error) {
 	// Every conversation this process opens counts its task lanes in one
 	// account, because they are all running on one machine.
 	cfg.TaskLanes = v3MachineLanes
+	if cfg.TaskComputers == nil {
+		cfg.TaskComputers = v3TaskComputers(cfg.ProfileDir)
+	}
 	cfg, runs := v3Adaptive(cfg)
 	agent, err := session.New(cfg)
 	if err != nil {

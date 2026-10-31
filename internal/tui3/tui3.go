@@ -428,6 +428,9 @@ type CodexFlow interface {
 
 // Options configures one surface.
 type Options struct {
+	// TaskComputers is absent where this conversation cannot place tasks on
+	// paired computers, so the surface can leave those controls out together.
+	TaskComputers session.TaskComputers
 	// Knowledge is the native vault on this machine. Hosted windows leave it nil.
 	Knowledge *knowledge.Vault
 	// WaitForRelease is a local lifecycle hint. A coordinating terminal must

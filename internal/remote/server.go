@@ -1107,6 +1107,9 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked(s)
+	// The initial capability reads the arrival directly, preserving the machine's
+	// existing point at which a watcher becomes registered.
+	welcome.TaskComputers = !hello.Watch && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
 	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
@@ -1296,6 +1299,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		SteerOwner:    true,
 		TaskSetup:     taskSetupKnown(sess.agent),
 		TaskRetry:     taskRetryKnown(sess.agent),
+		TaskComputers: !s.watching && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent),
 		TaskWorkspace: taskWorkspaceKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
@@ -2133,13 +2137,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply:
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskStartOn, MethodTaskRunHere:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskStartOn, MethodTaskRunHere:
+		return s.taskComputerInvoke(call)
 	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskWorkspaceCancel:
 		args, err := arg[taskWorkspaceArgs](call)
 		if err != nil {
@@ -2437,7 +2443,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session has no task proposals to answer")
 		}
 		door.ResolveTask(args.ID, session.TaskAnswer{
-			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
+			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model, Computer: args.Computer,
 		})
 		return nil, nil
 	case MethodTaskSettle:

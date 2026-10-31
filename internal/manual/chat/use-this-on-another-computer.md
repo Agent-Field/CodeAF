@@ -282,7 +282,7 @@ If something reaches for the relay while quiet, it gets the word `sync is waitin
 
 The first-run line about the hosted relay is said once, when chats are first copied, after pairing or offering a code. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
 
-## Where your chats are stored — the hosted relay, turning it off, self-host your own relay, is my code private
+## Where are my chats stored — where your chats are stored, the hosted relay, turning it off, self-host your own relay, is my code private
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 

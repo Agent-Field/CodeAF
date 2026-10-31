@@ -135,6 +135,17 @@ changed cap to already-open chats. Changing this preference does not stop a
 running task. An unset task model follows the configured worker, falling back to
 the current chat model when no worker model is set.
 
+**Run tasks on**, immediately after **Task model** in Tasks, chooses where a
+task goes when you do not name a computer. It defaults to `this computer` and
+reads eligible paired computers by shown name only when opened. The row
+is absent on unpaired, quiet or Windows homes. An explicit `/task --on`, proposal-card choice or `computer`
+argument wins. Quick tasks and work without an independent copy still run here.
+Both ends need Linux or macOS, and the other computer must run `codeaf serve --take-tasks`. Plain `codeaf serve`
+does not take tasks. The model's `computer` argument and a proposal's computer
+line and cycle key appear only after the setting names a computer, or (for the
+card) the proposal already names one.
+See *Tasks on another computer* for limits and `run it here`.
+
 ## Connect a service, change models or manage privacy
 
 **Connections** contains service sign-in and provider credentials, web search

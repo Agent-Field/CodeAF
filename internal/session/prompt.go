@@ -548,7 +548,10 @@ func nowLine(now time.Time) string {
 //
 // It is called with a.mu held, from [Agent.startTurnLocked].
 func (a *Agent) refreshClockLocked(now time.Time) {
-	if now.Sub(a.systemAt) < clockRefresh {
+	// A placement choice changes the available argument immediately, so its
+	// promise cannot wait for the clock or survive a reset to this computer.
+	placementChanged := a.systemOwn && a.config.TaskComputers != nil && a.taskComputerPrompt != a.config.mayNameTaskComputer()
+	if now.Sub(a.systemAt) < clockRefresh && !placementChanged {
 		return
 	}
 	a.rerenderSystemLocked(now)
@@ -557,10 +560,10 @@ func (a *Agent) refreshClockLocked(now time.Time) {
 // rerenderSystemLocked rebuilds this agent's instructions from its config AS IT
 // NOW STANDS, and puts them back at the head of the transcript.
 //
-// IT IS ONE FUNCTION BECAUSE THE CONFIG MOVES UNDER RUNNING AGENTS, in three
-// ways and no more: the clock going stale above, a conversation anchoring to a
+// IT IS ONE FUNCTION BECAUSE THE CONFIG MOVES UNDER RUNNING AGENTS: the
+// clock or task-placement preference changes above, a conversation anchors to a
 // project (tools_anchor_workspace.go), and work being armed to divide beside its
-// worker (task_divide.go's [Agent.armDivisionBeside]). Each of the three changes
+// worker (task_divide.go's [Agent.armDivisionBeside]). Each change
 // something [renderSystemAt] reads, and a prompt assembled in two different ways
 // is a prompt that will one day disagree with itself — which is the same reason
 // the clock re-renders the whole footer rather than editing one line.
@@ -575,6 +578,7 @@ func (a *Agent) rerenderSystemLocked(now time.Time) {
 		return
 	}
 	a.system = renderSystemAt(a.liveModelConfigLocked(), now)
+	a.taskComputerPrompt = a.config.mayNameTaskComputer()
 	a.systemAt = now
 	a.refreshSystemLocked()
 }

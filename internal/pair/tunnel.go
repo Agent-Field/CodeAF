@@ -28,6 +28,7 @@ package pair
 // cannot see a word of it.
 
 import (
+	"crypto/ecdh"
 	"errors"
 	"io"
 	"sync"
@@ -41,7 +42,8 @@ type Tunnel struct {
 	conn io.ReadWriteCloser
 	// peer is the other end's long-term public key, as the completed handshake
 	// proved it — not as anybody claimed it.
-	peer []byte
+	peer    []byte
+	binding []byte
 
 	sendMu sync.Mutex
 	send   *noise.CipherState
@@ -55,6 +57,41 @@ type Tunnel struct {
 
 // Peer is the key on the other end, proved by the handshake.
 func (t *Tunnel) Peer() []byte { return t.peer }
+
+// ChannelBinding is the completed handshake hash. Returning a copy lets a
+// higher protocol sign it without allowing a caller to change this tunnel's
+// identity proof.
+func (t *Tunnel) ChannelBinding() []byte { return append([]byte(nil), t.binding...) }
+
+// taskTunnelPrologue separates identity task doors from machine-access doors,
+// even if a caller accidentally supplies the same static key to both.
+const taskTunnelPrologue = "codeaf task door v1 connect"
+
+// ConnectWithKey opens an identity task tunnel with an explicit static key.
+// The responder's key must already be pinned by the caller.
+func ConnectWithKey(conn io.ReadWriteCloser, peer []byte, key *ecdh.PrivateKey) (*Tunnel, error) {
+	if key == nil {
+		return nil, errors.New("pair: a task tunnel needs a static key")
+	}
+	return connectTaskTunnel(conn, peer, Device{private: key}.noiseKey(), "", taskTunnelPrologue)
+}
+
+// AcceptWithKey answers an identity task tunnel. Device authorization follows
+// inside the tunnel, where certificates can be bound to ChannelBinding.
+func AcceptWithKey(conn io.ReadWriteCloser, key *ecdh.PrivateKey) (*Tunnel, error) {
+	if key == nil {
+		return nil, errors.New("pair: a task tunnel needs a static key")
+	}
+	var intent [1]byte
+	if _, err := io.ReadFull(conn, intent[:]); err != nil {
+		return nil, err
+	}
+	if intent[0] != intentConnect {
+		return nil, errors.New("this door takes task connections")
+	}
+	tunnel, _, err := acceptTaskTunnel(conn, Device{private: key}.noiseKey(), func([]byte, string) error { return nil }, taskTunnelPrologue)
+	return tunnel, err
+}
 
 // Read hands back plaintext. A record arrives whole and is drained across as
 // many Reads as the caller needs, which is what makes this an ordinary stream
@@ -205,6 +242,99 @@ func acceptAsMachine(conn io.ReadWriteCloser, me Device, allow func(key []byte, 
 	// The responder writes with the second cipher state and reads with the
 	// first, which is Noise's own ordering: the first is the initiator's.
 	return &Tunnel{conn: conn, peer: deviceKey, send: second, recv: first}, deviceKey, nil
+}
+
+func connectTaskTunnel(conn io.ReadWriteCloser, machineKey []byte, static noise.DHKey, label, prologue string) (*Tunnel, error) {
+	if _, err := conn.Write([]byte{intentConnect}); err != nil {
+		return nil, err
+	}
+	handshake, err := noise.NewHandshakeState(noise.Config{
+		CipherSuite:   suite,
+		Pattern:       noise.HandshakeIK,
+		Initiator:     true,
+		Prologue:      []byte(prologue),
+		StaticKeypair: static,
+		PeerStatic:    machineKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// THE PAYLOAD IS WHAT PROVES THIS DEVICE HOLDS ITS KEY. In IK the first
+	// message carries this device's static key and a static-static exchange,
+	// and the tag over this payload is under a key that exchange produced — so
+	// a machine that opens it has proof, and a device replaying somebody else's
+	// captured static key produces a message that does not open.
+	message, _, _, err := handshake.WriteMessage(nil, []byte(label))
+	if err != nil {
+		return nil, err
+	}
+	if err := writeRecord(conn, message); err != nil {
+		return nil, err
+	}
+	reply, err := readRecord(conn)
+	if err != nil {
+		// NOTHING CAME BACK, which is what a machine that could not read the
+		// first message looks like from here: IK encrypts this device's own
+		// static key to the key it pinned, so a machine holding a different key
+		// cannot open the message and has nothing to answer with.
+		return nil, ErrNoAnswer
+	}
+	said, first, second, err := handshake.ReadMessage(nil, reply)
+	if err != nil {
+		return nil, ErrNotThatMachine
+	}
+	if first == nil || second == nil {
+		return nil, errors.New("that machine answered with a handshake this build cannot finish")
+	}
+	if err := hearVerdict(said); err != nil {
+		return nil, err
+	}
+	return &Tunnel{conn: conn, peer: machineKey, binding: append([]byte(nil), handshake.ChannelBinding()...), send: first, recv: second}, nil
+}
+
+// acceptAsMachine answers a connection, and asks `allow` whether the device on
+// the other end may open a conversation here.
+//
+// THE VERDICT TRAVELS INSIDE THE ENCRYPTION. A device that has been stopped
+// gets a sentence saying so, and it gets it from the machine itself — the relay
+// neither writes it nor reads it.
+func acceptTaskTunnel(conn io.ReadWriteCloser, static noise.DHKey, allow func(key []byte, label string) error, prologue string) (*Tunnel, []byte, error) {
+	handshake, err := noise.NewHandshakeState(noise.Config{
+		CipherSuite:   suite,
+		Pattern:       noise.HandshakeIK,
+		Initiator:     false,
+		Prologue:      []byte(prologue),
+		StaticKeypair: static,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	message, err := readRecord(conn)
+	if err != nil {
+		return nil, nil, err
+	}
+	said, _, _, err := handshake.ReadMessage(nil, message)
+	if err != nil {
+		return nil, nil, errors.New("a connection arrived that this machine could not make sense of")
+	}
+	deviceKey := append([]byte{}, handshake.PeerStatic()...)
+	verdict := ""
+	if err := allow(deviceKey, readableLabel(string(said))); err != nil {
+		verdict = err.Error()
+	}
+	reply, first, second, err := handshake.WriteMessage(nil, sayVerdict(verdict))
+	if err != nil {
+		return nil, deviceKey, err
+	}
+	if err := writeRecord(conn, reply); err != nil {
+		return nil, deviceKey, err
+	}
+	if verdict != "" {
+		return nil, deviceKey, errors.New(verdict)
+	}
+	// The responder writes with the second cipher state and reads with the
+	// first, which is Noise's own ordering: the first is the initiator's.
+	return &Tunnel{conn: conn, peer: deviceKey, binding: append([]byte(nil), handshake.ChannelBinding()...), send: second, recv: first}, deviceKey, nil
 }
 
 // withDeadline puts a bound on a handshake when the stream underneath carries
