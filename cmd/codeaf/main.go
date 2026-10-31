@@ -334,6 +334,8 @@ func run() error {
 		return relayserve.Main(os.Args[2:])
 	case "cluster":
 		return runCluster(os.Args[2:])
+	case "devbox":
+		return runDevbox(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
@@ -608,6 +610,8 @@ Housekeeping — changes state on disk or on the network
       add this device to yours: shows a link to approve from one you use
   codeaf pair approve <link-or-code> | <code> [--replace] | --code
       approve a new device; or use or show a six-digit code for your chats
+  codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
+      an always-on computer of yours on your own Railway account
   codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices | codeaf cluster status | lead

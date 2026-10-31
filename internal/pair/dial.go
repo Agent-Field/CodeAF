@@ -98,12 +98,15 @@ func (r Reach) say(line string) {
 // ways this fails that a person cannot tell apart by looking, and errors.go
 // keeps one sentence for each.
 func (r Reach) Open(ctx context.Context) (*Tunnel, error) {
-	if !relay.ValidName(r.Name) {
-		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42, and `codeaf serve` prints the one for a machine", r.Name)
-	}
 	known, found, err := r.Machines.Machine(r.Name)
 	if err != nil {
 		return nil, err
+	}
+	if found && known.Alias == r.Name {
+		r.Name = known.Name
+	}
+	if !relay.ValidName(r.Name) {
+		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42, and `codeaf serve` prints the one for a machine", r.Name)
 	}
 	service := RelayFor(known, found, r.Sync)
 	if strings.TrimSpace(service) == "" {
@@ -130,10 +133,20 @@ func (r Reach) Open(ctx context.Context) (*Tunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	withDeadline(stream, r.now().Add(HandshakeWithin))
+	// A status probe may cancel after dialing; the stream otherwise outlives its dial context.
+	stopClosing := context.AfterFunc(ctx, func() { _ = stream.Close() })
+	defer stopClosing()
+	deadline := r.now().Add(HandshakeWithin)
+	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
+		deadline = until
+	}
+	withDeadline(stream, deadline)
 	tunnel, err := connectAsSurface(stream, machineKey, r.Device, r.Label)
 	if err != nil {
 		_ = stream.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if errors.Is(err, ErrNotThatMachine) {
 			return nil, NotThatMachine(r.Name)
 		}

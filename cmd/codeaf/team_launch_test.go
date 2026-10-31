@@ -134,9 +134,7 @@ func freshEngineProcess(t *testing.T) {
 	t.Helper()
 	reset := func() {
 		closeEngineProcess()
-		engineProcess.once = sync.Once{}
 		engineProcess.proc = nil
-		engineProcess.err = nil
 	}
 	reset()
 	t.Cleanup(reset)

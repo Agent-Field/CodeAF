@@ -186,6 +186,10 @@ func upgradeRaw(ctx context.Context, address *url.URL, base, path string, header
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
+	// A caller can stop a probe while an older relay is silent during HTTP upgrade.
+	raw := conn
+	stopClosing := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	defer stopClosing()
 	if address.Scheme == "https" {
 		secure := tls.Client(conn, &tls.Config{ServerName: address.Hostname()})
 		if err := secure.HandshakeContext(ctx); err != nil {
@@ -205,7 +209,11 @@ func upgradeRaw(ctx context.Context, address *url.URL, base, path string, header
 	request.Header.Set("Upgrade", Protocol)
 	request.Header.Set("Connection", "Upgrade")
 
-	_ = conn.SetDeadline(time.Now().Add(HandshakeWithin))
+	deadline := time.Now().Add(HandshakeWithin)
+	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
+		deadline = until
+	}
+	_ = conn.SetDeadline(deadline)
 	if err := request.Write(conn); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)

@@ -31,8 +31,10 @@ import (
 
 // Known is one machine this device has paired with, as the surface remembers it.
 type Known struct {
-	// Name is what a person types after --at.
+	// Name is the key-derived name registered with the relay.
 	Name string `json:"name"`
+	// Alias is a chosen dev box name pinned by its Terraform configuration.
+	Alias string `json:"alias,omitempty"`
 	// Key is the machine's long-term public key, base64 raw-url. THIS IS THE
 	// PINNED THING: a connection is to this key, and the name is only how the
 	// relay finds it.
@@ -92,7 +94,7 @@ func (b *Book) Machine(name string) (Known, bool, error) {
 		return Known{}, false, err
 	}
 	for _, one := range known {
-		if one.Name == name {
+		if one.Name == name || (one.Alias != "" && one.Alias == name) {
 			return one, true, nil
 		}
 	}
@@ -110,7 +112,7 @@ func (b *Book) Remember(one Known) error {
 	return b.update(func(known []Known) []Known {
 		kept := known[:0]
 		for _, existing := range known {
-			if existing.Name != one.Name {
+			if existing.Name != one.Name && (one.Alias == "" || existing.Alias != one.Alias) {
 				kept = append(kept, existing)
 			}
 		}

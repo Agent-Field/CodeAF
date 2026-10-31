@@ -34,6 +34,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
+		{"can I run codeaf on my own server", "a-dev-box-on-your-own-railway"},
+		{"set up a dev box", "a-dev-box-on-your-own-railway"},
+		{"always-on computer in the cloud", "a-dev-box-on-your-own-railway"},
+		{"how do I remove my dev box", "a-dev-box-on-your-own-railway"},
+		{"how much does a dev box cost", "a-dev-box-on-your-own-railway"},
 		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
 		{"can my phone lead", "coordination-and-workers"},
 		{"can my phone be the leader", "coordination-and-workers"},

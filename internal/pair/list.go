@@ -14,6 +14,7 @@ package pair
 // only ever draw a table that has rows.
 
 import (
+	"cmp"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -76,10 +77,10 @@ func MachinesList(known []Known, now time.Time) string {
 	out.WriteString("\nmachines this device can reach\n\n")
 	widest := 0
 	for _, one := range known {
-		widest = max(widest, width(one.Name))
+		widest = max(widest, width(cmp.Or(one.Alias, one.Name)))
 	}
 	for _, one := range known {
-		fmt.Fprintf(&out, "  %s  paired %s\n", padded(one.Name, widest), since(one.Since, now))
+		fmt.Fprintf(&out, "  %s  paired %s\n", padded(cmp.Or(one.Alias, one.Name), widest), since(one.Since, now))
 	}
 	out.WriteString("\nopen one with `codeaf chat --at <name>`.\n")
 	return out.String()

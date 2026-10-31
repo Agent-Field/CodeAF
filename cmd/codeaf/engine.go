@@ -1424,22 +1424,31 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 // For the pipe engine this changes nothing at all: one conversation calls it
 // once, exactly as before.
 var engineProcess struct {
-	once sync.Once
+	mu   sync.Mutex
 	proc *v3Process
-	err  error
 }
 
 func openEngineProcess() (*v3Process, error) {
-	engineProcess.once.Do(func() {
-		engineProcess.proc, engineProcess.err = openV3Process("engine")
-	})
-	return engineProcess.proc, engineProcess.err
+	engineProcess.mu.Lock()
+	defer engineProcess.mu.Unlock()
+	if engineProcess.proc != nil {
+		return engineProcess.proc, nil
+	}
+	// A first connection can precede the serving computer's first vault pull.
+	// Cache only a successful profile load so the next connection can try again.
+	proc, err := openV3Process("engine")
+	if err == nil {
+		engineProcess.proc = proc
+	}
+	return proc, err
 }
 
 // closeEngineProcess closes the once-per-process resources after the serving
 // road has returned. In particular, closeAll cancels and joins model discovery
 // before the engine process can exit or its profile can be reused.
 func closeEngineProcess() {
+	engineProcess.mu.Lock()
+	defer engineProcess.mu.Unlock()
 	if engineProcess.proc != nil {
 		engineProcess.proc.closeAll()
 	}
