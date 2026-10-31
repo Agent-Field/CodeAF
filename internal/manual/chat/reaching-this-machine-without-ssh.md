@@ -48,7 +48,8 @@ way, use that; the two doors are compared at the bottom of this page.
 
 `codeaf serve` keeps the identity's saved keys and settings in step the way an open terminal does only when it is started with `CODEAF_SERVE_SYNC=1`, which a dev box sets. Without it, serve syncs nothing while it serves, as it always has.
 
-On a paired Linux or macOS computer, `codeaf serve` also prints
+Plain `codeaf serve` opens only the machine connection; it does not take tasks.
+On a paired Linux or macOS computer, `codeaf serve --take-tasks` also prints
 `takes tasks from your paired computers`. Those computers can send a task with
 `/task --on <shown device name> <brief>` while keeping the chat and transcript
 where they are. This task door uses the shared identity and needs no separate

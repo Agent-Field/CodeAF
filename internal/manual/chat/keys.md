@@ -2732,8 +2732,8 @@ the keyboard, and `esc` there hands it back to the list.
 
 ## Keys in the task roster and inside a room
 
-Where paired tasks are available, `ctrl+d computer` on a proposal over an empty
-draft cycles `this computer` and eligible paired computers. Accepting sends the
+When **Run tasks on** names a computer or a proposal already names one,
+`ctrl+d computer` on that proposal over an empty draft cycles `this computer` and eligible paired computers. Accepting sends the
 choice shown by `runs on <name>`. When a remote task cannot reach its computer
 or was interrupted, its card and page offer `h run it here`; click the card
 action or press `h` over an empty draft to start fresh local work. The old

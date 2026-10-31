@@ -2662,7 +2662,7 @@ and stay there.
 ## Does a task survive a restart?
 
 For a task on another computer, reopening the chat follows the saved attempt
-and brings its answer home once. Restarting `codeaf serve` on that computer
+and brings its answer home once. Restarting `codeaf serve --take-tasks` on that computer
 follows a child still running there; a child that died is interrupted, never
 automatically run again. See *Tasks on another computer* for `run it here`.
 
@@ -3207,9 +3207,11 @@ pointer — they still point at your turn, never at the parent task's own journa
 
 These arguments are optional. Bad values return a refusal the model can correct.
 
-**`computer`** — the shown name of a paired computer that runs `codeaf serve`.
-This argument is present only on a belt with paired-task support; it is absent
-where no paired-task connection is available. The task needs its own independent
+**`computer`** — the shown name of a paired computer that runs
+`codeaf serve --take-tasks`. This argument and its model guidance appear only
+while **Run tasks on** names a paired computer. At the default `this computer`,
+the model gets the ordinary local tool. You can still name a computer for one
+task with `/task --on`. The task needs its own independent
 copy, and both ends need Linux or macOS; Windows is not yet supported. Omitted
 uses **Run tasks on**, whose default is `this computer`. An explicit choice wins;
 `here` and `this computer` run locally. An unknown name returns

@@ -2,15 +2,17 @@
 
 ## Can a task run on my other computer
 
-Yes. Pair both computers with the same identity and run `codeaf serve` on the
+Yes. Pair both computers with the same identity and run `codeaf serve --take-tasks` on the
 computer that will do the task. Both ends need Linux or macOS; Windows cannot
 send or receive these tasks yet. An ordinary open chat window does not take tasks.
 Only a task that works in its own copy can go.
 
-Choose the computer with `/task --on <computer> <brief>`, the proposal card's
-`ctrl+d computer`, the optional `computer` argument on `propose_task`, or
-**Run tasks on** in `/settings` → Tasks. Use its shown device name, not its
-connection name. The named choice wins over the setting; the default is
+Choose the computer with `/task --on <computer> <brief>` or **Run tasks on**
+in `/settings` → Tasks. Until you choose, ordinary tasks run here without
+contacting other task computers. A proposal already naming a computer, or
+one made with a remote default, offers `ctrl+d computer`. The
+model gets the optional `computer` argument only while **Run tasks on** names
+a paired computer. Use its shown device name, not its connection name. The named choice wins over the setting; the default is
 `this computer`. These controls are absent when paired tasks are unavailable.
 
 The chat, conversation file and transcript stay here. The task's copy goes
@@ -22,7 +24,7 @@ the conversation and task, once, and also stays on that computer's ledger.
 
 ## Run a task on my mac mini
 
-Pair your Mac mini and this computer, then run `codeaf serve` on the mini.
+Pair your Mac mini and this computer, then run `codeaf serve --take-tasks` on the mini.
 Use its shown name, quoting names that contain spaces:
 
 ```
@@ -34,8 +36,10 @@ Use its shown name, quoting names that contain spaces:
 flags. `here` and `this computer` choose this computer. A proposal's
 `ctrl+d computer` cycles through `this computer` and eligible paired computers
 over an empty draft; accepting the proposal sends that choice. The line says
-`runs on <name>`. The model's `computer` argument is available only where the
-paired-task belt supports it. A misspelt name is refused with
+`runs on <name>`. This line and cycle key are absent from ordinary local
+proposals until the setting or proposal names a computer. The model's
+`computer` argument is available only while **Run tasks on** names a paired
+computer. A misspelt name is refused with
 `no paired computer is named "<name>" — your computers are: <names>`.
 
 Both computers must run Linux or macOS, and the task needs its own copy. Sending
@@ -68,13 +72,13 @@ returns, the card says `running on <computer>` again and missed steps arrive
 in order. Reopening this chat follows the saved attempt and brings its result
 home once. Nothing is ever re-run by itself to recover a remote attempt.
 
-Restarting `codeaf serve` follows a child that is still alive. A child that died
+Restarting `codeaf serve --take-tasks` follows a child that is still alive. A child that died
 without an answer is interrupted and is never started again automatically.
 Stopping the task here asks the other computer to stop; its partial change
 comes back through the same landing road as a stopped local task.
 
 If the computer never took the task, the sentence is
-`<computer> is not taking tasks right now — run codeaf serve on it`.
+`<computer> is not taking tasks right now — run codeaf serve --take-tasks on it`.
 An older build says
 `<computer> runs a different codeaf that cannot take this task — update both`.
 A removed device is refused with `this computer was removed from your devices`.
@@ -93,12 +97,13 @@ The placement words disappear and the receipt says
 both copies and refuses to overwrite it. A computer that dropped may still be
 working; a request to stop it is best effort.
 
-## Run tasks on
+## Run tasks on — when the model gets the computer argument
 
 In `/settings` → Tasks, **Run tasks on** follows **Task model**. Its hint is
 `where a task goes when you do not name a computer`. It offers `this computer`
-(the default), then eligible paired computers by shown name. It is absent when
-paired tasks cannot work here. A removed or unsupported saved choice displays
+(the default), then eligible paired computers by shown name. The row reads the
+computer list only when you open it. It is absent on unpaired, quiet or Windows
+homes. A removed or unsupported saved choice displays
 `this computer`. Changing the row affects the next task, not work already running.
 
 An explicit `/task --on`, proposal-card computer choice, or model-supplied
@@ -106,9 +111,10 @@ An explicit `/task --on`, proposal-card computer choice, or model-supplied
 tasks and other work without an independent copy run here even when the
 setting names another computer, without a special placement sentence.
 
-## codeaf serve takes tasks from paired computers
+## codeaf serve --take-tasks takes tasks from paired computers
 
-Run `codeaf serve` on the paired computer that should take tasks. It prints
+Plain `codeaf serve` opens only the machine connection and does not take tasks.
+Run `codeaf serve --take-tasks` on the paired computer that should take tasks. It prints
 `takes tasks from your paired computers`. Pairing with the same identity is
 the permission; no separate machine-access grant is needed for tasks. Quiet or
 unpaired homes do not offer this door. Linux and macOS are supported on both

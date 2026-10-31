@@ -1578,7 +1578,7 @@ weekly update" — and it is proposed on a card. `/standing` and `/orders` are g
 ## /task — start work you can walk away from
 
 `/task --on <computer> <brief>` runs a task in its own copy on a paired computer
-running `codeaf serve`, while the chat stays here. Quote shown names containing
+running `codeaf serve --take-tasks`, while the chat stays here. Quote shown names containing
 spaces: `/task --on "mac mini" Fix the export`. `--best` or `--cheap` may go on
 either side of `--on`; `solo` follows the flags. `here` and `this computer`
 choose this computer. The flag is offered only where paired tasks are available;
