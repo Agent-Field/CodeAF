@@ -70,4 +70,3 @@ jobs:
       - name: Probe session failures on the base
         if: ${{ !cancelled() }}
         run: go test ./internal/session -run '^TestTheFixedPrefixStaysUnderItsBudget$|^TestTheLeanPrefixStaysUnderItsBudget$|^TestATurnThatMustReportRequiresTheVerbOnItsFirstRequestOnly$|^TestALandStartsNoAutomaticMaintenance$|^TestBashBeltTruncationCapFollowsTheWindow$|^TestTheStageVerbsCostOnlyTheStageAndStayUnderTheirBudget$|^TestBashBeltTruncationWritesHeadTailAndPath$|^TestProgramHoldClassifiesEveryRegisteredChatTool$|^TestNoRoadInTheMemoryEngineHasMoreEndingsThanTheCeiling$|^TestNoRoadInTheTaskEngineHasMoreEndingsThanItsLedgerRow$' -count=1 -v -timeout 5m
-

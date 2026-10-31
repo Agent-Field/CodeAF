@@ -136,6 +136,9 @@ func TestAppAgentIdentityBinaryE2E(t *testing.T) {
 		}
 	}
 	checkShell()
+	if !identity.Solo(appHome) {
+		t.Fatal("a first app launch lost its solo sync posture")
+	}
 	owner, err := identity.Load(appHome)
 	if err != nil {
 		t.Fatal(err)
