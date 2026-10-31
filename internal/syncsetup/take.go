@@ -667,7 +667,7 @@ func (c *Continuer) pullVault(ctx context.Context, at cell.Cell) error {
 	if err != nil {
 		return err
 	}
-	return c.sync.withVault(func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
+	return c.sync.withVaultWithin(ctx, vaultBusyWait, func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
 }
 
 // files is the withheld files of c as a carrier: the workspace the engine seals
@@ -694,6 +694,25 @@ func (s *Sync) files(eng cellstore.Engine, c cell.Cell) (vaultsync.Files, error)
 // under the vault scope, so vaultsync stays unaware of counting, and what the
 // run moved is written when it ends.
 func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
+	return s.withVaultWithin(context.Background(), 0, use, extra...)
+}
+
+// A CONTINUE WAITS FOR THE VAULT; A BACKGROUND EXCHANGE DOES NOT. Every running
+// chat's drive pushes the vault under state-sync.lock, and over a slow relay it
+// holds the lock for seconds. A background exchange that finds it busy may skip,
+// because the holder is already carrying the same state; a continue's pull may
+// not, because it is the last step of a move the person asked for, and failing
+// it handed the chat back with "could not be put in this folder" (D4 in the
+// two-network test). So the continue waits up to vaultBusyWait, then fails as
+// before.
+const (
+	vaultBusyWait  = 30 * time.Second
+	vaultBusyRetry = 100 * time.Millisecond
+)
+
+// withVaultWithin is withVault for a caller that waits up to within for another
+// codeaf on this computer to finish its own exchange; zero never waits.
+func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	// Refuse before opening the lock file as well as before creating keys, so
@@ -706,7 +725,7 @@ func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Ca
 		return err
 	}
 	defer lock.Close()
-	if err := filelock.Lock(lock, true, true); err != nil {
+	if err := lockState(ctx, lock, within); err != nil {
 		return err
 	}
 
@@ -718,6 +737,29 @@ func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Ca
 	defer sc.Settle()
 	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
 		Carry: append(s.carried(), extra...)})
+}
+
+// lockState takes the vault's lock without blocking, and while another process
+// holds it retries every vaultBusyRetry until within has passed or ctx ends. The
+// answer after the bound is the busy refusal itself, so a caller that gives up
+// says what it always said.
+func lockState(ctx context.Context, lock *os.File, within time.Duration) error {
+	err := filelock.Lock(lock, true, true)
+	if within <= 0 || !filelock.IsBusy(err) {
+		return err
+	}
+	deadline := time.Now().Add(within)
+	tick := time.NewTicker(vaultBusyRetry)
+	defer tick.Stop()
+	for filelock.IsBusy(err) && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		case <-tick.C:
+		}
+		err = filelock.Lock(lock, true, true)
+	}
+	return err
 }
 
 // profile is the directory the product reads config.json and credentials.json
