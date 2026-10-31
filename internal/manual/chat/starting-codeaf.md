@@ -129,7 +129,7 @@ stale is running.
 | `--reasoning <level>` | how hard the model is asked to think: `off`, `low`, `medium` or `high` |
 | `--session <path>` | open a particular conversation file instead of the most recent |
 | `--host <host[:path]>` | run the conversation on another machine over ssh |
-| `--once "<text>"` | send one message and print its replies — when paired, finish the bounded final send to your other computers before exiting; with `--yolo` and a budget it stays until handed-over work is home or the limit ends it |
+| `--once "<text>"` | send one message and print its replies — normally it then exits; with `--yolo` and a budget it stays until handed-over work is home or the limit ends it |
 | `--no-compact` | never shorten the conversation automatically |
 | `--yolo` | run every tool without asking, subject to the limits that nothing lifts |
 | `--max-hours <n>` | with `--yolo`: elapsed-time limit; interactive chat checks before new turns, and the window closes itself two minutes after it |

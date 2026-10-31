@@ -1624,61 +1624,11 @@ machine that counted, which is the opposite of the truth.
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
 
-## Does chat --once wait for my other computers before it exits?
-
-When you are paired, `codeaf chat --once "<text>"` waits for the chat's last
-saved turn to reach your other computers and for this computer to let go of the
-chat before it exits. It uses the interactive chat's closing limit: up to 30
-seconds for the final send and release. If the final send or release fails or reaches the limit,
-standard error says `this chat could not finish syncing with your other computers; run codeaf doctor --fix or reopen this chat to try again.`
-The reply on standard output and the turn's exit status stay the same. On a
-computer that has never paired, the command has no added sync wait or requests.
-
-## My chat did not show up on my other computer — codeaf doctor and --fix
-
-On a paired computer, `codeaf doctor` can report
-`chat has not reached your other computers · chat <id>`. It checks owned chats
-started and first saved here while paired, with conversation work saved and a
-local record that they were meant to be sent. Older chats without that record,
-pre-pairing chats, branch copies, archived chats and chats currently open here
-are left out of this check. Their absence from the report does not prove they
-have reached another computer.
-
-If the directory cannot be read, doctor says
-`could not check whether chats reached your other computers; check this computer's network and run codeaf doctor again`.
-It never reports a chat as missing based on a failed check.
-
-`codeaf doctor --fix` retries the ordinary send and releases the chat, printing
-`fixed: sent chat <id> to your other computers` for each successful repair.
-Running it again leaves repaired chats alone. A chat already present at the fresh
-check produces no missing-chat line. These sends run after the other repair
-passes, each with its own send limit. Doctor never takes another computer's live
-hold or overwrites unfamiliar history.
-
-Chats put away before repair starts stay excluded. If you put a chat away during
-its send, doctor also puts away the newly created record on your other computers.
-If that request fails, it says `could not put away chat on your other computers · chat <id>`;
-put the chat away on the other computer when the connection returns.
-A computer that has never paired gets no new check or requests.
-
-Saving the local recovery record is best effort and silent. The chat still
-attempts its ordinary send if recording fails.
-
-## I deleted my codeaf home while the engine was stopping
-
-A running process remembers its original home directory. If you remove it or
-replace it with a different directory, attempts to make an identity or device
-refuse with `codeaf home was removed or replaced; restart codeaf to use the current folder`.
-Late saving work does not make a new identity there. If the engine is already
-stopping and still closing chats, it exits promptly when its original home is
-removed. With the home intact, stopping keeps its usual saving order and limits.
-A new process can still create a home on first use.
-
 ## Repair a busy engine store or sync state — codeaf doctor --fix
 
-When an engine store lock or cross-computer sync issue exists on this computer, `codeaf doctor` adds `engine store` and `sync` rows naming a busy store holder (`busy · held by <command>, pid <pid>`), an `unfinished continue · chat <id>`, `duplicate rows · chat <id>`, a `lapsed hold on this computer · chat <id>`, or a chat that has not reached your other computers. When a busy holder cannot be found in the brief lookup, the store row says only `busy`. Healthy stores and clean sync state print nothing.
+When an engine store lock or cross-computer sync issue exists on this computer, `codeaf doctor` adds `engine store` and `sync` rows naming a busy store holder (`busy · held by <command>, pid <pid>`), an `unfinished continue · chat <id>`, `duplicate rows · chat <id>`, or a `lapsed hold on this computer · chat <id>`. Healthy stores and clean sync state print nothing.
 
-Without `--fix`, `codeaf doctor` changes nothing. `codeaf doctor --fix` releases unfinished continues started by this computer, retires duplicate branch copies whose turns are all already in the main chat, and sends eligible chats missing from the directory, printing one `fixed:` line for each repair. A store lock whose process has ended is already free, so doctor neither reports nor removes it, and a busy store waits for its holder to finish or quit. It never touches another computer's live hold and never deletes a turn that exists only in the copy or scratch folder it inspects.
+Without `--fix`, `codeaf doctor` changes nothing. `codeaf doctor --fix` releases unfinished continues started by this computer, and retires duplicate branch copies whose turns are all already in the main chat, printing one `fixed:` line for each repair. A store lock whose process has ended is already free, so doctor neither reports nor removes it, and a busy store waits for its holder to finish or quit. It never touches another computer's live hold and never deletes a turn that exists only in the copy or scratch folder it inspects.
 
 ## codeaf help, and the verbs that take no flags at all
 

@@ -1373,7 +1373,7 @@ the sentence about it without typing anything. So you can start something, close
 lid on the conversation, and come back to the answer rather than to a card and silence.
 On a headless `--once --yolo` run with a budget, the command stays alive for those replies
 until no work is moving and no reply is in flight; without a budget, `--once` still exits
-after its one reply and, when paired, its bounded final send to your other computers.
+after its one reply.
 `jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
 
 **A watch is two kinds of news and only one of them wakes you.** Its ordinary updates — the
