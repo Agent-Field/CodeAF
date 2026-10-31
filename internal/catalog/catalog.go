@@ -35,6 +35,7 @@ const (
 	// connection checks, so a catalog discovery can read is also connectable.
 	MaxCatalogBytes = 16 << 20
 	cacheName       = "model-catalog.json"
+	pickerCacheName = "models.json"
 	cacheKeyBytes   = 8
 	// DefaultBaseURL lives beside the compiled-in fallback rows because those
 	// rows are this service's ids, so the package that serves them has to be
@@ -1516,19 +1517,41 @@ func cachePath(dir, source, base string) string {
 	if key == "" {
 		return filepath.Join(dir, cacheName)
 	}
-	extension := filepath.Ext(cacheName)
-	stem := strings.TrimSuffix(cacheName, extension)
-	return filepath.Join(dir, stem+"-"+key+extension)
+	return filepath.Join(dir, keyedCacheName(cacheName, key))
 }
 
 // IsCacheName recognizes only filenames the catalog writes. Pairing uses this
 // ownership boundary so a person's similarly named file still counts as work.
 func IsCacheName(name string) bool {
-	if name == cacheName {
+	return isCacheName(name, cacheName)
+}
+
+// PickerCacheName owns the picker's smaller cache filename. Sharing the name
+// with pairing keeps a fetched model list from being mistaken for local work.
+func PickerCacheName(source, base string) string {
+	return keyedCacheName(pickerCacheName, CacheKey(source, base))
+}
+
+// IsPickerCacheName accepts only picker filenames with a real ownership key,
+// or the legacy default filename. Similar personal filenames remain work.
+func IsPickerCacheName(name string) bool {
+	return isCacheName(name, pickerCacheName)
+}
+
+func keyedCacheName(legacy, key string) string {
+	if key == "" {
+		return legacy
+	}
+	extension := filepath.Ext(legacy)
+	return strings.TrimSuffix(legacy, extension) + "-" + key + extension
+}
+
+func isCacheName(name, legacy string) bool {
+	if name == legacy {
 		return true
 	}
-	extension := filepath.Ext(cacheName)
-	stem := strings.TrimSuffix(cacheName, extension)
+	extension := filepath.Ext(legacy)
+	stem := strings.TrimSuffix(legacy, extension)
 	key, ok := strings.CutPrefix(name, stem+"-")
 	if !ok {
 		return false

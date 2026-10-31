@@ -185,7 +185,7 @@ It is not a view of your chats. It is a copy of you. Pair only a computer you ow
 
 Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
 
-A computer whose conversations have no submitted turns can pair directly. If it has chats with submitted turns, the refusal counts them and explains `--replace`. For three chats:
+A computer whose conversations have no submitted turns can pair directly. If it already has its own saved pairing keys and chats with submitted turns, the refusal counts them and explains `--replace`. Chats made with `codeaf chat --once` before any pairing keys exist are kept on first pairing and can sync with the newly joined computers. For three chats on a computer with its own keys:
 
 ```
 this computer already has 3 chats of its own, so nothing was changed. To pair it anyway, run this again with --replace: those 3 chats stay on this computer but no longer sync; shared memories and settings are cleared
@@ -447,7 +447,7 @@ If your devices cannot be listed, `codeaf devices` exits with an error explainin
 
 When the device name cannot be read yet, completion says `Paired with your other device. Run codeaf to open your chats.` Otherwise it names one of your paired computers.
 
-If codeaf finds local work it cannot count as a submitted chat, it keeps that work and says `this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared`.
+If a computer with its own saved pairing keys has local work codeaf cannot count as a submitted chat, it keeps that work and says `this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared`.
 
 
 ## Paste a new computer’s link into /pair — adding another device after two
@@ -464,6 +464,12 @@ field. Use `codeaf pair approve <link>` there instead.
 
 ## I opened codeaf once without sending a turn — can this computer pair?
 
-Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. The name you enter for pairing is kept.
+Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`, including when a provider such as Ollama is connected. Its fetched model lists do not count as local work. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. The name you enter for pairing is kept.
 
-A sent turn, tracked work, a chat memory, an automation, a saved knowledge page or a stored conversation makes the computer used. Unknown files or database tables also keep the conservative local-work refusal. Existing personal memories in the graph keep their normal merge behavior. A computer with an unrelated shared account is never silently merged; use the explicit replacement road when appropriate.
+Once this computer has its own saved pairing keys, a sent turn, tracked work, a chat memory, an automation, a saved knowledge page or a stored conversation makes the computer used. Unknown files or database tables also keep the conservative local-work refusal. Existing personal memories in the graph keep their normal merge behavior. A computer with an unrelated shared account is never silently merged; use the explicit replacement road when appropriate.
+
+## What happens to chats made with chat --once before the first pairing?
+
+If this computer has no saved pairing keys yet, chats made with `codeaf chat --once` are kept when it first pairs without `--replace`. They become part of the chats it can sync with the newly joined computers. Older chats are copied independently for syncing; their originals stay untouched and remain listed until a completed copy is ready. Pairing does not discard or hide them.
+
+A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.

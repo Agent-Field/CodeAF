@@ -64,6 +64,11 @@ func catalogCache(path string) (bool, error) {
 	return !catalog.IsCacheName(filepath.Base(path)), nil
 }
 
+// pickerCache uses the same filename boundary as the window that writes it.
+func pickerCache(path string) (bool, error) {
+	return !catalog.IsPickerCacheName(filepath.Base(path)), nil
+}
+
 // unknown is the judge of a name nobody declared, and it is always use.
 func unknown(string) (bool, error) { return true, nil }
 

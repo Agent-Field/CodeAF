@@ -55,7 +55,7 @@ var startupRules = rules{
 			"automations.db-wal": never, "automations.db-shm": never,
 			"clock.lock": never, "clock.log": never, "environment.salt": never, "windows": never,
 		}),
-		"history.jsonl": onlyCommands, "models.json": never, "lanes.json": never, "lanes.json.lock": never,
+		"history.jsonl": onlyCommands, "models*.json": pickerCache, "lanes.json": never, "lanes.json.lock": never,
 		"lanes.log": never, "lanes": never, // provider facts fetched from the model catalogue, fetched again on demand
 		"draft-*.json": untypedDraft, "hosts": never, "standing": never,
 		"stores": within(rules{
