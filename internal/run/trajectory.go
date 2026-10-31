@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -190,7 +191,7 @@ func Trajectory(storeDir, id string) ([]Step, error) {
 	return steps, nil
 }
 
-// One writer orders all trajectories of a run. The follower can wait for a
+// Inside the task child, one writer orders all trajectories of its run. The follower can wait for a
 // missing order when a directory scan observes a later task's append first.
 var trajectoryWriter = struct {
 	sync.Mutex
@@ -202,6 +203,28 @@ var trajectoryWriter = struct {
 // write: the record grows in the order the worker took its steps, and a
 // reader walking the file sees the run the way it happened.
 func appendTrajectory(storeDir, id string, step Step) error {
+	if taskTrajectoryOrdering.Load() {
+		return appendTaskTrajectory(storeDir, id, step)
+	}
+	dir := plandb.TaskDir(storeDir, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	line, err := json.Marshal(step)
+	if err != nil {
+		return err
+	}
+	file := filepath.Join(dir, trajectoryName)
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(line, '\n'))
+	return err
+}
+
+func appendTaskTrajectory(storeDir, id string, step Step) error {
 	trajectoryWriter.Lock()
 	defer trajectoryWriter.Unlock()
 	order, known := trajectoryWriter.orders[storeDir]
@@ -255,4 +278,13 @@ func observationHead(text string) string {
 		cut--
 	}
 	return text[:cut]
+}
+
+var taskTrajectoryOrdering atomic.Bool
+
+// RecordTaskTrajectoryOrder is enabled only in the hidden task-store child.
+// Its cleanup also keeps in-process command fixtures from changing later runs.
+func RecordTaskTrajectoryOrder() func() {
+	previous := taskTrajectoryOrdering.Swap(true)
+	return func() { taskTrajectoryOrdering.Store(previous) }
 }

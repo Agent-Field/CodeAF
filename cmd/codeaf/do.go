@@ -3651,6 +3651,7 @@ func parseSlots(raw string) (*int, error) {
 // the resident road keeps.
 func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, runErr error) {
 	if request.runStore != "" {
+		defer runengine.RecordTaskTrajectoryOrder()()
 		// The task door reads per-call ledger rows after this process exits;
 		// queued final charges must reach disk before its receipt is printed.
 		defer session.CloseUsage()
