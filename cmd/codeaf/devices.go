@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"runtime"
 	"slices"
@@ -445,22 +446,14 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 	open := func(sealed string) (string, error) { return directory.OpenName(c.key, sealed) }
 	rows := make([]chatsRow, 0, len(l.Devices))
 	for id, d := range l.Devices {
+		name := chatlist.DeviceName(l.Devices, id, open)
 		rows = append(rows, chatsRow{
-			ChatsDevice: pair.ChatsDevice{Name: chatlist.DeviceName(l.Devices, id, open), This: id == c.self, Stopped: d.Revoked, Platform: d.Platform},
+			ChatsDevice: pair.ChatsDevice{Name: name, This: id == c.self, Stopped: d.Revoked, Platform: d.Platform},
 			id:          id,
+			baseName:    name,
 		})
 	}
 	for i := range rows {
-		rows[i].baseName = rows[i].Name
-	}
-	for i := range rows {
-		duplicate := false
-		for j := range rows {
-			if i != j && strings.EqualFold(rows[i].baseName, rows[j].baseName) {
-				duplicate = true
-			}
-		}
-		rows[i].Name = devname.DeviceLabel(rows[i].Name, rows[i].id, duplicate)
 		rows[i].Online = presence.Devices[rows[i].id].Online
 		if seen := l.Devices[rows[i].id].LastSeen; seen > 0 {
 			rows[i].LastSeen = time.UnixMilli(seen)
@@ -494,13 +487,19 @@ func chatsRowsTable(rows []chatsRow, now time.Time, duplicates map[string]bool) 
 	if len(rows) == 0 {
 		return ""
 	}
+	// Selectors belong to presentation. Roster consumers need the original
+	// name even when a removed computer once used the same name.
+	if duplicates == nil {
+		duplicates = chatNameDuplicates(rows)
+	}
 	shown := make([]pair.ChatsDevice, len(rows))
 	for i, row := range rows {
 		shown[i] = row.ChatsDevice
-		if duplicates != nil {
-			shown[i].Name = devname.DeviceLabel(row.baseName, row.id, duplicates[strings.ToLower(row.baseName)])
-		}
+		shown[i].Name = devname.DeviceLabel(row.baseName, row.id, duplicates[strings.ToLower(row.baseName)])
 	}
+	slices.SortStableFunc(shown, func(a, b pair.ChatsDevice) int {
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name))
+	})
 	text := pair.ChatsDevicesListAt(shown, now)
 	if stdinIsTerminal(os.Stdout) {
 		text = strings.Replace(text, "\nremoved\n", "\n\x1b[2mremoved\x1b[0m\n", 1)
@@ -510,7 +509,25 @@ func chatsRowsTable(rows []chatsRow, now time.Time, duplicates map[string]bool) 
 
 func (c chatsKind) called(name string) ([]chatsRow, error) {
 	rows, err := c.rows()
+	duplicates := chatNameDuplicates(rows)
+	for i := range rows {
+		rows[i].Name = devname.DeviceLabel(rows[i].baseName, rows[i].id, duplicates[strings.ToLower(rows[i].baseName)])
+	}
 	return slices.DeleteFunc(rows, func(r chatsRow) bool { return !devname.MatchesDevice(name, r.baseName, r.id) }), err
+}
+
+// chatNameDuplicates keeps list labels and removal receipts on the same selectors.
+func chatNameDuplicates(rows []chatsRow) map[string]bool {
+	duplicates := map[string]bool{}
+	for i, row := range rows {
+		for _, other := range rows[i+1:] {
+			if strings.EqualFold(row.baseName, other.baseName) {
+				duplicates[strings.ToLower(row.baseName)] = true
+				duplicates[strings.ToLower(other.baseName)] = true
+			}
+		}
+	}
+	return duplicates
 }
 
 func (c chatsKind) find(name string) (int, error) {
@@ -563,7 +580,10 @@ func (c chatsKind) explain(err error) error {
 // explainSyncUnreachable keeps network failures in the same words at every
 // command door while preserving the cause for exit handling.
 func explainSyncUnreachable(err error, relay string) error {
-	if relay == "" {
+	// A failed request knows the service it used, even if the configured
+	// default changed. Let syncwords read that origin before filling a default.
+	var request *url.Error
+	if relay == "" && !errors.As(err, &request) {
 		relay = syncsetup.Resolve(home.Dir()).URL
 	}
 	return syncwords.Explain(err, relay)

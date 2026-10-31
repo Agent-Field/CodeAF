@@ -33,6 +33,8 @@ Click `+ Add another device` or press `alt+d` to open the steps. Click the headi
 
 When this computer uses your own sync service, step 1 includes its address: `1. On the new device, install and run: codeaf pair --via http://127.0.0.1:8901`. `/pair`, Settings → Devices → Add another device, and `codeaf pair --code` include the same `--via` argument.
 
+Approving a self-hosted page's link in a terminal keeps that page's service when it matches this computer's selected service. A link waiting on a different service is refused before its code is sent.
+
 The card goes away once you have two devices. After that, `/pair` or Settings → Devices → Add another device still offers a place to paste the new device’s link, alongside the code command. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
 ## Do older chats move after pairing?

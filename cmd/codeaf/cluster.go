@@ -63,30 +63,45 @@ func runCluster(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), clusterctl.ForwardTimeout)
 	defer cancel()
 	defer terminalSyncProgress(s.Relay)()
-	return explainSyncUnreachable(clusterCommandMode(ctx, s, args[0], os.Stdout, *verbose), s.Relay)
+	return clusterCommandMode(ctx, s, args[0], os.Stdout, *verbose, s.Relay)
+}
+
+// clusterCommandOptions carries the terminal's explicit mode and selected
+// service. Calls without options keep the existing detailed output.
+type clusterCommandOptions struct {
+	verbose bool
+	service string
+}
+
+func clusterCommandMode(ctx context.Context, c clusterDoor, verb string, out io.Writer, verbose bool, service ...string) error {
+	options := clusterCommandOptions{verbose: verbose}
+	if len(service) > 0 {
+		options.service = service[0]
+	}
+	return clusterCommand(ctx, c, verb, out, options)
 }
 
 // clusterCommand answers `codeaf cluster status` and `codeaf cluster lead`. The
 // whole answer is written into a buffer by work bounded by one ceiling, so a
 // store open that ignores its context cannot hold the terminal past it, and an
-// answer that arrives late never reaches the terminal at all.
-func clusterCommandMode(ctx context.Context, c clusterDoor, verb string, out io.Writer, verbose bool) error {
-	return clusterCommand(ctx, c, verb, out, verbose)
-}
-
-func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writer, details ...bool) error {
-	verbose := len(details) > 0 && details[0]
-
+// answer that arrives late never reaches the terminal at all. Errors are explained
+// once, with the service this command used, after either work or its ceiling ends.
+func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writer, options ...clusterCommandOptions) error {
+	selected := clusterCommandOptions{verbose: true}
+	if len(options) > 0 {
+		selected = options[0]
+	}
+	verbose, address := selected.verbose, selected.service
 	if verb == "status" {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, clusterStatusTimeout)
 		defer cancel()
 	}
-	return boundedClusterOutput(ctx, out, func(ctx context.Context, out io.Writer) error {
+	err := boundedClusterOutput(ctx, out, func(ctx context.Context, out io.Writer) error {
 		if verb == "lead" {
 			r, err := c.LeadCluster(ctx, 0)
 			if err != nil {
-				return explainSyncUnreachable(explainRemovedDevice(err), "")
+				return explainRemovedDevice(err)
 			}
 			if !verbose {
 				names := clusterDeviceNames(ctx, c, clusterctl.Status{Self: r.Node})
@@ -98,7 +113,7 @@ func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writ
 		}
 		s, err := c.ClusterStatus(ctx)
 		if err != nil {
-			return explainSyncUnreachable(explainRemovedDevice(err), "")
+			return explainRemovedDevice(err)
 		}
 		if !verbose {
 			return printClusterStatus(out, s, clusterDeviceNames(ctx, c, s))
@@ -123,6 +138,7 @@ func clusterCommand(ctx context.Context, c clusterDoor, verb string, out io.Writ
 		}
 		return nil
 	})
+	return explainSyncUnreachable(err, address)
 }
 
 // boundedClusterOutput runs one cluster answer under the forwarding ceiling and
@@ -149,7 +165,7 @@ func boundedClusterOutput(ctx context.Context, out io.Writer, work func(context.
 		_, err := io.WriteString(out, got.text)
 		return err
 	case <-ctx.Done():
-		return explainSyncUnreachable(ctx.Err(), "")
+		return ctx.Err()
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -139,6 +140,12 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	ref, err := pair.ReadLink(typed)
 	if err != nil {
 		return err
+	}
+	// A page already on this computer's service keeps that explicit route.
+	// A different service must still face the mailbox's configured route below,
+	// so a pasted link cannot redirect approval to another service.
+	if relay == "" && pair.CheckLinkService(typed, pairingRelay(home.Dir()).URL) == nil {
+		relay = pair.LinkRelay(typed)
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {

@@ -17,6 +17,8 @@ A phone would need a supported client, persistent storage, enrollment and a live
 storage work. A computer already joined is read from the service without
 reopening its local member store. A deadline says
 `the sync service at <address> did not answer in time — try again`.
+The address is the service used for this command, including the service saved
+during pairing or selected by `CODEAF_SYNC_URL`.
 Slow local storage can also use up that allowance; this sentence does not
 establish a network failure.
 
