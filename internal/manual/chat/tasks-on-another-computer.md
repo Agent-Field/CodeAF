@@ -19,6 +19,9 @@ The chat, conversation file and transcript stay here. The task's copy goes
 encrypted to the other computer, and its change comes home through the ordinary
 landing road, including its commits. With private task copies on, use
 `/task review <number> work` then `/task apply <number> work` here instead.
+That apply is the same one a task that ran here uses, with the same limits: on
+a Mac it refuses a project whose files belong to a group other than yours,
+saying `portable apply cannot preserve a different owner or group`.
 The other computer uses its own provider keys; its spend appears here against
 the conversation and task, once, and also stays on that computer's ledger.
 
