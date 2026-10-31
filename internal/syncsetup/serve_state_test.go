@@ -105,7 +105,11 @@ func TestR42ServeHomeStateIneligibleHomesStaySilent(t *testing.T) {
 				mustNil(t, os.RemoveAll(home))
 				mustNil(t, os.MkdirAll(home, 0o700))
 			case "quiet":
-				mustNil(t, os.RemoveAll(home))
+				// A solo home is made in a fresh folder, because codeaf now refuses to
+				// create an identity in a home this process saw and that was then
+				// deleted (internal/home Witness), which is what removing the paired
+				// machine's folder and reusing its path would look like.
+				home = filepath.Join(t.TempDir(), "solo")
 				_, err := identity.EnsureSolo(home)
 				mustNil(t, err)
 			case "cells unavailable":
