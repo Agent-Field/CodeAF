@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -63,7 +62,9 @@ func firstStart(t *testing.T) string {
 		startupFile(t, home, startupChat+"/"+name, "")
 	}
 	vault := knowledge.Open(home)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// The ceiling is for building the fixture, not a claim about how fast the
+	// worker is: a loaded machine must not turn setup into a failure.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
 	guard.Go("identity/startup-fixture", func() {
@@ -82,7 +83,12 @@ func firstStart(t *testing.T) string {
 		if ctx.Err() != nil {
 			t.Fatal("startup knowledge worker did not finish", <-done)
 		}
-		runtime.Gosched()
+		// A short pause rather than a spin: every status read opens the worker's
+		// own database, and spinning on it starves the writer being waited for.
+		select {
+		case <-ctx.Done():
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 	cancel()
 	<-done
