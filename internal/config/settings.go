@@ -1789,6 +1789,9 @@ type SettingGroup struct {
 // own: the running model slots and the surface's own divider preference.
 type SettingsOptions struct {
 	ProfileDir string
+	// Include omits controls unavailable to the caller from discovery and writes.
+	// Nil keeps the full registry for callers that supply their own presentation.
+	Include func(key string) bool
 
 	// ModelValue and SetModel front the model slots. They stay in the chat
 	// prefs file; the registry does not migrate them.
@@ -1842,9 +1845,23 @@ type Settings struct {
 // divider has nowhere to be written without [SettingsOptions.SaveSplitPct], and
 // a read-only divider is not a row somebody can read — it is a control whose
 // only behaviour is to refuse.
+//
+// [SettingsOptions.Include] is the caller's own narrowing, applied after the
+// build: a control the caller cannot offer at all (Run tasks on, in a
+// conversation with no task computers) is left out of discovery and writes
+// alike, rather than listed and refused.
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
+	if options.Include != nil {
+		rows := registry.rows[:0]
+		for _, row := range registry.rows {
+			if options.Include(row.Key) {
+				rows = append(rows, row)
+			}
+		}
+		registry.rows = rows
+	}
 	for index := range registry.rows {
 		registry.rows[index].write = registry.announce(registry.rows[index].Key, registry.rows[index].write)
 	}
