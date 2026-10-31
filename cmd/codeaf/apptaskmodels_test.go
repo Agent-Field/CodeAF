@@ -1,11 +1,16 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // taskModelsBackend is settingsBackend over a profile with one OpenRouter key
@@ -175,5 +180,54 @@ func TestAppSettingsChangedCarriesTaskModelsOnlyForTheirRows(t *testing.T) {
 	})
 	if got := config.CrewTaskCapAt(config.ProfileDir()); got != 7 {
 		t.Errorf("the task cap is %v, want the one row Spending writes", got)
+	}
+}
+
+// ONE LIST DECIDES WHAT IS SERVED. A model models.list offers on a provider is
+// a model settings.models.set accepts there, even when the crew's own rows were
+// read from an older list that lacks it.
+func TestAppTaskModelsSetAcceptsAModelTheModelsListServes(t *testing.T) {
+	backend, _ := taskModelsBackend(t)
+	freshEngineProcess(t)
+	const listed = "deepseek/deepseek-v4.1-flash"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"data":[{"id":"`+listed+`","name":"Flash","context_length":1048576,"supported_parameters":["tools"],"pricing":{"prompt":"0.00000005","completion":"0.0000002"}}]}`)
+	}))
+	t.Cleanup(server.Close)
+	settings, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := catalog.Options{BaseURL: server.URL, APIKey: settings.APIKey, Dir: settings.ProfileDir, HTTPClient: server.Client()}
+	models := catalog.LoadLazy(t.Context(), options)
+	t.Cleanup(models.Close)
+	proc := &v3Process{Settings: settings, ProfileDir: settings.ProfileDir, Models: models, Shelf: newV3ModelShelf(models, options)}
+	proc.Shelf.setSources(settings.Sources)
+	engineProcess.mu.Lock()
+	engineProcess.proc, engineProcess.tried = proc, true
+	engineProcess.mu.Unlock()
+
+	served, err := backend.ListModels()
+	if err != nil || !slices.ContainsFunc(served, func(m appwire.Model) bool { return m.ID == listed && m.Provider == "openrouter" }) {
+		t.Fatalf("models.list = %+v, %v; the test needs it to serve %s", served, err, listed)
+	}
+	mode := appwire.TaskModelsOne
+	got, err := backend.SetTaskModels(appwire.TaskModelsPatch{Mode: &mode, OneModel: &appwire.ModelRef{ID: listed, Provider: "openrouter"}})
+	if err != nil {
+		t.Fatalf("a model models.list serves was refused: %v", err)
+	}
+	if got.Mode != appwire.TaskModelsOne || got.OneModel == nil || got.OneModel.ID != listed {
+		t.Fatalf("after the set %+v", got)
+	}
+	// And a task is then routed onto it, every role.
+	d, err := config.RouteCrew(config.ProfileDir(), config.CrewAsk{})
+	if err != nil {
+		t.Fatalf("a task under the one model: %v", err)
+	}
+	for _, seat := range crewroute.Seats {
+		if pick := d.Seat(seat); pick.Send != listed {
+			t.Errorf("the %s role runs %q, want %s", seat, pick.Send, listed)
+		}
 	}
 }
