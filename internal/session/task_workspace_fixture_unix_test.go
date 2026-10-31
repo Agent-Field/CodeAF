@@ -12,21 +12,32 @@ import (
 	"testing"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
-// macOS inherits directory groups and can attach provenance to otherwise plain fixture files.
+// macOS inherits directory groups and stamps provenance on otherwise plain fixture files.
 func normalizeWorkspaceApplyFixtureMetadata(t *testing.T, path string) {
 	t.Helper()
 	if err := os.Lchown(path, os.Getuid(), os.Getgid()); err != nil {
 		t.Fatalf("set Apply fixture ownership for %s: %v", path, err)
 	}
+	// macOS 15 stamps com.apple.provenance on files a process tree started
+	// from some apps creates, and its owner cannot remove it; the product
+	// tolerates exactly that attribute (taskcopy.OSManagedAttribute), so the
+	// fixture leaves it and clears only attributes a person could have set.
 	for _, name := range workspaceApplyFixtureAttributes(t, path) {
+		if taskcopy.OSManagedAttribute(name) {
+			continue
+		}
 		if err := unix.Lremovexattr(path, name); err != nil {
 			t.Fatalf("remove extended attribute %q from Apply fixture %s: %v", name, path, err)
 		}
 	}
-	if names := workspaceApplyFixtureAttributes(t, path); len(names) != 0 {
-		t.Fatalf("extended attribute %q remains on Apply fixture %s after removal", names[0], path)
+	for _, name := range workspaceApplyFixtureAttributes(t, path) {
+		if !taskcopy.OSManagedAttribute(name) {
+			t.Fatalf("extended attribute %q remains on Apply fixture %s after removal", name, path)
+		}
 	}
 }
 
@@ -100,7 +111,7 @@ func TestTaskWorkspaceReviewRefusesInheritedGroupUntilFixtureIsNormalized(t *tes
 }
 
 func TestTaskWorkspaceReviewAcceptsFixtureAfterRemovingExtendedAttributes(t *testing.T) {
-	// macOS provenance must be removed from success fixtures without relaxing Review's metadata refusal.
+	// An attribute a person set is still refused by Review; only macOS provenance is tolerated.
 	agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, false)
 	attribute := "user.codeaf.fixture"
 	if runtime.GOOS == "darwin" {
