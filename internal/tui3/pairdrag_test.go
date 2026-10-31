@@ -8,6 +8,7 @@ package tui3
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -99,12 +100,13 @@ func replaceApp(t *testing.T, hasChats bool) (*app, *pairRig, *int) {
 	return a, newPairRig(t, a), &joins
 }
 
+// F3 preserves the described replacement behavior and recovery receipts.
 func TestPairReplaceAsksAndOnlyYesJoins(t *testing.T) {
 	a, r, joins := replaceApp(t, true)
 	r.slash("/pair 71-869-571 --replace")
 	r.until("the question", func() bool { return a.pair.ask != nil })
 	shown := strings.Join(strings.Fields(plain(frame(a))), " ")
-	for _, want := range []string{"Pair with your other devices?", "existing chats stay here", "shared memories and settings are cleared"} {
+	for _, want := range []string{"Pair with your other devices?", "existing chats stay here", "shared memories and settings are cleared", "teams are set aside"} {
 		if !strings.Contains(shown, want) {
 			t.Fatalf("no replace confirmation (lacks %q):\n%s", want, shown)
 		}
@@ -140,6 +142,7 @@ func TestPairReplaceYesJoins(t *testing.T) {
 }
 
 // A HOME WITH NOTHING TO LOSE IS JOINED WITHOUT THE QUESTION.
+// F3 preserves the described replacement behavior and recovery receipts.
 func TestPairReplaceWithoutOwnChatsSkipsTheAsk(t *testing.T) {
 	a, r, joins := replaceApp(t, false)
 	r.slash("/pair 71-869-571 --replace")
@@ -149,5 +152,29 @@ func TestPairReplaceWithoutOwnChatsSkipsTheAsk(t *testing.T) {
 	}
 	if a.pair.ask != nil {
 		t.Fatal("a home with no own chats was asked anyway")
+	}
+}
+
+// F3 asks before replacement when teams are the only local state.
+func TestPairReplaceWithTeamsAndNoChatsStillAsks(t *testing.T) {
+	a, r, joins := replaceApp(t, false)
+	a.pairing.(*fakePairing).hasTeams = true
+	r.slash("/pair 71-869-571 --replace")
+	r.until("the teams replacement question", func() bool { return a.pair.ask != nil })
+	if !strings.Contains(a.pair.ask.raw, "teams are set aside") {
+		t.Fatal("teams missing from confirmation", a.pair.ask.raw)
+	}
+	r.press("n")
+	r.until("the decline", func() bool { return a.pair.done })
+	if *joins != 0 {
+		t.Fatal("declining replaced local teams")
+	}
+}
+
+// F3 keeps the recovery path in a receipt even if a later pairing step fails.
+func TestPairReplacementFailureStillNamesPreservedTeamsFile(t *testing.T) {
+	line := joinedLine(pair.Joined{TeamsAside: "/fixture/teams.json.unreadable-123"}, fmt.Errorf("saving the relay failed"))
+	if !strings.Contains(line, "saving the relay failed") || !strings.Contains(line, "This computer's teams were set aside to /fixture/teams.json.unreadable-123.") {
+		t.Fatal("failed pairing hid recovery receipt", line)
 	}
 }

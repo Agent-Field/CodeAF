@@ -92,6 +92,7 @@ func pairJoiningAt(dir string) func(replace bool) pair.Joining {
 	return func(replace bool) pair.Joining {
 		return pair.Joining{
 			Home:        dir,
+			TeamsPaired: func() bool { return syncsetup.MayTalk(dir) },
 			ProfileDir:  config.ProfileDir(),
 			Label:       devname.Name(dir),
 			Replace:     replace,

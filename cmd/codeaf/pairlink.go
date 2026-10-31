@@ -114,6 +114,9 @@ func (s inviteScreen) Invited(in pair.Invite) { s.say(pair.InviteLines(in)) }
 
 // askToJoin is the new device: a link on screen until a device that is in says yes.
 func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) error {
+	if !d.confirmReplacement(ctx, replace) {
+		return nil
+	}
 	route, err := d.mailbox(relay)
 	if err != nil {
 		return err
@@ -122,6 +125,11 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		return err
 	}
 	joined, err := pair.JoinByLink(ctx, d.requests(route), d.linking(route, replace), inviteScreen{d.term})
+	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			d.term.say(line)
+		}
+	}
 	if err != nil && !errors.Is(err, pair.ErrPairedNotRead) {
 		return d.endedByPerson(ctx, err)
 	}
@@ -130,7 +138,8 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		return nil
 	}
 	d.recordOwnDeviceOrSay(ctx, route)
-	d.term.say(pair.PairedWithLine(joined.Fleet.With))
+	joined.Joined.With = joined.Fleet.With
+	d.term.say(joined.Joined.Sentence())
 	return nil
 }
 

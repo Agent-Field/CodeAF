@@ -4,6 +4,12 @@ const removedPairNotice = "removed by another of your devices — pair again to 
 
 func (a *app) removedComputer() {
 	a.machineRead.computerRemoved = true
+	a.teamsShareGeneration++
+	if a.teamsDisk.door.Sharing == nil {
+		a.adoptTeamsSharing(false)
+	} else {
+		a.teamsSharingCmd = a.refreshTeamsSharing()
+	}
 	a.leftOff.row = nil
 	a.continueGeneration++
 	a.dropHomeAsk()

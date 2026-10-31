@@ -1295,7 +1295,10 @@ type app struct {
 	timestamps string
 	workMode   string
 	// teamsShare is adopted with profile preferences, keeping config reads off the loop.
-	teamsShare bool
+	teamsShare           bool
+	teamsPaired          func() bool
+	teamsShareGeneration uint64
+	teamsSharingCmd      tea.Cmd
 	// Icon repertoire is independent of colour; detection is a boot fact and
 	// the person can override it through the live Display setting.
 	actionAuto tokens.GlyphSet
@@ -3103,6 +3106,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
@@ -3309,7 +3313,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
-	a.teamsShare = config.TeamsShareAt(a.profileDir)
+	if a.teamsDisk.door.Sharing == nil {
+		a.adoptTeamsSharing(config.TeamsSharingAt(a.profileDir, a.teamsPaired))
+	}
 	a.actionAuto, _ = tokens.DetectGlyphSet(env)
 	a.adoptIcons()
 	// AND THE COLUMN'S POSTURE IS READ HERE AND NOWHERE ELSE — at boot, never at
@@ -3652,7 +3658,7 @@ func (a *app) Init() tea.Cmd {
 		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(), a.noticeBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
-		a.teamsWrite()}
+		a.teamsWrite(), a.refreshTeamsSharing()}
 	if a.warmEmptyProviders != nil {
 		warm := a.warmEmptyProviders
 		standing = append(standing, func() tea.Msg {
@@ -3721,6 +3727,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	model, cmd := a.update(msg)
+	cmd = tea.Batch(cmd, a.takeTeamsSharingCmd())
 	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
 	// the frame may only note that it drew it (view.go), because the door's
 	// record is a write to disk.
@@ -4319,6 +4326,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wallTickMsg:
 		return a, a.wallTick()
 
+	case teamsSharingMsg:
+		a.takeTeamsSharing(msg)
+		return a, nil
 	case teamsRefreshTickMsg:
 		return a, a.teamsRefreshTick()
 
@@ -6024,7 +6034,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case linkPingMsg:
 		a.linkPingBack(msg)
-		return a, tea.Batch(a.linkPingTick(), a.linkLatencyExpiry())
+		var sharing tea.Cmd
+		if a.teamsDisk.door.Sharing != nil {
+			sharing = a.refreshTeamsSharing()
+		}
+		return a, tea.Batch(a.linkPingTick(), a.linkLatencyExpiry(), sharing)
 	case linkLatencyExpiredMsg:
 		if msg.at == a.linkLatencyAt {
 			a.touch()
@@ -7082,7 +7096,7 @@ func (a *app) settle() tea.Cmd {
 		}
 		a.stick = false
 	}
-	return tea.Batch(a.probeGit(), fadeTicks())
+	return tea.Batch(a.probeGit(), fadeTicks(), a.takeTeamsSharingCmd())
 }
 
 // dropForming resolves every call that was still ARRIVING when the turn ended.
