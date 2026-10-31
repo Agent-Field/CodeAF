@@ -19,9 +19,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  acceptance:
+  binary-e2e:
+    name: Binary user-flow QA
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,14 +35,39 @@ jobs:
         run: make build
       - name: Exercise the app as a desktop client
         run: go test ./cmd/codeaf -run '^TestAppAgentIdentityBinaryE2E$' -count=1 -v -timeout 5m
-      - name: Race-check custody and lifecycle
-        if: ${{ !cancelled() }}
-        run: go test -race ./internal/agentdid ./internal/session -run 'TestCredentials|TestCustody|TestOnlyTheRecipient|TestUnknownDocument|TestAgentIdentity|TestAgentDID|TestToolCommandsSeeTheAgentDID|TestTaskWorker.*DID' -count=1 -timeout 15m
       - name: Check that custody preserves existing sync behavior
-        if: ${{ !cancelled() }}
-        run: go test ./cmd/codeaf -run '^TestAppChatRowsR2SavedTurnTime$|^TestAppChatStartupR3QuietRelease$|^TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable$|^TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat$|^TestDriveSideDoorPublishesAndReleases$|^TestDriveSideStartsWhenAPairingMakesTheIdentity$|^TestAChatMovedBackGetsADriveSideOfItsOwn$|^TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn$' -count=1 -timeout 5m
+        run: go test ./cmd/codeaf -run '^TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable$|^TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat$|^TestDriveSideDoorPublishesAndReleases$|^TestDriveSideStartsWhenAPairingMakesTheIdentity$|^TestAChatMovedBackGetsADriveSideOfItsOwn$|^TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn$' -count=1 -v -timeout 5m
+
+  race:
+    name: Custody race checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Race-check custody and lifecycle
+        run: go test -race ./internal/agentdid ./internal/session -run 'TestCredentials|TestCustody|TestOnlyTheRecipient|TestUnknownDocument|TestAgentIdentity|TestAgentDID|TestToolCommandsSeeTheAgentDID|TestTaskWorker.*DID' -count=1 -timeout 15m
+
+  repository:
+    name: Repository gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build with the pinned engine
+        run: make build
       - name: Run the repository PR gates against app/v3
-        if: ${{ !cancelled() }}
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: make pr-ready
