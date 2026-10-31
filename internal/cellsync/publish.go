@@ -18,6 +18,9 @@ var ErrSuperseded = fmt.Errorf("cellsync: another device continued this chat: %w
 // Publisher makes turns durable: objects into the store first, the head in the
 // directory last. Dir is already bound to this device.
 type Publisher struct {
+	// CreateOnly refuses a record that appeared during a missing-chat repair.
+	// Ordinary chat publication still resumes a create whose reply was lost.
+	CreateOnly bool
 	// WarmFrameHints opts into the bounded existing-frame prototype.
 	WarmFrameHints bool
 	Engine         Engine
@@ -149,7 +152,7 @@ func (p *Publisher) advance(ctx context.Context, d Driving, head string, in Publ
 		return p.move(ctx, d, head, in, frames)
 	}
 	fence, err := p.create(ctx, d, head, in, frames)
-	if errors.Is(err, directory.ErrExists) {
+	if errors.Is(err, directory.ErrExists) && !p.CreateOnly {
 		return p.resume(ctx, d, head, in, frames, err)
 	}
 	return fence, err

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"slices"
@@ -46,6 +47,31 @@ func Turns(c cell.Cell) ([]Turn, error) {
 		turns = append(turns, t)
 	}
 	return turns, sc.Err()
+}
+
+// FirstTurn reads only the oldest seal when a caller needs its original writer.
+// Later history cannot change that writer or add work to this decision.
+func FirstTurn(c cell.Cell) (*Turn, error) {
+	f, err := os.Open(rel(c, TurnsPath))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := bufio.NewReader(f).ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var turn Turn
+	if err := json.Unmarshal(raw, &turn); err != nil {
+		return nil, fmt.Errorf("read first turn: %w", err)
+	}
+	return &turn, nil
 }
 
 // Log is the chain with receipts, newest first.

@@ -24,6 +24,9 @@ const unknownDevice = "another device"
 
 // DriveOptions is what a chat tells its drive side about itself.
 type DriveOptions struct {
+	// CreateOnly is used by repair after a missing directory record. It never
+	// acquires a record that appeared since the check or replaces its history.
+	CreateOnly bool
 	// DeviceName is this machine's name, sealed into its directory record.
 	DeviceName string
 	// Title is the chat's title as it is now; nil publishes none.
@@ -51,12 +54,16 @@ type Drive struct {
 	directoryID   string
 	recordedFence uint64
 
-	cancel          context.CancelFunc
-	done            chan struct{}
-	once            sync.Once
-	closeErr        error
-	publicationDone func()
-	ownership       chan struct{}
+	cancel              context.CancelFunc
+	done                chan struct{}
+	once                sync.Once
+	closeErr            error
+	publicationDone     func()
+	publicationMu       sync.Mutex
+	publicationChecked  bool
+	publicationEligible bool
+	publicationSaved    bool
+	ownership           chan struct{}
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -84,7 +91,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		return nil, err
 	}
 	d.syncVault(ctx)
-	drv, held, err := s.driving(ctx, c)
+	drv, held, err := s.driving(ctx, c, opt.CreateOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +167,9 @@ func (d *Drive) note(sealed cellstore.Sealed) {
 	spoken := d.spoken
 	d.mu.Unlock()
 	if spoken {
+		if err := d.expectPublication(); err != nil {
+			d.sync.logPublicationError(err)
+		}
 		d.batcher.Note(sealed.Turn)
 	}
 }
@@ -238,13 +248,16 @@ func (s *Sync) Rename(ctx context.Context, name string) error { return s.putDevi
 // driving finds where this chat stands in the directory: no record yet (fence
 // 0), a record this device now holds, or a record another device holds, in
 // which case held names that device. A chat that was branched drives its branch.
-func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, string, error) {
+func (s *Sync) driving(ctx context.Context, c cell.Cell, createOnly bool) (cellsync.Driving, string, error) {
 	branches, err := cellsync.OpenBranchMap(s.Home)
 	if err != nil {
 		return cellsync.Driving{}, "", err
 	}
 	drv := cellsync.Driving{Cell: c}
 	if id := branches.Resolve(c.ID); id != c.ID {
+		if createOnly {
+			return drv, "", directory.ErrExists
+		}
 		drv.Remote = id
 	}
 	view, err := s.Dir.Cell(ctx, drv.ID())
@@ -253,6 +266,9 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	}
 	if err != nil {
 		return drv, "", err
+	}
+	if createOnly {
+		return drv, "", directory.ErrExists
 	}
 	if err := s.reconcileSendLease(c.ID, drv.ID(), view); err != nil {
 		return drv, "", err
@@ -320,7 +336,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	engine.MaxFrame = blobstore.BulkFrame // a flush's objects share frames up to the bulk size (contract §22.6); a small save still writes one small frame
 	d.scope = s.scope(c.ID)
-	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
+	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir, CreateOnly: d.opt.CreateOnly}
 	return &cellsync.Batcher{
 		Publisher: pub,
 		Brancher: cellsync.Brancher{
