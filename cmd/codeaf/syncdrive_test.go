@@ -53,8 +53,18 @@ func doorChat(t *testing.T) (session.Config, cell.Cell) {
 // spokenDoorChat records a person's command through the ordinary session input.
 // Publication fixtures need conversation work rather than an unused startup chat.
 func spokenDoorChat(t *testing.T) (session.Config, cell.Cell) {
+	return spokenDoorChatWithPairing(t, false)
+}
+
+// Shared fixtures establish their paired profile before the first custody write.
+func spokenDoorChatWithPairing(t *testing.T, paired bool) (session.Config, cell.Cell) {
 	t.Helper()
 	cfg, c := doorChat(t)
+	if paired {
+		if _, err := identity.Ensure(home.Dir()); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cfg.Workspace, cfg.SessionFile = cfg.Place.Workspace, cfg.Place.Transcript()
 	cfg.Model, cfg.APIKey, cfg.BaseURL = "stub/chat", "stub", "http://127.0.0.1:1"
 	agent, err := session.New(cfg)
@@ -118,7 +128,7 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 // With a relay set the door notes every sealed turn for it, and closing the
 // door gives the lease back after publishing what was sealed.
 func TestDriveSideDoorPublishesAndReleases(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
 	t.Cleanup(srv.Close)
 	if _, err := identity.Ensure(home.Dir()); err != nil {
@@ -158,8 +168,8 @@ func TestSayRefusalOnlyForRefusals(t *testing.T) {
 	}
 }
 
-// A chat that opened before this computer had an identity starts to sync the
-// moment /pair makes one, with no restart: the next call's seal is published and
+// A chat that opened before this computer was paired starts to sync the
+// moment /pair engages its identity, with no restart: the next call's seal is published and
 // closing the chat gives the lease back, exactly as for a chat that was paired
 // from the start.
 func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
@@ -173,7 +183,7 @@ func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
 	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identity.Ensure(home.Dir()); err != nil { // what /pair does in the running chat
+	if err := identity.EndSolo(home.Dir()); err != nil { // pairing engages an existing local identity
 		t.Fatal(err)
 	}
 	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
@@ -285,7 +295,7 @@ func TestStartDriveWithNoIdentityReportsNothing(t *testing.T) {
 // its own. The drive side kept from before the move only shows the chat, so reusing it would
 // refuse every tool call in the chat that was moved back.
 func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	srv, published, closeRelay := driveRelayWithPublication(t, c.ID)
 	defer closeRelay()
 	t.Setenv(syncsetup.URLVar, srv.URL)
@@ -354,7 +364,7 @@ func TestAChatMovedBackGetsADriveSideOfItsOwn(t *testing.T) {
 // drive side this window kept, opens with a drive side of its own: the old one publishes under a
 // lease that is gone, so reusing it would refuse every tool call in the chat that came back.
 func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	srv, published, closeRelay := driveRelayWithPublication(t, c.ID)
 	defer closeRelay()
 	t.Setenv(syncsetup.URLVar, srv.URL)

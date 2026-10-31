@@ -11,9 +11,7 @@
 // base64url without padding, after the `z` (control-plane's DIDService). Using
 // the same spelling lets the two products read each other's identifiers.
 //
-// THE KEY IS NOT KEPT. A DID here is an identifier, not a credential: nothing
-// signs with it today, so only the public half is minted and the private half
-// is dropped at once. Nothing secret is ever written to disk for it.
+// New conversations retain both keys through encrypted Document custody.
 package agentdid
 
 import (
