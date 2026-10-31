@@ -239,3 +239,144 @@ func TestAWorkerIsRefusedOnTheSeamForWritingOutsideItsGround(t *testing.T) {
 		t.Fatal("the guard refused a person's own session; it answers for work inside a task and nothing else")
 	}
 }
+
+// #1351: THE GROUND'S OWN GIT METADATA IS NOT THE GROUND'S TO REPLACE.
+//
+// A worker given a repository ran `rm -rf <repo>/.git`, then `git init` and
+// `git commit` in the parent. The parent half was already refused because the
+// parent is outside the ground. The deletion was not, because a repository's
+// `.git` sits inside the tree it belongs to, so the path law read it as ordinary
+// work in the folder the worker was given. Every spelling of that act is refused
+// here with the boundary's own words, and the ground keeps its history.
+func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
+	ground := groundWithMetadata(t)
+	parent := filepath.Dir(ground)
+	refused := []string{
+		// The recorded command, and the spelling a worker standing in the
+		// folder uses.
+		"rm -rf " + filepath.Join(ground, ".git"),
+		"rm -rf .git",
+		"rm -r .git",
+		"rm -fr ./.git",
+		"rm -rf .git/",
+		"cd " + ground + " && rm -rf .git",
+		// Taking the history apart a piece at a time is the same loss.
+		"rm -rf .git/objects",
+		"rm .git/HEAD",
+		// Moving it out of the way, or overwriting it with another one.
+		"mv .git ../kept-history",
+		"cp -r /tmp/other/.git .git",
+		"rsync -a --delete /tmp/empty/ .git/",
+		// Rewriting it in place.
+		"sed -i 's/main/x/' .git/HEAD",
+		"echo 'ref: refs/heads/x' > .git/HEAD",
+		// Removing the ground itself takes its history with it.
+		"rm -rf .",
+		"rm -rf " + ground,
+		// And the parent half the issue recorded stays refused.
+		"cd " + parent + " && git init",
+		"cd .. && git init",
+		"git -C " + parent + " init",
+		// Walking down into the tree and back out is still the ground's .git.
+		"cd sub && rm -rf ../.git",
+	}
+	if err := os.MkdirAll(filepath.Join(ground, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A SYMLINK IS THE SAME HISTORY UNDER ANOTHER NAME. A link to the ground, or
+	// to its .git, must not be the spelling that gets through.
+	linkedGround := filepath.Join(filepath.Dir(parent), "linked-ground")
+	linkedMetadata := filepath.Join(filepath.Dir(parent), "linked-metadata")
+	if err := os.Symlink(ground, linkedGround); err == nil {
+		refused = append(refused,
+			"rm -rf "+filepath.Join(linkedGround, ".git"),
+			"cd "+linkedGround+" && rm -rf .git")
+	}
+	if err := os.Symlink(filepath.Join(ground, ".git"), linkedMetadata); err == nil {
+		refused = append(refused,
+			"rm -rf "+linkedMetadata,
+			"rm -rf "+filepath.Join(linkedMetadata, "objects"))
+	}
+	for _, command := range refused {
+		why := refusedOutsideGround(ground, command)
+		if why == "" {
+			t.Errorf("%q was allowed, want the ground's git metadata protected", command)
+			continue
+		}
+		if !strings.Contains(why, outsideYourCopy) {
+			t.Errorf("%q was refused with %q, want the boundary's own words %q", command, why, outsideYourCopy)
+		}
+	}
+}
+
+// AND THE WORK THE GROUND IS FOR STILL RUNS. Protecting .git by refusing the
+// folder would protect nothing anybody wanted done, so ordinary writes, git's
+// own verbs (which write inside .git on the task's behalf), a .gitignore beside
+// it, and reading .git all pass exactly as before.
+func TestATaskStillWorksInAGroundWhoseMetadataIsProtected(t *testing.T) {
+	ground := groundWithMetadata(t)
+	allowed := []string{
+		"printf 'def add(a, b):\n    return a + b\n' > add.py",
+		"mkdir -p tests && touch tests/__init__.py",
+		"rm -rf build dist",
+		"mv old.py new.py",
+		"cp template.py add.py",
+		"sed -i 's/a/b/' add.py",
+		"echo node_modules/ >> .gitignore",
+		"rm .gitignore",
+		"git add -A",
+		"git -c user.name=t -c user.email=t@t commit -m 'add add'",
+		"git checkout -b fix/add",
+		"git reset --hard HEAD",
+		"cat .git/HEAD",
+		"ls .git",
+		"git log --oneline",
+		// Names that only begin with .git are not the history.
+		"rm -rf .github",
+		"rm .gitmodules",
+		"rm -rf .git.bak",
+		// And a nested .git below the ground belongs to nothing this law guards.
+		"rm -rf vendor/lib/.git",
+	}
+	for _, command := range allowed {
+		if why := refusedOutsideGround(ground, command); why != "" {
+			t.Errorf("%q was refused with %q, want ordinary work in the ground allowed", command, why)
+		}
+	}
+}
+
+// A GROUND THAT IS NOT A REPOSITORY HAS NO HISTORY TO PROTECT, so a plain
+// folder's work, including a file a person happens to name `.git`-free, is left
+// exactly as the path law always left it.
+func TestAPlainFolderGroundIsUnchangedByTheMetadataLaw(t *testing.T) {
+	ground := t.TempDir()
+	for _, command := range []string{"rm -rf build", "rm -rf .", "printf x > notes.md"} {
+		if why := refusedOutsideGround(ground, command); why != "" {
+			t.Errorf("%q in a plain folder was refused with %q, want it allowed", command, why)
+		}
+	}
+}
+
+// groundWithMetadata is a repository-shaped ground standing OUTSIDE the
+// machine's scratch, the way a person's `--dir` stands. The scratch exemption in
+// [insideGround] would otherwise let its parent through, which would hide the
+// parent half of the law this file checks.
+func groundWithMetadata(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(".", "ground-metadata-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root, err = filepath.Abs(root); err != nil {
+		t.Fatal(err)
+	}
+	if root, err = filepath.EvalSymlinks(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	ground := filepath.Join(root, "parent", "repo")
+	if err := os.MkdirAll(filepath.Join(ground, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return ground
+}

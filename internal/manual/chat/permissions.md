@@ -800,6 +800,23 @@ tool**. `gmail_send:allow` in `tools.approval` runs it silently. So does a
 capability set to `yes`. So does a remembered "always" answer to this approval
 question. Nothing else lifts it.
 
+## Can a task delete my repository's .git or its history? No, it is refused in its own copy
+
+The dangerous-command floor above asks before an absolute recursive delete, but it would not
+notice `rm -rf .git`, written relative to the folder the task stands in. So a task, and a
+`codeaf do --dir` worker, is separately refused any command that removes, moves, overwrites
+or rewrites the `.git` of the folder it was given: `rm -rf .git`, `mv .git …`,
+`cp -r … .git`, `echo … > .git/HEAD`, or removing the folder itself with `rm -rf .`. The
+refusal is the same one every write outside the task's folder gets:
+
+> replacing /Users/you/code/project/.git is outside your copy — this task works in
+> /Users/you/code/project; read anywhere, write only there. …
+
+This is not a question and no setting lifts it, because a task has nobody to ask. Ordinary
+git work is untouched: `git commit`, `git checkout` and the rest write inside `.git` on the
+task's behalf and run as before, and reading `.git` is reading. A conversation you are
+sitting in is not held by it. The full list is on how-tasks-run.
+
 ## Neither floor can be swallowed by "stop asking me"
 
 Before any session memo is consulted, codeaf asks whether the call is one of the

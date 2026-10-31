@@ -882,6 +882,33 @@ The wording it reads names **both the path and the directory it may write in**:
 **The machine's scratch is not yours.** `/tmp`, the temp directory and `/dev/null` are
 written freely — that is where a command line puts what it is about to read back.
 
+**A task may not replace its own copy's git history either.** The table above is about
+writing somewhere else; this is the one thing inside the task's own copy that is refused.
+A command that removes, moves, overwrites or rewrites the copy's `.git` is turned back with
+the same sentence, naming that `.git`:
+
+| Refused inside its own copy | What it looks like |
+| --- | --- |
+| deleting the history | `rm -rf .git`, `rm -rf <copy>/.git`, `rm .git/HEAD`, `rm -rf .git/objects` |
+| moving or replacing it | `mv .git ../kept`, `cp -r other/.git .git`, `rsync --delete … .git/` |
+| rewriting it in place | `sed -i … .git/HEAD`, `echo … > .git/HEAD` |
+| removing the copy itself | `rm -rf .`, `rm -rf <copy>` |
+
+> replacing /Users/you/code/project/.git is outside your copy — this task works in
+> /Users/you/code/project; read anywhere, write only there. …
+
+Everything a task does with git stays allowed: `git commit`, `git checkout`, `git reset`
+and every other git command write inside `.git` on the task's behalf and are answered by
+the git rules as before. So are reading it (`cat .git/HEAD`, `git log`), editing a
+`.gitignore`, and every ordinary write in the copy. A folder that is not a repository has no
+history to protect, so nothing changes there. This holds for `codeaf do --dir` as much as
+for a chat task: the folder you hand it is the copy.
+
+It exists because a `codeaf do --dir <repo>` worker once ran `rm -rf <repo>/.git`, then
+`git init` and `git commit` in the folder above. The last two were already refused, since
+the folder above is outside the copy. But `.git` sits inside the copy, so deleting it passed
+as ordinary work and the repository's history was gone.
+
 **What it cannot see.** It reads the paths a command *names*. `cd elsewhere && python
 fix.py`, where the script writes what it likes, is not caught, and neither is a path built
 out of a shell variable. What it does close is every shape that says its target out loud.

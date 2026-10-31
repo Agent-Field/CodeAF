@@ -572,6 +572,17 @@ change it there". That is remembered for that one folder, and from then on write
 it change the folder itself immediately, exactly like the folder you are standing in.
 Nothing guesses this; it is only ever set because you said it.
 
+## Can work in a folder delete its .git? No, the history of the folder a task is given is kept
+
+Whichever way a task stands in a folder you chose, in its own copy or in the folder
+directly, it may not remove, move, overwrite or rewrite that folder's `.git`. That holds
+for `codeaf do --dir` too: the folder you hand it is the one whose history is kept. A task
+that tries `rm -rf .git`, `mv .git …`, `echo … > .git/HEAD` or `rm -rf .` reads the
+same refusal every write outside its folder gets, naming the `.git` and the word
+`is outside your copy`, and carries on with its work. Ordinary git work in the folder, such
+as `git commit` or `git checkout`, is untouched, and so is reading `.git`. permissions has
+the exact wording; how-tasks-run has the full list.
+
 ## Where did my changes go — the folder still looks unchanged
 
 If the model edited files in a folder you chose with `/folder` and that folder still looks

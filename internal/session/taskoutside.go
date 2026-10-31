@@ -474,13 +474,8 @@ func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 	cwd := ground
 	for _, segment := range taskSegments(command) {
 		words, assignments := taskSegmentHead(stripRedirections(segment))
-		for index, word := range segment {
-			if index+1 < len(segment) && fileWriteRedirection(word, segment[index+1]) {
-				target := resolvePath(cwd, segment[index+1])
-				if !allowed(target) {
-					return "writing to " + target
-				}
-			}
+		if aimed := redirectionAimedOutside(ground, cwd, segment, allowed); aimed != "" {
+			return aimed
 		}
 		if len(words) == 0 {
 			continue
@@ -497,12 +492,126 @@ func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 			}
 			return "git " + verb + " in " + dir
 		default:
+			if aimed := replacedGroundMetadata(ground, cwd, program, rest); aimed != "" {
+				return aimed
+			}
 			if aimed := writeAimedOutsideScope(cwd, program, rest, allowed); aimed != "" {
 				return aimed
 			}
 		}
 	}
 	return ""
+}
+
+// redirectionAimedOutside answers the first file a segment's redirection would
+// write that the task may not write, and "" when every one of them is the task's.
+//
+// A REDIRECTION INTO THE GROUND'S OWN `.git` IS THE METADATA LAW'S, NOT THE PATH
+// LAW'S: `echo ref: x > .git/HEAD` is inside the ground and would pass a check
+// that only asked where it was aimed, so it is answered first, in the same
+// sentence [replacedGroundMetadata] gives the hands that name `.git`.
+func redirectionAimedOutside(ground, cwd string, segment []string, allowed func(string) bool) string {
+	for index, word := range segment {
+		if index+1 >= len(segment) || !fileWriteRedirection(word, segment[index+1]) {
+			continue
+		}
+		target := resolvePath(cwd, segment[index+1])
+		if metadata := groundMetadataDir(ground); metadata != "" && namesGroundMetadata(metadata, target, false) {
+			return "replacing " + metadata
+		}
+		if !allowed(target) {
+			return "writing to " + target
+		}
+	}
+	return ""
+}
+
+// replacedGroundMetadata answers the ground's own `.git` when a hand would remove,
+// move, overwrite or rewrite it, and "" when it would not (#1351).
+//
+// THE PATH LAW CANNOT SEE THIS ON ITS OWN, and that is the whole defect. It
+// asks whether a path is inside the folder the task may write in, and a
+// repository's `.git` always is, because it sits inside the tree it belongs to.
+// So a worker that ran `rm -rf .git` on the folder it was given passed every
+// check, and the history was gone, which is the data loss; the `git init` and
+// `git commit` in the parent that followed were already refused, but by then
+// they had nothing left to save.
+//
+// IT IS ASKED OF THE SAME HANDS THE PATH LAW READS ([writesEveryOperand],
+// [writesItsLastOperand], an in-place sed or perl, and a redirection, which
+// [outsideScopeAim] asks beside it), so it closes exactly the shapes that name
+// `.git` and claims nothing more: a script that deletes it by itself is the
+// blind spot this file already says it has. Git's own verbs are not hands here:
+// `git commit` and `git checkout` write inside `.git` on the task's behalf, and
+// that is the work, so they are answered by the git guard as before.
+//
+// AN OPERAND IS THE METADATA WHEN IT IS `.git` OR UNDER IT, OR WHEN IT HOLDS
+// IT. Removing the ground itself (`rm -rf .`, `rm -rf <ground>`) takes `.git`
+// with it, so it is refused by the same sentence; a file elsewhere in the
+// ground is untouched by this and stays the task's to change.
+func replacedGroundMetadata(ground, cwd, program string, rest []string) string {
+	metadata := groundMetadataDir(ground)
+	if metadata == "" {
+		return ""
+	}
+	switch {
+	case program == "sed" || program == "perl":
+		if !inPlaceEdit(rest) {
+			return ""
+		}
+	case writesEveryOperand[program] || writesItsLastOperand[program]:
+	default:
+		return ""
+	}
+	operands := commandOperands(rest)
+	if writesItsLastOperand[program] && len(operands) > 1 {
+		operands = operands[len(operands)-1:]
+	}
+	for _, operand := range operands {
+		if namesGroundMetadata(metadata, resolvePath(cwd, operand), true) {
+			return "replacing " + metadata
+		}
+	}
+	return ""
+}
+
+// namesGroundMetadata answers whether a path a command names is the ground's
+// `.git` or something under it, and, when holding counts, a directory that holds
+// it (removing the ground itself takes its history too).
+//
+// IT IS ASKED ON BOTH SPELLINGS, the one written and the real one. A symlink to
+// the ground, or to `.git` itself, is the same history under another name, and
+// [insideGround] resolves symlinks for exactly this reason; a law that compared
+// only the written path would be one more spelling the model learns to use.
+func namesGroundMetadata(metadata, target string, holding bool) bool {
+	real := resolveSymlinks(metadata)
+	for _, path := range [2]string{target, resolveSymlinks(target)} {
+		for _, dir := range [2]string{metadata, real} {
+			if withinDir(dir, path) || (holding && withinDir(path, dir)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// groundMetadataDir is the `.git` that makes the ground a repository, spelled the
+// way [resolvePath] spells a command's operands so the two compare. It is "" for
+// a ground that is not one, which leaves a plain folder's work untouched.
+//
+// A LINKED WORKTREE'S `.git` IS A FILE AND IS STILL ITS METADATA: it is the
+// pointer that ties the copy to its repository, and removing it is the same
+// loss of history from the copy's side.
+func groundMetadataDir(ground string) string {
+	ground = strings.TrimSpace(ground)
+	if ground == "" {
+		return ""
+	}
+	metadata := filepath.Join(filepath.Clean(ground), ".git")
+	if _, err := os.Lstat(metadata); err != nil {
+		return ""
+	}
+	return metadata
 }
 
 // insideGround is the one comparison the whole law rests on.
