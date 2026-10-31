@@ -21,14 +21,13 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
-// AgentIdentity is one conversation's agent DID and the conversation id it
-// was minted for.
-type AgentIdentity struct {
-	DID     string `json:"did"`
-	Session string `json:"session"`
-}
+// AgentIdentity is a conversation's versioned public document and encrypted
+// key custody, bound to the conversation id it was minted for.
+type AgentIdentity = agentdid.Document
 
 // AgentDID is the conversation's agent DID, or "" when it has none yet or the
 // one it holds was minted for another id.
@@ -43,7 +42,7 @@ func (m Meta) AgentDID() string {
 // this id, else the one the save brings when it is bound to the save's id.
 // Nothing replaces an identity once written.
 func keptAgentIdentity(current, next Meta) *AgentIdentity {
-	if current.AgentDID() != "" && current.ID == next.ID {
+	if current.AgentIdentity != nil && current.ID == next.ID && (current.AgentIdentity.Unknown() || current.AgentDID() != "") {
 		return current.AgentIdentity
 	}
 	if next.AgentDID() != "" {
@@ -61,7 +60,10 @@ func keptAgentIdentity(current, next Meta) *AgentIdentity {
 // be minted or written leaves the variable unset, and the conversation opens.
 func configureAgentIdentity(config *Config) {
 	if !config.InTask && config.Place.Dir != "" && config.agentDID == "" {
-		config.agentDID = conversationAgentDID(config.Place)
+		config.agentDocument = conversationAgentIdentity(config.Place)
+		if config.agentDocument != nil {
+			config.agentDID = (Meta{ID: config.Place.ID(), AgentIdentity: config.agentDocument}).AgentDID()
+		}
 		config.actorDID = config.agentDID
 	}
 	if config.InTask && config.taskID != 0 && config.agentDID != "" {
@@ -73,7 +75,7 @@ func configureAgentIdentity(config *Config) {
 	config.Seat = executor.WithEnvironment(config.seat(), []string{agentdid.AgentDIDEnv + "=" + config.actorDID})
 }
 
-// conversationAgentDID answers the DID kept in place, or mints a fresh one.
+// conversationAgentIdentity reads the kept document, or mints a fresh one.
 //
 // OPENING WRITES NOTHING. A conversation opens without touching its files (an
 // older folder must resume exactly as it was), so a minted DID is carried on
@@ -81,14 +83,17 @@ func configureAgentIdentity(config *Config) {
 // ([Agent.fillMetaLocked]). That write comes at the latest when the first turn
 // ends, and a turn is the only thing that runs commands, so every DID a
 // command has seen is on disk once its turn is over.
-func conversationAgentDID(place Place) string {
+func conversationAgentIdentity(place Place) *AgentIdentity {
 	if meta, err := LoadMeta(place.Dir); err == nil {
-		if did := meta.AgentDID(); did != "" {
-			return did
+		if meta.ID == place.ID() && meta.AgentIdentity != nil && (meta.AgentIdentity.Unknown() || meta.AgentDID() != "") {
+			return meta.AgentIdentity
 		}
 	}
-	did, _ := agentdid.New()
-	return did
+	doc, _, err := agentdid.Generate(place.ID())
+	if err != nil {
+		return nil
+	}
+	return &doc
 }
 
 // agentIdentity is the identity a conversation writes into its own folder, and
@@ -97,7 +102,7 @@ func (c Config) agentIdentity() *AgentIdentity {
 	if c.InTask || c.agentDID == "" || c.Place.Dir == "" {
 		return nil
 	}
-	return &AgentIdentity{DID: c.agentDID, Session: c.Place.ID()}
+	return c.agentDocument
 }
 
 // AgentDID is who this agent's commands act as: the conversation's DID, or a
@@ -106,4 +111,60 @@ func (a *Agent) AgentDID() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.config.actorDID
+}
+
+// protectAgentIdentity runs only on a meta write. Reading an older folder
+// neither creates a home identity nor upgrades its public-only record.
+func protectAgentIdentity(doc *AgentIdentity) (*AgentIdentity, error) {
+	if doc == nil || !doc.NeedsProtection() {
+		return doc, nil
+	}
+	root, err := identity.EnsureSolo(home.Dir())
+	if err != nil {
+		return nil, err
+	}
+	next, err := doc.Persist(root.CellKey())
+	return &next, err
+}
+
+// SignStatement proves this conversation's DID for one versioned purpose.
+// Private material stays inside custody and is never handed to command tools.
+func (a *Agent) SignStatement(purpose string, payload []byte) ([]byte, error) {
+	doc, keys, err := a.identityCredentials()
+	if err != nil {
+		return nil, err
+	}
+	return keys.Sign(doc.DID, purpose, payload)
+}
+
+// OpenSealed opens material addressed to this conversation's companion key.
+func (a *Agent) OpenSealed(purpose string, box []byte) ([]byte, error) {
+	doc, keys, err := a.identityCredentials()
+	if err != nil {
+		return nil, err
+	}
+	return keys.Open(*doc, purpose, box)
+}
+
+func (a *Agent) identityCredentials() (*AgentIdentity, *agentdid.Credentials, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	doc := a.config.agentDocument
+	if doc == nil || doc.Session != a.config.Place.ID() {
+		return nil, nil, agentdid.ErrUnavailable
+	}
+	// Load the durable upgrade if an earlier meta write supplied legacy custody.
+	if meta, err := LoadMeta(a.config.Place.Dir); err == nil && meta.AgentDID() == doc.DID && meta.AgentIdentity.V == agentdid.Version {
+		doc = meta.AgentIdentity
+	}
+	root, err := identity.Load(home.Dir())
+	if err != nil {
+		keys, pendingErr := doc.Unlock(nil)
+		if pendingErr != nil {
+			return nil, nil, err
+		}
+		return doc, keys, nil
+	}
+	keys, err := doc.Unlock(root.CellKey())
+	return doc, keys, err
 }

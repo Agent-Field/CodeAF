@@ -3505,4 +3505,17 @@ record which agent acted. A task's commands see the conversation's DID followed
 by `#w` and the task's number, for example `did:key:z7QE…#w3`. The desktop app
 reads the same DID in the agent list as `did`.
 
-The DID is a name, not a credential: no key is kept and nothing is signed with it.
+New conversations retain an Ed25519 signing key and a separate X25519 encryption
+key in encrypted custody inside their cell. The versioned identity document
+travels with the chat; paired computers with the same cell key can open it.
+Commands and the agent list receive only the public DID, never private keys.
+
+The engine can sign statements for a versioned purpose and open material sealed
+to the companion encryption key. A signature can be verified with the DID alone;
+it does not verify for a different purpose. These are engine APIs, not shell
+commands or a new tool on the agent's belt.
+
+Older public-only identities upgrade on the next metadata write, never just by
+opening the conversation. Their DID stays the same. Their discarded signing key
+cannot be recovered, so signing remains unavailable; the upgrade adds encryption.
+An identity document from a newer build is preserved without rewriting it.

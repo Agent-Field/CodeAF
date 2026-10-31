@@ -1,0 +1,42 @@
+name: Agent identity acceptance
+
+on:
+  pull_request:
+    branches: [app/v3]
+    paths:
+      - internal/agentdid/**
+      - internal/session/agent_identity*.go
+      - internal/session/place.go
+      - internal/session/session.go
+      - cmd/codeaf/app_agent_identity_e2e_test.go
+      - .github/workflows/agent-identity.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-identity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the actual app binary
+        run: make build
+      - name: Exercise the app as a desktop client
+        run: go test ./cmd/codeaf -run '^TestAppAgentIdentityBinaryE2E$' -count=1 -v -timeout 5m
+      - name: Race-check custody and lifecycle
+        run: go test -race ./internal/agentdid ./internal/session -run 'TestCredentials|TestCustody|TestOnlyTheRecipient|TestUnknownDocument|TestAgentIdentity|TestAgentDID|TestToolCommandsSeeTheAgentDID|TestTaskWorker.*DID' -count=1 -timeout 15m
+      - name: Run the repository PR gates against app/v3
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: make pr-ready
