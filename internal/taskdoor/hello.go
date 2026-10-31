@@ -15,12 +15,14 @@ import (
 )
 
 const (
-	RemovedComputerLine = "this computer was removed from your devices"
-	TakingTasksLine     = "takes tasks from your paired computers"
+	RemovedComputerLine  = "this computer was removed from your devices"
+	TakingTasksLine      = "takes tasks from your paired computers"
+	TakeTasksFlag        = "take-tasks"
+	notTakingTasksSuffix = " is not taking tasks right now — run codeaf serve --" + TakeTasksFlag + " on it"
 )
 
 func NotTakingTasks(name string) string {
-	return name + " is not taking tasks right now — run codeaf serve on it"
+	return name + notTakingTasksSuffix
 }
 func CouldNotConfirm(name string) string { return "could not confirm this is " + name }
 func DifferentVersion(name string) string {

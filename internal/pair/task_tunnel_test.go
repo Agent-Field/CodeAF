@@ -10,6 +10,54 @@ import (
 	"time"
 )
 
+// S6 leaves the machine handshake on its original protocol without recording
+// the channel binding that only the separately opted-in task door needs.
+func TestPairingAndTheMachineDoorKeepTheirOriginalHandshake(t *testing.T) {
+	a, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	near, far := net.Pipe()
+	defer near.Close()
+	defer far.Close()
+	_ = near.SetDeadline(time.Now().Add(3 * time.Second))
+	_ = far.SetDeadline(time.Now().Add(3 * time.Second))
+	type answer struct {
+		tunnel *Tunnel
+		err    error
+	}
+	result := make(chan answer, 1)
+	go func() {
+		var intent [1]byte
+		if _, err := io.ReadFull(far, intent[:]); err != nil {
+			result <- answer{err: err}
+			return
+		}
+		server, _, err := acceptAsMachine(far, Device{private: b}, func(key []byte, label string) error {
+			if !bytes.Equal(key, a.PublicKey().Bytes()) || label != "chat computer" {
+				return io.ErrUnexpectedEOF
+			}
+			return nil
+		})
+		result <- answer{server, err}
+	}()
+	client, err := connectAsSurface(near, b.PublicKey().Bytes(), Device{private: a}, "chat computer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := <-result
+	if server.err != nil {
+		t.Fatal(server.err)
+	}
+	if len(client.ChannelBinding()) != 0 || len(server.tunnel.ChannelBinding()) != 0 {
+		t.Fatal("the original machine handshake recorded a task channel binding")
+	}
+}
+
 // Contract 14 depends on an encrypted task channel whose binding both devices
 // can sign; the separate prologue prevents a machine door accepting a task.
 func TestTaskTunnelBindsBothEndsAndSeparatesMachineDoors(t *testing.T) {

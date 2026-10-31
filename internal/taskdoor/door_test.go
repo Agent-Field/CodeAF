@@ -263,7 +263,7 @@ func TestADoorThatIsNotServingSaysSo(t *testing.T) {
 	if c != nil {
 		_ = c.Close()
 	}
-	if err == nil || err.Error() != "work computer is not taking tasks right now — run codeaf serve on it" {
+	if err == nil || err.Error() != "work computer is not taking tasks right now — run codeaf serve --take-tasks on it" {
 		t.Fatalf("absent door heard %v", err)
 	}
 	if time.Since(since) > 10*time.Second {

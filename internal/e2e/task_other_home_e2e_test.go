@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/taskdoor"
 )
 
 const otherHomeModel = "stub/paired-task"
@@ -232,7 +233,7 @@ func TestATaskForAComputerNotServingSaysSoAndRunsHere(t *testing.T) {
 	stop()
 	a := f.openConversation(t, false)
 	id := f.startTask(t, a)
-	want := "work computer is not taking tasks right now — run codeaf serve on it"
+	want := "work computer is not taking tasks right now — run codeaf serve --take-tasks on it"
 	f.waitNotice(t, a, id, func(notice session.TaskNotice) bool {
 		return notice.Remote != nil && notice.Remote.StartFailed && strings.Contains(notice.Report, want)
 	})
@@ -246,6 +247,23 @@ func TestATaskForAComputerNotServingSaysSoAndRunsHere(t *testing.T) {
 	}
 	if calls, _ := f.brainB.counts(); calls != 0 {
 		t.Fatalf("stopped home received %d calls", calls)
+	}
+}
+
+// S5: a real paired home running plain serve never opts into receiving tasks.
+func TestPlainServeTakesNoTasks(t *testing.T) {
+	f := newOtherHomeTask(t)
+	f.startServe(t, false)
+	a := f.openConversation(t, false)
+	id := f.startTask(t, a)
+	f.waitNotice(t, a, id, func(n session.TaskNotice) bool {
+		return n.Remote != nil && n.Remote.StartFailed && strings.Contains(n.Report, taskdoor.NotTakingTasks("work computer"))
+	})
+	if calls, _ := f.brainB.counts(); calls != 0 {
+		t.Fatalf("plain serve ran a task: provider calls=%d", calls)
+	}
+	if _, err := os.Stat(filepath.Join(f.b, "v3", "taskdoor")); !os.IsNotExist(err) {
+		t.Fatalf("plain serve opened task storage: %v", err)
 	}
 }
 
@@ -380,14 +398,24 @@ func (f *otherHomeTask) env(home string) []string {
 }
 
 func (f *otherHomeTask) startServing(t *testing.T) func() {
+	return f.startServe(t, true)
+}
+
+func (f *otherHomeTask) startServe(t *testing.T, takeTasks bool) func() {
 	t.Helper()
 	log := filepath.Join(f.b, "serve.log")
-	cmd := guardedCommand(t, f.ctx, f.b, f.env(f.b), f.product, "serve", "--via", f.relay)
+	args := []string{"serve", "--via", f.relay}
+	ready := "this machine is reachable as"
+	if takeTasks {
+		args = append(args, "--take-tasks")
+		ready = taskdoor.TakingTasksLine
+	}
+	cmd := guardedCommand(t, f.ctx, f.b, f.env(f.b), f.product, args...)
 	cmd.Dir = f.b
 	stop := otherHomeProcess(t, cmd, log)
-	otherHomeWait(t, f.ctx, "codeaf serve's task door", func() bool {
+	otherHomeWait(t, f.ctx, "codeaf serve", func() bool {
 		raw, _ := os.ReadFile(log)
-		return strings.Contains(string(raw), "takes tasks from your paired computers")
+		return strings.Contains(string(raw), ready)
 	})
 	return stop
 }

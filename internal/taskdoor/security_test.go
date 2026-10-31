@@ -408,7 +408,7 @@ func TestARegisteredDoorThatDoesNotAnswerHasTheServingSentence(t *testing.T) {
 	if conn != nil {
 		_ = conn.Close()
 	}
-	if err == nil || err.Error() != "work computer is not taking tasks right now — run codeaf serve on it" {
+	if err == nil || err.Error() != "work computer is not taking tasks right now — run codeaf serve --take-tasks on it" {
 		t.Fatalf("silent door heard %v", err)
 	}
 	// Scheduling adds a small observation margin to the ten-second I/O bound.

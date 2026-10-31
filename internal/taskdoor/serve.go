@@ -84,7 +84,7 @@ func Serve(ctx context.Context, config Config) error {
 		server.execute(runCtx, a, true)
 	}
 	announced := false
-	return (&pair.RegistrationLoop{
+	return (&registrationLoop{
 		Service: config.Service, Key: key, Say: config.Say, Now: clock.Now,
 		Wait: func(ctx context.Context, d time.Duration) error {
 			ticker := clock.NewTicker(d)

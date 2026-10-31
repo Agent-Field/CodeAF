@@ -1,4 +1,4 @@
-package pair
+package taskdoor
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
-// RegistrationLoop keeps a key-derived relay door registered. Both machine
-// and task doors share outage handling so a reconnect never changes what
-// codeaf serve tells a person about sync.
-type RegistrationLoop struct {
+// The task door deliberately duplicates pairing's registration loop: stability
+// of pairing outranks sharing the loop.
+type registrationLoop struct {
 	Service string
 	Key     *ecdh.PrivateKey
 	Say     func(string)
@@ -23,18 +23,18 @@ type RegistrationLoop struct {
 	Hold    func(context.Context, *relay.Registration)
 }
 
-func (r *RegistrationLoop) say(line string) {
+func (r *registrationLoop) say(line string) {
 	if r.Say != nil {
 		r.Say(line)
 	}
 }
-func (r *RegistrationLoop) now() time.Time {
+func (r *registrationLoop) now() time.Time {
 	if r.Now != nil {
 		return r.Now()
 	}
 	return time.Now()
 }
-func (r *RegistrationLoop) wait(ctx context.Context, d time.Duration) error {
+func (r *registrationLoop) wait(ctx context.Context, d time.Duration) error {
 	if r.Wait != nil {
 		return r.Wait(ctx, d)
 	}
@@ -50,7 +50,7 @@ func (r *RegistrationLoop) wait(ctx context.Context, d time.Duration) error {
 
 // Run returns only on cancellation or a refusal that retrying cannot fix.
 // Hold owns accepted streams until the registration ends.
-func (r *RegistrationLoop) Run(ctx context.Context) error {
+func (r *registrationLoop) Run(ctx context.Context) error {
 	if r.Key == nil || r.Hold == nil {
 		return errors.New("pair: a registration needs a key and a stream handler")
 	}
@@ -63,7 +63,7 @@ func (r *RegistrationLoop) Run(ctx context.Context) error {
 	throttled := false
 	tellLost := func() {
 		if !told {
-			r.say(LostSyncLine)
+			r.say(pair.LostSyncLine)
 		}
 		told = true
 	}
@@ -73,7 +73,7 @@ func (r *RegistrationLoop) Run(ctx context.Context) error {
 		case err == nil:
 		case errors.Is(err, relay.ErrTooMany):
 			if !throttled {
-				r.say(TooManyRegistrationsLine)
+				r.say(pair.TooManyRegistrationsLine)
 			}
 			throttled = true
 		case errors.Is(err, relay.ErrNameTaken) && announced:
@@ -89,7 +89,7 @@ func (r *RegistrationLoop) Run(ctx context.Context) error {
 			return fmt.Errorf("this machine is already connected to sync as %s — there is only one of it, so close the other `codeaf serve`", relay.NameFor(r.Key.PublicKey().Bytes()))
 		case errors.Is(err, relay.ErrUnreachable):
 			if !announced {
-				return Unreachable(r.Service)
+				return pair.Unreachable(r.Service)
 			}
 			tellLost()
 		case errors.Is(err, relay.ErrNoDoor) && announced:
@@ -98,7 +98,7 @@ func (r *RegistrationLoop) Run(ctx context.Context) error {
 			tellLost()
 		case errors.Is(err, relay.ErrNoDoor):
 			// Trying again cannot add a door the service does not have.
-			return NoDoor(r.Service)
+			return pair.NoDoor(r.Service)
 		default:
 			if !announced {
 				return err
@@ -112,7 +112,7 @@ func (r *RegistrationLoop) Run(ctx context.Context) error {
 			// when the name or code changed, so without this the last thing on
 			// the screen of a machine that recovered would still say it was lost.
 			if told {
-				r.say(BackLine(registration.Name()))
+				r.say(pair.BackLine(registration.Name()))
 				told = false
 			}
 			if r.Ready != nil {
@@ -123,7 +123,7 @@ func (r *RegistrationLoop) Run(ctx context.Context) error {
 			// Backoff resets only after the carrier stayed up for a meaningful
 			// stretch; an upgrade that drops right after Register keeps
 			// backing off instead of hammering the relay every second.
-			if r.now().Sub(since) >= steadyAfter {
+			if r.now().Sub(since) >= time.Minute {
 				wait = time.Second
 				throttled = false
 			}
