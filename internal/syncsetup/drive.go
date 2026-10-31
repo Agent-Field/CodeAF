@@ -60,11 +60,13 @@ type Drive struct {
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
-	mu      sync.Mutex
-	line    string // the superseded line, empty while this device drives
-	spoken  bool
-	sealMu  sync.Mutex
-	stopped bool
+	mu        sync.Mutex
+	line      string // the superseded line, empty until pending work is resolved and the notice said
+	lost      bool   // true as soon as this writer learns its hold is gone, before branching finishes
+	announced bool   // true once becomeViewer has claimed announcing displacement
+	spoken    bool
+	sealMu    sync.Mutex
+	stopped   bool
 }
 
 // Drive starts the drive side of c. The lease is acquired when the chat has a
@@ -332,7 +334,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		Info:            d.info,
 		OnFlush:         d.flushed(),
 		OnSuperseded:    d.becomeViewer,
-		OnLost:          func() { d.refusal(directory.ErrFenceStale) },
+		OnLost:          d.loseHold,
 		OnError:         d.refusal,
 		Sleep:           d.opt.Sleep,
 		Liveness:        s.Liveness(),
@@ -349,28 +351,47 @@ func (d *Drive) info() cellsync.PublishInfo {
 	return d.sync.publishInfo(d.cell, title)
 }
 
-// becomeViewer is the Batcher's word that another device took the chat over:
-// from now on this window only shows it, and says who has it.
-func (d *Drive) becomeViewer(s cellsync.Superseded) {
+// loseHold retires this writer's permission to run tools and clears its send
+// receipt at once, while leaving the viewer line and notice until pending work
+// has been preserved as a branch and the new holder named.
+func (d *Drive) loseHold() {
 	d.mu.Lock()
-	changed := d.line == ""
-	d.line = chatlist.Superseded(unknownDevice)
+	changed := !d.lost && d.line == ""
+	d.lost = true
 	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 	d.mu.Unlock()
-	if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
-		d.notice(err.Error())
+	if d.sync != nil {
+		if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
+			d.notice(err.Error())
+		}
 	}
 	if changed && d.opt.OnRenewalChange != nil {
 		d.opt.OnRenewalChange()
 	}
+}
+
+func (d *Drive) displaced() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lost || d.line != ""
+}
+
+// becomeViewer is the Batcher's word that another device took the chat over:
+// from now on this window only shows it, and says who has it.
+func (d *Drive) becomeViewer(s cellsync.Superseded) {
+	d.loseHold()
+	d.mu.Lock()
+	if d.announced {
+		d.mu.Unlock()
+		return
+	}
+	d.announced = true
+	d.mu.Unlock()
 	device := unknownDevice
-	if s.By != "" && s.By != unknownDevice {
+	if s.By != "" && s.By != unknownDevice && d.sync != nil {
 		device = d.sync.deviceName(s.By)
 	}
 	line := chatlist.Superseded(device)
-	d.mu.Lock()
-	d.line = line
-	d.mu.Unlock()
 	// Refuse new work immediately, then preserve the pending save before
 	// announcing displacement. A routine ownership check does no fsync (C28).
 	if d.batcher != nil {
@@ -384,6 +405,9 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 		d.notice(chatlist.KeptEdits(s.Turns, d.opt.DeviceName))
 	}
 	d.notice(line)
+	d.mu.Lock()
+	d.line = line
+	d.mu.Unlock()
 }
 
 // refusal shows the person-facing line of a refused request, which the
@@ -430,7 +454,7 @@ func (d *Drive) Viewer() (string, bool) {
 
 // RenewalStatus reads this writer's cached renewal health without network work.
 func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
-	if _, viewer := d.Viewer(); viewer || d.batcher == nil || d.sync.removed.Load() {
+	if d.displaced() || d.batcher == nil || d.sync.removed.Load() {
 		return time.Time{}, 0, false
 	}
 	return d.batcher.RenewalStatus()
@@ -443,7 +467,7 @@ func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
 // directory that cannot be asked answers true, because a drive side that cannot
 // tell must not be thrown away for it.
 func (d *Drive) HoldsLease(ctx context.Context) bool {
-	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
+	if d.displaced() || d.batcher == nil {
 		return false
 	}
 	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
@@ -461,12 +485,17 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err := cellstore.Captured(ctx, d.cell); err != nil {
 		return err
 	}
-	if _, viewer := d.Viewer(); viewer || d.batcher == nil {
+	if d.displaced() || d.batcher == nil {
 		return nil
 	}
 	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
-		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
+		// Retire the hold at once so no new seal starts, then wait for any seal
+		// already past Gate to note its turn before resolving pending work.
+		d.loseHold()
+		d.sealMu.Lock()
+		d.sealMu.Unlock()
+		d.batcher.Displaced(ctx)
 	}
 	return nil
 }
@@ -488,6 +517,9 @@ func (d *Drive) Gate() error {
 	}
 	if d.line != "" {
 		return errors.New(d.line)
+	}
+	if d.lost {
+		return errors.New(chatlist.Superseded(unknownDevice))
 	}
 	return nil
 }

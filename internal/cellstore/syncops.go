@@ -288,6 +288,12 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	if err := noteAdopted(c, head); err != nil {
 		return err
 	}
+	// A snapshot sealed after the first publish carries the sender's earlier
+	// upload note, whose snapshot this store may never have fetched; record
+	// the received head so local-work checks compare against a snapshot held here.
+	if err := NotePublished(c, head); err != nil {
+		return err
+	}
 	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
 }
 
