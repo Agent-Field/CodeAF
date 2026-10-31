@@ -185,7 +185,7 @@ It is not a view of your chats. It is a copy of you. Pair only a computer you ow
 
 Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
 
-A computer whose conversations have no submitted turns can pair directly. If it already has its own saved pairing keys and chats with submitted turns, the refusal counts them and explains `--replace`. Chats made with `codeaf chat --once` before any pairing keys exist are kept on first pairing and can sync with the newly joined computers. For three chats on a computer with its own keys:
+A computer whose conversations have no submitted turns can pair directly. If it already has its own saved pairing keys and chats with submitted turns, the refusal counts them and explains `--replace`. Chats made with `codeaf chat --once` before any pairing keys exist are kept on first pairing, and reach the newly joined computers the next time codeaf's window opens here. For three chats on a computer with its own keys:
 
 ```
 this computer already has 3 chats of its own, so nothing was changed. To pair it anyway, run this again with --replace: those 3 chats stay on this computer but no longer sync; shared memories and settings are cleared
@@ -470,6 +470,6 @@ Once this computer has its own saved pairing keys, a sent turn, tracked work, a 
 
 ## What happens to chats made with chat --once before the first pairing?
 
-If this computer has no saved pairing keys yet, chats made with `codeaf chat --once` are kept when it first pairs without `--replace`. They become part of the chats it can sync with the newly joined computers. Older chats are copied independently for syncing; their originals stay untouched and remain listed until a completed copy is ready. Pairing does not discard or hide them.
+If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it can be continued.
 
 A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.
