@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // liveDrive is the drive side of one chat, started when it can be. A chat opens
@@ -77,7 +78,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	defer l.mu.Unlock()
 	defer close(ready)
 	l.ready = nil
-	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet), true
+	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
 	if d != nil {
 		d.CatchUp()
 	}
@@ -141,12 +142,10 @@ func (l *liveDrive) current() *syncsetup.Drive {
 
 // Gate is the drive side's gate: nothing is refused until a drive side exists.
 func (l *liveDrive) Gate() error {
-	for {
-		l.try()
-		ready := l.pending()
-		if ready == nil {
-			break
-		}
+	// A failed service startup falls back to this call's local writer. Retrying
+	// belongs to the next call, or an outage would trap this one in a retry loop.
+	l.try()
+	if ready := l.pending(); ready != nil {
 		<-ready
 	}
 	if d := l.started(); d != nil {

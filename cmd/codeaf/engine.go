@@ -156,6 +156,7 @@ func runRemoteEngine(args []string) error {
 		}
 	}
 	err := remote.Serve(os.Stdin, os.Stdout, remote.Options{
+		SyncService: chatSyncService(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, *workspace, *file)
 		},
@@ -1169,6 +1170,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
 			built, ok := current.(*session.Agent)
 			if !ok {

@@ -87,7 +87,9 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error), change
 		return nil, err
 	}
 	if err != nil || !ok {
-		report(err)
+		if err != nil {
+			report(err)
+		}
 		return nil, err
 	}
 	if syncsetup.Quiet(home.Dir()) {
@@ -205,4 +207,13 @@ func (b *driveBook) takeCell(id string) *liveDrive {
 	d := b.drive[id]
 	delete(b.drive, id)
 	return d
+}
+
+// chatSyncService keeps sync presentation quiet until this computer has paired.
+// A remote chat can still supply its own engine's service explicitly.
+func chatSyncService() string {
+	if syncsetup.Quiet(home.Dir()) {
+		return ""
+	}
+	return syncsetup.Resolve(home.Dir()).URL
 }
