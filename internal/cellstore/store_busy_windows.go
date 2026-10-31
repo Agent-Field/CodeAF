@@ -2,7 +2,10 @@
 
 package cellstore
 
-import "golang.org/x/sys/windows"
+import (
+	"context"
+	"golang.org/x/sys/windows"
+)
 
 const windowsStillActive = 259
 
@@ -22,8 +25,8 @@ func storeProcessAlive(pid int) bool {
 	return code == windowsStillActive
 }
 
-func pidServesSocket(int, string) bool { return false }
+func pidServesSocket(context.Context, int, string) bool { return false }
 
-func describeProcess(int) string { return "" }
+func describeProcess(context.Context, int) string { return "" }
 
-func lockHolderFromOS(string) StoreHolder { return StoreHolder{} }
+func lockHolderFromOS(context.Context, string) StoreHolder { return StoreHolder{} }

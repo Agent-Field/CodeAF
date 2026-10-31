@@ -945,7 +945,8 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
 	err = enginehost.Run(workspace, enginehost.Options{
-		Cells: cell.Available(),
+		HomeRemoved: func() { os.Exit(0) },
+		Cells:       cell.Available(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
 		}, // usage writer owner: see CloseUsage after the host returns
