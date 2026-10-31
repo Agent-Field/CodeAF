@@ -1487,12 +1487,23 @@ type app struct {
 	homeTakenSaid func() tea.Cmd
 	// homeTaking keeps a retiring session on its own continuation until arrival.
 	homeTaking string
-	// homeTakeSeq numbers takeovers so a cancelled attempt's late answer is ignored.
+	// homeTakeSeq keeps each answer and cleanup tied to the operation that created it.
 	homeTakeSeq uint64
-	// homeTakeCancel stops the in-flight takeover context when the person cancels.
+	// homeTakeCancel belongs to the active mutation; automatic cleanup keeps it until settlement.
 	homeTakeCancel context.CancelFunc
+	// Abandonment bounds the outstanding answer without shortening an unattended move.
+	homeTakeAbandonTimer *time.Timer
 	// homeTakeDraft moves the source composer only after the arriving door opens.
 	homeTakeDraft *homeTakenMsg
+	// Automatic navigation remains subordinate to a confirmed choice until its door lands.
+	homeTakeAutomatic bool
+	// The origin survives an explicit join so cancellation still settles its acquisition.
+	homeTakeOriginAutomatic bool
+	homeTakeAbandoned       bool
+	homeTakeOpening         bool
+	homeTakeRow             chatlist.Row
+	homeTakePending         *homeTakenMsg
+	homeTakeResult          *homeTakenMsg
 	// continueAskSeq gives each surface card its own token so re-raising inside
 	// an answer closure is not wiped by closeQuestion.
 	continueAskSeq uint64
@@ -2328,6 +2339,7 @@ type app struct {
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
+	machinesAskSeq uint64
 	// machinesRetaken replaces a listing begun before a completed take, so
 	// its late answer cannot put the previous holder back on screen.
 	machinesRetaken bool
@@ -2524,7 +2536,9 @@ type app struct {
 	landing            bool
 	autoContinue       bool
 	continueGeneration uint64
-	pickSession        bool
+	// A safety answer belongs to one explicit choice, so later navigation can withdraw it.
+	continueChecking *continuationChecked
+	pickSession      bool
 	// takeOverAt is a conversation this launch met a lock on
 	// ([Options.TakeOver]). It is a transcript path, and the launch lands on
 	// home with that row armed instead of quietly starting a second
@@ -3974,7 +3988,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
 		// Draft edits stay with the pending chat; navigation cancels the transition.
-		if a.conversationOpening {
+		if a.conversationOpening && !(a.homeTakeAutomatic && !a.homeTakeAbandoned) {
 			if a.openingDraftKey(msg) {
 				return a, nil
 			}
@@ -4668,7 +4682,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
 		}
-		if a.conversationOpening {
+		if a.conversationOpening && !(a.homeTakeAutomatic && !a.homeTakeAbandoned) {
 			previewing := a.conversationPreview != nil
 			if previewing {
 				mouse := msg.Mouse()
@@ -5556,6 +5570,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.tookHomeLeftOff(msg)
 		return a, nil
 
+	case continueConflictMsg:
+		return a, a.continueConflictRead(msg)
+	case homeTakeSettledMsg:
+		return a, a.automaticTakeSettled(msg)
 	case homeTakenMsg:
 		return a, a.tookTakeover(msg)
 
@@ -5570,6 +5588,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case continuationChecked:
 		return a, a.continuationReady(msg)
+	case homeMachinesSlowMsg:
+		a.machinesStillChecking(msg)
+		return a, nil
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -8902,6 +8923,7 @@ func (a *app) renew() (tea.Cmd, bool) { return a.renewRefusing(a.note) }
 // the new conversation's entry line, because by then that conversation is what is
 // on screen.
 func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
+	a.abandonAutomaticTake()
 	if !a.canStart() {
 		say(newUnavailableWord)
 		return nil, false

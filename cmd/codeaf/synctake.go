@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -371,4 +372,19 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 		log.Printf("continue %s needs a choice: local files, conversation or tool work changed", id)
 	}
 	return !dirty, err
+}
+
+// ReleaseUnused leaves the installed files and kept work intact, just as closing
+// a chat does, while returning an abandoned automatic acquisition to the directory.
+func (t takeover) ReleaseUnused(ctx context.Context, id string, fence uint64) error {
+	return t.c.ReleaseUnused(ctx, id, fence)
+}
+
+// RelayHost names the endpoint without exposing a path or credentials in chat copy.
+func (s surfaceMachines) RelayHost() string {
+	parsed, err := url.Parse(s.Relay)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }

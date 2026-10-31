@@ -33,6 +33,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -40,6 +41,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
 const (
@@ -168,6 +170,15 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 	case resumeKey:
 		a.leftOff.answer()
 		a.touch()
+		if a.homeTaking != "" && !a.homeTakeAutomatic {
+			a.raiseMachineAsk(*row, a.continueBusyShown(*row))
+			a.home.say(continueAlreadyRunning, "")
+			return nil, true
+		}
+		if a.homeTakeAutomatic && row.Cell == a.homeTaking && (!a.homeTakeAbandoned || a.homeTakeResult == nil) {
+			return a.takeRemote(*row), true
+		}
+		a.abandonAutomaticTake()
 		if safe, ok := a.taker.(continuationSafety); ok {
 			return a.continueIfSafe(*row, safe), true
 		}
@@ -203,9 +214,14 @@ type continuationSafety interface {
 // lease expectation so a later holder can never be displaced by this gesture.
 func (a *app) continueIfSafe(row chatlist.Row, safe continuationSafety) tea.Cmd {
 	ctx, file := a.ctx, a.file
+	choice := a.nextContinueAskID()
+	a.continueChecking = &continuationChecked{row: row, generation: choice}
+	if a.homeTakeAutomatic && a.homeTaking != "" {
+		a.home.say(fmt.Sprintf("continuing %s next; %s is still on its way here", row.Title, a.homeTakeRow.Title), "")
+	}
 	return func() tea.Msg {
 		clean, err := safe.SafeToContinue(ctx, row.Cell, file, false)
-		return continuationChecked{row: row, clean: clean, err: err}
+		return continuationChecked{row: row, clean: clean, generation: choice, err: err}
 	}
 }
 
@@ -255,6 +271,12 @@ func (a *app) continueAfterQuit(err error) tea.Cmd {
 }
 
 func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
+	if !msg.automatic && msg.generation != 0 {
+		if a.continueChecking == nil || a.continueChecking.generation != msg.generation {
+			return nil
+		}
+		a.continueChecking = nil
+	}
 	if a.hosted() || a.machineRead.computerRemoved {
 		return nil
 	}
@@ -276,7 +298,18 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		opened = a.openHome()
 	}
 	if msg.err != nil {
-		return tea.Batch(opened, a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err}))
+		if !a.at(pageHome) {
+			opened = a.openHome()
+		}
+		a.abandonAutomaticTake()
+		failed := homeTakenMsg{row: msg.row, err: msg.err}
+		if errors.Is(msg.err, directory.ErrLeaseHeld) {
+			return tea.Batch(opened, a.lostRace(failed))
+		}
+		failure := a.continueFailure(failed)
+		a.note(failure)
+		a.showTakeFailure(failed, failure)
+		return opened
 	}
 	if !msg.clean {
 		if msg.automatic {
@@ -284,5 +317,5 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		}
 		return a.raiseContinue(msg.row, continueYesAt)
 	}
-	return tea.Batch(opened, a.takeRemote(msg.row))
+	return tea.Batch(opened, a.takeRemoteState(homeTakenMsg{row: msg.row, automatic: msg.automatic}))
 }

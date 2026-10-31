@@ -107,7 +107,9 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 // TakeSeen continues the lease the person saw on the card. Older callers
 // without that reading still bind the claim to the record read before fetch.
 func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Taken, error) {
+	directoryRead := Trace(t.OnPhase, "directory")
 	view, err := t.Dir.Cell(ctx, id)
+	directoryRead()
 	if err != nil {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
 	}
@@ -266,7 +268,9 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	if t.OnPhase != nil {
 		t.OnPhase(Phase{Name: "first acquire", Started: time.Now()})
 	}
+	acquiring := Trace(t.OnPhase, "acquire")
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
+	acquiring()
 	if err != nil {
 		return "", 0, nil, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
 	}
@@ -400,7 +404,10 @@ func swap(stage, root string) error {
 // here hands it back, so the chat is takeable at once instead of after a TTL.
 func (t Taker) open(ctx context.Context, c cell.Cell, fence uint64) (cell.Cell, error) {
 	for _, hook := range t.After {
-		if err := hook(ctx, c); err != nil {
+		done := Trace(t.OnPhase, "hooks")
+		err := hook(ctx, c)
+		done()
+		if err != nil {
 			return cell.Cell{}, t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: %w", err))
 		}
 	}

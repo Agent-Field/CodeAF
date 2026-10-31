@@ -29,21 +29,17 @@ An older chat's copy is kept in a folder called `.moving` beside the original, i
 
 ## My typed message after continue here — is it kept, does it send by itself
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+before showing this question for a send, codeaf checks which computer holds the chat now. an older listing alone cannot raise it. if that check fails, nothing is sent and the whole message stays in the box, including pasted text and attachments. the chat says `<host> has not answered; your message is still in the box, press enter to send it`. press enter to check again. changing the draft while a check waits keeps the current words unsent; the chat says `draft changed before sending; press enter to send your current words`.
 
-Before showing this question for a send, codeaf checks which computer holds the chat now. An older listing alone cannot raise it. If the check cannot reach your other devices and this window already knows the chat moved away, your words stay in the box and nothing is sent. Continuing a chat this computer already holds keeps its open conversation and your typed words.
+a chat this window already holds, or one that has never been shared, sends without asking the service. an ordinary check for a shared copy waits up to five seconds. immediately after this window's own successful move, a message can wait up to 30 seconds for the chat to finish opening, then sends once. a window that lost the chat, or another window holding it, cannot give this window permission to send.
 
-The first Enter waits up to five seconds for a current reading when this window
-does not hold the shared chat, including in a freshly opened copy.
-`other machines unreachable` means that reading
-failed; it never means a reading has not happened yet. Your words stay unsent
-while the reading is in progress.
+if Enter raised the continue card, a successful move restores those same words, pasted text and attachments and says `your message is still in the box; press enter to send it`. it waits for another enter. choosing `leave it there` or a failed move also keeps the whole draft.
 
-After `continue here` succeeds, those same words, pasted text and attachments are in the arrived chat's box. Press enter again when you want to send them. Choosing `leave it there` or a move that fails also keeps the whole draft.
+## which draft comes back after continuing a chat
 
-The move opens one conversation for that chat. Once you send those words, they are cleared from its saved drafts, including matching copies left by an earlier window. Taking the chat back, reopening it or restarting codeaf then shows an empty box unless you typed a new draft.
+a move opens one conversation for that chat. sending clears the words from its saved drafts, including matching copies left by an earlier window. taking the chat back, reopening it or restarting codeaf then shows an empty box unless you typed a new draft.
 
-Taking a chat from Home restores that chat's own saved draft, or leaves its box empty. Words typed for a different chat stay with that chat, even when both work in one place on disk. A draft held behind a send's continuation card stays with the chat that raised it.
+taking a chat from Home restores that chat's own saved draft, or leaves its box empty. words typed for a different chat stay with that chat, even when both work in one place on disk. a draft held behind a send's continuation card stays with the chat that raised it. continuing a chat this window already holds keeps its open conversation and typed words.
 
 ## Read a finished task's worker conversation after moving its chat
 
@@ -59,9 +55,15 @@ On `Continue this chat here?`, `leave it there` closes the question without movi
 
 If Enter in a displaced chat raises the continue card, `esc` or `2 leave it there` returns to that same chat window with its full draft still in the box. If you opened the card from a Home row, leaving the card keeps you on Home.
 
+during an automatic continue, the first `esc` withdraws its opening and any waiting choice. the automatic chat is not opened: it finishes arriving and is let go, so it stays on this computer, free to continue from anywhere. a further `esc` navigates as usual while that finishes. if the abandoned move has not answered after two minutes, its request is cancelled before the waiting choice can begin. inspecting another chat's card and choosing `leave it there` or `esc` leaves the automatic arrival alone.
+
 A continue card previews only that chat's unsent words, or nothing when no draft is available. Its project foot belongs to the selected chat. Words typed in another chat never appear on this card. Saved drafts belong to their chat even when a copied chat moves to a different project folder; opening another copy cannot adopt them.
 
-Home says `other machines did not answer in time` when its ownership listing reaches a deadline. Your words stay unsent. This sentence does not establish a network failure.
+## slow chat listing — waiting for a service, a timeout or an unreachable host
+
+at five seconds without a chat-list answer, Home says `waiting for <host>; still checking` and keeps its rows. the read continues for up to 25 seconds. a deadline says `<host> did not answer in 25s; still trying`; a failed connection says `<host> is unreachable; still trying`. background checks continue on their usual schedule. a successful answer clears the line.
+
+these are Home's listing sentences. a message left unsent by a failed send check gets its own explanation: `<host> has not answered; your message is still in the box, press enter to send it`.
 
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
@@ -126,7 +128,7 @@ not committed yet: main.go, util.go · last tests: passed
 got it
 ```
 
-## What was not brought along — the lines on the arrival card
+## What was not brought along — folders, commands and tests on the arrival card
 
 When a chat arrives on a paired computer, its arrival card can include these lines:
 
@@ -188,23 +190,31 @@ When unsent turns were kept as a separate copy, reopening that copy checks who h
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-While a chat is moving here, the card says `continuing here…`. Pressing `continue here` again before it finishes says `a chat is already continuing here; wait for it to open` on the card instead of doing nothing. Every failure is shown where you are looking — on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window — never only on Home's bottom line after the card closes:
+while a chat you explicitly chose is moving here, the card says `continuing here…`. another explicit continue during that move says `a chat is already continuing here; wait for it to open` on the card. an automatic startup move instead lets your explicit choice go next; see “my choice while an automatic chat is arriving”.
+
+every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. it does not blame another device.
+
+## why continue here failed — retry or leave it there
+
+a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry confirms the holder and turn of ownership now displayed on that card.
+
 
 - `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.
 - `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here because the engine store is busy` or `could not continue this chat here because the engine store is busy (held by codeaf chat, pid 4321)`: another `codeaf` process holds this computer's engine store writer. Close or finish that process, then choose `retry`.
 - `could not continue this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
+- A move does not fail because another chat on this computer is saving its secrets to the sync service at that moment. Its last step waits up to 30 seconds for that save to finish, then arrives.
 - `could not continue this chat here because other machines are unreachable; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
 - `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here` means the chat is open on another computer and the sync service is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `continue here` again.
 - Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never shows as held elsewhere. With no way to continue set up, an off row has no `continue here`: enter says why.
 
-## Taking a chat back, and two computers racing for the same chat — who wins, and what the loser sees
+## taking a chat back, and two computers continuing the same chat — which one opens
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
-The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first`, its local copy is not replaced, and its row goes back to `running on <device>`. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `running on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
 ## This window only shows the chat — can I still send here
 
@@ -307,6 +317,10 @@ If the last upload fails when you quit, for example because the connection dropp
 
 Device presence can arrive before its list of chats. If you press `alt+m` early, home says `chats are still arriving from your other computer; this opens when they are ready`. It keeps your request and opens the ordinary confirmation once the chat arrives; it never takes the chat without that confirmation. A recent chat left on another computer is offered when home opens, including one that computer closed cleanly.
 
+## a new chat brings its full saved contents; a returning chat brings its changes
+
+a chat this computer has never held brings its saved contents in parallel, even after other chats used this store. a returning chat downloads only what changed. either path checks that all saved contents arrived before the move finishes. sharing saved file contents with other chats does not make a new chat count as one this computer already held.
+
 ## Does first start send anything — local identity before pairing
 
 The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.
@@ -335,9 +349,17 @@ A clean quit lets go after the last save is durable. Opening bare `codeaf` on yo
 
 If this computer is also coordinating, a clean terminal quit releases its idle chats and returns coordination to an anchor before stopping. With the anchors reachable, the other computer can continue immediately. Sleep, a crash or a lost connection still use the fallback described on the coordination and workers page.
 
-Once the chat arrives, you can send your next message immediately. The window keeps following changes, including renamed computers and a later move to another computer.
+after the chat arrives, enter can wait up to 30 seconds for this window to finish opening the chat before sending once. if the check fails, it says `<host> has not answered; your message is still in the box, press enter to send it`. the window keeps following changes, including renamed computers and a later move to another computer.
 
-A running chat on the other computer never moves automatically. Neither does a named chat, `--host`, `--at` or `--session`, a chat with unsaved local edits, or a launch while another local window already has a chat open. If the service cannot be reached or another device got there first, Home says `other machines unreachable` or `another device continued this chat first` and keeps the local chat as it was.
+A running chat on the other computer never moves automatically. Neither does a named chat, `--host`, `--at` or `--session`, a chat with unsaved local edits, or a launch while another local window already has a chat open. if the service cannot be reached, Home names its host and keeps trying. if another computer got there first, the refreshed continue card explains the change and keeps the local chat as it was.
+
+## my choice while an automatic chat is arriving — continue a different chat, join it or cancel
+
+bare startup still chooses the most recently released eligible chat and checks local safety first. input before that check answers cancels the automatic choice.
+
+if its move is already running, confirming a different chat on Home or using `alt+c` chooses what opens next. Home says `continuing <Y> next; <X> is still on its way here`, with the titles from the continue cards. the automatic move settles first and is let go with its files and kept work intact; it never opens over your choice. the next move uses exactly the computer and turn of ownership you confirmed. `esc` cancels the waiting choice and the automatic chat still settles and is let go.
+
+confirming the automatic chat itself joins its move and opens it once. explicitly opening another local chat or starting a new one also prevents a late automatic arrival from replacing it. moving the cursor, opening Home or inspecting and declining another card does not choose a different chat. an explicit move already in progress still gives the usual busy sentence for another explicit pick.
 
 ## Why an older chat could not be copied — symbolic links, home folder
 

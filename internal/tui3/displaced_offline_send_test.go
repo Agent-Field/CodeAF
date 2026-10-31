@@ -38,7 +38,7 @@ func TestDisplacedOfflineWindowCannotBorrowAnEmptyListing(t *testing.T) {
 	if len(agent.sent) != 0 || a.input.String() != "keep these words here" {
 		t.Fatalf("offline copy sent: %v, draft=%q", agent.sent, a.input.String())
 	}
-	if !strings.Contains(strings.Join(noteTexts(a), "\n"), chatlist.Unreachable) {
+	if !strings.Contains(strings.Join(noteTexts(a), "\n"), "your message is still in the box, press enter to send it") {
 		t.Fatal("the unsent draft has no explanation")
 	}
 }

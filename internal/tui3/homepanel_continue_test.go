@@ -212,8 +212,18 @@ func TestTakeoverScreenLostRace(t *testing.T) {
 	if !strings.Contains(text, "another device continued this chat first") {
 		t.Fatalf("R25 visible refusal changed:\n%s", text)
 	}
-	if !strings.Contains(text, "Port the picker  running on desk") || !strings.Contains(text, lostRaceWord) {
-		t.Fatalf("the row did not come back as running on the winner, with one line saying so:\n%s", text)
+	q, card := a.homeAsking()
+	if !card || q.question.Options[0].Label != continueRetry || q.question.Options[1].Label != continueStay {
+		t.Fatalf("the refusal did not stay on its retry card:\n%s", text)
+	}
+	found := false
+	for _, row := range a.machineRead.rows {
+		if row.Cell == "c-off" && row.Device == "desk" && row.Status == chatlist.Running {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the refreshed row lost its holder: %+v", a.machineRead.rows)
 	}
 	if len(taker.cells) != 1 {
 		t.Fatalf("the takeover ran %d times", len(taker.cells))
