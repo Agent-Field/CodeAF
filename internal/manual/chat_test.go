@@ -4463,6 +4463,7 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
 		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
 		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},
+		{"sync off and my chats are gone", "home", "Home still lists every chat on this computer"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {
@@ -4519,5 +4520,43 @@ func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
 		if !strings.Contains(page, "\""+refusal+"\"") {
 			t.Errorf("Windows manual must quote the shared refusal exactly: %q", refusal)
 		}
+	}
+}
+
+// TestSyncOffManualQuotesExactSentences pins the retrieval probe and exact
+// person-facing sentences for #2072 (sync off keeps every chat).
+func TestSyncOffManualQuotesExactSentences(t *testing.T) {
+	for _, probe := range []struct {
+		asked   string
+		page    string
+		heading string
+		quotes  []string
+	}{
+		{
+			asked:   "sync off and my chats are gone",
+			page:    "home",
+			heading: "Sync off and my chats are gone",
+			quotes: []string{
+				"CODEAF_SYNC_URL=off",
+				"chats from older versions alike",
+				"each once, and each opens and can be written",
+			},
+		},
+	} {
+		t.Run(probe.asked, func(t *testing.T) {
+			results := Chat().Search(probe.asked, DefaultResults)
+			for _, section := range results {
+				if section.Page != probe.page || !strings.HasPrefix(section.Title, probe.heading) {
+					continue
+				}
+				for _, quote := range probe.quotes {
+					if !strings.Contains(section.Body, quote) {
+						t.Errorf("section %q on %s missing exact quote %q", section.Title, section.Page, quote)
+					}
+				}
+				return
+			}
+			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
+		})
 	}
 }

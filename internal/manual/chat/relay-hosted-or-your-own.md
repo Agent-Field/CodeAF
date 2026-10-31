@@ -26,7 +26,7 @@ CODEAF_SYNC_URL=https://relay.example.com codeaf
 ```
 
 - **A web address** like `https://relay.example.com` or `http://host:8787`. Plain `http` is for trying it out inside an ssh tunnel. An address that is not a web address stops with `CODEAF_SYNC_URL is not a web address like http://host:8787`.
-- **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
+- **`off`** turns the relay off. Pairing then says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`. Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
 - **Unset:** a computer that was paired with a named relay uses the relay the pairing saved. Otherwise it uses the hosted default above, if this build has one, and has none if it does not.
 
 Your own computers must all name the same relay and hold the same identity, or they see different chats.

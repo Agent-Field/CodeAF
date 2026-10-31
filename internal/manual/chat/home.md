@@ -2729,3 +2729,9 @@ If the laptop only slept or lost its connection, Home offers its latest chat and
 ## Empty untitled chats from your other devices — rows before the first saved turn
 
 An empty new chat on one of your other devices stays off Home until it has a saved turn. Opening a window there does not add an `untitled` row here, even while that window remains open and running. Its startup save alone does not make it a conversation you can continue. Once that chat has its first saved turn, it appears with the other chats you can continue.
+
+## Sync off and my chats are gone — CODEAF_SYNC_URL=off keeps every chat on this computer
+
+Turning sync off with `CODEAF_SYNC_URL=off` (or leaving sync off before pairing) means "do not talk to the sync service", never "forget my chats". Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
+
+When an older chat was already copied into this version's store, Home lists and opens that copy even while sync is off, and the untouched original stays on disk beside it. Saved sync hold receipts from an earlier session stay dormant while sync is off, so sending a message in any local chat works without asking the sync service.
