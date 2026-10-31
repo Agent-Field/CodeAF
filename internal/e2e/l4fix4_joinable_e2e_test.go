@@ -120,7 +120,7 @@ func TestL4ProviderWindowCanJoinUntilATurnIsSent(t *testing.T) {
 			r := startWithEnv(t, env, fmt.Sprintf("l4_provider_%v", sent), root, ws, 120, 40, "chat", "--no-host")
 			r.skipSetup(t)
 			r.keys("Space", "Space")
-			if _, ok := waitPlain(r, 20*time.Second, "[Home]"); !ok {
+			if _, ok := waitPlain(r, 20*time.Second, say(t, "placeRestWord")); !ok {
 				t.Fatal("window did not reach Home")
 			}
 			cache := filepath.Join(root, "v3", "models-"+catalog.CacheKey(modelsource.CustomID, base)+".json")
