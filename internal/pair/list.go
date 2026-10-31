@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
@@ -37,7 +38,7 @@ func decodeStoredKey(stored string) ([]byte, error) {
 
 // DevicesList is what `codeaf devices` prints about the devices that can use
 // this machine. Its caller has already checked that paired is not empty.
-func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) string {
+func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time, duplicates ...map[string]bool) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "this machine is reachable as %s\n", name)
 	fmt.Fprintf(&out, "its key is kept in %s\n\n", keeper.Where())
@@ -55,7 +56,17 @@ func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) str
 		// The emptiness law, one row at a time: a device that has never
 		// connected shows nothing where its last connection would be, rather
 		// than a zero time or the word "never".
-		line := fmt.Sprintf("  %s  paired %s", padded(one.Label, widest), since(one.Since, now))
+		duplicate := false
+		for _, other := range paired {
+			if other.Key != one.Key && strings.EqualFold(other.Label, one.Label) {
+				duplicate = true
+			}
+		}
+		if len(duplicates) > 0 {
+			duplicate = duplicates[0][strings.ToLower(one.Label)]
+		}
+		label := devname.DeviceLabel(one.Label, one.ID(), duplicate)
+		line := fmt.Sprintf("  %s  paired %s", padded(label, widest), since(one.Since, now))
 		if seen := since(one.Seen, now); seen != "" {
 			line += "  ·  last here " + seen
 		}
@@ -98,28 +109,62 @@ func RevokedLine(label string) string {
 	return label + " was removed — it can no longer open a chat here, and it needs a new pairing code to come back."
 }
 
+// NextPairing offers the next step after this computer's local row.
+const NextPairing = "Run codeaf pair to add another device."
+
 // NoDevices is the whole answer of `codeaf devices` when nothing of either kind
 // is paired: one sentence, and the two ways to change that.
 const NoDevices = "nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine."
 
 // ChatsDevice is one device that holds the person's chats, as a row.
 type ChatsDevice struct {
-	Name    string
-	This    bool // the computer the command is typed on
-	Stopped bool // removed: the relay no longer answers it
+	Name     string
+	This     bool // the computer the command is typed on
+	Stopped  bool // removed: the relay no longer answers it
+	Online   bool
+	Platform string
+	LastSeen time.Time
 }
 
 // ChatsDevicesList is the table of computers that hold the person's chats. Its
 // caller has already checked that rows is not empty.
-func ChatsDevicesList(rows []ChatsDevice) string {
+func ChatsDevicesList(rows []ChatsDevice) string { return ChatsDevicesListAt(rows, time.Now()) }
+
+// ChatsDevicesListAt keeps last-seen wording reproducible under the caller's clock.
+// A caller without chat-moving capability suppresses the pairing next step.
+func ChatsDevicesListAt(rows []ChatsDevice, now time.Time, canPair ...bool) string {
 	var out strings.Builder
 	out.WriteString("your devices\n\n")
 	widest := 0
 	for _, one := range rows {
 		widest = max(widest, width(one.Name))
 	}
+	removed := false
 	for _, one := range rows {
-		fmt.Fprintf(&out, "  %s%s\n", padded(one.Name, widest), chatsMarks(one))
+		if one.Stopped && !removed {
+			out.WriteString("\nremoved\n\n")
+			removed = true
+		}
+		details := chatsMarks(one)
+		if platform := PlatformWord(one.Platform); platform != "" {
+			details += "  " + platform
+		}
+		if !one.Stopped && one.Online {
+			details += "  online"
+		} else if !one.Stopped && !one.LastSeen.IsZero() {
+			details += "  last seen " + since(one.LastSeen, now)
+		}
+		fmt.Fprintf(&out, "  %s%s\n", padded(one.Name, widest), details)
+	}
+	removable := false
+	for _, row := range rows {
+		removable = removable || !row.This && !row.Stopped
+	}
+	if !removable {
+		if len(canPair) == 0 || canPair[0] {
+			out.WriteString("\n" + NextPairing + "\n")
+		}
+		return out.String()
 	}
 	out.WriteString("\nremove one with `codeaf devices revoke <name>` — it stops syncing your chats, but keeps what it already holds.\n")
 	return out.String()
@@ -131,9 +176,6 @@ func chatsMarks(one ChatsDevice) string {
 	var marks []string
 	if one.This {
 		marks = append(marks, "this device")
-	}
-	if one.Stopped {
-		marks = append(marks, "removed")
 	}
 	if len(marks) == 0 {
 		return ""

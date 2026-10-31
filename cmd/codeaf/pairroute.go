@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -44,7 +45,7 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 	flag := strings.TrimSpace(relayFlag)
 	base := flag
 	if flag == "" {
-		relay := syncsetup.Resolve(home.Dir())
+		relay := pairingRelay(home.Dir())
 		if relay.Off {
 			return pair.Mailbox{}, pair.ErrSyncOff
 		}
@@ -61,7 +62,7 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 		Box:   pairbox.NewHTTP(base, &http.Client{Timeout: pairPollTimeout}),
 		URL:   base,
 		Host:  u.Host,
-		Shown: flag,
+		Shown: syncsetup.Named(base),
 	}, nil
 }
 
@@ -97,4 +98,17 @@ func pairJoiningAt(dir string) func(replace bool) pair.Joining {
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
 		}
 	}
+}
+
+// pairingRelay keeps the pairing/remote override out of ordinary chat syncing.
+// An explicit sync variable wins; otherwise pairing may use CODEAF_RELAY before
+// the saved service or hosted default, as its printed instructions promise.
+func pairingRelay(dir string) syncsetup.Relay {
+	selected := syncsetup.Resolve(dir)
+	if env.Get(syncsetup.URLVar) == "" {
+		if override := strings.TrimSpace(env.Get(pair.RelayEnv)); override != "" {
+			return syncsetup.Relay{URL: override}
+		}
+	}
+	return selected
 }

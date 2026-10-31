@@ -35,6 +35,7 @@ const (
 	// connection checks, so a catalog discovery can read is also connectable.
 	MaxCatalogBytes = 16 << 20
 	cacheName       = "model-catalog.json"
+	cacheKeyBytes   = 8
 	// DefaultBaseURL lives beside the compiled-in fallback rows because those
 	// rows are this service's ids, so the package that serves them has to be
 	// able to recognise its own base.
@@ -1520,6 +1521,26 @@ func cachePath(dir, source, base string) string {
 	return filepath.Join(dir, stem+"-"+key+extension)
 }
 
+// IsCacheName recognizes only filenames the catalog writes. Pairing uses this
+// ownership boundary so a person's similarly named file still counts as work.
+func IsCacheName(name string) bool {
+	if name == cacheName {
+		return true
+	}
+	extension := filepath.Ext(cacheName)
+	stem := strings.TrimSuffix(cacheName, extension)
+	key, ok := strings.CutPrefix(name, stem+"-")
+	if !ok {
+		return false
+	}
+	key, ok = strings.CutSuffix(key, extension)
+	if !ok {
+		return false
+	}
+	decoded, err := hex.DecodeString(key)
+	return err == nil && len(decoded) == cacheKeyBytes && hex.EncodeToString(decoded) == key
+}
+
 // CacheKey is the shared service-and-base ownership key. Empty is the legacy
 // default-service/default-base case; every other pair gets sixteen hex digits.
 func CacheKey(source, base string) string {
@@ -1529,7 +1550,7 @@ func CacheKey(source, base string) string {
 		return ""
 	}
 	digest := sha256.Sum256([]byte(source + "\x00" + base))
-	return hex.EncodeToString(digest[:8])
+	return hex.EncodeToString(digest[:cacheKeyBytes])
 }
 
 func readCache(path, source, base string) (cache, bool) {

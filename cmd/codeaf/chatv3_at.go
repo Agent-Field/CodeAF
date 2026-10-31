@@ -40,12 +40,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/taskdoor"
@@ -146,10 +151,11 @@ func openChatV3At(launch atLaunch) error {
 		return err
 	}
 	reach := pair.Reach{
-		Name:     name,
-		Device:   device,
-		Machines: pair.MachineBook(),
-		Label:    pair.ThisMachineLabel(),
+		WeightOnApprover: true,
+		Name:             name,
+		Device:           device,
+		Machines:         pair.MachineBook(),
+		Label:            pair.ThisMachineLabel(),
 		// EVERY LINE OF THE PAIRING GOES TO STDERR, so that `--once` piped into
 		// a file is the reply and nothing else.
 		Say:  func(line string) { fmt.Fprintln(os.Stderr, line) },
@@ -202,6 +208,10 @@ func openChatV3At(launch atLaunch) error {
 	// first one is open, so the second reach is the same reach with nobody to
 	// question (a prompt raised behind a running surface would be a question on a
 	// terminal the surface owns).
+	if shown := client.Welcome().Machine; shown != "" {
+		name = devname.Shown(shown)
+		client.SetDisplayName(name)
+	}
 	quiet := reach
 	quiet.AskCode = nil
 	fleet := newEngineFleet(name, client, shutBoot, func(ask engineAsk) (*engineConn, error) {
@@ -264,7 +274,7 @@ func runServe(args []string) error {
 	flags := commandFlags("serve")
 	takeTasks := flags.Bool(taskdoor.TakeTasksFlag, false, "take tasks from your paired computers")
 	workspace := flags.String("workspace", "", "directory a connection works in when it does not name one; empty is the directory this command was run in")
-	relayAddress := flags.String("via", "", "the sync address to be reachable through; empty reads "+pair.RelayEnv+", ~/.codeaf/v3/remote/relay, then the address this machine syncs through")
+	relayAddress := flags.String("via", "", "the sync service to be reachable through; empty reads "+pair.RelayEnv+", ~/.codeaf/v3/remote/relay, then the address this machine syncs through")
 	renamedFlag(flags, "relay", "via")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
@@ -280,7 +290,7 @@ func runServe(args []string) error {
 	if service == "" {
 		// Only a machine whose person turned sync off and named no relay
 		// gets here; every other machine has sync's address.
-		return errors.New("no sync address is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to your sync address, or let people in over ssh with `codeaf chat --host` from their side")
+		return errors.New("no sync service is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to your sync service")
 	}
 
 	here := strings.TrimSpace(*workspace)
@@ -305,14 +315,19 @@ func runServe(args []string) error {
 	if *takeTasks {
 		defer serveTasks(ctx, service)()
 	}
+	shown := ""
+	if _, err := identity.Load(home.Dir()); err == nil && !identity.Solo(home.Dir()) {
+		shown = devname.Name(home.Dir())
+	}
 	host := &pair.Host{
-		Service: service,
-		Device:  device,
-		Devices: pair.DeviceBook(),
-		Desk:    &pair.Desk{},
-		Approve: serveApprover(ctx, os.Stdin, os.Stdout),
-		Say:     func(line string) { fmt.Fprintln(os.Stdout, line) },
-		Open:    func(tunnel io.ReadWriteCloser) { serveOneConnection(tunnel, here) },
+		DisplayName: shown,
+		Service:     service,
+		Device:      device,
+		Devices:     pair.DeviceBook(),
+		Desk:        &pair.Desk{},
+		Approve:     serveApprover(ctx, os.Stdin, os.Stdout),
+		Say:         func(line string) { fmt.Fprintln(os.Stdout, line) },
+		OpenNamed:   func(_ string, tunnel io.ReadWriteCloser) error { return serveOneConnection(tunnel, here) },
 	}
 	if err := host.Run(ctx); err != nil {
 		return err
@@ -331,20 +346,28 @@ func runServe(args []string) error {
 // per process is also the lifetime the engine was written for — it chdirs into
 // its workspace and opens one session — so two connections are two processes
 // and never two conversations fighting over one.
-func serveOneConnection(tunnel io.ReadWriteCloser, workspace string) {
+func serveOneConnection(tunnel io.ReadWriteCloser, workspace string) error {
 	self, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "could not find this program on disk:", err)
-		return
+		return errors.New("this computer could not start the chat")
 	}
 	engine := exec.Command(self, "engine", "--workspace", workspace)
 	engine.Stdin = tunnel
 	engine.Stdout = tunnel
-	// The engine's own stderr is this machine's, where a person running
-	// `codeaf serve` can see it. It is never put on the tunnel: stdout is the
-	// protocol and one stray line there is a frame the surface cannot parse.
-	engine.Stderr = os.Stderr
-	if err := engine.Run(); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "that connection ended:", err)
+	// Child diagnostics belong to a local log, never the serving terminal or
+	// the tunnel, whose stdout carries only protocol frames.
+	logPath := filepath.Join(home.Dir(), "logs", "serve.log")
+	var diagnostics io.Writer = io.Discard
+	if err := os.MkdirAll(filepath.Dir(logPath), 0700); err == nil {
+		if file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
+			defer file.Close()
+			diagnostics = file
+		}
 	}
+	engine.Stderr = diagnostics
+	if err := engine.Run(); err != nil && !errors.Is(err, context.Canceled) {
+		log.New(diagnostics, "", log.LstdFlags).Print(err)
+		return err
+	}
+	return nil
 }

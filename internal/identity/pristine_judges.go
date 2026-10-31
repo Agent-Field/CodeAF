@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
 	"os"
@@ -56,6 +57,12 @@ func (r rules) of(name string) judge {
 
 // never is for what a start makes again on demand: keys, caches, locks, logs.
 func never(string) (bool, error) { return false, nil }
+
+// catalogCache delegates cache naming to its owner instead of treating every
+// model-catalog-prefixed file as disposable startup state.
+func catalogCache(path string) (bool, error) {
+	return !catalog.IsCacheName(filepath.Base(path)), nil
+}
 
 // unknown is the judge of a name nobody declared, and it is always use.
 func unknown(string) (bool, error) { return true, nil }

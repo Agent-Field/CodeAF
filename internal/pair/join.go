@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -44,6 +45,8 @@ type Joining struct {
 
 // Joined is how a pairing ended on the joining device.
 type Joined struct {
+	// With is an existing computer in the newly joined set of devices.
+	With string
 	// Already is true when this computer held these chats before, so nothing
 	// was changed.
 	Already bool
@@ -103,7 +106,7 @@ func phraseJoin(err error, route Mailbox) error {
 	if errors.Is(err, ErrWrongCode) {
 		return ErrCodeDidNotWork
 	}
-	return phraseBox(err, route.Host)
+	return phraseBox(err, route.URL)
 }
 
 // joinOffer is what this device sends in message 3: its name, then random bytes
@@ -123,7 +126,19 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 	held, err := identity.Load(j.Home)
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
-		return Joined{Already: true}, nil
+		if !j.Replace {
+			return Joined{Already: true}, nil
+		}
+		// Explicit replacement after approval must renew this computer's key,
+		// even when the shared account is unchanged: its old key may be revoked.
+		dev, err := identity.NewDevice(grant.Identity)
+		if err != nil {
+			return Joined{}, err
+		}
+		if err := identity.Install(j.Home, grant.Identity, dev); err != nil {
+			return Joined{}, err
+		}
+		// The common adoption tail applies replacement cleanup and service persistence.
 	case err == nil && slices.Contains(grant.Replaces, held.ID()):
 		return Joined{Successor: true}, follow(j, held, grant)
 	}
@@ -141,7 +156,7 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 		}
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
-		return Joined{}, adoptFailure(err)
+		return Joined{}, adoptionFailure(j.Home, err)
 	}
 	if merge {
 		if err := keys.CommitReseal(j.Home); err != nil {
@@ -185,3 +200,31 @@ func adoptFailure(err error) error {
 	}
 	return err
 }
+
+// adoptionFailure counts the chats that replacement would leave on this computer.
+func adoptionFailure(home string, err error) error {
+	if errors.Is(err, identity.ErrDifferent) {
+		return differentChats(home)
+	}
+	return err
+}
+
+func differentChats(home string) error {
+	n, err := identity.ChatCount(home)
+	if err != nil {
+		return ErrDifferentChats
+	}
+	if n == 0 {
+		return ErrDifferentChats
+	}
+	noun := "chats"
+	if n == 1 {
+		noun = "chat"
+	}
+	return differentChatError{fmt.Sprintf("this computer already has %d %s of its own, so nothing was changed. To pair it anyway, run this again with --replace: those %d %s stay on this computer but no longer sync; shared memories and settings are cleared", n, noun, n, noun)}
+}
+
+type differentChatError struct{ line string }
+
+func (e differentChatError) Error() string { return e.line }
+func (e differentChatError) Unwrap() error { return ErrDifferentChats }

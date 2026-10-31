@@ -58,7 +58,7 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	screen.waitFor(t, `Paired\.`)
+	screen.waitFor(t, `Paired with`)
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)
 	if err != nil || second.ID() != first.ID() {
@@ -154,7 +154,7 @@ func TestPairApproveRefusals(t *testing.T) {
 	rig := newPairRig(t)
 	out := &pairScreenText{}
 	err := rig.door(rig.homeB, strings.NewReader("a\n"), out).run(context.Background(), []string{"approve", "k7m2q9xd.AAAAAAAAAAAAAAAAAAAAAA"})
-	if !errors.Is(err, pair.ErrNotJoined) || !strings.Contains(err.Error(), "start codeaf here once") {
+	if !errors.Is(err, pair.ErrNotJoined) || !strings.Contains(err.Error(), "open codeaf on this computer once") {
 		t.Fatalf("an unpaired computer approving ended with %v", err)
 	}
 	err = rig.door(rig.homeA, strings.NewReader(""), out).run(context.Background(), []string{"approve", "nope"})
