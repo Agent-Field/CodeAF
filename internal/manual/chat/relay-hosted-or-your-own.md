@@ -42,7 +42,7 @@ codeaf relay --listen :8787 --store /var/lib/codeaf
 - `--listen` is the address to listen on. The default is `:8787`.
 - `--store <directory>` is where the relay keeps the directory and the chunks. **Without `--store` the relay only passes pairing and remote-access traffic. It keeps no chats, and sync does not work through it.** The directory is made if it is not there.
 - `--quiet` turns the log off. `--status=false` turns off `GET /status`.
-- `--trust-proxy` makes the pairing limits count the address in `X-Forwarded-For`. Use it only behind a proxy that sets that header, and never on a relay that faces the internet.
+- `--trust-proxy` makes registration, dial and pairing limits count the first address in `X-Forwarded-For`, falling back to the socket address when absent or blank. without it, forwarding headers are ignored. a relay behind Railway, a load balancer or nginx must pass this flag or every caller shares the proxy's allowance. use it only behind a proxy that sets that header.
 
 Stop it with SIGTERM or ctrl+c: requests under way finish first. **The relay has no TLS of its own.** Put a proxy that ends TLS in front of it if any computer reaches it over a network you do not own.
 

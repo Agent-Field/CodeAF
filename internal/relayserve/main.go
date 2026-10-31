@@ -20,15 +20,15 @@ import (
 //	relay --listen :8787 [--store /var/lib/codeaf] [--quiet] [--status=false] [--trust-proxy]
 //
 // It runs until SIGINT or SIGTERM and then lets in-flight requests finish.
-// In front of it in production goes whatever already terminates TLS; the pipe
-// reads X-Forwarded-For when it is there, so its rate limits count the caller.
+// In front of it in production goes whatever already terminates TLS; pass --trust-proxy
+// so registration, dial and pairing limits count callers behind that proxy.
 func Main(args []string) error {
 	flags := flag.NewFlagSet("relay", flag.ContinueOnError)
 	listen := flags.String("listen", ":8787", "address to listen on")
 	store := flags.String("store", "", "directory that keeps the directory and blob stores; empty runs the blind pipe only")
 	quiet := flags.Bool("quiet", false, "do not log arrivals, departures and requests")
 	status := flags.Bool("status", true, "answer GET /status with what is connected right now")
-	trust := flags.Bool("trust-proxy", false, "count the address in X-Forwarded-For as the caller's network in the pairing limits; only for a relay behind a proxy that sets it")
+	trust := flags.Bool("trust-proxy", false, "count the first X-Forwarded-For address for registration, dial and pairing limits; required behind a proxy that sets it")
 	minGrace := flags.Duration("min-grace", 0, "shortest grace period a rotation may ask for (default 1h); a test hook")
 	sweepEvery := flags.Duration("sweep-every", 0, "how often replaced identities whose grace has ended are deleted (default 1h); a test hook")
 	watchers := flags.Int("max-watchers", 0, "directory watch sockets one identity may hold (default 1000); a test hook")
