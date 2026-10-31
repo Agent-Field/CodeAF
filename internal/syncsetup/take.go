@@ -18,6 +18,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/preflight"
@@ -642,6 +644,11 @@ func (s *Sync) files(eng cellstore.Engine, c cell.Cell) (vaultsync.Files, error)
 func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
 	stateMu.Lock()
 	defer stateMu.Unlock()
+	// Refuse before opening the lock file as well as before creating keys, so
+	// a replacement directory receives none of the previous home's state.
+	if home.Removed(s.Home) {
+		return identity.ErrHomeRemoved
+	}
 	lock, err := os.OpenFile(filepath.Join(s.Home, "state-sync.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err

@@ -53,6 +53,7 @@ func main() {
 		// timers installed by the feature that automations replaced.
 		automation.RemoveOldTimers()
 	}
+	home.Witness(home.Dir())
 	registerRunningCLI()
 	os.Exit(execute())
 }
