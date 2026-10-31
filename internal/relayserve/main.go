@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
-	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 // Main is the relay program, shared by cmd/relay and `codeaf relay`:
@@ -24,6 +24,7 @@ import (
 // so registration, dial and pairing limits count callers behind that proxy.
 func Main(args []string) error {
 	flags := flag.NewFlagSet("relay", flag.ContinueOnError)
+	flags.Usage = func() { RelayHelp(flags.Output()) }
 	listen := flags.String("listen", ":8787", "address to listen on")
 	store := flags.String("store", "", "directory that keeps the directory and blob stores; empty runs the blind pipe only")
 	quiet := flags.Bool("quiet", false, "do not log arrivals, departures and requests")
@@ -60,11 +61,28 @@ func Main(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	fmt.Fprintln(os.Stdout, relayStartLine(ln.Addr().String()))
 	svc := New(cfg)
 	defer svc.Close()
-	log.Printf("relay on %s, speaking %s", ln.Addr(), relay.Protocol)
 	if err := Serve(ctx, ln, svc.Handler); err != nil {
 		return fmt.Errorf("relay: %w", err)
 	}
 	return nil
+}
+
+// RelayHelp hides test-only switches while keeping the ordinary subcommand shape.
+func RelayHelp(out io.Writer) {
+	fmt.Fprintln(out, `usage: codeaf relay [--listen host:port] [--store path]
+
+Run your own sync service.
+
+  --listen host:port  address to listen on (default :8787)
+  --store path        keep your devices and saved chats here; empty connects machines only
+  --quiet             do not log arrivals, departures or requests
+  --status=false      turn off the service status endpoint
+  --trust-proxy       use the caller address supplied by a trusted proxy`)
+}
+
+func relayStartLine(address string) string {
+	return "codeaf relay is listening on " + address + " — on each computer: codeaf pair --via http://" + address
 }
