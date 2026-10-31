@@ -389,9 +389,9 @@ type beltRun struct {
 	title        string
 	brief        string
 	stand        taskStand
-	// pending is true until the run's machine admission has passed. A pending
-	// run has a plan store but no folder or working copy, so stopping it cannot
-	// leave a repository lock or branch behind.
+	// pending lasts through admission and deferred copy preparation. The row
+	// already names its plan; remote copies are recorded as they become available
+	// so stopping or closing cannot lose their ownership handles.
 	pending   bool
 	admission RunAdmission
 	// workspace is the run's own copy, the directory every worker types in, and
@@ -679,11 +679,11 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 
 	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
 	// only its plan store so stopping it cannot leave a repository claim behind;
-	// the admitted road below keeps the original synchronous refusal order.
+	// admitted local tasks below keep the original synchronous refusal order.
 	admission := newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	held := admission != nil && !admission.MayStart()
-	if held {
-		return a.startHeldBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+	if held || taskPlacementOf(ctx).computer != nil {
+		return a.startDeferredBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission, held)
 	}
 
 	return a.startAdmittedBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
@@ -770,10 +770,10 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	return false, nil
 }
 
-// startHeldBeltRun seeds the only state a machine-held run may own: its plan
-// store and queued row. Crew routing remains synchronous, while folder and
-// copy preparation stay behind the driver's later admission.
-func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission) (bool, error) {
+// startDeferredBeltRun publishes a durable queued row before preparing its copy.
+// Remote starts must answer without repository-sized work on the ordered road;
+// machine-held local runs keep their existing deferred admission and crew routing.
+func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission, held bool) (bool, error) {
 	var crew *taskCrew
 	var err error
 	if via == nil && taskPlacementOf(ctx).computer == nil {
@@ -798,23 +798,29 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 	// saying stop, and until this cancel was kept nothing could say it (stoprun.go).
 	runCtx, cut := context.WithCancel(ctx)
 	born := a.taskClockNow()
+	waiting := ""
+	var machineHeld map[string]bool
+	if held {
+		waiting = waitingMachineBusy
+		machineHeld = map[string]bool{planStoreID(storeID): true}
+	}
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
 		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
-		machineHeld: map[string]bool{planStoreID(storeID): true},
+		machineHeld: machineHeld,
 		cut:         cut, born: born, over: make(chan struct{}),
 		delegate: via, asked: asked, crew: crew,
 	}
 	run.wishedFrom(ctx)
 	a.placeBeltRun(ctx, engine, run)
 	a.installBeltRun(g, run)
-	// A HELD RUN IS QUEUED, not working: there is no worker and deliberately no
-	// copy yet. Its plan id is present from the first publish, which gives stop
-	// and recovery one persisted identity to reconcile.
+	// The queued row names its plan before any worker or copy exists, so stop
+	// and recovery already have one persisted identity to reconcile. A remote
+	// copy being prepared is not a machine-pressure refusal.
 	a.publishRunRow(g, TaskNotice{
 		ID: id, Title: title, State: TaskQueued, Program: programName(via), Remote: cloneTaskRemote(run.remote), Computer: run.taskComputerName(),
 		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
-		Model: run.crewWorker(), Waiting: waitingMachineBusy,
+		Model: run.crewWorker(), Waiting: waiting,
 		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
 	})
 	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
@@ -1816,6 +1822,10 @@ func (a *Agent) cutBeltRun() <-chan struct{} {
 	stopped := false
 	if run != nil {
 		run.closing = true
+		// Local preparation must join before Close finishes its checkpoint.
+		if run.pending && run.remoteEngine != nil {
+			run.ending = true
+		}
 		cut, stopped = run.cut, run.stopped
 	}
 	a.beltMu.Unlock()
@@ -1882,10 +1892,12 @@ func (a *Agent) waitForBeltAdmission(ctx context.Context, run *beltRun) bool {
 	}
 }
 
-// preparePendingBeltRun is the only road from a held run to a repository. The
-// admission check has passed before this function calls either folder or copy
-// preparation, which is the lock-ownership seam for held tasks.
+// preparePendingBeltRun readies a deferred run only after admission. A recovered
+// remote copy is adopted before considering any new folder or copy preparation.
 func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
+	if run.remoteEngine != nil && run.tree.dir != "" {
+		return a.finishPendingCopy(ctx, run, run.folder, run.tree, run.ground)
+	}
 	folder, err := a.readyRunFolder(run.row, run.title, filepath.Dir(run.store.Path()), run.stand, run.delegate, run.carry)
 	if err != nil {
 		return err
@@ -1896,10 +1908,16 @@ func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
 		tree = folder.tree()
 	} else {
 		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), run.row, run.title, run.stand)
+		a.rememberPendingRemoteCopy(run, tree)
 		if err != nil {
 			return err
 		}
 	}
+	return a.finishPendingCopy(ctx, run, folder, tree, ground)
+}
+
+// finishPendingCopy publishes the ready layout before the engine can dispatch work.
+func (a *Agent) finishPendingCopy(ctx context.Context, run *beltRun, folder *ProgramFolder, tree taskTree, ground string) error {
 	tree.bashBelt = true
 	a.beltMu.Lock()
 	stopped := run.stopped
@@ -1920,18 +1938,21 @@ func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
 	return nil
 }
 
-// settlePendingBeltRun closes the two ways a held run can leave before its
-// engine starts. A person stop uses the same stopped landing as an admitted
-// run; a folder refusal keeps that refusal's words on both the store and row.
+// settlePendingBeltRun records a stop or preparation refusal before dispatch.
+// Closing a remote preparation keeps its intent for the next owner instead.
 func (a *Agent) settlePendingBeltRun(run *beltRun, err error) {
 	a.beltMu.Lock()
-	stopped, why := run.stopped, run.stopReason
+	stopped, closing, why := run.stopped, run.closing, run.stopReason
 	run.ending = true
 	a.beltMu.Unlock()
 	defer a.releaseBeltRun(run)
 	if stopped {
 		a.settleStoppedBeltRun(run, why, nil)
 		a.settleTaskCrew(run.row, router.CrewStopped, 0)
+		return
+	}
+	// Closing before dispatch leaves the durable remote intent for reopen.
+	if closing && run.remoteEngine != nil {
 		return
 	}
 	if err == nil {
@@ -1948,7 +1969,7 @@ func (a *Agent) settlePendingBeltRun(run *beltRun, err error) {
 	a.settleTaskCrew(run.row, router.CrewNotKept, 0)
 }
 
-// startPendingBeltRun admits a held run and prepares the repository only after
+// startPendingBeltRun admits a deferred run and prepares its copy only after
 // admission. It returns false after settling a stop, close, or preparation
 // refusal, so the driver has one short road for every pending exit.
 func (a *Agent) startPendingBeltRun(ctx context.Context, run *beltRun) (RunSpec, bool) {

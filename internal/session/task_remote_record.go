@@ -396,3 +396,17 @@ func (run *beltRun) remoteWaitingOnClose(closing bool) bool {
 	defer run.remoteMu.Unlock()
 	return run.remote == nil || !run.remote.Finished
 }
+
+// Preparation receipts survive cancellation before dispatch, including retained partial roots.
+func (a *Agent) rememberPendingRemoteCopy(run *beltRun, tree taskTree) {
+	if run.remoteEngine == nil || tree.dir == "" && tree.workspaceSet == nil {
+		return
+	}
+	a.beltMu.Lock()
+	run.tree = tree
+	a.beltMu.Unlock()
+	if g := a.graph(); g != nil {
+		a.publishRunRow(g, TaskNotice{ID: run.row, Title: run.title, State: TaskQueued,
+			Copy: runCopyOf(tree), WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet)})
+	}
+}

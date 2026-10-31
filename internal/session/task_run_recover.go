@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -175,19 +176,12 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 		admission:   newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, g.lanes),
 		machineHeld: map[string]bool{planStoreID(reopened.RootID()): true},
 	}
-	engine := chatRunEngine
-	if kept.Remote != nil && !kept.Remote.Abandoned && a.config.TaskComputers != nil {
-		remote, err := a.taskExecutorEngine(ctx, kept.Remote.Executor)
-		if err != nil {
-			cut()
-			reopened.Close()
-			a.interruptUnrecoverableRun(g, kept, err.Error())
-			return
-		}
-		engine = remote
-		run.remoteEngine = remote
-		run.remote = cloneTaskRemote(kept.Remote)
-		run.placement.computer = &TaskComputer{Device: kept.Remote.Executor.Device, Name: kept.Remote.Executor.Name, CanTakeTasks: true}
+	engine, err := a.pendingRunEngine(ctx, run, kept)
+	if err != nil {
+		cut()
+		reopened.Close()
+		a.interruptUnrecoverableRun(g, kept, err.Error())
+		return
 	}
 	a.installBeltRun(g, run)
 	kept.State, kept.Waiting = TaskQueued, waitingMachineBusy
@@ -275,7 +269,7 @@ func (a *Agent) recoverRemoteBeltRun(g *TaskGraph, store *plandb.Store, kept *Ta
 		return false
 	}
 	if kept.PendingRun != nil && remote.Attempt == "" {
-		a.resumePendingRun(g, *kept)
+		a.resumeRemotePreparation(g, *kept)
 		return true
 	}
 	if remote.StartFailed {
@@ -295,4 +289,38 @@ func (a *Agent) recoverRemoteBeltRun(g *TaskGraph, store *plandb.Store, kept *Ta
 	}
 	_, _ = a.continueRemoteRun(a.rootContext(), *kept)
 	return true
+}
+
+// Missing capability leaves the remote intent readable and recoverable without local execution.
+func (a *Agent) resumeRemotePreparation(g *TaskGraph, kept TaskNotice) {
+	if a.config.TaskComputers == nil {
+		kept.State, kept.Report = TaskInterrupted, taskComputersUnavailable
+		a.publishRunRow(g, kept)
+		return
+	}
+	a.resumePendingRun(g, kept)
+}
+
+// Recovery adopts any recorded copy; preparing it again would overwrite retained work.
+func (a *Agent) pendingRunEngine(ctx context.Context, run *beltRun, kept TaskNotice) (RunEngine, error) {
+	if kept.Remote == nil || kept.Remote.Abandoned {
+		return chatRunEngine, nil
+	}
+	if a.config.TaskComputers == nil {
+		return nil, errors.New(taskComputersUnavailable)
+	}
+	remote, err := a.taskExecutorEngine(ctx, kept.Remote.Executor)
+	if err != nil {
+		return nil, err
+	}
+	run.remoteEngine, run.remote = remote, cloneTaskRemote(kept.Remote)
+	run.placement.computer = &TaskComputer{Device: kept.Remote.Executor.Device, Name: kept.Remote.Executor.Name, CanTakeTasks: true}
+	if kept.Copy != nil || kept.WorkspaceSet != nil {
+		tree, err := reopenWorkspaceSet(kept.Copy, kept.WorkspaceSet, a.config.Place)
+		if err != nil {
+			return nil, err
+		}
+		run.tree, run.workspace, run.ground = tree, tree.dir, tree.ground
+	}
+	return remote, nil
 }

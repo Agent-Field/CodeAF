@@ -46,8 +46,8 @@ type TaskRunEngine interface {
 	CheckCopy(context.Context, string, string) error
 }
 
-// TaskComputerRecovery builds a watcher from an already admitted identity,
-// even while the directory is unreachable. Network checks belong in the watch.
+// TaskComputerRecovery builds an engine from a selected or saved identity.
+// Selection already read the roster; each eventual dial checks permission again.
 type TaskComputerRecovery interface {
 	RecoverEngine(TaskExecutor) TaskRunEngine
 }
@@ -260,6 +260,8 @@ func (a *Agent) StartTaskOn(ctx context.Context, brief string, solo bool, comput
 // conversation cannot honor, even though the agent has the method shapes.
 func (a *Agent) TaskComputersSupported() bool { return a.config.TaskComputers != nil }
 
+const taskComputersUnavailable = "paired task computers are unavailable here"
+
 var errRemotePlacementBusy = errors.New("the work already underway uses another computer; let it finish before starting this task")
 
 // cloneTaskRemote keeps published rows immutable while the watcher advances.
@@ -308,7 +310,7 @@ func (a *Agent) placeTaskRunEngine(ctx context.Context, engine RunEngine, stand 
 	if placement.computer == nil {
 		return ctx, engine, nil
 	}
-	remote, err := a.config.TaskComputers.Engine(ctx, placement.computer.Device)
+	remote, err := a.taskExecutorEngine(ctx, TaskExecutor{Device: placement.computer.Device, Name: placement.computer.Name})
 	if err != nil {
 		return ctx, nil, err
 	}

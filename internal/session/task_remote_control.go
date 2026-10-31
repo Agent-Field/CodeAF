@@ -17,7 +17,7 @@ import (
 // is asked to resume it and no start can be issued by this road.
 func (a *Agent) continueRemoteRun(ctx context.Context, kept TaskNotice) (string, error) {
 	if a.config.TaskComputers == nil {
-		return "", errors.New("paired task computers are unavailable here")
+		return "", errors.New(taskComputersUnavailable)
 	}
 	a.lockBeltStart()
 	defer a.beltStartMu.Unlock()
@@ -240,6 +240,14 @@ func (a *Agent) startTaskHere(g *TaskGraph, r *taskHereReplacement) (string, err
 }
 
 func (a *Agent) stopRemoteRun(run *beltRun) {
+	// A pending task still owns only local preparation; no remote receipt is owed yet.
+	a.beltMu.Lock()
+	pending, cut := run.pending, run.cut
+	a.beltMu.Unlock()
+	if pending && cut != nil {
+		cut()
+		return
+	}
 	run.remoteMu.Lock()
 	record := cloneTaskRemote(run.remote)
 	run.remoteMu.Unlock()
