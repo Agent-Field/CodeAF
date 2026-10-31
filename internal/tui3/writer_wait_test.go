@@ -21,15 +21,15 @@ func TestAWriterWaitCannotReviveADisplacedWriter(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	pending := &startingSendAgent{ready: make(chan struct{}), observed: make(chan struct{}, 1)}
-	if held, err := awaitSendWriter(ctx, pending); held || !errors.Is(err, context.Canceled) {
+	if held, err := awaitSendWriter(ctx, pending, nil); held || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled wait: %v %v", held, err)
 	}
 	ctx, deadline := context.WithDeadline(t.Context(), time.Unix(1, 0))
 	defer deadline()
-	if held, err := awaitSendWriter(ctx, pending); held || !errors.Is(err, context.DeadlineExceeded) {
+	if held, err := awaitSendWriter(ctx, pending, nil); held || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expired wait: %v %v", held, err)
 	}
-	if held, err := awaitSendWriter(t.Context(), stoppedWriter{}); held || err != nil {
+	if held, err := awaitSendWriter(t.Context(), stoppedWriter{}, nil); held || err != nil {
 		t.Fatalf("displaced writer: %v %v", held, err)
 	}
 }

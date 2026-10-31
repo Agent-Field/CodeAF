@@ -2727,7 +2727,7 @@ If the laptop only slept or lost its connection, Home offers its latest chat and
 
 if bare startup is already continuing a released chat, confirming a different Home row or using `alt+c` chooses the chat that opens next. Home says `continuing <Y> next; <X> is still on its way here`, using the same chat titles as the cards. the automatic move settles and is let go before your confirmed move begins. its files and kept work remain intact, and it never opens over your selection. `esc` cancels the waiting choice; the automatic chat still settles and is let go.
 
-confirming the arriving chat itself joins the existing move. opening another local chat or starting a new chat also takes precedence over the automatic arrival. moving the cursor or opening Home alone does not choose a different chat. input before the startup safety check answers still cancels that automatic choice. a move you explicitly started retains the busy sentence `a chat is already continuing here; wait for it to open` for another explicit pick.
+confirming the arriving chat itself joins the existing move. opening another local chat or starting a new chat also takes precedence over the automatic arrival. moving the cursor, opening Home or inspecting and declining another card does not choose a different chat. input before the startup safety check answers still cancels that automatic choice. a move you explicitly started retains the busy sentence `a chat is already continuing here; wait for it to open` for another explicit pick.
 
 ## Empty untitled chats from your other devices — rows before the first saved turn
 

@@ -1491,6 +1491,8 @@ type app struct {
 	homeTakeSeq uint64
 	// homeTakeCancel belongs to the active mutation; automatic cleanup keeps it until settlement.
 	homeTakeCancel context.CancelFunc
+	// Abandonment bounds the outstanding answer without shortening an unattended move.
+	homeTakeAbandonTimer *time.Timer
 	// homeTakeDraft moves the source composer only after the arriving door opens.
 	homeTakeDraft *homeTakenMsg
 	// Automatic navigation remains subordinate to a confirmed choice until its door lands.

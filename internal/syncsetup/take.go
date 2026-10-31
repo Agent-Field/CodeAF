@@ -818,7 +818,7 @@ func (c *Continuer) ReleaseUnused(ctx context.Context, id string, fence uint64) 
 		if _, bounded := ctx.Deadline(); !bounded {
 			return err
 		}
-		timer := time.NewTimer(50 * time.Millisecond)
+		timer := time.NewTimer(cellsync.ReleaseRetryEvery)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

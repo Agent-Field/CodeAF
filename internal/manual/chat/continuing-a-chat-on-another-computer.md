@@ -55,6 +55,8 @@ On `Continue this chat here?`, `leave it there` closes the question without movi
 
 If Enter in a displaced chat raises the continue card, `esc` or `2 leave it there` returns to that same chat window with its full draft still in the box. If you opened the card from a Home row, leaving the card keeps you on Home.
 
+during an automatic continue, the first `esc` withdraws its opening and any waiting choice. the automatic chat is not opened: it finishes arriving and is let go, so it stays on this computer, free to continue from anywhere. a further `esc` navigates as usual while that finishes. if the abandoned move has not answered after two minutes, its request is cancelled before the waiting choice can begin. inspecting another chat's card and choosing `leave it there` or `esc` leaves the automatic arrival alone.
+
 A continue card previews only that chat's unsent words, or nothing when no draft is available. Its project foot belongs to the selected chat. Words typed in another chat never appear on this card. Saved drafts belong to their chat even when a copied chat moves to a different project folder; opening another copy cannot adopt them.
 
 ## slow chat listing — waiting for a service, a timeout or an unreachable host
@@ -126,7 +128,7 @@ not committed yet: main.go, util.go · last tests: passed
 got it
 ```
 
-## What was not brought along — the lines on the arrival card
+## What was not brought along — folders, commands and tests on the arrival card
 
 When a chat arrives on a paired computer, its arrival card can include these lines:
 
@@ -211,7 +213,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
-The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. the slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `running on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held by this computer opens through the existing local recovery. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `running on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
 ## This window only shows the chat — can I still send here
 
@@ -356,7 +358,7 @@ bare startup still chooses the most recently released eligible chat and checks l
 
 if its move is already running, confirming a different chat on Home or using `alt+c` chooses what opens next. Home says `continuing <Y> next; <X> is still on its way here`, with the titles from the continue cards. the automatic move settles first and is let go with its files and kept work intact; it never opens over your choice. the next move uses exactly the computer and turn of ownership you confirmed. `esc` cancels the waiting choice and the automatic chat still settles and is let go.
 
-confirming the automatic chat itself joins its move and opens it once. explicitly opening another local chat or starting a new one also prevents a late automatic arrival from replacing it. moving the cursor or opening Home alone does not choose a different chat. an explicit move already in progress still gives the usual busy sentence for another explicit pick.
+confirming the automatic chat itself joins its move and opens it once. explicitly opening another local chat or starting a new one also prevents a late automatic arrival from replacing it. moving the cursor, opening Home or inspecting and declining another card does not choose a different chat. an explicit move already in progress still gives the usual busy sentence for another explicit pick.
 
 ## Why an older chat could not be copied — symbolic links, home folder
 

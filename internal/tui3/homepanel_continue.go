@@ -223,6 +223,7 @@ func (a *app) finishHomeTake(restoreDraft bool) {
 	if a.homeTakeOriginAutomatic && a.homeTakeAbandoned {
 		return
 	}
+	a.stopAutomaticTakeTimer()
 	if a.homeTakeCancel != nil {
 		a.homeTakeCancel()
 		a.homeTakeCancel = nil
@@ -250,6 +251,9 @@ func (a *app) cancelHomeTake() bool {
 		return checking
 	}
 	if a.homeTakeOriginAutomatic || a.homeTakeAbandoned {
+		if a.homeTakeAbandoned && a.homeTakePending == nil && !checking {
+			return false
+		}
 		a.abandonAutomaticTake()
 		a.homeTakeAbandoned = true
 		a.homeTakePending = nil
@@ -297,9 +301,6 @@ func (a *app) askContinue(row chatlist.Row) tea.Cmd {
 
 func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 	a.continueChecking = nil
-	if a.homeTakeAutomatic && row.Cell != a.homeTaking {
-		a.abandonAutomaticTake()
-	}
 	if a.hosted() {
 		return nil
 	}
@@ -451,6 +452,7 @@ func (a *app) continueRetryShown(msg homeTakenMsg, failure string) questionShown
 			retry.err = nil
 			retry.automatic = false
 			retry.taken = Taken{}
+			retry.recoveredHere = false
 			return a.takeRemoteState(retry)
 		},
 	}
@@ -478,6 +480,8 @@ type homeTakenMsg struct {
 	draft     *composerState
 	send      func() tea.Cmd
 	fromFile  string
+	// A fresh listing can disagree with the taker once without asking again.
+	recoveredHere bool
 }
 
 // takeRemote asks for the chat off the update loop because a move waits on the network.
@@ -505,6 +509,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	if a.homeTaking != "" && a.homeTakeAutomatic {
 		if a.homeTaking == msg.row.Cell && (!a.homeTakeAbandoned || a.homeTakeResult == nil) {
 			// Joining adopts the existing move, so later choices use the explicit busy rule.
+			a.stopAutomaticTakeTimer()
 			a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
 			a.home.say(continuing, "")
 			return nil
@@ -565,6 +570,11 @@ func (a *app) abandonAutomaticTake() {
 	if !a.homeTakeOriginAutomatic {
 		return
 	}
+	if !a.homeTakeAbandoned && a.homeTakeResult == nil && a.homeTakeCancel != nil {
+		// Cancellation follows the old Escape path only after the abandoned
+		// request has had its bounded chance to finish and report its receipt.
+		a.homeTakeAbandonTimer = time.AfterFunc(abandonedTakeWithin, a.homeTakeCancel)
+	}
 	a.homeTakeAbandoned = true
 	if a.homeTakePending != nil {
 		a.homeTakePending = nil
@@ -576,12 +586,22 @@ func (a *app) abandonAutomaticTake() {
 	}
 }
 
-const unusedTakeWithin = 10 * time.Second
+const (
+	unusedTakeWithin    = 10 * time.Second
+	abandonedTakeWithin = 2 * time.Minute
+)
+
+func (a *app) stopAutomaticTakeTimer() {
+	if a.homeTakeAbandonTimer != nil {
+		a.homeTakeAbandonTimer.Stop()
+		a.homeTakeAbandonTimer = nil
+	}
+}
 
 type homeTakeSettledMsg struct{ seq uint64 }
 
-// settleAutomaticTake closes an unopened door before releasing only the receipt
-// this operation acquired. Cleanup must outlive cancellation of the originating UI.
+// settleAutomaticTake leaves an unopened view through the last-window release
+// path. Cleanup must outlive cancellation of the originating UI.
 func (a *app) settleAutomaticTake(msg homeTakenMsg, agent Agent) tea.Cmd {
 	taker := a.taker
 	return func() tea.Msg {
@@ -591,12 +611,20 @@ func (a *app) settleAutomaticTake(msg homeTakenMsg, agent Agent) tea.Cmd {
 }
 
 func releaseUnusedTake(taker Taker, msg homeTakenMsg, agent Agent) {
+	if msg.taken.AlreadyHere {
+		return
+	}
 	if agent != nil {
-		if err := leaveAgentFor(agent, session.StopByLeaving); err != nil {
-			log.Printf("continue %s unused door close: %v", msg.row.Cell, err)
+		if err := leaveAgentError(agent); err != nil {
+			log.Printf("continue %s unused view leave: %v", msg.row.Cell, err)
+		}
+		// A host owns release once a view exists. Another window may use the
+		// same session, even before its writer replaces the take's receipt.
+		if _, hosted := agent.(detachable); hosted {
+			return
 		}
 	}
-	if msg.err == nil && !msg.taken.AlreadyHere {
+	if msg.err == nil {
 		if release, ok := taker.(interface {
 			ReleaseUnused(context.Context, string, uint64) error
 		}); ok {
@@ -631,6 +659,7 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	if msg.seq != 0 && msg.seq != a.homeTakeSeq {
 		return nil
 	}
+	a.stopAutomaticTakeTimer()
 	if msg.automatic && a.homeTakeAbandoned {
 		return a.settleAutomaticTake(msg, nil)
 	}
@@ -785,10 +814,11 @@ func (a *app) continueConflictRead(msg continueConflictMsg) tea.Cmd {
 			if row.Cell != failed.row.Cell {
 				continue
 			}
-			if msg.here {
+			if msg.here && !failed.recoveredHere {
 				// Keep the old consent: only the taker's complete-local-head recovery may
 				// bypass it. If ownership moves again, that consent must still be refused.
 				failed.err = nil
+				failed.recoveredHere = true
 				return a.takeRemoteState(failed)
 			}
 			sameHolder := row.DeviceID != "" && row.DeviceID == failed.row.DeviceID || row.DeviceID == "" && failed.row.DeviceID == "" && row.Device == failed.row.Device

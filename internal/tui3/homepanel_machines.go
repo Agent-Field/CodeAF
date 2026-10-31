@@ -77,6 +77,10 @@ const (
 	writerStartTimeout   = 30 * time.Second
 )
 
+// This signal stays inside the send path; the existing displacement notice
+// already tells the person why the message cannot leave this window.
+var errSendWriterDisplaced = errors.New("send writer displaced")
+
 type homeMachinesSlowMsg struct{ seq uint64 }
 
 func (a *app) relayHost() string {
