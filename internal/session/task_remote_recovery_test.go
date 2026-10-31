@@ -654,12 +654,14 @@ func TestAPrivateTaskRunsElsewhereAndWaitsForLocalReviewAndApply(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	reached := make(chan struct{}, 1)
+	var written string
 	remote := &scriptedTaskEngine{start: func(ctx context.Context, spec RunSpec) RunSummary {
+		written = filepath.Join(spec.Workspace, "private-output.txt")
 		reached <- struct{}{}
 		r := remoteRecordFor(spec)
 		r.Finished, r.Restored = true, true
 		_ = spec.SaveRemote(r, true)
-		if err := os.WriteFile(filepath.Join(spec.Workspace, "private-output.txt"), []byte("the returned private change\n"), 0600); err != nil {
+		if err := os.WriteFile(written, []byte("the returned private change\n"), 0600); err != nil {
 			t.Error(err)
 		}
 		_ = spec.Store.CompleteRoot("private change made")
@@ -681,6 +683,11 @@ func TestAPrivateTaskRunsElsewhereAndWaitsForLocalReviewAndApply(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(a.config.Workspace, "private-output.txt")); !os.IsNotExist(err) {
 		t.Fatal("private result applied before review")
 	}
+	// macOS gives a new file its folder's group, and the private copy sits under
+	// this test's temporary home, so with TMPDIR in /private/tmp the returned
+	// file is wheel's and Apply cannot carry that group. The fixture takes the
+	// process's own, as the other Apply fixtures do.
+	normalizeWorkspaceApplyFixtureMetadata(t, written)
 	review, err := a.ReviewTaskWorkspaceRoot(context.Background(), id, "work")
 	if err != nil {
 		t.Fatal(err)

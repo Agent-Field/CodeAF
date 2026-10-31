@@ -123,6 +123,12 @@ func remoteStartHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	// On macOS /tmp is a link into /private/tmp, and owned conversation
+	// storage refuses a recorded binding whose spelling crosses a link. A real
+	// home is already canonical, so the fixture names its home the same way.
+	if home, err = filepath.EvalSymlinks(home); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	t.Setenv("CODEAF_HOME", home)
 }
