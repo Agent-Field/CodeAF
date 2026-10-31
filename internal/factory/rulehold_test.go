@@ -22,7 +22,7 @@ func TestAutoStopsAtAnApprovalARuleHolds(t *testing.T) {
 // check it, against the paths in force, and the person may approve it or send
 // it back. A hold saved before the paths were kept still reads as a sentence.
 func TestAutoSaysAPlanWithNoFileListCouldNotBeChecked(t *testing.T) {
-	it := Item{Autonomy: AutonomyAuto, Assignee: "sam", Cap: 5, State: StateNeedsYou, QKind: QKindApprove, RuleHold: "protected · auth/ · " + PlanNoFiles}
+	it := Item{Autonomy: AutonomyAuto, Assignee: "assignee-1", Cap: 5, State: StateNeedsYou, QKind: QKindApprove, RuleHold: "protected · auth/ · " + PlanNoFiles}
 	want := "The plan didn't list its files, so the factory couldn't check them against auth/. Approve, or send it back to list them."
 	if why := AutonomyBlockReason(it); why != want {
 		t.Fatalf("Auto says %q, want %q", why, want)

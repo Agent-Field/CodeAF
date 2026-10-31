@@ -454,8 +454,9 @@ type RuleChecks struct {
 	// Start is the start rules' finding; "" for a job a person started.
 	Start string `json:",omitempty"`
 	// Publish is the change's finding when the run landed, and PublishHead
-	// the commit it was judged on: a later commit is another change, so the
-	// wire leaves the finding out until the job lands again.
+	// the commit it was judged on: a later commit is another change. The wire
+	// sends both as they are kept; a client takes the finding as the job's
+	// only while PublishHead is still the job's head_commit.
 	Publish     string `json:",omitempty"`
 	PublishHead string `json:",omitempty"`
 }

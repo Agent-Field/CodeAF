@@ -151,7 +151,7 @@ func TestAPlanReviewedBeforeItsApprovalIsStillHeldByItsFiles(t *testing.T) {
 // plan said nothing of it, its proof is green and no approve step is left.
 func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 	landed := func(rules *factory.StartRules, files ...string) factory.Item {
-		it := factory.Item{Autonomy: "", Assignee: "sam", Cap: 5, StartRules: rules, HeadCommit: "c0ffee", Stages: []factory.Stage{chat("write")},
+		it := factory.Item{Autonomy: "", Assignee: "assignee-1", Cap: 5, StartRules: rules, HeadCommit: "c0ffee", Stages: []factory.Stage{chat("write")},
 			Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone}}},
 			Proof:  []factory.Claim{{Text: "it works", OK: true}}, Change: &factory.Change{}}
 		for _, f := range files {
@@ -174,6 +174,18 @@ func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 	// Before publishing row: the hold itself is cleared once it is answered.
 	if c := landed(rules, "docs/readme.md").RuleChecks; c == nil || c.Publish != factory.CheckPassed || c.PublishHead != "c0ffee" {
 		t.Fatalf("an unguarded change's check: %+v", c)
+	}
+	// NOTHING TO JUDGE, NOTHING FOUND: no rules, or a change that was not read,
+	// is never said to have passed.
+	if c := landed(nil, "docs/readme.md").RuleChecks; c != nil && (c.Publish != "" || c.PublishHead != "") {
+		t.Fatalf("a job with no rules was judged: %+v", c)
+	}
+	unread := landed(rules)
+	unread.Change = nil
+	unread.RuleChecks = &factory.RuleChecks{Start: factory.CheckPassed, Publish: factory.CheckPassed, PublishHead: "c0ffee"}
+	landItem(&unread, time.Now())
+	if c := unread.RuleChecks; c.Publish != "" || c.PublishHead != "" || c.Start != factory.CheckPassed {
+		t.Fatalf("an unread change kept a finding, or the start check went: %+v", c)
 	}
 	if c := landed(rules, "infra/main.tf").RuleChecks; c == nil || c.Publish != factory.CheckAsked || c.PublishHead != "c0ffee" {
 		t.Fatalf("a guarded change's check: %+v", c)

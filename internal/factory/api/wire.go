@@ -803,7 +803,8 @@ type PRReview struct {
 // rule made it wait for a person), absent when not judged. Start is the start
 // rules', judged only when the factory started the job on its own; Publish is
 // the change's, judged when its run landed, on the commit PublishHead: it
-// speaks for the job's change only while that is still head_commit.
+// speaks for the job's change only while that is still head_commit, which the
+// client compares (the wire sends the finding as kept, stale or not).
 type RuleChecks struct {
 	Start       string `json:"start,omitempty"`
 	Publish     string `json:"publish,omitempty"`
