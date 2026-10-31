@@ -58,7 +58,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
@@ -123,11 +122,6 @@ func runApp(args []string) error {
 		if err := os.Setenv(home.EnvVar, abs); err != nil {
 			return err
 		}
-	}
-	// A new app profile is quiet until paired. Establish that policy before
-	// any conversation creates custody; session metadata never chooses it.
-	if _, err := identity.EnsureSolo(home.Dir()); err != nil {
-		return fmt.Errorf("prepare local identity: %w", err)
 	}
 	// STDOUT IS THE PROTOCOL'S AND NOBODY ELSE'S. The wire keeps the real
 	// descriptor, and anything else in this process that prints to stdout

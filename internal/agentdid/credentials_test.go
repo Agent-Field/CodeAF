@@ -180,3 +180,18 @@ func TestCredentialsRejectMalformedEnvelopesAndSupportHierarchicalPurposes(t *te
 		}
 	}
 }
+
+func TestCustodyEncodingCannotLookLikeAnAbsolutePath(t *testing.T) {
+	original := custody{255, 255, 255, 255}
+	raw, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.ContainsAny(raw, "/+=") {
+		t.Fatalf("custody is not URL-safe: %s", raw)
+	}
+	var restored custody
+	if err := json.Unmarshal(raw, &restored); err != nil || !bytes.Equal(original, restored) {
+		t.Fatalf("round trip: %v", err)
+	}
+}

@@ -2,6 +2,7 @@ package agentdid
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 )
@@ -18,15 +19,35 @@ type Key struct {
 // Document keeps public keys and encrypted custody together as sealed truth.
 // Unknown documents retain their original bytes, including future statements.
 type Document struct {
-	V                  string `json:"v,omitempty"`
-	DID                string `json:"did"`
-	Session            string `json:"session"`
-	Signing            *Key   `json:"signing,omitempty"`
-	Encryption         *Key   `json:"encryption,omitempty"`
-	Custody            []byte `json:"custody,omitempty"`
-	SigningUnavailable bool   `json:"signing_unavailable,omitempty"`
+	V                  string  `json:"v,omitempty"`
+	DID                string  `json:"did"`
+	Session            string  `json:"session"`
+	Signing            *Key    `json:"signing,omitempty"`
+	Encryption         *Key    `json:"encryption,omitempty"`
+	Custody            custody `json:"custody,omitempty"`
+	SigningUnavailable bool    `json:"signing_unavailable,omitempty"`
 	pending            *Credentials
 	raw                json.RawMessage
+}
+
+// custody uses URL-safe encoding so opaque ciphertext never resembles a path.
+type custody []byte
+
+func (c custody) MarshalJSON() ([]byte, error) {
+	return json.Marshal(base64.RawURLEncoding.EncodeToString(c))
+}
+
+func (c *custody) UnmarshalJSON(raw []byte) error {
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err != nil {
+		return err
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return err
+	}
+	*c = decoded
+	return nil
 }
 
 type documentWire Document

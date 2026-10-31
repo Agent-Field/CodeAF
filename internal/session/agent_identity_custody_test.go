@@ -228,15 +228,17 @@ func TestAgentIdentityRestoringSavedDialsDoesNotMigrateOnOpen(t *testing.T) {
 	}
 }
 
-func TestAgentIdentityCustodyDoesNotChooseTheProfilesSyncPosture(t *testing.T) {
+func TestAgentIdentityCustodyPreservesExistingProfilesSyncPosture(t *testing.T) {
 	for _, solo := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unmarked", true: "solo"}[solo], func(t *testing.T) {
 			profile := t.TempDir()
 			t.Setenv(home.EnvVar, profile)
+			ensure := identity.Ensure
 			if solo {
-				if _, err := identity.EnsureSolo(profile); err != nil {
-					t.Fatal(err)
-				}
+				ensure = identity.EnsureSolo
+			}
+			if _, err := ensure(profile); err != nil {
+				t.Fatal(err)
 			}
 			agent := openIdentityAgent(t, identityPlace(t, "sync-posture"), nil)
 			agent.stampMeta()
@@ -244,5 +246,15 @@ func TestAgentIdentityCustodyDoesNotChooseTheProfilesSyncPosture(t *testing.T) {
 				t.Fatal("custody changed whether this profile talks to sync")
 			}
 		})
+	}
+}
+
+func TestAgentIdentityCustodyMakesAFreshProfileQuiet(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(home.EnvVar, profile)
+	agent := openIdentityAgent(t, identityPlace(t, "fresh-profile"), nil)
+	agent.stampMeta()
+	if !identity.Solo(profile) {
+		t.Fatal("custody made a fresh profile eligible for sync")
 	}
 }
