@@ -1624,6 +1624,16 @@ machine that counted, which is the opposite of the truth.
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
 
+## I deleted my codeaf home while the engine was stopping
+
+A running process remembers its original home directory. If you remove it or
+replace it with a different directory, attempts to make an identity or device
+refuse with `codeaf home was removed or replaced; restart codeaf to use the current folder`.
+Late saving work does not make a new identity there. If the engine is already
+stopping and still closing chats, it exits promptly when its original home is
+removed. With the home intact, stopping keeps its usual saving order and limits.
+A new process can still create a home on first use.
+
 ## Repair a busy engine store or sync state — codeaf doctor --fix
 
 When an engine store lock or cross-computer sync issue exists on this computer, `codeaf doctor` adds `engine store` and `sync` rows naming a busy store holder (`busy · held by <command>, pid <pid>`), an `unfinished continue · chat <id>`, `duplicate rows · chat <id>`, or a `lapsed hold on this computer · chat <id>`. Healthy stores and clean sync state print nothing.
