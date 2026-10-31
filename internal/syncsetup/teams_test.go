@@ -1,7 +1,9 @@
 package syncsetup
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
 func TestTeamFieldsAndUnknownMemberFieldsSurviveGuardedApply(t *testing.T) {
@@ -328,6 +331,7 @@ func TestMergedTeamsFollowCreationTimeWhileUnpairedFileKeepsItsOrder(t *testing.
 
 // When the real cell engine is available, this drives the continuation door
 // that owns the lease, not a separate call to the bookkeeping helper.
+// F1 supplies the same live pairing gate as production while proving continuation cursor repair.
 func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_TELEMETRY", "off")
@@ -343,7 +347,7 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	if err := os.Remove(transcriptOf(h.cell)); err != nil {
 		t.Fatal(err)
 	}
-	source, err := session.New(session.Config{Workspace: h.work, Place: session.Place{Dir: h.cell.Root, Workspace: h.work}, SessionFile: transcriptOf(h.cell), ProfileDir: h.a.Home, Model: "stub/chat", APIKey: "fixture", BaseURL: "http://127.0.0.1:1", System: "Continuation fixture"})
+	source, err := session.New(session.Config{TeamsPaired: func() bool { return MayTalk(h.a.Home) }, Workspace: h.work, Place: session.Place{Dir: h.cell.Root, Workspace: h.work}, SessionFile: transcriptOf(h.cell), ProfileDir: h.a.Home, Model: "stub/chat", APIKey: "fixture", BaseURL: "http://127.0.0.1:1", System: "Continuation fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +379,7 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 			t.Fatal(err)
 		}
 	}
-	unpaired, err := session.New(session.Config{Workspace: h.work, Place: session.Place{Dir: h.cell.Root, Workspace: h.work}, SessionFile: transcriptOf(h.cell), ProfileDir: h.a.Home, Model: "stub/chat", APIKey: "fixture", BaseURL: model.URL, System: "Continuation fixture"})
+	unpaired, err := session.New(session.Config{TeamsPaired: func() bool { return MayTalk(h.a.Home) }, Workspace: h.work, Place: session.Place{Dir: h.cell.Root, Workspace: h.work}, SessionFile: transcriptOf(h.cell), ProfileDir: h.a.Home, Model: "stub/chat", APIKey: "fixture", BaseURL: model.URL, System: "Continuation fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +461,7 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 		t.Fatal(err)
 	}
 	work := workspaceOf(took.Taken.Cell.Root)
-	receiver, err := session.New(session.Config{Workspace: work, Place: session.Place{Dir: took.Taken.Cell.Root, Workspace: work}, SessionFile: m.File, ProfileDir: h.b.Home, Model: "stub/chat", APIKey: "fixture", BaseURL: model.URL, System: "Continuation fixture"})
+	receiver, err := session.New(session.Config{TeamsPaired: func() bool { return MayTalk(h.b.Home) }, Workspace: work, Place: session.Place{Dir: took.Taken.Cell.Root, Workspace: work}, SessionFile: m.File, ProfileDir: h.b.Home, Model: "stub/chat", APIKey: "fixture", BaseURL: model.URL, System: "Continuation fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,6 +500,7 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestTrafficMirrorsRetireRevokedDevicesWithoutRepublishingThem(t *testing.T) {
 	home := t.TempDir()
 	if err := teams.Update(home, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "alpha", Name: "alpha"}}; return nil }); err != nil {
@@ -507,7 +512,7 @@ func TestTrafficMirrorsRetireRevokedDevicesWithoutRepublishingThem(t *testing.T)
 	if err := p.Apply(values); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := teams.ReadHistory(home, "alpha", 0)
+	got, _ := teams.ReadHistory(home, "alpha", 0, true)
 	if len(got) != 1 {
 		t.Fatal(got)
 	}
@@ -519,7 +524,7 @@ func TestTrafficMirrorsRetireRevokedDevicesWithoutRepublishingThem(t *testing.T)
 	if err := p.Apply(values); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = teams.ReadHistory(home, "alpha", 0)
+	got, _ = teams.ReadHistory(home, "alpha", 0, true)
 	if len(got) != 0 {
 		t.Fatal("revoked device retained mirror", got)
 	}
@@ -576,6 +581,8 @@ func enableSyncTeamSharing(t *testing.T, profile string) {
 	}
 }
 
+// C9 pins off explicitly so continuation still preserves legacy team files and cursors.
+// F1 preserves the existing sharing fixture and history contract.
 func TestSharingOffContinuesTeamMemberWithoutRebindingOrChangingLegacyFiles(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_TELEMETRY", "off")
@@ -583,8 +590,12 @@ func TestSharingOffContinuesTeamMemberWithoutRebindingOrChangingLegacyFiles(t *t
 	h := newTwoHomes(t)
 	key := teams.ConversationIdentity(transcriptOf(h.cell))
 	for _, s := range []*Sync{h.a, h.b} {
+		sharing, _ := config.NewSettings(config.SettingsOptions{ProfileDir: s.Home}).Row(config.KeyTeamsShare)
+		if err := sharing.Apply("off"); err != nil {
+			t.Fatal(err)
+		}
 		if config.TeamsShareAt(s.Home) {
-			t.Fatal("new paired home opted into sharing")
+			t.Fatal("paired home ignored the explicit off choice")
 		}
 		if err := teams.Update(s.Home, func(f *teams.File) error {
 			f.Teams = []teams.Team{{ID: "alpha", Name: "local", Members: []teams.Member{{Key: key, File: transcriptOf(h.cell), Word: "worker"}}}}
@@ -654,5 +665,187 @@ func TestSharingOffContinuesTeamMemberWithoutRebindingOrChangingLegacyFiles(t *t
 				t.Fatal("sharing-off continuation created sharing file", path, err)
 			}
 		}
+	}
+}
+
+// F2 backs up the exact local file before the first carrier round and never rewrites that copy.
+func TestFirstTeamSharingRoundBacksUpLocalTeamsOnce(t *testing.T) {
+	r := newKeyRig(t)
+	a, b := r.machine(), r.machine()
+	for i, m := range []*keyMachine{a, b} {
+		if err := teams.Update(m.profile, func(f *teams.File) error {
+			f.Teams = []teams.Team{{ID: fmt.Sprintf("team-%d", i), Name: "harbor"}}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		m.Carry = []vaultsync.Carrier{syncedTeams(m.profile, m.profile, fmt.Sprintf("device-%d", i), nil)}
+	}
+	before, _ := os.ReadFile(teams.Path(b.profile))
+	a.push(t)
+	b.pull(t)
+	backup := filepath.Join(b.profile, "teams.before-sharing.json")
+	got, err := os.ReadFile(backup)
+	if err != nil || string(got) != string(before) {
+		t.Fatalf("first merge backup: %s %v", got, err)
+	}
+	info, _ := os.Stat(backup)
+	f, err := teams.Load(b.profile)
+	if err != nil || len(f.Teams) != 2 {
+		t.Fatal("merge did not apply after backup", f, err)
+	}
+	if err := teams.Update(b.profile, func(f *teams.File) error { f.Teams[0].Name = "edited"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	b.push(t)
+	a.pull(t)
+	b.pull(t)
+	after, _ := os.ReadFile(backup)
+	next, _ := os.Stat(backup)
+	if string(after) != string(before) || !next.ModTime().Equal(info.ModTime()) {
+		t.Fatal("second round rewrote original backup")
+	}
+	// A preexisting copy also wins if an interrupted first round left no ledger.
+	if err := os.Remove(filepath.Join(b.profile, "teams-sync.ledger")); err != nil {
+		t.Fatal(err)
+	}
+	b.pull(t)
+	after, _ = os.ReadFile(backup)
+	if string(after) != string(before) {
+		t.Fatal("retry overwrote backup")
+	}
+}
+
+// R2/F2 preserves the first former appointment through guarded membership removal and recapture.
+func TestMergedMemberRemovalKeepsFormerManagerAppointment(t *testing.T) {
+	for _, former := range []string{"", "local-manager", "earlier"} {
+		t.Run("former="+former, func(t *testing.T) {
+			dir := t.TempDir()
+			previous := []teams.Member{{Key: "earlier", SyncID: "device:a:earlier", Word: "earlier manager"}}
+			if err := teams.Update(dir, func(f *teams.File) error {
+				f.Teams = []teams.Team{{ID: "alpha", Name: "harbor", Manager: "local-manager", FormerManager: former, FormerMembers: previous, Members: []teams.Member{{Key: "local-manager", SyncID: "device:a:manager", Word: "manager"}}}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			p := teamKeys{dir, dir, "a", nil}
+			before, err := p.Values()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := p.ApplyIf(map[string]string{"alpha/member/device:a:manager": ""}, before); err != nil {
+				t.Fatal(err)
+			}
+			f, err := teams.Snapshot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := f.Teams[0]
+			want, portable := former, before["alpha/field/former_manager"]
+			if want == "" {
+				want, portable = "local-manager", before["alpha/field/manager"]
+			}
+			if got.Manager != "" || got.FormerManager != want {
+				t.Fatalf("merge replaced the former appointment: %+v", got)
+			}
+			after, err := p.Values()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after["alpha/field/former_manager"] != portable {
+				t.Fatal("former appointment lost its portable identity", after)
+			}
+			if former == "earlier" && len(got.FormerMembers) != 1 {
+				t.Fatal("occupied history gained the cleared appointment", got.FormerMembers)
+			}
+		})
+	}
+}
+
+// R2/F2 keeps the demoted root's active and former appointments through guarded apply.
+func TestMergedRootDemotionKeepsFormerManagerAppointment(t *testing.T) {
+	for _, former := range []string{"", "earlier"} {
+		dir := t.TempDir()
+		if err := teams.Update(dir, func(f *teams.File) error {
+			f.Teams = []teams.Team{{ID: "b", Name: teams.RootName, Root: true, Manager: "active", FormerManager: former, FormerMembers: []teams.Member{{Key: "earlier", SyncID: "device:b:earlier"}}, Members: []teams.Member{{Key: "active", SyncID: "device:b:active", Word: "manager"}}}}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		p := teamKeys{dir, dir, "b", nil}
+		before, err := p.Values()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.ApplyIf(map[string]string{"a/exists": "true", "a/field/name": teamValue(teams.RootName), "a/field/root": "true"}, before); err != nil {
+			t.Fatal(err)
+		}
+		f, err := teams.Snapshot(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := f.Team("b")
+		if got.Root || got.Manager != "active" || got.FormerManager != former {
+			t.Fatalf("demotion changed appointments: %+v", got)
+		}
+	}
+}
+
+// R5/F2 refuses incoming changes until backup succeeds and reports retries on the sync notice path once.
+func TestTeamBackupFailureWaitsAndNotifiesOnce(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_HOME", dir)
+	if err := teams.Update(dir, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "local", Name: "harbor"}}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(teams.Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(dir, "teams.before-sharing.json")
+	// A symlink loop deterministically refuses even privileged processes.
+	if err := os.Symlink(filepath.Base(teams.Path(dir)), filepath.Join(dir, "original-teams")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(teams.Path(dir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("original-teams", teams.Path(dir)); err != nil {
+		t.Fatal(err)
+	}
+	p := teamKeys{dir, dir, "local", nil}
+	teams.SharingError(dir, errors.New("an earlier independent sharing failure"))
+	var notices []string
+	stop := teams.WatchSharingErrors("", func(line string) { notices = append(notices, line) })
+	defer stop()
+	for i := 0; i < 2; i++ {
+		err := p.ApplyIf(map[string]string{"incoming/exists": "true"}, nil)
+		if err == nil {
+			t.Fatal("incoming team applied without a backup")
+		}
+		teams.SharingError(dir, err)
+	}
+	if len(notices) != 2 || !strings.Contains(notices[1], "teams.before-sharing.json") {
+		t.Fatalf("backup notice was lost or repeated: %v", notices)
+	}
+	if _, err := os.Lstat(backup); !os.IsNotExist(err) {
+		t.Fatal("failed backup left a copy", err)
+	}
+	if err := os.Remove(teams.Path(dir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(teams.Path(dir), before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ApplyIf(map[string]string{"incoming/exists": "true"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	f, err := teams.Snapshot(dir)
+	if err != nil || len(f.Teams) != 2 {
+		t.Fatal("retry did not apply after backup recovered", f, err)
+	}
+	got, err := os.ReadFile(backup)
+	if err != nil || !bytes.Equal(got, before) {
+		t.Fatal("recovery backup lost local teams", string(got), err)
 	}
 }

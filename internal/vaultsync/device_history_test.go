@@ -21,6 +21,7 @@ func (s *windowSource) Values() (map[string]string, error)   { return s.local, n
 func (s *windowSource) Holds(name string) bool               { return s.live[name] }
 func (s *windowSource) Apply(values map[string]string) error { s.received = values; return nil }
 
+// F5 bounds history publications without delaying team record edits.
 func TestDeviceWindowsRateLimitOnlyOwnTrafficAndDeleteOnTheNextRound(t *testing.T) {
 	home := t.TempDir()
 	v, err := keys.Open(home)
@@ -31,12 +32,12 @@ func TestDeviceWindowsRateLimitOnlyOwnTrafficAndDeleteOnTheNextRound(t *testing.
 	w.now = func() time.Time { return now }
 	must(t, w.capture(v))
 	s.local["alpha"] = "second"
-	now = now.Add(teams.TrafficSyncEvery - time.Nanosecond)
+	now = now.Add(2*time.Minute - time.Nanosecond)
 	must(t, w.capture(v))
 	e, err := v.Get(w.scope + "/alpha/a")
 	must(t, err)
 	if e.Value != "first" {
-		t.Fatal("published before 30 seconds")
+		t.Fatalf("published before the two-minute history allowance (%v)", teams.TrafficSyncEvery)
 	}
 	now = now.Add(time.Nanosecond)
 	must(t, w.capture(v))

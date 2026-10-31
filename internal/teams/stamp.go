@@ -190,16 +190,19 @@ func (w *Watch) mark(key, stamp, after string) {
 // History refreshes only the display tail. Each consumer returns its own mirror
 // version, so one hosted window cannot acknowledge another window's change.
 // Local news and its cursor are read separately through Traffic.
-func (w *Watch) History(profile, team, after, version string, limit int) ([]Entry, string, string, bool, error) {
+func (w *Watch) History(profile, team, after, version string, limit int, sharing bool) ([]Entry, string, string, bool, error) {
 	if err := safeTeamID(team); err != nil {
 		return nil, after, version, false, err
 	}
-	mirror := stampOf(TrafficMirrorPath(profile, team))
+	mirror := "local"
+	if sharing {
+		mirror = stampOf(TrafficMirrorPath(profile, team))
+	}
 	reset := after == "" || version != mirror
 	if !reset {
 		return nil, after, mirror, false, nil
 	}
-	entries, err := ReadHistory(profile, team, limit)
+	entries, err := ReadHistory(profile, team, limit, sharing)
 	if err != nil {
 		return nil, after, version, false, err
 	}
