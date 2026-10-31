@@ -24,6 +24,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -34,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/head"
 	homepkg "github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/lease"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/revision"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -3763,6 +3765,21 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 		newClient := request.newClient
 		if newClient == nil {
 			newClient = newLiveClient
+		}
+		if request.runStore != "" {
+			// Placement opts this child into chat's published capability rules.
+			// Only existing rows are read: another service's cache cannot answer
+			// for this model, and a task must not wait for catalog discovery.
+			build := newClient
+			newClient = func(settings config.Config, model string) (*liveClient, error) {
+				service, _ := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL).For(model)
+				if strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+					settings.Models = sharedCatalog(settings).SnapshotNow()
+				} else {
+					settings.Models = catalog.Recall(config.CatalogOptionsFor(service, settings.ProfileDir))
+				}
+				return build(settings, model)
+			}
 		}
 		completerFor = crewCompleters(settings, newClient)
 	}
