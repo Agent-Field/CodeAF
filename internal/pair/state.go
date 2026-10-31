@@ -3,6 +3,7 @@ package pair
 import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"os"
 	"path/filepath"
 )
@@ -35,7 +36,14 @@ func replaceState(home, profile string) error {
 			return err
 		}
 	}
-	for _, name := range []string{"preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc"} {
+	names := []string{"preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc"}
+	if config.TeamsShareAt(profile) {
+		if _, err := teams.SetAside(profile); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		names = append(names, "teams-sync.ledger", "teams-traffic-sync.ledger")
+	}
+	for _, name := range names {
 		if err := os.Remove(filepath.Join(home, name)); err != nil && !os.IsNotExist(err) {
 			return err
 		}

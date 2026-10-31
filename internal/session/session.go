@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1599,6 +1600,11 @@ type Config struct {
 	// decision, and a package that resolved ~/.codeaf itself would write there
 	// from a test.
 	ProfileDir string
+
+	// TeamComputers is used only with local team sharing on. It checks current
+	// holders once for the complete recipient batch before any team Traffic is
+	// written; an unpaired home stays quiet.
+	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
 
 	// failures is the tally the piece of work this agent belongs to keeps of its
 	// own failures (internal/taxonomy). A worker built for a task node carries

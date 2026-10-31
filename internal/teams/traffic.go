@@ -67,6 +67,9 @@ var kinds = map[string]bool{
 // Entry is one line of the Traffic log. This shape is the contract between
 // the interface and the team tools.
 type Entry struct {
+	// Origin identifies a display-only line in the other computers' mirror.
+	// Local appends clear it so delivery has only locally authored lines.
+	Origin string `json:"origin,omitempty"`
 	// ID is assigned by [AppendTraffic]; any ID given is replaced.
 	ID string `json:"id"`
 	// At is when it happened; [AppendTraffic] fills a zero one with now.
@@ -162,6 +165,7 @@ func appendTrafficIDLocked(profileDir, teamID string, e Entry) (string, error) {
 
 // Only closing-report acceptance may append its final event after disbanding.
 func appendTrafficLifecycleLocked(profileDir, teamID string, e Entry, closing bool) (string, error) {
+	e.Origin = ""
 	if f, _, _, err := read(profileDir); err != nil {
 		return "", err
 	} else if f != nil {

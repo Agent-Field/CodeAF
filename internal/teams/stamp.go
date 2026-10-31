@@ -186,3 +186,34 @@ func (w *Watch) mark(key, stamp, after string) {
 	}
 	w.marks[key] = watchMark{stamp: stamp, after: after}
 }
+
+// History refreshes only the display tail. Each consumer returns its own mirror
+// version, so one hosted window cannot acknowledge another window's change.
+// Local news and its cursor are read separately through Traffic.
+func (w *Watch) History(profile, team, after, version string, limit int) ([]Entry, string, string, bool, error) {
+	if err := safeTeamID(team); err != nil {
+		return nil, after, version, false, err
+	}
+	mirror := stampOf(TrafficMirrorPath(profile, team))
+	reset := after == "" || version != mirror
+	if !reset {
+		return nil, after, mirror, false, nil
+	}
+	entries, err := ReadHistory(profile, team, limit)
+	if err != nil {
+		return nil, after, version, false, err
+	}
+	next := after
+	// Only an opening tail establishes a position. A mirror refresh cannot
+	// acknowledge local entries that have not passed through the news reader.
+	if after == "" {
+		local, err := ReadTraffic(profile, team, "", 1)
+		if err != nil {
+			return nil, after, version, false, err
+		}
+		if len(local) > 0 {
+			next = local[len(local)-1].ID
+		}
+	}
+	return entries, next, mirror, true, nil
+}

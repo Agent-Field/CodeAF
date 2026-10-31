@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/handoff"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
@@ -310,6 +312,13 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+	}
+	if c.sync.teamsSharing() {
+		if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
+			if c.opt.Notify != nil {
+				c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + err.Error())
+			}
+		}
 	}
 	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
@@ -677,10 +686,24 @@ func (s *Sync) profile() string {
 	return s.Home
 }
 
+// teamsSharing reads this computer's local opt-in for team sharing.
+func (s *Sync) teamsSharing() bool { return config.TeamsShareAt(s.profile()) }
+
 // carried is the profile state that travels in the vault beside the secrets.
 func (s *Sync) carried() []vaultsync.Carrier {
 	dir := s.profile()
-	return []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home), preferences(dir, s.Home), sharedMemories(s.Home)}
+	carried := []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home), preferences(dir, s.Home), sharedMemories(s.Home)}
+	if !s.teamsSharing() {
+		return carried
+	}
+	if s.teamsCache == nil {
+		s.teamsCache = &teamIdentityCache{}
+	}
+	s.teamsCache.scanned = false
+	report := func(err error) { teams.SharingError(dir, err) }
+	return append(carried,
+		vaultsync.BestEffort(syncedTeams(dir, s.Home, s.Device.ID(), s.teamsCache), s.teamsSharing, report),
+		vaultsync.BestEffort(vaultsync.Windows("team-traffic", s.Device.ID(), &teamTraffic{teamKeys: teamKeys{dir, s.Home, s.Device.ID(), s.teamsCache}, peers: s.pairedTrafficDevices}, filepath.Join(s.Home, "teams-traffic-sync.ledger"), teams.TrafficSyncEvery), s.teamsSharing, report))
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every

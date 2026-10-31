@@ -16,7 +16,7 @@ func Joinable(home string) (bool, error) {
 		rulesCopy[key] = judge
 	}
 	rulesCopy["graph.db"] = memoryOnlyGraph
-	for _, key := range []string{"provider-keys.ledger", "preferences-sync.ledger", "memory-sync.ledger", "state-sync.lock"} {
+	for _, key := range []string{"provider-keys.ledger", "preferences-sync.ledger", "memory-sync.ledger", "teams-sync.ledger", "teams-traffic-sync.ledger", "state-sync.lock"} {
 		rulesCopy[key] = never
 	}
 	used, err := within(rulesCopy)(home)

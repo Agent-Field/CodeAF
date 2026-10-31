@@ -21,6 +21,7 @@ package tui3
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -54,6 +55,8 @@ func init() {
 // deviceRoster is the row's whole state: the devices last read, and whether a
 // read is out.
 type deviceRoster struct {
+	// Version invalidates cached provenance when a computer is renamed.
+	version      uint64
 	devices      []chatlist.Device
 	asking       bool
 	bringPending bool
@@ -87,6 +90,9 @@ func (a *app) askRoster() tea.Cmd {
 func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 	a.devRow.asking = false
 	if msg.err == nil {
+		if !slices.Equal(a.devRow.devices, msg.devices) {
+			a.devRow.version++
+		}
 		a.devRow.devices = msg.devices
 		a.considerResume()
 		a.touch()

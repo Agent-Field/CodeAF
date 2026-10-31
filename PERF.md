@@ -119,6 +119,31 @@ work. Preserve those assertions when changing a hot path. Paint must not perform
 filesystem or network reads. Document any cap change with its rationale in the
 same commit; derive repeated values from constants.
 
+## Paired team history
+
+These sharing budgets apply only when **share teams** is on in Settings → Devices.
+Sharing is off by default on each computer; off rounds run no team carriers,
+identity discovery, mirror writes or ownership lookups and retain existing polling.
+
+`teams.TrafficSyncLines` limits each writing computer's window to 32 lines per
+team, and `teams.TrafficSyncBytes` limits encoded lines to 16 KiB per team.
+`teams.TrafficSyncTextBytes` shortens text beyond 2 KiB at a rune boundary.
+`teams.TrafficSyncDeviceBytes` caps each device's encoded Traffic share at 64 KiB
+across teams, newest local activity first. `teams.TrafficSyncEvery` permits a
+publication at most once every 30 seconds; team record edits are not delayed.
+Capture reads the bounded backward tail across the current and rotated logs. Received windows replace a
+separate display mirror and are never republished. An unchanged round on 500
+chats and 5 teams performs zero world scans and opens zero cell metadata files;
+member identities cache by metadata stamp, unchanged authored tails are reused,
+and unresolved incoming identities share at most one discovery pass per round. Tests count scans and encoded bytes,
+compare deterministic values, and verify quiet rounds leave the vault unchanged.
+Mirror filtering makes zero directory requests per vault round, using only an
+already-held local roster, or every other writer when none is available. A send
+shares one ownership reading across its recipients, with a 3-second timeout and
+a 5-second process cache (including failures). Cursor saves stat identity files
+but decode them only after a stamp changes. Mirror refresh never acknowledges
+local news and each hosted window carries its own mirror version.
+
 ## Binary size
 
 `SIZE-BUDGET` is the stripped binary's byte cap. `make size` builds through

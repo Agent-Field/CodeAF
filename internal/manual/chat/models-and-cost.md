@@ -243,7 +243,7 @@ your query. `↑`/`↓` do not count as editing. `tab` always opens and closes.
 **This is one list with two doors.** `/model` opens it, and so does the **your model**
 row at the top of the Models category in `/settings` — the same rows, the same name
 search, the same providers under `→`, and `enter` on a provider pins it either way. The media
-slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
+choices on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
 
@@ -259,7 +259,7 @@ Type a letter, use `backspace` or `ctrl+w`, or paste: any edit returns the caret
 
 Every model list opens on the model it holds. `/model` opens on the model in use,
 highlighted and on screen on the first frame, so enter with nothing typed confirms.
-The settings slots and roles, a task's model word, home's draft, the task composer's
+The settings choices and roles, a task's model word, home's draft, the task composer's
 `alt+o` and a lane list or chip follow the same rule. A refresh returns the cursor to
 the held model with the typed filter kept; `ctrl+u` emptying the box returns there too.
 If that model is absent, the first selectable row is used, skipping unavailable
@@ -267,13 +267,13 @@ notices. `/model <query>` and typing a filter start the narrowed list at its fir
 
 The model in use is bold in the accent with no band of its own. The band belongs to
 the cursor, and a pointer hovering another row lifts that row too. Every model list
-owns the mouse wheel while it is up: `/model`, settings slots and roles, home's draft
+owns the mouse wheel while it is up: `/model`, settings choices and roles, home's draft
 and the task composer walk three rows a notch, clamped at both ends, while the page
 beneath stays put. The cursor's row stays on screen with headings and extra lines
 included in the window's size.
 
 **Enter on a model chooses it and closes the list immediately.** This applies to the
-conversation, a task's model, settings slots and roles, home's draft and the task composer.
+conversation, a task's model, settings choices and roles, home's draft and the task composer.
 The keyboard returns to the draft or page you opened the list from. To compare another
 model, reopen the list. With no matching model, Enter leaves the list open and changes
 nothing. Enter inside a provider fold keeps those controls open, including when it opens
@@ -288,8 +288,8 @@ appear; with only OpenRouter connected, only its models appear. With several pro
 connected, their lists appear together in provider groups. Removing a connection or its
 key removes its models from subsequent lists. A cold catalog never adds built-in guesses.
 
-This applies to `/model`, task rooms, settings slots and roles, Home drafts and the task
-composer. Each slot still keeps only models with the capabilities it needs. A provider
+This applies to `/model`, task rooms, settings choices and roles, Home drafts and the task
+composer. Each field still keeps only models with the capabilities it needs. A provider
 that cannot list models has a non-selectable notice; `+ add a provider` opens connection
 setup and is not a model. That menu includes every built-in provider from initial setup, including
 OpenRouter, and labels each `connected` or `not connected`. You can add OpenRouter after
@@ -397,7 +397,7 @@ their rounded `t/s` rates, with a rate that rounds to zero absent there too.
 
 ## Why does the model picker keep jumping
 
-The `/model` list you are reading is a snapshot. Typing in the filter still narrows it;
+The `/model` list you are reading is a saved copy. Typing in the filter still narrows it;
 the `via` and the speeds do not rewrite themselves while you look. A turn running
 underneath can still update the status line. Close the list and open it again if you
 want the latest machines.
@@ -446,7 +446,7 @@ Where that happens the column is dropped, head and all:
 | **filming** | `video`, on every row | no |
 
 `inputs` survives the same test on most lists because it genuinely varies: on `/model` it
-has eleven different values across three hundred-odd models, and in the **filming** slot
+has eleven different values across three hundred-odd models, and in the **filming** field
 some models take a picture to animate and some take a clip.
 
 **This is only asked of `inputs` and `outputs`,** because they are the only columns a list
@@ -456,9 +456,9 @@ list is a coincidence, not a definition, and those columns are always drawn.
 **The cells report only what was published — they never read the id.** A model whose name
 says `vl` or `vision` but whose catalog row lists no modalities draws two blank cells,
 because a cell is a fact about the catalog and not a guess about a name. The **looking**
-slot does fall back to those two words in a name when a row published nothing, so a silent
+field does fall back to those two words in a name when a row published nothing, so a silent
 `…-vl` row can be offered there while showing nothing under `inputs` here. The two are
-asking different questions: the cell says what is known, the slot has to decide whether to
+asking different questions: the cell says what is known, the field has to decide whether to
 offer the row at all.
 
 **On a line with no heading over it the side is spelled out.** `codeaf models`, a frame too
@@ -806,11 +806,10 @@ done so far. The checker's own ceiling still applies inside it.
 without a routed crew; the flag answers the day's questions and the plan-price question,
 not this one.
 
-### The selector snapshot — when the crew is picked by the pareto engine
+### Saved routing choices — when the crew is picked by the pareto engine
 
 The crew is normally routed by the learned router, and **nothing else seats a crew unless
-you configured it**. There is one extra hand on the picker: a `selector snapshot` row in the
-profile's settings (`models.crew.selector_snapshot`), a path to a fitted snapshot file.
+you configured it**. In Settings, you can choose a file of fitted routing choices.
 Configured, it points the pareto selection engine at the same models your providers reach,
 and it picks one model per unpinned seat — the worker seat from its worker class, the
 checker from its checker class, the planner from its planner class.
@@ -824,11 +823,11 @@ priced and health-checked, so a demoted route, a turned-off provider and an out-
 account all hold for it too.
 
 What happens when the file is missing or bad: the crew is routed **exactly as if no
-snapshot were configured** — no half-crew, no refusal, no note. A path that does not load
-is refused when you write it (`that snapshot does not load: …`); one that stops loading
+saved copy were configured** — no half-crew, no refusal, no note. A path that does not load
+is refused when you choose it; one that stops loading
 later silently falls back. A seat the engine cannot seat (no allowed model passes its
 capability gate for that seat) keeps the router's own pick for that seat alone. With no
-snapshot row the engine never runs at all, and every crew is byte for byte the crew the
+saved copy row the engine never runs at all, and every crew is byte for byte the crew the
 router picked before it existed.
 
 ### How hard to try one task — --best and --cheap
@@ -869,7 +868,7 @@ pick is the best crew under it, and the line says `held under the $5.00 task lim
 changed it.
 
 A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
-only as a variant — a dated snapshot — is sent as that variant, and the line says which:
+only as a variant — a dated saved copy — is sent as that variant, and the line says which:
 `checker ⌖ deepseek-v4-flash → -0731`.
 
 The first word is the kind of work the task was read as. The worker's provider is named
@@ -1276,7 +1275,7 @@ harnesses" is a sentence codeaf acts on — it looks the row up with `settings` 
 with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
 small work rows of the Models category, and the crew's worker, checker and planner pins behind
 its one **seats** row, are writable that way too — a pin outside your allowed models is
-refused there as it is on `/crew`; only the role **slots** further down the Models category are not,
+refused there as it is on `/crew`; only the role **choices** further down the Models category are not,
 because those are bindings the running session holds rather than values in your profile.
 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
@@ -1406,7 +1405,7 @@ and your own model rows answer for them (*Automations*).
 **The crew line names the flag, because the flag is what seats the call.** Under
 `--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than
 `auto`, and `/status` answers its crew line with `one model · every call rides the model
-you are talking to`. The model picker's hint slot and the welcome line under the wordmark say
+you are talking to`. The model picker's hint field and the welcome line under the wordmark say
 the same word. All of them read one answer, so none of them can disagree with another.
 
 **Your crew is not gone, it is overridden.** Your pins are untouched on disk — this flag
@@ -1697,7 +1696,7 @@ cannot help there, and giving up would only hand you the retry to do by hand.
 So in a conversation you are watching, with no fallback model left to move to, **codeaf
 keeps asking that machine until it answers or you stop it**. It waits before every ask:
 1 second, then 2, 4 and 8, then every **10 seconds** from then on. The wait never grows
-past ten seconds, because what you are waiting for (weights loading, one busy slot)
+past ten seconds, because what you are waiting for (weights loading, one busy field)
 finishes at a moment nobody can predict. The give-up deadline does not end it either. The
 status line says how long it has been:
 
@@ -2575,18 +2574,18 @@ same three-second beat every place runs on, and it draws three things:
   `planning` — read from the settings as they stand right now, and never the auxiliary word
   one call gave itself. That is the point of the column: seeing that execution is most of
   the bill sends you to the one row that changes it. A model that is on the bill and is
-  bound to nothing today draws **no role word at all**, and a model bound to two slots says
+  bound to nothing today draws **no role word at all**, and a model bound to two choices says
   both. The rows **open nothing** — a model is not a thing money was spent *on* — so the
   foot over one keeps `→ the limits` and never promises `enter`; they are stops so that a
   long table scrolls under the cursor. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
   `anthropic/claude-opus-4-1` — which is the spelling `/model`, the crew chips and the
   status line all use;
-- **a role slot with nothing bound to it** gets a row of its own under the models —
+- **a role field with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
-  row: no line in the ledger names a slot, so there is nothing measured to put there.
-  **Today only the conversation slot is drawn at all.** A window holds a client for the
-  model you are talking to and for no other; the other slots are answered where their
+  row: no line in the ledger names a field, so there is nothing measured to put there.
+  **Today only the conversation field is drawn at all.** A window holds a client for the
+  model you are talking to and for no other; the other choices are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **by topic** — the three things money is ever spent on, because the ledger holds
@@ -4333,3 +4332,16 @@ media, model lists, connection probes, credits and provider lane reads. A custom
 HTTP transport retains its own timeouts and can impose stricter redirects, but
 cannot allow a request outside the original origin. Same-origin redirects work;
 a chain ends after ten requests rather than waiting forever.
+
+## Do my crew settings follow me to my other computer?
+
+After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
+per-task cap and free-route choice follow synced preferences within a few seconds,
+even with no chat open. Both computers need to be running codeaf and able to reach
+the relay. An unpaired computer keeps these choices to itself.
+
+Each pin's provider route and providers you turned off stay on each computer.
+Choose those separately there. A seat model pin still needs an available provider
+and its credentials on the receiving computer; pairing does not install a provider.
+The **share teams** switch does not change which crew choices follow preferences.
+Desktop app crews are separate.
