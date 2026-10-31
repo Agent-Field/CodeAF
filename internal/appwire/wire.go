@@ -156,10 +156,12 @@ func Errorf(code, format string, args ...any) *Error {
 type Hello struct {
 	// Features are additive request extensions; absent means unsupported.
 	Features []string `json:"features,omitempty"`
-	Contract int      `json:"contract"`
-	Version  string   `json:"version"`
-	PID      int      `json:"pid"`
-	Home     string   `json:"home"`
+	// Errand is what agents.errand accepts, present with that feature.
+	Errand   *ErrandCaps `json:"errand,omitempty"`
+	Contract int         `json:"contract"`
+	Version  string      `json:"version"`
+	PID      int         `json:"pid"`
+	Home     string      `json:"home"`
 }
 
 // Agent is one conversation as the app sees it. ID is the conversation's
