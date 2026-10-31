@@ -516,6 +516,17 @@ func (b *Batcher) beat(ctx context.Context) {
 	}
 }
 
+// Displaced records that an ownership read found this writer's hold gone: new
+// work is refused immediately and any pending turns are resolved under flushMu
+// so an in-flight publish and a watch wakeup never announce displacement twice.
+func (b *Batcher) Displaced(ctx context.Context) {
+	seen, _, stale := b.view()
+	if stale {
+		return
+	}
+	b.lost(ctx, seen)
+}
+
 // lost handles a heartbeat that found the lease of seen gone. It waits for any
 // flush in flight, and does nothing if that flush already branched. When the
 // branch fails the state stays stale and the next flush retries it.
@@ -525,7 +536,7 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 	if b.isClosing() {
 		return
 	}
-	if now, _, _ := b.view(); now.ID() != seen.ID() || now.Fence != seen.Fence {
+	if now, _, stale := b.view(); stale || now.ID() != seen.ID() || now.Fence != seen.Fence {
 		return
 	}
 	b.setStale()

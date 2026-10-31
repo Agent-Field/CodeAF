@@ -48,7 +48,7 @@ func (d *Drive) recordSendLease() error {
 	fence := d.batcher.Fence()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.line != "" || fence == 0 || fence == d.recordedFence {
+	if d.lost || d.line != "" || fence == 0 || fence == d.recordedFence {
 		return nil
 	}
 	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
