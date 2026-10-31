@@ -13,9 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pair"
 )
 
@@ -159,43 +157,12 @@ func serveApprover(ctx context.Context, in *os.File, out io.Writer) func(label, 
 	return func(label, words string) bool {
 		asked, stop := context.WithTimeout(ctx, pair.ConfirmWithin)
 		defer stop()
-		return confirmMachine(person, asked, label, words, sameNameAsPairedDevice(asked, label))
+		return confirmMachine(person, asked, label, words)
 	}
-}
-
-// machineApprovalQuestion names the extra permission at the approval decision.
-func machineApprovalQuestion(label, words string, sameName bool) string {
-	if sameName {
-		return label + " has the same name as one of your devices; let it run work here too? Same three words on that screen: " + words + "?"
-	}
-	return pair.AskMachineLine(label, words)
-}
-
-// sameNameAsPairedDevice is a descriptive name lookup, never an access decision.
-// The code check and explicit yes are still required for every machine key.
-func sameNameAsPairedDevice(ctx context.Context, label string) bool {
-	route, err := pairMailbox("")
-	if err != nil {
-		return false
-	}
-	client, id, err := homeDirectory(home.Dir(), route)
-	if err != nil {
-		return false
-	}
-	listing, err := client.List(ctx)
-	if err != nil {
-		return false
-	}
-	for _, dev := range listing.Devices {
-		if !dev.Revoked && openName(directory.MetadataKey(id.CellKey()), dev.Name) == label {
-			return true
-		}
-	}
-	return false
 }
 
 // confirmMachine puts the permission weight at the point of the serving decision.
-func confirmMachine(person *terminal, ctx context.Context, label, words string, sameName bool) bool {
+func confirmMachine(person *terminal, ctx context.Context, label, words string) bool {
 	person.say(pair.PairingWeight)
-	return person.confirm(ctx, machineApprovalQuestion(label, words, sameName))
+	return person.confirm(ctx, pair.AskMachineLine(label, words))
 }

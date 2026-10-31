@@ -23,3 +23,8 @@ pairing code before anything is sent, so the approving computer no longer says
 it was paired. Chats written before codeaf's window was ever opened (for
 example by `codeaf chat --once`) still come along when that computer pairs, and
 sync, as before.
+
+`codeaf serve` now adds this computer's device name after its machine name
+(`reachable as canoe-paddle-65 (beta)`); `codeaf chat --at` still takes the
+machine name. The weight of granting remote work is now said on the computer
+that approves it, before its usual question.

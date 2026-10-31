@@ -561,13 +561,13 @@ never what was sent. Stop it with SIGTERM and requests already under way finish 
 
 ## The serving computer’s device name and the remote window bar
 
-When this computer is paired for sync, `codeaf serve` shows its device name beside the connection name, for example `this machine is reachable as  desk-b (seagull-lichen-63)`. The `--at` window’s bar shows `desk-b`. This build still needs the connection name `seagull-lichen-63` in `codeaf chat --at`; syncing has not yet published a device-name lookup for machine keys.
+When this computer is paired for sync, `codeaf serve` and `codeaf serve --take-tasks` lead with the machine name and show the device name as a hint after it, for example `this machine is reachable as  seagull-lichen-63 (desk-b)`. Type the first name: `codeaf chat --at seagull-lichen-63`. The `--at` window’s bar shows `desk-b`. This build cannot look up a machine by its device name.
 
 ## Approve remote work from a device already paired for chats
 
 Pairing for chats and allowing remote work are separate permissions. On the serving computer, before `y / n`, codeaf says `a paired device is a key to that machine: it opens conversations there, runs whatever that machine allows to run, and spends that machine's model key. it is the same weight as an ssh key.` The asking computer starts by asking for the displayed code.
 
-When the asking name matches a name in your paired devices, the approver says `laptop-a has the same name as one of your devices; let it run work here too?`, followed by the three-word check and `y / n`. That name is descriptive; the code check and your explicit approval still decide whether this machine key gets access.
+The approver always asks `"laptop-a" wants to use this machine. Same three words on that screen: red green blue?`, followed by `y / n`. This question also appears when the asking computer is already paired for chats: this exchange cannot verify its chat pairing. Check the three words on both screens and explicitly approve before it gets access to work here.
 
 ## A served connection ended
 
