@@ -3,13 +3,18 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -20,6 +25,7 @@ func manualRelayTeamClock(c *Config) { c.teamWatchManual = true }
 
 // Exercise the boundary, idle watcher and running-turn stop watcher, all with
 // the same mirror. None of these readers may ever consume display history.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestTrafficMirrorNeverDeliversStartsQuestionsWakesOrStops(t *testing.T) {
 	f := newWakingTeamFixture(t)
 	enableSessionTeamSharing(t, f.profile)
@@ -39,7 +45,7 @@ func TestTrafficMirrorNeverDeliversStartsQuestionsWakesOrStops(t *testing.T) {
 	if err := teams.WriteTrafficMirror(f.profile, f.teamID, lines); err != nil {
 		t.Fatal(err)
 	}
-	visible, err := teams.ReadHistory(f.profile, f.teamID, 0)
+	visible, err := teams.ReadHistory(f.profile, f.teamID, 0, true)
 	if err != nil || len(visible) != 4 {
 		t.Fatal(visible, err)
 	}
@@ -201,19 +207,51 @@ func TestRemoteTeamSendsStartsPostsAndRousesRefuseBeforeTraffic(t *testing.T) {
 
 func enableSessionTeamSharing(t *testing.T, profile string) {
 	t.Helper()
+	if _, err := identity.Load(home.Dir()); err != nil {
+		root := t.TempDir()
+		t.Setenv("CODEAF_HOME", root)
+		if _, err := identity.Ensure(root); err != nil {
+			t.Fatal(err)
+		}
+	}
 	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyTeamsShare)
 	if err := row.Apply("on"); err != nil {
 		t.Fatal(err)
 	}
 }
 
+// C9 pins off explicitly so legacy cursors and ownership checks keep their sharing-off contract.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestSharingOffKeepsLegacyCursorBytesAndSkipsEveryOwnershipLookup(t *testing.T) {
+	checkSharingDisabledLegacyCursors(t, true)
+}
+
+// F1 leaves legacy cursor bytes and delivery unchanged on an unpaired computer with an unset preference.
+func TestUnpairedSharingUnsetKeepsLegacyCursorBytesAndSkipsEveryOwnershipLookup(t *testing.T) {
+	checkSharingDisabledLegacyCursors(t, false)
+}
+
+func checkSharingDisabledLegacyCursors(t *testing.T, explicitOff bool) {
 	root := t.TempDir()
 	t.Setenv("CODEAF_HOME", root)
-	if _, err := identity.Ensure(root); err != nil {
+	ensure := identity.EnsureSolo
+	if explicitOff {
+		ensure = identity.Ensure
+	}
+	if _, err := ensure(root); err != nil {
 		t.Fatal(err)
 	}
 	f := newWakingTeamFixture(t)
+	if explicitOff {
+		sharing, _ := config.NewSettings(config.SettingsOptions{ProfileDir: f.profile}).Row(config.KeyTeamsShare)
+		if err := sharing.Apply("off"); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if _, err := identity.EnsureSolo(root); err != nil {
+			t.Fatal(err)
+		}
+	}
 	a := teamAgent(t, f, f.web, nil, manualRelayTeamClock)
 	a.config.TeamComputers = func(context.Context, []teams.Member) (map[string]string, error) {
 		t.Fatal("sharing off called ownership lookup")
@@ -243,5 +281,135 @@ func TestSharingOffKeepsLegacyCursorBytesAndSkipsEveryOwnershipLookup(t *testing
 		if err != nil || string(saved) != want {
 			t.Fatalf("sharing off changed cursor shape: %s %v", saved, err)
 		}
+	}
+}
+
+// F7 removes retained mirror history from status, prompt digests and team mentions while off or unpaired.
+func TestSessionTeamHistoryStopsWithEffectiveSharing(t *testing.T) {
+	f := newWakingTeamFixture(t)
+	enableSessionTeamSharing(t, f.profile)
+	a := teamAgent(t, f, f.manager, nil, manualRelayTeamClock)
+	if err := teams.WriteTrafficMirror(f.profile, f.teamID, []teams.Entry{{ID: "other/1", At: time.Now(), Kind: teams.KindNote, From: teams.FromManager, To: teams.ToRoom, Text: "foreign history"}}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(teams.TrafficMirrorPath(f.profile, f.teamID))
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: f.profile}).Row(config.KeyTeamsShare)
+	for _, tc := range []struct {
+		paired bool
+		choice string
+		want   bool
+	}{{true, "on", true}, {true, "off", false}, {false, "on", false}, {true, "on", true}} {
+		a.config.TeamsPaired = func() bool { return tc.paired }
+		if err := row.Apply(tc.choice); err != nil {
+			t.Fatal(err)
+		}
+		status, failed, err := a.teamStatusTool(t.Context(), json.RawMessage(`{}`))
+		if err != nil || failed {
+			t.Fatal(status, failed, err)
+		}
+		for _, got := range []string{status, a.teamDigest(f.profile), mentionTeamBlock(f.profile, f.manager, "harbor", time.Now(), a.teamsSharing())} {
+			if strings.Contains(got, "foreign history") != tc.want {
+				t.Fatalf("paired=%v choice=%s history=%s", tc.paired, tc.choice, got)
+			}
+		}
+	}
+	after, _ := os.ReadFile(teams.TrafficMirrorPath(f.profile, f.teamID))
+	if string(before) != string(after) {
+		t.Fatal("session readers changed retained mirror")
+	}
+}
+
+// R7/F7 removes cached mirror digests from the outgoing request after off or unpairing.
+func TestOutgoingTeamDigestStopsWithEffectiveSharing(t *testing.T) {
+	for _, unpair := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unpair=%v", unpair), func(t *testing.T) {
+			f := newWakingTeamFixture(t)
+			enableSessionTeamSharing(t, f.profile)
+			var paired atomic.Bool
+			paired.Store(true)
+			completer := &scriptedCompleter{steps: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("noted"), nil },
+				func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("noted"), nil },
+			}}
+			a := teamAgent(t, f, f.manager, completer, func(c *Config) { manualRelayTeamClock(c); c.TeamsPaired = func() bool { return paired.Load() } })
+			if err := teams.WriteTrafficMirror(f.profile, f.teamID, []teams.Entry{{ID: "other/1", At: time.Now(), Kind: teams.KindNote, From: teams.FromManager, To: teams.ToRoom, Text: "foreign digest marker"}}); err != nil {
+				t.Fatal(err)
+			}
+			a.refreshTeamDigest(t.Context())
+			lane, err := a.Submit(t.Context(), "how is the team?")
+			if err != nil {
+				t.Fatal(err)
+			}
+			collect(t, lane)
+			if !strings.Contains(userTextIn(completer.request(0)), "foreign digest marker") {
+				t.Fatal("enabled request lacked mirror digest")
+			}
+			if unpair {
+				paired.Store(false)
+			} else {
+				row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: f.profile}).Row(config.KeyTeamsShare)
+				if err := row.Apply("off"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lane, err = a.Submit(t.Context(), "and now?")
+			if err != nil {
+				t.Fatal(err)
+			}
+			collect(t, lane)
+			if got := userTextIn(completer.request(1)); strings.Contains(got, "foreign digest marker") {
+				t.Fatalf("outgoing request retained mirror digest: %s", got)
+			}
+		})
+	}
+}
+
+// R7/F7 rejects a background digest after off and on were adopted while its result was in flight.
+func TestTeamDigestDropsBackgroundResultAcrossSharingChanges(t *testing.T) {
+	f := newWakingTeamFixture(t)
+	enableSessionTeamSharing(t, f.profile)
+	var paired atomic.Bool
+	paired.Store(true)
+	var calls atomic.Int32
+	computed, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	a := teamAgent(t, f, f.manager, nil, func(c *Config) {
+		manualRelayTeamClock(c)
+		c.TeamsPaired = func() bool {
+			state := paired.Load()
+			if calls.Add(1) == 2 {
+				close(computed)
+				<-release
+			}
+			return state
+		}
+	})
+	if err := teams.WriteTrafficMirror(f.profile, f.teamID, []teams.Entry{{ID: "other/1", Kind: teams.KindNote, Text: "stale mirror digest"}}); err != nil {
+		t.Fatal(err)
+	}
+	go func() { defer close(done); a.refreshTeamDigest(t.Context()) }()
+	var releaseOnce sync.Once
+	defer func() { releaseOnce.Do(func() { close(release) }); <-done }()
+	select {
+	case <-computed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("digest did not finish computing")
+	}
+	for _, state := range []bool{false, true} {
+		paired.Store(state)
+		a.drainSteering(nil)
+	}
+	a.mu.Lock()
+	if a.teamDigestText != "" {
+		t.Error("changed sharing kept cached digest")
+	}
+	a.mu.Unlock()
+	// The held callback returns its original on reading, so only the adopted
+	// generation can reject this result after the off/on transition.
+	releaseOnce.Do(func() { close(release) })
+	<-done
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.teamDigestText != "" {
+		t.Fatal("late background result revived stale digest")
 	}
 }

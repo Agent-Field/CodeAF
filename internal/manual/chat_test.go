@@ -4445,6 +4445,7 @@ func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
 	}
 }
 
+// F8 keeps the shipped sharing explanation searchable and accurate.
 func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
 	for _, probe := range []struct{ asked, page, says string }{
@@ -4486,15 +4487,17 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	}
 }
 
-func TestTheTeamSharingQuestionExplainsTheLocalOptIn(t *testing.T) {
+// C6 and C9 keep the sharing answer consistent with the default and local off switch.
+// F8 keeps the shipped sharing explanation searchable and accurate.
+func TestTheTeamSharingQuestionExplainsTheLocalDefaultOn(t *testing.T) {
 	for _, section := range Chat().Search("do my teams show on my other computer?", DefaultResults) {
 		if section.Page != "conversations-and-teams" {
 			continue
 		}
 		complete := true
 		for _, fact := range []string{
-			"Settings → General → share teams", "off by default",
-			"Both paired computers must turn it on", "teams, members",
+			"Settings → General → share teams", "on by default",
+			"Turning it off on either computer stops sharing", "teams, members",
 			"team settings", "recent Traffic as read-only history",
 		} {
 			complete = complete && strings.Contains(section.Body, fact)
@@ -4503,15 +4506,18 @@ func TestTheTeamSharingQuestionExplainsTheLocalOptIn(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("the team sharing question must reach one section explaining the local opt-in and what it shares")
+	t.Fatal("the team sharing question must reach one section explaining the local default-on choice and what it shares")
 }
 
 // C30.5 replaces the old chat-only memory promise with independent encrypted sync.
+// C6 and C9 keep cross-computer answers consistent with default-on team sharing.
+// F8 keeps the shipped sharing explanation searchable and accurate.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
 		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
-		{"how do I turn on team sharing", "conversations-and-teams", "off by default"},
+		{"how do I turn on team sharing", "conversations-and-teams", "on by default"},
 		{"how do I turn on team sharing", "conversations-and-teams", "Settings → General → share teams"},
+		{"stop sharing teams with my other computer", "conversations-and-teams", "Turning it off on either computer stops sharing"},
 		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},
 		{"does Traffic sync between computers?", "conversations-and-teams", "32 lines per team"},
 		{"do my crew settings follow me to my other computer?", "models-and-cost", "provider route and providers you turned off stay on each computer"},
@@ -4627,6 +4633,33 @@ func TestSyncOffManualQuotesExactSentences(t *testing.T) {
 				return
 			}
 			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
+		})
+	}
+}
+
+// R1/R9 and F8 keep first-merge safety, local cap scope and replacement recovery reachable by ordinary questions.
+func TestChatTeamSharingSafetyAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		facts []string
+	}{
+		{"first team sharing backup duplicate names global managers", []string{"teams.before-sharing.json", "both appear", "Rename one in its Settings", "older global team stays global", "former-manager history", "Teams"}},
+		{"shared team spending cap both computers", []string{"spending on each computer separately", "other computer is metered there"}},
+		{"pairing with replace what happens to teams", []string{"teams are set aside", "Provider keys saved on this computer stay here", "This computer's teams were set aside to <path>."}},
+		{"stop sharing teams with my other computer", []string{"stops sending and receiving", "encrypted copies in the vault", "history from the other computer is hidden"}},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			for _, section := range Chat().Search(tc.query, DefaultResults) {
+				text := strings.ToLower(strings.Join(strings.Fields(section.Body), " "))
+				complete := true
+				for _, fact := range tc.facts {
+					complete = complete && strings.Contains(text, strings.ToLower(fact))
+				}
+				if complete {
+					return
+				}
+			}
+			t.Fatalf("no self-contained answer to %q includes %v", tc.query, tc.facts)
 		})
 	}
 }

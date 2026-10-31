@@ -11,6 +11,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -48,6 +49,12 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	if options.Host == "" {
+		if options.Notices == nil {
+			options.Notices = surfaceNotices
+		}
+		defer teams.WatchSharingErrors(options.ProfileDir, options.Notices.SayOnce)()
+	}
 	if options.SyncService == "" && options.Host == "" {
 		options.SyncService = chatSyncService()
 	}
@@ -100,6 +107,7 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Restart = restart
 	}
 	options.CellsUnavailable = cell.UnavailableReason()
+	options.TeamsPaired = teamPaired
 	if options.TaskComputers == nil && options.Host == "" {
 		options.TaskComputers = v3TaskComputers(options.ProfileDir)
 	}

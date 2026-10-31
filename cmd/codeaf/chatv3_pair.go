@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -110,3 +111,6 @@ type chatOfferUI struct {
 func (u chatOfferUI) Show(code *pair.Code, _ string) {
 	u.OfferUI.Show(code, pair.ChatCardLines(code, u.service))
 }
+
+// HasTeams checks this computer's profile even while a hosted chat is open.
+func (chatPairDoor) HasTeams() bool { return pair.HasTeams(config.ProfileDir()) }

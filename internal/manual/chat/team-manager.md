@@ -566,10 +566,11 @@ while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
-messages written on this computer. Team sharing is off by default: on each paired
-computer, set **share teams** to **on** in **Settings → General**. An unpaired
-computer or one with sharing off keeps teams and Traffic to itself. Turning it
-off keeps teams already received.
+messages written on this computer. Team sharing is on by default for paired
+computers through **Settings → General → share teams**. Turning it off on either
+computer stops teams moving between them: that computer stops sending and receiving.
+What was already exchanged stays, including encrypted copies in the vault. History
+from the other computer is hidden while sharing is off. Unpaired computers are unaffected.
 
 Once both computers share teams, Traffic also shows recent history from the other
 computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
@@ -614,5 +615,30 @@ in the current team; ambiguous or missing history is not guessed.
 One conversation may manage a team and descendants of that team, while remaining an
 ordinary member of other teams. It cannot manage unrelated teams. The global manager is
 separate from every ordinary team's manager. Choose AI manager or a team move refuses a
-change that introduces conflicting responsibilities, naming the teams. Existing conflicts
-are retained until the person explicitly chooses replacements in Teams.
+change that introduces conflicting responsibilities, naming the teams. A sharing merge
+clears conflicting appointments automatically. A cleared appointment goes into
+former-manager history only when that slot is empty or already holds it. An existing
+former appointment stays; the copy made before the first exchange keeps the original teams.
+Review manager choices in Teams.
+
+## Shared team spending caps and continued members
+
+Teams and their settings share automatically between paired computers by default;
+an unpaired computer is unaffected. A shared team's spending cap counts spending
+on each computer separately. A member continued on the other computer is metered
+there. The cap does not combine ongoing spending across computers, so inspect
+each computer's spending when work is split between them.
+
+## First sharing merge and two global managers
+
+Before the first exchange, this computer keeps a copy of its teams as
+`teams.before-sharing.json` beside the original, once, never replacing an earlier copy.
+If both computers had a team with the same name, both appear unchanged. Rename
+one in its Settings to tell them apart.
+
+If both computers had a global manager, the older global team stays global; the
+other becomes an ordinary team under it and keeps its active manager. Demotion
+does not add that active manager to former-manager history. Cleared conflicting
+appointments enter that history only if the slot is empty or already holds the
+same appointment. An existing former appointment stays; the copy made before the
+first exchange keeps the original teams. Review manager choices in Teams.

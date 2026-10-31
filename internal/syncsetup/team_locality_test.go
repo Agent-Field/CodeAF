@@ -64,6 +64,7 @@ func TestTeamOwnershipUsesOneShortCachedReadingAndFailureAllowsLocalWork(t *test
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestTrafficRosterFilterNeverRequestsTheDirectory(t *testing.T) {
 	root := t.TempDir()
 	enableSyncTeamSharing(t, root)
@@ -88,7 +89,7 @@ func TestTrafficRosterFilterNeverRequestsTheDirectory(t *testing.T) {
 	if err := p.Apply(map[string]string{"alpha/elsewhere": teamValue([]teams.Entry{{ID: "elsewhere/1", Text: "history"}})}); err != nil {
 		t.Fatal(err)
 	}
-	lines, err := teams.ReadHistory(root, "alpha", 0)
+	lines, err := teams.ReadHistory(root, "alpha", 0, true)
 	if err != nil || len(lines) != 1 || dir.calls != 0 {
 		t.Fatal("fallback did not mirror other writers locally", lines, err, dir.calls)
 	}

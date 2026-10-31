@@ -38,6 +38,8 @@ type Joining struct {
 	MergeState bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
+	// TeamsPaired supplies the live quiet gate after adopting the new identity.
+	TeamsPaired func() bool
 	// SaveSyncURL is told the relay the other device syncs through, when it is
 	// not the default. Nil ignores it.
 	SaveSyncURL func(url string) error
@@ -45,6 +47,8 @@ type Joining struct {
 
 // Joined is how a pairing ended on the joining device.
 type Joined struct {
+	// TeamsAside names the preserved team file after explicit replacement.
+	TeamsAside string
 	// With is an existing computer in the newly joined set of devices.
 	With string
 	// Already is true when this computer held these chats before, so nothing
@@ -172,15 +176,18 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 			return Joined{}, err
 		}
 	}
+	joined := Joined{}
 	if j.Replace {
-		if err := replaceState(j.Home, j.ProfileDir); err != nil {
-			return Joined{}, err
+		path, err := replaceState(j.Home, j.ProfileDir, j.TeamsPaired)
+		joined.TeamsAside = path
+		if err != nil {
+			return joined, err
 		}
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
-		return Joined{}, j.SaveSyncURL(grant.SyncURL)
+		return joined, j.SaveSyncURL(grant.SyncURL)
 	}
-	return Joined{}, nil
+	return joined, nil
 }
 
 // follow moves this computer from an identity that was rotated to the one that

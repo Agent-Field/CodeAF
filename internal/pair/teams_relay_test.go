@@ -133,6 +133,10 @@ func relayTeamsRigSharing(t *testing.T, share bool) relayTeamsRig {
 	if share {
 		setRelayTeamSharing(t, aHome, "on")
 		setRelayTeamSharing(t, bHome, "on")
+	} else {
+		// C9 keeps sharing-off fixtures independent of the default on paired computers.
+		setRelayTeamSharing(t, aHome, "off")
+		setRelayTeamSharing(t, bHome, "off")
 	}
 	for i, s := range []*syncsetup.Sync{a, b} {
 		if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, []string{"laptop", "desktop"}[i]); err != nil {
@@ -245,6 +249,7 @@ func TestTeamsConcurrentMembersKeepBothHandlesAndOrderInEitherSyncOrder(t *testi
 
 // Both homes use a real paired relay. Only the display mirror receives the
 // other writer's window; an older local-log reader therefore sees none of it.
+// F1 preserves the existing sharing fixture and history contract.
 func TestPairedTrafficMirrorsOnceWithoutWritingTheReceivingLog(t *testing.T) {
 	r := newRelayTeamsRig(t)
 	relayTeamCreate(t, r)
@@ -271,7 +276,7 @@ func TestPairedTrafficMirrorsOnceWithoutWritingTheReceivingLog(t *testing.T) {
 	if _, err := os.Stat(teams.TrafficPath(r.b.Home, "alpha")); !os.IsNotExist(err) {
 		t.Fatal("receiving local log was created")
 	}
-	display, err := teams.ReadHistory(r.b.Home, "alpha", 0)
+	display, err := teams.ReadHistory(r.b.Home, "alpha", 0, true)
 	if err != nil || len(display) != 6 {
 		t.Fatalf("mirror: %+v %v", display, err)
 	}
@@ -453,6 +458,7 @@ func TestUnpairedTeamsAndTrafficKeepOriginalBytesAndMakeNoRequest(t *testing.T) 
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestTrafficMirrorsKeepConcurrentLocalSequenceCollisionsSeparate(t *testing.T) {
 	r := newRelayTeamsRig(t)
 	relayTeamCreate(t, r)
@@ -466,7 +472,7 @@ func TestTrafficMirrorsKeepConcurrentLocalSequenceCollisionsSeparate(t *testing.
 		r.round(t)
 	}
 	for _, s := range []*syncsetup.Sync{r.a, r.b} {
-		lines, err := teams.ReadHistory(s.Home, "alpha", 0)
+		lines, err := teams.ReadHistory(s.Home, "alpha", 0, true)
 		if err != nil || len(lines) != 2 {
 			t.Fatalf("concurrent origin union: %+v %v", lines, err)
 		}
@@ -597,6 +603,7 @@ func TestPairedMemberLocationUsesTheCurrentHolderEvenWithALocalTranscript(t *tes
 }
 
 // Display failures cannot hold unrelated profile changes behind the mirror.
+// F1 preserves the existing sharing fixture and history contract.
 func TestUnwritableTrafficMirrorStillSharesChangedPreferences(t *testing.T) {
 	r := newRelayTeamsRig(t)
 	relayTeamCreate(t, r)
@@ -620,7 +627,7 @@ func TestUnwritableTrafficMirrorStillSharesChangedPreferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.round(t)
-	lines, err := teams.ReadHistory(r.a.Home, "alpha", 0)
+	lines, err := teams.ReadHistory(r.a.Home, "alpha", 0, true)
 	if err != nil || len(lines) != 1 || lines[0].Text != "retry mirror" {
 		t.Fatal("mirror did not retry", lines, err)
 	}
@@ -689,6 +696,8 @@ func relayTeamVaultValues(t *testing.T, s *syncsetup.Sync) map[string]string {
 	return values
 }
 
+// C4 and C9 keep either computer's explicit off effective at the real paired relay.
+// F1 preserves the existing sharing fixture and history contract.
 func TestTeamSharingNeedsBothLocalSwitchesAndOffRoundsPreserveForeignValues(t *testing.T) {
 	r := relayTeamsRigSharing(t, false)
 	setRelayTeamSharing(t, r.a.Home, "on")
@@ -750,6 +759,8 @@ func TestTeamSharingNeedsBothLocalSwitchesAndOffRoundsPreserveForeignValues(t *t
 	}
 }
 
+// C9 preserves the sharing-off byte and polling budgets with explicit local choices.
+// F1 preserves the existing sharing fixture and history contract.
 func TestPairedSharingOffKeepsLocalBytesEmptyTeamVaultAndExistingPolling(t *testing.T) {
 	r := relayTeamsRigSharing(t, false)
 	// Match the existing hosted polling fixture's ordinary preference vault,
@@ -790,7 +801,7 @@ func TestPairedSharingOffKeepsLocalBytesEmptyTeamVaultAndExistingPolling(t *test
 	}
 	for _, s := range []*syncsetup.Sync{r.a, r.b} {
 		if len(relayTeamVaultValues(t, s)) != 0 {
-			t.Fatal("default-off vault contains team values")
+			t.Fatal("sharing-off vault contains team values")
 		}
 	}
 	raw, _ := os.ReadFile(teams.Path(r.a.Home))

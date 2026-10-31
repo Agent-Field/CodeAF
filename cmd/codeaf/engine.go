@@ -1170,6 +1170,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		TeamsPaired: teamPaired,
 		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
 			built, ok := current.(*session.Agent)

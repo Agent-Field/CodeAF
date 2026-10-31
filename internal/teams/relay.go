@@ -80,7 +80,10 @@ func (f *File) RepairMerged() {
 		}
 		assignHandles(t)
 		sort.SliceStable(t.Members, func(i, j int) bool { return order[t.Members[i].Key] < order[t.Members[j].Key] })
-		if !t.Holds(t.Manager) {
+		if t.Manager != "" && !t.Holds(t.Manager) {
+			if t.FormerManager == "" || t.FormerManager == t.Manager {
+				t.FormerManager = t.Manager
+			}
 			t.Manager = ""
 		}
 	}
@@ -98,7 +101,11 @@ func (f *File) RepairMerged() {
 		}
 		sort.Strings(pairs)
 		parts := strings.Split(pairs[0], "\x00")
-		f.Teams[index[parts[len(parts)-1]]].Manager = ""
+		team := &f.Teams[index[parts[len(parts)-1]]]
+		if team.FormerManager == "" || team.FormerManager == team.Manager {
+			team.FormerManager = team.Manager
+		}
+		team.Manager = ""
 	}
 	assignHomes(f.Teams)
 }

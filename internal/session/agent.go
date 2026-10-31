@@ -3278,7 +3278,9 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	if news := a.teamBoundary(); news != "" {
 		a.enqueueNote(userText(news))
 	}
+	sharing := a.config.teamProfile() != "" && a.teamsSharing()
 	a.mu.Lock()
+	a.adoptTeamDigestSharingLocked(sharing)
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
 	// drain itself is here: this seam runs immediately before the next request

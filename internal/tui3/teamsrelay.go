@@ -99,7 +99,7 @@ func (a *app) teamsContinue(row chatlist.Row) tea.Cmd {
 	return tea.Batch(cmd, a.offerContinue(row, chatlist.Offer{}))
 }
 
-func (a *app) teamsRemoteGo(m teamMember, local ...func() tea.Cmd) (tea.Cmd, bool) {
+func (a *app) teamsRemoteGo(m teamMember) (tea.Cmd, bool) {
 	_, sentinel := teamstore.RemoteCell(m.Key)
 	if !a.teamsShare {
 		if !sentinel && !teamstore.OnOtherComputer(m.Key) {
@@ -168,9 +168,9 @@ func (a *app) teamsRemoteGo(m teamMember, local ...func() tea.Cmd) (tea.Cmd, boo
 			return a.teamsContinue(row), true
 		}
 	}
-	// A stale local transcript can be the first thing opened after launch,
-	// before Home has read ownership. Wait for that reading as remote rows do.
-	if !remote && (a.machines == nil || !a.machineRead.at.IsZero()) {
+	// Home opens a local row without waiting for a directory reading. A team
+	// shortcut must take that same path unless cached ownership says otherwise.
+	if !remote {
 		return nil, false
 	}
 	if a.machines != nil {
@@ -192,12 +192,6 @@ func (a *app) teamsRemoteGo(m teamMember, local ...func() tea.Cmd) (tea.Cmd, boo
 						}
 						break
 					}
-				}
-				if !remote {
-					if len(local) > 0 {
-						return local[0]()
-					}
-					return a.trafficGo(m.Key)
 				}
 				a.tp.msg = "This chat is on " + a.teamsElsewhere(m) + " and is not available here. Open it there."
 				a.note(a.tp.msg)

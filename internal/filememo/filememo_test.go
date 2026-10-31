@@ -119,3 +119,42 @@ func TestACallersStampInvalidatesWithoutTouchingTheFile(t *testing.T) {
 		t.Fatalf("after the stamp moved the memo still says %q, want the new contents", value)
 	}
 }
+
+// F6 preserves the ordinary absence fallback while strict readers fail closed on unreadable files.
+func TestStrictReadsKeepErrorsWithoutChangingOrdinaryFallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	memo := New(func(_ string, raw []byte, missing bool) (string, error) {
+		if missing {
+			return "missing", nil
+		}
+		return string(raw), nil
+	})
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := memo.ReadStrict(path); err == nil || got != "" {
+		t.Fatal("strict read hid a filesystem error", got, err)
+	}
+	if got, err := memo.Read(path); err != nil || got != "missing" {
+		t.Fatal("ordinary fallback changed", got, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := memo.ReadStrict(path); err != nil || got != "missing" {
+		t.Fatal("strict absence did not derive default", got, err)
+	}
+	var reads int
+	warm := New(func(_ string, raw []byte, missing bool) (string, error) { reads++; return string(raw), nil })
+	if err := os.WriteFile(path, []byte("on"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		if got, err := warm.ReadStrict(path); err != nil || got != "on" {
+			t.Fatal(got, err)
+		}
+	}
+	if reads != 1 {
+		t.Fatal("strict warm reads repeated decoding", reads)
+	}
+}
