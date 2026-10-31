@@ -79,3 +79,37 @@ func TestAnEngineWithoutTaskModelsSaysSo(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// pins.auxiliary travels like the other pins, and the hello says it is served.
+func TestTaskModelsPatchCarriesTheAuxiliaryPin(t *testing.T) {
+	patch, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"auxiliary":{"id":"vendor/small","provider":"openrouter"},"worker":null}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref, ok := patch.Pins[RoleAuxiliary]; !ok || ref == nil || ref.ID != "vendor/small" || ref.Provider != "openrouter" {
+		t.Fatalf("pins = %+v", patch.Pins)
+	}
+	cleared, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"auxiliary":null}}`))
+	if ref, ok := cleared.Pins[RoleAuxiliary]; err != nil || !ok || ref != nil {
+		t.Fatalf("a null auxiliary pin = %+v, %v", cleared.Pins, err)
+	}
+}
+
+// taskModelsEngine serves the Task models family and nothing else of note.
+type taskModelsEngine struct{ sendEngine }
+
+func (*taskModelsEngine) TaskModels() (TaskModels, error) { return TaskModels{}, nil }
+func (*taskModelsEngine) TaskModelsList(TaskModelsListParams) (TaskModelsPage, error) {
+	return TaskModelsPage{}, nil
+}
+func (*taskModelsEngine) SetTaskModels(TaskModelsPatch) (TaskModels, error) { return TaskModels{}, nil }
+
+func TestTheHelloSaysTheAuxiliaryPinOnlyWhereTaskModelsAreServed(t *testing.T) {
+	if h := withTaskModelsAuxiliaryFeature(Hello{}, &sendEngine{}); len(h.Features) != 0 {
+		t.Fatalf("an engine without task models said %v", h.Features)
+	}
+	h := withTaskModelsAuxiliaryFeature(Hello{}, &taskModelsEngine{})
+	if len(h.Features) != 1 || h.Features[0] != FeatureTaskModelsAuxiliary {
+		t.Fatalf("features = %v", h.Features)
+	}
+}

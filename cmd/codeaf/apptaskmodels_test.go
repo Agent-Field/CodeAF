@@ -231,3 +231,44 @@ func TestAppTaskModelsSetAcceptsAModelTheModelsListServes(t *testing.T) {
 		}
 	}
 }
+
+// THE SMALL-JOBS MODEL IS A ROLE PIN LIKE THE OTHER THREE. settings.models.get
+// says it as roles.auxiliary, settings.models.set takes pins.auxiliary with the
+// same checks, the profile's small-work tier then answers it, settings.changed
+// says it, and null gives the build's own default back.
+func TestAppTaskModelsAuxiliaryPinReadsSetsAndClears(t *testing.T) {
+	backend, rec := taskModelsBackend(t)
+	before, err := backend.TaskModels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Roles.Auxiliary == nil || before.Roles.Auxiliary.Pin != nil {
+		t.Fatalf("an unset small-jobs model reads %+v, want the role with no pin", before.Roles.Auxiliary)
+	}
+	small := &appwire.ModelRef{ID: "deepseek/deepseek-v4-flash", Provider: "openrouter"}
+	got, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleAuxiliary: small}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Roles.Auxiliary == nil || got.Roles.Auxiliary.Pin == nil || *got.Roles.Auxiliary.Pin != *small || got.Revision == before.Revision {
+		t.Fatalf("after the set %+v", got.Roles.Auxiliary)
+	}
+	if model := config.TierModelAt(config.ProfileDir(), config.ModelTierLow); model != small.ID {
+		t.Fatalf("the small-work tier answers %q, want %q", model, small.ID)
+	}
+	rec.waitFor(t, 0, func(event string, data any) bool {
+		changed, ok := data.(appwire.SettingsChanged)
+		return event == appwire.EventSettingsChanged && ok && changed.TaskModels != nil && changed.TaskModels.Roles.Auxiliary != nil &&
+			changed.TaskModels.Roles.Auxiliary.Pin != nil && *changed.TaskModels.Roles.Auxiliary.Pin == *small
+	})
+	if _, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleAuxiliary: {ID: "nobody/listed"}}}); wireCode(err) != appwire.CodeBadParams {
+		t.Errorf("a small-jobs pin to nothing listed: %v", err)
+	}
+	cleared, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleAuxiliary: nil}})
+	if err != nil || cleared.Roles.Auxiliary == nil || cleared.Roles.Auxiliary.Pin != nil {
+		t.Fatalf("after clearing %+v, %v", cleared.Roles.Auxiliary, err)
+	}
+	if model := config.TierModelAt(config.ProfileDir(), config.ModelTierLow); model != config.DefaultLowModel {
+		t.Fatalf("a cleared small-jobs model answers %q, want the build's default %q", model, config.DefaultLowModel)
+	}
+}

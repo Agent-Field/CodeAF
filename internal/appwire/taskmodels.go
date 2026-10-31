@@ -28,6 +28,11 @@ const (
 	RoleWorker  = "worker"
 	RolePlanner = "planner"
 	RoleChecker = "checker"
+	// RoleAuxiliary is the model the small jobs beside a conversation run on:
+	// titles, route questions, captions, fold-ups. It is not a task role and
+	// Auto never picks it; unpinned, it is the build's own small-work model.
+	// Engines that serve it say [FeatureTaskModelsAuxiliary] in the hello.
+	RoleAuxiliary = "auxiliary"
 
 	// WarnPinNotAllowed is a role pinned to a model the allowed models no
 	// longer admit: the pin is kept, and the role runs on Auto until the
@@ -105,6 +110,23 @@ type TaskModelRoles struct {
 	Worker  TaskModelRole `json:"worker"`
 	Planner TaskModelRole `json:"planner"`
 	Checker TaskModelRole `json:"checker"`
+	// Auxiliary is the small-jobs model ([RoleAuxiliary]): its pin, null for
+	// the build's own default, and what is wrong with it. EligibleCount is how
+	// many available models it could be pinned to. Absent from an engine that
+	// does not serve it ([FeatureTaskModelsAuxiliary]).
+	Auxiliary *TaskModelRole `json:"auxiliary,omitempty"`
+}
+
+// FeatureTaskModelsAuxiliary is the hello's word for an engine whose
+// settings.models.get answers roles.auxiliary and whose settings.models.set
+// takes pins.auxiliary.
+const FeatureTaskModelsAuxiliary = "settings.models.auxiliary"
+
+func withTaskModelsAuxiliaryFeature(h Hello, e Engine) Hello {
+	if _, ok := e.(TaskModelsLister); !ok {
+		return h
+	}
+	return withFeature(h, FeatureTaskModelsAuxiliary)
 }
 
 // TaskModelRole is one role: its saved pin (null is Auto), what is wrong with
@@ -218,6 +240,8 @@ type TaskModelPinsWire struct {
 	Worker  *ModelRef `json:"worker,omitempty" nullable:"true"`
 	Planner *ModelRef `json:"planner,omitempty" nullable:"true"`
 	Checker *ModelRef `json:"checker,omitempty" nullable:"true"`
+	// Auxiliary is the small-jobs model; null gives the build's default back.
+	Auxiliary *ModelRef `json:"auxiliary,omitempty" nullable:"true"`
 }
 
 // TaskModelsResult is settings.models.get's and settings.models.set's answer.
@@ -384,12 +408,12 @@ func decodeTaskModelsPatch(raw json.RawMessage) (TaskModelsPatch, error) {
 		case "pins":
 			var pins map[string]json.RawMessage
 			if json.Unmarshal(value, &pins) != nil || pins == nil {
-				return patch, Errorf(CodeBadParams, "pins is {worker?, planner?, checker?}")
+				return patch, Errorf(CodeBadParams, "pins is {worker?, planner?, checker?, auxiliary?}")
 			}
 			patch.Pins = map[string]*ModelRef{}
 			for role, pin := range pins {
-				if !taskModelRole(role) {
-					return patch, Errorf(CodeBadParams, "pins: %q is not a role · worker, planner or checker", role)
+				if !taskModelRole(role) && role != RoleAuxiliary {
+					return patch, Errorf(CodeBadParams, "pins: %q is not a role · worker, planner, checker or auxiliary", role)
 				}
 				if string(pin) == "null" {
 					patch.Pins[role] = nil

@@ -541,6 +541,17 @@ $0.10 goes out as `0.1`.
 | `settings.models.set` | `in.TaskModelsPatchWire` | `TaskModelsResult` |
 | `settings.set` | `in.SettingsPatchWire` | `SettingsResult` |
 
+An engine whose hello carries the feature `settings.models.auxiliary` adds a
+fourth role to the task models: `roles.auxiliary` in `settings.models.get` (and
+in `settings.changed`'s `task_models`) is `{pin, warning, eligible_count}` like
+the other three, and `settings.models.set` takes `pins.auxiliary` as
+`{id, provider?}` or `null`. It is the model the small jobs beside a
+conversation run on: titles, route questions, captions and fold-ups. It is not
+a task role and Auto never picks it; a `null` pin gives back the build's own
+small-work model. A pin is checked as the other pins are: a model the provider
+serves, and one the allowed models admit. An engine without the feature leaves
+`roles.auxiliary` out and refuses `pins.auxiliary` as an unknown role.
+
 ## setup methods
 
 | method | params | result |
