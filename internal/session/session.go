@@ -2694,7 +2694,7 @@ type Agent struct {
 
 	modelIdentity   ModelIdentity
 	automaticModels atomic.Int32
-	replySuggestion replySuggestionState
+	errands         errandState
 	// rewindUndo keeps one reversible cut; a new cut replaces it.
 	rewindUndo *rewindUndo
 	debugRun   string

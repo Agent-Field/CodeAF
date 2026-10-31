@@ -195,7 +195,9 @@ func classify(method string) callClass {
 		MethodSideAsk,
 		// Reply suggestions are also independent model work. A draft writes
 		// no turn, so a person's send must not queue behind its response.
-		methodReplySuggestion:
+		methodReplySuggestion,
+		// An errand is the same: detached model work that writes no turn.
+		methodErrand:
 		return classWork
 	default:
 		return classOrdered

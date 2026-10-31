@@ -116,6 +116,8 @@ Ask    { id, agent, kind, subkind?, title, detail?, options?: [{id, label}], irr
 | `agents.open` | `{id}` | `{agent: Agent}` (attach an engine to a saved conversation; idempotent, one concurrent open per agent; call on chat display or hover to prefetch) |
 | `agents.send` | `{id, text}` | `{turn: <u64>}`; output arrives as events |
 | `agents.suggest_reply` | `{agent, context}` | `{text}`; optional `agents.suggest_reply` feature, empty when no suggestion is useful/available |
+| `agents.errand` | `{v?, agent, purpose, role?, model?, effort?, system?, messages, json?, json_schema?, max_tokens?, deadline_ms?, cache?}` | `{text, model?, provider?, role?, usage:{in,out,cost_usd?}, ms, cached?, reason?}`; optional `agents.errand` feature, see "Errands" |
+| `agents.errand.models` | `{agent?}` | `{caps, one_model?, roles, models}`; optional `agents.errand.models` feature |
 | `agents.stop` | `{id}` | `{}` (interrupt the running turn) |
 | `agents.close` | `{id}` | `{}` (detach and stop its engine; conversation stays on disk) |
 | `asks.list` | `{agent}` | `{asks: Ask[]}` (open asks only) |
@@ -184,6 +186,9 @@ result or an event, `?` marks a field that may be absent.
 | `agents.since` | `{after, id}` | `{at?, entries, files?, first?, found, last_at?, turns}` |
 | `agents.steer` | `{attachments, client_id, id, reads, said, text}` | `{}` |
 | `agents.suggest_reply` | `{agent, context}` | `{text}` |
+| `agents.errand` | `{agent, cache, deadline_ms, effort, json, json_schema, max_tokens, messages, model, purpose, role, system, v}` | `{cached?, ms, model?, provider?, reason?, role?, text, usage}` |
+| `agents.errand.models` | `{agent}` | `{caps, models, one_model?, roles}` |
+| `agents.set_models` | `{fallback, id, main}` | `{agent}` |
 | `agents.stop` | `{id}` | `{}` |
 | `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `{}` |
 | `asks.defer` | `{agent, id}` | `{ask?}` |
@@ -2718,6 +2723,8 @@ Feature `factory.job_actions` is present only when the engine implements `Factor
 | `factory.job_start` | | `POST /v1/jobs/{id}/start_now` (assignee only; queues, never asks a model here; every refusal comes before any write, so a refused start leaves `version` where the person read it) |
 | `factory.job_stop` | | `…/stop` |
 | `factory.job_dismiss` | | `…/dismiss` (personal) |
+| `factory.job_close` | | `…/close` (feature `factory.job_close`) |
+| `factory.job_reopen` | | `…/reopen` (feature `factory.job_close`) |
 | `factory.job_drop` | discard? (bool, the person's yes to deleting work) | `…/drop` (assignee only; stops a running job, then throws away everything of its work on the factory's machine: its LOCAL worktree folder and local branch (a pull request's job keeps its branch), and its agent's and every step's conversations, every round's, with its factory-made crew; nothing on GitHub is touched. A job whose branch has commits beyond its start, or whose folder has uncommitted or untracked changes, or whose branch could not be read, is refused `has_work` unless `discard` is true; its conversations are never asked about. The answer waits for the deletes, which wait for a step running there to stop (up to about 8 s) and for each conversation's turn to stop (up to 30 s each). No event names a deleted conversation: the app learns of the drop from its next `factory.queue` or job read (the job's `version` moves), after which `factory.job_chats` refuses the job, and of a deleted crew as `crew.removed`. A delete that fails still drops the job, which no longer names what was kept, and is said on its activity. No words) |
 | `factory.job_restore` | | `…/restore` (Bring back: assignee only; only a dropped job, `can.restore`; back to Backlog as a fresh job, as if it had never run: no steps run, `cost` 0, no failure, change, head commit, runner or `pr`; its notes and its steps' edits are cleared (steps back to the repository's recipe), and a later `factory.job_chats` answers a new agent; its issue, assignee, priority, budget, model and activity stay; nothing starts. Before the job is reset, while it is still dropped, a folder or branch re-created since the drop is deleted again, and so are the conversations and crew a job dropped before drops deleted them still names (a crew is then `crew.removed`). A pull request it had opened is forgotten, never closed; the `restored` receipt's detail names it) |
 | `factory.job_run_again` | | `…/run_again` (Run again: assignee only; only a job carrying a failure, a person's stop that cut a step among them (`failure.code` `stopped`), or whose pull request was closed unmerged; the failure is cleared and a new run starts at the first step, in the worktree and branch the job's runner kept) |
@@ -3182,6 +3189,72 @@ The naming-role request has an eight-second ceiling and one model rung, with no
 tools and at most 160 output tokens. Its detached usage is attributed to that
 conversation and the existing factory job budget. Closing/stopping the session
 or exhausting the job budget cancels it; depleted jobs admit no new calls. One
-request per agent may run at a time. A bounded cache includes empty/failed
-results so rendering or reopening the same context cannot buy repeated requests.
-Surfaces discard stale responses and never write an existing draft.
+request per agent may run at a time. A bounded cache keeps every answer the
+model gave, empty or unusable included, so rendering or reopening the same
+context cannot buy repeated requests; a failed request is asked again. It runs on
+the errand core below (purpose `reply_suggestion`), with the conversation's model
+as the naming role's floor. Surfaces discard stale responses and never write an
+existing draft.
+
+## Errands (`agents.errand`)
+
+An errand is one short, detached, metered model call with the app's own prompt
+on a named agent's door. It is never a turn: no tools, no journal entry, no
+message in the conversation, no event besides the usual spend receipts. It uses
+the agent's admission, provider and keys, one-model mode, job budget and
+lifetime, and its usage is booked on the agent's auxiliary ledger under
+`purpose`. The engine never branches on `purpose`; it is a ledger label and the
+key of the one-in-flight slot. `agents.suggest_reply` runs on the same core with
+codeaf's own fixed prompt.
+
+The hello carries features `agents.errand` and `agents.errand.models` and an
+`errand` object with the limits: `{v, roles[], model, efforts[], json,
+json_schema, images, max_input_bytes, max_messages, max_schema_bytes,
+max_cache_key, max_tokens, default_tokens, default_deadline_ms,
+max_deadline_ms}`. Read the limits from there, never from this page. `images` is
+false in v1; image parts will be added behind it.
+
+Request (`v` is 1; absent means 1; a higher `v` is `bad_params`; unknown fields
+are ignored):
+
+- `agent` (required): whose door, ledger and job budget pay. The agent must be
+  held by this engine (`agents.open` first); otherwise `reason: "not_open"`.
+- `purpose` (required): `^[a-z][a-z0-9_]{1,31}$`.
+- Route: `role` (any name in `caps.roles`; default `title`, the naming role,
+  first rung only, the conversation's model as floor) or `model` (an explicit
+  id). A model must be one `agents.errand.models` lists; under one-model mode
+  only the agent's own model is allowed. A role or model outside that is
+  `model_not_allowed` with a sentence naming why. `effort` is `low`, `medium`,
+  `high`, `xhigh` or `max` and is sent only where the route accepts it.
+- `system` text and `messages[]` of `{role: "user" | "assistant", text}`, the
+  last one the user's, 1 to `max_messages`, together at most `max_input_bytes`
+  of UTF-8.
+- Output: text by default; `json: true` asks for one JSON object and
+  `json_schema` (an object, at most `max_schema_bytes`) for one of that schema,
+  sent unstrict, and dropped by the provider for a route that refuses it. The
+  engine checks only that the answer is one JSON object (a single code fence is
+  unwrapped); anything else is `reason: "invalid_json"`.
+- `max_tokens` (default `default_tokens`) and `deadline_ms` (default 10000) are
+  clamped into range, not refused. `cache` (at most `max_cache_key` bytes) reuses
+  the answer to an identical ask with the same key, `cached: true`; 32 answers
+  per agent are kept, unusable answers included; a failure or refusal is not
+  kept and is asked again.
+
+Response: `{text, model, provider, role, usage: {in, out, cost_usd?}, ms,
+cached?}`. `model` is the model that answered, as the provider named it. When
+`text` is `""`, `reason` says why: `closed`, `stopped`, `over_budget`, `busy`,
+`deadline`, `cancelled`, `model_failed`, `invalid_json`, `not_open` or
+`unavailable` (an owner without the errand door). One errand per (agent,
+purpose) runs at a time; a second answers `busy` at once and never queues.
+Closing or stopping the agent, or its job running out of money, cancels one in
+flight.
+
+`agents.errand.models {agent?}` answers `{caps, one_model?, roles: [{role,
+model, provider?, effort?, json?}], models: [{id, provider, provider_name?,
+json?, json_schema?}]}` from this engine's live configuration: `roles` is where
+each role's errand goes now on that agent (or on the profile, with no agent),
+`models` is every model an errand may name, and `json`/`json_schema` are absent
+when no catalog knows. Under one-model mode `one_model` names the only model.
+
+Remote owners answer errands over their own connection when they advertise it;
+older ones answer `unavailable`.
