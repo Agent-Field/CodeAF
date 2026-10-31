@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Pairing and sync screens say which service failed, a computer opened once can pair, and removing a device asks first
+title: Pairing names the failing sync service, an unused computer can join, and removal asks first
 pr: 2087
 surface: [chat, engine, remote, docs]
 invalidates:
