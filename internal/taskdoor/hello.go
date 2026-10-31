@@ -98,10 +98,10 @@ func refuse(tunnel *pair.Tunnel, reason string) error {
 	}
 	return WriteFrame(tunnel, frame)
 }
-func acceptHello(ctx context.Context, tunnel *pair.Tunnel, id identity.Identity, dev identity.Dev, roster *rosterCache, name string) error {
+func acceptHello(ctx context.Context, tunnel *pair.Tunnel, id identity.Identity, dev identity.Dev, roster *rosterCache, name string) (string, error) {
 	frame, err := ReadFrame(tunnel)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var hello Hello
 	reason := ""
@@ -124,7 +124,7 @@ func acceptHello(ctx context.Context, tunnel *pair.Tunnel, id identity.Identity,
 	}
 	if reason != "" {
 		_ = refuse(tunnel, reason)
-		return errors.New(reason)
+		return "", errors.New(reason)
 	}
-	return sendHello(tunnel, dev)
+	return hello.Cert.DeviceID(), sendHello(tunnel, dev)
 }

@@ -82,6 +82,7 @@ type attemptStore struct {
 	clock    Clock
 	mu       sync.Mutex
 	attempts map[string]*Attempt
+	finished map[string]time.Time
 }
 
 func validAttempt(id string) bool {
@@ -103,7 +104,13 @@ func openAttempts(root string, clock Clock) (*attemptStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := &attemptStore{root: root, clock: clock, attempts: map[string]*Attempt{}}
+	store := &attemptStore{root: root, clock: clock, attempts: map[string]*Attempt{}, finished: map[string]time.Time{}}
+	if err := readJSON(filepath.Join(root, "finished.json"), &store.finished); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if store.finished == nil {
+		store.finished = map[string]time.Time{}
+	}
 	for _, entry := range entries {
 		if !validAttempt(entry.Name()) {
 			continue
@@ -112,15 +119,48 @@ func openAttempts(root string, clock Clock) (*attemptStore, error) {
 			return nil, fmt.Errorf("taskdoor: attempt %s is not a folder", entry.Name())
 		}
 		a := &Attempt{ID: entry.Name(), Dir: filepath.Join(root, entry.Name()), changed: make(chan struct{}), clock: clock}
+		_, finished := store.finished[a.ID]
+		stateErr := readJSON(filepath.Join(a.Dir, "state.json"), &a.state)
+		// A completed acknowledgement can be interrupted halfway through RemoveAll.
+		// Its durable tombstone outranks a now-missing state or request file.
+		if finished && (errors.Is(stateErr, os.ErrNotExist) || stateErr == nil && a.state.Phase != "running") {
+			if err := os.RemoveAll(a.Dir); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if stateErr != nil {
+			return nil, stateErr
+		}
 		if err := readJSON(filepath.Join(a.Dir, "request.json"), &a.Request); err != nil {
+			if finished && errors.Is(err, os.ErrNotExist) {
+				if err := os.RemoveAll(a.Dir); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			return nil, err
 		}
-		if err := readJSON(filepath.Join(a.Dir, "state.json"), &a.state); err != nil {
-			return nil, err
+		if finished {
+			a.state.Abandoned = true
 		}
 		a.removed = a.state.Abandoned
+		if a.removed {
+			if err := store.rememberFinished(a.ID); err != nil {
+				return nil, err
+			}
+			if err := atomicJSON(filepath.Join(a.Dir, "state.json"), a.state); err != nil {
+				return nil, err
+			}
+		}
 		events, err := readEvents(a.Dir)
 		if err != nil {
+			if finished && errors.Is(err, os.ErrNotExist) {
+				if err := os.RemoveAll(a.Dir); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			return nil, err
 		}
 		// A crash after the journal's rename but before its derived state write
@@ -172,6 +212,9 @@ func (s *attemptStore) admit(id string, request Start, busy string) (*Attempt, b
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, finished := s.finished[id]; finished {
+		return nil, false, errors.New("that task has already finished")
+	}
 	if a := s.attempts[id]; a != nil {
 		a.mu.Lock()
 		removed := a.removed
@@ -223,6 +266,9 @@ func (s *attemptStore) forget(id string) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if err := s.rememberFinished(id); err != nil {
+		return err
+	}
 	// A real child can still write its private run after SIGINT. Keep a
 	// durable tombstone until it is joined, including across a serving restart.
 	if a.state.Phase == "running" && (a.state.PID > 0 || !a.state.LaunchStartedAt.IsZero() || !a.state.StopRequestedAt.IsZero()) {

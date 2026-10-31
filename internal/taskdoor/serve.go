@@ -147,7 +147,8 @@ func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser, key *ecdh.
 	if err != nil {
 		return
 	}
-	if err := acceptHello(handshakeCtx, tunnel, d.config.Identity, d.config.Device, d.roster, d.name); err != nil {
+	device, err := acceptHello(handshakeCtx, tunnel, d.config.Identity, d.config.Device, d.roster, d.name)
+	if err != nil {
 		return
 	}
 	endHandshake()
@@ -160,6 +161,9 @@ func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser, key *ecdh.
 	for {
 		frame, err := conn.Receive()
 		if err != nil {
+			return
+		}
+		if !d.allowConnection(ctx, conn, device, frame.Attempt) {
 			return
 		}
 		reply := func(payload any) error { return conn.Send(frame.Attempt, payload) }
@@ -199,7 +203,7 @@ func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser, key *ecdh.
 			}
 			watch.close()
 			conn.startWatch()
-			watch = d.startWatch(ctx, conn, a, request.From)
+			watch = d.startWatch(ctx, conn, a, request.From, device)
 		case "stop":
 			if d.store.get(frame.Attempt) == nil {
 				if reply(Unknown{}) != nil {
@@ -284,14 +288,22 @@ func (d *door) execute(ctx context.Context, a *Attempt, adopt bool) {
 		}
 	}()
 }
-func (d *door) watch(ctx context.Context, conn *Conn, a *Attempt, from uint64) {
+func (d *door) watch(ctx context.Context, conn *Conn, a *Attempt, from uint64, device string) {
+	check := d.clock.NewTicker(time.Second)
+	defer check.Stop()
 	for {
+		if !d.allowConnection(ctx, conn, device, a.ID) {
+			return
+		}
 		frames, changed, finished, err := a.after(from)
 		if err != nil {
 			_ = conn.Send(a.ID, Unknown{})
 			return
 		}
 		for _, frame := range frames {
+			if !d.allowConnection(ctx, conn, device, a.ID) {
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -306,12 +318,21 @@ func (d *door) watch(ctx context.Context, conn *Conn, a *Attempt, from uint64) {
 			conn.watching.Store(false)
 			return
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-conn.done:
-			return
-		case <-changed:
+	waiting:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-conn.done:
+				return
+			case <-changed:
+				break waiting
+			case <-check.C():
+				// Permission refresh must not turn a quiet watch into a journal scan every second.
+				if !d.allowConnection(ctx, conn, device, a.ID) {
+					return
+				}
+			}
 		}
 	}
 }
@@ -329,9 +350,26 @@ func (w *doorWatch) close() {
 		<-w.done
 	}
 }
-func (d *door) startWatch(ctx context.Context, conn *Conn, a *Attempt, from uint64) *doorWatch {
+func (d *door) startWatch(ctx context.Context, conn *Conn, a *Attempt, from uint64, device string) *doorWatch {
 	ctx, cancel := context.WithCancel(ctx)
 	watch := &doorWatch{cancel: cancel, done: make(chan struct{})}
-	go func() { defer close(watch.done); defer cancel(); d.watch(ctx, conn, a, from) }()
+	go func() { defer close(watch.done); defer cancel(); d.watch(ctx, conn, a, from, device) }()
 	return watch
+}
+
+// A handshake establishes identity; the bounded roster still owns continuing permission.
+func (d *door) allowConnection(ctx context.Context, conn *Conn, device, attempt string) bool {
+	active, err := d.roster.allows(ctx, device)
+	reason := ""
+	if err != nil {
+		reason = "could not check your devices right now"
+	} else if !active {
+		reason = RemovedComputerLine
+	}
+	if reason == "" {
+		return true
+	}
+	_ = conn.Send(attempt, Refused{Reason: reason})
+	_ = conn.Close()
+	return false
 }
