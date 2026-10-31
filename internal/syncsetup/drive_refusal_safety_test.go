@@ -9,7 +9,8 @@ import (
 )
 
 func TestAStaleDriveRefusalImmediatelyMakesTheWindowAViewer(t *testing.T) {
-	d := &Drive{sync: &Sync{}}
+	// Refusal retires a saved send hold, so even this minimal drive needs an isolated home.
+	d := &Drive{sync: &Sync{Home: t.TempDir()}}
 	d.refusal(directory.ErrFenceStale)
 	if d.Gate() == nil {
 		t.Fatal("a refused drive still allows new work")
