@@ -771,8 +771,10 @@ func (s *Sync) profile() string {
 	return s.Home
 }
 
-// teamsSharing reads this computer's local opt-in for team sharing.
-func (s *Sync) teamsSharing() bool { return config.TeamsShareAt(s.profile()) }
+// teamsSharing leaves every carrier quiet when this computer has not paired.
+func (s *Sync) teamsSharing() bool {
+	return config.TeamsSharingAt(s.profile(), func() bool { return MayTalk(s.Home) })
+}
 
 // carried is the profile state that travels in the vault beside the secrets.
 func (s *Sync) carried() []vaultsync.Carrier {

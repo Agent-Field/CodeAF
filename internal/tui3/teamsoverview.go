@@ -104,6 +104,9 @@ func (a *app) teamsTakeInteractions(id string, entries []teamstore.Entry) bool {
 		byID[e.ID] = e
 	}
 	for _, e := range entries {
+		if e.Origin != "" && !a.teamsShare {
+			continue
+		}
 		byID[e.ID] = e
 	}
 	list := make([]teamstore.Entry, 0, len(byID))

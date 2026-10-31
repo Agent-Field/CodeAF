@@ -297,11 +297,12 @@ func TestHomeDeleteLastSavedRowThroughItsOptions(t *testing.T) {
 	}
 }
 
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestConversationDeleteBlockedUntilEveryActiveManagerChangedInTeams(t *testing.T) {
 	a, parent, child := menuApp(t)
 	a.width, a.height = 120, 35
 	a.profileDir = t.TempDir()
-	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch)
+	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch, nil)
 	old := a.frontTabKey()
 	for i := range a.wall.teams {
 		if a.wall.teams[i].ID == parent || a.wall.teams[i].ID == child {
@@ -359,11 +360,12 @@ func TestConversationDeleteBlockedUntilEveryActiveManagerChangedInTeams(t *testi
 	}
 }
 
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestTeamsChooseManagerExistingMembersOnlyAndPersists(t *testing.T) {
 	a, parent, other := menuApp(t)
 	a.width, a.height = 120, 35
 	a.profileDir = t.TempDir()
-	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch)
+	a.teamsDisk.door = localTeams(a.profileDir, &a.teamsDisk.watch, nil)
 	old := a.frontTabKey()
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(parent, old) }); err != nil {
 		t.Fatal(err)

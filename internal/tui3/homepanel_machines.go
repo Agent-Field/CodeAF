@@ -61,6 +61,7 @@ type machineReading struct {
 
 // homeMachinesMsg is one listing, coming BACK from the source.
 type homeMachinesMsg struct {
+	sharing    *teamsSharingMsg
 	readWithin time.Duration
 	rows       []chatlist.Row
 	version    uint64
@@ -115,11 +116,15 @@ func (a *app) askChats() tea.Cmd {
 	seq := a.machinesAskSeq
 	a.machineRead.host = a.relayHost()
 	src, file := a.machines, a.file
+	sharingRead := a.readTeamsSharing()
 	read := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
 		rows, version, err := chatlist.RowsAt(ctx, src)
 		msg := homeMachinesMsg{rows: rows, version: version, err: err, readWithin: machinesAskTimeout}
+		if sharing, ok := sharingRead().(teamsSharingMsg); ok {
+			msg.sharing = &sharing
+		}
 		if local, ok := src.(sendLeaseSource); ok && file != "" {
 			msg.holdCell = filepath.Base(session.DirOf(file))
 			_, msg.holdFence, _ = local.SendLease(msg.holdCell)
@@ -152,6 +157,9 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 			a.machineRead.computerRemoved = false
 			a.homeAccountNotice = ""
 		}
+	}
+	if msg.sharing != nil {
+		a.takeTeamsSharing(*msg.sharing)
 	}
 	if msg.err == nil {
 		a.rememberSendHolds(msg)

@@ -464,6 +464,8 @@ type Options struct {
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.
 	Pairing Pairing
+	// TeamsPaired supplies this computer's pairing gate at preference adoption.
+	TeamsPaired func() bool
 	// SyncService names the service selected for this chat's sync notices.
 	SyncService string
 	// Approvals answers a new device's request to join and revokes devices

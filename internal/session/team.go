@@ -997,7 +997,7 @@ func (a *Agent) readTeamCursorsLocked() {
 	// number lines this computer never wrote, so every team starts again from
 	// [Agent.firstTeamCursor], exactly as for a team met for the first time;
 	// that keeps the directive a rouse opened this conversation for.
-	sharing := config.TeamsShareAt(a.config.teamProfile())
+	sharing := a.teamsSharing()
 	if sharing && stored.Device != "" && stored.Device != teamCursorDevice() {
 		return
 	}
@@ -1039,7 +1039,7 @@ func (a *Agent) saveTeamCursorsLocked() {
 		read[id] = cursor
 	}
 	device := ""
-	if config.TeamsShareAt(a.config.teamProfile()) {
+	if a.teamsSharing() {
 		device = teamCursorDevice()
 	}
 	raw, err := json.Marshal(struct {
@@ -1101,19 +1101,49 @@ func (a *Agent) refreshTeamDigest(ctx context.Context) {
 	if profile == "" || ctx.Err() != nil {
 		return
 	}
-	block := a.teamDigest(profile)
+	sharing := a.teamsSharing()
+	a.mu.Lock()
+	a.adoptTeamDigestSharingLocked(sharing)
+	generation := a.teamDigestGeneration
+	a.mu.Unlock()
+	block := a.teamDigestWithSharing(profile, sharing)
+	current := a.teamsSharing()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed {
+	if a.closed || ctx.Err() != nil || generation != a.teamDigestGeneration {
+		return
+	}
+	a.adoptTeamDigestSharingLocked(current)
+	if current != sharing {
 		return
 	}
 	a.teamDigestText = block
+}
+
+// adoptTeamDigestSharingLocked retires every scratch digest made under a
+// different sharing state. Keep its message slot so turn and checkpoint indices
+// stay valid; these notes are request context and are never journalled.
+func (a *Agent) adoptTeamDigestSharingLocked(sharing bool) {
+	if a.teamDigestKnown && a.teamDigestSharing != sharing {
+		a.teamDigestGeneration++
+		a.teamDigestText = ""
+		for i, message := range a.messages {
+			if message.Role == "user" && strings.HasPrefix(messageContentText(message), teamNoteOpening+"\n\n") {
+				a.messages[i] = textMessage("user", teamNoteOpening+"\n\nThe previous team history reading is no longer current.")
+			}
+		}
+	}
+	a.teamDigestSharing, a.teamDigestKnown = sharing, true
 }
 
 // teamDigest is one digest per managed team, "" for a conversation that
 // manages none. Who the manager is and what it does is not here: that is the
 // role note's, which cannot arrive late ([teamRoleBlock]).
 func (a *Agent) teamDigest(profile string) string {
+	return a.teamDigestWithSharing(profile, a.teamsSharing())
+}
+
+func (a *Agent) teamDigestWithSharing(profile string, sharing bool) string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	keys := append([]string(nil), a.teamKeysLocked()...)
@@ -1141,7 +1171,7 @@ func (a *Agent) teamDigest(profile string) string {
 			continue
 		}
 		team = managedView(file, team)
-		log, _ := teams.ReadHistory(profile, role.id, teamStateLook)
+		log, _ := teams.ReadHistory(profile, role.id, teamStateLook, sharing)
 		states := memberStates(team, keys, now, log, &a.team.journals)
 		markShared(file, team, states)
 		parts = append(parts, teams.Digest(team, states, recentOf(log), teamDigestBudget))

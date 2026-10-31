@@ -114,7 +114,7 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 // when the engine answers them, so an older engine's window has a seam whose
 // delegation doors are nil, which the surface says rather than guesses at.
 func (h *hostTeams) seam() tui3.TeamsSeam {
-	s := tui3.TeamsSeam{Load: h.load, ReadSince: h.readSince, Update: h.update, Traffic: h.readTraffic}
+	s := tui3.TeamsSeam{Sharing: h.sharing, Load: h.load, ReadSince: h.readSince, Update: h.update, Traffic: h.readTraffic}
 	if h.history != nil {
 		s.DisplayTraffic = func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error) {
 			got, err := h.history(team, after, version, limit)
@@ -305,4 +305,19 @@ func (h *hostTeams) forgetChecked(team string, expected []string) ([]string, err
 		return reply.Gone, err
 	}
 	return reply.Gone, nil
+}
+
+// sharing asks the engine rather than borrowing the viewing computer's pairing.
+func (h *hostTeams) sharing() (bool, error) {
+	_, stamp, _ := h.held(nil)
+	reading, err := h.read(stamp, h.reservedHues())
+	if err != nil {
+		return false, err
+	}
+	if reading.Sharing != nil {
+		return *reading.Sharing, nil
+	}
+	// Older engines gate their own history. Keep that display door available
+	// when they cannot report the gate separately.
+	return h.history != nil, nil
 }

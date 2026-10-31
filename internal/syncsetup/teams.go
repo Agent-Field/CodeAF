@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -322,7 +323,24 @@ func (p teamKeys) values(f *teams.File, m *teamIdentities) (map[string]string, e
 	return values, nil
 }
 
+// Capture can create the ledger before restore, so backup belongs before
+// either step and before Refresh can repair a newly continued local path.
+func (p teamKeys) beforeSharing() error {
+	if _, err := os.Stat(filepath.Join(p.home, "teams-sync.ledger")); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := teams.BackupBeforeSharing(p.profile); err != nil {
+		return fmt.Errorf("could not save teams.before-sharing.json; incoming teams are waiting: %w", err)
+	}
+	return nil
+}
+
 func (p teamKeys) Values() (map[string]string, error) {
+	if err := p.beforeSharing(); err != nil {
+		return nil, err
+	}
 	f, err := teams.Snapshot(p.profile)
 	if err != nil {
 		teams.SharingError(p.profile, err)
@@ -346,6 +364,9 @@ func (p teamKeys) Apply(changes map[string]string) error { return p.ApplyIf(chan
 // ApplyIf compares each field inside Update's lock with the pre-network
 // snapshot. A simultaneous local edit remains for the next capture to send.
 func (p teamKeys) ApplyIf(changes, expected map[string]string) error {
+	if err := p.beforeSharing(); err != nil {
+		return err
+	}
 	return teams.Update(p.profile, func(f *teams.File) error {
 		m, err := p.identities(f)
 		if err != nil {
@@ -462,6 +483,22 @@ func (p teamKeys) decode(values map[string]string, m *teamIdentities) ([]teams.T
 				t.Manager = member.Key
 			}
 		}
+		if manager != "" && t.Manager == "" && (t.FormerManager == "" || t.FormerManager == manager) {
+			// A concurrent removal can arrive before its manager field. Keep
+			// the appointment and its portable identity in the existing history.
+			t.FormerManager = manager
+			known := false
+			for _, former := range t.FormerMembers {
+				known = known || former.Key == manager
+			}
+			if !known {
+				former := teams.Member{Key: manager}
+				if local, ok := m.local[manager]; ok {
+					former = m.portable(local)
+				}
+				t.FormerMembers = append(t.FormerMembers, former)
+			}
+		}
 		formerManager := t.FormerManager
 		if formerManager != "" {
 			t.FormerManager = m.realized(teams.Member{Key: formerManager}).Key
@@ -487,6 +524,9 @@ func (p teamKeys) decode(values map[string]string, m *teamIdentities) ([]teams.T
 // bookkeeping failed. No discovery work occurs unless an unresolved cell is
 // present and its discovery stamp has moved since the last apply.
 func (p teamKeys) Refresh() error {
+	if err := p.beforeSharing(); err != nil {
+		return err
+	}
 	f, err := teams.Snapshot(p.profile)
 	if err != nil {
 		teams.SharingError(p.profile, err)

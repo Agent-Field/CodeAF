@@ -43,7 +43,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/config"
 	"strconv"
 	"strings"
 
@@ -304,7 +303,7 @@ func (a *Agent) teamDecideTool(ctx context.Context, args json.RawMessage) (strin
 	case teams.PacketCap, teams.PacketClosing:
 		return fmt.Sprintf("A %s is the person's to decide, never a manager's. Nothing was done.", p.Kind), true, nil
 	}
-	if config.TeamsShareAt(a.config.teamProfile()) {
+	if a.teamsSharing() {
 		file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
 		if refusal := a.teamDeliveryRefusal(ctx, teamPacketRecipients(file, p)); refusal != "" {
 			return refusal, true, nil

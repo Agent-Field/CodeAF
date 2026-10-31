@@ -280,7 +280,15 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 	}
 	a.traffic.reading = true
 	seam, reserved, stamp, edits, sharing := a.teamsSeam(), teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits, a.teamsShare
+	generation := a.teamsShareGeneration
 	return a.besideLine(func() func(bool) tea.Cmd {
+		var engineSharing *teamsSharingMsg
+		if seam.Sharing != nil {
+			if enabled, err := seam.Sharing(); err == nil {
+				sharing = enabled
+				engineSharing = &teamsSharingMsg{generation, enabled}
+			}
+		}
 		got := make([]trafficGot, len(jobs))
 		for i, j := range jobs {
 			after, limit := j.after, trafficPage
@@ -308,7 +316,12 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 		if err != nil || same {
 			fresh, at = nil, stamp
 		}
-		return func(bool) tea.Cmd { return a.trafficTake(got, fresh, at, edits, tick) }
+		return func(bool) tea.Cmd {
+			if engineSharing != nil {
+				a.takeTeamsSharing(*engineSharing)
+			}
+			return a.trafficTake(got, fresh, at, edits, tick)
+		}
 	})
 }
 
@@ -337,6 +350,13 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 	var acts []tea.Cmd
 	needRoster := false
 	for _, g := range got {
+		// A history response already in flight cannot revive rows after off.
+		if !a.teamsShare {
+			g.mirror = ""
+			if g.reset {
+				g.entries, g.reset = g.news, false
+			}
+		}
 		if g.news == nil && !g.reset {
 			g.news = g.entries
 		}

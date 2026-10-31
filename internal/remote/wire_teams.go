@@ -59,10 +59,13 @@ type TeamsReadArgs struct {
 // [MethodTeamsUpdate]: the file moved since the base, nothing was written, and
 // Stamp is where it is now.
 type TeamsReading struct {
-	Stamp string           `json:"stamp"`
-	Same  bool             `json:"same,omitempty"`
-	Stale bool             `json:"stale,omitempty"`
-	Teams []teamstore.Team `json:"teams,omitempty"`
+	// Sharing is the engine's effective gate, including unchanged-file replies.
+	// Absence identifies engines that predate this fact.
+	Sharing *bool            `json:"sharing,omitempty"`
+	Stamp   string           `json:"stamp"`
+	Same    bool             `json:"same,omitempty"`
+	Stale   bool             `json:"stale,omitempty"`
+	Teams   []teamstore.Team `json:"teams,omitempty"`
 }
 
 // TeamsUpdateArgs is the whole list the window wants written, and the stamp

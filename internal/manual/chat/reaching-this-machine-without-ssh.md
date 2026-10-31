@@ -448,7 +448,7 @@ And a relay that is turning connections away:
 refuses the upgrade, it names the full address it tried:
 `the sync service at https://service.example.com/wrong-prefix refused this connection (404) — check the address it was given`.
 
-## The pairing code was right but approval failed — writing access on the serving computer
+## The pairing code was right but approval failed — paired then device stopped, writing access on the serving computer
 
 **A pairing that says the code was wrong when you are sure it was right** has one other
 cause, and it is the machine's own disk. The machine writes a device into its list
@@ -464,6 +464,10 @@ could not write down that pairing: <what the write said>
 ```
 
 So if a code you read carefully keeps being refused, go and look at that machine.
+A current serving computer saves the pairing before confirming it. If it said
+paired and later says `this device has been stopped on that machine — pair it
+again from there`, that machine no longer recognizes this device's permission.
+Pair again from the serving computer.
 
 A name of the wrong shape is caught before anything is dialled:
 
