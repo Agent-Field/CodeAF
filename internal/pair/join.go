@@ -217,11 +217,11 @@ func differentChats(home string) error {
 	if n == 0 {
 		return ErrDifferentChats
 	}
-	noun := "chats"
+	count, kept := fmt.Sprintf("%d chats", n), fmt.Sprintf("those %d chats stay on this computer but no longer sync", n)
 	if n == 1 {
-		noun = "chat"
+		count, kept = "1 chat", "that chat stays on this computer but no longer syncs"
 	}
-	return differentChatError{fmt.Sprintf("this computer already has %d %s of its own, so nothing was changed. To pair it anyway, run this again with --replace: those %d %s stay on this computer but no longer sync; shared memories and settings are cleared", n, noun, n, noun)}
+	return differentChatError{"this computer already has " + count + " of its own, so nothing was changed. To pair it anyway, run this again with --replace: " + kept + "; shared memories and settings are cleared"}
 }
 
 type differentChatError struct{ line string }
