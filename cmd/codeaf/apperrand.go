@@ -85,7 +85,8 @@ func (b *appBackend) ErrandModels(p appwire.ErrandModelsParams) (appwire.ErrandM
 	for _, m := range listed {
 		providers[m.ID] = m.Provider
 		out.Models = append(out.Models, appwire.ErrandModel{ID: m.ID, Provider: m.Provider, ProviderName: m.ProviderName,
-			JSON: known(m.ID, "response_format"), JSONSchema: known(m.ID, "structured_outputs")})
+			JSON: known(m.ID, "response_format"), JSONSchema: known(m.ID, "structured_outputs"),
+			PriceInPerM: m.PriceInPerM, PriceOutPerM: m.PriceOutPerM, ContextLength: m.ContextLength})
 	}
 	routes, oneModel, err := b.errandRoutes(p.Agent)
 	if err != nil {

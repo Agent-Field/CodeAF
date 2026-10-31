@@ -921,7 +921,8 @@ flight.
 
 `agents.errand.models {agent?}` answers `{caps, one_model?, roles: [{role,
 model, provider?, effort?, json?}], models: [{id, provider, provider_name?,
-json?, json_schema?}]}` from this engine's live configuration: `roles` is where
+json?, json_schema?, price_in_per_m?, price_out_per_m?, context_length?}]}`
+from this engine's live configuration (the same rows and catalog facts as `models.list`): `roles` is where
 each role's errand goes now on that agent (or on the profile, with no agent),
 `models` is every model an errand may name, and `json`/`json_schema` are absent
 when no catalog knows. Under one-model mode `one_model` names the only model.

@@ -137,6 +137,10 @@ type ErrandModel struct {
 	ProviderName string `json:"provider_name,omitempty"`
 	JSON         *bool  `json:"json,omitempty"`
 	JSONSchema   *bool  `json:"json_schema,omitempty"`
+	// The catalog facts models.list carries, each absent when unknown.
+	PriceInPerM   *float64 `json:"price_in_per_m,omitempty"`
+	PriceOutPerM  *float64 `json:"price_out_per_m,omitempty"`
+	ContextLength int      `json:"context_length,omitempty"`
 }
 
 // ErrandModels is every role and model this engine can serve an errand on
