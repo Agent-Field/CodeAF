@@ -39,40 +39,8 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	kept, found := runRowOf(g, id)
-	if found {
-		remote := readRemoteRecord(store, kept.Remote)
-		if remote != nil {
-			kept.Remote = remote
-
-			if remote.Settled && !remote.Abandoned {
-				return
-			}
-			if !remote.Abandoned {
-				if kept.PendingRun != nil && remote.Attempt == "" {
-					a.resumePendingRun(g, kept)
-					return
-				}
-				if remote.StartFailed {
-					kept.State = TaskFailed
-					a.publishRunRow(g, kept)
-					return
-				}
-				if kept.State.settled() && kept.State != TaskInterrupted && !kept.EndedAt.IsZero() {
-					// A persisted final row already completed landing; only its ack can
-					// remain after a crash between settlement and acknowledgement.
-					if remote.Finished && remote.Restored {
-						remote.Settled = true
-						remote.AckPending = true
-						_ = writeRemoteRecord(store, *remote)
-						kept.Remote = remote
-
-					}
-					return
-				}
-				_, _ = a.continueRemoteRun(a.rootContext(), kept)
-				return
-			}
-		}
+	if a.recoverRemoteBeltRun(g, store, &kept, found) {
+		return
 	}
 	if !found || kept.State != TaskInterrupted {
 		return
@@ -288,4 +256,43 @@ func recoveredJoinedRows(g *TaskGraph, parent uint64) []uint64 {
 		}
 	}
 	return ids
+}
+
+// Remote recovery follows the authoritative sidecar and never starts another worker.
+func (a *Agent) recoverRemoteBeltRun(g *TaskGraph, store *plandb.Store, kept *TaskNotice, found bool) bool {
+	if !found {
+		return false
+	}
+	remote := readRemoteRecord(store, kept.Remote)
+	if remote == nil {
+		return false
+	}
+	kept.Remote = remote
+	if remote.Settled && !remote.Abandoned {
+		return true
+	}
+	if remote.Abandoned {
+		return false
+	}
+	if kept.PendingRun != nil && remote.Attempt == "" {
+		a.resumePendingRun(g, *kept)
+		return true
+	}
+	if remote.StartFailed {
+		kept.State = TaskFailed
+		a.publishRunRow(g, *kept)
+		return true
+	}
+	if kept.State.settled() && kept.State != TaskInterrupted && !kept.EndedAt.IsZero() {
+		// A persisted final row already completed landing; only its acknowledgement can remain.
+		if remote.Finished && remote.Restored {
+			remote.Settled = true
+			remote.AckPending = true
+			_ = writeRemoteRecord(store, *remote)
+			kept.Remote = remote
+		}
+		return true
+	}
+	_, _ = a.continueRemoteRun(a.rootContext(), *kept)
+	return true
 }

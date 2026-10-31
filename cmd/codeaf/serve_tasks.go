@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -41,12 +42,12 @@ func serveTasks(ctx context.Context, service string) func() {
 	config.Say = func(line string) { fmt.Fprintln(os.Stdout, line) }
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
-	go func() {
+	guard.Go("serve/tasks", func() {
 		defer close(done)
 		if err := taskdoor.Serve(ctx, config); err != nil && ctx.Err() == nil {
 			fmt.Fprintln(os.Stderr, "could not take tasks from your paired computers:", err)
 		}
-	}()
+	})
 	return func() { cancel(); <-done }
 }
 

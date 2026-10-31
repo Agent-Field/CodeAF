@@ -99,6 +99,7 @@ task.min_free_mb
 task.model
 task.parallel
 task.repair_rounds
+task.runs_on
 task.settle
 task.start
 teams.cap_usd_day

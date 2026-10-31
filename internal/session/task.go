@@ -725,10 +725,8 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 		}
 		return bare.Settled(problem, true)
 	}
-	if spec.computer != "" {
-		if _, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false); err != nil {
-			return bare.Settled(err.Error(), true)
-		}
+	if err := a.checkProposedTaskComputer(ctx, spec); err != nil {
+		return bare.Settled(err.Error(), true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
 	// program the person named, a trivial ask and a depends_on that can never
@@ -985,7 +983,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		return runDidNotStart(p.id, err), true, true
 	}
 
-	if !(bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")) || chatRunEngine == nil || a.config.InTask {
+	if !a.proposalUsesRunRoad(spec) {
 		return "", false, false
 	}
 	a.mu.Lock()
@@ -1017,10 +1015,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
 	ctx = withTaskPlacement(ctx, placement)
 	elsewhere = withReport(elsewhere, placement.sentence)
-	description := proposalBrief(spec, via)
-	if placement.computer != nil && len(spec.checks) > 0 {
-		description += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
-	}
+	description := proposalRunDescription(spec, via, placement)
 	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
 	// This context is the turn's, and the turn cancels it on its way out
 	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
@@ -1880,4 +1875,27 @@ func (a *Agent) admitWorkspaceProposal(ctx context.Context, stand taskStand, spe
 }
 func singletonRunFallback(err error, stand taskStand) bool {
 	return stand.workspaceSet == nil && errors.Is(err, errRunRoadUnavailable)
+}
+
+// Placement validation precedes the proposal card without adding roster work to local proposals.
+func (a *Agent) checkProposedTaskComputer(ctx context.Context, spec taskSpec) error {
+	if spec.computer == "" {
+		return nil
+	}
+	_, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false)
+	return err
+}
+
+// The run road keeps the existing fallback condition and short-circuit order.
+func (a *Agent) proposalUsesRunRoad(spec taskSpec) bool {
+	return (bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")) && chatRunEngine != nil && !a.config.InTask
+}
+
+// Checks belong only in the instruction transported to another computer.
+func proposalRunDescription(spec taskSpec, via *delegate.Delegate, placement taskPlacement) string {
+	description := proposalBrief(spec, via)
+	if placement.computer != nil && len(spec.checks) > 0 {
+		description += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
+	}
+	return description
 }

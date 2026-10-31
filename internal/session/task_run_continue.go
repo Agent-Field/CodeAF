@@ -50,7 +50,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		return "", errRunRoadUnavailable
 	}
 
-	if kept, found := runRowOf(g, row); found && kept.Remote != nil && !kept.Remote.Abandoned {
+	if kept, remote := remoteRowToContinue(g, row); remote {
 		return a.continueRemoteRun(ctx, kept)
 	}
 	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the start lock, held
@@ -65,11 +65,8 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	a.beltMu.Lock()
 	live := a.beltRun
 	a.beltMu.Unlock()
-	if live != nil {
-		if live.row == row {
-			return "", fmt.Errorf("%s is already running", taskStopName(row, live.title))
-		}
-		return "", fmt.Errorf("%s is running, and a conversation drives one run at a time", taskStopName(row, live.title))
+	if err := liveContinueRefusal(live, row); err != nil {
+		return "", err
 	}
 
 	kept, found := runRowOf(g, row)
@@ -152,4 +149,21 @@ func runRowOf(g *TaskGraph, row uint64) (TaskNotice, bool) {
 		}
 	}
 	return TaskNotice{}, false
+}
+
+// Remote rows return to their saved executor before local continuation takes the start lock.
+func remoteRowToContinue(g *TaskGraph, row uint64) (TaskNotice, bool) {
+	kept, found := runRowOf(g, row)
+	return kept, found && kept.Remote != nil && !kept.Remote.Abandoned
+}
+
+// A live run is refused in the same words whether it is this row or another one.
+func liveContinueRefusal(live *beltRun, row uint64) error {
+	if live == nil {
+		return nil
+	}
+	if live.row == row {
+		return fmt.Errorf("%s is already running", taskStopName(row, live.title))
+	}
+	return fmt.Errorf("%s is running, and a conversation drives one run at a time", taskStopName(row, live.title))
 }

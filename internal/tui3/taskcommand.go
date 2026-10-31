@@ -236,14 +236,20 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	}
 	if computer != "" {
 		solo = solo || config.TaskStartAt(a.profileDir) == config.TaskStartSingle
-		file := a.file
-		return a.startTaskDoorVia(brief, func(ctx context.Context) (uint64, string, string, error) {
+		file, ctx := a.file, a.ctx
+		conv := a.taskCopyDoorNotes(brief)
+		return a.offLoop(func() func(bool) tea.Cmd {
+			var id uint64
+			var title, note string
+			var err error
 			if bound, ok := onDoor.(interface {
 				StartTaskOnIn(context.Context, string, bool, string, string, string) (uint64, string, string, error)
 			}); ok {
-				return bound.StartTaskOnIn(ctx, brief, solo, computer, effort, file)
+				id, title, note, err = bound.StartTaskOnIn(ctx, brief, solo, computer, effort, file)
+			} else {
+				id, title, note, err = onDoor.StartTaskOn(ctx, brief, solo, computer, effort)
 			}
-			return onDoor.StartTaskOn(ctx, brief, solo, computer, effort)
+			return foldTaskStarted(taskStartedMsg{kind: "single", id: strconv.FormatUint(id, 10), title: title, note: note, err: err, brief: brief, conv: conv})
 		})
 	}
 	if effort != "" {

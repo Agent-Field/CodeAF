@@ -606,23 +606,9 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			return false, err
 		}
 	}
-	placement := taskPlacementOf(ctx)
-	if _, resolved := ctx.Value(taskPlacementKey{}).(taskPlacement); !resolved {
-		placement, err = a.resolveTaskComputer(ctx, "", stand, "", via != nil)
-		if err != nil {
-			return false, err
-		}
-		ctx = withTaskPlacement(ctx, placement)
-	}
-	if placement.computer != nil {
-		remote, remoteErr := a.config.TaskComputers.Engine(ctx, placement.computer.Device)
-		if remoteErr != nil {
-			return false, remoteErr
-		}
-		if remote == nil {
-			return false, errors.New("this computer cannot run that task elsewhere right now")
-		}
-		engine = remote
+	ctx, engine, err = a.placeTaskRunEngine(ctx, engine, stand, via != nil)
+	if err != nil {
+		return false, err
 	}
 	path := g.planPath()
 	storeID := strconv.FormatUint(id, 10)
@@ -958,19 +944,9 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 		}
 		over := live.over
 		if !live.ending && !live.closing && !live.stopped {
-			// Remote attempts have a frozen instruction; the wire has no add-work verb.
-			// Refuse any join involving one instead of losing a joined obligation.
-			if live.remoteEngine != nil || taskPlacementOf(ctx).computer != nil {
-				a.beltMu.Unlock()
-				return nil, errRemotePlacementBusy
-			}
-			if refusal := programJoinRefusal(via, live); refusal != nil {
+			if refusal := taskRunJoinRefusal(ctx, stand, via, live); refusal != nil {
 				a.beltMu.Unlock()
 				return nil, refusal
-			}
-			if !stand.sharesWorkspace(live) {
-				a.beltMu.Unlock()
-				return nil, standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
 			}
 			_, err := live.store.AddMany([]plandb.TaskSpec{{
 				ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies, Model: crewWishOf(ctx).worker,
@@ -2018,19 +1994,11 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		spec.OnCharge = fold.charge
 	}
 	spec = a.remoteBeltSpec(run, spec)
-	var summary RunSummary
-	if run.remoteResume {
-		summary = run.remoteEngine.Resume(ctx, spec)
-	} else {
-		summary = startRunWithTaskStorageProof(ctx, engine, spec)
-	}
+	summary := startPlacedBeltRun(ctx, engine, run, spec)
 	if run.remoteEngine != nil {
 		engine = chatRunEngine
 	}
-	run.remoteMu.Lock()
-	abandoned := run.remote != nil && run.remote.Abandoned
-	run.remoteMu.Unlock()
-	if abandoned {
+	if run.remoteAbandoned() {
 		a.releaseBeltRun(run)
 		return
 	}
@@ -2043,21 +2011,9 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	// to be over instead of joining it ([Agent.joinOrWait]). The run is cleared
 	// off the Agent and its waiters released on every road out of here, which is
 	// what the deferred release says once.
-	a.beltMu.Lock()
-	run.ended, run.spent = a.taskClockNow(), summary.USD
-	if run.remoteEngine != nil && summary.Outcome == "stopped" {
-		run.stopped = true
-	}
-	run.ending = true
-	closing := run.closing
-	a.beltMu.Unlock()
+	closing := a.markBeltRunEnding(run, summary)
 	defer a.releaseBeltRun(run)
-	if !summary.KeepCopy && run.remoteEngine == nil {
-		defer a.parkBeltRunStorage(run, summary)
-	}
-	if run.remoteEngine != nil && !summary.KeepCopy {
-		defer a.ackRemoteRun(run)
-	}
+	defer a.finishBeltRunStorage(run, summary)
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
 	if run.remoteEngine == nil {
@@ -2072,32 +2028,31 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	if run.cut != nil {
 		defer run.cut()
 	}
-	if closing && run.remoteEngine != nil {
-		run.remoteMu.Lock()
-		finished := run.remote != nil && run.remote.Finished
-		run.remoteMu.Unlock()
-		if !finished {
-			return
-		}
+	if run.remoteWaitingOnClose(closing) {
+		return
 	}
 	if a.settleBeltStopIfNeeded(run, summary) {
 		return
 	}
-
-	if closing && run.delegate == nil && summary.Outcome != beltRunOutcomeDone {
-		// THE CONVERSATION CLOSED UNDER THE RUN, AND THAT IS NOBODY'S ENDING. The
-		// run is not landed, its row is not settled and nothing is written on its
-		// record: it is work nothing is driving any more, every step of it is in
-		// its store, and the row read back tomorrow says so in the one word for
-		// it ([TaskInterrupted]). Landing it here put the work into the folder of
-		// a person who had closed the window on it, and settling the row said
-		// `failed` about work that had not failed.
-		//
-		// A PROGRAM'S RUN IS THE EXCEPTION: [Agent.cutBeltRun] already wrote its
-		// ending, nothing can carry it on, and its folder is finished on its own
-		// branch below — never merged into the person's.
+	// THE CONVERSATION CLOSED UNDER THE RUN, AND THAT IS NOBODY'S ENDING. The
+	// run is not landed, its row is not settled and nothing is written on its
+	// record: it is work nothing is driving any more, every step of it is in
+	// its store, and the row read back tomorrow says so in the one word for
+	// it ([TaskInterrupted]). Landing it here put the work into the folder of
+	// a person who had closed the window on it, and settling the row said
+	// `failed` about work that had not failed.
+	//
+	// A PROGRAM'S RUN IS THE EXCEPTION: [Agent.cutBeltRun] already wrote its
+	// ending, nothing can carry it on, and its folder is finished on its own
+	// branch below — never merged into the person's.
+	if beltRunLeavesUnlanded(closing, run, summary) {
 		return
 	}
+	a.completeBeltRun(ctx, engine, run, summary)
+}
+
+// Completion keeps landing, the final summary and the outcome note in their original order.
+func (a *Agent) completeBeltRun(ctx context.Context, engine RunEngine, run *beltRun, summary RunSummary) {
 	var landing RunLanding
 	if summary.KeepCopy {
 		// Refusing a transfer leaves the copy ready, not the plan still running.
@@ -2144,6 +2099,44 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		outcome = router.CrewAccepted
 	}
 	a.settleTaskCrew(run.row, outcome, run.crew.taskSpent(summary.USD))
+}
+
+// Resuming a placed run only watches; ordinary starts retain their storage proof.
+func startPlacedBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) RunSummary {
+	if run.remoteResume {
+		return run.remoteEngine.Resume(ctx, spec)
+	}
+	return startRunWithTaskStorageProof(ctx, engine, spec)
+}
+
+// The engine's return is the end of work, before landing and its summary calls.
+func (a *Agent) markBeltRunEnding(run *beltRun, summary RunSummary) bool {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	run.ended, run.spent = a.taskClockNow(), summary.USD
+	if run.remoteEngine != nil && summary.Outcome == "stopped" {
+		run.stopped = true
+	}
+	run.ending = true
+	return run.closing
+}
+
+// Storage settlement remains between cancellation and releasing the run's waiting callers.
+func (a *Agent) finishBeltRunStorage(run *beltRun, summary RunSummary) {
+	if summary.KeepCopy {
+		return
+	}
+	if run.remoteEngine == nil {
+		a.parkBeltRunStorage(run, summary)
+	} else {
+		a.ackRemoteRun(run)
+	}
+}
+
+// Closing a conversation leaves unfinished ordinary work available for continuation.
+// Programs keep their existing terminal receipt because their own invocation cannot resume.
+func beltRunLeavesUnlanded(closing bool, run *beltRun, summary RunSummary) bool {
+	return closing && run.delegate == nil && summary.Outcome != beltRunOutcomeDone
 }
 
 // finishBeltRunLanding settles the isolated work before its receipt is published.
@@ -2584,27 +2577,7 @@ func cancelledByRunEnding(store *plandb.Store, id uint64) bool {
 // the row and the conversation's note are built from, so the two cannot name
 // two different endings.
 func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLanding) TaskNotice {
-	state := TaskDone
-	if summary.Outcome != beltRunOutcomeDone {
-		state = TaskFailed
-	}
-	outcome, result := runEndingWords(summary)
-	report := result
-	if summary.Outcome != beltRunOutcomeDone {
-		if summary.Program != nil {
-			// THE PROGRAM'S OWN SENTENCE LEADS, and its account follows: the
-			// reason line a surface draws is the report's first line.
-			report = strings.TrimSpace(outcome + "\n" + result)
-		} else if report == "" {
-			report = outcome
-		}
-	}
-	if line := beltLandingLine(landing); line != "" {
-		if report != "" {
-			report += "\n"
-		}
-		report += line
-	}
+	state, report := beltRunResultWords(summary, landing)
 	if run.remoteEngine != nil && summary.NeedsDecision {
 		state = TaskUnverified
 	}
@@ -2880,4 +2853,44 @@ func (tree taskTree) workerWorkspaceURI() string {
 
 func (stand taskStand) sharesWorkspace(live *beltRun) bool {
 	return canonicalPath(stand.dir) == live.ground && sameWorkspaceSetRequest(stand.workspaceSet, live.stand.workspaceSet)
+}
+
+// The result's words are composed before executor and crew metadata are attached.
+func beltRunResultWords(summary RunSummary, landing RunLanding) (TaskState, string) {
+	state := TaskDone
+	if summary.Outcome != beltRunOutcomeDone {
+		state = TaskFailed
+	}
+	outcome, result := runEndingWords(summary)
+	report := result
+	if summary.Outcome != beltRunOutcomeDone {
+		if summary.Program != nil {
+			// THE PROGRAM'S OWN SENTENCE LEADS, and its account follows: the
+			// reason line a surface draws is the report's first line.
+			report = strings.TrimSpace(outcome + "\n" + result)
+		} else if report == "" {
+			report = outcome
+		}
+	}
+	if line := beltLandingLine(landing); line != "" {
+		if report != "" {
+			report += "\n"
+		}
+		report += line
+	}
+	return state, report
+}
+
+// A remote instruction is frozen, and a program or a different ground cannot join it.
+func taskRunJoinRefusal(ctx context.Context, stand taskStand, via *delegate.Delegate, live *beltRun) error {
+	if live.remoteEngine != nil || taskPlacementOf(ctx).computer != nil {
+		return errRemotePlacementBusy
+	}
+	if refusal := programJoinRefusal(via, live); refusal != nil {
+		return refusal
+	}
+	if !stand.sharesWorkspace(live) {
+		return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
+	}
+	return nil
 }
