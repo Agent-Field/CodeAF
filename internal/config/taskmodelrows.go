@@ -106,7 +106,10 @@ type TaskModelsState struct {
 	One        *CrewPin
 	OneWarning string
 	Roles      map[crewroute.Seat]TaskModelRole
-	Providers  []TaskModelProvider
+	// Auxiliary is the small-jobs model ([TaskAuxiliaryPinAt]): no Pin while
+	// the build's own default answers.
+	Auxiliary TaskModelRole
+	Providers []TaskModelProvider
 }
 
 // ErrTaskModelsRead is a read that could not finish inside its context.
@@ -329,7 +332,7 @@ func taskModelProviders(profileDir string, rows []TaskModelRow, health crewHealt
 // any of them does. THE CAPS ARE NOT AMONG THEM: they are the Spending
 // settings' rows, and a budget change is not a change to the task models.
 func taskModelsKeys() []string {
-	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne,
+	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne, KeyTierLowModel,
 		legacyKeyCrew, legacyKeyCrewPick, legacyKeyCrewSource}
 	for _, seat := range crewroute.Seats {
 		keys = append(keys, tierKeyFor(CrewSeatTier(seat)), crewRouteKey(seat))
@@ -435,8 +438,47 @@ func taskModelsOnce(ctx context.Context, profileDir, revision string) (TaskModel
 		}
 		state.Roles[seat] = role
 	}
+	state.Auxiliary = taskAuxiliaryRole(profileDir, providers, rows, &rule, health)
 	state.Providers = taskModelProviders(profileDir, rows, health)
 	return state, rows, nil
+}
+
+// TaskAuxiliaryPinAt is the small-jobs model a person chose, read off the
+// small-work tier row, with the provider whose route it is sent through.
+// False while the row is unset or `auto`, when the build's own default
+// ([DefaultLowModel]) answers.
+func TaskAuxiliaryPinAt(profileDir string) (CrewPin, bool) {
+	written, held := persistedString(profileDir, KeyTierLowModel)
+	if !held {
+		return CrewPin{}, false
+	}
+	pin, auto, err := ParseCrewPin(written)
+	if auto || err != nil {
+		return CrewPin{}, false
+	}
+	if pin.Provider == "" {
+		pin.Provider = resolveCrewPin(pin, CrewProvidersAt(profileDir)).Provider
+	}
+	return pin, true
+}
+
+// taskAuxiliaryRole is the small-jobs role as the task models read it: its
+// pin, a warning on the pin as every role pin carries one, and how many
+// available models it could be pinned to.
+func taskAuxiliaryRole(profileDir string, providers []CrewProvider, rows []TaskModelRow, rule *crewroute.Allowed, health crewHealth) TaskModelRole {
+	role := TaskModelRole{}
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if row.Available && !seen[crewroute.Lineage(row.Model.ID)] {
+			seen[crewroute.Lineage(row.Model.ID)] = true
+			role.Eligible++
+		}
+	}
+	if pin, ok := TaskAuxiliaryPinAt(profileDir); ok {
+		role.Pin = &pin
+		role.Warning = taskPinWarning(providers, rows, pin, rule, health)
+	}
+	return role
 }
 
 // taskPinWarning is what is wrong with a saved pin, or nothing. A rule is
@@ -493,6 +535,10 @@ type TaskModelsChange struct {
 	// person picked from never refuses its own entry; the rows still spell a
 	// model they do hold.
 	Served func(model, provider string) (string, bool)
+	// AuxiliarySet says the change names the small-jobs model: Auxiliary is
+	// the model, or nil for the build's own default.
+	AuxiliarySet bool
+	Auxiliary    *CrewPin
 }
 
 // TaskModelTick is one row ticked or unticked.
@@ -625,6 +671,23 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 		values[tier], values[route] = pin.Model, removeProfileKey
 		if pin.Provider != "" {
 			values[route] = pin.String()
+		}
+	}
+	if change.AuxiliarySet {
+		values[KeyTierLowModel] = removeProfileKey
+		if ref := change.Auxiliary; ref != nil {
+			pin, err := taskModelsPin(rows, providers, change.Served, *ref, "the auxiliary pin")
+			if err != nil {
+				return nil, err
+			}
+			route := resolveCrewPin(pin, providers)
+			if !crewPinAdmitted(rule, pin.Model, route.Provider) {
+				return nil, refuse("%s is not allowed on %s · allow it before pinning it", pin.Model, taskProviderName(providers, route.Provider))
+			}
+			// THE ROW HOLDS THE MODEL AS IT IS SENT, because every reader of a
+			// tier row sends what it reads; the provider is read back from the
+			// route that send takes ([TaskAuxiliaryPinAt]).
+			values[KeyTierLowModel] = route.Send
 		}
 	}
 	if pinned || values[KeyCrewAllowed] != nil {

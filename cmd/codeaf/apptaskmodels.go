@@ -83,15 +83,16 @@ func (b *appBackend) taskModelsWire(profile string, state config.TaskModelsState
 		out.OneModel = &appwire.ModelRef{ID: state.One.Model, Provider: state.One.Provider}
 		out.OneModelWarning = wireWord(state.OneWarning)
 	}
-	role := func(seat crewroute.Seat) appwire.TaskModelRole {
-		r := state.Roles[seat]
+	view := func(r config.TaskModelRole) appwire.TaskModelRole {
 		view := appwire.TaskModelRole{Warning: wireWord(r.Warning), EligibleCount: r.Eligible}
 		if r.Pin != nil {
 			view.Pin = &appwire.ModelRef{ID: r.Pin.Model, Provider: r.Pin.Provider}
 		}
 		return view
 	}
-	out.Roles = appwire.TaskModelRoles{Worker: role(crewroute.Worker), Planner: role(crewroute.Planner), Checker: role(crewroute.Checker)}
+	auxiliary := view(state.Auxiliary)
+	out.Roles = appwire.TaskModelRoles{Worker: view(state.Roles[crewroute.Worker]), Planner: view(state.Roles[crewroute.Planner]),
+		Checker: view(state.Roles[crewroute.Checker]), Auxiliary: &auxiliary}
 	sources := config.ResolveSources(profile, config.APIKeyAt(profile), config.DefaultBaseURL)
 	for _, p := range state.Providers {
 		view := appwire.TaskModelsProvider{
@@ -246,6 +247,13 @@ func (b *appBackend) SetTaskModels(p appwire.TaskModelsPatch) (appwire.TaskModel
 	if p.Pins != nil {
 		change.Pins = map[crewroute.Seat]*config.CrewPin{}
 		for role, ref := range p.Pins {
+			if role == appwire.RoleAuxiliary {
+				change.AuxiliarySet = true
+				if ref != nil {
+					change.Auxiliary = &config.CrewPin{Model: ref.ID, Provider: ref.Provider}
+				}
+				continue
+			}
 			if ref == nil {
 				change.Pins[crewroute.Seat(role)] = nil
 				continue
