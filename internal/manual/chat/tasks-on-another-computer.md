@@ -77,14 +77,19 @@ to this chat and task on this computer too.
 
 ## Models without thinking on the other computer
 
-A task sent to another computer uses that computer's saved model catalog.
-When the model's published supported parameters exclude reasoning, its task
-worker sends no reasoning effort. The worker reads already available catalog
-rows; it does not fetch a catalog to make this choice. If the model's supported
-parameters are unknown, its existing effort behavior stays in place.
+A task worker on the other computer asks for `low` effort unless a task
+choice sets another level. When its saved catalog row lists supported
+parameters without reasoning, it sends no reasoning effort.
 
-This applies to tasks sent to that computer. Plain `codeaf do` still sends
-its chosen effort.
+A stock local Ollama row may list no parameters. If the model answers the
+effort with `does not support thinking` (or `does not support reasoning`), the
+task worker sends the same request again once without effort or a thinking
+budget. Later calls through that task's client omit them too. This stays
+within that client; other tasks and processes learn nothing from the refusal.
+The worker reads available catalog rows without fetching a catalog for this
+choice.
+
+Plain `codeaf do` and chat keep their existing effort and refusal behavior.
 
 ## My other computer stopped answering
 

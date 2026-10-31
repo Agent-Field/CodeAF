@@ -18,9 +18,12 @@ task copies on. A computer that stops answering is shown as possibly still
 working with `run it here`; nothing re-runs by itself, and an abandoned
 attempt's late result never lands. Only a task that works in its own copy can
 go, both ends must be Linux or macOS, and a remote task runs alone in its
-conversation. Every list that shows the task says running on or ran on the
-computer, and a task worker there sends no reasoning effort to a model whose
-saved catalog row lists no reasoning.
+conversation. Task cards and landing notices, the task rail, Background work's
+result row, `/history` task rows and task pages name the recorded computer;
+the initial start receipt does not, and Home has no task row. A task worker
+there omits effort when its catalog excludes reasoning, or retries once
+without effort and remembers that choice in its client when an unknown model
+explicitly refuses thinking. Plain `codeaf do` and chat keep their behavior.
 
 Everything is opt-in. With defaults left alone, pairing adds no relay traffic,
 and a local task's brief, records, the proposal card and the model's tool are

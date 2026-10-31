@@ -3772,6 +3772,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			// for this model, and a task must not wait for catalog discovery.
 			build := newClient
 			newClient = func(settings config.Config, model string) (*liveClient, error) {
+				settings.DropRefusedEffort = true
 				service, _ := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL).For(model)
 				if strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
 					settings.Models = sharedCatalog(settings).SnapshotNow()

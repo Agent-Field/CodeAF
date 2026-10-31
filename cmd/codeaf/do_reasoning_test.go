@@ -120,6 +120,12 @@ func noReasoningDoRequests(t *testing.T, taskChild, direct bool) []map[string]js
 	var stdout, stderr strings.Builder
 	request := doRequest{task: "write out.txt", workspace: t.TempDir(), asJSON: true, model: model, planModel: model, checkModel: model,
 		timeout: 30 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr}
+	request.newClient = func(settings config.Config, model string) (*liveClient, error) {
+		if got := settings.ClientConfig(model).DropRefusedEffort; got != taskChild {
+			t.Errorf("refused-effort repair = %v, task child = %v", got, taskChild)
+		}
+		return newLiveClient(settings, model)
+	}
 	if taskChild {
 		attempt := t.TempDir()
 		request.runStore = filepath.Join(attempt, "run")
