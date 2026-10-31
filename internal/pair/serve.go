@@ -119,13 +119,21 @@ func (h *Host) say(line string) {
 }
 
 func (h *Host) banner(name string, code *Code, codeErr error) string {
-	if h.DisplayName != "" {
-		name = h.DisplayName + " (" + name + ")"
-	}
+	var line string
 	if codeErr == nil {
-		return strings.TrimRight(Lines(name, code), "\n")
+		line = strings.TrimRight(Lines(name, code), "\n")
+	} else {
+		line = "  this machine is reachable as  " + name
 	}
-	return "  this machine is reachable as  " + name
+	if h.DisplayName != "" {
+		// A device name is only a hint; instructions must keep the machine name.
+		first, rest, more := strings.Cut(line, "\n")
+		line = first + " (" + h.DisplayName + ")"
+		if more {
+			line += "\n" + rest
+		}
+	}
+	return line
 }
 
 func (h *Host) sayBanner(line string, force bool) {

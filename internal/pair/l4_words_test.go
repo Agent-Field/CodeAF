@@ -2,9 +2,12 @@ package pair
 
 import (
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/wireauth"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // L4-H1a: every instruction uses the selected sync service, even without a flag.
@@ -46,11 +49,42 @@ func TestL4PairCompletionVoice(t *testing.T) {
 	}
 }
 
-// L4-M1a: serving retains its rendezvous name beside the familiar device name.
+// L4-M1a, L4-FIX5-a: the first serving name is accepted by --at; the device name is a hint.
 func TestL4ServeUsesDeviceName(t *testing.T) {
-	h := Host{DisplayName: "desk-b"}
-	got := h.banner("seagull-lichen-63", nil, ErrOffering)
-	if !strings.Contains(got, "this machine is reachable as  desk-b (seagull-lichen-63)") {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv(RelayEnv, "")
+	const name = "seagull-lichen-63"
+	for _, display := range []string{"desk-b", ""} {
+		for _, codeErr := range []error{nil, ErrOffering} {
+			h := Host{DisplayName: display}
+			code := &Code{digits: "715302"}
+			got := h.banner(name, code, codeErr)
+			first, rest, _ := strings.Cut(got, "\n")
+			want := "  this machine is reachable as  " + name
+			if display != "" {
+				want += " (desk-b)"
+			}
+			if first != want {
+				t.Errorf("display=%q, code error=%v: first line %q; want %q", display, codeErr, first, want)
+			}
+			target := strings.Fields(first)[5]
+			if !relay.ValidName(target) {
+				t.Errorf("first name %q cannot be used with --at", target)
+				continue
+			}
+			if codeErr == nil {
+				_, plain, _ := strings.Cut(strings.TrimRight(Lines(name, code), "\n"), "\n")
+				if rest != plain {
+					t.Errorf("instructions changed with the hint: %q; want %q", rest, plain)
+				}
+			}
+			reach := Reach{Name: target, Machines: BookAt(filepath.Join(t.TempDir(), "machines.json"))}
+			if _, err := reach.Open(t.Context()); err == nil || err.Error() != NoRelay(name).Error() {
+				t.Errorf("--at %s should pass the shape check and reach the no-service check: %v", target, err)
+			}
+		}
+	}
+	if got := BackLine(name); got != "back — reachable as seagull-lichen-63 again" {
 		t.Fatal(got)
 	}
 }

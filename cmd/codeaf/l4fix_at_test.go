@@ -18,7 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
-// L4-G6: The actual --at door carries the welcome's chosen name into the window and its other conversations.
+// L4-G6, L4-FIX5-a: the banner's first name opens --at, whose window keeps the chosen device name.
 func TestL4FixAtWindowUsesDeviceName(t *testing.T) {
 	h := t.TempDir()
 	t.Setenv("CODEAF_HOME", h)
@@ -48,9 +48,14 @@ func TestL4FixAtWindowUsesDeviceName(t *testing.T) {
 	pipes := make(chan io.ReadWriteCloser, 1)
 	ready := make(chan struct{})
 	var once sync.Once
+	var target string
 	host := &pair.Host{Service: server.URL, Device: machine, DisplayName: "desk-b", Devices: devices, Desk: &pair.Desk{}, Say: func(line string) {
 		if strings.Contains(line, "reachable as") {
-			once.Do(func() { close(ready) })
+			once.Do(func() {
+				first, _, _ := strings.Cut(line, "\n")
+				target = strings.Fields(first)[5]
+				close(ready)
+			})
 		}
 	}, Open: func(pipe io.ReadWriteCloser) {
 		pipes <- pipe
@@ -64,6 +69,9 @@ func TestL4FixAtWindowUsesDeviceName(t *testing.T) {
 	go func() { done <- host.Run(ctx) }()
 	defer func() { cancel(); <-done }()
 	<-ready
+	if !relay.ValidName(target) || target != machine.Name() {
+		t.Fatalf("serve's first name %q cannot select the serving machine %q", target, machine.Name())
+	}
 	old := runSurfaceProgram
 	defer func() { runSurfaceProgram = old }()
 	visited := false
@@ -82,7 +90,7 @@ func TestL4FixAtWindowUsesDeviceName(t *testing.T) {
 		}
 		return nil
 	}
-	if err := openChatV3At(atLaunch{target: machine.Name()}); err != nil {
+	if err := openChatV3At(atLaunch{target: target}); err != nil {
 		t.Fatal(err)
 	}
 	stopFinalSaveProgress()
