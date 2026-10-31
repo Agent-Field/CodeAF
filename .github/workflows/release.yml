@@ -189,7 +189,8 @@ jobs:
           fi
           test_args=()
           [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
-          go test "${test_args[@]}" \
+          # Bash 3.2 treats an empty array as unbound under nounset, so expand it conditionally.
+          go test ${test_args[@]+"${test_args[@]}"} \
             ./cmd/codeaf \
             ./internal/config \
             ./internal/exec/... \

@@ -106,7 +106,7 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 		`if [ -s .github/known-red.txt ]; then`,
 		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"`,
 		`test_args=()`,
-		`go test "${test_args[@]}"`,
+		`go test ${test_args[@]+"${test_args[@]}"}`,
 	} {
 		if !strings.Contains(workflow, source) {
 			t.Errorf("the release-surface test is not safe for an empty or absent known-red ledger: missing %q", source)
@@ -183,7 +183,7 @@ func releaseSurfacePrologue(t *testing.T) string {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "go test ") {
-			script = append(script, `printf 'ARG:%s\n' "${test_args[@]}"`)
+			script = append(script, `printf 'ARG:%s\n' ${test_args[@]+"${test_args[@]}"}`)
 			return strings.Join(script, "\n") + "\n"
 		}
 		script = append(script, trimmed)
