@@ -1126,6 +1126,19 @@ var OperatorEnvPins = []string{
 	// line. Plumbing rather than a row for the plainest reason there is: a row
 	// would persist a preference this binary cannot act on.
 	"CODEAF_INSTALL_NAME",
+	// The dev box's one-time setup values (internal/devbox). They are service
+	// variables Terraform hands the box's boot script for its first join, and
+	// codeaf never reads them from its own environment: Go spells them only to
+	// find them in the Terraform state and remove them once the box answers. A
+	// row would persist a pairing code and a private key, so plumbing.
+	"CODEAF_DEVBOX_CODE",
+	"CODEAF_DEVBOX_REMOTE_KEY",
+	"CODEAF_DEVBOX_REMOTE_DEVICES",
+	// CODEAF_SERVE_SYNC asks `codeaf serve` to keep the identity's saved keys,
+	// settings and presence in step (internal/syncsetup). A dev box's boot
+	// script sets it for the one process it starts; it is one launch's posture
+	// rather than a preference, so plumbing, like CODEAF_NO_AUTOMATIONS.
+	"CODEAF_SERVE_SYNC",
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,
