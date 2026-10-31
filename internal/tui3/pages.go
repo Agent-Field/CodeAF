@@ -1368,8 +1368,8 @@ func placeFrameWithBar(a *app, width, height int,
 		fallthrough
 	default:
 		if homeMessage != "" {
-			add(homeMessage, nil)
-			add(a.homeFootLine(width, pal), nil)
+			add(a.creditPlaceMessage(width, homeMessage, pal), nil)
+			add(a.homeFootWithWarning(width, pal, ""), nil)
 		} else if msg, ok := a.placeMsgLine(width); ok {
 			add(a.creditPlaceMessage(width, msg, pal), nil)
 		} else if hasBox {
