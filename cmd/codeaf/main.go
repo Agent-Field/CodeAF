@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -194,6 +195,7 @@ func surfaceProcs(ncpu int) int {
 // one calm sentence over a restored terminal instead of spilling a goroutine
 // dump across the screen the user was working in.
 func execute() (code int) {
+	prepareFinalReport()
 	// Every CLI door shares this exit, including verbs with no session to close.
 	// C28 requires their grouped call and turn records to reach disk too.
 	defer func() {
@@ -610,7 +612,7 @@ Housekeeping — changes state on disk or on the network
   codeaf pair [--via url] [--name name]
       add this device to yours: shows a link to approve from one you use
   codeaf pair approve <link-or-code> | <code> [--replace] | --code
-      approve a new device; or use or show a six-digit code for your chats
+      approve a device; or use or show a code such as ` + pair.ExampleChatCode + ` for your chats
   codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
       an always-on computer of yours on your own Railway account
   codeaf serve [--workspace path] [--via url] [--take-tasks]
@@ -740,6 +742,8 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_PREAUTHORIZE_SPEND
                        1 spends past the day's limit without stopping a
                        headless run to ask
+  CODEAF_SYNC_URL      sync service for your chats; off disables syncing
+  CODEAF_RELAY         sync service override for pairing and remote connections
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.

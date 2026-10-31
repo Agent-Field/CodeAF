@@ -340,6 +340,12 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	// The removal question consumes its answer whole, including cancellation chords.
+	if c := a.openDevicesCard(); c != nil && c.removing != nil {
+		cmd, _ := c.key(a, msg.String())
+		a.touch()
+		return cmd
+	}
 	// LEAVING IS NEVER MODAL, and these two rungs are read above the door, so
 	// each of them lets the door's key past: a page that is on its way and a
 	// page that is up both took it, and on an engine that never answered the
@@ -1486,6 +1492,13 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 	}
 	if cmd, took := a.takePairLink(); took {
 		return cmd
+	}
+	// A known link refusal is checked before any draft, attachment or recall is spent.
+	if a.link.SendRefusal != nil && !strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") && (!a.input.empty() || len(a.chips) > 0) {
+		if sentence := a.link.SendRefusal(); sentence != "" {
+			a.note(sentence)
+			return nil
+		}
 	}
 	if a.startingChat() {
 		return a.startChatEnter()

@@ -21,13 +21,14 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // The three lines a pairing shows, kept here so that the code that prints them
 // and the manual page that quotes them cannot drift apart.
 
-// PairingWeight is what a person reads BEFORE they type a code. It is the whole
-// security posture of this feature in one sentence, in a person's words.
+// PairingWeight tells the approver what accepting a device permits, before the
+// decision. That permission belongs beside the choice that grants it.
 //
 // A PAIRED DEVICE IS A HAND ON THAT MACHINE'S TOOLS. Saying so at the moment of
 // the decision is not a disclaimer; it is the only moment at which the sentence
@@ -72,6 +73,9 @@ type Reach struct {
 	AskCode func(name string) (string, error)
 	// Say is where the pairing's own lines go. Nil says nothing.
 	Say func(string)
+	// WeightOnApprover selects the terminal presentation whose approver explains
+	// the permission. Older callback consumers retain their original notice sequence.
+	WeightOnApprover bool
 	// Sync is the relay this device syncs through, used when nothing more
 	// particular names one; see [Relay].
 	Sync string
@@ -168,7 +172,9 @@ func (r Reach) pair(ctx context.Context, service string) (Known, error) {
 	defer func() { _ = stream.Close() }()
 
 	r.say(PairingPreamble(r.Name))
-	r.say(PairingWeight)
+	if !r.WeightOnApprover {
+		r.say(PairingWeight)
+	}
 	typed, err := r.AskCode(r.Name)
 	if err != nil {
 		return Known{}, err
@@ -219,13 +225,13 @@ func (r Reach) dial(ctx context.Context, service string) (io.ReadWriteCloser, er
 	case errors.Is(err, relay.ErrNoMachine):
 		return nil, NotConnected(r.Name)
 	case errors.Is(err, relay.ErrUnreachable):
-		return nil, Unreachable(service)
+		return nil, syncwords.Explain(err, service)
 	case errors.Is(err, relay.ErrNoDoor):
 		return nil, NoDoor(service)
 	case errors.Is(err, relay.ErrTooMany):
 		return nil, Busy()
 	default:
-		return nil, err
+		return nil, syncwords.Explain(err, service)
 	}
 }
 

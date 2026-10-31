@@ -78,7 +78,7 @@ func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 		t.Fatal("--at opened a connection with no relay set up")
 	}
 	said := err.Error()
-	for _, want := range []string{"no service address is set up", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
+	for _, want := range []string{"no sync service is set up on this machine", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("--at with no relay said %q, which does not mention %q", said, want)
 		}
@@ -92,10 +92,13 @@ func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 		t.Fatal("codeaf serve started with no relay set up")
 	}
 	said = err.Error()
-	for _, want := range []string{"no sync address is set up", "CODEAF_RELAY", "--host"} {
+	for _, want := range []string{"no sync service is set up on this machine", "CODEAF_RELAY", "set " + pair.RelayEnv + " to your sync service"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("codeaf serve with no relay said %q, which does not mention %q", said, want)
 		}
+	}
+	if strings.Contains(said, "--host") {
+		t.Fatalf("codeaf serve told this computer to reach itself: %q", said)
 	}
 }
 

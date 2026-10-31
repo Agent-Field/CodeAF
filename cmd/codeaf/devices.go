@@ -10,27 +10,30 @@ package main
 // was. Each kind is a [deviceKind]; the door only knows the interface, so a
 // third kind is one more type and not one more branch.
 //
-// THE EMPTINESS LAW: a kind with nothing in it has no heading, and a machine
-// with nothing of either kind says one sentence ([pair.NoDevices]).
+// A kind with no remote devices has no heading. Before pairing, the local
+// computer's own row is followed by the pairing next step.
 
 import (
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
+	"os"
+	"runtime"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -60,8 +63,19 @@ type allStopper interface {
 // person's, because the person owns both.
 func runDevices(args []string) error {
 	kinds := openDeviceKinds()
+	if len(args) == 0 {
+		defer terminalSyncProgress(syncsetup.Resolve(home.Dir()).URL)()
+		if r := syncsetup.Resolve(home.Dir()); r.On() {
+			fmt.Println(syncwords.ServiceLine(r.URL))
+		}
+	}
 	switch {
 	case len(args) > 0 && args[0] == "revoke":
+		if !askedForHelp(args[1:]) {
+			if err := checkRevokeRosters(kinds); err != nil {
+				return err
+			}
+		}
 		return stopDevice(kinds, args[1:])
 	case len(args) > 0 && args[0] == "rename":
 		return runDevicesRename(args[1:])
@@ -71,11 +85,12 @@ func runDevices(args []string) error {
 		return fmt.Errorf("usage: codeaf devices [revoke <name> [--all] | rename <name>]")
 	}
 	if !cell.Available() {
-		device, err := pair.ThisDevice(pair.OpenKeeper())
+		paired, err := pair.DeviceBook().Devices()
 		if err != nil {
 			return err
 		}
-		paired, err := pair.DeviceBook().Devices()
+		fmt.Print(localDeviceTable(time.Now(), false))
+		device, err := pair.ThisDevice(pair.OpenKeeper())
 		if err != nil {
 			return err
 		}
@@ -87,7 +102,7 @@ func runDevices(args []string) error {
 		fmt.Print(pair.MachinesList(known, time.Now()))
 		return nil
 	}
-	return listDevices(kinds, time.Now())
+	return listDevices(kinds, time.Now(), true)
 }
 
 // revokeDevice stops one remote-access device, or every one answering to one
@@ -109,10 +124,59 @@ func openDeviceKinds() []deviceKind {
 }
 
 // listDevices prints every kind's table, or the one sentence when none has rows.
-func listDevices(kinds []deviceKind, now time.Time) error {
+// The public command opts into local facts without changing roster-only callers.
+func listDevices(kinds []deviceKind, now time.Time, includeLocal ...bool) error {
+	// Read each roster once before rendering so duplicate names across the two
+	// permissions get selectors too, without adding another service request.
+	chats := map[int][]chatsRow{}
+	books := map[int][]pair.Paired{}
+	counts := map[string]int{}
+	for i, kind := range kinds {
+		switch c := kind.(type) {
+		case chatsKind:
+			rows, err := c.rows()
+			if err != nil {
+				return err
+			}
+			chats[i] = rows
+			for _, row := range rows {
+				counts[strings.ToLower(row.baseName)]++
+			}
+		case bookKind:
+			rows, err := c.book.Devices()
+			if err != nil {
+				return err
+			}
+			books[i] = rows
+			for _, row := range rows {
+				counts[strings.ToLower(row.Label)]++
+			}
+		}
+	}
+	duplicates := map[string]bool{}
+	for name, count := range counts {
+		duplicates[name] = count > 1
+	}
 	var tables []string
-	for _, kind := range kinds {
-		table, err := kind.table(now)
+	if len(includeLocal) > 0 && includeLocal[0] && len(chats) == 0 {
+		tables = append(tables, localDeviceTable(now, true))
+	}
+	for i, kind := range kinds {
+		var table string
+		var err error
+		switch c := kind.(type) {
+		case chatsKind:
+			table = chatsRowsTable(chats[i], now, duplicates)
+		case bookKind:
+			var known []pair.Known
+			known, err = pair.Machines()
+			if err == nil {
+				table, err = c.letIn(books[i], now, duplicates)
+				table = strings.TrimLeft(table+pair.MachinesList(known, now), "\n")
+			}
+		default:
+			table, err = kind.table(now)
+		}
 		if err != nil {
 			return err
 		}
@@ -205,15 +269,43 @@ func kindOf(kinds []deviceKind, name string) (deviceKind, error) {
 	var failed error
 	for _, kind := range kinds {
 		n, err := kind.find(name)
-		failed = cmp.Or(failed, err)
+		if err != nil {
+			line := "could not read the device list; nothing was removed — try again"
+			switch kind.(type) {
+			case chatsKind:
+				line = chatsRevokeReadFailure
+			case bookKind:
+				line = accessRevokeReadFailure
+			}
+			failed = cmp.Or(failed, error(toldLine{line: line, err: err}))
+		}
 		if n > 0 {
 			hits = append(hits, kind)
 		}
+	}
+	// Both lists must be known before a selector can authorize a removal.
+	if failed != nil {
+		return nil, failed
 	}
 	switch {
 	case len(hits) == 1:
 		return hits[0], nil
 	case len(hits) > 1:
+		var choices []string
+		for _, kind := range hits {
+			if selector, ok := kind.(interface {
+				selectors(string) ([]string, error)
+			}); ok {
+				picked, err := selector.selectors(name)
+				if err != nil {
+					return nil, err
+				}
+				choices = append(choices, picked...)
+			}
+		}
+		if len(choices) > 0 {
+			return nil, devname.Ambiguous(name, choices)
+		}
 		return nil, fmt.Errorf("more than one device is called %q, so the name cannot pick one — `codeaf devices` lists them", name)
 	case failed != nil:
 		return nil, failed
@@ -247,7 +339,7 @@ func (b bookKind) table(now time.Time) (string, error) {
 
 // letIn is the table of devices let in, or "" when there are none. The machine's
 // own name is only worth saying when there is a device it matters to.
-func (bookKind) letIn(paired []pair.Paired, now time.Time) (string, error) {
+func (bookKind) letIn(paired []pair.Paired, now time.Time, duplicates ...map[string]bool) (string, error) {
 	if len(paired) == 0 {
 		return "", nil
 	}
@@ -255,12 +347,18 @@ func (bookKind) letIn(paired []pair.Paired, now time.Time) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return pair.DevicesList(device.Name(), paired, pair.OpenKeeper(), now), nil
+	return pair.DevicesList(device.Name(), paired, pair.OpenKeeper(), now, duplicates...), nil
 }
 
 func (b bookKind) find(name string) (int, error) {
 	paired, err := b.book.Devices()
-	return countCalled(paired, name, func(p pair.Paired) string { return p.Label }), err
+	count := 0
+	for _, p := range paired {
+		if devname.MatchesDevice(name, p.Label, p.ID()) {
+			count++
+		}
+	}
+	return count, err
 }
 
 func (b bookKind) stop(name string) (string, error) {
@@ -329,7 +427,8 @@ func chatsKindOf(dir directory.Client, cellKey []byte, self, relay string) chats
 // it by.
 type chatsRow struct {
 	pair.ChatsDevice
-	id string
+	id       string
+	baseName string
 }
 
 // listRequestWithin bounds one request to the relay so a silent one cannot hang
@@ -343,13 +442,22 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 	if err != nil {
 		return nil, c.explain(err)
 	}
+	presence, _ := c.dir.Presence(ctx)
 	open := func(sealed string) (string, error) { return directory.OpenName(c.key, sealed) }
 	rows := make([]chatsRow, 0, len(l.Devices))
 	for id, d := range l.Devices {
+		name := chatlist.DeviceName(l.Devices, id, open)
 		rows = append(rows, chatsRow{
-			ChatsDevice: pair.ChatsDevice{Name: chatlist.DeviceName(l.Devices, id, open), This: id == c.self, Stopped: d.Revoked},
+			ChatsDevice: pair.ChatsDevice{Name: name, This: id == c.self, Stopped: d.Revoked, Platform: d.Platform},
 			id:          id,
+			baseName:    name,
 		})
+	}
+	for i := range rows {
+		rows[i].Online = presence.Devices[rows[i].id].Online
+		if seen := l.Devices[rows[i].id].LastSeen; seen > 0 {
+			rows[i].LastSeen = time.UnixMilli(seen)
+		}
 	}
 	// This computer first, removed ones last, then by name: the order the chat's list uses.
 	slices.SortFunc(rows, func(a, b chatsRow) int {
@@ -366,25 +474,60 @@ func rank(b bool) int {
 	return 0
 }
 
-func (c chatsKind) table(time.Time) (string, error) {
+func (c chatsKind) table(now time.Time) (string, error) {
 	rows, err := c.rows()
 	if err != nil {
 		return "", err
 	}
-	// A list of only this computer says nothing a person did not know.
-	if len(rows) == 0 || (len(rows) == 1 && rows[0].This) {
-		return "", nil
+	return chatsRowsTable(rows, now, nil), nil
+}
+
+// chatsRowsTable renders the same snapshot used to decide duplicate selectors.
+func chatsRowsTable(rows []chatsRow, now time.Time, duplicates map[string]bool) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	// Selectors belong to presentation. Roster consumers need the original
+	// name even when a removed computer once used the same name.
+	if duplicates == nil {
+		duplicates = chatNameDuplicates(rows)
 	}
 	shown := make([]pair.ChatsDevice, len(rows))
 	for i, row := range rows {
 		shown[i] = row.ChatsDevice
+		shown[i].Name = devname.DeviceLabel(row.baseName, row.id, duplicates[strings.ToLower(row.baseName)])
 	}
-	return pair.ChatsDevicesList(shown), nil
+	slices.SortStableFunc(shown, func(a, b pair.ChatsDevice) int {
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name))
+	})
+	text := pair.ChatsDevicesListAt(shown, now)
+	if stdinIsTerminal(os.Stdout) {
+		text = strings.Replace(text, "\nremoved\n", "\n\x1b[2mremoved\x1b[0m\n", 1)
+	}
+	return text
 }
 
 func (c chatsKind) called(name string) ([]chatsRow, error) {
 	rows, err := c.rows()
-	return slices.DeleteFunc(rows, func(r chatsRow) bool { return !strings.EqualFold(r.Name, name) }), err
+	duplicates := chatNameDuplicates(rows)
+	for i := range rows {
+		rows[i].Name = devname.DeviceLabel(rows[i].baseName, rows[i].id, duplicates[strings.ToLower(rows[i].baseName)])
+	}
+	return slices.DeleteFunc(rows, func(r chatsRow) bool { return !devname.MatchesDevice(name, r.baseName, r.id) }), err
+}
+
+// chatNameDuplicates keeps list labels and removal receipts on the same selectors.
+func chatNameDuplicates(rows []chatsRow) map[string]bool {
+	duplicates := map[string]bool{}
+	for i, row := range rows {
+		for _, other := range rows[i+1:] {
+			if strings.EqualFold(row.baseName, other.baseName) {
+				duplicates[strings.ToLower(row.baseName)] = true
+				duplicates[strings.ToLower(other.baseName)] = true
+			}
+		}
+	}
+	return duplicates
 }
 
 func (c chatsKind) find(name string) (int, error) {
@@ -398,7 +541,7 @@ func (c chatsKind) stop(name string) (string, error) {
 	case err != nil:
 		return "", err
 	case len(rows) > 1:
-		return "", fmt.Errorf("more than one of your devices is called %q, so the name cannot pick one — `codeaf devices` lists them", name)
+		return "", ambiguousChatDevices(name, rows)
 	case len(rows) == 0:
 		return "", unknownDevice(name)
 	case rows[0].Stopped:
@@ -431,38 +574,83 @@ func (c chatsKind) explain(err error) error {
 	case errors.Is(err, directory.ErrNotFound):
 		return errors.New("that device is not in your list any more — `codeaf devices` shows the ones there are")
 	}
-	return err
+	return explainSyncUnreachable(err, c.relay)
 }
 
 // explainSyncUnreachable keeps network failures in the same words at every
 // command door while preserving the cause for exit handling.
 func explainSyncUnreachable(err error, relay string) error {
-	if errors.Is(err, directory.ErrRevoked) {
-		return err
-	}
+	// A failed request knows the service it used, even if the configured
+	// default changed. Let syncwords read that origin before filling a default.
 	var request *url.Error
-	var network net.Error
-	errors.As(err, &request)
-	errors.As(err, &network)
-	if relay == "" && request != nil {
-		if address, parseErr := url.Parse(request.URL); parseErr == nil {
-			relay = address.Scheme + "://" + address.Host
-		}
+	if relay == "" && !errors.As(err, &request) {
+		relay = syncsetup.Resolve(home.Dir()).URL
 	}
-	if errors.Is(err, context.DeadlineExceeded) || network != nil && network.Timeout() {
-		return pair.ServiceTimeout(err, relay)
-	}
-	var dns *net.DNSError
-	if errors.Is(err, directory.ErrUnreachable) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) || errors.As(err, &dns) {
-		return toldLine{line: fmt.Sprintf("the sync service at %s cannot be reached from here — check this computer's network", relay), err: err}
-	}
-	return err
+	return syncwords.Explain(err, relay)
 }
 
 // explainRemovedDevice gives every command the same removal and recovery words.
 func explainRemovedDevice(err error) error {
 	if errors.Is(err, directory.ErrRevoked) {
-		return toldLine{line: "this device was removed by another of your devices, so it can no longer reach your chats — run `codeaf pair` to bring it back", err: err}
+		return toldLine{line: chatlist.Removed, err: err}
 	}
 	return err
+}
+
+// ambiguousChatDevices lists usable selectors, so the next command can choose one.
+func ambiguousChatDevices(name string, rows []chatsRow) error {
+	choices := make([]string, len(rows))
+	for i, row := range rows {
+		choices[i] = devname.DeviceLabel(row.baseName, row.id, true)
+	}
+	return devname.Ambiguous(name, choices)
+}
+
+func (c chatsKind) selectors(name string) ([]string, error) {
+	rows, err := c.called(name)
+	choices := make([]string, len(rows))
+	for i, row := range rows {
+		choices[i] = devname.DeviceLabel(row.baseName, row.id, true)
+	}
+	return choices, err
+}
+
+func (b bookKind) selectors(name string) ([]string, error) {
+	rows, err := b.book.Devices()
+	var choices []string
+	for _, row := range rows {
+		if devname.MatchesDevice(name, row.Label, row.ID()) {
+			choices = append(choices, devname.DeviceLabel(row.Label, row.ID(), true))
+		}
+	}
+	return choices, err
+}
+
+// localDeviceTable uses only this computer's facts before a shared roster exists.
+func localDeviceTable(now time.Time, canPair bool) string {
+	return pair.ChatsDevicesListAt([]pair.ChatsDevice{{Name: devname.Name(home.Dir()), This: true, Platform: runtime.GOOS}}, now, canPair)
+}
+
+const chatsRevokeReadFailure = "could not read the devices that sync your chats; nothing was removed — try again"
+const accessRevokeReadFailure = "could not read the devices that can use this machine; nothing was removed — try again"
+
+// checkRevokeRosters distinguishes a home with no sync roster from one whose
+// roster setup failed. Quiet display fallbacks cannot authorize a removal.
+func checkRevokeRosters(kinds []deviceKind) error {
+	_, err := identity.Load(home.Dir())
+	if errors.Is(err, identity.ErrNone) {
+		return nil
+	}
+	if err == nil && identity.Solo(home.Dir()) {
+		return nil
+	}
+	if err == nil {
+		for _, kind := range kinds {
+			if _, ok := kind.(chatsKind); ok {
+				return nil
+			}
+		}
+		err = errors.New("sync devices are unavailable")
+	}
+	return toldLine{line: chatsRevokeReadFailure, err: err}
 }

@@ -824,9 +824,9 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 		class = executor.HostBound
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
-	watch := &cellstore.SealWatch{Say: say}
+	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}

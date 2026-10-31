@@ -66,7 +66,7 @@ func Offer(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (string,
 // relay that cannot serve a code is never allowed to display one.
 func checkRelay(ctx context.Context, route Mailbox) error {
 	if _, err := route.Box.Limits(ctx); err != nil {
-		return phraseBox(err, route.Host)
+		return phraseBox(err, route.URL)
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burn
 	}
 	made, err := createApart(ctx, route.Box, key, burned)
 	if err != nil {
-		return "", "", phraseBox(err, route.Host)
+		return "", "", phraseBox(err, route.URL)
 	}
 	code = code.WithPlate(made.Nameplate)
 	defer discard(route.Box, made.Nameplate, key)
@@ -95,7 +95,7 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burn
 		key: key, gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish}, sendGone: ErrDidNotFinish}
 	joiner, err := answer(link, chatScheme(made.Nameplate), code.secret())
 	if err != nil {
-		return "", made.Nameplate, phraseBox(err, route.Host)
+		return "", made.Nameplate, phraseBox(err, route.URL)
 	}
 	label, err := conclude(ctx, joiner, grant, ui)
 	return label, made.Nameplate, err

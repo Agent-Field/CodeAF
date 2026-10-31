@@ -1002,6 +1002,6 @@ even after the answer has finished, and the saving-failure status clears.
 Later bookkeeping does not hide that recovery. Another task saving successfully
 does not clear this chat's saving failure.
 
-If closing cannot finish saving, the error names the local transcript that keeps
-the unsaved turns. Keep that file: after storage becomes reachable again, the
+If a local write fails, the error names the local transcript that keeps
+the unsaved turns. A sync outage alone leaves the turns saved here and does not produce a local-write failure. Keep that file: after storage becomes reachable again, the
 turns can be saved and published, or kept separately when you continue the chat.

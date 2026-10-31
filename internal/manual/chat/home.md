@@ -287,7 +287,7 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
 updates the tab and the row in Sessions together.
 
-## A chat is running on my other computer — how does home show it, chats on my other machines, "running on tower", "tower offline", why does it say running on build-box offline, merge / discard
+## A chat is running on my other computer — how does home show it, chats on my other machines, "held on tower", "tower offline", why does it say held on build-box offline, merge / discard
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -299,14 +299,14 @@ happened. The row says where the chat is only where that tells you something:
 
 | The chat is | The row says |
 | --- | --- |
-| running on another machine | `running on <device>` |
+| held on another machine | `held on <device>` |
 | on a machine that went off or to sleep without letting go | `<device> offline` |
 | a branch left by a takeover | `<K> turns from <device>: discard` (this build has no merge) |
 | held by this machine, or let go by everyone | nothing |
 
-## Why a chat says running on build-box or build-box offline
+## Why a chat says held on build-box or build-box offline
 
-For a chat on another paired computer, read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, including while it is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -340,12 +340,12 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
+Press enter on a row that says `<device> offline` or `held on <device>` and home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
-`running on <device>` row the card starts with that: `running on <device>; last saved turn
-<N> ago`. When that device is not online, the card leaves `running on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
+`held on <device>` row the card starts with that: `held on <device>; last saved turn
+<N> ago`. When that device is not online, the card leaves `held on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
@@ -358,12 +358,12 @@ When continuing a chat from another paired computer:
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
   branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
-- If another machine took an `offline` chat first, the row goes back to `running on <device>` with a card saying `another device continued this chat first`, `1 retry` and `2 leave it there`. if the same computer picked it up again, the card instead says `<holder> picked this chat up again; press enter to continue it here` and asks for fresh confirmation.
+- If another machine took an `offline` chat first, the row goes back to `held on <device>` with a card saying `another device continued this chat first`, `1 retry` and `2 leave it there`. if the same computer picked it up again, the card instead says `<holder> picked this chat up again; press enter to continue it here` and asks for fresh confirmation.
 - if the service cannot be reached, enter names its host and says it is still trying, and asks
   nothing: no chat can be taken without them.
 - With no way to continue set up, an offline row has no `continue here`: enter says its sentence.
 
-## What comes with a continued chat — the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
+## Is my project folder changed when I continue a chat here — what comes with a continued chat, the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
@@ -1547,7 +1547,7 @@ as commands. The folder notice may remain, but the path stays in the box.
 
 **Yes. A line that begins with `/` is a command, and `enter` runs it rather than sending
 it.** Typing `/settings` on home and pressing `enter` opens the settings panel; it does not
-start a conversation whose first message is the word `/settings`.
+start a conversation whose first message is the word `/settings`. `/devices` and `/pair` also open over Home without starting a conversation. A pasted pairing link shows its approval in the Add another device card, and either decision stays on Home.
 
 **The screen says which `enter` you are about to press, before you press it.** With a command
 in the box the action row reads `+ run /settings` in place of `+ start a new conversation:

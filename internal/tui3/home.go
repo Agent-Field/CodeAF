@@ -1235,9 +1235,13 @@ func (a *app) dropHome() {
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	draft := a.openingHomeDraft
 	a.openingHomeDraft = composerState{}
+	notice := a.homeAccountNotice
+	if a.machineRead.computerRemoved {
+		notice = ""
+	}
 	return homeView{
 		box: draft.box, chips: draft.chips, carrying: len(draft.chips) > 0,
-		msg:        a.homeAccountNotice,
+		msg:        notice,
 		tabs:       a.tabList,
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },

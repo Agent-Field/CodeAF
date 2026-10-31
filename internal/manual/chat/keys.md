@@ -34,7 +34,7 @@ name followed by the same saving-failure sentence, once.
 
 ## Could not save on quit — where are the unsaved turns kept
 
-If the final save fails and the transcript location is known, the restored terminal says
+If writing on this computer fails and the transcript location is known, the restored terminal says
 `codeaf could not save this chat; unsaved turns are kept in <transcript path> and return on the next start if this computer still holds the chat.`
 The path names the transcript on the computer running the chat, including over
 `--host`. When the location is unknown, it says
@@ -49,15 +49,13 @@ A computer removed from your paired devices keeps saving this chat locally.
 Quitting stays quiet and does not try a final relay save; the removal notice
 already explains that the chat stays on this computer until you pair it again.
 
+## Quitting while the sync service is slow — waiting for a final save
+
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
-A successful quit stays quiet, including while late usage, task cost, naming or
-memory records finish saving. The launcher waits up to 30 seconds for the final
-saving reply. If that reply is still outstanding at the ceiling, it says
-`codeaf is still saving this chat in the background; unsaved turns stay on this computer.`
-A save still running is not reported as a failure. A
-second ctrl+c while quitting restores the terminal and exits immediately;
-unfinished turns stay on the computer running the chat for the next start.
+A successful quit with nothing waiting stays quiet. While a sync save waits, the restored terminal says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without that confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
+
+The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service's host. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
 
 ## One Enter sends — checking which computer holds this chat
 
@@ -3829,3 +3827,29 @@ in the roster, and press `x`. Neither route opens the task room. The stop card
 opens on `keep going`: choose `stop it` and press Enter to confirm, or click
 that answer. Escape cancels the card. A half-typed message is preserved; with
 text in the box, an ordinary `x` types the letter instead.
+
+## Quitting before local saving finishes — no upload receipt yet
+
+The successful `saved here` receipt requires the chat engine to acknowledge that its local transcript and captured work finished saving. A network error alone, or an unanswered closing call, does not prove that. If local closing still has no receipt after about three seconds, it says `still saving on this computer — ctrl+c leaves the written turns here`. If you leave before local saving is confirmed, codeaf says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. A confirmed local save that is still uploading uses the successful sync-service receipt instead. A failed local write keeps the `codeaf could not save this chat` sentence.
+
+
+## Saving between different builds — older engine or older window
+
+The new saved-here receipt is enabled only when both the window and engine
+support it. An older engine's successful close stays successful without a
+receipt. An older window receives the ordinary successful reply when the new
+engine saved locally but upload is pending. A local write error remains a
+failure.
+
+When an older engine has not answered before the closing wait ends, the window
+keeps the earlier `codeaf is still saving this chat in the background; unsaved turns stay on this computer.`
+message. A forced interrupt keeps the earlier exit status 130. New progress and
+saved-here words require both builds to support the receipt.
+
+## Quitting several chats — running work and an upload that is pending
+
+A running hosted chat detaches and keeps working. Its successful departure does
+not require a local-close receipt. If another idle chat closed locally and its
+upload failed, quitting still reports that chat as saved here and succeeds.
+A failure writing this computer's saved chat or its kept copies remains a
+failure, including when an upload failed too.

@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 const (
@@ -84,6 +85,7 @@ var hostedRelay = HostedRelayURL
 
 func init() {
 	pair.LinkOrigin = LinkOriginOf(HostedRelayURL)
+	syncwords.UseHosted(HostedRelayURL, HostedLinkHosts())
 }
 
 // SavedURLFile is where a computer keeps the relay another device told it to

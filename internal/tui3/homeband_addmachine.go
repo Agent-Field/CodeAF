@@ -29,6 +29,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -48,14 +49,16 @@ const (
 
 	// addDeviceWord is the one person-facing name for adding a computer, shared
 	// between the home card and the /settings Devices tab so the two never drift.
-	addDeviceWord     = "Add another device"
-	addMachineHeading = "+ " + addDeviceWord
-	addMachinePitch   = "Pick up your work anywhere, exactly where you left it."
-	addMachineStepRun = "1. On the new device, install and run: codeaf pair"
-	addMachineStepPut = "2. It shows a link. Paste it here:"
-	addMachineField   = "> "
-	addMachineShow    = addMachineKey + " how"
-	addMachineHide    = addMachineKey + " hide"
+	addDeviceWord         = "Add another device"
+	addMachineHeading     = "+ " + addDeviceWord
+	addMachinePitch       = "Pick up your work anywhere, exactly where you left it."
+	addMachineStepRun     = "1. On the new device, install and run: codeaf pair"
+	addMachineStepPut     = "2. It shows a link. Paste it here:"
+	addMachineField       = "> "
+	addMachinePlaceholder = "Paste pairing link"
+	addMachineLinkError   = "Enter a pairing link"
+	addMachineShow        = addMachineKey + " how"
+	addMachineHide        = addMachineKey + " hide"
 
 	bandOrderAddMachine = 20 // a one-machine fleet is told it can have two
 )
@@ -95,7 +98,7 @@ func (a *app) addMachineWanted() bool {
 		return false
 	}
 	m := a.addMachine
-	return a.approvals != nil && m.known && m.size < fleetEnough
+	return a.approvals != nil && (a.machineRead.computerRemoved || m.known && m.size < fleetEnough)
 }
 
 // fleetMsg is one answer from the [Fleet].
@@ -163,7 +166,18 @@ func (a *app) pasteLink(text string) (tea.Cmd, bool) {
 func (m *addMachine) grew() { m.size++ }
 
 func drawAddMachineBand(a *app, ctx bandContext) []string {
+	if a.pair.open {
+		rows := a.pair.rows(ctx.width, ctx.now, ctx.pal)
+		rows = append(rows, ctx.pal.dim(a.pair.hint()))
+		return rows
+	}
+
 	if !a.addMachineWanted() {
+		// Account news must remain visible even when this connection cannot
+		// offer the pairing card and its keys.
+		if a.machineRead.computerRemoved && a.homeAccountNotice != "" {
+			return dressed(wrap(a.homeAccountNotice, ctx.width), ctx.pal.dim)
+		}
 		return nil
 	}
 	m := a.addMachine
@@ -172,6 +186,9 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 		heading = ctx.pal.underline(heading)
 	}
 	rows := []string{heading}
+	if a.homeAccountNotice != "" {
+		rows = append(rows, dressed(wrap(a.homeAccountNotice, ctx.width), ctx.pal.dim)...)
+	}
 	for _, line := range wrap(addMachinePitch, ctx.width) {
 		rows = append(rows, ctx.pal.dim(fit(line, ctx.width)))
 	}
@@ -193,7 +210,11 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 // addMachineHow is the opened card: two steps, and the field the link goes in.
 func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
-	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
+	command := pair.Command("", "")
+	if door, ok := a.pairing.(interface{ PairCommand() string }); ok {
+		command = door.PairCommand()
+	}
+	for _, line := range []string{strings.TrimSuffix(addMachineStepRun, pair.Command("", "")) + command, addMachineStepPut} {
 		text := ctx.pal.muted(line)
 		text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.data("codeaf pair")))
 		for _, wrapped := range wrap(text, ctx.width) {
@@ -247,7 +268,7 @@ func (a *app) addMachineLine(width int, pal palette) (string, int) {
 	b := &a.addMachine.box
 	column := ansi.StringWidth(addMachineField) + ansi.StringWidth(string(b.value[start:b.cursor]))
 	if b.empty() {
-		shown = "Paste pairing link"
+		shown = addMachinePlaceholder
 	}
 	ink := pal.ink
 	if b.empty() {
@@ -279,7 +300,7 @@ func (a *app) addMachineInputKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter":
 		link := strings.TrimSpace(b.String())
 		if !isPairLink(link) {
-			m.error = "Enter a pairing link"
+			m.error = addMachineLinkError
 			return nil, true
 		}
 		m.open, m.focused = false, false

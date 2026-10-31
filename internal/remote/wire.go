@@ -450,6 +450,10 @@ type Frame struct {
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
+	// LocalSaved confirms a completed local close on a saving reply.
+	LocalSaved bool `json:"localSaved,omitempty"`
+	// SyncPending distinguishes an upload failure after the local close succeeded.
+	SyncPending bool `json:"syncPending,omitempty"`
 	// UnsavedTranscript preserves a recovery location on a failed saving reply.
 	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 
@@ -859,6 +863,11 @@ type DetachArgs struct {
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.
 type Hello struct {
+	// SyncNoticeWords requests the current sync-notice vocabulary; absence keeps
+	// the sentences older surfaces recognize for outage and removal recovery.
+	SyncNoticeWords bool `json:"syncNoticeWords,omitempty"`
+	// LocalSavingReceipts permits an optional acknowledgment before remote upload waits.
+	LocalSavingReceipts bool `json:"localSavingReceipts,omitempty"`
 	// SessionInstance scopes Resume cursors to the live owner that issued them.
 	SessionInstance string `json:"sessionInstance,omitempty"`
 
@@ -1034,6 +1043,12 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// LocalSavingReceipts acknowledges the surface's optional saving capability.
+	LocalSavingReceipts bool `json:"localSavingReceipts,omitempty"`
+	// SyncService names the service that saves this chat across computers.
+	SyncService string `json:"syncService,omitempty"`
+	// Machine supplies the serving computer's chosen name for the remote window bar.
+	Machine string `json:"machine,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.

@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -75,6 +76,9 @@ type Batcher struct {
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
 	failing bool // the last flush failed, so Idle must wait out the backoff
+	// lastFlushErr retains the latest publish or branch result when Close waits behind it.
+	// It is read and written with flushMu held.
+	lastFlushErr error
 }
 
 // Superseded says another device continued the chat.
@@ -379,6 +383,12 @@ func (b *Batcher) Close(ctx context.Context) error {
 	// first; otherwise another home could automatically open an older head.
 	for b.Pending() > 0 {
 		if err := ctx.Err(); err != nil {
+			if syncwords.UploadPending(b.lastFlushErr) {
+				return syncwords.UploadFailure(err)
+			}
+			if b.lastFlushErr != nil {
+				return b.lastFlushErr
+			}
 			return err
 		}
 		if err := b.drain(ctx); err != nil {
@@ -397,7 +407,7 @@ func (b *Batcher) release(ctx context.Context) error {
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return syncwords.UploadFailure(err)
 		}
 		err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence)
 		if err == nil || errors.Is(err, directory.ErrFenceStale) {
@@ -407,13 +417,13 @@ func (b *Batcher) release(ctx context.Context) error {
 			return nil
 		}
 		if !errors.Is(err, directory.ErrUnreachable) && !errors.Is(err, wireauth.ErrUnavailable) {
-			return err
+			return syncwords.UploadFailure(err)
 		}
 		if _, bounded := ctx.Deadline(); !bounded {
-			return err
+			return syncwords.UploadFailure(err)
 		}
 		if err := b.sleeper()(ctx, ReleaseRetryEvery); err != nil {
-			return err
+			return syncwords.UploadFailure(err)
 		}
 	}
 }
@@ -426,7 +436,9 @@ func (b *Batcher) flush(ctx context.Context) time.Duration {
 	if b.isClosing() {
 		return b.interval()
 	}
-	return b.after(b.drain(ctx))
+	err := b.drain(ctx)
+	b.lastFlushErr = err
+	return b.after(err)
 }
 
 func (b *Batcher) isClosing() bool {
@@ -543,7 +555,7 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 	if b.OnLost != nil {
 		b.OnLost()
 	}
-	_ = b.resolve(ctx)
+	b.lastFlushErr = b.resolve(ctx)
 }
 
 // resolve turns the orphaned turns into a branch, or, when there are none,

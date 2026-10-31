@@ -35,6 +35,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // PendingDevice is a request to join as the person sees it. Code is what the
@@ -148,15 +149,18 @@ func isLinkShape(typed string) bool {
 
 // platformInfo is the icon and word a platform is shown as. A platform not
 // listed reads as `other`, so a new one needs a row here and no code.
-type platformInfo struct{ icon, word string }
+type platformInfo struct {
+	icon tokens.GlyphID
+	word string
+}
 
 var platforms = map[string]platformInfo{
-	"darwin":  {"⌘", "Mac"},
-	"linux":   {"$", "Linux"},
-	"windows": {"▦", "Windows"},
-	"ios":     {"▯", "iPhone or iPad"},
-	"android": {"▯", "Android"},
-	"other":   {"·", "unknown system"},
+	"darwin":  {tokens.GPlatformMac, "Mac"},
+	"linux":   {tokens.GPlatformLinux, "Linux"},
+	"windows": {tokens.GPlatformWindows, "Windows"},
+	"ios":     {tokens.GPlatformMobile, "iPhone or iPad"},
+	"android": {tokens.GPlatformMobile, "Android"},
+	"other":   {tokens.GPlatformOther, "unknown system"},
 }
 
 func platformOf(name string) platformInfo {
@@ -225,7 +229,7 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 		a.toastJoined(m.req.Name, m.req.Device)
 	default:
 		a.pair.close()
-		a.note(fmt.Sprintf(approveDenied, m.req.Name))
+		a.toast(fmt.Sprintf(approveDenied, m.req.Name))
 	}
 	return nil
 }
@@ -259,7 +263,7 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 	}
 	r, info := c.req, platformOf(c.req.Platform)
 	out := dressed(wrap(approveAsk, max(width, 4)), pal.ink)
-	out = append(out, pal.accent(fit("  "+info.icon+" "+r.Name+" · "+info.word, width)))
+	out = append(out, pal.accent(fit("  "+pal.glyph(info.icon)+" "+r.Name+" · "+info.word, width)))
 	out = append(out, pal.dim(fit("  "+requestAge(r, now), width)))
 	out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
 	line := c.line
@@ -354,9 +358,7 @@ func (a *app) openApprove(typed string) tea.Cmd {
 func (a *app) showCard(c panelCard) {
 	a.closeLists()
 	a.dismissWelcome()
-	// HOME IS THE WHOLE SCREEN and draws no panel, so a card opened from it
-	// would be state nobody can see: the person steps out to the box first.
-	a.closeHome()
+	// Home hosts this panel in its standing card, so opening it needs no conversation.
 	a.pair.close()
 	a.pair.open, a.pair.card = true, c
 	a.touch()

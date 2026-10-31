@@ -12,7 +12,7 @@ A chat can be worked on by one device at a time. If you open a chat here that an
 
 ```
 Continue this chat here?
-running on tower; last saved turn 4s ago
+held on tower; last saved turn 4s ago
 1 continue here
 2 leave it there
 ```
@@ -73,11 +73,11 @@ The card still says `this chat was last held here; last saved turn 2h ago` when 
 
 If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
-## What does running on tower mean — a row on home and the verb it offers
+## What does held on tower mean — a row on home and the verb it offers
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Home lists chats from your other devices. A chat that a device is working on now says `running on <device>`. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
+Home lists chats from your other devices. A chat another device still holds says `held on <device>`. The hold alone does not establish that work is running there. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
 
 Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
@@ -95,7 +95,7 @@ alt+c continue here · alt+x not now
 - `alt+c` continues immediately. The card asks first only when there is a real choice, such as keeping unsaved local edits as a branch.
 - `alt+x` dismisses it for that device until you open codeaf again.
 
-The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. A device that is online and still working on the chat is never offered.
+The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. If the service stops supplying fresh presence while the card stands, a dim service-failure sentence stays in its place. The offer returns when fresh evidence supports it again. A device that is online and still working on the chat is never offered.
 
 Home never offers this computer's own chat as work to continue from another
 computer, even when an older record says this computer went offline.
@@ -170,11 +170,11 @@ Removing this computer from your devices does not change those project
 labels. Switching away and back keeps the same copy label or ordinary project
 name.
 
-## This chat is not syncing — other machines unreachable, working offline
+## This chat is not syncing — the sync service is not answering, working offline
 
 If this computer holds the chat and renewals have failed for longer than one
 renewal period, one dim line says
-`this chat is not syncing because other machines are unreachable; it keeps working here`.
+`the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`.
 It is said once per outage.
 When renewals succeed again, one line says `this chat is syncing again`.
 
@@ -199,12 +199,12 @@ every failure stays where you are looking: on Home's card with `1 retry` and `2 
 a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry confirms the holder and turn of ownership now displayed on that card.
 
 
-- `another device continued this chat first`: another device was faster. The row goes back to `running on <device>`. Nothing changed.
-- `other machines unreachable`: this device cannot reach the service. Nothing can be moved until it can.
+- `another device continued this chat first`: another device was faster. The row goes back to `held on <device>`. Nothing changed.
+- `the sync service is not answering`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here because the engine store is busy` or `could not continue this chat here because the engine store is busy (held by codeaf chat, pid 4321)`: another `codeaf` process holds this computer's engine store writer. Close or finish that process, then choose `retry`.
 - `could not continue this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
 - A move does not fail because another chat on this computer is saving its secrets to the sync service at that moment. Its last step waits up to 30 seconds for that save to finish, then arrives.
-- `could not continue this chat here because other machines are unreachable; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
+- `could not continue this chat here because the sync service is not answering; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
 - `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here` means the chat is open on another computer and the sync service is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `continue here` again.
 - Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never shows as held elsewhere. With no way to continue set up, an off row has no `continue here`: enter says why.
 
@@ -214,7 +214,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
-The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `running on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
+The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `held on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
 ## This window only shows the chat — can I still send here
 
@@ -309,7 +309,11 @@ If Git cannot read the project's ignore rules, saving stops with `cannot read wh
 
 A command's result returns after its call log is written, while its file capture finishes in the background. The next tool call waits until the previous capture has finished reading files. Continuing the chat on this computer, uploading it, closing it, quitting codeaf and `codeaf cell gc` also wait for both the call log and the saved files to reach durable storage. A storage failure is reported and stops that boundary. Opening a chat screens its folder in the background without sealing an empty turn. A command submitted before that screen finishes waits for it. A window that only views a chat held elsewhere does not seal turns. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
 
-A wait lasts at most 30 seconds. A timeout says `still saving this chat on this computer: context deadline exceeded`; the pending save is not silently treated as done. The saving status reports failures. A successful quit stays quiet and waits up to 30 seconds for its final saving reply. An unanswered reply at that ceiling says the save is still finishing in the background; a definite saving failure reports an error. A final disk-flush failure says `codeaf: could not finish saving this chat:` followed by the cause and exits unsuccessfully.
+## Quitting while saving — local confirmation and a slow upload
+
+A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
+
+If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service’s host. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
 
 If the last upload fails when you quit, for example because the connection dropped, this computer does not let the chat go. Your other computer keeps showing it as running here and does not open the older save by itself; the unsent turns stay on this computer until an upload succeeds.
 
@@ -440,3 +444,19 @@ Run `codeaf doctor --fix` to repair what is safe. It prints one line per repair:
 - `fixed: retired duplicate branch copy <branch> of chat <id>`
 
 `codeaf doctor --fix` never touches another computer's live hold, never disturbs a live store writer (quit the program `busy` names, or wait for it, and continue again), and never removes a branch copy or `.taking` scratch folder that holds a turn not already in the main chat.
+
+## The chat banner says the sync service is not answering — what is offline
+
+The chat banner names the selected host, for example:
+`the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`.
+When its address is unavailable, it says
+`the sync service is not answering; this chat keeps working here and catches up when it is back`.
+Startup and renewal notices share one notice per outage.
+The sync service may be unreachable while your other computers are still
+working. The chat stays usable on this computer and catches up when the service
+answers. Home’s presence strip disappears when the service cannot provide fresh
+presence; it does not guess which computers are online.
+
+## Sync notices between older and current builds
+
+A current window understands the earlier outage and removed-computer notices too. It uses one outage line while local work continues, and points to `/pair` for recovery in a chat. A current engine keeps the earlier notice spelling for an older window, so that window's existing outage and removal handling still works.

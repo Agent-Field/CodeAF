@@ -2166,6 +2166,7 @@ type app struct {
 	// every local session and before the first hosted answer, which the
 	// emptiness law draws as no segment at all.
 	linkLatency    time.Duration
+	linkLatencyAt  time.Time
 	linkPingAsking bool
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
@@ -2742,6 +2743,7 @@ type app struct {
 	// cannot; closed, the panel costs the frame nothing.
 	cellsUnavailable string
 	pairing          Pairing
+	syncService      string
 	pair             pairPanel
 
 	// approvals answers a new device's request and revokes devices, and
@@ -2875,6 +2877,8 @@ type app struct {
 	deviceID string
 	// syncOutages remembers which chats have already announced their current outage.
 	syncOutages map[string]bool
+	// renewalFailures binds recovery evidence to a failure observed during this outage.
+	renewalFailures map[string]bool
 	// conversationClosing discards keys while a departing chat finishes closing.
 	conversationClosing bool
 	// quitting keeps new input out of teardown while allowing another interrupt to leave.
@@ -2882,7 +2886,9 @@ type app struct {
 	// saveFailure retains closing errors for the report after the screen is restored.
 	saveFailure func(error)
 	// closingStarted retains pending engine replies after the terminal is restored.
-	closingStarted func(<-chan struct{})
+	closingStarted      func(<-chan struct{})
+	savingDurability    func(func() bool)
+	savingCompatibility func(func() bool)
 	// forceQuit requests immediate process exit after a second interrupt restores the screen.
 	forceQuit func()
 	// handedApproval is the tool-approval posture this launch knows the
@@ -3097,6 +3103,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		syncService:         opts.SyncService,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
@@ -3127,6 +3134,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		deviceID:            opts.DeviceID,
 		saveFailure:         opts.SaveFailure,
 		closingStarted:      opts.ClosingStarted,
+		savingDurability:    opts.SavingDurability,
+		savingCompatibility: opts.SavingCompatibility,
 		forceQuit:           opts.ForceQuit,
 		landing:             opts.Landing,
 		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
@@ -6015,7 +6024,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case linkPingMsg:
 		a.linkPingBack(msg)
-		return a, a.linkPingTick()
+		return a, tea.Batch(a.linkPingTick(), a.linkLatencyExpiry())
+	case linkLatencyExpiredMsg:
+		if msg.at == a.linkLatencyAt {
+			a.touch()
+		}
+		return a, nil
 
 	case levelsMsg:
 		// What each of a batch of models is dialled to, asked off this loop
@@ -6523,6 +6537,12 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 // clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
 // run, which is why the bit is a parameter rather than a length read here.
 func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
+	if ev.Kind == session.EventNotice {
+		ev.Text = a.chatNotice(ev.Text)
+		if !a.acceptSyncNotice(ev.Text) {
+			return nil
+		}
+	}
 	if owner, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); ok && owner.ReplayCovers(ev) {
 		return nil
 	}
@@ -7332,6 +7352,11 @@ func (a *app) take(u session.Usage) {
 // note answers a UI action or reports something requiring the person's attention.
 // Engine bookkeeping uses feed.note so its audience is explicit at the producer.
 func (a *app) note(text string) {
+	text = a.chatNotice(text)
+	if !a.acceptSyncNotice(text) {
+		return
+	}
+
 	a.blockDisplacedSend(text)
 	a.noteWritten(text, false, nil)
 }
@@ -9010,14 +9035,15 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 	// AND THE NOTE SAYS WHICH OF THE TWO HAPPENED. A count appearing on the
 	// status line is not enough on its own to tell somebody whether the
 	// conversation they were in is still running.
-	switch {
-	case replacing && a.file != "":
-		a.toldNote("new session · " + a.hostedPath(a.file))
-	case replacing:
-		a.toldNote("new session")
-	default:
-		a.toldNote("new conversation · " + a.place)
+	project := filepath.Base(a.workspace)
+	if a.workspace == "" {
+		project = ""
 	}
+	note := "new conversation"
+	if project != "" {
+		note += " · " + project
+	}
+	a.toldNote(note)
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
 		// open — "session open elsewhere — started a new one" is the sentence
@@ -9624,6 +9650,14 @@ func (a *app) paste(text string) tea.Cmd {
 	// see it. The clipboard still holds it, which is the difference between
 	// declining a paste and losing one.
 	if a.copy.on {
+		return nil
+	}
+	if a.pair.open {
+		if (a.pair.offering || a.pair.rejoining) && a.pair.ask == nil && !a.pair.done && a.pair.card == nil {
+			a.pair.linkBox.insert(strings.TrimSpace(text))
+			a.pair.linkFocus = true
+			a.touch()
+		}
 		return nil
 	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the

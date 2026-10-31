@@ -204,7 +204,7 @@ func refusal(resp *http.Response) error {
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrTooOld
 	}
-	if resp.StatusCode == http.StatusServiceUnavailable {
+	if resp.StatusCode >= http.StatusInternalServerError {
 		// Coordination can refuse before a directory handler has an error
 		// body. It is the same retryable refusal the coded answer names, not
 		// an unreachable network, so closing releases retry it and nothing

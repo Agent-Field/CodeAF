@@ -42,6 +42,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 const (
@@ -67,6 +68,7 @@ func init() {
 // card stands; answered holds the devices the person has taken up or put off.
 type resumeOffer struct {
 	row      *chatlist.Row
+	reason   string
 	answered map[string]bool
 }
 
@@ -122,6 +124,21 @@ func (s resumeState) away(row chatlist.Row) bool {
 // has gone. No listing yet, or no taker, offers nothing.
 func (a *app) considerResume() {
 	r := &a.leftOff
+	unavailable := a.machineRead.down || a.dirFeed != nil && !a.dirFeed.State().Up
+	if unavailable && (r.row != nil || r.reason != "") && !a.machineRead.computerRemoved {
+		address := a.syncService
+		if address == "" {
+			address = syncwords.HostedURL
+		}
+		r.reason = syncwords.Unreachable(address)
+		if a.machineRead.err != nil {
+			r.reason = syncwords.Explain(a.machineRead.err, address).Error()
+		}
+		r.row = nil
+		a.touch()
+		return
+	}
+	r.reason = ""
 	var row *chatlist.Row
 	if !a.hosted() && a.taker != nil && !a.machineRead.computerRemoved {
 		row = a.resumeState().pick()
@@ -197,6 +214,9 @@ func drawResumeBand(a *app, ctx bandContext) []string {
 	}
 	row := a.leftOff.row
 	if row == nil {
+		if a.leftOff.reason != "" {
+			return []string{ctx.pal.dim(fit(a.leftOff.reason, ctx.width))}
+		}
 		return nil
 	}
 	head := ctx.pal.ink(fit(fmt.Sprintf(resumeAskFormat, row.Device), ctx.width))

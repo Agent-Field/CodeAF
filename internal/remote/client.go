@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -87,10 +89,11 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
-	// host is the ssh destination as the person typed it, and it exists for one
-	// purpose: the sentence a broken connection says names the machine they were
-	// working on. A person with three windows open needs to know WHICH.
+	// host keeps the typed destination as the fallback until the window chooses
+	// its displayed name. Keeping the two apart preserves the connection route.
 	host string
+	// displayName is atomic because diagnostics can run with mu already held.
+	displayName atomic.Pointer[string]
 	// conn is the pipe pair, and closing it is what ends the ssh process. A
 	// roaming client replaces it with the next one rather than dying with it, so
 	// it is read under mu and never cached by anything that outlives a frame.
@@ -182,7 +185,9 @@ type Client struct {
 	// the ONLY thing on this side that answers the question — a client that
 	// worked it out for itself would be a second authority on a fact that can
 	// only have one (driver.go).
-	driver Driver
+	driver        Driver
+	localSaved    bool
+	localSavingID uint64
 	// driverWake is closed and replaced whenever [Client.driver] changes, which
 	// is how a surface drawing on a frame clock learns that an answer arrived
 	// on the wire with no keystroke behind it. It is a channel rather than a
@@ -230,7 +235,9 @@ type Client struct {
 	// per call rather than a hang per call. done is closed at the same moment,
 	// which is what wakes the calls that were already waiting.
 	dead error
-	done chan struct{}
+	// deadCause lets a name chosen after a broken welcome retain the engine's reason.
+	deadCause error
+	done      chan struct{}
 	// closing says Close was called here, so the EOF the reader is about to see
 	// is expected and not worth a sentence about a lost connection.
 	closing bool
@@ -273,6 +280,8 @@ func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
 // anything has been said on a pipe.
 func newClient(host string, hello Hello) *Client {
 	hello.Version = Version
+	hello.LocalSavingReceipts = true
+	hello.SyncNoticeWords = true
 	// THIS MACHINE'S NAME IS FILLED IN HERE AND NOT AT THE DOOR, so that no
 	// door can forget it: --host, --at and every test all reach this one
 	// constructor, and a hello without a name is a screen on the far side
@@ -480,6 +489,17 @@ func (c *Client) Welcome() Welcome {
 
 // Host is the ssh destination this client dialled.
 func (c *Client) Host() string { return c.host }
+
+// SetDisplayName keeps connection messages on the name selected for the window.
+func (c *Client) SetDisplayName(name string) {
+	name = devname.Shown(name)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.displayName.Store(&name)
+	if c.dead != nil && !c.closing {
+		c.dead = c.gone(c.deadCause)
+	}
+}
 
 // Attached is how many OTHER surfaces are on this session, as the engine
 // counted them at the door.
@@ -741,13 +761,34 @@ func (c *Client) Err() error {
 	return c.dead
 }
 
-// where names the far end the way a sentence about it should: the destination
-// the person typed, or "the engine" when they typed nothing nameable.
+// where uses the window's selected name, falling back to its destination
+// until the serving computer has supplied a name.
 func (c *Client) where() string {
+	if name := c.displayName.Load(); name != nil && *name != "" {
+		return *name
+	}
 	if c.host == "" {
 		return "the engine"
 	}
 	return c.host
+}
+
+// SendRefusal reports only an already known broken link, without a wire call.
+// The composer asks before spending a draft, so a refused Enter keeps its words.
+func (c *Client) SendRefusal() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dead != nil {
+		name := c.where()
+		if c.welcome.Machine != "" {
+			name = devname.Shown(c.welcome.Machine)
+		}
+		return fmt.Sprintf("not sent — the connection to %s is gone; your words are still in the box. Run the same command to pick the conversation back up", name)
+	}
+	if c.reconnecting {
+		return fmt.Sprintf("not sent — still reconnecting to %s; enter sends it once the link is back", c.where())
+	}
+	return ""
 }
 
 // gone is THE HONEST SENTENCE, and it is one sentence in one place so that
@@ -827,6 +868,12 @@ func (c *Client) read() {
 		switch frame.Kind {
 		case "observed", "observerClosed":
 			c.observerFrame(frame)
+		case "localSaved":
+			c.mu.Lock()
+			if c.welcome.LocalSavingReceipts && frame.ID == c.localSavingID {
+				c.localSaved = true
+			}
+			c.mu.Unlock()
 		case "result":
 			c.deliver(frame)
 		case "event":
@@ -910,6 +957,14 @@ func (c *Client) read() {
 
 // deliver routes one result to the call waiting for it.
 func (c *Client) deliver(frame Frame) {
+	if frame.LocalSaved {
+		c.mu.Lock()
+		if c.welcome.LocalSavingReceipts && frame.ID == c.localSavingID {
+			c.localSaved = true
+		}
+		c.mu.Unlock()
+	}
+
 	c.mu.Lock()
 	waiting, ok := c.calls[frame.ID]
 	delete(c.calls, frame.ID)
@@ -925,6 +980,9 @@ func (c *Client) deliver(frame Frame) {
 	}
 	if frame.Error != "" {
 		err := errors.New(frame.Error)
+		if c.Welcome().LocalSavingReceipts && frame.SyncPending && frame.LocalSaved {
+			err = syncwords.UploadFailure(err)
+		}
 		if frame.UnsavedTranscript != "" {
 			err = session.SavingError(frame.UnsavedTranscript, err)
 		}
@@ -968,6 +1026,7 @@ func (c *Client) bury(cause error) {
 		c.mu.Unlock()
 		return
 	}
+	c.deadCause = cause
 	if c.closing {
 		// We closed the pipe ourselves, so the EOF is the sound of the door
 		// shutting. It is still a dead client — nothing may be called on it —
@@ -1105,6 +1164,12 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 		payload = encoded
 	}
 	id := c.seq.Add(1)
+	if method == MethodClose || method == MethodDetach {
+		c.mu.Lock()
+		c.localSavingID = id
+		c.localSaved = false
+		c.mu.Unlock()
+	}
 	waiting := make(chan result, 1)
 
 	c.mu.Lock()
@@ -1949,9 +2014,15 @@ func (a *Agent) Close() error {
 
 // finishSaving gives departures their saving budget and distinguishes a missing reply from a refusal.
 func (a *Agent) finishSaving(method string, args any) error {
+	a.c.mu.Lock()
+	a.c.localSaved = false
+	a.c.mu.Unlock()
 	_, answered, err := a.c.callAnswered(nil, method, args, executor.DrainWithin)
 	if err != nil && !answered {
 		err = errors.Join(session.ErrSavingUnanswered, err)
+		if a.LocalDurable() {
+			err = syncwords.UploadFailure(err)
+		}
 	}
 	return session.SavingError(a.c.Welcome().SessionFile, err)
 }
@@ -2690,3 +2761,9 @@ func (c *Client) DeleteTask(file, id string) error {
 // WriterChanges lets an off-loop send wait for the writer's next pushed state.
 // It uses existing facts and adds neither a request nor a wire field.
 func (a *Agent) WriterChanges() <-chan struct{} { return a.c.facts.changes() }
+
+// LocalDurable is a receipt from the engine after its local close succeeded.
+func (a *Agent) LocalDurable() bool { a.c.mu.Lock(); defer a.c.mu.Unlock(); return a.c.localSaved }
+
+// SavingReceipts reports the two-way capability agreed in this connection's hello.
+func (a *Agent) SavingReceipts() bool { return a.c.Welcome().LocalSavingReceipts }

@@ -16,10 +16,13 @@ package pair
 // Deleting it costs a person nothing except having to pair again.
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
@@ -184,7 +187,7 @@ func (b *Book) Revoke(label string) (Paired, error) {
 	}
 	var hits []Paired
 	for _, one := range paired {
-		if strings.EqualFold(one.Label, label) {
+		if devname.MatchesDevice(label, one.Label, one.ID()) {
 			hits = append(hits, one)
 		}
 	}
@@ -193,7 +196,11 @@ func (b *Book) Revoke(label string) (Paired, error) {
 		return Paired{}, fmt.Errorf("no device called %q is paired with this machine — `codeaf devices` lists the ones that are", label)
 	case 1:
 	default:
-		return Paired{}, fmt.Errorf("%d devices are called %q — this build can only stop one by name, so revoke them all with `codeaf devices revoke --all %s`", len(hits), label, label)
+		choices := make([]string, len(hits))
+		for i, one := range hits {
+			choices[i] = devname.DeviceLabel(one.Label, one.ID(), true)
+		}
+		return Paired{}, devname.Ambiguous(label, choices)
 	}
 	gone := hits[0]
 	err = b.updateDevices(func(paired []Paired) []Paired {
@@ -307,4 +314,11 @@ func since(at, now time.Time) string {
 	default:
 		return at.Format("2 Jan 2006")
 	}
+}
+
+// ID supplies a stable selector for a remote-access key without printing the key.
+func (p Paired) ID() string {
+	raw, _ := base64.RawURLEncoding.DecodeString(p.Key)
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:16])
 }

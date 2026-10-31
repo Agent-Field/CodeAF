@@ -23,7 +23,7 @@ func (deadlineChatListing) Rows(context.Context) ([]chatlist.Row, error) {
 func TestHomeOwnershipDeadlineDoesNotClaimTheNetworkIsUnreachable(t *testing.T) {
 	a := machinesHome(t, deadlineChatListing{}, 200)
 	frame := homeText(a)
-	if !strings.Contains(frame, "sync.example did not answer in 25s; still trying") || strings.Contains(frame, "other machines unreachable") {
+	if !strings.Contains(frame, "sync.example did not answer in 25s; still trying") || strings.Contains(frame, "the sync service is not answering") {
 		t.Fatalf("ownership read deadline was misreported:\n%s", frame)
 	}
 }

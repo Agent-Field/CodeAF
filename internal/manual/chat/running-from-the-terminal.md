@@ -342,9 +342,9 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-**`codeaf pair approve <link>`** compares the four-digit check number and asks `a / d`: only `a` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
+**`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
-**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync service to go through, and `--replace` keeps this computer’s old chat files locally while replacing shared keys and clearing shared memories, preferences and the shared key vault; provider keys in local settings remain. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The architecture map — codeaf atlas [map], /atlas [map], what talks to what, how two computers pair and continue a chat
 
@@ -451,14 +451,14 @@ key the first time the identity is made on that machine.
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
-each: id, title, device, where it runs (`running on <device>`, `<device> offline`,
+each: id, title, device, where it runs (`held on <device>`, `<device> offline`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
-`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
+`sync is off: set CODEAF_SYNC_URL to your sync service's address` and lists nothing. With a relay
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
-other machines cannot be reached it starts with `other machines unreachable`.
+other machines cannot be reached it starts with `the sync service is not answering`.
 
 ## A different sync setting on an existing engine
 
@@ -505,7 +505,7 @@ show your chats on the other machines once both machines share an identity and t
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
 other machine can pick it up at once. If this machine sleeps or loses its connection, presence stops answering; the other computers mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds, and an explicit continue can take it sooner.
-You do not have to wait for that: press enter on a chat that says `running on <device>` on another
+You do not have to wait for that: press enter on a chat that says `held on <device>` on another
 machine and continue it there, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
 

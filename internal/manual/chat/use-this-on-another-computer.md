@@ -39,7 +39,7 @@ Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or nati
 computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
 Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
 
-## What does /laptop do — /pair, /sync and /link
+## What does /laptop do — the laptop command pairs chats with my other computer; /pair, /sync and /link
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -66,7 +66,7 @@ Both screens show the same three words. This is how you know the two computers a
 The computer that uses the code shows the words first and waits:
 
 ```
-waiting for approval on your other device; it should show: amber fox dune
+Waiting for approval on your other device; it should show: amber fox dune
 ```
 
 The computer that has your chats asks you. It shows the name of the other computer and the same words. You answer `y` or `n`:
@@ -90,13 +90,13 @@ Nothing is sent. The code is gone. If you were not at the screen, run `/pair` ag
 When you answer `y`, the computer that has your chats says:
 
 ```
-paired: laptop
+laptop is now paired. Your chats can continue there.
 ```
 
 and the other computer says:
 
 ```
-Paired. This device now has your chats.
+Paired with laptop-a. Run codeaf to open your chats.
 ```
 
 The code is now dead. It cannot pair a third computer.
@@ -185,13 +185,13 @@ It is not a view of your chats. It is a copy of you. Pair only a computer you ow
 
 Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
 
-If the other computer already has chats of its own, it keeps them and nothing changes. It says:
+A computer whose conversations have no submitted turns can pair directly. If it already has its own saved pairing keys and chats with submitted turns, the refusal counts them and explains `--replace`. Chats made with `codeaf chat --once` before any pairing keys exist are kept on first pairing, and reach the newly joined computers the next time codeaf's window opens here. For three chats on a computer with its own keys:
 
 ```
-this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace
+this computer already has 3 chats of its own, so nothing was changed. To pair it anyway, run this again with --replace: those 3 chats stay on this computer but no longer sync; shared memories and settings are cleared
 ```
 
-Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first, states that this machine's own chats will be permanently replaced and that chats sealed under the old identity can no longer be read afterwards, and replaces them only after an explicit yes. A no, or closing the panel with esc, leaves everything as it was.
+Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first: `Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared. Provider keys saved on this computer stay here.` Only an explicit `y` proceeds. A no, or closing the panel with esc, leaves everything as it was.
 
 If the other computer already has the same chats, it says:
 
@@ -215,13 +215,9 @@ There is no phone app for continuing chats. A phone browser can open the `/p/` p
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-When moving chats is available, `codeaf devices` lists every device linked to this computer, in up to two groups (in the chat, `/devices` and `/settings` → `Devices` list your paired computers). A group with nothing in it does not show. With nothing of either kind it says:
+When moving chats is available, `codeaf devices` lists this computer and every linked device, in up to two groups (in the chat, `/devices` and `/settings` → `Devices` list your paired computers). A group with no entries stays hidden. Before pairing, this computer's local name, platform and `this device` come first, followed by `Run codeaf pair to add another device.` A chat-sync list with no removable peer has that same next step instead of a removal hint.
 
-```
-nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine.
-```
-
-When moving chats is unavailable, `codeaf devices` names this machine and its key location. With no remote-access devices, it says `no devices are paired with this machine.` and points to `codeaf serve` here and `codeaf chat --at <name>` on the other computer. It does not recommend unavailable chat pairing.
+When moving chats is unavailable, `codeaf devices` lists this computer’s local name and platform, then keeps the remote-access route: its reachable name and key location. With no remote-access devices, it says `no devices are paired with this machine.` and points to `codeaf serve` here and `codeaf chat --at <name>` on the other computer. It does not recommend unavailable chat pairing.
 
 The group of computers you paired with `/pair` has this heading:
 
@@ -297,7 +293,7 @@ to a relay, so your other computers can open them. Which relay is one setting,
   other. A computer you paired with another one uses the relay that pairing saved instead. A build
   with no hosted relay has no default, and nothing is copied until you name a relay.
 - **`CODEAF_SYNC_URL=off`** turns the copying off. Nothing leaves the computer, and `codeaf pair`
-  says `sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address`.
+  says `sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service`.
 - **`CODEAF_SYNC_URL=https://relay.example.com`** is your own relay. You run it with
   `codeaf relay --listen :8787 --store <directory>` (see "Running the relay yourself" on the page
   *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
@@ -320,7 +316,7 @@ What the relay does see is short: the number at the start of the code, the time,
 Pairing goes through the relay this computer syncs through. The first that answers wins: the one `CODEAF_SYNC_URL` names, else the one an earlier pairing saved, else this channel's hosted relay (`https://codeaf.agentfield.ai/fabric` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev` on staging builds, or `https://caf-fabric-dev.instrument-santosh.workers.dev` on dev and local source builds) when this build has one. Channels do not sync with each other, so both computers must run the same channel or point `CODEAF_SYNC_URL` at the same relay. A build with no hosted relay has no default, so there you must name one: set `CODEAF_SYNC_URL` to the address of a relay, or pass it in the command. With no relay at all, `/pair` and `codeaf pair` say:
 
 ```
-no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>
+no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>
 ```
 
 ## Pair through your own relay, or stop relay traffic with CODEAF_SYNC_URL=off
@@ -343,7 +339,7 @@ After the pairing, the other computer saves that relay and syncs through it; whe
 `CODEAF_SYNC_URL=off` turns sync off. Then pairing is not available. Both commands say so before they send anything:
 
 ```
-sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address
+sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service
 ```
 
 ## The pairing relay does not answer, is full or is too old
@@ -355,7 +351,7 @@ Other things the relay can say while you pair:
 The relay cannot be reached. The name is the host you used:
 
 ```
-cannot reach relay.example.com — check your internet connection and try again
+nothing is answering at https://relay.example.com — if that is your own sync service, start it there with codeaf relay
 ```
 
 The relay is full. Try again in a few minutes:
@@ -446,3 +442,34 @@ A removed computer keeps working locally in a new chat and in a chat it held whe
 ## Why does codeaf devices fail when the sync service is down
 
 If your devices cannot be listed, `codeaf devices` exits with an error explaining that the sync service cannot be reached. It does not say nothing is paired when the listing is unavailable. A connection that times out says the service did not answer in time.
+
+## Pairing fallback names and other local work
+
+When the device name cannot be read yet, completion says `Paired with your other device. Run codeaf to open your chats.` Otherwise it names one of your paired computers.
+
+If a computer with its own saved pairing keys has local work codeaf cannot count as a submitted chat, it keeps that work and says `this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared`.
+
+
+## Paste a new computer’s link into /pair — adding another device after two
+
+The chat’s `/pair` card also accepts the link shown on a new computer. It says
+`paste the link the new device shows, or on it run codeaf pair 43-209-648` and
+shows a `> Paste pairing link` field. The command carries `--via` for your own
+sync service. Paste the link and press Enter to see the check number and approve
+with `a` or decline with `d`. A link for a different service is refused before
+lookup. Settings → Devices → Add another device opens this same card.
+
+The terminal’s `codeaf pair --code` keeps its code instructions; it has no link
+field. Use `codeaf pair approve <link>` there instead.
+
+## I opened codeaf once without sending a turn — can this computer pair?
+
+Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`, including when a provider such as Ollama is connected. Its fetched model lists do not count as local work. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. The name you enter for pairing is kept.
+
+Once this computer has its own saved pairing keys, a sent turn, tracked work, a chat memory, an automation, a saved knowledge page or a stored conversation makes the computer used. Unknown files or database tables also keep the conservative local-work refusal. Existing personal memories in the graph keep their normal merge behavior. A computer with an unrelated shared account is never silently merged; use the explicit replacement road when appropriate.
+
+## What happens to chats made with chat --once before the first pairing?
+
+If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it can be continued.
+
+A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.
