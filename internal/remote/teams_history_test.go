@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -34,6 +35,10 @@ func TestHostedTrafficHistoryKeepsMirrorSeparateAndCursorLocal(t *testing.T) {
 
 func TestHostedTeamRefreshDoesNotPersistRepairs(t *testing.T) {
 	loop, dir := teamsLoop(t)
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
 	first, err := loop.Client.TeamsRead("", nil)
 	if err != nil {
 		t.Fatal(err)

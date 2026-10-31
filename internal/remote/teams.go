@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -107,7 +109,7 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 	if args.Stamp != "" && args.Stamp == stamp {
 		return TeamsReading{Stamp: stamp, Same: true}, nil
 	}
-	if args.Stamp != "" {
+	if args.Stamp != "" && config.TeamsShareAt(dir) {
 		// Refresh is observational. Persisted repairs remain at the
 		// explicit opening and write boundaries, even over a host connection.
 		f, err := teamstore.Snapshot(dir)

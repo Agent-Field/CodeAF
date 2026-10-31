@@ -396,11 +396,11 @@ func (a *app) teamAdopt(teams []team) {
 	a.wall.teams = teams
 	// An already-open @ list holds its own ranked catalog, so adopting a
 	// changed file must refresh that reading as well as the dropdown.
-	if a.comp.open {
+	if a.teamsShare && a.comp.open {
 		a.fillMentions()
 		a.comp.rank()
 	}
-	if a.home.comp.open {
+	if a.teamsShare && a.home.comp.open {
 		a.fillHomeMentions()
 		a.home.comp.rank()
 	}

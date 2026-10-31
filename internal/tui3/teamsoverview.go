@@ -110,8 +110,12 @@ func (a *app) teamsTakeInteractions(id string, entries []teamstore.Entry) bool {
 	for _, e := range byID {
 		list = append(list, e)
 	}
+	mirrored := false
+	for _, entry := range list {
+		mirrored = mirrored || entry.Origin != ""
+	}
 	sort.Slice(list, func(i, j int) bool {
-		if !list[i].At.Equal(list[j].At) {
+		if mirrored && !list[i].At.Equal(list[j].At) {
 			return list[i].At.Before(list[j].At)
 		}
 		return list[i].ID < list[j].ID

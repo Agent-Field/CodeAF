@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -80,7 +81,7 @@ func resumeTeamConversation(file, workspace string, attach func(string) (net.Con
 // computer neither creates an identity nor sends a directory request here.
 // One call opens one synchronization handle and checks all its targets together.
 func teamComputers(ctx context.Context, members []teams.Member) (map[string]string, error) {
-	if !syncsetup.MayTalk(home.Dir()) {
+	if !config.TeamsShareAt(config.ProfilePath("", "")) || !syncsetup.MayTalk(home.Dir()) {
 		return nil, nil
 	}
 	s, ok, err := syncsetup.Open(home.Dir())

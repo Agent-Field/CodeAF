@@ -245,6 +245,9 @@ func trafficLater(a, b teamstore.Entry) bool {
 	if b.ID == "" {
 		return true
 	}
+	if a.Origin == "" && b.Origin == "" {
+		return a.ID > b.ID
+	}
 	if !a.At.Equal(b.At) {
 		return a.At.After(b.At)
 	}

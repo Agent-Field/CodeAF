@@ -305,7 +305,7 @@ func (a *app) mentionChatsExcept(front string) []mentionChat {
 		chat.open = false
 		out = append(out, chat)
 	}
-	if a.wall.loaded {
+	if a.teamsShare && a.wall.loaded {
 		for _, t := range a.wall.teams {
 			for _, m := range t.Members {
 				if m.Key == "" || m.Key == front || seen[m.Key] {

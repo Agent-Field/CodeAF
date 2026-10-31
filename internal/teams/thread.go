@@ -125,8 +125,10 @@ func Threads(entries []Entry) []Thread {
 		return nil
 	}
 	at := make(map[string]int, len(entries))
+	mirrored := false
 	for i, e := range entries {
 		at[e.ID] = i
+		mirrored = mirrored || e.Origin != ""
 	}
 	rootOf := func(i int) int {
 		for hop := 0; hop < threadHops; hop++ {
@@ -152,10 +154,15 @@ func Threads(entries []Entry) []Thread {
 		if root != i {
 			out[n].Replies = append(out[n].Replies, e)
 		}
-		if at[e.ID] > at[out[n].Latest] {
+		if (!mirrored && e.ID > out[n].Latest) || (mirrored && at[e.ID] > at[out[n].Latest]) {
 			out[n].Latest = e.ID
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return at[out[i].Latest] > at[out[j].Latest] })
+	sort.SliceStable(out, func(i, j int) bool {
+		if !mirrored {
+			return out[i].Latest > out[j].Latest
+		}
+		return at[out[i].Latest] > at[out[j].Latest]
+	})
 	return out
 }

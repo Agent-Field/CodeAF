@@ -260,7 +260,7 @@ func (a *app) trafficRead() tea.Cmd { return a.trafficReadOf(a.trafficIDs(), fal
 // clock, whose fold sets the next one; a turn that finds a read already out
 // leaves the answer to it and only comes round again.
 func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
-	if titles := a.trafficTitles(); len(ids) > 0 && len(titles) > 0 {
+	if titles := a.trafficTitles(); (len(ids) > 0 || !a.teamsShare) && len(titles) > 0 {
 		// A member that joined before it had a title takes its tab's name,
 		// and with it a handle, as an ordinary edit: [app.teamEdit] gives every
 		// member this window has a tab for its tab's name on the way, and the
@@ -279,7 +279,7 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 		jobs = append(jobs, trafficJob{id: id, after: after, mirror: a.traffic.mirror[id], first: !seen})
 	}
 	a.traffic.reading = true
-	seam, reserved, stamp, edits := a.teamsSeam(), teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits
+	seam, reserved, stamp, edits, sharing := a.teamsSeam(), teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits, a.teamsShare
 	return a.besideLine(func() func(bool) tea.Cmd {
 		got := make([]trafficGot, len(jobs))
 		for i, j := range jobs {
@@ -289,7 +289,7 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 			}
 			entries, err := seam.Traffic(j.id, after, limit)
 			got[i] = trafficGot{trafficJob: j, entries: entries, news: entries, err: err}
-			if seam.DisplayTraffic != nil && err == nil {
+			if seam.DisplayTraffic != nil && err == nil && sharing {
 				display, next, mirror, reset, displayErr := seam.DisplayTraffic(j.id, after, j.mirror, trafficKeep)
 				if displayErr != nil {
 					teamstore.SharingError(a.profileDir, displayErr)
@@ -426,7 +426,7 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 			a.traffic.ticking = false
 		}
 	}
-	if needRoster {
+	if needRoster && a.teamsShare {
 		acts = append(acts, a.askRoster())
 	}
 	return tea.Batch(acts...)

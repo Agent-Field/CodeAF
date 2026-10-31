@@ -73,6 +73,12 @@ func (a *app) teamsElsewhere(m teamMember) string {
 		id, _, _ = strings.Cut(id, ":")
 		return a.teamComputerName(id)
 	}
+	if !a.teamsShare {
+		if _, remote := teamstore.RemoteCell(m.Key); remote {
+			return "the other computer"
+		}
+		return ""
+	}
 	id := a.teamMemberCell(m)
 	for _, row := range a.machineRead.rows {
 		if row.Cell == id && heldElsewhere(row) {
@@ -94,6 +100,16 @@ func (a *app) teamsContinue(row chatlist.Row) tea.Cmd {
 }
 
 func (a *app) teamsRemoteGo(m teamMember, local ...func() tea.Cmd) (tea.Cmd, bool) {
+	_, sentinel := teamstore.RemoteCell(m.Key)
+	if !a.teamsShare {
+		if !sentinel && !teamstore.OnOtherComputer(m.Key) {
+			return nil, false
+		}
+		a.tp.msg = "This chat is on " + a.teamsElsewhere(m) + ". Open it there."
+		a.note(a.tp.msg)
+		a.touch()
+		return nil, true
+	}
 	if m.Key == "" {
 		return nil, false
 	}
@@ -200,7 +216,7 @@ type teamsRefreshTickMsg struct{}
 // teamsRefreshArm keeps the cached dropdown and completion model current even
 // with no managed member open. Its command stats through ReadSince off paint.
 func (a *app) teamsRefreshArm() tea.Cmd {
-	if a.teamsDisk.refreshing || !a.wall.loaded || a.teamsOff() {
+	if !a.teamsShare || a.teamsDisk.refreshing || !a.wall.loaded || a.teamsOff() {
 		return nil
 	}
 	a.teamsDisk.refreshing = true
@@ -210,7 +226,7 @@ func teamsRefreshNext() tea.Cmd {
 	return surfaceTick(homeEvery, func(time.Time) tea.Msg { return teamsRefreshTickMsg{} })
 }
 func (a *app) teamsRefreshTick() tea.Cmd {
-	if !a.wall.loaded || a.teamsOff() {
+	if !a.teamsShare || !a.wall.loaded || a.teamsOff() {
 		a.teamsDisk.refreshing = false
 		return nil
 	}
@@ -224,7 +240,7 @@ func (a *app) teamComputerKnown(id string) bool {
 // Same-chat gestures consult only Home's cached ownership. A key press cannot
 // create a new directory request merely to rediscover the front chat.
 func (a *app) teamsRemoteFront(key string) (tea.Cmd, bool) {
-	if key == "" {
+	if !a.teamsShare || key == "" {
 		return nil, false
 	}
 	member := teamMember{Key: key}

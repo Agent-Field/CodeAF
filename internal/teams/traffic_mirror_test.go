@@ -190,3 +190,28 @@ func TestHistoryThreadsFollowTimeAcrossWritersAndKeepReferences(t *testing.T) {
 		t.Fatalf("portable ids decided thread order or broke references: %+v", threads)
 	}
 }
+
+func TestHistoryWithoutMirrorKeepsLocalSequenceWhenClockMovesBack(t *testing.T) {
+	profile := t.TempDir()
+	for _, at := range []time.Time{time.Unix(200, 0), time.Unix(100, 0)} {
+		if err := AppendTraffic(profile, "alpha", Entry{Kind: KindNote, From: FromYou, To: ToRoom, At: at, Text: "local"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	local, err := ReadTraffic(profile, "alpha", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := ReadHistory(profile, "alpha", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != len(local) {
+		t.Fatal("history changed local length")
+	}
+	for i := range local {
+		if history[i].ID != local[i].ID {
+			t.Fatal("history changed local sequence")
+		}
+	}
+}

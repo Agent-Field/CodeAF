@@ -665,7 +665,7 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 		elsewhere[m.Key] = a.teamsElsewhere(m) != ""
 	}
 	previous := a.tp.previews
-	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
+	worldDoor, hosted, rowsDoor, sharing := a.world, a.hosted(), a.teamsDisk.rows, a.teamsShare
 	if rowsDoor == nil {
 		rowsDoor = session.ReadRows
 	}
@@ -699,7 +699,7 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 		if seam.Traffic != nil {
 			for i, id := range interactionIDs {
 				side(func() {
-					if seam.DisplayTraffic != nil {
+					if seam.DisplayTraffic != nil && sharing {
 						traffic[i], _, _, _, _ = seam.DisplayTraffic(id, "", "", trafficKeep)
 					} else {
 						traffic[i], _ = seam.Traffic(id, "", trafficKeep)
@@ -917,7 +917,7 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		for _, e := range entries {
 			if e.Origin != "" {
 				id, _, _ := strings.Cut(e.Origin, "/")
-				if !a.teamComputerKnown(id) {
+				if a.teamsShare && !a.teamComputerKnown(id) {
 					return a.askRoster()
 				}
 			}

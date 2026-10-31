@@ -30,7 +30,8 @@
 //   - The Traffic log is append-only JSON lines, one file per team, rotated
 //     once past a few megabytes.
 //
-// THE SYNC LAWS. Portable identities name cells, never another computer's
+// THE SYNC LAWS APPLY ONLY AFTER THIS COMPUTER OPTS IN. Sharing is off by
+// default and both paired computers must turn it on. Portable identities name cells, never another computer's
 // paths. A team's deletion beats a stale copy. Merge repairs parents, handles,
 // managers and reporting homes deterministically; teams sort by Made then id.
 // Unpaired computers retain their existing file order and encodings.

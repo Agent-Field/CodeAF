@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"fmt"
 	"os"
 	"reflect"
@@ -10,12 +11,14 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 func TestTeamMemberUsesExistingContinueHereQuestion(t *testing.T) {
 	celltest.Available(t)
 	a := continueHome(t, &fakeTaker{}, continueRows, 140)
+	enableSurfaceTeamSharing(t, a)
 	row := continueRows[0]
 	member := teamMember{Key: teamstore.RemoteKey(row.Cell), Word: row.Title}
 	a.wall.loaded = true
@@ -29,6 +32,7 @@ func TestTeamMemberUsesExistingContinueHereQuestion(t *testing.T) {
 
 func TestUnsyncedMemberSaysChatIsOnOtherComputer(t *testing.T) {
 	a := teamsPlaceLab(t)
+	enableSurfaceTeamSharing(t, a)
 	a.devRow.devices = []chatlist.Device{{ID: "a", Name: "My desktop"}}
 	cmd, remote := a.teamsRemoteGo(teamMember{Key: teamstore.OtherComputerKey("device:a"), Word: "local chat"})
 	if !remote || cmd != nil || !strings.Contains(a.tp.msg, "My desktop and is not shared. Open it there.") {
@@ -38,6 +42,7 @@ func TestUnsyncedMemberSaysChatIsOnOtherComputer(t *testing.T) {
 
 func TestAppliedTeamsRefreshDropdownAndAtListFromFileStamp(t *testing.T) {
 	a := teamsPlaceLab(t)
+	enableSurfaceTeamSharing(t, a)
 	teamsFlush(t, a)
 	a.comp.open, a.comp.query = true, "team:alpha"
 	a.fillMentions()
@@ -83,6 +88,7 @@ func TestTeamMemberFetchesItsContinueRowWhenHomeHasNotReadItYet(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		t.Run(fmt.Sprintf("local=%v", local), func(t *testing.T) {
 			a := continueHome(t, &fakeTaker{}, continueRows, 140)
+			enableSurfaceTeamSharing(t, a)
 			row := continueRows[0]
 			a.machineRead.rows, a.machineRead.at = nil, time.Time{}
 			member := teamMember{Key: teamstore.RemoteKey(row.Cell), Word: row.Title, SyncID: "cell:" + row.Cell}
@@ -131,6 +137,7 @@ func TestMemberGesturesShowContinuationAndBothAnswersFromTeamsAndTabs(t *testing
 					a.wall.loaded = true
 					a.wall.teams = []team{{ID: "alpha", Name: "alpha", Members: []teamMember{m}, Manager: m.Key}}
 					a.profileDir = t.TempDir()
+					enableSurfaceTeamSharing(t, a)
 					if err := teamstore.Update(a.profileDir, func(f *teamstore.File) error { f.Teams = teamsClone(a.wall.teams); return nil }); err != nil {
 						t.Fatal(err)
 					}
@@ -182,6 +189,7 @@ func TestMemberGesturesShowContinuationAndBothAnswersFromTeamsAndTabs(t *testing
 
 func TestUnpairedRefreshClockReadsChangedFileWithoutRepairingOrWritingAnything(t *testing.T) {
 	a := teamsPlaceLab(t)
+	enableSurfaceTeamSharing(t, a)
 	teamsFlush(t, a)
 	raw := []byte(`{"version":2,"teams":[{"id":"zz","name":"first","parent":"","members":[],"manager":"","made":"2026-01-01T00:00:00Z"},{"id":"aa","name":"second","parent":"","members":[],"manager":"","made":"2026-01-02T00:00:00Z"}]}`)
 	if err := os.WriteFile(teamstore.Path(a.profileDir), raw, 0600); err != nil {
@@ -202,6 +210,7 @@ func TestUnpairedRefreshClockReadsChangedFileWithoutRepairingOrWritingAnything(t
 
 func TestMirrorTailRefreshKeepsLocalCursorAndShowsHistoryInBothSurfaces(t *testing.T) {
 	a, id, _, _ := trafficApp(t)
+	enableSurfaceTeamSharing(t, a)
 	a.width, a.height = 200, 70
 	trafficAppend(t, a, id, teamstore.Entry{Kind: teamstore.KindNote, From: teamstore.FromManager, To: teamstore.ToRoom, Text: "local tail", At: time.Now().Add(time.Hour)})
 	spend(t, a, a.trafficRead())
@@ -288,6 +297,7 @@ func TestTypingInATeamChatHeldElsewhereTakesTheSameDoorAsAnyChat(t *testing.T) {
 		file := lab.session("project", row.Cell, row.Title, workspace, time.Now())
 		a := lab.app(file)
 		a.profileDir = t.TempDir()
+		enableSurfaceTeamSharing(t, a)
 		a.machines = chatlist.Static{row}
 		drain(t, a, a.askMachines())
 		a.leavePlace()
@@ -319,4 +329,140 @@ func TestTypingInATeamChatHeldElsewhereTakesTheSameDoorAsAnyChat(t *testing.T) {
 	if !reflect.DeepEqual(alone, team) {
 		t.Fatalf("team membership changed what typing in a held chat does:\nalone %+v\nteam  %+v", alone, team)
 	}
+}
+
+func enableSurfaceTeamSharing(t *testing.T, a *app) {
+	t.Helper()
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	a.refreshProfileUI()
+}
+
+// FIX4 F1: Update uses the adopted profile snapshot; a direct file write is
+// not a setting adoption and cannot arm the sharing clock on the surface loop.
+func TestTeamSharingClockUsesOnlyAdoptedProfileSettings(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.wall.loaded = true
+	if cmd := a.teamsRefreshArm(); cmd != nil || a.teamsDisk.refreshing {
+		t.Fatal("the default-off profile armed the sharing clock")
+	}
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir}).Row(config.KeyTeamsShare)
+	if !ok {
+		t.Fatal("missing sharing setting")
+	}
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	for _, msg := range []tea.Msg{struct{}{}, key("x"), key("backspace"), teamsRefreshTickMsg{}} {
+		a.Update(msg)
+		if a.teamsDisk.refreshing {
+			t.Fatal("the surface loop read an unadopted sharing setting")
+		}
+	}
+	a.refreshProfileUI()
+	a.Update(struct{}{})
+	if !a.teamsDisk.refreshing {
+		t.Fatal("profile adoption did not arm the sharing clock")
+	}
+	reopened := newTestAppWithProfile(a.profileDir, &fakeAgent{})
+	reopened.wall.loaded = true
+	if cmd := reopened.teamsRefreshArm(); cmd == nil || !reopened.teamsDisk.refreshing {
+		t.Fatal("boot did not adopt the enabled sharing setting")
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+	if cmd := a.teamsRefreshTick(); cmd == nil || !a.teamsDisk.refreshing {
+		t.Fatal("the sharing tick read an unadopted file change")
+	}
+	a.settle()
+	if cmd := a.teamsRefreshTick(); cmd != nil || a.teamsDisk.refreshing {
+		t.Fatal("turn completion did not adopt the disabled sharing setting")
+	}
+}
+
+func TestSharingOffStopsRefreshAndKeepsLocalChatShortcuts(t *testing.T) {
+	celltest.Available(t)
+	a := continueHome(t, &fakeTaker{}, continueRows, 140)
+	row := continueRows[0]
+	member := teamMember{Key: a.frontTabKey(), File: a.file, Word: row.Title, SyncID: "cell:" + row.Cell}
+	a.wall.loaded = true
+	a.wall.teams = []team{{ID: "alpha", Name: "alpha", Members: []teamMember{member}}}
+	if cmd := a.teamsRefreshArm(); cmd != nil || a.teamsDisk.refreshing {
+		t.Fatal("sharing off armed a refresh clock")
+	}
+	a.teamsDisk.refreshing = true
+	if cmd := a.teamsRefreshTick(); cmd != nil || a.teamsDisk.refreshing {
+		t.Fatal("sharing off retained a refresh clock")
+	}
+	for _, gesture := range []func() tea.Cmd{
+		func() tea.Cmd { return a.mentionChatPress(member.Key) },
+		func() tea.Cmd { return a.trafficGo(member.Key) },
+		func() tea.Cmd { return a.tabGo(chatTab{key: member.Key, file: member.File}) },
+	} {
+		a.leavePlace()
+		gesture()
+		if _, ok := a.homeAsking(); ok {
+			t.Fatal("sharing off replaced a local shortcut with an ownership question")
+		}
+	}
+	if got := a.teamsElsewhere(member); got != "" {
+		t.Fatal("sharing off used directory ownership", got)
+	}
+	enableSurfaceTeamSharing(t, a)
+	if _, remote := a.teamsRemoteFront(member.Key); !remote {
+		t.Fatal("enabling did not enable cached ownership")
+	}
+}
+
+func TestSettingsGeneralHasLocalTeamSharingChoiceAndSearch(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+	cursorTo(t, a, config.KeyTeamsShare)
+	item, ok := a.sheet.current()
+	if !ok || item.row.Key != config.KeyTeamsShare || item.meta.tab != tabGeneral || item.meta.label != "share teams" || item.meta.widget != widgetCycle {
+		t.Fatal("sharing row not on General", item)
+	}
+	if item.row.Value() != "off" {
+		t.Fatal("sharing must start off", item.row.Value())
+	}
+	for _, want := range []string{"teams", "members and settings", "recent Traffic as read-only history", "off until turned on", "both computers must turn it on", "pairing required"} {
+		if !strings.Contains(item.meta.about, want) {
+			t.Fatal("sharing explanation omitted", want, item.meta.about)
+		}
+	}
+	if shown := strings.Join(settingsDetails(a, 90), " "); !strings.Contains(shown, "both computers") {
+		t.Fatal("sharing explanation hidden on General", shown)
+	}
+	a.wall.loaded = true
+	chooseSheetValue(t, a, "on")
+	if item.row.Value() != "on" || !a.teamsDisk.refreshing {
+		t.Fatal("saving the General choice did not enable sharing immediately")
+	}
+	chooseSheetValue(t, a, "off")
+	if item.row.Value() != "off" || a.teamsRefreshTick() != nil || a.teamsDisk.refreshing {
+		t.Fatal("saving the General choice did not stop sharing immediately")
+	}
+	a.sheet.build()
+	if current, ok := a.sheet.current(); !ok || current.row.Key != config.KeyTeamsShare {
+		t.Fatal("rebuilding General moved focus away from the sharing setting")
+	}
+	if itemAt(searchItems(t, a, "share teams"), config.KeyTeamsShare) < 0 {
+		t.Fatal("sharing setting not searchable")
+	}
+}
+
+func TestSharingOffUsesOnlyTheOriginalTrafficReadDoor(t *testing.T) {
+	a, id, _, _ := trafficApp(t)
+	a.tp.sel = id
+	seam := a.teamsSeam()
+	seam.DisplayTraffic = func(string, string, string, int) ([]teamstore.Entry, string, string, bool, error) {
+		t.Error("sharing off called the new history door")
+		return nil, "", "", false, nil
+	}
+	a.teamsDisk.door = seam
+	trafficReadNow(t, a)
+	spend(t, a, a.teamsRead(false))
 }

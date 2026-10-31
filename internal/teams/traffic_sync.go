@@ -198,6 +198,11 @@ func ReadHistory(profile, team string, limit int) ([]Entry, error) {
 		SharingError(profile, err)
 		remote = nil
 	}
+	// Local sequence numbers retain their original order when no mirrored
+	// history participates, even if the writing computer's clock moved.
+	if len(remote) == 0 {
+		return local, nil
+	}
 	all := append(local, remote...)
 	sortHistory(all)
 	if limit > 0 && len(all) > limit {

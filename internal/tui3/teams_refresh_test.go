@@ -13,6 +13,7 @@ import (
 
 func TestMirrorRefreshActsOnEveryPendingLocalStartAndStopExactlyOnce(t *testing.T) {
 	a, id, _, _ := trafficApp(t)
+	enableSurfaceTeamSharing(t, a)
 	a.start = nil
 	trafficReadNow(t, a)
 	first := a.traffic.cursor[id]
@@ -53,6 +54,7 @@ func TestSameChatGesturesCheckCachedRemoteOwnershipBeforeReturning(t *testing.T)
 	for _, gesture := range []string{"traffic", "mention", "team-link"} {
 		t.Run(gesture, func(t *testing.T) {
 			a := continueHome(t, &fakeTaker{}, continueRows, 140)
+			enableSurfaceTeamSharing(t, a)
 			row := continueRows[0]
 			m := teamMember{Key: a.frontTabKey(), File: a.file, Handle: "worker", Word: row.Title, SyncID: "cell:" + row.Cell}
 			a.wall.loaded = true
@@ -84,6 +86,7 @@ func TestSameChatGesturesCheckCachedRemoteOwnershipBeforeReturning(t *testing.T)
 func TestRemoteMemberCompletionIsDeduplicatedAndItsLinkContinuesHere(t *testing.T) {
 	celltest.Available(t)
 	a := continueHome(t, &fakeTaker{}, continueRows, 140)
+	enableSurfaceTeamSharing(t, a)
 	row := continueRows[0]
 	m := teamMember{Key: teamstore.RemoteKey(row.Cell), Handle: "worker", Word: "remote worker", SyncID: "cell:" + row.Cell}
 	a.wall.loaded = true
@@ -108,6 +111,7 @@ func TestRemoteMemberCompletionIsDeduplicatedAndItsLinkContinuesHere(t *testing.
 func TestHostedTeamMemberNeverUsesTheLaptopsContinuation(t *testing.T) {
 	celltest.Available(t)
 	a := continueHome(t, &fakeTaker{}, continueRows, 140)
+	enableSurfaceTeamSharing(t, a)
 	a.host = "engine.example"
 	row := continueRows[0]
 	a.teamsDisk.door = TeamsSeam{Load: func([]float64) ([]teamstore.Team, string, bool) { return nil, "", true }}
@@ -126,6 +130,7 @@ func TestHostedTeamMemberNeverUsesTheLaptopsContinuation(t *testing.T) {
 
 func TestUnknownComputerNamesNeverExposeDeviceIDs(t *testing.T) {
 	a := teamsPlaceLab(t)
+	enableSurfaceTeamSharing(t, a)
 	id := "dev_1234567890abcdef"
 	a.machineRead.rows = []chatlist.Row{{DeviceID: id, Device: "12345678"}}
 	a.devRow.devices = []chatlist.Device{{ID: id, Name: "12345678"}}

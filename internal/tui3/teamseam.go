@@ -165,7 +165,13 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			if since != "" && since == stamp {
 				return nil, stamp, true, nil
 			}
-			f, err := teamstore.Snapshot(dir)
+			var f *teamstore.File
+			var err error
+			if config.TeamsShareAt(dir) {
+				f, err = teamstore.Snapshot(dir)
+			} else {
+				f, err = teamstore.LoadHued(dir, reserved)
+			}
 			if err != nil {
 				return nil, stamp, false, err
 			}
