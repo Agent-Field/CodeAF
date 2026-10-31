@@ -90,7 +90,7 @@ var teamReadSchema = `{"type":"object","properties":{"handle":{"type":"string","
 	`"messages":{"type":"integer","description":"How many of the last messages. Default ` + strconv.Itoa(teamReadDefault) + `, maximum ` + strconv.Itoa(teamReadMax) + `."},` +
 	teamArgSchema + `},"required":["handle"],"additionalProperties":false}`
 
-const teamSendDescription = "Send a message to one member, to several (one message with every handle in to), or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. Sends only to chats known to be on another computer are refused before writing; continue them here first. Mixed sends reach local recipients and name those not reached. " +
+const teamSendDescription = "Send a message to one member, to several (one message with every handle in to), or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. " +
 	"kind note is information and waits for the member's next turn; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation, and it starts an idle member's turn. " +
 	"A member busy in a long tool call reads it when that returns; use team_stop to end its turn first."
 

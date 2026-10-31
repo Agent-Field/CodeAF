@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -15,6 +16,9 @@ type teamUnreached struct {
 // Only remote identities or a successful ownership reading can refuse local
 // work. Failed discovery leaves the existing local delivery path available.
 func (a *Agent) teamDeliveryTargets(ctx context.Context, targets []teams.Member) ([]teams.Member, []teamUnreached) {
+	if !config.TeamsShareAt(a.config.teamProfile()) {
+		return targets, nil
+	}
 	names := map[string]string{}
 	if a.config.TeamComputers != nil {
 		got, err := a.config.TeamComputers(ctx, targets)

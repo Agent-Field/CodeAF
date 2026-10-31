@@ -20,6 +20,7 @@ func TestLocalTeamDeliverySurvivesMissingFilesAndLookupFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := newTeamFixture(t, true)
+	enableSessionTeamSharing(t, f.profile)
 	a := teamAgent(t, f, f.manager, nil, manualRelayTeamClock)
 	a.config.TeamComputers = func(context.Context, []teams.Member) (map[string]string, error) { return nil, errors.New("offline") }
 	if err := teams.Update(f.profile, func(file *teams.File) error {
@@ -49,6 +50,7 @@ func TestMixedTeamRecipientsWriteOnceAndNameThoseNotReached(t *testing.T) {
 	for _, mode := range []string{"everyone", "several", "room", "all-remote-room", "single"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newTeamFixture(t, true)
+			enableSessionTeamSharing(t, f.profile)
 			transcript, args := f.manager, `{"to":"everyone","text":"hello"}`
 			if mode == "several" {
 				args = `{"to":"web, parser","text":"hello"}`
@@ -105,6 +107,7 @@ func TestPacketDecideAndEscalateRefuseRemoteDestinationsBeforeMutation(t *testin
 	for _, escalate := range []bool{false, true} {
 		t.Run(map[bool]string{false: "decide", true: "escalate"}[escalate], func(t *testing.T) {
 			f := newTeamFixture(t, true)
+			enableSessionTeamSharing(t, f.profile)
 			parentKey := "remote-parent"
 			if err := teams.Update(f.profile, func(file *teams.File) error {
 				file.Teams = append(file.Teams, teams.Team{ID: "parent", Name: "parent", Members: []teams.Member{{Key: parentKey, Handle: "upstream", Word: "upstream"}, {Key: convKeyOf(t, f.manager), File: f.manager, Handle: "boss", Word: "boss"}}, Manager: parentKey})

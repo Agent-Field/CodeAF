@@ -43,6 +43,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"strconv"
 	"strings"
 
@@ -303,9 +304,11 @@ func (a *Agent) teamDecideTool(ctx context.Context, args json.RawMessage) (strin
 	case teams.PacketCap, teams.PacketClosing:
 		return fmt.Sprintf("A %s is the person's to decide, never a manager's. Nothing was done.", p.Kind), true, nil
 	}
-	file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
-	if refusal := a.teamDeliveryRefusal(ctx, teamPacketRecipients(file, p)); refusal != "" {
-		return refusal, true, nil
+	if config.TeamsShareAt(a.config.teamProfile()) {
+		file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
+		if refusal := a.teamDeliveryRefusal(ctx, teamPacketRecipients(file, p)); refusal != "" {
+			return refusal, true, nil
+		}
 	}
 	// AN OPTION MAY BE NAMED BY ITS LABEL: a model that writes "JSON" for
 	// option 1 means option 1.

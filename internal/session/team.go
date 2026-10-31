@@ -997,7 +997,8 @@ func (a *Agent) readTeamCursorsLocked() {
 	// number lines this computer never wrote, so every team starts again from
 	// [Agent.firstTeamCursor], exactly as for a team met for the first time;
 	// that keeps the directive a rouse opened this conversation for.
-	if device := teamCursorDevice(); stored.Device != "" && stored.Device != device {
+	sharing := config.TeamsShareAt(a.config.teamProfile())
+	if sharing && stored.Device != "" && stored.Device != teamCursorDevice() {
 		return
 	}
 	for id, cursor := range stored.Read {
@@ -1010,13 +1011,15 @@ func (a *Agent) readTeamCursorsLocked() {
 		// up to it, so that team alone starts again. A position at or before the
 		// end can at worst hand a line over twice, the direction this must fail
 		// in, and a log that cannot be read keeps the cursor as it always did.
-		if tail, err := teams.ReadTraffic(a.config.teamProfile(), id, "", 1); err == nil {
-			end := teamLogStart
-			if len(tail) > 0 {
-				end = tail[len(tail)-1].ID
-			}
-			if cursor > end {
-				continue
+		if sharing {
+			if tail, err := teams.ReadTraffic(a.config.teamProfile(), id, "", 1); err == nil {
+				end := teamLogStart
+				if len(tail) > 0 {
+					end = tail[len(tail)-1].ID
+				}
+				if cursor > end {
+					continue
+				}
 			}
 		}
 		a.team.cursors[id] = cursor
@@ -1035,10 +1038,14 @@ func (a *Agent) saveTeamCursorsLocked() {
 	for id, cursor := range a.team.cursors {
 		read[id] = cursor
 	}
+	device := ""
+	if config.TeamsShareAt(a.config.teamProfile()) {
+		device = teamCursorDevice()
+	}
 	raw, err := json.Marshal(struct {
 		Read   map[string]string `json:"read"`
 		Device string            `json:"device,omitempty"`
-	}{read, teamCursorDevice()})
+	}{read, device})
 	if err != nil {
 		return
 	}

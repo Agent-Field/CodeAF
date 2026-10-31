@@ -1601,8 +1601,9 @@ type Config struct {
 	// from a test.
 	ProfileDir string
 
-	// TeamComputers checks current holders once for the complete recipient
-	// batch before any team Traffic is written; an unpaired home stays quiet.
+	// TeamComputers is used only with local team sharing on. It checks current
+	// holders once for the complete recipient batch before any team Traffic is
+	// written; an unpaired home stays quiet.
 	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
 
 	// failures is the tally the piece of work this agent belongs to keeps of its

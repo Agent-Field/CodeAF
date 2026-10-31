@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -21,6 +22,7 @@ func manualRelayTeamClock(c *Config) { c.teamWatchManual = true }
 // the same mirror. None of these readers may ever consume display history.
 func TestTrafficMirrorNeverDeliversStartsQuestionsWakesOrStops(t *testing.T) {
 	f := newWakingTeamFixture(t)
+	enableSessionTeamSharing(t, f.profile)
 	member := teamAgent(t, f, f.web, nil, manualRelayTeamClock)
 	manager := teamAgent(t, f, f.manager, nil, manualRelayTeamClock)
 	member.teamBoundary()
@@ -90,6 +92,7 @@ func TestForeignDeliveryCursorStartsAtThisComputersOpeningAndDeliversOnce(t *tes
 		t.Fatal(err)
 	}
 	f := newWakingTeamFixture(t)
+	enableSessionTeamSharing(t, f.profile)
 	// A line from long before the chat arrived is history; the directive sent
 	// a second before the engine opened is the one a rouse opened it for, which
 	// a conversation meeting a team for the first time is always handed.
@@ -144,6 +147,7 @@ func TestForeignDeliveryCursorStartsAtThisComputersOpeningAndDeliversOnce(t *tes
 
 func TestRemoteTeamSendsStartsPostsAndRousesRefuseBeforeTraffic(t *testing.T) {
 	f := newWakingTeamFixture(t)
+	enableSessionTeamSharing(t, f.profile)
 	a := teamAgent(t, f, f.manager, nil, manualRelayTeamClock)
 	a.config.TeamComputers = func(_ context.Context, members []teams.Member) (map[string]string, error) {
 		names := map[string]string{}
@@ -192,5 +196,52 @@ func TestRemoteTeamSendsStartsPostsAndRousesRefuseBeforeTraffic(t *testing.T) {
 	local, _ := teams.ReadTraffic(f.profile, f.teamID, "", 0)
 	if len(local) != 0 {
 		t.Fatal("refusal wrote Traffic", local)
+	}
+}
+
+func enableSessionTeamSharing(t *testing.T, profile string) {
+	t.Helper()
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSharingOffKeepsLegacyCursorBytesAndSkipsEveryOwnershipLookup(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CODEAF_HOME", root)
+	if _, err := identity.Ensure(root); err != nil {
+		t.Fatal(err)
+	}
+	f := newWakingTeamFixture(t)
+	a := teamAgent(t, f, f.web, nil, manualRelayTeamClock)
+	a.config.TeamComputers = func(context.Context, []teams.Member) (map[string]string, error) {
+		t.Fatal("sharing off called ownership lookup")
+		return nil, nil
+	}
+	targets := []teams.Member{{Key: teams.RemoteKey("remote")}, {Key: teams.OtherComputerKey("device:a:chat")}, {Key: "local"}}
+	local, unreached := a.teamDeliveryTargets(t.Context(), targets)
+	if len(local) != len(targets) || len(unreached) != 0 {
+		t.Fatal("sharing off refused legacy delivery")
+	}
+	for _, device := range []string{"", "foreign-device"} {
+		raw, _ := json.Marshal(map[string]any{"read": map[string]string{f.teamID: "999999999999"}, "device": device})
+		if err := writeTeamFile(a.teamCursorFile(), raw); err != nil {
+			t.Fatal(err)
+		}
+		a.team.mu.Lock()
+		a.team.cursorsRead = false
+		a.readTeamCursorsLocked()
+		got := a.team.cursors[f.teamID]
+		a.saveTeamCursorsLocked()
+		a.team.mu.Unlock()
+		if got != "999999999999" {
+			t.Fatal("sharing off discarded legacy cursor", got)
+		}
+		saved, err := os.ReadFile(a.teamCursorFile())
+		want := `{"read":{"` + f.teamID + `":"999999999999"}}`
+		if err != nil || string(saved) != want {
+			t.Fatalf("sharing off changed cursor shape: %s %v", saved, err)
+		}
 	}
 }
