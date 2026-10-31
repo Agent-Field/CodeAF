@@ -3479,6 +3479,55 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
+// #1351: a worker given a repository deleted its `.git` and the folder guard let
+// it, because `.git` is inside the folder it was given. The guard now refuses
+// replacing the folder's own git metadata, and the questions a person asks
+// after seeing that, or before trusting `--dir`, must reach the sections that
+// say so: in their words, with the refusal quoted and the shapes named.
+func TestTheGitMetadataQuestionsReachTheSectionsThatRefuseIt(t *testing.T) {
+	asked := []struct {
+		question string
+		page     string
+		title    string
+		says     []string
+	}{
+		{
+			question: "can a task delete my repository's .git",
+			page:     "permissions",
+			title:    "Can a task delete my repository's .git or its history",
+			says:     []string{"is outside your copy", "rm -rf .git", "codeaf do --dir", "git commit"},
+		},
+		{
+			question: "can work in a folder delete its .git history",
+			page:     "choosing-a-folder",
+			title:    "Can work in a folder delete its .git",
+			says:     []string{"is outside your copy", "codeaf do --dir", "rm -rf ."},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != ask.page || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			found := Chat().Search(ask.question, DefaultResults)
+			where := make([]string, 0, len(found))
+			for _, section := range found {
+				where = append(where, section.Page+" · "+section.Title)
+			}
+			t.Errorf("%q does not reach %s · %q; it reached %v", ask.question, ask.page, ask.title, where)
+		}
+	}
+}
+
 // #1469: home listed waiting standing orders without their due time, and a person
 // asking when one goes off there had to be sent to the standing place for it.
 // Standing orders are automations now (automations.md), and home's `automations`
