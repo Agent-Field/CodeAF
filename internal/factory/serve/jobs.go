@@ -151,7 +151,12 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					cur.DecidePipeline(file.Copy, h.clock())
 				}
 				if rules != nil {
+					// A person's start judges nothing: what the factory's own
+					// start found under older rules no longer speaks for it.
 					cur.StartRules, cur.RuleHold = rules, ""
+					if cur.RuleChecks != nil {
+						cur.RuleChecks.Start = ""
+					}
 					if rules.Unread {
 						cur.Note(h.clock(), "Started with the repository's rules unread; its plan will wait for you")
 					}

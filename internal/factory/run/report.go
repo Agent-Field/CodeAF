@@ -693,12 +693,6 @@ func PlanRuleHold(it factory.Item) string {
 // ChangeRuleHold is why a landed job's publication is a person's by the rules
 // it started under ([pipeline.ChangeHold]): the files its change really
 // touches, read from the diff, not from what the plan said it would touch.
-// changeJudged says whether [ChangeRuleHold] had anything to judge: the run's
-// change, read, with files, and the rules the job started under.
-func changeJudged(it factory.Item) bool {
-	return it.Change != nil && len(it.Change.Files) > 0 && it.StartRules != nil
-}
-
 func ChangeRuleHold(it factory.Item) string {
 	if it.Change == nil {
 		return ""
@@ -708,4 +702,12 @@ func ChangeRuleHold(it factory.Item) string {
 		files = append(files, f.Path)
 	}
 	return pipeline.ChangeHold(it.StartRules, files)
+}
+
+// changeJudged says whether [ChangeRuleHold] had anything to judge: the run's
+// change, read, with files, and the rules the job started under, read. Rules
+// the repository's file could not give ([factory.StartRules.Unread]) leave its
+// protected paths unknown, so the change was not judged against them.
+func changeJudged(it factory.Item) bool {
+	return it.Change != nil && len(it.Change.Files) > 0 && it.StartRules != nil && !it.StartRules.Unread
 }

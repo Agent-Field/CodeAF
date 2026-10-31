@@ -180,6 +180,9 @@ func TestAChangeTouchingAGuardedPathWaitsBeforeItIsPublished(t *testing.T) {
 	if c := landed(nil, "docs/readme.md").RuleChecks; c != nil && (c.Publish != "" || c.PublishHead != "") {
 		t.Fatalf("a job with no rules was judged: %+v", c)
 	}
+	if c := landed(&factory.StartRules{Unread: true}, "auth/login.go").RuleChecks; c != nil && (c.Publish != "" || c.PublishHead != "") {
+		t.Fatalf("rules the repository's file never gave judged the change: %+v", c)
+	}
 	unread := landed(rules)
 	unread.Change = nil
 	unread.RuleChecks = &factory.RuleChecks{Start: factory.CheckPassed, Publish: factory.CheckPassed, PublishHead: "c0ffee"}
