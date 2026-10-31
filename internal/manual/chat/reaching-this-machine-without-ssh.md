@@ -62,7 +62,7 @@ Run it on the machine that owns the work — the one with the files, the API key
 things you have set up:
 
 ```
-codeaf serve [--workspace path] [--via https://…]
+codeaf serve [--workspace path] [--via https://…] [--take-tasks]
 ```
 
 It prints, exactly:
