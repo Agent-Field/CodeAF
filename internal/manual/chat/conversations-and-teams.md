@@ -450,11 +450,15 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-Yes, after you pair the computers. Teams, members, handles, the manager and team
-settings show on every paired computer within a few seconds, even with no chat
-open. The Teams dropdown, Teams page and `@` list refresh without a restart.
+Team sharing is off by default. On each paired computer, open
+**Settings → General → share teams** and choose **on**.
+Both paired computers must turn it on. This shares teams, members, handles, the
+manager and team settings, plus recent Traffic as read-only history. Team changes
+show within a few seconds, even with no chat open. The Teams dropdown, Teams page
+and `@` list refresh without a restart.
 Both computers need to be running codeaf and able to reach the relay. An
-unpaired computer keeps all of this to itself and sends no relay requests.
+unpaired computer or a computer with sharing off keeps its teams to itself.
+Turning sharing off stops sharing immediately and keeps teams already received.
 
 Open a member whose chat is on another paired computer to see
 `Continue this chat here?` on Home. Choose **continue here** to move the chat
@@ -472,10 +476,11 @@ local messages.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
-Yes, on paired computers a deleted team stays deleted. A desktop that was
+Once both paired computers share teams (Settings → General → **share teams** set
+to **on** on each), a deleted team stays deleted. Sharing is off by default. A desktop that was
 offline catches up when it reconnects. Renaming its old copy while offline does
 not bring the team back. Deleting a team does not delete its conversations.
-An unpaired computer keeps its teams to itself.
+An unpaired computer or one with sharing off keeps its teams to itself.
 
 Edits to different members or different parts of a team can both survive. If
 both computers change the same detail, the later change wins. Teams appear in
@@ -484,8 +489,8 @@ consistently, and a removed member cannot remain the manager.
 
 ## Does Traffic sync between computers?
 
-Yes, between paired computers. Traffic from another computer shows its newest
-history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
+Traffic sharing is off by default. Once both paired computers turn on **share teams**
+in Settings → General, Traffic from another computer shows its newest history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
 at most 64 KiB, with the most recently active teams first. It can take up to
 about 30 seconds to appear. Text longer than 2 KiB is shortened, with ` …` at
 the end. Your original local lines keep their full text.
@@ -501,6 +506,18 @@ recipients is written once and names those not reached. Open a remote chat and
 choose **continue here** on Home before sending to it. Under `--host` or `--at`,
 open it on its computer. Decision details, spending records and working copies
 do not travel with Traffic. A decision or escalation whose recipient is
-elsewhere is refused before it changes anything. An unpaired computer keeps
-its Traffic to itself. A history link that cannot find its message says it is
+elsewhere is refused before it changes anything. An unpaired computer or one
+with sharing off keeps its Traffic to itself. A history link that cannot find its message says it is
 on the other computer's history.
+
+## How do I turn on team sharing?
+
+Team sharing is **off by default**. Pair your computers, then open
+**Settings → General → share teams** and choose **on** on each computer. Both computers must
+turn it on to exchange teams, members, manager choices and settings, and recent Traffic as read-only history.
+This setting belongs to each computer and does not follow synced preferences.
+An unpaired computer or one with sharing off keeps its teams to itself.
+
+Once both computers share teams, team changes arrive within a few seconds while
+codeaf runs and can reach the relay; recent Traffic can take about 30 seconds.
+Turn **share teams** to **off** to stop all team sharing immediately. Teams already received stay as they are.

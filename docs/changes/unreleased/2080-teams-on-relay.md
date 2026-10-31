@@ -1,40 +1,35 @@
 ---
 kind: added
-title: teams and crew routes follow paired computers
+title: opt-in team sharing between paired computers
 pr: 2080
 surface: [chat]
 invalidates:
   - >-
-    Teams stayed in one profile. Team fields, portable memberships and manager
-    choices now travel encrypted between paired computers within the ordinary
-    round delay; deletion beats a stale copy and repair is deterministic.
+    Teams stayed in one profile. Sharing is now available as a local opt-in:
+    Settings → General → share teams is off by default on each computer.
+    Nothing changes until both paired computers turn it on; unpaired computers
+    and computers with sharing off keep their teams to themselves.
   - >-
-    Traffic existed only on the writing computer. Other computers now display
-    a separate atomic history mirror; local delivery logs still contain only
-    local lines. Each writer shares up to 32 lines and 16 KiB per team, 64 KiB
-    across teams, at most once every 30 seconds, shortening text past 2 KiB.
+    Traffic existed only on the writing computer. Once both computers share
+    teams, bounded recent history appears in a separate read-only mirror;
+    local logs and delivery remain local. Turning sharing off stops carriers,
+    mirror writes and ownership lookups immediately, keeping received teams.
   - >-
-    A send could claim success for a member held elsewhere. Sends with no local
-    recipients now refuse before writing; mixed sends reach local recipients
-    once and name those not reached. Only positive remote ownership refuses;
-    failed discovery and missing paths preserve local delivery. Member-opening
-    gestures use Home's visible continuation question, while hosted surfaces
-    say the chat is on the other computer.
+    Team member paths and delivery cursors named one computer's files. With
+    sharing on, portable member identities and device-scoped cursors allow
+    continuation through Home's existing question and safe local delivery.
+    Positive remote ownership refuses unreachable sends before writing;
+    mixed sends name recipients not reached. Sharing off retains prior behavior.
   - >-
-    Continued chats reused delivery positions from another computer. Paired
-    chats now save their device beside those positions and discard foreign ones,
-    including untagged positions beyond the receiving computer's local log.
-  - >-
-    Team bookkeeping could fail a completed continuation. It now reports a
-    notice without releasing the lease, and later synchronization heals paths.
-  - >-
-    Crew seat models travelled but pinned routes and disabled providers stayed
-    local. Those choices now follow the seat pins as preferences.
+    Shared vault helpers applied team-specific merge and removal safeguards
+    to every scope. Existing carriers now retain their original tie, tombstone
+    and apply behavior; only team carriers opt into the new safeguards.
+
 ---
 
 Unpaired computers retain their file order and original local file formats;
-background refresh reads without repair writes. Pairing with replacement moves
-local teams aside and keeps Traffic logs. Mirrors use the locally known paired
+sharing-off computers retain the same behavior. With sharing on, background
+refresh reads without repair writes and pairing with replacement moves local teams aside and keeps Traffic logs. Mirrors use the locally known paired
 computer list when available. Unchanged rounds perform no session-world discovery.
 
 Sharing failures now log once and retry without stopping other profile state,

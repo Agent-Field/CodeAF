@@ -121,6 +121,10 @@ same commit; derive repeated values from constants.
 
 ## Paired team history
 
+These sharing budgets apply only when **share teams** is on in Settings → Devices.
+Sharing is off by default on each computer; off rounds run no team carriers,
+identity discovery, mirror writes or ownership lookups and retain existing polling.
+
 `teams.TrafficSyncLines` limits each writing computer's window to 32 lines per
 team, and `teams.TrafficSyncBytes` limits encoded lines to 16 KiB per team.
 `teams.TrafficSyncTextBytes` shortens text beyond 2 KiB at a rune boundary.

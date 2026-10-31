@@ -82,6 +82,11 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
+**Settings → General → share teams** is off until turned on. Both paired computers
+must turn it on to share teams, their members and settings, and recent Traffic as
+read-only history. The choice stays on each computer. Turning it off stops sharing
+and keeps teams already received.
+
 ## AI teams settings versus an individual AI team
 
 **AI teams** contains defaults for groups of AI chats, including questions to an

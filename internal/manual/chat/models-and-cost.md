@@ -4335,12 +4335,13 @@ a chain ends after ten requests rather than waiting forever.
 
 ## Do my crew settings follow me to my other computer?
 
-Yes, after pairing. Crew seat pins, each pin's provider route, providers you
-turned off, allowed-model choices, the crew daily cap, per-task cap and free-route
-choice follow you within a few seconds, even with no chat open. Both computers need
-to be running codeaf and able to reach the relay. An unpaired computer keeps
-these choices to itself and sends no relay requests.
+After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
+per-task cap and free-route choice follow synced preferences within a few seconds,
+even with no chat open. Both computers need to be running codeaf and able to reach
+the relay. An unpaired computer keeps these choices to itself.
 
-A pin still needs an available provider and its credentials on the receiving
-computer. Pairing carries the choice; it does not install a provider. Desktop
-app crews are separate and do not travel through this feature.
+Each pin's provider route and providers you turned off stay on each computer.
+Choose those separately there. A seat model pin still needs an available provider
+and its credentials on the receiving computer; pairing does not install a provider.
+The **share teams** switch does not change which crew choices follow preferences.
+Desktop app crews are separate.

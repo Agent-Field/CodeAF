@@ -546,6 +546,8 @@ by its team with nothing from you stops being woken and asks you instead, as a w
 the traffic. It is woken again after you next say something to it.
 The ten wakes count ten replies when each member turn replies and then finishes.
 
+## How do I turn team message wakes off?
+
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams
 under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
@@ -560,10 +562,17 @@ membership from before it joined; reusing a removed member's handle does not bri
 member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
+## Team sharing and Traffic on another computer
+
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
-messages written on this computer. On paired computers, Traffic also shows recent
-history from the other computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
+messages written on this computer. Team sharing is off by default: on each paired
+computer, set **share teams** to **on** in **Settings → General**. An unpaired
+computer or one with sharing off keeps teams and Traffic to itself. Turning it
+off keeps teams already received.
+
+Once both computers share teams, Traffic also shows recent history from the other
+computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
 cannot deliver a message, start, stop, answer or wake a chat here. A message to a
 member or manager known to be on another computer is refused before writing;
 continue that chat here from Home first, then send again. A room post or send to

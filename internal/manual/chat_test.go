@@ -103,6 +103,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
 		{"do my teams show on my other computer?", "conversations-and-teams"},
+		{"how do I turn on team sharing", "conversations-and-teams"},
 		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams"},
 		{"does Traffic sync between computers?", "conversations-and-teams"},
 		{"do my crew settings follow me to my other computer?", "models-and-cost"},
@@ -4451,13 +4452,35 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	}
 }
 
+func TestTheTeamSharingQuestionExplainsTheLocalOptIn(t *testing.T) {
+	for _, section := range Chat().Search("do my teams show on my other computer?", DefaultResults) {
+		if section.Page != "conversations-and-teams" {
+			continue
+		}
+		complete := true
+		for _, fact := range []string{
+			"Settings → General → share teams", "off by default",
+			"Both paired computers must turn it on", "teams, members",
+			"team settings", "recent Traffic as read-only history",
+		} {
+			complete = complete && strings.Contains(section.Body, fact)
+		}
+		if complete {
+			return
+		}
+	}
+	t.Fatal("the team sharing question must reach one section explaining the local opt-in and what it shares")
+}
+
 // C30.5 replaces the old chat-only memory promise with independent encrypted sync.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
 		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
+		{"how do I turn on team sharing", "conversations-and-teams", "off by default"},
+		{"how do I turn on team sharing", "conversations-and-teams", "Settings → General → share teams"},
 		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},
 		{"does Traffic sync between computers?", "conversations-and-teams", "32 lines per team"},
-		{"do my crew settings follow me to my other computer?", "models-and-cost", "each pin's provider route"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost", "provider route and providers you turned off stay on each computer"},
 		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
 		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
 		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},
