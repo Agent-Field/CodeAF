@@ -2754,9 +2754,9 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) error {
 	// The leaving road stands before session opening because opening can take
 	// time, and a signal there would otherwise take the default disposition and
-	// skip every defer — the whole of #471. Cancelling the turn stops new work;
-	// deferred closes settle the tasks, checkpoint and paired publication.
-	// Defers run last-in-first-out, so Close runs before this
+	// skip every defer — the whole of #471. Cancelling the turn is all the
+	// leaving work needed here: the deferred agent.Close below settles the tasks
+	// and checkpoint. Defers run last-in-first-out, so Close runs before this
 	// road stands down and keeps the second signal live through a close that can
 	// take the turn's grace plus two job rounds.
 	ctx, cancel := context.WithCancel(ctx)
@@ -2776,17 +2776,6 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		cancel()
 	}, nil)
 	defer stopLeaving()
-	// Seating or pairing during the turn may start a drive. Register its close
-	// before opening so the agent's last seal precedes the final publish.
-	defer func() {
-		said := false
-		syncDrives.closeAllWith(func(_ *liveDrive, _ error) {
-			if !said {
-				fmt.Fprintln(os.Stderr, "this chat could not finish syncing with your other computers; run codeaf doctor --fix or reopen this chat to try again.")
-				said = true
-			}
-		})
-	}()
 
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)

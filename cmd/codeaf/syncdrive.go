@@ -19,7 +19,7 @@ import (
 const driveCloseWithin = cellstore.SealWithin
 
 // syncDrives is the drive side of every conversation the chat door opened in
-// this process. Other command doors, such as do and exec, never sync chats.
+// this process. It exists at all only for a chat: a headless run never syncs.
 var syncDrives = &driveBook{}
 
 // driveBook keeps one drive side per cell, so a conversation opened again in the
@@ -148,24 +148,13 @@ func chatTitle(c cell.Cell) string {
 // given back, so another machine can take the chat at once. It runs on the
 // door's way out, after the conversations closed, so their last seal is in.
 func (b *driveBook) closeAll() {
-	b.closeAllWith(func(d *liveDrive, err error) {
-		log.Print("sync: closing a chat: ", err)
-		recordFinalSaveFailure(session.SavingError(d.transcript, err))
-	})
-}
-
-// closeAllWith lets the one-message door report a failed publish without
-// changing the turn's exit status. Both doors share the same closing budget.
-func (b *driveBook) closeAllWith(report func(*liveDrive, error)) {
 	drives := b.take()
-	if len(drives) == 0 {
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
 	defer cancel()
 	for _, d := range drives {
 		if err := d.Close(ctx); err != nil {
-			report(d, err)
+			log.Print("sync: closing a chat: ", err)
+			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
 	}
 }

@@ -303,15 +303,9 @@ func inspectDoctorSync(fix bool) (issues []string, fixes []string) {
 
 				// Any local orphan .taking folder for a chat id absent from the directory listing.
 				issues, fixes = finishOrphanStaging(inv.orphanStaging, handledStaging, fix, issues, fixes)
-				// Publication has its own per-chat bound after the older repair passes.
-				cancel()
-				missing, sent := doctorUnlistedChats(s, inv, l, fix)
-				issues = append(issues, missing...)
-				fixes = append(fixes, sent...)
 				return issues, fixes
 			}
 		}
-		issues = append(issues, "could not check whether chats reached your other computers; check this computer's network and run codeaf doctor again")
 	}
 
 	// Sync is off or unreachable: still report local duplicate Home rows and orphaned .taking folders.
