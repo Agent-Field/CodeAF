@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Agent identities retain encrypted signing and encryption keys
-pr: 0
+pr: 2090
 surface: [chat, engine]
 invalidates:
   - "An agent DID used to be a public name only; new conversations now retain encrypted signing and encryption keys."
