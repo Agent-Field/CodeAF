@@ -486,6 +486,13 @@ type TaskModelsChange struct {
 	Pins map[crewroute.Seat]*CrewPin
 	// Ticks are rows allowed or not, each one model on one provider.
 	Ticks []TaskModelTick
+	// Served is the door's own answer to "does this provider serve this
+	// model", from the list it offers models from, with the id as that list
+	// spells it, or nil when the door has none. A pin the rows below do not
+	// hold is accepted when Served finds the model offered there, so the list a
+	// person picked from never refuses its own entry; the rows still spell a
+	// model they do hold.
+	Served func(model, provider string) (string, bool)
 }
 
 // TaskModelTick is one row ticked or unticked.
@@ -566,7 +573,7 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 	}
 	one, haveOne := TaskOneModelAt(profileDir)
 	if change.One != nil {
-		pin, err := taskModelsPin(rows, providers, *change.One, "the one model")
+		pin, err := taskModelsPin(rows, providers, change.Served, *change.One, "the one model")
 		if err != nil {
 			return nil, err
 		}
@@ -605,7 +612,7 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 			values[tier], values[route] = removeProfileKey, removeProfileKey
 			continue
 		}
-		pin, err := taskModelsPin(rows, providers, *ref, "the "+string(seat)+" pin")
+		pin, err := taskModelsPin(rows, providers, change.Served, *ref, "the "+string(seat)+" pin")
 		if err != nil {
 			return nil, err
 		}
@@ -633,8 +640,9 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 }
 
 // taskModelsPin is a reference checked against the rows: a model a connected
-// provider lists, on the provider named.
-func taskModelsPin(rows []TaskModelRow, providers []CrewProvider, ref CrewPin, what string) (CrewPin, error) {
+// provider lists, on the provider named, or one the door's own list serves
+// there ([TaskModelsChange.Served]).
+func taskModelsPin(rows []TaskModelRow, providers []CrewProvider, served func(model, provider string) (string, bool), ref CrewPin, what string) (CrewPin, error) {
 	id := strings.TrimSpace(ref.Model)
 	if err := ValidateTierValue(id); err != nil {
 		return CrewPin{}, refuse("%s: %v", what, err)
@@ -646,6 +654,11 @@ func taskModelsPin(rows []TaskModelRow, providers []CrewProvider, ref CrewPin, w
 		}
 	}
 	row, ok := taskRowFor(rows, pinBase(id), provider)
+	if !ok && served != nil {
+		if listed, offered := served(pinBase(id), provider); offered {
+			return CrewPin{Model: listed, Provider: provider}, nil
+		}
+	}
 	if !ok {
 		if provider == "" {
 			return CrewPin{}, refuse("%s: %s is not a model any connected provider lists", what, id)
