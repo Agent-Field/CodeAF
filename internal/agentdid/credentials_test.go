@@ -93,8 +93,8 @@ func TestCustodyRejectsCorruptionAndPublicKeySubstitution(t *testing.T) {
 			t.Fatal(err)
 		}
 		mutate(&changed)
-		if _, err := changed.Unlock(wrapping); err == nil {
-			t.Fatal("tampered custody opened")
+		if opened, err := changed.Unlock(wrapping); err == nil || opened != nil {
+			t.Fatal("tampered custody returned private credentials")
 		}
 	}
 	for _, purpose := range []string{"", "receipt", "/v1", "receipt/v0", "receipt/v01", "receipt/v1/other"} {

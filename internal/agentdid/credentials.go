@@ -199,7 +199,10 @@ func (d *Document) Protect(c *Credentials, cellKey []byte) error {
 // exposing private material in errors.
 func (d Document) Unlock(cellKey []byte) (*Credentials, error) {
 	if d.V == Version && len(d.Custody) == 0 && d.pending != nil {
-		return d.pending, d.pending.matches(d)
+		if err := d.pending.matches(d); err != nil {
+			return nil, err
+		}
+		return d.pending, nil
 	}
 	if d.V != Version || len(cellKey) != 32 {
 		return nil, ErrDocument
@@ -215,7 +218,12 @@ func (d Document) Unlock(cellKey []byte) (*Credentials, error) {
 	c := &Credentials{hasSigning: plain[0] == 1}
 	copy(c.signing[:], plain[1:33])
 	copy(c.encryption[:], plain[33:])
-	return c, c.matches(d)
+	if err := c.matches(d); err != nil {
+		clear(c.signing[:])
+		clear(c.encryption[:])
+		return nil, err
+	}
+	return c, nil
 }
 
 func (c *Credentials) matches(d Document) error {
