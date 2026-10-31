@@ -3511,7 +3511,7 @@ travels with the chat; paired computers with the same cell key can open it.
 Commands and the agent list receive only the public DID, never private keys.
 
 The engine can sign statements for a versioned purpose and open material sealed
-to the companion encryption key. A signature can be verified with the DID alone;
+to the companion encryption key. A signature can be checked with the DID alone;
 it does not verify for a different purpose. These are engine APIs, not shell
 commands or a new tool on the agent's belt.
 

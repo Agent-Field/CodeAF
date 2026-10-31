@@ -35,8 +35,15 @@ jobs:
       - name: Exercise the app as a desktop client
         run: go test ./cmd/codeaf -run '^TestAppAgentIdentityBinaryE2E$' -count=1 -v -timeout 5m
       - name: Race-check custody and lifecycle
+        if: ${{ !cancelled() }}
         run: go test -race ./internal/agentdid ./internal/session -run 'TestCredentials|TestCustody|TestOnlyTheRecipient|TestUnknownDocument|TestAgentIdentity|TestAgentDID|TestToolCommandsSeeTheAgentDID|TestTaskWorker.*DID' -count=1 -timeout 15m
       - name: Run the repository PR gates against app/v3
+        if: ${{ !cancelled() }}
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: make pr-ready
+      - name: Run touched packages even if an existing light gate fails
+        if: ${{ !cancelled() }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: make test-touched

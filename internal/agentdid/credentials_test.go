@@ -141,3 +141,42 @@ func TestUnknownDocumentRoundTrips(t *testing.T) {
 		t.Fatal("future document unlocked")
 	}
 }
+
+func TestCredentialsRejectMalformedEnvelopesAndSupportHierarchicalPurposes(t *testing.T) {
+	d, keys, err := Generate("chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const purpose = "codeaf/verification/receipt/v1"
+	sig, err := keys.Sign(d.DID, purpose, nil)
+	if err != nil || !Verify(d.DID, purpose, nil, sig) {
+		t.Fatalf("hierarchical versioned purpose: %v", err)
+	}
+	for _, did := range []string{"", "did:key:z", "did:key:z!!!!", d.DID + "#w1"} {
+		if Verify(did, purpose, nil, sig) {
+			t.Fatalf("malformed agent DID %q verified", did)
+		}
+	}
+	box, err := Seal(d, purpose, []byte("private"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, broken := range [][]byte{nil, box[:5], box[:32], append(make([]byte, 32), box[32:]...)} {
+		if _, err := keys.Open(d, purpose, broken); err == nil {
+			t.Fatal("malformed or low-order envelope opened")
+		}
+	}
+	if _, err := (*Credentials)(nil).Sign(d.DID, purpose, nil); err == nil {
+		t.Fatal("nil custody signed a statement")
+	}
+	if _, err := (*Credentials)(nil).Open(d, purpose, box); err == nil {
+		t.Fatal("nil custody opened an envelope")
+	}
+	for _, public := range []string{"!", encode(make([]byte, 31)), encode(make([]byte, 32))} {
+		broken := d
+		broken.Encryption = &Key{Type: "X25519", Public: public}
+		if _, err := Seal(broken, purpose, nil); err == nil {
+			t.Fatal("invalid recipient key accepted")
+		}
+	}
+}

@@ -85,8 +85,12 @@ func publicKey(did string) ed25519.PublicKey {
 // purposeBody frames each component so a purpose or payload cannot be confused
 // with an adjacent field. Every application purpose carries its own version.
 func purposeBody(label, did, purpose string, payload []byte) ([]byte, error) {
-	name, version, ok := strings.Cut(purpose, "/v")
-	if !ok || name == "" || version == "" || version[0] == '0' {
+	separator := strings.LastIndex(purpose, "/v")
+	if separator <= 0 {
+		return nil, errors.New("agent identity: purpose must end in /v<number>")
+	}
+	version := purpose[separator+2:]
+	if version == "" || version[0] == '0' {
 		return nil, errors.New("agent identity: purpose must end in /v<number>")
 	}
 	for _, ch := range version {

@@ -181,7 +181,7 @@ func TestAppAgentIdentityBinaryE2E(t *testing.T) {
 	p.call("agents.open", map[string]any{"id": id})
 	after, _ := os.ReadFile(truth)
 	if !bytes.Equal(before, after) {
-		t.Fatal("opening a legacy chat rewrote its identity")
+		t.Fatalf("opening a legacy chat rewrote its identity: before %s; after %s", before, after)
 	}
 	run(p)
 	p.stop()

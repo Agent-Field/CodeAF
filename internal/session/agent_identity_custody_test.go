@@ -192,3 +192,38 @@ func TestAgentIdentityFutureDocumentPreservedVerbatimOnMetaWrites(t *testing.T) 
 		})
 	}
 }
+
+func TestAgentIdentityRestoringSavedDialsDoesNotMigrateOnOpen(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	did, _ := agentdid.New()
+	document, _ := json.Marshal(AgentIdentity{DID: did, Session: "saved-dials"})
+	place, path, _ := identityTruthFixture(t, "saved-dials", string(document))
+	raw := []byte(`{"V":1,"approval":"allow","effort":"high","agent_identity":` + string(document) + `}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = place
+		config.ApprovalGate = &fakeApprovalGate{standing: PostureAsk}
+	})
+	if err := agent.SetApprovalPosture(PostureAllow); err != nil {
+		t.Fatal(err)
+	}
+	if !agent.SetConversationEffort("high") {
+		t.Fatal("saved effort was refused")
+	}
+	after, _ := os.ReadFile(path)
+	if !bytes.Equal(raw, after) {
+		t.Fatal("restoring preferences migrated the identity on open")
+	}
+	if agent.ApprovalPosture() != PostureAllow || agent.ConversationEffort() != "high" {
+		t.Fatal("restored preferences were not applied in memory")
+	}
+	if !agent.SetConversationEffort("low") {
+		t.Fatal("new effort was refused")
+	}
+	meta, _ := LoadMeta(place.Dir)
+	if meta.AgentIdentity.V != agentdid.Version || meta.Effort != "low" {
+		t.Fatal("an actual preference change did not persist and migrate")
+	}
+}
