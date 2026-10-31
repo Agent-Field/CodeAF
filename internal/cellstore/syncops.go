@@ -241,12 +241,15 @@ func (e SyncEngine) importWith(ctx context.Context, c cell.Cell, op importOp) (i
 	return out.Imported, e.ask(ctx, c, op, &out)
 }
 
-// Holds implements the sync seam: the ledger file the engine keeps beside the
-// store is written by every export and import against this relay, so it has
-// content exactly when the device has exchanged objects with the relay.
+// Holds reports history this computer held for this chat. The publication
+// ledger belongs to the shared store, so another chat's exchange proves nothing
+// about this one. Local adoption and turn records already supply this evidence.
 func (e SyncEngine) Holds(c cell.Cell) bool {
-	info, err := os.Stat(filepath.Join(e.Target(c).DataDir, "published."+e.Ledger))
-	return err == nil && info.Size() > 0
+	if _, ok := readAdoption(c); ok {
+		return true
+	}
+	turn, err := lastTurn(rel(c, TurnsPath))
+	return err == nil && turn != nil
 }
 
 // Materialize implements the sync seam.

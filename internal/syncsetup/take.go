@@ -99,7 +99,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	s := c.sync
 	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
-	engine := landing{Engine: sync, workspace: c.eng.WorkspaceOf}
+	engine := landing{Engine: sync, workspace: c.eng.WorkspaceOf, rootFor: c.opt.RootFor}
 	pub := &cellsync.Publisher{Engine: engine, Store: sc.Store, Dir: s.Dir}
 	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
 	// id on this machine; only the edits set aside live in the branch, and a
@@ -441,6 +441,16 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 type landing struct {
 	cellsync.Engine
 	workspace func(cell.Cell) string
+	rootFor   func(string) string
+}
+
+// Holds consults the existing chat rather than its fresh staging folder, so a
+// return still fetches only its delta before installing the replacement.
+func (l landing) Holds(c cell.Cell) bool {
+	if l.rootFor != nil {
+		c.Root = l.rootFor(c.ID)
+	}
+	return l.Engine.Holds(c)
 }
 
 func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, error) {
