@@ -10,31 +10,17 @@ invalidates:
   - "A dev box only served `--at` chats. Its boot now passes `--take-tasks` when the box's installed build lists the flag, so a task can be sent to it."
 ---
 
-The task's copy travels as an encrypted, content-addressed delta through the
-relay, the other computer runs it with its own provider keys, and steps, phase
-and spend stream back here; the change lands through the ordinary landing road,
-or Review and Apply with private task copies on. A computer that stops
-answering is shown as possibly still working with `run it here`; nothing re-runs
-by itself, and an abandoned attempt's late result never lands. Only a task that
-works in its own copy can go, both ends must be Linux or macOS, and a remote
-task runs alone in its conversation.
+The task's copy is prepared after the task appears, then travels as an
+encrypted, content-addressed delta through the relay, the other computer runs it
+with its own provider keys, and steps, phase and spend stream back here; the
+change lands through the ordinary landing road, or Review and Apply with private
+task copies on. A computer that stops answering is shown as possibly still
+working with `run it here`; nothing re-runs by itself, and an abandoned
+attempt's late result never lands. Only a task that works in its own copy can
+go, both ends must be Linux or macOS, and a remote task runs alone in its
+conversation.
 
 Everything is opt-in. With defaults left alone, pairing adds no relay traffic,
 and a local task's brief, records, the proposal card and the model's tool are
 byte-identical to before; the Run tasks on settings row is the only new thing a
 paired person sees.
-
-Acknowledged attempts retain bounded replay protection across serving restarts;
-a removed computer also loses an existing task connection after the cached
-permission expires. Result installation checks the moved original before
-replacing it, and downloads leave the stop action available. Interrupted remote
-work stays on the other computer so the original sent copy can run here.
-
-Mirrored records retain their original kinds, local fallback archives the remote
-trajectory, and computers with the same name use the Devices labels. Ambiguous
-names are refused with choices. Complete ledger entries missing a final newline
-are deduplicated, and reopening inspects saved remote acknowledgements even when
-the conversation checkpoint predates them. Unsupported conversations expose no
-placement row through either settings tool. The manual includes exact refusal
-sentences and recovery guidance; transfer timings are diagnostic rather than a
-wall-clock test gate.

@@ -54,6 +54,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the task saved event is too large", "tasks-on-another-computer"},
 		{"this computer is already taking tasks", "tasks-on-another-computer"},
 		{"can a task run on my other computer", "tasks-on-another-computer"},
+		{"why a task appears before its copy is ready", "tasks-on-another-computer"},
+		{"paired task computers are unavailable here", "tasks-on-another-computer"},
 		{"run a task on my mac mini", "tasks-on-another-computer"},
 		{"what does running on mean", "tasks-on-another-computer"},
 		{"my other computer stopped answering", "tasks-on-another-computer"},

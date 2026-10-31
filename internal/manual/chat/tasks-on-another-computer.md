@@ -337,3 +337,28 @@ follow that request. Update codeaf on both computers, check the chosen computer
 in Devices, and reopen the chat before retrying through its task controls.
 Keep the task copies while checking whether the original attempt started.
 A connection failure never grants permission to repeat an admitted attempt.
+
+## Why a task appears before its copy is ready
+
+A task sent to another computer appears here before its local copy is prepared.
+Preparing and sending that copy happens in the background, so a large project
+does not hold up the start receipt. You can stop the task while it prepares.
+
+If preparation fails, the task shows the reason instead of silently starting
+local work. If the other computer is not serving, it still says
+`<computer> is not taking tasks right now — run codeaf serve --take-tasks on it`
+and offers `run it here`. Ordinary tasks on this computer keep their existing
+start behavior.
+
+## Reopening a task while its copy is being prepared
+
+If you close the chat during preparation, reopening keeps the chosen computer
+and adopts any copy already prepared. Retained partial copies stay named on
+the failed task for inspection; they are never silently replaced.
+
+## Paired task computers are unavailable here
+
+`paired task computers are unavailable here` means this chat cannot currently
+use its saved remote executor, for example after pairing becomes unavailable
+or the home is made quiet. The pending task keeps its chosen computer for
+when support returns; reopening never chooses local execution by itself.
