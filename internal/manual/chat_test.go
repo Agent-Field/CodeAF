@@ -33,6 +33,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// Task placement must answer DESIGN contract 16 in the person's words.
+		{"can a task run on my other computer", "tasks-on-another-computer"},
+		{"run a task on my mac mini", "tasks-on-another-computer"},
+		{"what does running on mean", "tasks-on-another-computer"},
+		{"my other computer stopped answering", "tasks-on-another-computer"},
+		{"run it here", "tasks-on-another-computer"},
+		{"run tasks on", "tasks-on-another-computer"},
+		{"codeaf serve takes tasks", "tasks-on-another-computer"},
+		{"why did my task run here instead", "tasks-on-another-computer"},
+		{"can this conversation start other tasks while one runs on another computer", "tasks-on-another-computer"},
 		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
 		{"can I run codeaf on my own server", "a-dev-box-on-your-own-railway"},
 		{"set up a dev box", "a-dev-box-on-your-own-railway"},

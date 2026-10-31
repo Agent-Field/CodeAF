@@ -676,6 +676,10 @@ running.
 
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
+A task running on another paired computer keeps running there when you close
+this chat. Reopening follows its saved attempt and brings its result home once;
+it never starts that attempt again automatically. See *Tasks on another computer*.
+
 **A hosted conversation keeps working.** Closing the window, `ctrl+c`, `kill -HUP`
 and a terminal that went away all detach: the task goes on running in this machine's codeaf
 service, its questions stay waiting for you, and you rejoin it by opening the same
@@ -2727,6 +2731,14 @@ the keyboard, and `esc` there hands it back to the list.
 *Automations* says what each verb and each answer does.
 
 ## Keys in the task roster and inside a room
+
+Where paired tasks are available, `ctrl+d computer` on a proposal over an empty
+draft cycles `this computer` and eligible paired computers. Accepting sends the
+choice shown by `runs on <name>`. When a remote task cannot reach its computer
+or was interrupted, its card and page offer `h run it here`; click the card
+action or press `h` over an empty draft to start fresh local work. The old
+attempt is abandoned and its late result never lands. See *Tasks on another
+computer* for limits and the exact recovery sentences.
 
 Opening a task's room gives the keyboard to that room. For a task that accepts
 notes, type one and press `enter` to send it; you do not need to press `alt+t` again first.
