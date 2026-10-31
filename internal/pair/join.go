@@ -62,6 +62,15 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 	if err != nil {
 		return Joined{}, err
 	}
+	// A solo identity cannot be the grant's identity, so known local work can
+	// refuse before the approver spends an approval or hears a success receipt.
+	if !j.Replace {
+		if _, err := identity.Load(j.Home); err == nil && identity.Solo(j.Home) {
+			if can, err := identity.Joinable(j.Home); err != nil || !can {
+				return Joined{}, differentChats(j.Home)
+			}
+		}
+	}
 	if err := checkRelay(ctx, route); err != nil {
 		return Joined{}, err
 	}
