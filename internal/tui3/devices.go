@@ -20,7 +20,6 @@ package tui3
 import (
 	"context"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/devname"
 	"slices"
 	"sort"
 	"strings"
