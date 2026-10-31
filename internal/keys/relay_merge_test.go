@@ -53,11 +53,24 @@ func TestEqualStampFieldsConvergeRegardlessOfMergeDirection(t *testing.T) {
 		t.Fatalf("equal clock fields diverged: %+v %+v %v", left, right, err)
 	}
 	// Embedded separators must not make two distinct records compare equal.
-	leftRecord := record{Entry: Entry{Scope: "a", Name: "b", Value: "c\x00d"}, Updated: at.UnixMilli()}
-	rightRecord := record{Entry: Entry{Scope: "a", Name: "b\x00c", Value: "d"}, Updated: at.UnixMilli()}
+	leftRecord := record{Entry: Entry{Scope: "home:keys:teams", Name: "b", Value: "c\x00d"}, Updated: at.UnixMilli()}
+	rightRecord := record{Entry: Entry{Scope: "home:keys:teams", Name: "b\x00c", Value: "d"}, Updated: at.UnixMilli()}
 	doc := &vaultDoc{}
 	if supersedes(leftRecord, doc, rightRecord, doc) == supersedes(rightRecord, doc, leftRecord, doc) {
 		t.Fatal("distinct equal-time records have no deterministic winner")
 	}
 
+}
+
+func TestExistingScopesKeepTheirEqualStampMergeAnswer(t *testing.T) {
+	doc := &vaultDoc{}
+	for _, scope := range []string{"home:keys:preferences", "home:keys:provider-keys", "home:memories", "credentials", "project", "home:keys:teams-future"} {
+		for _, deleted := range []bool{false, true} {
+			a := record{Entry: Entry{Scope: scope, Name: "key", Value: "z"}, Updated: 100, Deleted: deleted}
+			b := record{Entry: Entry{Scope: scope, Name: "key", Value: "a"}, Updated: 100}
+			if got, want := supersedes(a, doc, b, doc), deleted; got != want {
+				t.Fatalf("scope %s: got %v want %v", scope, got, want)
+			}
+		}
+	}
 }

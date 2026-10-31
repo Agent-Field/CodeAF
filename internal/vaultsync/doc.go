@@ -15,8 +15,11 @@
 // shared memories and portable teams ride beside secrets. Whole files use
 // their save time; Keyed gives individual fields independent clocks and
 // deletion tombstones. Only a key this machine once shared can be removed by
-// it. A guarded apply preserves edits made during a network round. A damaged
-// copy is neither captured nor overwritten.
+// it. Existing Keys keep their original equal-stamp, removal and apply rules.
+// Only team records use GuardedKeys to preserve edits across a network round
+// and check ownership before removal. A damaged copy is neither captured nor
+// overwritten. Teams and their Traffic carriers run only while this computer's
+// local sharing switch is on; that switch is never a synced preference.
 //
 // ONE TRAFFIC VALUE PER WRITING DEVICE AND TEAM. DeviceWindows replaces a
 // writer's bounded window without republishing received history. The source

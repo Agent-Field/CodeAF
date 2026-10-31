@@ -69,6 +69,9 @@ func supersedes(a record, ad *vaultDoc, b record, bd *vaultDoc) bool {
 		return false
 	}
 	sa, sb := a.stampOf(ad), b.stampOf(bd)
+	if (a.Scope != "home:keys:teams" && a.Scope != "home:windows:team-traffic") || a.Scope != b.Scope {
+		return sa > sb || (sa == sb && a.Deleted && b.live())
+	}
 	if sa != sb {
 		return sa > sb
 	}

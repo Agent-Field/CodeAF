@@ -1,14 +1,16 @@
 package vaultsync
 
 // BestEffort keeps optional sharing out of the error path of other carried
-// state. Failed work is attempted again at the next ordinary capture or restore.
-func BestEffort(carrier Carrier, report func(error)) Carrier {
-	return bestEffort{Carrier: carrier, report: report}
+// state. The local switch is checked again before every operation, including
+// a restore after an in-flight request. Failed work retries on the next round.
+func BestEffort(carrier Carrier, enabled func() bool, report func(error)) Carrier {
+	return bestEffort{Carrier: carrier, enabled: enabled, report: report}
 }
 
 type bestEffort struct {
 	Carrier
-	report func(error)
+	report  func(error)
+	enabled func() bool
 }
 
 func (b bestEffort) finish(err error) error {
@@ -17,6 +19,21 @@ func (b bestEffort) finish(err error) error {
 	}
 	return nil
 }
-func (b bestEffort) capture(v VaultFile) error      { return b.finish(b.Carrier.capture(v)) }
-func (b bestEffort) captureEdits(v VaultFile) error { return b.finish(b.Carrier.captureEdits(v)) }
-func (b bestEffort) restore(v VaultFile) error      { return b.finish(b.Carrier.restore(v)) }
+func (b bestEffort) capture(v VaultFile) error {
+	if !b.enabled() {
+		return nil
+	}
+	return b.finish(b.Carrier.capture(v))
+}
+func (b bestEffort) captureEdits(v VaultFile) error {
+	if !b.enabled() {
+		return nil
+	}
+	return b.finish(b.Carrier.captureEdits(v))
+}
+func (b bestEffort) restore(v VaultFile) error {
+	if !b.enabled() {
+		return nil
+	}
+	return b.finish(b.Carrier.restore(v))
+}
