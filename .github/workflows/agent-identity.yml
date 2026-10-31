@@ -37,6 +37,9 @@ jobs:
       - name: Race-check custody and lifecycle
         if: ${{ !cancelled() }}
         run: go test -race ./internal/agentdid ./internal/session -run 'TestCredentials|TestCustody|TestOnlyTheRecipient|TestUnknownDocument|TestAgentIdentity|TestAgentDID|TestToolCommandsSeeTheAgentDID|TestTaskWorker.*DID' -count=1 -timeout 15m
+      - name: Check that custody preserves existing sync behavior
+        if: ${{ !cancelled() }}
+        run: go test ./cmd/codeaf -run '^TestAppChatRowsR2SavedTurnTime$|^TestAppChatStartupR3QuietRelease$|^TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable$|^TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat$|^TestDriveSideDoorPublishesAndReleases$|^TestDriveSideStartsWhenAPairingMakesTheIdentity$|^TestAChatMovedBackGetsADriveSideOfItsOwn$|^TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn$' -count=1 -timeout 5m
       - name: Run the repository PR gates against app/v3
         if: ${{ !cancelled() }}
         env:
@@ -47,3 +50,24 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: make test-touched
+
+  baseline:
+    name: Compare existing failures on the untouched base
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the untouched base
+        run: make build
+      - name: Probe command failures on the base
+        run: go test ./cmd/codeaf -run '^(TestAppChatRowsR2SavedTurnTime|TestAppChatStartupR3QuietRelease|TestAppTakeC1bSavedModelTravelsBack|TestC1AppViewerAcceptsRealPendingConsent|TestC1C2AppViewerRefusesWorkBeforeSubmission|TestRecipeDoorWritesTheWorktreeWhenOnlyTheCheckoutIsHeld|TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable|TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat|TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay|TestDriveSideDoorPublishesAndReleases|TestDriveSideStartsWhenAPairingMakesTheIdentity|TestAChatMovedBackGetsADriveSideOfItsOwn|TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn)$' -count=1 -v -timeout 5m
+      - name: Probe session failures on the base
+        if: ${{ !cancelled() }}
+        run: go test ./internal/session -run '^TestTheFixedPrefixStaysUnderItsBudget$|^TestTheLeanPrefixStaysUnderItsBudget$|^TestATurnThatMustReportRequiresTheVerbOnItsFirstRequestOnly$|^TestALandStartsNoAutomaticMaintenance$|^TestBashBeltTruncationCapFollowsTheWindow$|^TestTheStageVerbsCostOnlyTheStageAndStayUnderTheirBudget$|^TestBashBeltTruncationWritesHeadTailAndPath$|^TestProgramHoldClassifiesEveryRegisteredChatTool$|^TestNoRoadInTheMemoryEngineHasMoreEndingsThanTheCeiling$|^TestNoRoadInTheTaskEngineHasMoreEndingsThanItsLedgerRow$' -count=1 -v -timeout 5m
+

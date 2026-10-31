@@ -227,3 +227,22 @@ func TestAgentIdentityRestoringSavedDialsDoesNotMigrateOnOpen(t *testing.T) {
 		t.Fatal("an actual preference change did not persist and migrate")
 	}
 }
+
+func TestAgentIdentityCustodyDoesNotChooseTheProfilesSyncPosture(t *testing.T) {
+	for _, solo := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unmarked", true: "solo"}[solo], func(t *testing.T) {
+			profile := t.TempDir()
+			t.Setenv(home.EnvVar, profile)
+			if solo {
+				if _, err := identity.EnsureSolo(profile); err != nil {
+					t.Fatal(err)
+				}
+			}
+			agent := openIdentityAgent(t, identityPlace(t, "sync-posture"), nil)
+			agent.stampMeta()
+			if identity.Solo(profile) != solo {
+				t.Fatal("custody changed whether this profile talks to sync")
+			}
+		})
+	}
+}

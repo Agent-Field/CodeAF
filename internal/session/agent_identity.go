@@ -119,7 +119,9 @@ func protectAgentIdentity(doc *AgentIdentity) (*AgentIdentity, error) {
 	if doc == nil || !doc.NeedsProtection() {
 		return doc, nil
 	}
-	root, err := identity.EnsureSolo(home.Dir())
+	// Pairing policy belongs to the launcher. A custody write must neither
+	// mark a profile solo nor change an existing profile's sync posture.
+	root, err := identity.Ensure(home.Dir())
 	if err != nil {
 		return nil, err
 	}
