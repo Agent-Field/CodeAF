@@ -615,8 +615,6 @@ Housekeeping — changes state on disk or on the network
       approve a device; or use or show a code such as ` + pair.ExampleChatCode + ` for your chats
   codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
       an always-on computer of yours on your own Railway account
-  codeaf relay [--listen host:port] [--store path]
-      run your own sync service
   codeaf serve [--workspace path] [--via url] [--take-tasks]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices | codeaf cluster status | lead

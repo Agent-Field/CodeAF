@@ -3,10 +3,18 @@ package pair
 import (
 	"net/url"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // L4-R6: Equivalent URLs approve on this service, while meaningful differences refuse.
 func TestL4FixCanonicalServices(t *testing.T) {
+	// internal/syncsetup sets both at startup in the binary; this package's tests
+	// do not link it, so the stable channel's values stand in here.
+	origin, hosted := LinkOrigin, syncwords.HostedURL
+	LinkOrigin = "https://codeaf.agentfield.ai"
+	syncwords.UseHosted("https://codeaf.agentfield.ai/fabric", []string{"codeaf.agentfield.ai"})
+	t.Cleanup(func() { LinkOrigin = origin; syncwords.UseHosted(hosted, nil) })
 	if err := CheckLinkService("https://CODEAF.AGENTFIELD.AI:443/p/k7m2q9xd", "https://codeaf.agentfield.ai/fabric"); err != nil {
 		t.Fatal(err)
 	}

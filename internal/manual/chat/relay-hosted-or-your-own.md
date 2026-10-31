@@ -62,7 +62,7 @@ A chat you write on this computer is never held back by an older service. Releas
 
 ## Starting your own sync service — codeaf relay help and the pairing command
 
-Run `codeaf relay --listen 127.0.0.1:8901 --store <folder>`. The first line is `codeaf relay is listening on 127.0.0.1:8901 — on each computer: codeaf pair --via http://127.0.0.1:8901`. Use an address the other computers can reach; 127.0.0.1 reaches only the computer itself. `codeaf relay --help` lists the ordinary options. `codeaf --help` lists this command, and `codeaf help env` lists both service variables.
+Run `codeaf relay --listen 127.0.0.1:8901 --store <folder>`. The first line is `codeaf relay is listening on 127.0.0.1:8901 — on each computer: codeaf pair --via http://127.0.0.1:8901`. Use an address the other computers can reach; 127.0.0.1 reaches only the computer itself. `codeaf relay --help` lists the ordinary options, and `codeaf help env` lists both service variables.
 
 `CODEAF_SYNC_URL` selects the sync service for chats; `off` disables syncing. `CODEAF_RELAY` is the fallback service override for pairing when `CODEAF_SYNC_URL` is unset, and the remote connection override for `serve` and `chat --at`. An explicit `--via` at pairing selects and remembers the service for later starts. Every instruction for the new computer includes that `--via` argument when the service is your own.
 

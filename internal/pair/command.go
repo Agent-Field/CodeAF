@@ -37,19 +37,23 @@ func CheckLinkService(typed, address string) error {
 // linkService is the service a pasted link waits on. LinkRelay leaves this
 // build's own hosted service unnamed, because a hosted computer keeps its
 // configured service; a computer on its own service must still see that a
-// hosted link is waiting somewhere else.
+// hosted link is waiting somewhere else, however the origin was spelled.
 func linkService(typed string) string {
-	if via := LinkRelay(typed); via != "" {
-		return via
-	}
 	u, err := url.Parse(strings.TrimSpace(typed))
 	if err != nil {
 		return ""
 	}
-	if u.Scheme == "codeaf" || webRelay(u) && strings.HasPrefix(u.Path, "/p/") {
+	if u.Scheme == "codeaf" {
+		if via := u.Query().Get("via"); via != "" {
+			return via
+		}
 		return syncwords.HostedURL
 	}
-	return ""
+	if webRelay(u) && strings.HasPrefix(u.Path, "/p/") && LinkOrigin != "" &&
+		canonicalService(u.Scheme+"://"+u.Host) == canonicalService(LinkOrigin) {
+		return syncwords.HostedURL
+	}
+	return LinkRelay(typed)
 }
 
 // canonicalService normalizes URL spelling without erasing a service's path or protocol.
