@@ -38,8 +38,9 @@ type replica struct {
 	// rather than applied, which is the whole of the ordering law: two facts
 	// that move in the same instant race to the writer on the engine, and a late
 	// push applied over a newer one would make a live row go backwards.
-	rev   uint64
-	facts session.Facts
+	rev     uint64
+	facts   session.Facts
+	changed chan struct{}
 }
 
 // fill takes the set a welcome arrived with, REPLACING whatever was held.
@@ -60,6 +61,10 @@ func (r *replica) fill(push *FactsPush) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.rev, r.facts = push.Rev, push.Facts
+	if r.changed != nil {
+		close(r.changed)
+		r.changed = nil
+	}
 }
 
 // take applies one "facts" frame, newest wins and nothing else lands.
@@ -95,6 +100,10 @@ func (r *replica) takePush(push FactsPush) bool {
 		return false
 	}
 	r.rev, r.facts = push.Rev, push.Facts
+	if r.changed != nil {
+		close(r.changed)
+		r.changed = nil
+	}
 	return true
 }
 
@@ -246,3 +255,14 @@ func (r *replica) setLevel(model, level string) {
 // because a caller that asked four getters would be reading four independent
 // photographs of a set that is published whole.
 func (c *Client) Facts() session.Facts { return c.facts.read() }
+
+// changes broadcasts the next pushed fact set without consuming another reader's
+// notification. Registering before reading prevents missing writer installation.
+func (r *replica) changes() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.changed == nil {
+		r.changed = make(chan struct{})
+	}
+	return r.changed
+}

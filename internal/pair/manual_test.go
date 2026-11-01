@@ -21,6 +21,7 @@ import (
 //
 // The bar is the same one the other gates set: the page must SAY the sentence,
 // word for word, not describe it well.
+// L4-H6 and L4-M7 keep connection words identical to the compiled manual.
 func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 	code := &Code{digits: "715302"}
 	said := []string{
@@ -34,6 +35,7 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		// The four ways `--at` fails, each naming its own cause.
 		NoRelay("otter-lamp-42").Error(),
 		Unreachable("https://service.example.com").Error(),
+		NoDoor("https://service.example.com").Error(),
 		NotConnected("otter-lamp-42").Error(),
 		NotPaired("otter-lamp-42").Error(),
 		// And the ones a person meets less often.
@@ -43,6 +45,9 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 		Busy().Error(),
 		Stopped(),
 		RevokedLine("laptop"),
+		LostSyncLine,
+		BackLine("otter-lamp-42"),
+		TooManyRegistrationsLine,
 		// The join words on the machine being opened, and what its own screen
 		// says about the attempts it turned away.
 		WaitingLine("otter-lamp-42", "amber fox dune"),
@@ -64,6 +69,7 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 // shows for it is quoted there whole. The page is named rather than searched
 // for, so a sentence that moved to some other page still fails: a person who
 // asks how to use codeaf on a second computer is sent to this one.
+// L4-H1, L4-H2 and L4-M12 keep pairing sentences on their shipped manual page.
 func TestEverySentenceOfPairingChatsIsOnItsOwnPage(t *testing.T) {
 	const name = "use-this-on-another-computer"
 	page, ok := manual.Chat().Page(name)
@@ -98,7 +104,7 @@ func TestEverySentenceOfPairingChatsIsOnItsOwnPage(t *testing.T) {
 		ErrRelayTooOld.Error(),
 		ErrDifferentChats.Error(),
 		ErrAlreadyPaired.Error(),
-		CannotReachHost("relay.example.com").Error(),
+		CannotReachHost("https://relay.example.com").Error(),
 		TooManyFor(7 * time.Minute).Error(),
 	}
 	for _, sentence := range said {
@@ -117,11 +123,13 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 		t.Fatal("the page reaching-this-machine-without-ssh is not in the corpus")
 	}
 	for _, quoted := range []string{
-		"10 minutes",              // CodeValidFor
-		"1 attempt",               // CodeAttempts
-		"up to 16",                // relay.MaxStreams
-		"30 connections a minute", // relay.DialsPerMinute
+		"10 minutes",                // CodeValidFor
+		"1 attempt",                 // CodeAttempts
+		"up to 16",                  // relay.MaxStreams
+		"30 connections a minute",   // relay.DialsPerMinute
+		"10 registrations a minute", // relay.RegistrationsPerMinute
 		"~/.codeaf/v3/remote/device.key",
+		"~/.codeaf/v3/remote/relay",
 	} {
 		if !strings.Contains(page, quoted) {
 			t.Errorf("the page does not quote %q", quoted)
@@ -132,6 +140,9 @@ func TestTheManualQuotesTheLimitsThisPackageActuallyApplies(t *testing.T) {
 	}
 	if relay.DialsPerMinute != 30 {
 		t.Fatalf("relay.DialsPerMinute is %d and the page says 30", relay.DialsPerMinute)
+	}
+	if relay.RegistrationsPerMinute != 10 {
+		t.Fatalf("relay.RegistrationsPerMinute is %d and the page says 10", relay.RegistrationsPerMinute)
 	}
 	if int(CodeValidFor.Minutes()) != 10 {
 		t.Fatalf("CodeValidFor is %v and the page says 10 minutes", CodeValidFor)

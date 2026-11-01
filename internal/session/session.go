@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1788,6 +1789,9 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
+	// TaskComputers is nil when this home cannot send tasks to paired computers.
+	TaskComputers TaskComputers
+
 	// Automations is the door to the automations store (automation_tool.go).
 	// Nil is off: no `automation` tool and no card — which is what a run of an
 	// automation is given, because nothing an automation does may arm another.
@@ -1816,6 +1820,11 @@ type Config struct {
 	// decision, and a package that resolved ~/.codeaf itself would write there
 	// from a test.
 	ProfileDir string
+
+	// TeamComputers is used only with local team sharing on. It checks current
+	// holders once for the complete recipient batch before any team Traffic is
+	// written; an unpaired home stays quiet.
+	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
 
 	// failures is the tally the piece of work this agent belongs to keeps of its
 	// own failures (internal/taxonomy). A worker built for a task node carries
@@ -2742,12 +2751,14 @@ type Agent struct {
 	// liveOutputWanted counts the windows that joined this conversation asking
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
-	liveOutputWanted atomic.Int32
-	chatStarts       map[string]bool
-	knowledgeMu      sync.RWMutex
-	knowledgeRetired []*knowledgeJournal
-	knowledgeVault   *knowledge.Vault
-	knowledgeJournal *knowledgeJournal
+	liveOutputWanted   atomic.Int32
+	chatStarts         map[string]bool
+	knowledgeMu        sync.RWMutex
+	knowledgeRetired   []*knowledgeJournal
+	knowledgeVault     *knowledge.Vault
+	knowledgeJournal   *knowledgeJournal
+	taskComputerPrompt bool
+	remoteAckJobs      sync.WaitGroup
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
@@ -3591,6 +3602,7 @@ type Agent struct {
 	// rather than a nil one.
 	closeDone    chan struct{}
 	closedSignal chan struct{}
+	localDurable bool
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.

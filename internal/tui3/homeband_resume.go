@@ -33,6 +33,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -40,6 +41,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 const (
@@ -65,6 +68,7 @@ func init() {
 // card stands; answered holds the devices the person has taken up or put off.
 type resumeOffer struct {
 	row      *chatlist.Row
+	reason   string
 	answered map[string]bool
 }
 
@@ -102,7 +106,7 @@ func (s resumeState) pick() *chatlist.Row {
 // offered says a row is a chat to rescue.
 func (s resumeState) offered(row chatlist.Row) bool {
 	live := row.Status == chatlist.Running || row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine)
-	return live && !row.Mine && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
+	return live && !row.Mine && !row.HolderRemoved && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
 // away says the chat's device has let go of it or is gone: its lease lapsed,
@@ -120,8 +124,23 @@ func (s resumeState) away(row chatlist.Row) bool {
 // has gone. No listing yet, or no taker, offers nothing.
 func (a *app) considerResume() {
 	r := &a.leftOff
+	unavailable := a.machineRead.down || a.dirFeed != nil && !a.dirFeed.State().Up
+	if unavailable && (r.row != nil || r.reason != "") && !a.machineRead.computerRemoved {
+		address := a.syncService
+		if address == "" {
+			address = syncwords.HostedURL
+		}
+		r.reason = syncwords.Unreachable(address)
+		if a.machineRead.err != nil {
+			r.reason = syncwords.Explain(a.machineRead.err, address).Error()
+		}
+		r.row = nil
+		a.touch()
+		return
+	}
+	r.reason = ""
 	var row *chatlist.Row
-	if a.taker != nil && !a.machineRead.computerRemoved {
+	if !a.hosted() && a.taker != nil && !a.machineRead.computerRemoved {
 		row = a.resumeState().pick()
 	}
 	if !sameOffer(r.row, row) {
@@ -157,7 +176,7 @@ func sameOffer(x, y *chatlist.Row) bool {
 
 // resumeKeyHandler claims the card's two chords where the card stands.
 func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
-	if a.machineRead.computerRemoved {
+	if a.hosted() || a.machineRead.computerRemoved {
 		return nil, false
 	}
 	row := a.leftOff.row
@@ -168,6 +187,15 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 	case resumeKey:
 		a.leftOff.answer()
 		a.touch()
+		if a.homeTaking != "" && !a.homeTakeAutomatic {
+			a.raiseMachineAsk(*row, a.continueBusyShown(*row))
+			a.home.say(continueAlreadyRunning, "")
+			return nil, true
+		}
+		if a.homeTakeAutomatic && row.Cell == a.homeTaking && (!a.homeTakeAbandoned || a.homeTakeResult == nil) {
+			return a.takeRemote(*row), true
+		}
+		a.abandonAutomaticTake()
 		if safe, ok := a.taker.(continuationSafety); ok {
 			return a.continueIfSafe(*row, safe), true
 		}
@@ -186,6 +214,9 @@ func drawResumeBand(a *app, ctx bandContext) []string {
 	}
 	row := a.leftOff.row
 	if row == nil {
+		if a.leftOff.reason != "" {
+			return []string{ctx.pal.dim(fit(a.leftOff.reason, ctx.width))}
+		}
 		return nil
 	}
 	head := ctx.pal.ink(fit(fmt.Sprintf(resumeAskFormat, row.Device), ctx.width))
@@ -203,9 +234,14 @@ type continuationSafety interface {
 // lease expectation so a later holder can never be displaced by this gesture.
 func (a *app) continueIfSafe(row chatlist.Row, safe continuationSafety) tea.Cmd {
 	ctx, file := a.ctx, a.file
+	choice := a.nextContinueAskID()
+	a.continueChecking = &continuationChecked{row: row, generation: choice}
+	if a.homeTakeAutomatic && a.homeTaking != "" {
+		a.home.say(fmt.Sprintf("continuing %s next; %s is still on its way here", row.Title, a.homeTakeRow.Title), "")
+	}
 	return func() tea.Msg {
 		clean, err := safe.SafeToContinue(ctx, row.Cell, file, false)
-		return continuationChecked{row: row, clean: clean, err: err}
+		return continuationChecked{row: row, clean: clean, generation: choice, err: err}
 	}
 }
 
@@ -255,7 +291,13 @@ func (a *app) continueAfterQuit(err error) tea.Cmd {
 }
 
 func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
-	if a.machineRead.computerRemoved {
+	if !msg.automatic && msg.generation != 0 {
+		if a.continueChecking == nil || a.continueChecking.generation != msg.generation {
+			return nil
+		}
+		a.continueChecking = nil
+	}
+	if a.hosted() || a.machineRead.computerRemoved {
 		return nil
 	}
 	if msg.automatic && msg.generation != a.continueGeneration {
@@ -276,7 +318,18 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		opened = a.openHome()
 	}
 	if msg.err != nil {
-		return tea.Batch(opened, a.tookTakeover(homeTakenMsg{row: msg.row, err: msg.err}))
+		if !a.at(pageHome) {
+			opened = a.openHome()
+		}
+		a.abandonAutomaticTake()
+		failed := homeTakenMsg{row: msg.row, err: msg.err}
+		if errors.Is(msg.err, directory.ErrLeaseHeld) {
+			return tea.Batch(opened, a.lostRace(failed))
+		}
+		failure := a.continueFailure(failed)
+		a.note(failure)
+		a.showTakeFailure(failed, failure)
+		return opened
 	}
 	if !msg.clean {
 		if msg.automatic {
@@ -284,5 +337,5 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		}
 		return a.raiseContinue(msg.row, continueYesAt)
 	}
-	return tea.Batch(opened, a.takeRemote(msg.row))
+	return tea.Batch(opened, a.takeRemoteState(homeTakenMsg{row: msg.row, automatic: msg.automatic}))
 }
