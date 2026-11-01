@@ -154,3 +154,33 @@ func lastBegun(it *factory.Item) int {
 	}
 	return last
 }
+
+// StepRerun is [StepControl]'s rerun that may also name the model the step
+// runs on this time and after: "" keeps the step's own. The step and every
+// step after it go back to pending, so an approval after it asks again. A
+// model is the person's pick of one conversation step ([factory.RunEdit]'s
+// Model), so a check, an approval or a fixed step refuses one, and a refusal
+// moves nothing.
+func StepRerun(it *factory.Item, name, words, model string, now time.Time) error {
+	model = strings.TrimSpace(model)
+	i := factory.StageIndex(it.Stages, name)
+	if model != "" {
+		switch {
+		case !factory.ModelID(model):
+			return StepControlRefusal(factory.ErrModelID.Error())
+		case i < 0:
+			return StepControlRefusal("step not found")
+		case it.Stages[i].Kind == factory.StageCheck || factory.IsApprove(it.Stages[i]):
+			return StepControlRefusal(name + " is a check or an approval and runs no model")
+		case it.Stages[i].Fixed:
+			return factory.FixedRefusal(name)
+		}
+	}
+	if err := StepControl(it, name, true, words, now); err != nil {
+		return err
+	}
+	if model != "" && it.Stages[i].Model != model {
+		it.Stages[i].Model, it.Stages[i].By = model, factory.ByYou
+	}
+	return nil
+}

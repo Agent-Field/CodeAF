@@ -48,23 +48,26 @@ func (h *Handler) stepControl(rerun bool) jobAction {
 		var body struct {
 			Expect *api.Expect `json:"expect,omitempty"`
 			Words  string      `json:"words,omitempty"`
+			// Model is the model a rerun's step runs on from now: run again
+			// from here with another model. "" keeps the step's own.
+			Model string `json:"model,omitempty"`
 		}
 		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, verb, body.Expect) {
 			return
 		}
-		if !rerun && strings.TrimSpace(body.Words) != "" {
-			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words")
+		if !rerun && (strings.TrimSpace(body.Words) != "" || strings.TrimSpace(body.Model) != "") {
+			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words or a model")
 			return
 		}
 		var revision *int
 		if body.Expect != nil {
 			revision = body.Expect.Version
 		}
-		h.onlyOwner(h.stepAct(rerun, body.Words, revision))(w, r, it)
+		h.onlyOwner(h.stepAct(rerun, body.Words, body.Model, revision))(w, r, it)
 	}
 }
 
-func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
+func (h *Handler) stepAct(rerun bool, words, model string, revision *int) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		if !h.workerReady(w) {
 			return
@@ -88,7 +91,11 @@ func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
 			verb = record.StepRerun
 		}
 		h.finish(w, h.recordAction(r, it, verb, name, func() error {
-			return lease.NewDoors(h.workers.desk).StepControlExpected(it.ID, name, rerun, words, revision)
+			doors := lease.NewDoors(h.workers.desk)
+			if rerun {
+				return doors.StepRerunExpected(it.ID, name, words, model, revision)
+			}
+			return doors.StepControlExpected(it.ID, name, false, "", revision)
 		}))
 	}
 }
