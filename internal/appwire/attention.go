@@ -56,6 +56,19 @@ type TaskSincer interface {
 	TaskSince(task, after string) (Since, error)
 }
 
+// FeatureAsksClockDrawn says a suggested choice's clock waits for a surface to
+// draw its card: the clock starts at asks.shown, never at the raise, so a
+// surface that draws an ask card with a countdown sends asks.shown once the
+// card is on screen. An engine without it starts the clock at the raise.
+const FeatureAsksClockDrawn = "asks.clock.drawn"
+
+func withAsksDrawnFeature(h Hello, e Engine) Hello {
+	if _, ok := e.(Attender); ok {
+		h = withFeature(h, FeatureAsksClockDrawn)
+	}
+	return h
+}
+
 func attender(e Engine, name string) (Attender, error) {
 	a, ok := e.(Attender)
 	if !ok {

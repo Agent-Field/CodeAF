@@ -209,8 +209,10 @@ func (a *Agent) startAskClock(open *askOpen) {
 		return
 	}
 	id := open.q.ID
+	// A surface's clock waits for its card to be drawn (tools_ask.go), with no
+	// bound: [Agent.StartQuestionClock] is what starts it.
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || open.deferred {
 		a.mu.Unlock()
 		return
 	}
