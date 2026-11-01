@@ -373,9 +373,27 @@ func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
 // carries, and nothing any other reader sees has moved, so another person's
 // page must not go stale over it. A later revision-checked write is still safe:
 // it runs its change on the document on disk, which holds this write.
-func (st *Store) UpdatePersonal(id int, change func(*factory.Item) error) error {
-	return st.update(id, writePersonal, nil, change)
+//
+// change answers whether it changed anything. When it did not (the same
+// revision seen again, a follow that was already on), nothing is written, so a
+// page that reports the same fact on every read does not rewrite the job's
+// document and wake every watcher of the factory's folder each time.
+func (st *Store) UpdatePersonal(id int, change func(*factory.Item) bool) error {
+	err := st.update(id, writePersonal, nil, func(it *factory.Item) error {
+		if !change(it) {
+			return errUnchanged
+		}
+		return nil
+	})
+	if errors.Is(err, errUnchanged) {
+		return nil
+	}
+	return err
 }
+
+// errUnchanged ends a personal write whose change changed nothing, before
+// anything is written.
+var errUnchanged = errors.New("factory store: nothing changed")
 
 // writeMode is what a write says about the job besides its change: whether the
 // work moved (Changed stamped) and whether the document is a new revision.
