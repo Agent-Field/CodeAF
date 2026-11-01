@@ -123,6 +123,7 @@ var Lost = map[string]string{
 	"Item.ReportReceipts": "known gap: the service's own acknowledgments of retained worker results, kept with the item so a lost reply never charges twice; no reader needs them",
 	"Item.ReportRetryAt":  "known gap: a person's retry grant, read by the service that holds the item; not carried to readers yet",
 	"Item.ManagerAnswer":  "known gap: the service's idempotency receipt for the manager's last decision; not carried to readers yet",
+	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
 

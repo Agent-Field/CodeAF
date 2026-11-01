@@ -241,6 +241,7 @@ decides which combinations are accepted.
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
+| `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |

@@ -34,6 +34,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("change_assignee", stored, h.changeAssignee)
 	h.postJob("unassign", stored, h.onlyOwner(h.unassignJob))
 	h.postJob("nudge", stored, h.nudgeJob)
+	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
