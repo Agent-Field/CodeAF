@@ -5,6 +5,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"net/http"
 	"strings"
 	"time"
@@ -80,10 +81,14 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		cur.Question, cur.QKind = "", ""
 		cur.Failure = nil
 		cur.Asking = nil
+		prOpen := cur.PullRequest != nil && cur.PullRequest.State == factory.PROpen
+		if wasManual && !prOpen && cur.Stream != nil {
+			cur.Notes = append(cur.Notes, factory.GaveBackNote)
+		}
 		if words := strings.TrimSpace(body.Words); words != "" {
 			cur.Notes = append(cur.Notes, words)
 		}
-		if cur.PullRequest != nil && cur.PullRequest.State == factory.PROpen {
+		if prOpen {
 			if cur.FollowUp == nil {
 				factory.WatchPublishedPR(cur)
 			}
@@ -109,6 +114,15 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 			cur.State = factory.StateShipped
 			factory.QueueCIFollowUp(cur, time.Now().UTC())
 		} else if cur.Stream != nil {
+			// GIVING BACK A TAKEN-OVER JOB CHECKS THE PERSON'S COMMITS AGAIN:
+			// the run goes on from the first check or review that had already
+			// passed, with every step after it, and every step reads that the
+			// branch changed by hand.
+			if wasManual {
+				if from := factory.CheckAgainFrom(cur.Stages, cur.Stream.Phases, cur.Stream.Cur); from < cur.Stream.Cur {
+					return run.StepControl(cur, cur.Stream.Phases[from].Name, true, "", time.Now().UTC())
+				}
+			}
 			cur.Stream.Paused = false
 			cur.Stream.Ended = time.Time{}
 			cur.State = factory.StateQueued
