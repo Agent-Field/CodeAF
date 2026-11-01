@@ -127,6 +127,13 @@ type RoundLine struct {
 	At       time.Time `json:",omitempty"`
 	Started  time.Time `json:",omitempty"`
 	Chat     string    `json:",omitempty"`
+	// Result and Reason are how the try ended ([TryResult]): its rule's word
+	// (clean, not clean, green, proven, blocked…) and a counted reason ("2
+	// findings"). Absent on a try recorded before they were, and on a try
+	// that ended without a report (a failure or a stop), whose word must not
+	// be guessed from its summary.
+	Result string `json:",omitempty"`
+	Reason string `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.
@@ -457,6 +464,12 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 	replaced := false
 	for i := range ph.Rounds {
 		if (line.Chat != "" && ph.Rounds[i].Chat == line.Chat) || (line.Chat == "" && ph.Rounds[i].Chat == "" && ph.Rounds[i].Round == line.Round) {
+			// A LINE THAT DOES NOT SAY HOW THE TRY ENDED KEEPS WHAT WAS SAID: a
+			// worker's report and a rerun's note carry the try again without
+			// its word, which the factory judged from the report it folded.
+			if line.Result == "" && ph.Rounds[i].Round == line.Round {
+				line.Result, line.Reason = ph.Rounds[i].Result, ph.Rounds[i].Reason
+			}
 			ph.Rounds[i] = line
 			replaced = true
 			break

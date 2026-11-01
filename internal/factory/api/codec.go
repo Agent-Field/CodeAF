@@ -978,7 +978,19 @@ func roundsWire(lines []factory.RoundLine) []RoundLine {
 	}
 	out := make([]RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat}
+		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
+	}
+	return out
+}
+
+// reportedRounds is [roundsWire] as a worker reports them: without how each
+// try ended. The factory judges that itself from the result it folds
+// (run.foldResult), and a factory older than the fields decodes a worker's
+// report strictly, so sending them would cost the whole report.
+func reportedRounds(lines []factory.RoundLine) []RoundLine {
+	out := roundsWire(lines)
+	for i := range out {
+		out[i].Result, out[i].Reason = "", ""
 	}
 	return out
 }
@@ -990,7 +1002,7 @@ func roundsItem(lines []RoundLine) []factory.RoundLine {
 	}
 	out := make([]factory.RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat}
+		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
 	}
 	return out
 }

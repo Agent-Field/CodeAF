@@ -232,7 +232,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}
 	for _, s := range r.Stages {
-		step := StepReport{Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
+		step := StepReport{Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: reportedRounds(s.Rounds)}
 		if res := s.Result; res != nil {
 			step.Result = stepResultWire(*res)
 			step.Model = res.Model
