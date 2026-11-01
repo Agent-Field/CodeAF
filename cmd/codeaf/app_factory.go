@@ -40,9 +40,13 @@ import (
 type appFactoryHost struct {
 	// seam is the floor's door the service serves, kept for what the app asks
 	// of this machine's factory directly (a job's conversations).
-	seam                               factory.Seam
-	defaultTarget                      func() (factoryTarget, error)
-	parent                             func() session.Config
+	seam          factory.Seam
+	defaultTarget func() (factoryTarget, error)
+	parent        func() session.Config
+	// pin is a launch's explicit model choice (`runner join --model`) laid
+	// over the home's own config when parent is nil; nil, or a pin naming no
+	// model, leaves the home's own model.
+	pin                                func() session.Config
 	mu                                 sync.Mutex
 	ctx                                context.Context
 	cancel                             context.CancelFunc
@@ -551,7 +555,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 			kind = api.RunnerThisMac
 		}
 	}
-	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), Reply: func(ctx context.Context, it factory.Item, words string) error {
+	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes, Needs: h.needs()}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), Reply: func(ctx context.Context, it factory.Item, words string) error {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})
@@ -569,7 +573,7 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 		}
 		// The worker's own ordinary governed config; the saved Task models policy
 		// is settled on it below, exactly as it is on an injected parent.
-		base, err := applyV3Governance(session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}, h.profile, false, false)
+		base, err := applyV3Governance(h.homeConfig(settings), h.profile, false, false)
 		if err != nil {
 			return nil, nil, false
 		}
@@ -583,7 +587,7 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 				// auto base stays; refusing every load error would change Auto.
 				return base
 			}
-			fresh, err := applyV3Governance(session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}, h.profile, false, false)
+			fresh, err := applyV3Governance(h.homeConfig(settings), h.profile, false, false)
 			if err != nil {
 				return base
 			}
@@ -594,6 +598,36 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 	// whichever parent this host was given.
 	source := &factoryParentSource{raw: raw, profile: h.profile}
 	return source, raw, true
+}
+
+// homeConfig is the conversation config this home's own profile gives: its
+// model and its model services with their keys, the ones `codeaf chat` here
+// would read, with the launch's explicit pin on top when it names a model.
+func (h *appFactoryHost) homeConfig(settings config.Config) session.Config {
+	cfg := session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}
+	if h.pin == nil {
+		return cfg
+	}
+	if pin := h.pin(); strings.TrimSpace(pin.Model) != "" {
+		cfg.Model, cfg.OneModel = pin.Model, pin.OneModel
+	}
+	return cfg
+}
+
+// needs is the runner state word for what this host lacks before a step can
+// run here, "" when it lacks nothing. Only a host whose conversations open from
+// this home's own profile can lack a provider: an injected parent carries the
+// provider of whoever injected it. The test is the one every launch that
+// cannot ask for a key uses ([config.Load]), so a runner says it needs a
+// provider exactly when `codeaf chat --once` here would refuse for want of one.
+func (h *appFactoryHost) needs() string {
+	if h.parent != nil {
+		return ""
+	}
+	if _, err := config.Load(); errors.Is(err, config.ErrNoAPIKey) {
+		return api.RunnerNeedsProvider
+	}
+	return ""
 }
 
 // defaultModel is the model this machine's runner opens a step on when the job

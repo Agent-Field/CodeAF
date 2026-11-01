@@ -41,6 +41,11 @@ type WorkerAttach struct {
 	OS              string          `json:"os,omitempty"`
 	CodeafVersion   string          `json:"codeaf_version,omitempty"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned,omitempty"`
+	// Needs is a runner state word naming what this worker lacks before it
+	// can run a step, such as [RunnerNeedsProvider]; empty when it lacks
+	// nothing. The factory leases nothing to a worker that needs something,
+	// and its runner list shows that state instead of idle.
+	Needs string `json:"needs,omitempty"`
 }
 
 // WorkerAttached returns the credential only at registration, so reads of

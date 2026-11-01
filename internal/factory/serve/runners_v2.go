@@ -81,6 +81,8 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 				got.State = api.RunnerAsleep
 			} else if !h.clock().Before(row.Last.Add(h.runnerOfflineAfter())) {
 				got.State = api.RunnerOffline
+			} else if row.Needs == api.RunnerNeedsProvider {
+				got.State, got.Reason = api.RunnerNeedsProvider, api.RunnerNeedsProviderReason
 			}
 			for _, checkout := range row.Checkouts {
 				if h.repoVisible(r, checkout.Repo) {

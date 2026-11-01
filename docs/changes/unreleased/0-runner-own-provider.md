@@ -1,0 +1,12 @@
+---
+kind: fixed
+title: A joined runner runs steps on its own home's model provider
+pr: 0
+surface: [engine, docs]
+invalidates:
+  - "`codeaf runner join` opened its steps from an empty conversation config, so the first leased step failed with provider base URL is required. It now opens them from the runner home's own provider setup, the one `codeaf chat` there uses."
+  - "A runner was listed as idle or busy whatever its provider. A runner whose home has no model provider is now listed as needs_provider with the reason needs a model provider, and the factory leases it no step."
+---
+
+The provider state is read when the runner attaches; after adding a key, run
+`codeaf runner join` again.

@@ -26,18 +26,23 @@ const (
 	// the worker all report the capacity that is actually granted. Leases
 	// already held above it are never cancelled; they finish and the extra
 	// slots do not refill.
-	MaxRunnerSlots  = 100
-	RunnerThisMac   = "this_mac"
-	RunnerMac       = "mac"
-	RunnerCI        = "ci"
-	RunnerIdle      = "idle"
-	RunnerBusy      = "busy"
-	RunnerOffline   = "offline"
-	RunnerAsleep    = "asleep"
-	PersonActive    = "active"
-	PersonAway      = "away"
-	PersonInvited   = "invited"
-	PersonIdleAfter = 15 * time.Minute
+	MaxRunnerSlots = 100
+	RunnerThisMac  = "this_mac"
+	RunnerMac      = "mac"
+	RunnerCI       = "ci"
+	RunnerIdle     = "idle"
+	RunnerBusy     = "busy"
+	RunnerOffline  = "offline"
+	RunnerAsleep   = "asleep"
+	// RunnerNeedsProvider is a runner whose home has no model provider: it is
+	// attached and seen, but no step is leased to it, since every step would
+	// fail on its first model call. [RunnerNeedsProviderReason] says it in words.
+	RunnerNeedsProvider       = "needs_provider"
+	RunnerNeedsProviderReason = "needs a model provider"
+	PersonActive              = "active"
+	PersonAway                = "away"
+	PersonInvited             = "invited"
+	PersonIdleAfter           = 15 * time.Minute
 )
 
 // Checkout is a repository already present on this runner, never a server path.
@@ -64,6 +69,9 @@ type Runner struct {
 	// often it restarts, so the screen may say only that it needs a compatible
 	// update or configuration.
 	LiveCapacity bool `json:"live_capacity,omitempty"`
+	// Reason is the sentence a state that blocks work is shown with, such as
+	// [RunnerNeedsProviderReason]; empty for every other state.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Runners is the factory directory; it contains no execution credentials.
