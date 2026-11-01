@@ -55,7 +55,10 @@ import (
 
 // stageMaker opens stage conversations from parent, the launch's own config.
 type stageMaker struct {
-	floor      *store.Store
+	floor *store.Store
+	// jobs is where the job a step runs for is kept: the worker's mirror of
+	// the job the factory leased it. Nil is floor.
+	jobs       *store.Store
 	parent     session.Config
 	current    func() session.Config
 	refusal    func() error
@@ -72,6 +75,12 @@ func factoryStageMaker(floor *store.Store, workspace, profileDir string, parent 
 // including a resumed round whose journal predates the one-model launch.
 func factoryStageMakerFrom(floor *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
 	return stageMaker{floor: floor, current: current, workspace: workspace, profileDir: profileDir}
+}
+
+// withJobs reads and books a step's money on jobs, the worker's mirror.
+func (m stageMaker) withJobs(jobs *store.Store) stageMaker {
+	m.jobs = jobs
+	return m
 }
 
 // withRefusal gives the maker the reason its parent was last refused.
@@ -140,7 +149,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// Stages carry no manager tool authority. Their separate live meter charges
 	// the same job before round completion, including delegated provider calls.
 	cfg.JobChat = nil
-	budget := &stageBudget{floor: m.floor, item: spec.Item}
+	jobs := m.jobs
+	if jobs == nil {
+		jobs = m.floor
+	}
+	budget := &stageBudget{floor: jobs, item: spec.Item}
 	cfg.JobBudget = budget
 	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate

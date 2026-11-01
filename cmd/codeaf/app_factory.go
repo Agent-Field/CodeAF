@@ -514,7 +514,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current).withRefusal(source.Refusal), turns)
+	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
 	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
@@ -555,6 +555,14 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})
+}
+
+// stepMaker opens this worker's step conversations. A step's money is the
+// leased job's, so its meter reads and books it on mirror, the copy of the job
+// the factory handed over; the report carries what it booked back. A runner
+// whose home holds no factory of its own has no other record of the budget.
+func (h *appFactoryHost) stepMaker(mirror *store.Store, source *factoryParentSource) stageMaker {
+	return factoryStageMakerFrom(h.floor, h.workspace, h.profile, source.Config).withRefusal(source.Refusal).withJobs(mirror)
 }
 
 // parentSource is the parent every conversation of this host opens from: the
