@@ -628,14 +628,17 @@ type JobDesk struct {
 	Heard     time.Time `json:"heard"`
 	// Comments has no omitempty ON PURPOSE: null is not read yet, and [] is
 	// read with nothing said ([factory.Item.Comments]).
-	Comments  []Comment  `json:"comments"`
-	Files     []File     `json:"files,omitempty"`
-	CheckRuns []CheckRun `json:"check_runs,omitempty"`
-	Base      string     `json:"base,omitempty"`
-	Head      string     `json:"head,omitempty"`
-	HeadSHA   string     `json:"head_sha,omitempty"`
-	Activity  []Activity `json:"activity,omitempty"`
-	Run       *Run       `json:"run,omitempty"`
+	Comments []Comment `json:"comments"`
+	// CommentReads is what the job's manager did with each new comment, by
+	// the comment's id ([factory.ReadComments]); absent is none.
+	CommentReads []factory.CommentRead `json:"comment_reads,omitempty"`
+	Files        []File                `json:"files,omitempty"`
+	CheckRuns    []CheckRun            `json:"check_runs,omitempty"`
+	Base         string                `json:"base,omitempty"`
+	Head         string                `json:"head,omitempty"`
+	HeadSHA      string                `json:"head_sha,omitempty"`
+	Activity     []Activity            `json:"activity,omitempty"`
+	Run          *Run                  `json:"run,omitempty"`
 }
 
 // Run is a job's bench: the stream's facts that are not per step (desk). Nil
@@ -849,11 +852,35 @@ type LogLine struct {
 	Text  string    `json:"text"`
 }
 
-// Comment is one thing said on a job's source (desk).
+// Comment is one thing said on a job's source (desk). ID and URL are
+// GitHub's, absent on a comment read before they were kept; tier is the
+// author's standing on the repository (owner, collaborator or stranger),
+// absent until it is read; by_factory marks the factory's own publication.
 type Comment struct {
-	Author string    `json:"author"`
-	Body   string    `json:"body"`
-	At     time.Time `json:"at"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	At        time.Time `json:"at"`
+	ID        string    `json:"id,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	Tier      string    `json:"tier,omitempty"`
+	ByFactory bool      `json:"by_factory,omitempty"`
+}
+
+// EndpointNotFound is a factory's sentence for a route it does not have. A
+// client tells an older factory from a refusal by it, so the words never change.
+const EndpointNotFound = "factory endpoint not found"
+
+// IssueCommentRequest is a person's comment on the job's GitHub issue,
+// posted as that person (POST /v1/jobs/{id}/issue_comment).
+type IssueCommentRequest struct {
+	Body string `json:"body"`
+}
+
+// IssueCommentPosted is GitHub's receipt for one posted comment.
+type IssueCommentPosted struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Comment Comment `json:"comment"`
 }
 
 // File is one file a pull request changes (desk).

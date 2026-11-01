@@ -206,6 +206,7 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/steps/{sid}/rerun", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/assignee", AssigneeRequest{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/sync", JobAction{}, ActionResult{}},
+	{"POST", "/v1/jobs/{id}/issue_comment", IssueCommentRequest{}, IssueCommentPosted{}},
 	{"GET", "/v1/jobs/{id}/step-edits", nil, StepEdits{}},
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
