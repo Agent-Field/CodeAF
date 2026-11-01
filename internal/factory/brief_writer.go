@@ -346,11 +346,12 @@ var briefEvidenceKinds = map[string]func(e briefEvidence, ref BriefEvidence) ([]
 	"summary":     summaryNumbers,
 	"rule_checks": ruleNumbers,
 	"file":        fileNumbers,
+	"change":      changeNumbers,
 	"hunk":        hunkNumbers,
 }
 
 // BriefEvidenceKinds is every kind of evidence a claim may name.
-var BriefEvidenceKinds = []string{"tests", "exit", "findings", "claims", "output", "summary", "rule_checks", "file", "hunk"}
+var BriefEvidenceKinds = []string{"tests", "exit", "findings", "claims", "output", "summary", "rule_checks", "file", "change", "hunk"}
 
 // phaseOf is the job's phase of a step's name.
 func (e briefEvidence) phaseOf(step string) (Phase, bool) {
@@ -422,6 +423,16 @@ func fileNumbers(e briefEvidence, ref BriefEvidence) ([]int, bool) {
 		stat = append(stat, s.Files, s.Added, s.Removed, s.Added+s.Removed)
 	}
 	return stat, true
+}
+
+// changeNumbers reads the whole change's stat: files, lines added, removed
+// and both.
+func changeNumbers(e briefEvidence, _ BriefEvidence) ([]int, bool) {
+	if e.it.Change == nil || e.it.Change.Stat == nil {
+		return nil, false
+	}
+	s := e.it.Change.Stat
+	return []int{s.Files, s.Added, s.Removed, s.Added + s.Removed}, true
 }
 
 // hunkNumbers reads a hunk named "file:start".

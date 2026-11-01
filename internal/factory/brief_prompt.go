@@ -18,7 +18,7 @@ func BriefSystem() string {
 You are given the job as JSON: the issue, the plan, each step's result per try, the change's stats and hunk index, the rule checks, the facts row and the brief before.
 Answer ONE JSON object and nothing else:
 {"verdict": string, "verdict_evidence": [evidence], "blocks": [block]}
-Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; hunk names "file:start" in ref; rule_checks names no step.
+Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; change is the whole change's stat (files, added, removed); hunk names "file:start" in ref; rule_checks names no step.
 The verdict says the outcome, not the activity, in at most %d words ("Fixed. Retries no longer double-send after a worker restart.").
 Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and their fields:
 - bullets: "bullets": [{"text","evidence"}], at most %d, at most %d words each, a **bold** lead word allowed.

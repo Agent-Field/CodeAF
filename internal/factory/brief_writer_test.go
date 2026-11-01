@@ -314,3 +314,16 @@ func TestBriefInputTextFits(t *testing.T) {
 		t.Fatal("the prompt does not carry the palette's limits")
 	}
 }
+
+// THE CHANGE'S STAT IS EVIDENCE of its own, for a claim about its size.
+func TestBriefChangeEvidence(t *testing.T) {
+	it := writerJob()
+	e := briefEvidenceOf(it)
+	ok := e.claimFault("2 files, 5 added, 1 removed", []BriefEvidence{{Kind: "change"}})
+	bad := e.claimFault("3 files", []BriefEvidence{{Kind: "change"}})
+	it.Change = nil
+	none := briefEvidenceOf(it).claimFault("2 files", []BriefEvidence{{Kind: "change"}})
+	if ok != "" || bad == "" || none == "" {
+		t.Fatalf("ok %q bad %q none %q", ok, bad, none)
+	}
+}
