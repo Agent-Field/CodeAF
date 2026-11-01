@@ -81,8 +81,10 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 				got.State = api.RunnerAsleep
 			} else if !h.clock().Before(row.Last.Add(h.runnerOfflineAfter())) {
 				got.State = api.RunnerOffline
-			} else if row.Needs == api.RunnerNeedsProvider {
-				got.State, got.Reason = api.RunnerNeedsProvider, api.RunnerNeedsProviderReason
+			} else if row.Needs != "" {
+				// The same test the pull withholds leases on, so a runner that
+				// takes no job never reads as idle.
+				got.State, got.Reason = row.Needs, api.RunnerNeedReason(row.Needs)
 			}
 			for _, checkout := range row.Checkouts {
 				if h.repoVisible(r, checkout.Repo) {

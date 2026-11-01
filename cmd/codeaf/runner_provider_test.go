@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // runnerHome is a joined runner's own codeaf home: a checkout of owner/repo
@@ -61,15 +62,18 @@ func joinRunner(t *testing.T, lab *runnerLab) factoryTarget {
 	return factoryTarget{lab.server.URL, got.Token}
 }
 
-// A JOINED RUNNER WORKS WITH ITS OWN HOME'S PROVIDER. Nothing is passed on the
-// command line: the first step it leases reaches the endpoint the home names
-// instead of failing on "provider base URL is required".
+// A JOINED RUNNER WORKS WITH ITS OWN HOME'S PROVIDER. Only `--model` is passed
+// on the command line: the first step it leases reaches the endpoint the home
+// names, on the pinned model, instead of failing on "provider base URL is
+// required".
 func TestRunnerJoinRunsItsFirstStepOnItsOwnHomesProvider(t *testing.T) {
 	lab := newRunnerLabAt(t, "Priya", time.Now().Add(time.Hour), time.Now)
 	model := newStageModel(t)
 	runnerHome(t, lab, model.server.URL)
 	stageSettle = time.Millisecond
 	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
+	resetFactoryParent(t, session.Config{})
+	setFactoryModelPin(savedOneModel, true)
 	joinRunner(t, lab)
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
@@ -77,6 +81,13 @@ func TestRunnerJoinRunsItsFirstStepOnItsOwnHomesProvider(t *testing.T) {
 		reached := len(model.models)
 		model.mu.Unlock()
 		if reached > 0 {
+			model.mu.Lock()
+			defer model.mu.Unlock()
+			for _, got := range model.models {
+				if got != savedOneModel {
+					t.Fatalf("a step asked for %q; want the --model pin %q", got, savedOneModel)
+				}
+			}
 			return
 		}
 		if why := jobLogMentions(t, lab.store, "provider base URL is required"); why != "" {

@@ -573,7 +573,7 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 		}
 		// The worker's own ordinary governed config; the saved Task models policy
 		// is settled on it below, exactly as it is on an injected parent.
-		base, err := applyV3Governance(h.homeConfig(settings), h.profile, false, false)
+		base, err := h.homeParent(settings)
 		if err != nil {
 			return nil, nil, false
 		}
@@ -587,7 +587,7 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 				// auto base stays; refusing every load error would change Auto.
 				return base
 			}
-			fresh, err := applyV3Governance(h.homeConfig(settings), h.profile, false, false)
+			fresh, err := h.homeParent(settings)
 			if err != nil {
 				return base
 			}
@@ -600,18 +600,20 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 	return source, raw, true
 }
 
-// homeConfig is the conversation config this home's own profile gives: its
-// model and its model services with their keys, the ones `codeaf chat` here
-// would read, with the launch's explicit pin on top when it names a model.
-func (h *appFactoryHost) homeConfig(settings config.Config) session.Config {
+// homeParent is the governed conversation config this home's own profile
+// gives: its model and its model services with their keys, the ones `codeaf
+// chat` here would read, with the launch's explicit pin on top. A one-model pin
+// goes through governance as `--one-model` does, so no crew rung survives it.
+func (h *appFactoryHost) homeParent(settings config.Config) (session.Config, error) {
 	cfg := session.Config{Workspace: h.workspace, Model: settings.Model, Sources: settings.Sources}
-	if h.pin == nil {
-		return cfg
+	if h.pin != nil {
+		pin := h.pin()
+		if model := strings.TrimSpace(pin.Model); model != "" {
+			cfg.Model = model
+		}
+		cfg.OneModel = pin.OneModel
 	}
-	if pin := h.pin(); strings.TrimSpace(pin.Model) != "" {
-		cfg.Model, cfg.OneModel = pin.Model, pin.OneModel
-	}
-	return cfg
+	return applyV3Governance(cfg, h.profile, false, cfg.OneModel)
 }
 
 // needs is the runner state word for what this host lacks before a step can
