@@ -163,8 +163,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		config: config,
-		system: system,
+		taskComputerPrompt: config.mayNameTaskComputer(),
+		config:             config,
+		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
 		// file deciding what another door's worker is told.
@@ -2881,6 +2882,7 @@ func (a *Agent) Close() (saveErr error) {
 	// cancellations were cut above; join their accepted lifetimes before any
 	// store is closed. Setup may have created the graph since the first snapshot.
 	a.waitOrchestrations()
+	a.waitEndingBeltRun(beltDone, closeGrace)
 	a.mu.Lock()
 	tasks = a.tasks
 	a.mu.Unlock()
@@ -2986,10 +2988,16 @@ func (a *Agent) Close() (saveErr error) {
 		}
 		return err
 	}
-	if file == nil {
-		return nil
+	var localErr error
+	if file != nil {
+		localErr = file.Close()
 	}
-	return file.Close()
+	if localErr == nil {
+		a.mu.Lock()
+		a.localDurable = true
+		a.mu.Unlock()
+	}
+	return localErr
 }
 
 // ── transcript ──────────────────────────────────────────────────────────────

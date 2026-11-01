@@ -21,6 +21,7 @@ package tui3
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -54,6 +55,8 @@ func init() {
 // deviceRoster is the row's whole state: the devices last read, and whether a
 // read is out.
 type deviceRoster struct {
+	// Version invalidates cached provenance when a computer is renamed.
+	version      uint64
 	devices      []chatlist.Device
 	asking       bool
 	bringPending bool
@@ -67,6 +70,9 @@ type rosterMsg struct {
 
 // askRoster lists the devices, off the update loop. One ask is out at a time.
 func (a *app) askRoster() tea.Cmd {
+	if a.hosted() {
+		return nil
+	}
 	src, ok := a.fleet.(Roster)
 	if !ok || a.devRow.asking {
 		return nil
@@ -84,6 +90,9 @@ func (a *app) askRoster() tea.Cmd {
 func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 	a.devRow.asking = false
 	if msg.err == nil {
+		if !slices.Equal(a.devRow.devices, msg.devices) {
+			a.devRow.version++
+		}
 		a.devRow.devices = msg.devices
 		a.considerResume()
 		a.touch()
@@ -107,6 +116,9 @@ func (a *app) presence() (online map[string]bool, known bool) {
 // devicesWanted says the row is drawn: a roster of more than one device and a
 // feed that can say who is online.
 func (a *app) devicesWanted() bool {
+	if a.hosted() {
+		return false
+	}
 	_, known := a.presence()
 	return known && len(a.devRow.devices) > 1
 }
@@ -127,7 +139,7 @@ func drawDevicesBand(a *app, ctx bandContext) []string {
 	online, _ := a.presence()
 	marks := make([]string, 0, len(a.devRow.devices))
 	for _, d := range a.devRow.devices {
-		marks = append(marks, paintPresence(ctx.pal, d.Mark(online[d.ID]), online[d.ID] || d.Self))
+		marks = append(marks, paintPresence(ctx.pal, d.Mark(online[d.ID], DeviceRow{Self: d.Self, Online: online[d.ID]}.dot(ctx.pal)), online[d.ID] || d.Self))
 	}
 	rows := []string{fit(strings.Join(marks, deviceGap), ctx.width)}
 	if len(a.devicePicks()) == 0 {
@@ -170,6 +182,9 @@ func (a *app) newestBringable(device string) (chatlist.Row, bool) {
 // bringWork is the chord: nothing to bring says so, one device goes straight to
 // the takeover card, and several ask which.
 func (a *app) bringWork() tea.Cmd {
+	if a.hosted() {
+		return nil
+	}
 	picks := a.devicePicks()
 	switch len(picks) {
 	case 0:

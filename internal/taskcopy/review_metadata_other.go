@@ -21,3 +21,8 @@ func portableUnsupportedNativeMetadata(path string, info fs.FileInfo) error {
 func SetPortableSymlinkModeAt(parentFD int, name string, mode fs.FileMode) error {
 	return errors.New("this platform cannot preserve symlink permissions")
 }
+
+// OSManagedAttribute reports whether an extended attribute is one the
+// operating system stamps on its own and that portable apply may leave
+// behind. This platform does not read extended attributes here, so none is.
+func OSManagedAttribute(string) bool { return false }

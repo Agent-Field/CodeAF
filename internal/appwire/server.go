@@ -394,6 +394,11 @@ var methods = map[string]method{
 			}
 			p.ApprovalPosture = posture
 		}
+		createdBy, err := CheckCreatedBy(p.CreatedBy)
+		if err != nil {
+			return nil, err
+		}
+		p.CreatedBy = createdBy
 		agent, err := e.CreateAgent(p)
 		if err != nil {
 			return nil, err

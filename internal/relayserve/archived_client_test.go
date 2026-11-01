@@ -64,12 +64,30 @@ func TestR25ArchivedPreconditionalClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mod := "module github.com/Agent-Field/codeaf/internal/archiveprobe\n\ngo 1.26.5\n\nrequire github.com/Agent-Field/codeaf v0.0.0\n\nreplace github.com/Agent-Field/codeaf => " + root + "\n"
+	// Carry the repository's pruned module graph, checksums, and local raft
+	// replacement into the probe module so -mod=readonly resolves every
+	// package from the populated module cache without querying GOPROXY=off
+	// for pruned transitive go.mod files, and disable VCS stamping outside
+	// the checkout.
+	rootMod, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootSum, err := os.ReadFile(filepath.Join(root, "go.sum"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod := strings.Replace(string(rootMod), "module github.com/Agent-Field/codeaf\n", "module github.com/Agent-Field/codeaf/internal/archiveprobe\n", 1)
+	mod = strings.Replace(mod, "replace go.etcd.io/raft/v3 => ./third_party/raft", "replace go.etcd.io/raft/v3 => "+filepath.Join(root, "third_party", "raft"), 1)
+	mod += "\nrequire github.com/Agent-Field/codeaf v0.0.0\n\nreplace github.com/Agent-Field/codeaf => " + root + "\n"
 	if err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err = os.WriteFile(filepath.Join(dir, "go.sum"), rootSum, 0600); err != nil {
+		t.Fatal(err)
+	}
 	binary := filepath.Join(dir, "client")
-	build := exec.Command("go", "build", "-mod=mod", "-p=1", "-o", binary, ".")
+	build := exec.Command("go", "build", "-buildvcs=false", "-mod=readonly", "-p=1", "-o", binary, ".")
 	build.Dir = dir
 	build.Env = append(os.Environ(), "GOPROXY=off", "GOSUMDB=off", "GOWORK=off")
 	if out, err := build.CombinedOutput(); err != nil {

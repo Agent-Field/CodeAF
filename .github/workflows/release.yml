@@ -189,7 +189,8 @@ jobs:
           fi
           test_args=()
           [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
-          go test "${test_args[@]}" \
+          # Bash 3.2 treats an empty array as unbound under nounset, so expand it conditionally.
+          go test ${test_args[@]+"${test_args[@]}"} \
             ./cmd/codeaf \
             ./internal/config \
             ./internal/exec/... \
@@ -255,16 +256,81 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # EACH CHANNEL DEPLOYS ITS OWN RELAY BEFORE ITS BINARIES PUBLISH. dev updates
+  # caf-fabric-dev, staging updates caf-fabric-staging, and main (rc) or a
+  # stable dispatch updates caf-fabric once RELAY_DEPLOY_PRODUCTION is true. A
+  # failed deploy or post-deploy proof rolls the Worker back when a prior
+  # version existed and stops publish; a rollback cannot undo a one-way storage
+  # upgrade, which is why every relay change reaches dev first and staging a
+  # week later.
+  relay:
+    needs: prepare
+    permissions:
+      contents: read
+    concurrency:
+      group: relay-${{ (needs.prepare.outputs.channel == 'stable' || needs.prepare.outputs.channel == 'rc') && 'production' || needs.prepare.outputs.channel }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check production relay deploy gate
+        id: gate
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          RELAY_DEPLOY_PRODUCTION: ${{ vars.RELAY_DEPLOY_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = "stable" ] || [ "$CHANNEL" = "rc" ]; then
+            if [ "$RELAY_DEPLOY_PRODUCTION" != "true" ]; then
+              echo "Production relay deploys are off; set repository variable RELAY_DEPLOY_PRODUCTION=true to enable caf-fabric deploys."
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.deploy == 'true'
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-go@v5
+        if: steps.gate.outputs.deploy == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.deploy == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: relay/hosted/package-lock.json
+      - name: Install hosted relay dependencies
+        if: steps.gate.outputs.deploy == 'true'
+        working-directory: relay/hosted
+        run: npm ci
+      - name: Deploy and verify channel relay
+        if: steps.gate.outputs.deploy == 'true'
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+          RELAY_DEPLOY_PRODUCTION: ${{ vars.RELAY_DEPLOY_PRODUCTION }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CODEAF_TELEMETRY: "off"
+          DO_NOT_TRACK: "1"
+        run: bash scripts/relay-deploy.sh
+
   # PUBLISH SAYS always() FOR THE SAME REASON build DOES. GitHub skips a job
   # whose dependency chain contains a skipped job unless the job's own condition
   # says otherwise, and the chain here always contains one: `test` is skipped on
   # every dev build by design. The first live run on 2026-09-11 (dev, ef36c3770)
   # proved it — prepare and build green, eight minutes of binaries uploaded, and
-  # publish skipped without a word, so no dev release existed. The two explicit
-  # results below are the whole gate: a red build still publishes nothing.
+  # publish skipped without a word, so no dev release existed. The three
+  # explicit results below are the whole gate: a red build or relay deploy still
+  # publishes nothing.
   publish:
-    needs: [prepare, build]
-    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success'
+    needs: [prepare, build, relay]
+    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success' && needs.relay.result == 'success'
     permissions:
       contents: write
     runs-on: ubuntu-latest

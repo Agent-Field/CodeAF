@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
@@ -217,6 +218,9 @@ type Agent struct {
 	// Approval is what this conversation does before it acts, as of the last
 	// time it was held; absent before then, or where its engine has no gate.
 	Approval *AgentApproval `json:"approval,omitempty"`
+	// CreatedBy is who started it: "person", or the id of the agent or app
+	// that did. Absent for an agent made before this was kept.
+	CreatedBy string `json:"created_by,omitempty"`
 }
 
 // AgentApproval is the gate a conversation stands at. Posture is the resolved
@@ -1092,6 +1096,28 @@ type CreateAsk struct {
 	// agents.set_approval_posture sets it before the first turn runs. Absent
 	// (or auto) follows Settings.
 	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,auto"`
+	// CreatedBy says who started the agent: absent is the person, and an app
+	// acting for the person names itself, such as "afi:<agent id>"
+	// ([CheckCreatedBy]).
+	CreatedBy string `json:"created_by,omitempty"`
+}
+
+// CreatedByPerson is the origin of work the person started themselves.
+const CreatedByPerson = "person"
+
+// MaxCreatedByBytes bounds an origin, which is a name and never a message.
+const MaxCreatedByBytes = 128
+
+// CheckCreatedBy is an origin as it is kept: trimmed, one line, bounded.
+func CheckCreatedBy(word string) (string, error) {
+	word = strings.TrimSpace(word)
+	if len(word) > MaxCreatedByBytes {
+		return "", Errorf(CodeBadParams, "created_by is at most %d bytes", MaxCreatedByBytes)
+	}
+	if strings.ContainsFunc(word, unicode.IsControl) {
+		return "", Errorf(CodeBadParams, "created_by is one line of text")
+	}
+	return word, nil
 }
 
 // Warmer is an engine with something slow it can start on before anything is

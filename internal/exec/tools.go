@@ -1670,9 +1670,13 @@ func exitCode(res executor.ExecResult, err error) int {
 }
 
 func (t *Toolbox) write(args map[string]any) Result {
-	path, text := stringArg(args, "path"), stringArg(args, "text")
+	path := stringArg(args, "path")
 	if path == "" {
 		return errorf("write needs path")
+	}
+	text, ok := args["text"].(string)
+	if !ok {
+		return errorf("write needs text as a string (use text, not content; an empty string is allowed)")
 	}
 	full, err := t.workspace.Resolve(path)
 	if err != nil {
