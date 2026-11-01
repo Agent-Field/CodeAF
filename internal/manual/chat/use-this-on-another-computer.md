@@ -105,6 +105,9 @@ and the other computer says:
 Paired with laptop-a. Your chats are kept. Both computers' chats will appear as sharing finishes.
 ```
 
+When the other computer's name cannot be read yet, it says
+`Paired. Your chats are kept. Both computers' chats will appear as sharing finishes.`
+
 The code is now dead. It cannot pair a third computer.
 
 ## The code did not work — one attempt for each code

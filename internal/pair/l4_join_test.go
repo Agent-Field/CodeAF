@@ -1,7 +1,6 @@
 package pair
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,49 +49,37 @@ func TestL4LookedAroundCanPair(t *testing.T) {
 	}
 }
 
-// L4-H2b: the refusal counts submitted chats and explains the replacement truthfully.
-func TestL4PairCountsChats(t *testing.T) {
-	h := t.TempDir()
-	if _, err := identity.EnsureSolo(h); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"a", "b", "c"} {
-		p := filepath.Join(h, "v3/projects/project", name, ".cell")
-		if err := os.MkdirAll(p, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(p, "transcript.jsonl"), []byte("{\"type\":\"message\",\"role\":\"user\",\"content\":\"hello\"}\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	_, err := (LinkJoining{Joining: Joining{Home: h}}).free()
-	if !errors.Is(err, ErrDifferentChats) || !strings.Contains(err.Error(), "already has 3 chats of its own") || !strings.Contains(err.Error(), "--replace") || !strings.Contains(err.Error(), "stay on this computer") {
-		t.Fatalf("%v", err)
-	}
-}
-
-// L4-H2b: one chat is counted in the singular, as the hand walk read it.
-func TestL4PairCountsOneChat(t *testing.T) {
-	h := t.TempDir()
-	if _, err := identity.EnsureSolo(h); err != nil {
-		t.Fatal(err)
-	}
-	p := filepath.Join(h, "v3/projects/project", "a", ".cell")
-	if err := os.MkdirAll(p, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(p, "transcript.jsonl"), []byte("{\"type\":\"message\",\"role\":\"user\",\"content\":\"hello\"}\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := (LinkJoining{Joining: Joining{Home: h}}).free()
-	if !errors.Is(err, ErrDifferentChats) || !strings.Contains(err.Error(), "already has 1 chat of its own") || !strings.Contains(err.Error(), "that chat stays on this computer but no longer syncs") || strings.Contains(err.Error(), "those 1") {
-		t.Fatalf("%v", err)
-	}
-}
-
 // L4-H2d: the approver's startup instruction has no key-management vocabulary.
 func TestL4ApprovalNeedsOneStart(t *testing.T) {
 	if ErrNotJoined.Error() != "open codeaf on this computer once, then approve again" {
 		t.Fatal(ErrNotJoined)
+	}
+}
+
+// A solo computer with chats of its own may join: app/v3 merges its chats into
+// the shared set instead of refusing or replacing them (1c4ec8a25, #2031), and
+// the joined line says so. Dev's count-and-refuse wording (#2087) does not
+// apply on this branch.
+func TestL4PairKeepsAComputersOwnChats(t *testing.T) {
+	for _, chats := range []int{1, 3} {
+		h := t.TempDir()
+		if _, err := identity.EnsureSolo(h); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < chats; i++ {
+			p := filepath.Join(h, "v3/projects/project", string(rune('a'+i)), ".cell")
+			if err := os.MkdirAll(p, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p, "transcript.jsonl"), []byte("{\"type\":\"message\",\"role\":\"user\",\"content\":\"hello\"}\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := (LinkJoining{Joining: Joining{Home: h}}).free(); err != nil {
+			t.Fatalf("%d chats: a computer with its own chats was refused: %v", chats, err)
+		}
+		if !strings.Contains(JoinedLine, "Your chats are kept") {
+			t.Fatal(JoinedLine)
+		}
 	}
 }

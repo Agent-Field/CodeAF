@@ -70,7 +70,7 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 				return inner.Execute(ctx, args)
 			}
 			if parsed.Content == nil {
-				return "Invalid arguments: content is required and must be a string", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: content is required and must be a string"), true, nil
 			}
 			if strings.TrimSpace(parsed.Path) == "" {
 				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil

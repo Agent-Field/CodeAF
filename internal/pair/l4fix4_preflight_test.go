@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -35,9 +34,10 @@ func preflightChat(t *testing.T, home string) string {
 	return path
 }
 
-// L4-C: A used solo home refuses before even checking the mailbox. Replacement,
-// startup-only homes and previously paired homes retain their existing roads.
-func TestL4Fix4SoloJoinRefusesBeforeContactingMailbox(t *testing.T) {
+// A solo home with chats of its own keeps and shares them, so it is never
+// refused before the mailbox: every road reaches it, and nothing local changes
+// until the other device has said yes.
+func TestSoloJoinWithChatsReachesTheMailboxAndChangesNothing(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string
 		used, paired, replace bool
@@ -70,16 +70,8 @@ func TestL4Fix4SoloJoinRefusesBeforeContactingMailbox(t *testing.T) {
 			before := filesIn(t, home)
 			box := &preflightMailbox{err: errors.New("mailbox reached")}
 			_, err = Join(t.Context(), Mailbox{Box: box}, Joining{Home: home, Replace: tc.replace}, "42-715-302", newScreen())
-			refuse := (tc.used || tc.name == "local work") && !tc.paired && !tc.replace
-			if refuse {
-				if !errors.Is(err, ErrDifferentChats) || box.calls != 0 {
-					t.Fatalf("join = %v; mailbox calls = %d", err, box.calls)
-				}
-				if tc.used && !strings.Contains(err.Error(), "already has 1 chat of its own") {
-					t.Fatal(err)
-				}
-			} else if !errors.Is(err, box.err) || box.calls != 1 {
-				t.Fatalf("existing road = %v; mailbox calls = %d", err, box.calls)
+			if !errors.Is(err, box.err) || box.calls != 1 {
+				t.Fatalf("join = %v; mailbox calls = %d", err, box.calls)
 			}
 			same(t, before, filesIn(t, home))
 			if held, err := identity.Load(home); err != nil || held.ID() != original.ID() {

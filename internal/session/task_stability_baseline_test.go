@@ -53,6 +53,8 @@ type originalRunRecord struct {
 }
 
 type originalTaskNotice struct {
+	// app/v3 fields that predate remote placement.
+	Retryable                                             bool
 	Thinking                                              string
 	ID                                                    uint64
 	Run                                                   string
@@ -60,6 +62,8 @@ type originalTaskNotice struct {
 	Title                                                 string
 	Kind                                                  TaskKind
 	Program                                               string
+	Source                                                *TaskSource
+	Dismissed                                             bool
 	Ceiling                                               string
 	Summary                                               string
 	Brief                                                 string
@@ -72,6 +76,7 @@ type originalTaskNotice struct {
 	DependsOn                                             []uint64
 	Parent                                                uint64
 	Deadline                                              time.Time
+	Irreversible                                          bool
 	Withdrawn                                             string
 	Decided                                               *TaskAnswer
 	ModelOptions                                          []string
@@ -115,6 +120,7 @@ type originalTaskNotice struct {
 }
 
 type originalUsageLine struct {
+	ID            string    `json:"id,omitempty"` // app/v3: each row names itself once
 	At            time.Time `json:"at"`
 	Day           string    `json:"day"`
 	Model         string    `json:"model,omitempty"`

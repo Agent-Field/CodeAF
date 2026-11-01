@@ -937,7 +937,9 @@ func (c *Client) repairable(model string, knobs callKnobs) bool {
 // first match winning, because a single 400 can name more than one field.
 func (c *Client) learn(model string, knobs callKnobs, payload []byte) []string {
 	var learned []string
-	if c.resolveEffort(model, knobs.effort) != EffortNone && refusesReasoning(payload) {
+	// Only an effort that was on the wire can have been refused. A request the
+	// endpoint ladder had already stripped teaches nothing about the model.
+	if !knobs.relaxed.has(relaxReasoning) && c.resolveEffort(model, knobs.effort) != EffortNone && refusesReasoning(payload) {
 		quirks.record(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model, time.Now())
 		learned = append(learned, learnedReasoningUnsupported)
 	}

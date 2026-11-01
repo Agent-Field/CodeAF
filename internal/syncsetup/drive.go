@@ -612,13 +612,20 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
-		// Retire the hold at once so no new seal starts, then wait for any seal
-		// already past Gate to note its turn before the batcher keeps pending
-		// work as a branch and names the new holder ([Drive.becomeViewer]).
-		d.loseHold()
-		d.sealMu.Lock()
-		d.sealMu.Unlock()
-		d.batcher.Displaced(ctx)
+		if v.Cell.Lease.Device != d.sync.Device.ID() {
+			// Another computer holds the chat. Retire the hold at once so no
+			// new seal starts, wait for any seal already past Gate, and let the
+			// batcher keep unsent turns as a branch before the window names the
+			// new holder (#2091). The hold is retired quietly: becomeViewer
+			// announces the change once, with the viewer line already set.
+			d.mu.Lock()
+			d.lost = true
+			d.mu.Unlock()
+			d.sealMu.Lock()
+			d.sealMu.Unlock()
+			d.batcher.Displaced(ctx)
+		}
+		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
 	} else if err == nil {
 		d.resumeViewer()
 	}

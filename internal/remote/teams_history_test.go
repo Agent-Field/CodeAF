@@ -1,12 +1,12 @@
 package remote
 
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // A hosted window uses its engine's mirror and retains the engine's local
@@ -44,14 +44,14 @@ func TestHostedTeamRefreshDoesNotPersistRepairs(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := []byte(`{"version":2,"teams":[{"id":"alpha","name":"alpha","parent":"","members":[],"manager":"","made":"2026-01-01T00:00:00Z"}]}`)
-	if err := os.WriteFile(teams.Path(dir), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
+	// app/v3 keeps teams in an SQLite store (#2066): the old file's team is
+	// written through the store, and the refresh must leave what it stores.
+	teamstest.Write(t, dir, raw)
+	before := teamstest.JSON(t, dir)
 	if _, err := loop.Client.TeamsRead(first.Stamp, nil); err != nil {
 		t.Fatal(err)
 	}
-	after, _ := os.ReadFile(teams.Path(dir))
-	if string(after) != string(raw) {
+	if after := teamstest.JSON(t, dir); string(after) != string(before) {
 		t.Fatal("background hosted refresh repaired file")
 	}
 }

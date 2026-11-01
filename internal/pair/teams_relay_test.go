@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 type relayTeamsRig struct {
@@ -404,10 +405,12 @@ func TestUnpairedTeamsAndTrafficKeepOriginalBytesAndMakeNoRequest(t *testing.T) 
 			f.Teams = []teams.Team{{ID: "alpha", Name: name, Made: time.Unix(10, 0).UTC(), Members: []teams.Member{{Key: "chat", File: "/local/chat", Where: "/local", Word: "storage", Handle: "storage"}}}}
 		})
 		before, _ := os.ReadFile(teams.Path(home))
+		// app/v3 keeps teams in an SQLite store (#2066), so the old file's
+		// shape is checked on the document the store answers.
 		var expected any
 		legacy := `{"version":2,"teams":[{"id":"alpha","name":"` + name + `","parent":"","members":[{"key":"chat","file":"/local/chat","where":"/local","word":"storage","handle":"storage"}],"manager":"","made":"1970-01-01T00:00:10Z"}]}`
 		// Compare both semantic shape and byte identity across an idle sync round.
-		if err := json.Unmarshal(before, &expected); err != nil {
+		if err := json.Unmarshal(teamstest.JSON(t, home), &expected); err != nil {
 			t.Fatal(err)
 		}
 		var oldShape any
@@ -415,7 +418,7 @@ func TestUnpairedTeamsAndTrafficKeepOriginalBytesAndMakeNoRequest(t *testing.T) 
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(expected, oldShape) {
-			t.Fatalf("unpaired shape changed: %s", before)
+			t.Fatalf("unpaired shape changed: %s", teamstest.JSON(t, home))
 		}
 		if err := s.SyncState(t.Context()); err != nil {
 			t.Fatal(err)

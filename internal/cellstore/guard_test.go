@@ -463,7 +463,7 @@ func TestAGuardWithNoRouteLogsItsNoticeAndWritesNothingToStderr(t *testing.T) {
 	defer func() { os.Stderr = saved }()
 
 	r := newRig(t)
-	r.guard.Notify = nil
+	r.guard.Notify, r.guard.Kept = nil, nil
 	r.write("Tests/BrowseTests.swift", "let key = \""+fakeKey+"\"\n")
 	r.screen()
 

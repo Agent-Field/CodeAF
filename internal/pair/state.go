@@ -55,7 +55,7 @@ func replaceState(home, profile string) error {
 	}
 	names := []string{"preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc", "vault.enc.next"}
 	if config.TeamsShareAt(profile) {
-		if _, err := teams.SetAside(profile); err != nil && !os.IsNotExist(err) {
+		if _, err := teams.MoveAside(profile); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		names = append(names, "teams-sync.ledger", "teams-traffic-sync.ledger")

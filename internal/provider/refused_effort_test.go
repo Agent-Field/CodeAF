@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -41,16 +40,21 @@ func TestATaskChildResendsWithoutEffortWhenTheModelSaysItCannotThink(t *testing.
 			if _, err := os.Stat(filepath.Join(fixture.profile, quirksFile)); !os.IsNotExist(err) {
 				t.Fatalf("the refusal escaped the client into the quirks file: %v", err)
 			}
+			// The task client's memo stays its own: another client sends effort
+			// again. app/v3 then repairs an ordinary client's precise refusal too
+			// and remembers it for the process (f9c0f1a1c, landed in #2009), so
+			// the ordinary client costs one refusal and its repair, and a later
+			// task client sends without effort at once.
 			fresh := fixture.client(t, false)
-			if _, err := fresh.CompleteWithMessages(ctx, userMessages("write KIWI")); err == nil {
-				t.Fatal("another client inherited the task client's memo")
+			if _, err := fresh.CompleteWithMessages(ctx, userMessages("write KIWI")); err != nil {
+				t.Fatalf("an ordinary client's refusal was not repaired: %v", err)
 			}
-			if len(fixture.requests()) != 4 {
-				t.Fatal("the other client retried a refusal without opting in")
+			if bodies := fixture.requests(); len(bodies) != 5 || bodies[3]["reasoning"] == nil {
+				t.Fatal("another client inherited the task client's memo")
 			}
 			freshTask := fixture.client(t, true)
 			if _, err := freshTask.CompleteWithMessages(ctx, userMessages("write KIWI")); err != nil || len(fixture.requests()) != 6 {
-				t.Fatalf("another task client did not discover its own refusal: %v", err)
+				t.Fatalf("a later task client did not use the remembered refusal: %v", err)
 			}
 			if _, err := client.CompleteWithMessages(ctx, userMessages("write KIWI"), ai.WithModel("another-model")); err != nil || len(fixture.requests()) != 8 {
 				t.Fatalf("one model's memo leaked into another model: %v", err)
@@ -101,16 +105,21 @@ func TestTaskEffortRepairMatchesOnlyTheExplicit400(t *testing.T) {
 	}
 }
 
-// R10's stability rule keeps ordinary clients' explicit effort and 400 error.
-func TestWithoutTheFlagARefusedEffortIsReturnedAsBefore(t *testing.T) {
+// An ordinary client also repairs the model's precise thinking refusal once:
+// app/v3 treats that 400 as permanent (f9c0f1a1c, landed in #2009). The memo
+// stays in the process and never reaches the quirks file.
+func TestWithoutTheFlagARefusedEffortIsRepairedOnceForTheProcess(t *testing.T) {
 	fixture := noThinkingEndpoint(t)
 	ctx := WithConfiguredReasoningEffort(context.Background(), EffortLow)
-	_, err := fixture.client(t, false).CompleteWithMessages(ctx, userMessages("write KIWI"))
-	if err == nil || !strings.Contains(err.Error(), `API error (400): "llama3.2:latest" does not support thinking`) {
-		t.Fatalf("ordinary refusal changed: %v", err)
+	if _, err := fixture.client(t, false).CompleteWithMessages(ctx, userMessages("write KIWI")); err != nil {
+		t.Fatalf("ordinary refusal was not repaired: %v", err)
 	}
-	if bodies := fixture.requests(); len(bodies) != 1 || bodies[0]["reasoning"] == nil {
-		t.Fatalf("ordinary call changed or retried: %+v", bodies)
+	bodies := fixture.requests()
+	if len(bodies) != 2 || bodies[0]["reasoning"] == nil || bodies[1]["reasoning"] != nil {
+		t.Fatalf("want the refused request and one repair without effort: %+v", bodies)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.profile, quirksFile)); !os.IsNotExist(err) {
+		t.Fatalf("the refusal escaped the process into the quirks file: %v", err)
 	}
 }
 

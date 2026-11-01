@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 func TestTeamMemberUsesExistingContinueHereQuestion(t *testing.T) {
@@ -192,12 +193,12 @@ func TestUnpairedRefreshClockReadsChangedFileWithoutRepairingOrWritingAnything(t
 	enableSurfaceTeamSharing(t, a)
 	teamsFlush(t, a)
 	raw := []byte(`{"version":2,"teams":[{"id":"zz","name":"first","parent":"","members":[],"manager":"","made":"2026-01-01T00:00:00Z"},{"id":"aa","name":"second","parent":"","members":[],"manager":"","made":"2026-01-02T00:00:00Z"}]}`)
-	if err := os.WriteFile(teamstore.Path(a.profileDir), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
+	// app/v3 keeps teams in an SQLite store (#2066): the old file's teams are
+	// written through the store, and the refresh must leave what it stores.
+	teamstest.Write(t, a.profileDir, raw)
+	before := teamstest.JSON(t, a.profileDir)
 	spend(t, a, a.teamsRefreshTick())
-	after, _ := os.ReadFile(teamstore.Path(a.profileDir))
-	if string(after) != string(raw) {
+	if after := teamstest.JSON(t, a.profileDir); string(after) != string(before) {
 		t.Fatal("refresh repaired the unpaired file")
 	}
 	if len(a.teamsDisk.queue) != 0 {

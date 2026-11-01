@@ -1043,6 +1043,10 @@ var OperatorEnvPins = []string{
 	// people who build the page; a row offering to hide your real floor behind a
 	// fixture is not a preference, so plumbing.
 	"CODEAF_FACTORY_FIXTURE",
+	// The desktop's bundled launch marks a trusted local window with
+	// CODEAF_APP_LOCAL_GUI; the engine consumes it at start. It is launch
+	// plumbing a person never sets, not a preference.
+	"CODEAF_APP_LOCAL_GUI",
 	// Factory worker routing and stage posture are launch plumbing, not
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",

@@ -109,3 +109,30 @@ func TestReleasedHeadIsContinuedWithThisComputersNewerTurns(t *testing.T) {
 		t.Errorf("this computer's newer turns opened read-only: %v", err)
 	}
 }
+
+// An ownership check that finds another computer holding the chat keeps the
+// unsent turn as a branch before the window names the new holder (#2091).
+func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := t.Context()
+	a := h.openA()
+	a.mustSay("durable")
+	h.durable(h.cell.ID, h.cell)
+	h.block.set(true)
+	a.mustSay("orphaned")
+	h.lapse()
+	mustNil(t, h.b.putDevice(ctx, nameB))
+	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The check alone, not a later flush, keeps the turn: it is kept by the
+	// time the check returns.
+	mustNil(t, a.drive.CheckLease(ctx))
+	if got := h.wall.all(); !slices.Contains(got, chatlist.KeptEdits(1, nameA)) {
+		t.Fatalf("notices = %v, want the unsent turn kept", got)
+	}
+	if a.drive.Gate() == nil {
+		t.Fatal("a displaced window still admits work")
+	}
+	h.block.set(false)
+}

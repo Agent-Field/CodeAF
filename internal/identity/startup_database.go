@@ -109,6 +109,10 @@ func automationStartup(path string) (bool, error) {
 	// automation.Open seeds counter id 1; clock sequencing advances it without
 	// creating an automation. The automations and runs tables decide actual use.
 	out["counter"] = "id <> 1 OR seq < 0"
+	// A run's asked mark is work; the walk revision is seeded on open and only
+	// follows the automations table, which already decides use.
+	out["run_asked"] = "1"
+	out["origin_revision"] = "0"
 	return databaseWork(path, out, false)
 }
 

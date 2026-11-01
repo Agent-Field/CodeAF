@@ -32,10 +32,8 @@ import (
 // node's state, and the graph is the owner `task:N` has always reached.
 var stoppableRowPublishers = map[string]struct{ kind, proof string }{
 	"startOrJoinTaskRunVia":     {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
-	"startHeldBeltRun":          {CancelTask, "TestHeldBeltRunStopsWithoutPreparingRepository"},
 	"startDeferredBeltRun":      {CancelTask, "TestANamedTaskCanBeStoppedWhileItsCopyIsPreparing"},
 	"startAdmittedBeltRun":      {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
-	"preparePendingBeltRun":     {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
 	"finishPendingCopy":         {CancelTask, "TestStoppingARemoteTaskReturnsItsPartialChangeAndKeepsItsBranch"},
 	"rememberPendingRemoteCopy": {CancelTask, "TestStoppingARemoteTaskReturnsItsPartialChangeAndKeepsItsBranch"},
 	"ContinueRun":               {CancelTask, "TestAStopReachesARunThatWasCarriedOn"},

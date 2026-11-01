@@ -26,7 +26,7 @@ func TestGuardLeavesRemovedHomeAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	deleted := false
-	g := cellstore.Guard{Home: h, Notify: func(string) {
+	g := cellstore.Guard{Home: h, Kept: func(string) {
 		if !deleted {
 			deleted = true
 			if err := os.RemoveAll(h); err != nil {
