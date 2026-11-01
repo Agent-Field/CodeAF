@@ -19,13 +19,13 @@ func TestSayOnceSpeaksASentenceOncePerRun(t *testing.T) {
 // TestC3RemovedComputerIsToldOnHomeOnce proves C3 at the surface's notice
 // door, including a launch-time refusal queued before home starts listening.
 func TestC3RemovedComputerIsToldOnHomeOnce(t *testing.T) {
-	const line = "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back"
+	const line = "this device was removed by another of your devices, so this chat stays here only — /pair brings it back"
 	desk := NewNotices()
 	desk.SayHomeOnce(line)
 	a, _ := homeTabsFixture(t)
 	a.useNotices(desk)
 	a.route(noticesMsg{})
-	if !strings.Contains(homeText(a), "this device was removed by another of your devices") {
+	if !strings.Contains(homeText(a), "removed by another of your devices — pair again to sync") {
 		t.Fatalf("removal hidden on home:\n%s", homeText(a))
 	}
 	desk.SayHomeOnce(line)

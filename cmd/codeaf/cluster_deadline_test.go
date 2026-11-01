@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // Contract E6 distinguishes an unanswered request from a network that has no route.
@@ -21,9 +22,9 @@ func TestClusterStatusDistinguishesDeadlinesFromUnreachableNetworks(t *testing.T
 		want  string
 	}{
 		{"deadline", context.DeadlineExceeded, "the sync service at http://relay.invalid did not answer in time — try again"},
-		{"refused", syscall.ECONNREFUSED, "the sync service at http://relay.invalid cannot be reached from here — check this computer's network"},
-		{"route", syscall.ENETUNREACH, "the sync service at http://relay.invalid cannot be reached from here — check this computer's network"},
-		{"dns", &net.DNSError{Err: "no such host", Name: "relay.invalid", IsNotFound: true}, "the sync service at http://relay.invalid cannot be reached from here — check this computer's network"},
+		{"refused", syscall.ECONNREFUSED, syncwords.Unreachable("http://relay.invalid")},
+		{"route", syscall.ENETUNREACH, syncwords.Unreachable("http://relay.invalid")},
+		{"dns", &net.DNSError{Err: "no such host", Name: "relay.invalid", IsNotFound: true}, syncwords.Unreachable("http://relay.invalid")},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			failure := &url.Error{Op: "Get", URL: "http://relay.invalid/v2/cluster/control", Err: item.cause}

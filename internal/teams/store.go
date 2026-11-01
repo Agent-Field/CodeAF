@@ -347,31 +347,56 @@ func SetAside(profileDir string) (string, error) {
 			return err
 		}
 		forget(path)
-		to := path + ".unreadable-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-		var moved []string
-		undo := func() {
-			for _, suffix := range moved {
-				_ = os.Rename(to+suffix, path+suffix)
-			}
-		}
-		for _, suffix := range []string{"-wal", "-shm"} {
-			if _, err := os.Lstat(path + suffix); err != nil {
-				continue
-			}
-			if err := os.Rename(path+suffix, to+suffix); err != nil {
-				undo()
-				return err
-			}
-			moved = append(moved, suffix)
-		}
-		if err := os.Rename(path, to); err != nil {
-			undo()
-			return err
-		}
-		aside = to
-		return nil
+		aside, err = moveStoreAside(path)
+		return err
 	})
 	return aside, err
+}
+
+// MoveAside moves this computer's teams store out of the way whatever it
+// holds, to <name>.unreadable-<nanos> beside it with its WAL and shared-memory
+// files, for a confirmed replacement of the shared state: the teams stay on
+// disk, outside the new set. A home with no store moves nothing.
+func MoveAside(profileDir string) (string, error) {
+	path := Path(profileDir)
+	aside := ""
+	err := withLock(profileDir, lockWait, func() error {
+		forget(path)
+		if _, err := os.Lstat(path); err != nil {
+			return err
+		}
+		var err error
+		aside, err = moveStoreAside(path)
+		return err
+	})
+	return aside, err
+}
+
+// moveStoreAside renames the store, WAL first, and undoes a partial move. The
+// caller holds the teams lock.
+func moveStoreAside(path string) (string, error) {
+	to := path + ".unreadable-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	var moved []string
+	undo := func() {
+		for _, suffix := range moved {
+			_ = os.Rename(to+suffix, path+suffix)
+		}
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if _, err := os.Lstat(path + suffix); err != nil {
+			continue
+		}
+		if err := os.Rename(path+suffix, to+suffix); err != nil {
+			undo()
+			return "", err
+		}
+		moved = append(moved, suffix)
+	}
+	if err := os.Rename(path, to); err != nil {
+		undo()
+		return "", err
+	}
+	return to, nil
 }
 
 // ── THE LOCK ────────────────────────────────────────────────────────────────

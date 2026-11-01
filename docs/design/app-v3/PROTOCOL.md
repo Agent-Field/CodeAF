@@ -69,7 +69,7 @@ decides which combinations are accepted.
 | `agents.rewind.points` | `in.IDParams` | `ConversationPoints` |
 | `agents.rewind.undo` | `{id, token}` | `Empty` |
 | `agents.run_harness` | `in.RunHarnessParams` | `TurnResult` |
-| `agents.send` | `{attachments, client_id, id, reads, said, submission, text}` | `TurnResult` |
+| `agents.send` | `{attachments, client_id, from, id, reads, said, submission, text}` | `TurnResult` |
 | `agents.set_approval_posture` | `{id, posture}` | `agentResult` |
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
@@ -289,6 +289,8 @@ decides which combinations are accepted.
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
+| `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
+| `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_clone` | `in.FactorySetupFolderParams` | `FactorySetupView` |
@@ -339,6 +341,19 @@ decides which combinations are accepted.
 | `keys.check` | `in.KeyParams` | `KeyCheck` |
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
+
+## manual methods
+
+| method | params | result |
+|---|---|---|
+| `manual.corpus.set` | `in.ManualCorpusParams` | `ManualCorpusResult` |
+
+`manual.corpus.set` registers the app's own manual pages, replacing every page
+an earlier call set. Each page is `{name, markdown}`: a lowercase slug and its non-empty
+Markdown, at most 64 pages, 32 KiB a page and 512 KiB in all; an empty list
+removes them. The engine keeps them in memory for its lifetime and the chat's
+`manual` tool searches them beside codeaf's own pages, filed as
+`workaf/<name>`. The answer lists those names. hello says `manual.corpus.set`.
 
 ## media methods
 
@@ -660,6 +675,7 @@ serves, and one the allowed models admit. An engine without the feature leaves
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |
