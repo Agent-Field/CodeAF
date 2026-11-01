@@ -154,11 +154,6 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		return appFactoryProxy(target), nil
 	}
 	locked := time.Now()
-	if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
-		release()
-		return nil, err
-	}
-	forgot := time.Now()
 	history, err := record.Open(h.floor, record.Options{})
 	if err != nil {
 		release()
@@ -168,6 +163,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.seamHook != nil {
 		seam = h.seamHook(seam)
 	}
+	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
@@ -202,14 +198,46 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		release()
 		return nil, err
 	}
-	traceStartup(trace, "factory: ready in %d ms (discovery %d, lock %d, forget PR jobs %d, serve %d)", ms(time.Since(began)), ms(discovered.Sub(began)), ms(locked.Sub(discovered)), ms(forgot.Sub(locked)), ms(time.Since(forgot)))
+	traceStartup(trace, "factory: ready in %d ms (discovery %d, lock %d, serve %d)", ms(time.Since(began)), ms(discovered.Sub(began)), ms(locked.Sub(discovered)), ms(time.Since(locked)))
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
+	h.tidy(trace)
 	if h.quiet {
 		return handler, nil
 	}
 	h.readLoops()
 	return handler, nil
+}
+
+// tidy forgets the old standalone PR jobs behind the serving factory. THE
+// FACTORY NEVER WAITS ON IT: it once ran before the service started, and one
+// job it could not clean failed every launch, so the factory on that Mac never
+// came up. It runs once per host while serve.lock is held, under the host's
+// context. A job it cannot clean now stays as it is and is tried again at the
+// next launch; the trace says what happened, and nothing reaches the person.
+func (h *appFactoryHost) tidy(trace string) {
+	h.chore("app/factory tidy", func() {
+		began := time.Now()
+		if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
+			traceStartup(trace, "factory: old PR jobs kept for the next launch after %d ms: %v", ms(time.Since(began)), err)
+			return
+		}
+		traceStartup(trace, "factory: old PR jobs forgotten in %d ms", ms(time.Since(began)))
+	})
+}
+
+// chore runs fn in the background under the host, and answers whether it
+// started: none starts once close has begun, and close waits for every one
+// that did before the floor is let go, so no chore writes after close.
+func (h *appFactoryHost) chore(name string, fn func()) bool {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.loopsClosed || h.ctx.Err() != nil {
+		return false
+	}
+	h.loops.Add(1)
+	guard.Go(name, func() { defer h.loops.Done(); fn() })
+	return true
 }
 
 // stopLoops forbids any later start and waits for the loops that began.

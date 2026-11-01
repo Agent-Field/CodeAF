@@ -88,10 +88,10 @@ func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 func WithWarmCapture() SeatOption { return func(e *Engine) { e.warm = true } }
 
 // WithNotices sends the guard's one-line notices (a file this machine cannot
-// read, a vault that cannot be written) to say instead of to stderr, which a
-// full-screen surface cannot show. A file kept out for a secret is not one:
-// it goes to the log ([Guard.Kept]). A door with a surface passes where its
-// sentences go.
+// read, a vault that cannot be written) to say instead of to the standard
+// logger, which a full-screen surface keeps in its log file. A file kept out
+// for a secret is not one: it goes to the log ([Guard.Kept]). A door with a
+// surface passes where its sentences go.
 func WithNotices(say func(string)) SeatOption {
 	return func(e *Engine) { e.Guard.Notify = say }
 }

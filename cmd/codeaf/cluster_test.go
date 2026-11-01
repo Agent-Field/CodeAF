@@ -27,7 +27,7 @@ func (c clusterFixture) LeadCluster(context.Context, uint64) (cs.LeadershipRecei
 func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 	var out bytes.Buffer
 	c := clusterFixture{receipt: cs.LeadershipReceipt{Node: 4, Term: 8, Revision: 3, Barrier: 19, Voters: []uint64{1, 2, 4}}}
-	if e := clusterCommand(context.Background(), c, "lead", &out); e != nil {
+	if e := clusterCommandMode(context.Background(), c, "lead", &out, true); e != nil {
 		t.Fatal(e)
 	}
 	if got := out.String(); got != "computer 4 is coordinating · term 8 · revision 3 · read barrier 19\n" {
@@ -35,11 +35,11 @@ func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 	}
 	out.Reset()
 	c.err = clusterctl.ErrUnavailable
-	if e := clusterCommand(context.Background(), c, "lead", &out); !errors.Is(e, clusterctl.ErrUnavailable) || out.Len() != 0 {
+	if e := clusterCommandMode(context.Background(), c, "lead", &out, true); !errors.Is(e, clusterctl.ErrUnavailable) || out.Len() != 0 {
 		t.Fatal(e, out.String())
 	}
 	c.err = nil
-	if e := clusterCommand(context.Background(), c, "status", &out); e != nil {
+	if e := clusterCommandMode(context.Background(), c, "status", &out, true); e != nil {
 		t.Fatal(e)
 	}
 	if !strings.Contains(out.String(), "voting computers [1 2 4]") {
@@ -54,7 +54,7 @@ func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 
 // R6/R30 require command help to offer the leadership that both relays serve.
 func TestR6R30ClusterHelpOffersHostedLeadership(t *testing.T) {
-	for _, phrase := range []string{"hosted or self-hosted relay", "Persistent storage is required", "Three voters tolerate one unavailable member"} {
+	for _, phrase := range []string{"through the sync service", "Persistent storage is required", "Three deciding computers tolerate one unavailable computer"} {
 		if !strings.Contains(clusterHelp, phrase) {
 			t.Errorf("cluster help omits %q", phrase)
 		}
