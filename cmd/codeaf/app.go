@@ -2594,6 +2594,9 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	userEntry := appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
 	}
+	if shown != nil {
+		userEntry.From = shown.from
+	}
 	userEntry.Queued = shown != nil && shown.queued && appKeepsQueued(live.conn.Conv)
 	appComposedFields(&userEntry, composedMark)
 	live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: userEntry})
@@ -3854,6 +3857,9 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		// never matched up by turn, time or words.
 		if entry.Kind == appwire.EntryUser && item.Person != nil && item.Person.ClientID != "" {
 			entry.ClientID = item.Person.ClientID
+		}
+		if entry.Kind == appwire.EntryUser && item.Person != nil {
+			entry.From = item.Person.From
 		}
 		entries = append(entries, entry)
 		from = append(from, i)

@@ -69,7 +69,7 @@ decides which combinations are accepted.
 | `agents.rewind.points` | `in.IDParams` | `ConversationPoints` |
 | `agents.rewind.undo` | `{id, token}` | `Empty` |
 | `agents.run_harness` | `in.RunHarnessParams` | `TurnResult` |
-| `agents.send` | `{attachments, client_id, id, reads, said, submission, text}` | `TurnResult` |
+| `agents.send` | `{attachments, client_id, from, id, reads, said, submission, text}` | `TurnResult` |
 | `agents.set_approval_posture` | `{id, posture}` | `agentResult` |
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
@@ -356,6 +356,19 @@ one filesystem call per disk; it starts nothing. hello says `health.check`.
 | `keys.check` | `in.KeyParams` | `KeyCheck` |
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
+
+## manual methods
+
+| method | params | result |
+|---|---|---|
+| `manual.corpus.set` | `in.ManualCorpusParams` | `ManualCorpusResult` |
+
+`manual.corpus.set` registers the app's own manual pages, replacing every page
+an earlier call set. Each page is `{name, markdown}`: a lowercase slug and its non-empty
+Markdown, at most 64 pages, 32 KiB a page and 512 KiB in all; an empty list
+removes them. The engine keeps them in memory for its lifetime and the chat's
+`manual` tool searches them beside codeaf's own pages, filed as
+`workaf/<name>`. The answer lists those names. hello says `manual.corpus.set`.
 
 ## media methods
 
