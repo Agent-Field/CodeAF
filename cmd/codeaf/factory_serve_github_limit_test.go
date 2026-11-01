@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/home"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -172,5 +176,56 @@ func TestGitHubLimitLogsOnceWhenMetAndOnceWhenCleared(t *testing.T) {
 	}
 	if !l.resets().IsZero() {
 		t.Fatal("a cleared limit is still reported")
+	}
+}
+
+// stalledGitHub holds every GitHub call until released or abandoned.
+type stalledGitHub struct{ release chan struct{} }
+
+func (g stalledGitHub) RoundTrip(r *http.Request) (*http.Response, error) {
+	select {
+	case <-g.release:
+		return nil, errors.New("github stalled")
+	case <-r.Context().Done():
+		return nil, r.Context().Err()
+	}
+}
+
+// READY MEANS USABLE: when serve prints its address the operator's access
+// link row is already written, however long GitHub takes to name the host.
+func TestFactoryServeIsUsableWhenItSaysReady(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv("GH_TOKEN", "stalled-secret")
+	t.Setenv("GITHUB_TOKEN", "")
+	stalled := stalledGitHub{release: make(chan struct{})}
+	previous := http.DefaultTransport
+	http.DefaultTransport = stalled
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	defer close(stalled.release)
+	configPath := home.Join("factory", "config.yaml")
+	if err := writeFactoryPrivate(configPath, []byte("listen: 127.0.0.1:0\n")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(factoryReady, 4)
+	done := make(chan error, 1)
+	go func() { done <- serveFactory(ctx, configPath, "", ready, "", false) }()
+	select {
+	case <-ready:
+	case err := <-done:
+		t.Fatalf("serve ended before ready: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve never said ready while GitHub stalled")
+	}
+	rows, err := tokens.Load(factoryTokensPath(configPath))
+	if err != nil || len(rows) != 1 || !rows[0].Operator || rows[0].Revoked {
+		t.Fatalf("at ready the tokens file holds %+v, %v", rows, err)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not stop")
 	}
 }

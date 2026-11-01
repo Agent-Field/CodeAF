@@ -169,10 +169,16 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
 	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit)
 	server, done := service.server, service.done
+	// READY MEANS USABLE: the operator link's row is written before the
+	// address is printed; only naming its GitHub login waits on GitHub.
+	operatorRow, err := service.handler.MintOperatorLink(cfg.operatorRecovery)
+	if err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintln(out, service.public); err != nil {
 		return err
 	}
-	operatorLink, err := factoryOperatorLink(ctx, service.handler, cfg.operatorRecovery, limit)
+	operatorLink, err := factoryOperatorLink(ctx, service.handler, operatorRow, limit)
 	if err != nil && ctx.Err() == nil {
 		return err
 	}

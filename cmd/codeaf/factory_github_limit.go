@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -87,12 +88,12 @@ func (l *githubLimit) resets() time.Time {
 	return l.until
 }
 
-// factoryOperatorLink mints serve's operator link off the start path: the
-// listener already answers, and a spent GitHub limit waits for its reset
-// rather than ending serve.
-func factoryOperatorLink(ctx context.Context, h *serve.Handler, recovery bool, limit *githubLimit) (api.AccessLink, error) {
+// factoryOperatorLink names the host's login on serve's minted operator row
+// off the start path: the listener already answers, and a spent GitHub limit
+// waits for its reset rather than ending serve.
+func factoryOperatorLink(ctx context.Context, h *serve.Handler, row tokens.Token, limit *githubLimit) (api.AccessLink, error) {
 	for {
-		link, err := h.NewOperatorLink(ctx, recovery)
+		link, err := h.InviteOperatorLink(ctx, row)
 		until := limit.resets()
 		if err == nil || until.IsZero() {
 			return link, err
