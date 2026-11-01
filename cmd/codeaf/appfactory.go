@@ -648,9 +648,7 @@ func (h *appFactoryHub) read(ctx context.Context, id, path string, limit int64, 
 	if r.status < 200 || r.status >= 300 {
 		err := appFactoryFailure(r)
 		if w, ok := err.(*appwire.Error); ok && w.Code == appwire.CodeSignedOut {
-			h.mu.Lock()
-			h.refusedLocked(id, token)
-			h.mu.Unlock()
+			h.refused(id, token)
 		}
 		return err
 	}

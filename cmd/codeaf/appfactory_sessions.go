@@ -134,6 +134,13 @@ func (b *appBackend) FactorySessionRestore(_ context.Context, p appwire.FactoryS
 	return appwire.FactorySessionRestored{}, nil
 }
 
+// refused is [appFactoryHub.refusedLocked] for a caller that does not hold h.mu.
+func (h *appFactoryHub) refused(id, token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.refusedLocked(id, token)
+}
+
 // refusedLocked forgets a restored sign-in the factory refused, if it is still
 // token, so a sign-in kept from an earlier launch that has died reads signed
 // out once, is removed from the app's keeping, and is never sent again. A
