@@ -6,11 +6,13 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -56,19 +58,95 @@ func TokenAt(ctx context.Context, profileDir string) (token, via string) {
 	return "", ""
 }
 
-// ghToken is what `gh auth token` answers, or "".
+// ghToken is what `gh auth token` last answered, or "". A READ NEVER WAITS ON
+// GH: every read of the factory asks for the token (once per job on a queue),
+// and a gh that hangs (a keychain prompt nobody answers, a dead network) once
+// held each of them. The answer stands for [ghFresh] and is then asked again
+// behind the reads, one ask at a time; a gh that hangs keeps the last answer.
+// Only the very first read waits, at most [FirstWait], for gh's first answer.
 func ghToken(ctx context.Context) string {
-	gh, err := forge.LookPath("gh")
-	if err != nil {
-		return ""
+	ghCache.mu.Lock()
+	token, at, ask := ghCache.token, ghCache.at, ghCache.ask
+	if ask == nil && (at.IsZero() || time.Since(at) > ghFresh) {
+		ask = make(chan struct{})
+		ghCache.ask, ghCache.began = ask, time.Now()
+		gh, _ := forge.LookPath("gh")
+		guard.Go("factory/gh token", func() {
+			token, hung := ghTokenFrom(context.Background(), gh)
+			settleGHToken(ask, token, hung)
+		})
+	}
+	began := ghCache.began
+	ghCache.mu.Unlock()
+	if !at.IsZero() {
+		return token
+	}
+	// Counted from when the ask began, so the reads of one queue share it.
+	select {
+	case <-ask:
+	case <-time.After(time.Until(began.Add(FirstWait))):
+	case <-ctx.Done():
+	}
+	ghCache.mu.Lock()
+	defer ghCache.mu.Unlock()
+	return ghCache.token
+}
+
+// ghFresh is how long gh's answer stands before it is asked again.
+const ghFresh = time.Minute
+
+var ghCache struct {
+	mu    sync.Mutex
+	token string
+	at    time.Time     // when gh last answered (or gave up); zero for never
+	ask   chan struct{} // the ask that is out, or nil
+	began time.Time     // when that ask began
+}
+
+// settleGHToken keeps gh's answer; a gh that hung keeps the last one.
+func settleGHToken(ask chan struct{}, token string, hung bool) {
+	ghCache.mu.Lock()
+	defer ghCache.mu.Unlock()
+	if ghCache.ask == ask {
+		if !hung || ghCache.at.IsZero() {
+			ghCache.token = token
+		}
+		ghCache.at, ghCache.ask = time.Now(), nil
+	}
+	close(ask)
+}
+
+// forgetGHToken drops gh's last answer, so the next read asks gh again.
+func forgetGHToken() {
+	ghCache.mu.Lock()
+	defer ghCache.mu.Unlock()
+	ghCache.token, ghCache.at, ghCache.ask = "", time.Time{}, nil
+}
+
+// ghTokenNow asks `gh auth token` now, for at most [ghTimeout]: WaitDelay
+// ends the wait even when gh leaves a child holding its output open, which
+// once made the timeout a minute.
+func ghTokenNow(ctx context.Context) string {
+	gh, _ := forge.LookPath("gh")
+	token, _ := ghTokenFrom(ctx, gh)
+	return token
+}
+
+// ghTokenFrom is [ghTokenNow] of the gh at path ("" for none), and whether gh
+// hung rather than answered.
+func ghTokenFrom(ctx context.Context, gh string) (token string, hung bool) {
+	if gh == "" {
+		return "", false
 	}
 	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, gh, "auth", "token").Output()
+	cmd := exec.CommandContext(ctx, gh, "auth", "token")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
 	if err != nil {
-		return ""
+		return "", ctx.Err() != nil
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), false
 }
 
 // reGHAccount reads the login out of `gh auth status`, which has said it two
@@ -87,7 +165,9 @@ func GHLogin(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()
 	// gh writes its status to stderr on some versions and stdout on others.
-	out, _ := exec.CommandContext(ctx, gh, "auth", "status", "--hostname", "github.com").CombinedOutput()
+	cmd := exec.CommandContext(ctx, gh, "auth", "status", "--hostname", "github.com")
+	cmd.WaitDelay = time.Second // a child holding the output open must not outlast the timeout
+	out, _ := cmd.CombinedOutput()
 	if m := reGHAccount.FindSubmatch(out); m != nil {
 		return string(m[1]), nil
 	}
@@ -115,7 +195,8 @@ func Link(ctx context.Context, profileDir string) (factory.GitHubLink, error) {
 func Keep(ctx context.Context, profileDir, token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		if ghToken(ctx) == "" {
+		forgetGHToken()
+		if ghTokenNow(ctx) == "" {
 			return errors.New("gh answered no token · gh auth login, then try again")
 		}
 		return config.WriteGitHubViaGH(profileDir)

@@ -19,8 +19,8 @@ import (
 // and the surface asks [tui3.TeamsSeam.ReadSince] off its loop, once, which
 // fills what is held. Every other door here is called from a command and may
 // take a round trip: the Traffic clock's turn, and the write an edit queued.
-// There is no clock of its own: the surface's Traffic clock is the only thing
-// that asks again, and it runs only while a managed team is held.
+// There is no clock of its own: the surface asks again through its Traffic
+// clock and its read-only teams refresh clock, even with no managed chat open.
 //
 // NOTHING HERE READS THIS LAPTOP'S PROFILE. The teams a window over --host
 // draws are the far machine's, or none: an engine without the doors gets no
@@ -32,6 +32,7 @@ type hostTeams struct {
 	read    func(stamp string, reserved []float64) (remote.TeamsReading, error)
 	write   func(base string, teams []teamstore.Team) (remote.TeamsReading, error)
 	traffic func(team, after string, limit int) (remote.TeamsTraffic, error)
+	history func(team, after, version string, limit int) (remote.TeamsTraffic, error)
 
 	// The delegation doors, nil when the engine does not answer them
 	// ([remote.Welcome.Delegation]); the seam then hands the surface none.
@@ -74,6 +75,7 @@ func newHostTeams(far hostFar, delegation, wrapUp, settings bool) *hostTeams {
 		read:    far.client.TeamsRead,
 		write:   far.client.TeamsUpdate,
 		traffic: far.client.TeamsTraffic,
+		history: far.client.TeamsHistory,
 	}
 	if delegation {
 		c := far.client
@@ -113,6 +115,12 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 // delegation doors are nil, which the surface says rather than guesses at.
 func (h *hostTeams) seam() tui3.TeamsSeam {
 	s := tui3.TeamsSeam{Load: h.load, ReadSince: h.readSince, Update: h.update, Traffic: h.readTraffic}
+	if h.history != nil {
+		s.DisplayTraffic = func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error) {
+			got, err := h.history(team, after, version, limit)
+			return got.Entries, got.Cursor, got.Mirror, got.Reset, err
+		}
+	}
 	if h.applyDefault != nil {
 		s.ApplyDefault = h.applyDefault
 	}

@@ -144,6 +144,9 @@ func (a *app) teamsConversationPreview(key string, width, budget int) []string {
 	if budget <= 0 {
 		return nil
 	}
+	if where := a.teamsElsewhere(teamMember{Key: key}); where != "" {
+		return []string{a.pal.dim("Chat is on " + where)}
+	}
 	messages := a.teamsManagerMessages(key)
 	if len(messages) == 0 {
 		word := "Updates appear here"

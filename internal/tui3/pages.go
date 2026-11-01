@@ -1125,7 +1125,14 @@ func placeFrameWithBar(a *app, width, height int,
 	// after the body would push the box down by three cells the moment the chord
 	// was pressed.
 	layer := a.composerRows(width, pal)
+	homeMessage := ""
+	if a.at(pageHome) && !a.composer.open {
+		homeMessage, _ = a.placeMsgLine(width)
+	}
 	foot := 2 + len(tray) + draftHeight + len(strip) + len(layer)
+	if homeMessage != "" {
+		foot++
+	}
 	room := height - len(lines) - foot - spacingRuleClearance
 	if room < 1 {
 		room = 1
@@ -1360,7 +1367,10 @@ func placeFrameWithBar(a *app, width, height int,
 		}
 		fallthrough
 	default:
-		if msg, ok := a.placeMsgLine(width); ok {
+		if homeMessage != "" {
+			add(a.creditPlaceMessage(width, homeMessage, pal), nil)
+			add(a.homeFootWithWarning(width, pal, ""), nil)
+		} else if msg, ok := a.placeMsgLine(width); ok {
 			add(a.creditPlaceMessage(width, msg, pal), nil)
 		} else if hasBox {
 			// HOME'S KEYS ROW CARRIES THE PROJECT AT ITS RIGHT (hometip.go's
@@ -2033,7 +2043,13 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// line, so its keys are read by the same grammar ([paintHint]) rather than
 	// dimmed flat, and the door's clause keeps the colour every other key on
 	// this surface wears.
-	line := a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	line := ""
+	if a.at(pageHome) {
+		// News has its own dim row; the footer below remains a key legend.
+		line = a.pathLink(path, a.pal.dim(fit(msg, max(width-2, 1))))
+	} else {
+		line = a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	}
 	// AND A LINE THAT NAMES SOMEWHERE TO GO CARRIES THE WAY THERE: the address
 	// [app.tellHere] was handed with it, for as long as the line still says it.
 	// It wraps the line whole, after the fitting, because a link occupies no

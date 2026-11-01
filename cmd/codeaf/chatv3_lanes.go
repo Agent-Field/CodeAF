@@ -75,6 +75,11 @@ func v3LanesOverWire() v3Lanes {
 // are one fact. A door that took the lanes and then picked its own builder could
 // turn the verb on with nothing behind it.
 func v3Shape(cfg session.Config, lanes v3Lanes) (session.Config, func(session.Config) (*session.Agent, error)) {
+	// Task placement works across the connection independently of adaptive
+	// run lanes, so disabling those lanes must not hide paired computers.
+	if cfg.TaskComputers == nil {
+		cfg.TaskComputers = v3TaskComputers(cfg.ProfileDir)
+	}
 	if !lanes.Designs {
 		// Nil is the honest way to say the designer is not among the things this
 		// conversation can do, so the model says as much instead of starting two

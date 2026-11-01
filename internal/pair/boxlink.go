@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/pair/cpace"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // chatProtocol labels the wire that carries a person's chats. It is mixed into
@@ -142,7 +143,7 @@ func phraseBox(err error, host string) error {
 	case errors.Is(err, context.Canceled):
 		return err
 	case errors.As(err, &netErr):
-		return CannotReachHost(host)
+		return cannotReachError{syncwords.Explain(err, host).Error()}
 	}
-	return err
+	return syncwords.Explain(err, host)
 }
