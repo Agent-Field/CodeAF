@@ -339,6 +339,19 @@ decides which combinations are accepted.
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
 
+## manual methods
+
+| method | params | result |
+|---|---|---|
+| `manual.corpus.set` | `in.ManualCorpusParams` | `ManualCorpusResult` |
+
+`manual.corpus.set` registers the app's own manual pages, replacing every page
+an earlier call set. Each page is `{name, markdown}`: a lowercase slug and its
+Markdown, at most 64 pages, 32 KiB a page and 512 KiB in all; an empty list
+removes them. The engine keeps them in memory for its lifetime and the chat's
+`manual` tool searches them beside codeaf's own pages, filed as
+`workaf/<name>`. The answer lists those names. hello says `manual.corpus.set`.
+
 ## media methods
 
 | method | params | result |
