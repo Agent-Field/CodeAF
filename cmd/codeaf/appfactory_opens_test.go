@@ -50,7 +50,7 @@ func TestTheFactoryOpensAtOnceWhatEverHousekeepingAndGitHubDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A live process (this one) holds the PR job in its worker mirror, so the
-	// clean-up waits for it to let go and then gives up with an error.
+	// clean-up cannot forget it now; it once waited for the holder, then failed.
 	mirror := filepath.Join(floor.Root(), "workers", strconv.Itoa(os.Getpid()), "test")
 	if err := os.MkdirAll(mirror, 0o700); err != nil {
 		t.Fatal(err)

@@ -230,10 +230,11 @@ func (h hangingContents) Contents(ctx context.Context, _, _, _, _, _ string) (st
 	return "", "", "", ctx.Err()
 }
 
-// THE FACTORY'S READS NEVER WAIT ON GITHUB: a forge that does not answer once
-// held every queue read of the factory on this Mac until the app gave up and
-// called it "not answering". A first read answers from the checkout in a
-// moment, and a stale one keeps the last file while the forge is asked behind.
+// A READ THAT ONLY SHOWS THE FILE NEVER WAITS ON GITHUB: a forge that does not
+// answer once held every queue read of the factory on this Mac until the app
+// gave up and called it "not answering". A first read answers from the
+// checkout in a moment, and a stale one keeps the last file while the forge is
+// asked behind.
 func TestAPipelineReadNeverWaitsOnAForgeThatDoesNotAnswer(t *testing.T) {
 	text, sha := "start:\n  labels: [one]\n", "blob-one"
 	hang := false
@@ -253,7 +254,7 @@ func TestAPipelineReadNeverWaitsOnAForgeThatDoesNotAnswer(t *testing.T) {
 	timed := func(repo string) (pipeline.File, time.Duration) {
 		t.Helper()
 		began := time.Now()
-		f, _ := loader.Load(context.Background(), repo, "", "")
+		f, _ := loader.Load(factorygithub.ShowOnly(context.Background()), repo, "", "")
 		return f, time.Since(began)
 	}
 	if f, _ := timed("owner/repo"); strings.Join(f.Start.Labels, ",") != "one" {
@@ -272,5 +273,26 @@ func TestAPipelineReadNeverWaitsOnAForgeThatDoesNotAnswer(t *testing.T) {
 	case <-asked:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the forge was never asked behind the read")
+	}
+}
+
+func (h hangingContents) User(ctx context.Context, _, _ string) (forge.UserProfile, string, error) {
+	<-ctx.Done()
+	return forge.UserProfile{}, "", ctx.Err()
+}
+
+// The queue and a job's card read a repository's CODEOWNERS; a forge that
+// does not answer once held them, under one lock, for its whole timeout.
+func TestCodeOwnersNeverHoldAReadOnAForgeThatDoesNotAnswer(t *testing.T) {
+	asked := make(chan struct{}, 16)
+	people := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return hangingContents{asked} }, time.Now)
+	began := time.Now()
+	for range 5 {
+		if owners, err := people.Owners(context.Background(), "owner/repo"); err != nil || len(owners) != 0 {
+			t.Fatalf("owners %v %v", owners, err)
+		}
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Fatalf("five owner reads with the forge silent took %v", took)
 	}
 }

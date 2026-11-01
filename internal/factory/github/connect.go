@@ -62,8 +62,8 @@ func TokenAt(ctx context.Context, profileDir string) (token, via string) {
 // GH: every read of the factory asks for the token (once per job on a queue),
 // and a gh that hangs (a keychain prompt nobody answers, a dead network) once
 // held each of them. The answer stands for [ghFresh] and is then asked again
-// behind the reads, one ask at a time; only the very first waits, at most
-// [ghFirstWait], for gh's first answer.
+// behind the reads, one ask at a time; a gh that hangs keeps the last answer.
+// Only the very first read waits, at most [FirstWait], for gh's first answer.
 func ghToken(ctx context.Context) string {
 	ghCache.mu.Lock()
 	token, at, ask := ghCache.token, ghCache.at, ghCache.ask
@@ -71,7 +71,10 @@ func ghToken(ctx context.Context) string {
 		ask = make(chan struct{})
 		ghCache.ask, ghCache.began = ask, time.Now()
 		gh, _ := forge.LookPath("gh")
-		guard.Go("factory/gh token", func() { settleGHToken(ask, ghTokenFrom(context.Background(), gh)) })
+		guard.Go("factory/gh token", func() {
+			token, hung := ghTokenFrom(context.Background(), gh)
+			settleGHToken(ask, token, hung)
+		})
 	}
 	began := ghCache.began
 	ghCache.mu.Unlock()
@@ -81,7 +84,7 @@ func ghToken(ctx context.Context) string {
 	// Counted from when the ask began, so the reads of one queue share it.
 	select {
 	case <-ask:
-	case <-time.After(time.Until(began.Add(ghFirstWait))):
+	case <-time.After(time.Until(began.Add(FirstWait))):
 	case <-ctx.Done():
 	}
 	ghCache.mu.Lock()
@@ -89,12 +92,8 @@ func ghToken(ctx context.Context) string {
 	return ghCache.token
 }
 
-// ghFresh is how long gh's answer stands; ghFirstWait is how long a read
-// waits for gh's first answer in this process.
-const (
-	ghFresh     = time.Minute
-	ghFirstWait = 300 * time.Millisecond
-)
+// ghFresh is how long gh's answer stands before it is asked again.
+const ghFresh = time.Minute
 
 var ghCache struct {
 	mu    sync.Mutex
@@ -104,11 +103,15 @@ var ghCache struct {
 	began time.Time     // when that ask began
 }
 
-func settleGHToken(ask chan struct{}, token string) {
+// settleGHToken keeps gh's answer; a gh that hung keeps the last one.
+func settleGHToken(ask chan struct{}, token string, hung bool) {
 	ghCache.mu.Lock()
 	defer ghCache.mu.Unlock()
 	if ghCache.ask == ask {
-		ghCache.token, ghCache.at, ghCache.ask = token, time.Now(), nil
+		if !hung || ghCache.at.IsZero() {
+			ghCache.token = token
+		}
+		ghCache.at, ghCache.ask = time.Now(), nil
 	}
 	close(ask)
 }
@@ -125,13 +128,15 @@ func forgetGHToken() {
 // once made the timeout a minute.
 func ghTokenNow(ctx context.Context) string {
 	gh, _ := forge.LookPath("gh")
-	return ghTokenFrom(ctx, gh)
+	token, _ := ghTokenFrom(ctx, gh)
+	return token
 }
 
-// ghTokenFrom is [ghTokenNow] of the gh at path; "" for none.
-func ghTokenFrom(ctx context.Context, gh string) string {
+// ghTokenFrom is [ghTokenNow] of the gh at path ("" for none), and whether gh
+// hung rather than answered.
+func ghTokenFrom(ctx context.Context, gh string) (token string, hung bool) {
 	if gh == "" {
-		return ""
+		return "", false
 	}
 	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()
@@ -139,9 +144,9 @@ func ghTokenFrom(ctx context.Context, gh string) string {
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
-		return ""
+		return "", ctx.Err() != nil
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), false
 }
 
 // reGHAccount reads the login out of `gh auth status`, which has said it two

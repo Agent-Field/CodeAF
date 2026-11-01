@@ -11,7 +11,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -37,16 +36,6 @@ type pipelineRead struct {
 // read asks again, by its ETag, so an unchanged file costs one 304.
 const PipelineFresh = 15 * time.Second
 
-// PipelineFirstWait is how long a read waits for the forge before it answers
-// with what it has: the last file, else the checkout's. A READ NEVER WAITS ON
-// GITHUB LONGER: a forge that did not answer once held every queue read of the
-// factory until the app called it "not answering". The forge's answer lands
-// for the next read.
-const PipelineFirstWait = 300 * time.Millisecond
-
-// pipelineAskWait bounds one ask of the forge behind the reads.
-const pipelineAskWait = 30 * time.Second
-
 // PipelineLoader keeps parsed files by blob SHA and repository reads until the
 // next intake tick, or [PipelineFresh] when nothing ticks. Local checkouts are
 // only used when the forge is offline. mu guards the maps and is never held
@@ -56,18 +45,12 @@ type PipelineLoader struct {
 	api    func(context.Context) PipelineAPI
 	repos  map[string]pipelineRead
 	blobs  map[string]pipelineRead
-	asking map[string]*pipelineAsk
+	asking behind
 	now    func() time.Time
 }
 
-// pipelineAsk is one ask of the forge that is out, and when it began.
-type pipelineAsk struct {
-	done  chan struct{}
-	began time.Time
-}
-
 func NewPipelineLoader(api func(context.Context) PipelineAPI) *PipelineLoader {
-	return &PipelineLoader{api: api, repos: map[string]pipelineRead{}, blobs: map[string]pipelineRead{}, asking: map[string]*pipelineAsk{}, now: time.Now}
+	return &PipelineLoader{api: api, repos: map[string]pipelineRead{}, blobs: map[string]pipelineRead{}, now: time.Now}
 }
 
 // WithClock is the loader telling time by now, for a test of [PipelineFresh].
@@ -87,7 +70,19 @@ func (l *PipelineLoader) Refresh(ctx context.Context, repo, dir string) {
 }
 
 // Load returns independent file data so personal limits cannot alter the cache.
+// It waits for the forge when the read is missing or stale, so a start, an edit
+// or a merge decides by the file main has now; under [ShowOnly] it waits at
+// most [FirstWait] and answers with the last file, else the checkout's, while
+// the forge's answer lands for the next read.
 func (l *PipelineLoader) Load(ctx context.Context, repo, dir, personal string) (pipeline.File, error) {
+	var bound time.Duration
+	if showOnly(ctx) {
+		bound = FirstWait
+	}
+	return l.load(ctx, repo, dir, personal, bound)
+}
+
+func (l *PipelineLoader) load(ctx context.Context, repo, dir, personal string, bound time.Duration) (pipeline.File, error) {
 	l.mu.Lock()
 	seen, ok := l.repos[repo]
 	// A checkout used offline can change between reads without an intake tick.
@@ -96,54 +91,38 @@ func (l *PipelineLoader) Load(ctx context.Context, repo, dir, personal string) (
 		seen = l.local(dir, nil)
 		l.repos[repo] = seen
 	}
-	var ask *pipelineAsk
-	if !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh) {
-		ask = l.askLocked(repo, dir)
-	}
+	stale := !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh)
 	l.mu.Unlock()
-	if ask == nil {
-		return pipeline.MergePersonal(seen.file, personal, seen.err)
+	if stale {
+		l.ask(repo, dir).wait(ctx, bound)
+		l.mu.Lock()
+		if now, known := l.repos[repo]; known {
+			seen, ok = now, true
+		}
+		l.mu.Unlock()
 	}
-	select {
-	case <-ask.done:
-	case <-time.After(time.Until(ask.began.Add(PipelineFirstWait))):
-	case <-ctx.Done():
-	}
-	l.mu.Lock()
-	if now, known := l.repos[repo]; known {
-		seen, ok = now, true
-	}
-	l.mu.Unlock()
 	if !ok {
-		seen = l.local(dir, errors.New("github has not answered yet"))
+		// Not heard yet: the checkout's file, else the defaults, with no problem
+		// to show, since nothing is wrong yet.
+		seen = l.local(dir, nil)
 	}
 	return pipeline.MergePersonal(seen.file, personal, seen.err)
 }
 
-// askLocked asks the forge for repo's file behind the reads, unless an ask is
-// out already, and answers the one that is out. An ask that times out keeps
-// the last file and waits [PipelineFresh] before the next.
-func (l *PipelineLoader) askLocked(repo, dir string) *pipelineAsk {
-	if ask := l.asking[repo]; ask != nil {
-		return ask
-	}
-	ask := &pipelineAsk{done: make(chan struct{}), began: time.Now()}
-	l.asking[repo] = ask
-	guard.Go("factory/pipeline read", func() {
-		defer close(ask.done)
-		ctx, cancel := context.WithTimeout(context.Background(), pipelineAskWait)
-		defer cancel()
+// ask asks the forge for repo's file behind the reads, one ask at a time. An
+// ask that times out keeps the last file and waits [PipelineFresh] before the
+// next; the forge is never asked while mu is held.
+func (l *PipelineLoader) ask(repo, dir string) *ask {
+	return l.asking.start(repo, "factory/pipeline read", func(ctx context.Context) {
 		seen := l.read(ctx, repo, dir)
 		l.mu.Lock()
 		defer l.mu.Unlock()
-		delete(l.asking, repo)
 		if previous, known := l.repos[repo]; known && ctx.Err() != nil {
 			seen = previous
 		}
 		seen.at = l.now()
 		l.repos[repo] = seen
 	})
-	return ask
 }
 
 func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRead {

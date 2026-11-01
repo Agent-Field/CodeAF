@@ -69,13 +69,6 @@ func forgetFactoryPRJobs(ctx context.Context, st *store.Store, profile string) e
 		if len(prs) == 0 {
 			continue
 		}
-		desk, err := lease.Open(floor, lease.Options{})
-		if err != nil {
-			return err
-		}
-		if err := desk.ForgetJobs(ids); err != nil {
-			return err
-		}
 		// Worker mirrors contain snapshots; their worktrees and checkouts live
 		// on this machine's main floor, just like buildFactoryRunner.
 		folders := newFactoryJobFolders(st)
@@ -92,14 +85,27 @@ func forgetFactoryPRJobs(ctx context.Context, st *store.Store, profile string) e
 				failures = append(failures, fmt.Errorf("%s is still held by a worker on this machine", it.Ref()))
 				continue
 			}
-			if err := forgetPRJobFiles(profile, st, root, floor, folders, it); err != nil {
+			if err := forgetPRJobFiles(profile, st, floor, folders, it); err != nil {
 				failures = append(failures, err)
 				continue
 			}
 			forgot[it.ID] = true
 		}
+		// A job kept for the next run keeps its lease and its history too.
+		for id := range ids {
+			if !forgot[id] {
+				delete(sharedHistory, id)
+			}
+		}
 		if len(forgot) == 0 {
 			continue
+		}
+		desk, err := lease.Open(floor, lease.Options{})
+		if err != nil {
+			return errors.Join(append(failures, err)...)
+		}
+		if err := desk.ForgetJobs(forgot); err != nil {
+			return errors.Join(append(failures, err)...)
 		}
 		history, err := record.Open(floor, record.Options{})
 		if err != nil {
@@ -114,11 +120,6 @@ func forgetFactoryPRJobs(ctx context.Context, st *store.Store, profile string) e
 		for id := range forgot {
 			if err := floor.ForgetPRJob(id); err != nil {
 				failures = append(failures, err)
-				delete(sharedHistory, id)
-			}
-		}
-		for id := range ids {
-			if !forgot[id] {
 				delete(sharedHistory, id)
 			}
 		}
@@ -140,7 +141,7 @@ func forgetFactoryPRJobs(ctx context.Context, st *store.Store, profile string) e
 
 // forgetPRJobFiles erases one PR job's local files: its chats, its folder and
 // branch, its worktrees and its marks. The job's record goes only after this.
-func forgetPRJobFiles(profile string, st *store.Store, root string, floor *store.Store, folders factoryJobFolders, it factory.Item) error {
+func forgetPRJobFiles(profile string, st, floor *store.Store, folders factoryJobFolders, it factory.Item) error {
 	if err := forgetPRJobChats(profile, floor, it); err != nil {
 		return err
 	}
@@ -151,13 +152,13 @@ func forgetPRJobFiles(profile string, st *store.Store, root string, floor *store
 	if err := folders.Discard(local); err != nil {
 		return err
 	}
-	for _, workRoot := range []string{st.Root(), root} {
+	for _, workRoot := range []string{st.Root(), floor.Root()} {
 		work := factoryrun.NewWorkdirs(filepath.Join(workRoot, "work"), factoryrun.ExecGit{})
 		if err := os.RemoveAll(work.Dir(it)); err != nil {
 			return err
 		}
 	}
-	if err := os.RemoveAll(filepath.Join(root, "chats", strconv.Itoa(it.ID))); err != nil {
+	if err := os.RemoveAll(filepath.Join(floor.Root(), "chats", strconv.Itoa(it.ID))); err != nil {
 		return err
 	}
 	if err := floor.SetBusy(it.ID, ""); err != nil {
