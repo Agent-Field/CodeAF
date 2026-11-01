@@ -411,11 +411,11 @@ type Job struct {
 	// itself (GET /v1/jobs/{id}/brief) only when one of them moves. Absent
 	// while the job has only its stub, and from a factory older than the
 	// brief.
-	Brief *BriefMark `json:"brief,omitempty"`
-	AssignedTo string      `json:"assigned_to,omitempty"`
-	Step       *StepAt     `json:"step,omitempty"`
-	Steps      []Step      `json:"steps"`
-	Claims     []Claim     `json:"claims,omitempty"`
+	Brief      *BriefMark `json:"brief,omitempty"`
+	AssignedTo string     `json:"assigned_to,omitempty"`
+	Step       *StepAt    `json:"step,omitempty"`
+	Steps      []Step     `json:"steps"`
+	Claims     []Claim    `json:"claims,omitempty"`
 	// PlannedFiles are the paths the current plan's explicit Files declaration
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
