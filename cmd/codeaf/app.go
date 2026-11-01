@@ -1093,6 +1093,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	b.watchCloseClaim(row.Dir)
+	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
@@ -1126,6 +1127,10 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	disk := appRowView(row)
 	disk.Location = a.view.Location
+	disk.CreatedBy = createdBy
+	if a.view.CreatedBy == "" {
+		a.view.CreatedBy = createdBy
+	}
 	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
 	// An agent this process is opening is its own word too: the disk has not
@@ -1408,6 +1413,10 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			return appwire.Agent{}, nil, appEngineError(err)
 		}
 	}
+	createdBy, err := b.keepCreatedBy(appAgentID(transcript), ask.CreatedBy)
+	if err != nil {
+		return appwire.Agent{}, nil, appEngineError(err)
+	}
 	var view appwire.Agent
 	first := appFirst{clientID: ask.ClientID}
 	b.locked(func() {
@@ -1452,6 +1461,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		}
 		a.view.Workspace = resolved
 		a.view.Model = model
+		a.view.CreatedBy = createdBy
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
 			// STARTING, NOT WORKING: no turn runs until the conversation is open,
