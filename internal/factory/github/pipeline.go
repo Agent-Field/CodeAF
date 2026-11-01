@@ -93,7 +93,15 @@ func (l *PipelineLoader) load(ctx context.Context, repo, dir, personal string, b
 	}
 	stale := !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh)
 	l.mu.Unlock()
-	if stale {
+	switch {
+	case stale && bound == 0:
+		// An action reads under its own context, never behind another's ask.
+		seen, ok = l.read(ctx, repo, dir), true
+		l.mu.Lock()
+		seen.at = l.now()
+		l.repos[repo] = seen
+		l.mu.Unlock()
+	case stale:
 		l.ask(repo, dir).wait(ctx, bound)
 		l.mu.Lock()
 		if now, known := l.repos[repo]; known {
