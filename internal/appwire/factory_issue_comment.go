@@ -96,7 +96,7 @@ func postIssueComment(e Engine, raw json.RawMessage) (*FactoryIssueCommented, er
 	}
 	p.Body = strings.TrimSpace(p.Body)
 	if p.Body == "" || utf8.RuneCountInString(p.Body) > factory.IssueCommentMost {
-		return nil, Errorf(CodeBadParams, "a comment is 1 to %d characters", factory.IssueCommentMost)
+		return nil, Errorf(CodeBadParams, "%s", factory.IssueCommentBounds)
 	}
 	ctx, cancel := factoryCall()
 	defer cancel()

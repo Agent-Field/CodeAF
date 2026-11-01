@@ -33,6 +33,7 @@ import (
 // ([factory.ReadComments]), so a comment is read by one path whoever posted it.
 
 const (
+	issueCommentReconnect = "Reconnect GitHub to comment on the issue"
 	issueCommentTimeout   = 30 * time.Second
 	issueCommentReadLimit = 1 << 20
 )
@@ -55,7 +56,7 @@ func (h *Handler) issueComment(w http.ResponseWriter, r *http.Request, it factor
 	}
 	words := strings.TrimSpace(body.Body)
 	if words == "" || utf8.RuneCountInString(words) > factory.IssueCommentMost {
-		h.fail(w, http.StatusUnprocessableEntity, fmt.Sprintf("a comment is 1 to %d characters", factory.IssueCommentMost))
+		h.fail(w, http.StatusUnprocessableEntity, factory.IssueCommentBounds)
 		return
 	}
 	owner, repo, ok := issueOf(it)
@@ -65,7 +66,7 @@ func (h *Handler) issueComment(w http.ResponseWriter, r *http.Request, it factor
 	}
 	token, viaSession := h.personGitHubToken(r)
 	if token == "" {
-		h.fail(w, http.StatusUnauthorized, "Reconnect GitHub to comment on the issue")
+		h.fail(w, http.StatusUnauthorized, issueCommentReconnect)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), issueCommentTimeout)
@@ -113,7 +114,7 @@ func issueCommentRefusal(status int, err error, got githubPostedComment, repo st
 	case status >= 200 && status < 300:
 		return "", 0
 	case status == http.StatusUnauthorized:
-		return "Reconnect GitHub to comment on the issue", http.StatusUnauthorized
+		return issueCommentReconnect, http.StatusUnauthorized
 	case status == http.StatusForbidden || status == http.StatusNotFound || status == http.StatusGone:
 		return fmt.Sprintf("Your GitHub sign-in can't comment on %s (HTTP %d); nothing was posted", repo, status), http.StatusForbidden
 	case status == http.StatusTooManyRequests:

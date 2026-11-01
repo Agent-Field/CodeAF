@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -35,6 +36,9 @@ const (
 // from becoming an issue's whole history, and the floor keeps less of each
 // comment it reads back anyway.
 const IssueCommentMost = 8000
+
+// IssueCommentBounds is the refusal of a comment outside those bounds.
+var IssueCommentBounds = fmt.Sprintf("a comment is 1 to %d characters", IssueCommentMost)
 
 // CommentRead is one new comment on the job's issue and what the manager did
 // with it: the outcome and the line the app shows under the comment
