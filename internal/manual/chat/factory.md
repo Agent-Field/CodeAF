@@ -90,6 +90,10 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 
 A runner runs only its owner's jobs, with its owner's keys; keys are shown by name and never by value. One process per codeaf home holds the runner role; a second `runner join` shares the first one's session and waits to take over when it stops, so joining twice registers one machine. An access link that was used or expired is refused with a plain sentence and no session is kept. The service has no separate expiring runner token: a link made to expire in an hour is the one-time command.
 
+### a runner's model provider — needs a model provider, provider base URL is required
+
+A joined runner runs every step with the model provider of its own codeaf home: the same service, base URL and key `codeaf chat` on that home would use, from the shell (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `CODEAF_BASE_URL`) or from the home's saved key and connected services. Nothing is entered again at `runner join`; `--model` and `--one-model` only choose the model. A home with no provider configured joins and shows on the factory's runner list as **needs a model provider** (state `needs_provider`), and the factory leases it no step, so queued jobs wait for a runner that can run them instead of failing with "provider base URL is required". Add a key on that home, then stop and run `codeaf runner join` again: the state is read when the runner attaches.
+
 ## from chat to the factory — factory_add, factory_recipe, factory_item and the manager's tools
 
 On a machine with a factory set up, a conversation can hand work over. Every one of these raises a card and writes nothing until you say yes; none of them starts a job. The terminal chat draws the `factory_item` card (answered as described below); see the limit in that section for the other two.

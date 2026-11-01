@@ -40,6 +40,11 @@ const (
 	PersonIdleAfter = 15 * time.Minute
 )
 
+// RunnerNeedsProvider is a runner whose home has no model provider: it is
+// attached and seen, but no step is leased to it, since every step would fail
+// on its first model call.
+const RunnerNeedsProvider = "needs_provider"
+
 // Checkout is a repository already present on this runner, never a server path.
 type Checkout struct {
 	Repo string `json:"repo"`
@@ -64,6 +69,20 @@ type Runner struct {
 	// often it restarts, so the screen may say only that it needs a compatible
 	// update or configuration.
 	LiveCapacity bool `json:"live_capacity,omitempty"`
+	// Reason is the sentence a state that blocks work is shown with
+	// ([RunnerNeedReason]); empty for every other state.
+	Reason string `json:"reason,omitempty"`
+}
+
+// RunnerNeedReason is the sentence the runner list shows beside a state a
+// worker attached needing ([WorkerAttach.Needs]). A word this build does not
+// know still blocks leasing on the server, so it still gets a sentence rather
+// than reading as an idle runner that never takes a job.
+func RunnerNeedReason(need string) string {
+	if need == RunnerNeedsProvider {
+		return "needs a model provider"
+	}
+	return "cannot run steps yet"
 }
 
 // Runners is the factory directory; it contains no execution credentials.

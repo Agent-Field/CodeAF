@@ -25,7 +25,7 @@ func (h *Handler) executionCapacity(held []lease.Lease) []machineCapacity {
 	by := map[string]machineCapacity{}
 	h.workers.mu.RLock()
 	for _, row := range h.workers.credentials {
-		if row.Asleep || row.Last.IsZero() || !now.Before(row.Last.Add(offlineAfter)) {
+		if row.Asleep || row.Needs != "" || row.Last.IsZero() || !now.Before(row.Last.Add(offlineAfter)) {
 			continue
 		}
 		key := row.Worker.Handle + "\x00" + row.Worker.Machine
