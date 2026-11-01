@@ -322,6 +322,22 @@ decides which combinations are accepted.
 |---|---|---|
 | `harness.list` | `{}` | `HarnessListResult` |
 
+## health methods
+
+| method | params | result |
+|---|---|---|
+| `health.check` | `{}` | `HealthResult` |
+
+`health.check` answers plain facts an assistant can cite: `version` and
+`build`, `started_at` and `uptime_s` for this engine process, `resume` when
+this start carried on replies or tasks the last quit stopped (`at`,
+`replies_resumed`, `replies`, `tasks`; absent when there was nothing),
+`disks` with `free_bytes` and `total_bytes` for the filesystem of the work
+folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
+`error` instead when it could not be read, and `factory`, the local factory's
+status as `factory.local_status` shapes it. It reads memory, the app state and
+one filesystem call per disk; it starts nothing. hello says `health.check`.
+
 ## inbox methods
 
 | method | params | result |
