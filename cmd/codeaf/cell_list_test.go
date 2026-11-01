@@ -32,7 +32,7 @@ func TestCellListAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"01AAA  Nightly index rebuild  host-a  running on host-a             2m",
+		"01AAA  Nightly index rebuild  host-a  held on host-a                2m",
 		"01BBB  Port the picker        host-a  host-a offline                3h",
 		"01CCC  Fix the flaky test     laptop  2 turns from laptop: discard  5h",
 		"01DDD  Notes                  laptop  -                             1d 2h",
