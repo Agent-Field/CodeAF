@@ -46,6 +46,7 @@ type PipelineLoader struct {
 	repos  map[string]pipelineRead
 	blobs  map[string]pipelineRead
 	asking behind
+	absent absences
 	now    func() time.Time
 }
 
@@ -152,7 +153,7 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 	if previous.path == pipeline.RepoFile {
 		tag = previous.tag
 	}
-	text, sha, tag, err := api.Contents(ctx, owner, name, pipeline.RepoFile, "", tag)
+	text, sha, tag, err := l.absent.contents(ctx, api, l.now(), owner, name, pipeline.RepoFile, tag)
 	if errors.Is(err, forge.ErrNotModified) {
 		return previous
 	}
@@ -163,7 +164,7 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 		if previous.path == factory.RecipeFile {
 			tag = previous.tag
 		}
-		text, sha, tag, err = api.Contents(ctx, owner, name, factory.RecipeFile, "", tag)
+		text, sha, tag, err = l.absent.contents(ctx, api, l.now(), owner, name, factory.RecipeFile, tag)
 		if errors.Is(err, forge.ErrNotModified) {
 			return previous
 		}

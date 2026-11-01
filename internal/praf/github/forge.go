@@ -302,7 +302,16 @@ func readRetryable(err error) bool {
 }
 
 // read is one GET under the read discipline, conditional when etag is set.
+// A caller with no tag of its own reads through the process's read cache.
 func (c *client) read(ctx context.Context, rawurl, etag string) ([]byte, string, error) {
+	if etag != "" {
+		return c.readTagged(ctx, rawurl, etag)
+	}
+	return c.cachedRead(rawurl, 0, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, rawurl, etag) })
+}
+
+// readTagged is one GET with its retries, conditional when etag is set.
+func (c *client) readTagged(ctx context.Context, rawurl, etag string) ([]byte, string, error) {
 	headers, err := c.headersForRepo(ctx, "", "")
 	if err != nil {
 		return nil, "", err
@@ -498,10 +507,18 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 	if branch == "" {
 		return 0, nil
 	}
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection"), "")
+	endpoint := c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection")
+	if cache.policyUnreadable(c.token, endpoint) {
+		return 0, nil
+	}
+	body, _, err := c.read(ctx, endpoint, "")
 	if err != nil {
 		var apiErr *APIError
-		if PolicyUnavailable(err) || (errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound) {
+		if PolicyUnavailable(err) {
+			cache.notePolicyUnreadable(c.token, endpoint)
+			return 0, nil
+		}
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return 0, nil
 		}
 		return 0, err
@@ -551,7 +568,8 @@ func (c *client) Me(ctx context.Context) (string, error) {
 	if c.token == "" {
 		return "", nil
 	}
-	body, _, err := c.read(ctx, c.baseURL+"/user", "")
+	url := c.baseURL + "/user"
+	body, _, err := c.cachedRead(url, identityFresh, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, url, etag) })
 	if err != nil {
 		return "", err
 	}

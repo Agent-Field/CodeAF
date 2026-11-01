@@ -66,6 +66,7 @@ type PeopleLoader struct {
 	ownersMu  sync.Mutex
 	ownersAsk behind
 	owners    map[string]ownerRead
+	absent    absences
 }
 
 // NewPeopleLoader binds the forge and an optional deterministic clock.
@@ -236,7 +237,7 @@ func (l *PeopleLoader) readOwners(ctx context.Context, repo string) ownerRead {
 		return ownerRead{}
 	}
 	for _, path := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
-		text, _, _, err := api.Contents(ctx, owner, name, path, "", "")
+		text, _, _, err := l.absent.contents(ctx, api, l.now(), owner, name, path, "")
 		if missing(err) {
 			continue
 		}
