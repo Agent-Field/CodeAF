@@ -453,6 +453,15 @@ inside the job and out of Agents. Stop any active manual turn before **Resume pi
 resuming checks the current work and continues on the same issue and PR. Finished jobs
 and a publication already underway cannot change control.
 
+Before a pull request is open, **Resume pipeline** after **Take over** checks your
+commits again: the run goes back to the first check or review that had already
+passed (a check, or a step that runs until clean or green) and runs it and every
+step after it, so an approval after it asks again. The steps before it and the money
+spent are kept, and every step reads that the branch changed by hand. A job taken
+over before any check or review ran carries on from its step, and so does one whose
+budget is spent, until Budget is raised and the check is run again. With a pull request
+open, resuming asks the PR's follow-up to inspect and verify the changes instead.
+
 The manager's `factory_follow_pr` tool turns an explicit request such as “fix it anyway”
 into another maintenance investigation. It needs an open linked PR and the original
 publication approval; it refuses manual mode or work already running. It does not merge.
