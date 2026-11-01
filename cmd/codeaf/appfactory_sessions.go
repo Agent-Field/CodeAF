@@ -58,8 +58,17 @@ func (h *appFactoryHub) queueLocked(c appwire.FactorySessionChange) {
 			kept = append(kept, k)
 		}
 	}
+	// A FULL QUEUE DROPS ITS OLDEST SIGN-IN TO KEEP, never a removal: a removal
+	// lost would leave a dead item kept, and a lost keep only costs a sign-in.
 	if len(kept) >= appwire.FactorySessionsMost {
-		kept = kept[1:]
+		drop := 0
+		for i, k := range kept {
+			if !k.change.Removed {
+				drop = i
+				break
+			}
+		}
+		kept = append(kept[:drop], kept[drop+1:]...)
 	}
 	h.kept = append(kept, keptChange{change: c, at: now})
 	// The announcement carries nothing, so it may go after the lock is let go.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -157,5 +158,23 @@ func TestAppFactorySessionChangeIsAnnouncedWithoutTheToken(t *testing.T) {
 	taken, _ := b.FactorySessionsTake(context.Background())
 	if len(taken.Changes) != 1 || taken.Changes[0].Token != testHostToken {
 		t.Fatalf("taken = %+v", taken)
+	}
+}
+
+// A FULL QUEUE NEVER LOSES A REMOVAL: the oldest sign-in to keep goes first.
+func TestAppFactorySessionQueueKeepsRemovalsWhenFull(t *testing.T) {
+	h := testFactoryHub(t)
+	h.mu.Lock()
+	h.forgetKeptLocked("factory_gone")
+	for i := 0; i < appwire.FactorySessionsMost; i++ {
+		h.keepSessionLocked(fmt.Sprintf("factory_%02d", i), "https://f.example", appFactorySession{token: "t"})
+	}
+	h.mu.Unlock()
+	b := newFakeBackend(newAppRecorder(), nil)
+	defer b.Close()
+	b.factoryOnce.Do(func() { b.factories = h })
+	taken, _ := b.FactorySessionsTake(context.Background())
+	if len(taken.Changes) != appwire.FactorySessionsMost || !taken.Changes[0].Removed || taken.Changes[0].Factory != "factory_gone" {
+		t.Fatalf("taken %d, first %+v", len(taken.Changes), taken.Changes[0])
 	}
 }
