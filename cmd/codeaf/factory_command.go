@@ -124,8 +124,10 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	if err != nil {
 		return err
 	}
+	// Old PR jobs that cannot be cleaned now stay for the next start; the
+	// factory serves either way.
 	if err := forgetFactoryPRJobs(ctx, st, config.ProfileDir()); err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "codeaf factory: some old PR jobs are kept for the next start: %v\n", err)
 	}
 	cfg, err := factoryHostConfigAt(configPath, false)
 	if err != nil {

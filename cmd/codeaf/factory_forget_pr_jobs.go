@@ -19,11 +19,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// Run only while owning serve.lock, before exposing the floor or starting its
-// workers. Standalone PR jobs are removed, including worker mirrors; an issue's
-// attached PR, local branch and publication/CI history are untouched.
+// Run only while owning serve.lock. Standalone PR jobs are removed, including
+// worker mirrors; an issue's attached PR, local branch and publication/CI
+// history are untouched. No worker takes a PR job (the lease refuses one), so
+// the app serves the floor while this runs ([appFactoryHost.tidy]). A job that
+// cannot be cleaned is kept whole for the next run and named in the error.
 func forgetFactoryPRJobs(ctx context.Context, st *store.Store, profile string) error {
 	sharedHistory := map[int]bool{}
+	var failures []error
 	roots := []string{st.Root()}
 	mirrors, err := filepath.Glob(filepath.Join(st.Root(), "workers", "*", "*"))
 	if err != nil {
@@ -76,65 +79,91 @@ func forgetFactoryPRJobs(ctx context.Context, st *store.Store, profile string) e
 		// Worker mirrors contain snapshots; their worktrees and checkouts live
 		// on this machine's main floor, just like buildFactoryRunner.
 		folders := newFactoryJobFolders(st)
+		forgot := map[int]bool{}
 		for _, it := range prs {
 			if err := ctx.Err(); err != nil {
-				return err
+				return errors.Join(append(failures, err)...)
 			}
-			if err := forgetPRJobChats(profile, floor, it); err != nil {
-				return err
+			// A JOB IT CANNOT CLEAN NOW IS KEPT WHOLE and tried again at the next
+			// launch, and the others still go: one such job once stopped the
+			// clean-up at every launch. A job a live worker still holds is not
+			// waited for at all.
+			if factoryMirrorHolds(st.Root(), it.ID) {
+				failures = append(failures, fmt.Errorf("%s is still held by a worker on this machine", it.Ref()))
+				continue
 			}
-			// Every branch removed here was minted for this factory job, never the
-			// PR author's branch. Workdirs validates the recorded branch shape.
-			local := it
-			local.Kind = factory.KindIssue
-			if err := folders.Discard(local); err != nil {
-				return err
+			if err := forgetPRJobFiles(profile, st, root, floor, folders, it); err != nil {
+				failures = append(failures, err)
+				continue
 			}
-			for _, workRoot := range []string{st.Root(), root} {
-				work := factoryrun.NewWorkdirs(filepath.Join(workRoot, "work"), factoryrun.ExecGit{})
-				if err := os.RemoveAll(work.Dir(it)); err != nil {
-					return err
-				}
-			}
-			if err := os.RemoveAll(filepath.Join(root, "chats", strconv.Itoa(it.ID))); err != nil {
-				return err
-			}
-			if err := floor.SetBusy(it.ID, ""); err != nil {
-				return err
-			}
-			if err := floor.SetMarks([]int{it.ID}, false); err != nil {
-				return err
-			}
+			forgot[it.ID] = true
+		}
+		if len(forgot) == 0 {
+			continue
 		}
 		history, err := record.Open(floor, record.Options{})
 		if err != nil {
-			return err
+			return errors.Join(append(failures, err)...)
 		}
-		if err := history.ForgetJobs(ctx, ids); err != nil {
-			return err
+		if err := history.ForgetJobs(ctx, forgot); err != nil {
+			return errors.Join(append(failures, err)...)
 		}
-		if err := live.ForgetJobs(root, ids); err != nil {
-			return err
+		if err := live.ForgetJobs(root, forgot); err != nil {
+			return errors.Join(append(failures, err)...)
 		}
-		for _, it := range prs {
-			if err := floor.ForgetPRJob(it.ID); err != nil {
-				return err
+		for id := range forgot {
+			if err := floor.ForgetPRJob(id); err != nil {
+				failures = append(failures, err)
+				delete(sharedHistory, id)
+			}
+		}
+		for id := range ids {
+			if !forgot[id] {
+				delete(sharedHistory, id)
 			}
 		}
 	}
 	if len(sharedHistory) != 0 {
 		history, err := record.Open(st, record.Options{})
 		if err != nil {
-			return err
+			return errors.Join(append(failures, err)...)
 		}
 		if err := history.ForgetJobs(ctx, sharedHistory); err != nil {
-			return err
+			return errors.Join(append(failures, err)...)
 		}
 		if err := live.ForgetJobs(st.Root(), sharedHistory); err != nil {
+			return errors.Join(append(failures, err)...)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// forgetPRJobFiles erases one PR job's local files: its chats, its folder and
+// branch, its worktrees and its marks. The job's record goes only after this.
+func forgetPRJobFiles(profile string, st *store.Store, root string, floor *store.Store, folders factoryJobFolders, it factory.Item) error {
+	if err := forgetPRJobChats(profile, floor, it); err != nil {
+		return err
+	}
+	// Every branch removed here was minted for this factory job, never the PR
+	// author's branch. Workdirs validates the recorded branch shape.
+	local := it
+	local.Kind = factory.KindIssue
+	if err := folders.Discard(local); err != nil {
+		return err
+	}
+	for _, workRoot := range []string{st.Root(), root} {
+		work := factoryrun.NewWorkdirs(filepath.Join(workRoot, "work"), factoryrun.ExecGit{})
+		if err := os.RemoveAll(work.Dir(it)); err != nil {
 			return err
 		}
 	}
-	return nil
+	if err := os.RemoveAll(filepath.Join(root, "chats", strconv.Itoa(it.ID))); err != nil {
+		return err
+	}
+	if err := floor.SetBusy(it.ID, ""); err != nil {
+		return err
+	}
+	return floor.SetMarks([]int{it.ID}, false)
 }
 
 // Normal deletion retains a tombstone and metadata to prevent stale owners
