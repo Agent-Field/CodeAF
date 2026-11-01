@@ -85,6 +85,11 @@ type Submission struct {
 	// ClientID are two messages. Empty is "the door named none", and the model
 	// is sent nothing of it.
 	ClientID string
+	// From names who sent the message on the person's behalf, such as "afi",
+	// at most [MaxMessageFromBytes] bytes of one line. It is kept on the
+	// message's own line and read back on its entry ([PersonMark.From]); the
+	// model is sent only what the door wrote into Text. Empty is the person.
+	From string
 	// Reads are the reads of references the door performed to write Text, in
 	// the order it performed them, as it found them at that moment.
 	Reads []MessageRead
@@ -219,6 +224,9 @@ const (
 	// MaxClientIDBytes is the longest a message's ClientID may be. It is a
 	// correlation token, not content.
 	MaxClientIDBytes = 256
+	// MaxMessageFromBytes is the longest a message's From may be: a sender's
+	// name, never words.
+	MaxMessageFromBytes = 64
 )
 
 // ErrMessageMark is every refusal of a mark that does not fit, so a door can
@@ -256,7 +264,10 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if err := checkClientID(m.ClientID); err != nil {
 		return nil, err
 	}
-	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.proven == nil {
+	if err := checkMessageFrom(m.From); err != nil {
+		return nil, err
+	}
+	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.From == "" && m.proven == nil {
 		return nil, nil
 	}
 	// A creation context is never a reason to refuse a message: only the one
@@ -277,7 +288,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if len(m.Attachments) > MaxMessageAttachments {
 		return nil, fmt.Errorf("%w: %d attachments, and one message names at most %d", ErrMessageMark, len(m.Attachments), MaxMessageAttachments)
 	}
-	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID), Creation: creation}
+	mark := &messagePresentation{Audience: audiencePerson, Queued: m.Queued, ClientID: strings.Clone(m.ClientID), From: strings.Clone(m.From), Creation: creation}
 	// Text stays nil when the door did not say the person's words apart: the
 	// line's own content is theirs, and a copy of it here would be the same
 	// words written twice on one line.
@@ -333,6 +344,14 @@ func (m Submission) mark() (*messagePresentation, error) {
 	}
 	mark.Reads = reads
 	return mark, nil
+}
+
+// checkMessageFrom refuses a sender's name the record would not keep as given.
+func checkMessageFrom(from string) error {
+	if len(from) > MaxMessageFromBytes || !utf8.ValidString(from) || strings.IndexFunc(from, unicode.IsControl) >= 0 {
+		return fmt.Errorf("%w: from is not one line of at most %d bytes", ErrMessageMark, MaxMessageFromBytes)
+	}
+	return nil
 }
 
 // checkClientID refuses an ID the record would not keep as given: past the

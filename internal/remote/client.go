@@ -2910,6 +2910,9 @@ func (a *Agent) refuseUnkeptClientID(message session.Submission) error {
 	if message.ClientID != "" && !a.MessageClientIDsKnown() {
 		return errors.New("engine: this engine cannot keep a message's client id; update it before sending")
 	}
+	if message.From != "" && !a.welcomeSays(func(w Welcome) bool { return w.MessageFrom }) {
+		return errors.New("engine: this engine cannot keep who sent a message; update it before sending")
+	}
 	for _, attachment := range message.Attachments {
 		if attachment.Source != nil && !a.AttachmentSourcesKnown() {
 			return errors.New("engine: this engine cannot keep an attachment's recorded source; update it before sending")

@@ -1941,7 +1941,7 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", target, t.Name)
 	}
-	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 {
+	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 || ask.From != "" {
 		return b.crewMessageWith(t, member, target, ask)
 	}
 	shown := appStated(ask.Text, appInTeam(t.ID))
@@ -1972,7 +1972,7 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 // instead, and every chip stays staged for the person to send again when the
 // turn ends.
 func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, target string, ask appwire.CrewMessage) (appwire.Entry, error) {
-	turn, shown, err := b.sendMessageFor(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads}, appInTeam(t.ID))
+	turn, shown, err := b.sendMessageFor(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads, From: ask.From}, appInTeam(t.ID))
 	var wire *appwire.Error
 	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
 		if len(ask.Attachments) > 0 {
@@ -2002,7 +2002,7 @@ func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, 
 	if strings.TrimSpace(logged) != "" {
 		b.tellManager(t, member, logged)
 	}
-	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: ask.ClientID, Attachments: views, Reads: reads}, nil
+	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: ask.ClientID, Attachments: views, Reads: reads, From: ask.From}, nil
 }
 
 // tellManager puts the person's words to a member on the crew's log.

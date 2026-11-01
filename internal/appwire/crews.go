@@ -438,6 +438,9 @@ type CrewMessage struct {
 	ClientID    string        `json:"client_id"`
 	Attachments []string      `json:"attachments,omitempty"`
 	Reads       []MessageRead `json:"reads,omitempty"`
+	// From names who sent the message on the person's behalf, as agents.send's
+	// from does.
+	From string `json:"from,omitempty"`
 	// Submission is refused: a crew message carries no pictures.
 	Submission *MessageSubmission `json:"submission,omitempty"`
 }
@@ -637,6 +640,11 @@ var crewMethods = map[string]method{
 		if err := refuseSubmission(p.Submission, "crews.message"); err != nil {
 			return nil, err
 		}
+		from, err := CheckMessageFrom(p.From)
+		if err != nil {
+			return nil, err
+		}
+		p.From = from
 		entry, err := c.CrewMessage(p)
 		if err != nil {
 			return nil, err

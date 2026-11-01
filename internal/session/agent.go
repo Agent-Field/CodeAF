@@ -5371,6 +5371,9 @@ type PersonMark struct {
 	// record accepted it ([Submission.ClientID]), and empty on every line whose
 	// door named none. It is never guessed for a legacy line.
 	ClientID string
+	// From is who sent the message on the person's behalf, as the record kept
+	// it ([Submission.From]); empty for the person's own.
+	From string
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5541,7 +5544,7 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 			// on it and the reads its words were written from. A line with no
 			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID, From: mark.From}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}

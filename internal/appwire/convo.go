@@ -3,7 +3,10 @@ package appwire
 import (
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // Wave 3b (PROTOCOL.md, V65–V70): the conversation's own entries and events,
@@ -139,6 +142,23 @@ type AgentMessage struct {
 	// Submission names which staged attachments are pictures and what was
 	// marked on them (media_submission.go); only agents.send carries one.
 	Submission *MessageSubmission
+	// From names who sent the message on the person's behalf, such as "afi"
+	// ([CheckMessageFrom]); empty is the person's own message.
+	From string
+}
+
+// MaxMessageFromBytes is the longest a message's from may be: a sender's
+// name, never words.
+const MaxMessageFromBytes = session.MaxMessageFromBytes
+
+// CheckMessageFrom is a message's from as it is kept: trimmed, one line,
+// bounded.
+func CheckMessageFrom(from string) (string, error) {
+	from = strings.TrimSpace(from)
+	if len(from) > MaxMessageFromBytes || strings.ContainsFunc(from, unicode.IsControl) {
+		return "", Errorf(CodeBadParams, "from is one line of at most %d bytes", MaxMessageFromBytes)
+	}
+	return from, nil
 }
 
 // MessageSender is the optional engine half of agents.send and crews.message
