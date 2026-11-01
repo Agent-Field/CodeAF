@@ -41,12 +41,15 @@ type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
-	On       []string          `json:"on,omitempty"`
-	Skip     []string          `json:"skip,omitempty"`
-	Remove   []string          `json:"remove,omitempty"`
-	Move     []StepMove        `json:"move,omitempty"`
-	Why      string            `json:"why,omitempty"`
-	Expect   *Expect           `json:"expect,omitempty"`
+	// Max maps a conversation step's name to how many tries it gets, 1 to 3.
+	// Only the job's person sends it.
+	Max    map[string]int `json:"max,omitempty"`
+	On     []string       `json:"on,omitempty"`
+	Skip   []string       `json:"skip,omitempty"`
+	Remove []string       `json:"remove,omitempty"`
+	Move   []StepMove     `json:"move,omitempty"`
+	Why    string         `json:"why,omitempty"`
+	Expect *Expect        `json:"expect,omitempty"`
 }
 
 // StepMove is one step moved in one job: Step is its name, and After the step

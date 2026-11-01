@@ -51,7 +51,7 @@ func (b *appBackend) FactoryJobStepEditsRead(ctx context.Context, p appwire.Fact
 // the step only.
 func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJobStepEditParams) (appwire.FactoryJobStepEdited, error) {
 	body := api.StepEditsRequest{
-		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
+		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Max: p.Edit.Max, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
 	}
 	for _, mv := range p.Edit.Move {
 		body.Move = append(body.Move, api.StepMove{Step: mv.Step, After: mv.After})
@@ -65,7 +65,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 	h := b.factoryHub()
 	data, err := h.post(ctx, p.Factory, stepEditsPath(p.Job), body)
 	if err != nil {
-		if (len(body.Remove) > 0 || len(body.Move) > 0) && unknownStepEditField(err) {
+		if (len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Max) > 0) && unknownStepEditField(err) {
 			return appwire.FactoryJobStepEdited{}, factoryTooOld()
 		}
 		return appwire.FactoryJobStepEdited{}, err
@@ -97,7 +97,7 @@ func unknownStepEditField(err error) bool {
 	if !errors.As(err, &e) || e.Code != appwire.CodeBadParams {
 		return false
 	}
-	return strings.Contains(e.Message, `unknown field "remove"`) || strings.Contains(e.Message, `unknown field "move"`)
+	return strings.Contains(e.Message, `unknown field "remove"`) || strings.Contains(e.Message, `unknown field "move"`) || strings.Contains(e.Message, `unknown field "max"`)
 }
 
 // decodeStepEditReceipt reads a factory's yes. It is whole only when steps and

@@ -233,6 +233,8 @@ var (
 	ErrAskTooLong = errors.New("an ask is at most 240 cells")
 	// ErrThinking is a thinking word that is not one of [EffortWords].
 	ErrThinking = errors.New("thinking is cheap, strong, or nothing")
+	// ErrStepTries is a step's tries outside 1 to [StepTriesMost].
+	ErrStepTries = errors.New("a step gets 1 to 3 tries")
 )
 
 // StageWord is name as a stage's one word, lowercased, or the sentence that
@@ -270,3 +272,7 @@ func countWord(n int) string {
 
 // askCells is how many cells an ask takes on one line.
 func askCells(ask string) int { return utf8.RuneCountInString(ask) }
+
+// StepTriesMost is the most tries a person may give one conversation step of
+// one job ([RunEdit.Max]). [ErrStepTries] says it in words.
+const StepTriesMost = 3
