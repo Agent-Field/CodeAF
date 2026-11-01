@@ -406,6 +406,12 @@ type Job struct {
 	// (factory.RuleChecks), for its two ◆ rows; absent before either was
 	// judged.
 	RuleChecks *RuleChecks `json:"rule_checks,omitempty"`
+	// Brief is the job's brief mark: the rev of its newest kept version and
+	// the brief's status, so a reader that polls the job reads the brief
+	// itself (GET /v1/jobs/{id}/brief) only when one of them moves. Absent
+	// while the job has only its stub, and from a factory older than the
+	// brief.
+	Brief *BriefMark `json:"brief,omitempty"`
 	AssignedTo string      `json:"assigned_to,omitempty"`
 	Step       *StepAt     `json:"step,omitempty"`
 	Steps      []Step      `json:"steps"`
@@ -971,3 +977,9 @@ type PublishedEvent = live.PublishedPayload
 
 // PublishFailedEvent names the failure code or the report's reason.
 type PublishFailedEvent = live.FailedPayload
+
+// BriefMark says which brief a job has now ([Job.Brief]).
+type BriefMark struct {
+	Rev    int    `json:"rev"`
+	Status string `json:"status"`
+}

@@ -235,6 +235,7 @@ decides which combinations are accepted.
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
 | `factory.job_assign_to_me` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
+| `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -303,6 +304,19 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+
+An engine whose hello carries the feature `factory.job_brief` serves
+`factory.job_brief {factory, job, since?}`: the job's newest brief version as
+its factory keeps it (`GET /v1/jobs/{id}/brief`). `status` is `ready`,
+`generating`, `failed` (with `failure` and `failed_after`) or `stub`; a stub
+(`brief.stub: true`, `rev: 0`) is made from engine data alone before the job
+has a version: the issue's line, `steps_done` of `steps_total`, the facts and
+no blocks. `brief.facts` are computed by the factory from the steps' structured
+results (test counts or exit, findings, proof claims shown of total, rule
+checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
+`changed_since_seen` lists the keys (`verdict`, a fact's `key`, a block's
+`kind/heading`) changed after rev `since`, or by the newest version when
+`since` is absent. A factory older than the route is `conflict`.
 
 ## files methods
 

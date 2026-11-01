@@ -29,6 +29,7 @@ func (h *Handler) jobScreens() {
 		http.MethodGet: h.readStepEdits, http.MethodPost: h.editSteps,
 	})
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
+	h.read("/v1/jobs/{id}/brief", h.readJobBrief)
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{

@@ -209,6 +209,7 @@ var ServiceRoutes = []ServiceRoute{
 	{"GET", "/v1/jobs/{id}/step-edits", nil, StepEdits{}},
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
+	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
 	{"POST", "/v1/repos/{owner}/{repo}/pipeline/open-pr", PipelinePRRequest{}, PipelinePRResponse{}},
@@ -220,4 +221,21 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs", NewJob{}, JobCreated{}},
 	{"DELETE", "/v1/auth/device", DevicePoll{}, ActionResult{}},
 	{"POST", "/v1/github/poll", nil, ActionResult{}},
+}
+
+// JobBrief is GET /v1/jobs/{id}/brief: the job's newest brief version (its
+// stub, made from engine data alone, before any is kept), the reader's status
+// of it, and the keys that changed since the rev the caller saw (`?since=`),
+// or since the version before when the caller names none. Failure and
+// FailedAfter say why and after which step the last write failed, while
+// Status is failed.
+type JobBrief struct {
+	Factory          Factory              `json:"factory"`
+	Job              int                  `json:"job"`
+	Status           string               `json:"status"`
+	Failure          string               `json:"failure,omitempty"`
+	FailedAfter      string               `json:"failed_after,omitempty"`
+	Since            int                  `json:"since,omitempty"`
+	Brief            factory.BriefVersion `json:"brief"`
+	ChangedSinceSeen []string             `json:"changed_since_seen"`
 }
