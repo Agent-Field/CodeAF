@@ -464,7 +464,7 @@ func TestEnvironmentStopCommandQuotesTheWorkspaceForTheShell(t *testing.T) {
 		t.Run(workspace, func(t *testing.T) {
 			note := differentEngineEnvironmentSentence(workspace)
 			_, command, ok := strings.Cut(note, "), run ")
-			if !ok || !strings.Contains(note, "after work finishes, close every window for this workspace and reopen") || !strings.Contains(note, "To stop now (interrupts active turns and tasks)") {
+			if !ok || !strings.Contains(note, "codeaf chat --no-host opens this window on its own") || !strings.Contains(note, "after work finishes, close every window for this workspace and reopen") || !strings.Contains(note, "To stop now (interrupts active turns and tasks)") {
 				t.Fatalf("busy note does not explain the recovery: %s", note)
 			}
 			// Keep the production command's complete shell argument text. Only
