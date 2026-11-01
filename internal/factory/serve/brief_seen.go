@@ -1,7 +1,6 @@
 package serve
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -12,8 +11,8 @@ import (
 // at a revision. It is the caller's own fact, so it is written through
 // [store.Store.UpdatePersonal]: the job's version and Changed stay as they
 // were, nothing is recorded in the job's activity, and nobody's open page goes
-// stale over it. A lower revision than the one kept changes nothing
-// ([factory.SeeBrief]).
+// stale over it. A revision no higher than the one kept changes nothing
+// and writes nothing ([factory.SeeBrief]).
 func (h *Handler) briefSeen(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body api.BriefSeenRequest
 	if !h.decode(w, r, &body, false) {
@@ -31,19 +30,7 @@ func (h *Handler) briefSeen(w http.ResponseWriter, r *http.Request, it factory.I
 		h.fail(w, http.StatusUnprocessableEntity, "Marking the brief seen requires a GitHub login")
 		return
 	}
-	err = h.config.Store.UpdatePersonal(it.ID, func(cur *factory.Item) error {
-		if !factory.SeeBrief(cur, who, body.Rev) {
-			return errPersonalUnchanged
-		}
-		return nil
-	})
-	if errors.Is(err, errPersonalUnchanged) {
-		err = nil
-	}
-	h.finish(w, err)
+	h.finish(w, h.config.Store.UpdatePersonal(it.ID, func(cur *factory.Item) bool {
+		return factory.SeeBrief(cur, who, body.Rev)
+	}))
 }
-
-// errPersonalUnchanged ends a personal write that would change nothing, so a
-// page that reports the same revision on every read does not rewrite the job's
-// document (and wake every watcher of the factory's folder) each time.
-var errPersonalUnchanged = errors.New("nothing to write")
