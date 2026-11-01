@@ -375,7 +375,7 @@ clear refusal. Run it anyway; the refusals are the deliverable.
 
 ```sh
 codeaf devices                     # who may reach this machine, and its name
-codeaf serve                       # be reachable (needs CODEAF_RELAY set)
+codeaf serve                       # be reachable (through the relay sync uses, or CODEAF_RELAY)
 codeaf chat --at otter-lamp-42     # reach a machine by its name
 ```
 

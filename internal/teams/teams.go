@@ -20,10 +20,12 @@ const Version = 2
 type Member struct {
 	// ReportsTo records the proposed reporting handle while the crew stays flat.
 	ReportsTo string `json:"reports_to,omitempty"`
-	Key       string `json:"key"`
-	File      string `json:"file"`
-	Where     string `json:"where"`
-	Word      string `json:"word"`
+	// SyncID preserves a portable identity when this computer has its own path.
+	SyncID string `json:"sync_id,omitempty"`
+	Key    string `json:"key"`
+	File   string `json:"file"`
+	Where  string `json:"where"`
+	Word   string `json:"word"`
 	// Handle is the member's short name inside this team (handle.go). It is
 	// empty only while the member has no title to derive one from.
 	Handle string `json:"handle,omitempty"`
@@ -42,6 +44,8 @@ type Member struct {
 	// StartID is the Traffic start admitted when this membership was created.
 	// Only that brief may cross its join boundary; handles can be reused.
 	StartID string `json:"start_id,omitempty"`
+	// StartOrigin keeps a foreign start boundary out of this computer's sequence.
+	StartOrigin string `json:"start_origin,omitempty"`
 	// Started says this membership was made by the team manager's team_start
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.

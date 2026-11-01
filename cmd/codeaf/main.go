@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -57,6 +58,7 @@ func main() {
 		// timers installed by the feature that automations replaced.
 		automation.RemoveOldTimers()
 	}
+	home.Witness(home.Dir())
 	registerRunningCLI()
 	code := execute()
 	// The teams store folds its WAL back in as it closes (internal/teams).
@@ -201,6 +203,7 @@ func surfaceProcs(ncpu int) int {
 // one calm sentence over a restored terminal instead of spilling a goroutine
 // dump across the screen the user was working in.
 func execute() (code int) {
+	prepareFinalReport()
 	// Every CLI door shares this exit, including verbs with no session to close.
 	// C28 requires their grouped call and turn records to reach disk too.
 	defer func() {
@@ -348,6 +351,8 @@ func run() error {
 		return relayserve.Main(os.Args[2:])
 	case "cluster":
 		return runCluster(os.Args[2:])
+	case "devbox":
+		return runDevbox(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
@@ -604,7 +609,7 @@ Look at what happened — read-only, no key, nothing spent
       the models this machine will use, and what each has been measured at
   codeaf pool [show|status|verify] [--json] [--key key]
       the Model Pool: what is resolved and cached; verify fetches with a key
-  codeaf doctor [--db path]
+  codeaf doctor [--db path] [--fix]
       is this install healthy, and where does it keep things
   codeaf manual
       every page of codeaf's own manual, one per line
@@ -632,8 +637,10 @@ Housekeeping — changes state on disk or on the network
   codeaf pair [--via url] [--name name]
       add this device to yours: shows a link to approve from one you use
   codeaf pair approve <link-or-code> | <code> [--replace] | --code
-      approve a new device; or use or show a six-digit code for your chats
-  codeaf serve [--workspace path] [--via url]
+      approve a device; or use or show a code such as ` + pair.ExampleChatCode + ` for your chats
+  codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
+      an always-on computer of yours on your own Railway account
+  codeaf serve [--workspace path] [--via url] [--take-tasks]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices | codeaf cluster status | lead
       list your devices and the ones that can use this machine
@@ -762,6 +769,8 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_PREAUTHORIZE_SPEND
                        1 spends past the day's limit without stopping a
                        headless run to ask
+  CODEAF_SYNC_URL      sync service for your chats; off disables syncing
+  CODEAF_RELAY         sync service override for pairing and remote connections
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.

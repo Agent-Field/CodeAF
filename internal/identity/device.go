@@ -84,6 +84,9 @@ func Device(home string) (Dev, error) {
 // deviceFor returns the stored device when its cert verifies under id, else a
 // fresh device. A replaced identity therefore never keeps a stale device.
 func deviceFor(home string, id Identity) (Dev, error) {
+	if err := checkHome(home); err != nil {
+		return Dev{}, err
+	}
 	if d, err := LoadDevice(home); err == nil && d.Cert.Verify(id.PublicKey()) == nil {
 		return d, nil
 	}

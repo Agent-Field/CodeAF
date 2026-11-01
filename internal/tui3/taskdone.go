@@ -22,6 +22,8 @@ import (
 type taskDone struct {
 	id    uint64
 	ident taskIdent
+	// Placement survives the live node, just like the rest of this receipt.
+	placement string
 	// program is the program the work was handed to, "" for codeaf's own.
 	// Its ending is the conversation's to act on (session's program_outcome.go),
 	// so its card says it ended and that the chat has the rest
@@ -205,6 +207,7 @@ func (a *app) landedCard(node *taskNode) {
 		landed = a.now()
 	}
 	card := &taskDone{
+		placement:   a.taskComputerWords(node),
 		id:          node.id,
 		ident:       node.ident,
 		program:     a.nodeProgram(node),
@@ -472,6 +475,11 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 		return nil
 	}
 	out := []string{a.doneHead(card, width, sel)}
+	if card.placement != "" {
+		for _, line := range wrap(card.placement, width-2) {
+			out = append(out, "  "+a.pal.dim(line))
+		}
+	}
 	if card.attention != "" {
 		for _, line := range wrap(card.attention, width-2) {
 			out = append(out, "  "+a.pal.warn(line))
