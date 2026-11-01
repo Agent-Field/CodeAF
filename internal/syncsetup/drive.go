@@ -72,6 +72,10 @@ type Drive struct {
 	stopped bool
 	mu      sync.Mutex
 	viewer  Viewer // the superseded sentence and device, empty while this device drives
+	// lost is true as soon as this writer learns its hold is gone, before its
+	// pending turns are branched and the new holder is named; a confirmed
+	// hold clears it ([Drive.resumeViewer]).
+	lost bool
 }
 
 // Viewer names the computer that continued a chat and the engine's sentence.
@@ -307,20 +311,18 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	if !known {
 		return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 	}
-	var localHead string
+	// Turns sealed here on top of the record's head are this computer's own
+	// work, not an older tree: taking the free lease publishes them (catchUp).
 	wasFree := view.Cell.Lease.Expires <= view.Now
 	// An outage can leave our own saved head ahead of the relay. The
 	// unchanged, unreleased hold can renew without discarding that work.
 	resumeOwn := view.Cell.Lease.Device == s.Device.ID() && view.Cell.Lease.Expires != 0
 	if wasFree && !resumeOwn {
-		head, err := cellstore.Head(c)
+		extends, err := cellstore.Extends(c, view.Cell.Head)
 		if err != nil {
 			return drv, "", err
 		}
-		if head != nil {
-			localHead = head.Turn.ID
-		}
-		if localHead != view.Cell.Head {
+		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 		}
 	}
@@ -344,7 +346,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		return drv, "", err
 	}
 	known, err = cellstore.KnowsHead(c, v.Cell.Head)
-	if err != nil || !known || (wasFree && !resumeOwn && localHead != v.Cell.Head) {
+	if err != nil || !known || (wasFree && !resumeOwn && view.Cell.Head != v.Cell.Head) {
 		_ = s.Dir.Release(ctx, drv.ID(), v.Cell.Lease.Fence)
 		return drv, nonemptyHolder(view.Cell.Lease.Device), err
 	}
@@ -385,7 +387,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		Info:            d.info,
 		OnFlush:         d.flushed(),
 		OnSuperseded:    d.becomeViewer,
-		OnLost:          func() { d.refusal(directory.ErrFenceStale) },
+		OnLost:          d.loseHold,
 		OnError:         d.refusal,
 		Sleep:           d.opt.Sleep,
 		Liveness:        s.Liveness(),
@@ -400,6 +402,28 @@ func (d *Drive) info() cellsync.PublishInfo {
 		title = d.opt.Title()
 	}
 	return d.sync.publishInfo(d.cell, title)
+}
+
+// loseHold retires this writer's permission to run tools at once, while
+// leaving the viewer line, the notice and the send receipt until pending work
+// has been preserved as a branch and the holder read ([Drive.becomeViewer]):
+// a hold this computer still has keeps its receipt.
+func (d *Drive) loseHold() {
+	d.mu.Lock()
+	changed := !d.lost && d.viewer.Line == ""
+	d.lost = true
+	d.mu.Unlock()
+	if changed && d.opt.OnRenewalChange != nil {
+		d.opt.OnRenewalChange()
+	}
+}
+
+// displaced is whether this writer's hold is gone or another computer holds
+// the chat: renewal health is not this window's to report then.
+func (d *Drive) displaced() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lost || d.viewer.Line != ""
 }
 
 // becomeViewer is the Batcher's word that another device took the chat over:
@@ -478,7 +502,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	if s.Branch != "" {
 		d.notice(chatlist.KeptEdits(s.Turns, d.opt.DeviceName))
 	}
-	d.notice(line)
+	// A repeated refusal or ownership check that names the same holder says
+	// nothing new: displacement is announced once.
+	if previous.Line != line {
+		d.notice(line)
+	}
 }
 
 // refusal shows the person-facing line of a refused request, which the
@@ -525,7 +553,7 @@ func (d *Drive) Viewer() (string, bool) {
 
 // RenewalStatus reads this writer's cached renewal health without network work.
 func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
-	if _, viewer := d.Viewer(); viewer || d.batcher == nil || d.sync.removed.Load() {
+	if d.displaced() || d.batcher == nil || d.sync.removed.Load() {
 		return time.Time{}, 0, false
 	}
 	return d.batcher.RenewalStatus()
@@ -584,7 +612,13 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
-		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
+		// Retire the hold at once so no new seal starts, then wait for any seal
+		// already past Gate to note its turn before the batcher keeps pending
+		// work as a branch and names the new holder ([Drive.becomeViewer]).
+		d.loseHold()
+		d.sealMu.Lock()
+		d.sealMu.Unlock()
+		d.batcher.Displaced(ctx)
 	} else if err == nil {
 		d.resumeViewer()
 	}
@@ -641,13 +675,16 @@ func nonemptyHolder(id string) string {
 // nil while this device drives it. It is what a viewer's tool calls meet.
 func (d *Drive) Gate() error {
 	d.mu.Lock()
-	viewer, stopped := d.viewer, d.stopped
+	viewer, stopped, lost := d.viewer, d.stopped, d.lost
 	d.mu.Unlock()
 	if stopped {
 		return cellstore.ErrReadOnly
 	}
 	if viewer.Line != "" {
 		return &executor.WorkRefusal{Line: viewer.Line, HolderID: viewer.ID, HolderName: viewer.Name}
+	}
+	if lost {
+		return &executor.WorkRefusal{Line: chatlist.Superseded(unknownDevice)}
 	}
 	return nil
 }

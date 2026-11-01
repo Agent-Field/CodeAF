@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"time"
@@ -34,6 +35,9 @@ import (
 // last ask failed. A failed ask keeps the rows and explains whether the reading
 // reached its deadline or the connection could not be made.
 type machineReading struct {
+	host            string
+	checking        bool
+	readWithin      time.Duration
 	err             error
 	sendHolds       map[string]sendHold
 	computerRemoved bool
@@ -57,15 +61,42 @@ type machineReading struct {
 
 // homeMachinesMsg is one listing, coming BACK from the source.
 type homeMachinesMsg struct {
-	rows      []chatlist.Row
-	version   uint64
-	err       error
-	holdCell  string
-	holdFence uint64
+	readWithin time.Duration
+	rows       []chatlist.Row
+	version    uint64
+	err        error
+	holdCell   string
+	holdFence  uint64
 }
 
 // machinesAskTimeout bounds one ask without treating silence as a network failure.
-const machinesAskTimeout = 5 * time.Second
+const (
+	machinesAskTimeout   = 25 * time.Second
+	machinesSlowAfter    = 5 * time.Second
+	sendOwnershipTimeout = 5 * time.Second
+	writerStartTimeout   = 30 * time.Second
+)
+
+// This signal stays inside the send path; the existing displacement notice
+// already tells the person why the message cannot leave this window.
+var errSendWriterDisplaced = errors.New("send writer displaced")
+
+type homeMachinesSlowMsg struct{ seq uint64 }
+
+func (a *app) relayHost() string {
+	if source, ok := a.machines.(interface{ RelayHost() string }); ok {
+		return source.RelayHost()
+	}
+	return ""
+}
+
+func (a *app) machinesStillChecking(msg homeMachinesSlowMsg) {
+	if !a.machinesAsking || msg.seq != a.machinesAskSeq {
+		return
+	}
+	a.machineRead.checking = true
+	a.rebuildMachines()
+}
 
 // askMachines lists the other machines, off the update loop for the reason a
 // repository's status is asked (homeband_repo.go): a keystroke may not wait on
@@ -76,28 +107,33 @@ func (a *app) askMachines() tea.Cmd {
 
 // askChats is the listing half of [app.askMachines].
 func (a *app) askChats() tea.Cmd {
-	if a.machines == nil || a.machinesAsking {
+	if a.hosted() || a.machines == nil || a.machinesAsking {
 		return nil
 	}
 	a.machinesAsking = true
+	a.machinesAskSeq++
+	seq := a.machinesAskSeq
+	a.machineRead.host = a.relayHost()
 	src, file := a.machines, a.file
-	return func() tea.Msg {
+	read := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
 		defer cancel()
 		rows, version, err := chatlist.RowsAt(ctx, src)
-		msg := homeMachinesMsg{rows: rows, version: version, err: err}
+		msg := homeMachinesMsg{rows: rows, version: version, err: err, readWithin: machinesAskTimeout}
 		if local, ok := src.(sendLeaseSource); ok && file != "" {
 			msg.holdCell = filepath.Base(session.DirOf(file))
 			_, msg.holdFence, _ = local.SendLease(msg.holdCell)
 		}
 		return msg
 	}
+	return tea.Batch(read, surfaceTick(machinesSlowAfter, func(time.Time) tea.Msg { return homeMachinesSlowMsg{seq: seq} }))
 }
 
 // tookMachines files the answer. An error keeps the last rows and only marks
 // them stale.
 func (a *app) tookMachines(msg homeMachinesMsg) tea.Cmd {
 	a.machinesAsking = false
+	a.machineRead.checking = false
 	if a.machinesRetaken {
 		a.machinesRetaken = false
 		return a.askMachines()
@@ -123,6 +159,7 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 	before, wasElsewhere := a.heldElsewhere()
 	a.fileMachines(msg)
 	a.machineRead.err = msg.err
+	a.machineRead.readWithin = msg.readWithin
 	if row, elsewhere := a.heldElsewhere(); msg.err == nil && elsewhere && (!wasElsewhere || before.DeviceID != row.DeviceID || before.Device != row.Device) {
 		a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
 	}
@@ -140,51 +177,130 @@ func (a *app) recordMachines(msg homeMachinesMsg) tea.Cmd {
 
 // into merges the other machines' chats into the panel's own lines, newest
 // first, cuts to the panel's cap, and puts the unreachable sentence at the foot.
+// Each chat id appears at most once: a chat held elsewhere replaces its stale
+// local row with the continuation door, while a chat held or released here
+// keeps its single local row (carrying any collapsed branch copies).
 func (m machineReading) into(in *homeGridInput, own []homeLine) homePanelRows {
-	lines := append(own, m.lines(in, own)...)
+	if in != nil && in.far {
+		return homePanelCut(in, panelSessions, own)
+	}
+	localIDs := make(map[string]bool, len(own))
+	localTitle := make(map[string]string, len(own))
+	for _, line := range own {
+		if id := homeSessionID(line.row); id != "" {
+			localIDs[id] = true
+			if line.cell != nil && line.cell.title != "" {
+				localTitle[id] = line.cell.title
+			}
+		}
+	}
+	collapsed, byLocal := chatlist.CollapseCopies(m.rows, localIDs)
+	replacedByRemote := map[string]bool{}
+	var remoteLines []homeLine
+	for _, row := range collapsed {
+		if m.away != nil && m.away(row) {
+			row = row.Quiet()
+		}
+		if localIDs[row.Cell] {
+			if heldElsewhere(row) {
+				if (row.Title == "" || row.Title == "untitled") && localTitle[row.Cell] != "" {
+					row.Title = localTitle[row.Cell]
+				}
+				replacedByRemote[row.Cell] = true
+				remoteLines = append(remoteLines, machineLineIn(row, m.at, in, m.merge, m.separate))
+			} else if len(row.Copies) > 0 {
+				if byLocal == nil {
+					byLocal = make(map[string][]chatlist.BranchCopy)
+				}
+				byLocal[row.Cell] = append(byLocal[row.Cell], row.Copies...)
+			}
+			continue
+		}
+		if drawnAsRemote(row, false) {
+			remoteLines = append(remoteLines, machineLineIn(row, m.at, in, m.merge, m.separate))
+		}
+	}
+	lines := make([]homeLine, 0, len(own)+len(remoteLines))
+	for _, line := range own {
+		id := homeSessionID(line.row)
+		if id != "" && replacedByRemote[id] {
+			continue
+		}
+		if copies := byLocal[id]; len(copies) > 0 && line.cell != nil {
+			decorateCellWithCopies(line.cell, copies, in != nil && in.desc)
+		}
+		lines = append(lines, line)
+	}
+	lines = append(lines, remoteLines...)
 	sort.SliceStable(lines, func(i, j int) bool { return lines[i].stamp().After(lines[j].stamp()) })
 	rows := homePanelCut(in, panelSessions, lines)
-	if m.down {
+	if m.down || m.checking && m.host != "" {
 		rows.lines = append(rows.lines, homeLine{kind: homeMachineRow, cell: &homeCell{
-			kind: cellWhisper, panel: panelSessions, title: m.unavailableWord()}})
+			kind: cellWhisper, panel: panelSessions, title: m.waitWord()}})
 	}
 	return rows
 }
 
-// unavailableWord preserves the distinction between a deadline and a failed connection.
-func (m machineReading) unavailableWord() string {
+// readTimedOut distinguishes an expired request from a failed connection.
+func readTimedOut(err error) bool {
 	var timeout interface{ Timeout() bool }
-	if errors.Is(m.err, context.DeadlineExceeded) || errors.As(m.err, &timeout) && timeout.Timeout() {
+	return errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout()
+}
+
+func (m machineReading) waitWord() string {
+	if m.down {
+		return m.unavailableWord()
+	}
+	if m.checking && m.host != "" {
+		return fmt.Sprintf("waiting for %s; still checking", m.host)
+	}
+	return ""
+}
+
+func (m machineReading) unavailableWord() string {
+	if m.host != "" {
+		if readTimedOut(m.err) {
+			within := m.readWithin
+			if within == 0 {
+				within = machinesAskTimeout
+			}
+			return fmt.Sprintf("%s did not answer in %s; still trying", m.host, within)
+		}
+		return fmt.Sprintf("%s is unreachable; still trying", m.host)
+	}
+	if readTimedOut(m.err) {
 		return chatlist.ReadTimedOut
 	}
 	return chatlist.Unreachable
 }
 
-// lines are the rows to draw: none of the kind that only this machine can hold,
-// and none for a chat this machine already lists unless another machine holds it
-// live. That one is drawn WITH its door (`running on desktop`, enter takes it),
-// because the local row of a chat taken elsewhere is a stale window, and the way
-// back to it is the same take the cold path runs.
+// lines are the rows to draw from other machines when merged with own.
 func (m machineReading) lines(in *homeGridInput, own []homeLine) []homeLine {
+	if in != nil && in.far {
+		return nil
+	}
 	local := map[string]bool{}
 	for _, line := range own {
-		local[line.row.ID] = true
+		if id := homeSessionID(line.row); id != "" {
+			local[id] = true
+		}
 	}
+	collapsed, _ := chatlist.CollapseCopies(m.rows, local)
 	var out []homeLine
-	for _, row := range m.rows {
+	for _, row := range collapsed {
 		if m.away != nil && m.away(row) {
 			row = row.Quiet()
 		}
 		if drawnAsRemote(row, local[row.Cell]) {
-			out = append(out, machineLine(row, m.at, in.now, m.merge, m.separate))
+			out = append(out, machineLineIn(row, m.at, in, m.merge, m.separate))
 		}
 	}
 	return out
 }
 
 // drawnAsRemote says a row from the directory is a row of the panel. A chat
-// held here is never drawn twice; a chat listed here is drawn again only while
-// another machine holds it, live or gone quiet.
+// held here is never drawn twice; a chat listed here replaces its local row
+// only while another machine holds it, live or gone quiet.
 func drawnAsRemote(row chatlist.Row, listedHere bool) bool {
 	if row.Status == chatlist.Here {
 		return false
@@ -200,10 +316,51 @@ func heldElsewhere(row chatlist.Row) bool {
 	return row.Status == chatlist.Running || (row.Status == chatlist.Off && !row.Mine)
 }
 
+func decorateCellWithCopies(cell *homeCell, copies []chatlist.BranchCopy, desc bool) {
+	full := chatlist.CopiesLine(copies)
+	short := chatlist.CopiesShort(copies)
+	if full == "" {
+		return
+	}
+	if cell.note != "" {
+		baseShort := cell.noteShort
+		if baseShort == "" {
+			baseShort = cell.note
+		}
+		cell.note = cell.note + " · " + full
+		// THE CHAT'S OWN STATE OUTRANKS THE STORY OF ITS COPIES. Where the whole
+		// sentence does not fit, the narrow spelling keeps the state and only counts
+		// the copies, so a row never loses `host-a offline` to the sentence about
+		// what a copy is; the painter drops a narrow note that is still too wide.
+		cell.noteShort = baseShort + " · " + chatlist.CopiesCount(copies)
+	} else {
+		cell.note = full
+		cell.noteShort = short
+	}
+	cell.keepNote = true
+	if desc {
+		cell.sub = rowClauses(cell.sub, full)
+	}
+}
+
 // machineLine is one chat on another machine as a row of the sessions panel.
 // The turn's time is fixed once, from the moment of the read; the age drawn is
 // then counted to now, so it grows with the clock however long ago the ask was.
 func machineLine(row chatlist.Row, readAt, now time.Time, merge bool, separate ...bool) homeLine {
+	return machineLineWithDesc(row, readAt, now, false, merge, separate...)
+}
+
+func machineLineIn(row chatlist.Row, readAt time.Time, in *homeGridInput, merge bool, separate ...bool) homeLine {
+	var now time.Time
+	var desc bool
+	if in != nil {
+		now = in.now
+		desc = in.desc
+	}
+	return machineLineWithDesc(row, readAt, now, desc, merge, separate...)
+}
+
+func machineLineWithDesc(row chatlist.Row, readAt, now time.Time, desc, merge bool, separate ...bool) homeLine {
 	// THE DRAW CLOCK IS THE WORLD'S READING AND THE READ TIME IS THE ASK'S, two
 	// samples of one wall clock a few milliseconds apart. A draw that seems to
 	// come before the read would make a turn look younger than the directory said
@@ -219,11 +376,15 @@ func machineLine(row chatlist.Row, readAt, now time.Time, merge bool, separate .
 		// spelling for frames that cannot hold the whole.
 		note, short = chatlist.BranchLine(row, merge, separate...), chatlist.BranchShort(row)
 	}
-	return homeLine{kind: homeMachineRow, since: at, remote: &row, cell: &homeCell{
+	cell := &homeCell{
 		kind: cellRow, panel: panelSessions, title: row.Title,
 		note: note, noteShort: short, keepNote: true, right: sinceAt(at, now),
 		key: "machine:" + row.Cell,
-	}}
+	}
+	if len(row.Copies) > 0 {
+		decorateCellWithCopies(cell, row.Copies, desc)
+	}
+	return homeLine{kind: homeMachineRow, since: at, remote: &row, cell: cell}
 }
 
 // stamp is when a line's chat last moved, for ordering the merged panel.
@@ -243,4 +404,15 @@ func (a *app) machineRowTexts(line homeLine, at, width int, pal palette) []strin
 		texts = append(texts, drawn.text)
 	}
 	return texts
+}
+
+// messageKept is the one line a send that could not leave says. It lives
+// beside the other relay-named words, so the sentence a person reads after an
+// unanswered check is worded in one place rather than inside the send path.
+func messageKept(host string) string {
+	const kept = "your message is still in the box, press enter to send it"
+	if host == "" {
+		return kept
+	}
+	return host + " has not answered; " + kept
 }

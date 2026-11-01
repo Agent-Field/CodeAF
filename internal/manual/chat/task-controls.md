@@ -274,7 +274,9 @@ ref/index checks continue to protect the destination.
 The portable apply contract preserves raw file bytes and line endings, file
 permissions, empty directories and directory permissions. Changed paths with
 unsupported ownership, hardlinks, extended attributes, native flags or access
-control metadata are refused before writing the original. Timestamps are outside
+control metadata are refused before writing the original. The one exception is
+`com.apple.provenance`, which macOS stamps on new files itself and which the
+replacements receive the same way; it never causes a refusal. Timestamps are outside
 this portable contract. Older copies without a historical metadata baseline stay
 readable, but this apply door cannot infer their original metadata safely.
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -295,6 +296,8 @@ const (
 	KeyWork = "ui.work"
 	// KeyIcons selects the step icon repertoire independently of colour.
 	KeyIcons = "ui.icons"
+	// KeyTeamsShare stays local because every computer chooses whether its teams travel.
+	KeyTeamsShare = "teams.share"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -444,6 +447,13 @@ const (
 	// before the row existed: a node is the same worker doing the same job
 	// somewhere quieter.
 	KeyTaskModel = "task.model"
+
+	// KeyTaskRunsOn remembers a device rather than its name, so a rename does
+	// not move the person's default. Blank keeps tasks on this computer.
+	KeyTaskRunsOn = "task.runs_on"
+
+	// TaskRunsHere is the setting's empty value in the person's words.
+	TaskRunsHere = "this computer"
 
 	// KeyTaskSettle is WHO DECIDES a task that finished but that nobody could
 	// check (internal/session's task_contract.go). It sits under `task.` beside
@@ -1139,6 +1149,19 @@ var OperatorEnvPins = []string{
 	// line. Plumbing rather than a row for the plainest reason there is: a row
 	// would persist a preference this binary cannot act on.
 	"CODEAF_INSTALL_NAME",
+	// The dev box's one-time setup values (internal/devbox). They are service
+	// variables Terraform hands the box's boot script for its first join, and
+	// codeaf never reads them from its own environment: Go spells them only to
+	// find them in the Terraform state and remove them once the box answers. A
+	// row would persist a pairing code and a private key, so plumbing.
+	"CODEAF_DEVBOX_CODE",
+	"CODEAF_DEVBOX_REMOTE_KEY",
+	"CODEAF_DEVBOX_REMOTE_DEVICES",
+	// CODEAF_SERVE_SYNC asks `codeaf serve` to keep the identity's saved keys,
+	// settings and presence in step (internal/syncsetup). A dev box's boot
+	// script sets it for the one process it starts; it is one launch's posture
+	// rather than a preference, so plumbing, like CODEAF_NO_AUTOMATIONS.
+	"CODEAF_SERVE_SYNC",
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,
@@ -1784,6 +1807,9 @@ type SettingGroup struct {
 // own: the running model slots and the surface's own divider preference.
 type SettingsOptions struct {
 	ProfileDir string
+	// Include omits controls unavailable to the caller from discovery and writes.
+	// Nil keeps the full registry for callers that supply their own presentation.
+	Include func(key string) bool
 
 	// ModelValue and SetModel front the model slots. They stay in the chat
 	// prefs file; the registry does not migrate them.
@@ -1837,9 +1863,23 @@ type Settings struct {
 // divider has nowhere to be written without [SettingsOptions.SaveSplitPct], and
 // a read-only divider is not a row somebody can read — it is a control whose
 // only behaviour is to refuse.
+//
+// [SettingsOptions.Include] is the caller's own narrowing, applied after the
+// build: a control the caller cannot offer at all (Run tasks on, in a
+// conversation with no task computers) is left out of discovery and writes
+// alike, rather than listed and refused.
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
+	if options.Include != nil {
+		rows := registry.rows[:0]
+		for _, row := range registry.rows {
+			if options.Include(row.Key) {
+				rows = append(rows, row)
+			}
+		}
+		registry.rows = rows
+	}
 	for index := range registry.rows {
 		registry.rows[index].write = registry.announce(registry.rows[index].Key, registry.rows[index].write)
 	}
@@ -2266,6 +2306,18 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return IconsAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyIcons, raw, IconModes) },
 		},
+		Setting{
+			Key: KeyTeamsShare, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "share teams", Choices: teamsShareChoices,
+			Hint: "Share teams, their members and settings, and recent Traffic as read-only history; off until turned on, and both computers must turn it on (pairing required).",
+			read: func() string {
+				if TeamsShareAt(dir) {
+					return "on"
+				}
+				return "off"
+			},
+			write: func(raw string) error { return writeChoice(dir, KeyTeamsShare, raw, teamsShareChoices) },
+		},
 		// Before the audit row, because it comes first in the life of a task: this
 		// says what STARTS when you type /task, the audit row says what has to be
 		// true before what started is allowed to land.
@@ -2402,6 +2454,13 @@ func (s *Settings) build() []Setting {
 		// how long you get to redirect it, who checks it, and whose hands it is
 		// in — and none of them is a rule about how this conversation's own calls
 		// are made.
+		Setting{
+			Key: KeyTaskRunsOn, Category: CategoryTasks, Kind: SettingText,
+			Label: "Run tasks on", EmptyLabel: TaskRunsHere,
+			Hint:  "The paired computer for tasks that work in their own copy. Leave it blank for " + TaskRunsHere + ".",
+			read:  func() string { return TaskRunsOnAt(dir) },
+			write: func(raw string) error { return WriteTaskRunsOn(dir, raw) },
+		},
 		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "the crew's worker",
@@ -4309,6 +4368,27 @@ func TaskModelAt(profileDir string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
+}
+
+// TaskRunsOnAt reads the stable placement preference. A removed device is
+// resolved to this computer by the session against its current roster.
+func TaskRunsOnAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyTaskRunsOn)
+	return strings.TrimSpace(value)
+}
+
+// WriteTaskRunsOn accepts only a device identity. The computer picker resolves
+// shown names before reaching this writer, keeping renames harmless.
+func WriteTaskRunsOn(profileDir, raw string) error {
+	value := strings.TrimSpace(raw)
+	if value != "" {
+		hexID, ok := strings.CutPrefix(value, "dev_")
+		_, err := hex.DecodeString(hexID)
+		if !ok || len(hexID) != 32 || err != nil {
+			return fmt.Errorf("choose a paired computer or %s", TaskRunsHere)
+		}
+	}
+	return writeText(profileDir, KeyTaskRunsOn, value)
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock

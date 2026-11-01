@@ -79,7 +79,11 @@ func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, 
 }
 
 func (h *HTTP) Acquire(ctx context.Context, id string, o AcquireOpts) (v CellView, err error) {
-	if o.Force || o.RequireConditional {
+	// Only displacing a live holder needs the promise. A take of a lapsed lease
+	// is safe on every service: an older one still refuses a live holder
+	// atomically, raises the fence, and answers the head the caller compares
+	// with the one it saw, so a person is never kept from their own chat (#2072).
+	if o.Force {
 		if err := h.requireConditionalTake(ctx, id); err != nil {
 			return v, err
 		}
@@ -250,7 +254,7 @@ func refusal(resp *http.Response) error {
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrTooOld
 	}
-	if resp.StatusCode == http.StatusServiceUnavailable {
+	if resp.StatusCode >= http.StatusInternalServerError {
 		// Coordination can refuse before a directory handler has an error
 		// body. It is the same retryable refusal the coded answer names, not
 		// an unreachable network, so closing releases retry it and nothing

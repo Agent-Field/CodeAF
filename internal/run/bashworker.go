@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/effort"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -87,10 +88,19 @@ type BashWorker struct {
 	seat         procexec.Seat
 	workspaceURI string
 	workspaceSet *session.WorkspaceSet
+	// The task door carries the settled task's controls into this child run.
+	taskEffort effort.Rung
+	noProgress int
 }
 
 // WorkerOption changes how a worker is built; the zero set is the host worker.
 type WorkerOption func(*BashWorker)
+
+// WithTaskControls carries an explicitly settled task's controls without
+// changing this computer's saved defaults or spending permission.
+func WithTaskControls(rung effort.Rung, noProgress int) WorkerOption {
+	return func(w *BashWorker) { w.taskEffort = rung; w.noProgress = noProgress }
+}
 
 // WithWorkspaceURI carries the admitted identity without deriving it from a path.
 func WithWorkspaceURI(uri string) WorkerOption {
@@ -156,6 +166,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		}
 	}
 	agent, err := session.NewBeltWorker(session.Config{
+		Effort:           w.taskEffort,
 		Workspace:        w.workspace,
 		WorkspaceURI:     w.workspaceURI,
 		WorkspaceSet:     w.workspaceSet.Clone(),
@@ -232,6 +243,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// the store and still unread until a turn takes them, so a refused splice
 	// leaves it to the next boundary rather than to this carry.
 	var owed []string
+	stalledAfter := sameStepNote + sameStepEnd
+	if w.noProgress > 0 {
+		stalledAfter = w.noProgress
+	}
 	// notes holds the ids of this task's notes THIS WORKER has already been
 	// handed. THE MARK IS THE WORKER'S ALONE and lives only for the life of the
 	// loop: a person opening the task's page reads the same notes without
@@ -375,7 +390,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 							owed = append(owed, sameStepSpoken())
 						}
 					}
-					if same >= sameStepNote+sameStepEnd {
+					if same >= stalledAfter {
 						// A TASK THE STORE SAYS IS BLOCKED ON ANOTHER TASK goes to
 						// the parking the belt already has rather than an ending:
 						// `plandb wait` refuses a wait with nothing open, so a park
@@ -385,7 +400,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 						// work. The worker was told before the ending came, so
 						// the park is not the first the worker hears of the law.
 						if _, waitErr := w.store.Wait(task.ID, task.ID); waitErr == nil {
-							ending = storeEnding{kind: endingWait, reason: fmt.Sprintf("waiting: the same command came back with the same answer %d times in a row", sameStepNote+sameStepEnd)}
+							ending = storeEnding{kind: endingWait, reason: fmt.Sprintf("waiting: the same command came back with the same answer %d times in a row", stalledAfter)}
 							stop()
 						} else {
 							stalled = true
@@ -509,7 +524,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 			// figure counts the whole run of identical steps, the three that
 			// brought the note and the three that followed it, because that is
 			// what a person opening the record counts.
-			reason := fmt.Sprintf("the same command came back with the same answer %d times in a row: the work was not moving", sameStepNote+sameStepEnd)
+			reason := fmt.Sprintf("the same command came back with the same answer %d times in a row: the work was not moving", stalledAfter)
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
 				return Report{Steps: steps}, err
 			}

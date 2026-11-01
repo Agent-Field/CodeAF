@@ -287,7 +287,7 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
 updates the tab and the row in Sessions together.
 
-## A chat is running on my other computer — how does home show it, chats on my other machines, "running on tower", "tower offline", why does it say running on build-box offline, merge / discard
+## A chat is running on my other computer — how does home show it, chats on my other machines, "held on tower", "tower offline", why does it say held on build-box offline, merge / discard
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -299,14 +299,14 @@ happened. The row says where the chat is only where that tells you something:
 
 | The chat is | The row says |
 | --- | --- |
-| running on another machine | `running on <device>` |
+| held on another machine | `held on <device>` |
 | on a machine that went off or to sleep without letting go | `<device> offline` |
 | a branch left by a takeover | `<K> turns from <device>: discard` (this build has no merge) |
 | held by this machine, or let go by everyone | nothing |
 
-## Why a chat says running on build-box or build-box offline
+## Why a chat says held on build-box or build-box offline
 
-For a chat on another paired computer, read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, including while it is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -330,8 +330,7 @@ ten minutes). It asks every few seconds while the list is changing and about onc
 while it is not. Each row's age is counted from its last saved turn, so it keeps growing
 between refreshes.
 
-If the other machines cannot be reached, the last list stays on screen and the line
-`other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
+a read still waiting at five seconds keeps the last list and says `waiting for <host>; still checking`. it continues for up to 25 seconds. a deadline says `<host> did not answer in 25s; still trying`; a failed connection says `<host> is unreachable; still trying`. background retries continue, and a successful answer clears the line. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
@@ -341,12 +340,12 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
+Press enter on a row that says `<device> offline` or `held on <device>` and home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
-`running on <device>` row the card starts with that: `running on <device>; last saved turn
-<N> ago`. When that device is not online, the card leaves `running on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
+`held on <device>` row the card starts with that: `held on <device>; last saved turn
+<N> ago`. When that device is not online, the card leaves `held on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
@@ -359,13 +358,12 @@ When continuing a chat from another paired computer:
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
   branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
-- If another machine took an `offline` chat first, the row goes back to `running on <device>` with one
-  line saying another device continued it first. Nothing was changed.
-- If the other machines cannot be reached, enter says `other machines unreachable` and asks
+- If another machine took an `offline` chat first, the row goes back to `held on <device>` with a card saying `another device continued this chat first`, `1 retry` and `2 leave it there`. if the same computer picked it up again, the card instead says `<holder> picked this chat up again; press enter to continue it here` and asks for fresh confirmation.
+- if the service cannot be reached, enter names its host and says it is still trying, and asks
   nothing: no chat can be taken without them.
 - With no way to continue set up, an offline row has no `continue here`: enter says its sentence.
 
-## What comes with a continued chat — the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
+## Is my project folder changed when I continue a chat here — what comes with a continued chat, the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
@@ -525,8 +523,16 @@ them`. Opening separately opens its own chat and workspace copy, with the kept t
 their files; the main chat stays as it is. **Discard archives** the branch: it leaves this list
 and is not deleted. **Merge is
 not offered on this build**. The row says
-`<K> turns from <device>: open separately / discard`. If the other
-machines cannot be reached, enter says `other machines unreachable` and does nothing.
+`<K> turns from <device>: open separately / discard`. if the service cannot be reached, enter names its host and says it is still trying, and does nothing.
+
+## Why do I see the same chat twice on Home — the same chat twice on Home, one row per chat id and collapsed branch copies
+
+Home keys every conversation row by the chat's id rather than its transcript path, both directly on this computer and over `codeaf chat --host`. A chat known both locally on disk and through sync appears once on Home instead of twice. Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never appears a second time as held elsewhere.
+
+When a chat also has kept branch copies, Home collapses those copies into the main chat's row instead of listing separate duplicate rows for the same chat. The row and its continue card count the copies, say what a copy is, and state whether discarding loses anything:
+
+- `1 copy (unsent turns set aside; already in this chat, so discarding loses nothing)` — or `1 copy · unsent, loses nothing` in a narrow column — when every turn in the copy is already in the main chat.
+- `2 copies (unsent turns set aside; discarding archives 3 turns not in this chat)` — or `2 copies · unsent, 3 turns not here` in a narrow column — when a copy holds turns that are not in the main chat.
 
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
@@ -1541,7 +1547,7 @@ as commands. The folder notice may remain, but the path stays in the box.
 
 **Yes. A line that begins with `/` is a command, and `enter` runs it rather than sending
 it.** Typing `/settings` on home and pressing `enter` opens the settings panel; it does not
-start a conversation whose first message is the word `/settings`.
+start a conversation whose first message is the word `/settings`. `/devices` and `/pair` also open over Home without starting a conversation. A pasted pairing link shows its approval in the Add another device card, and either decision stays on Home.
 
 **The screen says which `enter` you are about to press, before you press it.** With a command
 in the box the action row reads `+ run /settings` in place of `+ start a new conversation:
@@ -1847,7 +1853,7 @@ advertised. (Until 2026-09-17 these words were the right end of the rule above t
 **It stays when a tip is showing.** A conversation's tip covers the project at the keys
 row's right end, never the keys. Until 2026-09-24 a tip took the whole row and the
 door went with it. One of the tips is about the door itself:
-`space space takes you back to home`.
+`space space brings you back to home`.
 
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
@@ -2718,6 +2724,18 @@ After a clean quit lets a paired computer's chat go, bare `codeaf` on another pa
 
 If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
 
+## my chosen chat opens while a startup chat is still arriving
+
+if bare startup is already continuing a released chat, confirming a different Home row or using `alt+c` chooses the chat that opens next. Home says `continuing <Y> next; <X> is still on its way here`, using the same chat titles as the cards. the automatic move settles and is let go before your confirmed move begins. its files and kept work remain intact, and it never opens over your selection. `esc` cancels the waiting choice; the automatic chat still settles and is let go.
+
+confirming the arriving chat itself joins the existing move. opening another local chat or starting a new chat also takes precedence over the automatic arrival. moving the cursor, opening Home or inspecting and declining another card does not choose a different chat. input before the startup safety check answers still cancels that automatic choice. a move you explicitly started retains the busy sentence `a chat is already continuing here; wait for it to open` for another explicit pick.
+
 ## Empty untitled chats from your other devices — rows before the first saved turn
 
 An empty new chat on one of your other devices stays off Home until it has a saved turn. Opening a window there does not add an `untitled` row here, even while that window remains open and running. Its startup save alone does not make it a conversation you can continue. Once that chat has its first saved turn, it appears with the other chats you can continue.
+
+## Sync off and my chats are gone — CODEAF_SYNC_URL=off keeps every chat on this computer
+
+Turning sync off with `CODEAF_SYNC_URL=off` (or leaving sync off before pairing) means "do not talk to the sync service", never "forget my chats". Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
+
+When an older chat was already copied into this version's store, Home lists and opens that copy even while sync is off, and the untouched original stays on disk beside it. Saved sync hold receipts from an earlier session stay dormant while sync is off, so sending a message in any local chat works without asking the sync service.

@@ -59,15 +59,18 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 		Schema:      schemaWithAppend(inner.Schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Path    string `json:"path"`
-				Content string `json:"content"`
-				Append  bool   `json:"append"`
+				Path    string  `json:"path"`
+				Content *string `json:"content"`
+				Append  bool    `json:"append"`
 			}
 			// A call whose arguments do not parse belongs to bare: it owns
 			// the wording of every other write error, and a second parser
 			// reporting the same fault in different words helps nobody.
 			if err := decodeToolArguments(args, &parsed); err != nil || !parsed.Append {
 				return inner.Execute(ctx, args)
+			}
+			if parsed.Content == nil {
+				return "Invalid arguments: content is required and must be a string", true, nil
 			}
 			if strings.TrimSpace(parsed.Path) == "" {
 				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil
@@ -85,7 +88,7 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 			combined, err := json.Marshal(struct {
 				Path    string `json:"path"`
 				Content string `json:"content"`
-			}{parsed.Path, string(existing) + parsed.Content})
+			}{parsed.Path, string(existing) + *parsed.Content})
 			if err != nil {
 				return "Error preparing the append: " + err.Error(), true, nil
 			}
@@ -96,8 +99,8 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 			// The success line speaks in lines rather than bytes because
 			// lines are the unit a continuation reasons in — the salvage
 			// note counts them the same way (salvage.go).
-			added := lineTally(parsed.Content)
-			total := lineTally(string(existing) + parsed.Content)
+			added := lineTally(*parsed.Content)
+			total := lineTally(string(existing) + *parsed.Content)
 			return fmt.Sprintf("Appended %d line%s to %s; the file now has %d line%s.",
 				added, plural(added), parsed.Path, total, plural(total)), false, nil
 		},
