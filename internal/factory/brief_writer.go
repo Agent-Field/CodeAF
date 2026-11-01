@@ -305,6 +305,7 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 			v.Blocks = append(v.Blocks, *kept)
 		}
 	}
+	numberSpots(v.Blocks)
 	return v, drops, ""
 }
 
@@ -501,6 +502,9 @@ func (e briefEvidence) checkBlock(b BriefBlock, part string, needsYou bool) (*Br
 	var drops []BriefDrop
 	drop := func(what, reason string) { drops = append(drops, BriefDrop{Part: part + " " + what, Reason: reason}) }
 	b.Bullets = keepClaims(b.Bullets, func(c BriefClaim) string { return e.claimFault(c.Text, c.Evidence) }, func(c BriefClaim) string { return c.Text }, drop)
+	for i := range b.Spots {
+		b.Spots[i].Notes = e.keepNotes(b.Spots[i], drop)
+	}
 	b.Spots = keepClaims(b.Spots, func(s BriefSpot) string { return e.claimFault(s.Why+" "+strconv.Itoa(s.Lines), s.Evidence) }, func(s BriefSpot) string { return s.File }, drop)
 	b.Questions = keepClaims(b.Questions, func(q BriefQuestion) string { return e.questionFault(q) }, func(q BriefQuestion) string { return q.Text }, drop)
 	b.Shots = keepClaims(b.Shots, func(s BriefShot) string { return e.claimFault(s.Label, s.Evidence) }, func(s BriefShot) string { return s.Ref }, drop)
@@ -649,4 +653,28 @@ func wrapEvidence(v any, evidence bool) any {
 		return x
 	}
 	return v
+}
+
+// keepNotes keeps the notes of a spot that name one of its file's hunks and
+// say no number that hunk does not show.
+func (e briefEvidence) keepNotes(s BriefSpot, drop func(what, reason string)) []BriefNote {
+	return keepClaims(s.Notes, func(n BriefNote) string {
+		file, _, _ := strings.Cut(n.Hunk, ":")
+		if file != s.File {
+			return fmt.Sprintf("the note names hunk %q, which is not in %s", n.Hunk, s.File)
+		}
+		return e.claimFault(n.Text, []BriefEvidence{{Kind: "hunk", Ref: n.Hunk}})
+	}, func(n BriefNote) string { return n.Text }, drop)
+}
+
+// numberSpots gives each spot of a version its id, counting from 1 in
+// reading order, which is what factory.job_brief_spot is asked for.
+func numberSpots(blocks []BriefBlock) {
+	n := 0
+	for i := range blocks {
+		for j := range blocks[i].Spots {
+			n++
+			blocks[i].Spots[j].ID = strconv.Itoa(n)
+		}
+	}
 }

@@ -212,6 +212,7 @@ var ServiceRoutes = []ServiceRoute{
 	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
 	{"POST", "/v1/jobs/{id}/brief/begin", BriefBeginRequest{}, BriefBegin{}},
 	{"POST", "/v1/jobs/{id}/brief/keep", BriefKeepRequest{}, BriefKept{}},
+	{"GET", "/v1/jobs/{id}/brief/spots/{spot}", nil, JobBriefSpot{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
 	{"POST", "/v1/repos/{owner}/{repo}/pipeline/open-pr", PipelinePRRequest{}, PipelinePRResponse{}},
@@ -282,4 +283,21 @@ type BriefKept struct {
 	JobBrief
 	Kept  bool                `json:"kept"`
 	Drops []factory.BriefDrop `json:"drops"`
+}
+
+// JobBriefSpot is GET /v1/jobs/{id}/brief/spots/{spot}: one spot of the
+// job's newest brief (Rev) with its hunks from the job's change and the
+// writer's notes on them.
+type JobBriefSpot struct {
+	Factory     Factory            `json:"factory"`
+	Job         int                `json:"job"`
+	Rev         int                `json:"rev"`
+	Spot        string             `json:"spot"`
+	File        string             `json:"file"`
+	Symbol      string             `json:"symbol,omitempty"`
+	Why         string             `json:"why"`
+	Lines       int                `json:"lines"`
+	Hunks       []factory.SpotHunk `json:"hunks"`
+	Annotations []factory.SpotNote `json:"annotations"`
+	Truncated   bool               `json:"truncated,omitempty"`
 }

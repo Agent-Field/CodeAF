@@ -30,6 +30,7 @@ func (h *Handler) jobScreens() {
 	})
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
 	h.read("/v1/jobs/{id}/brief", h.readJobBrief)
+	h.read("/v1/jobs/{id}/brief/spots/{spot}", h.readBriefSpot)
 	h.postJob("brief/begin", h.config.Store != nil, h.onlyOwner(h.beginBrief))
 	h.postJob("brief/keep", h.config.Store != nil, h.onlyOwner(h.keepBrief))
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
