@@ -82,6 +82,11 @@ func TestAppModelQuestionHoldStopsTheEngineClock(t *testing.T) {
 				t.Fatalf("asks.shown did not start the clock: %+v %v", shown, err)
 			}
 			ask = *shown
+			// Every window learns the countdown: the engine re-announces the ask.
+			rec.waitFor(t, 2*time.Second, func(event string, data any) bool {
+				v, ok := data.(appwire.AskOpened)
+				return ok && v.Ask.ID == ask.ID && v.Ask.ClockUntil != nil
+			})
 			if !hold {
 				rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskClosed))
 				decisions := engine.Decisions()
