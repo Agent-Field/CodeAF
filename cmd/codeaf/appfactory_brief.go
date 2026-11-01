@@ -18,10 +18,6 @@ import (
 
 var _ appwire.FactoryJobBriefer = (*appBackend)(nil)
 
-// endpointNotFound is the sentence a factory answers for a route it does not
-// serve, which is how a factory older than the brief answers its read.
-const endpointNotFound = "factory endpoint not found"
-
 func (b *appBackend) FactoryJobBrief(ctx context.Context, p appwire.FactoryJobBriefParams) (appwire.FactoryJobBrief, error) {
 	path := jobPath(p.Job, "brief")
 	if p.Since > 0 {
@@ -45,8 +41,9 @@ func (b *appBackend) FactoryJobBrief(ctx context.Context, p appwire.FactoryJobBr
 }
 
 // routeMissing says whether err is a factory's not found for the route
-// itself rather than for the job.
+// itself rather than for the job: how a factory older than the brief
+// answers its routes.
 func routeMissing(err error) bool {
 	var e *appwire.Error
-	return errors.As(err, &e) && e.Code == appwire.CodeNotFound && e.Message == endpointNotFound
+	return errors.As(err, &e) && e.Code == appwire.CodeNotFound && e.Message == api.EndpointNotFound
 }
