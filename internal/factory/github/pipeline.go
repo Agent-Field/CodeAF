@@ -37,13 +37,16 @@ type pipelineRead struct {
 const PipelineFresh = 15 * time.Second
 
 // PipelineLoader keeps parsed files by blob SHA and repository reads until the
-// next intake tick, or [PipelineFresh] when nothing ticks. Local checkouts are only used when the forge is offline.
+// next intake tick, or [PipelineFresh] when nothing ticks. Local checkouts are
+// only used when the forge is offline. mu guards the maps and is never held
+// while the forge is asked; at most one ask per repository is out at a time.
 type PipelineLoader struct {
-	mu    sync.Mutex
-	api   func(context.Context) PipelineAPI
-	repos map[string]pipelineRead
-	blobs map[string]pipelineRead
-	now   func() time.Time
+	mu     sync.Mutex
+	api    func(context.Context) PipelineAPI
+	repos  map[string]pipelineRead
+	blobs  map[string]pipelineRead
+	asking behind
+	now    func() time.Time
 }
 
 func NewPipelineLoader(api func(context.Context) PipelineAPI) *PipelineLoader {
@@ -59,15 +62,27 @@ func (l *PipelineLoader) WithClock(now func() time.Time) *PipelineLoader {
 // Refresh replaces the repository read on each intake tick, including failures
 // and missing files, so fixing or adding the file needs no process restart.
 func (l *PipelineLoader) Refresh(ctx context.Context, repo, dir string) {
+	seen := l.read(ctx, repo, dir)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	seen := l.read(ctx, repo, dir)
 	seen.at = l.now()
 	l.repos[repo] = seen
 }
 
 // Load returns independent file data so personal limits cannot alter the cache.
+// It waits for the forge when the read is missing or stale, so a start, an edit
+// or a merge decides by the file main has now; under [ShowOnly] it waits at
+// most [FirstWait] and answers with the last file, else the checkout's, while
+// the forge's answer lands for the next read.
 func (l *PipelineLoader) Load(ctx context.Context, repo, dir, personal string) (pipeline.File, error) {
+	var bound time.Duration
+	if showOnly(ctx) {
+		bound = FirstWait
+	}
+	return l.load(ctx, repo, dir, personal, bound)
+}
+
+func (l *PipelineLoader) load(ctx context.Context, repo, dir, personal string, bound time.Duration) (pipeline.File, error) {
 	l.mu.Lock()
 	seen, ok := l.repos[repo]
 	// A checkout used offline can change between reads without an intake tick.
@@ -76,13 +91,46 @@ func (l *PipelineLoader) Load(ctx context.Context, repo, dir, personal string) (
 		seen = l.local(dir, nil)
 		l.repos[repo] = seen
 	}
-	if !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh) {
-		seen = l.read(ctx, repo, dir)
+	stale := !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh)
+	l.mu.Unlock()
+	switch {
+	case stale && bound == 0:
+		// An action reads under its own context, never behind another's ask.
+		seen, ok = l.read(ctx, repo, dir), true
+		l.mu.Lock()
 		seen.at = l.now()
 		l.repos[repo] = seen
+		l.mu.Unlock()
+	case stale:
+		l.ask(repo, dir).wait(ctx, bound)
+		l.mu.Lock()
+		if now, known := l.repos[repo]; known {
+			seen, ok = now, true
+		}
+		l.mu.Unlock()
 	}
-	l.mu.Unlock()
+	if !ok {
+		// Not heard yet: the checkout's file, else the defaults, with no problem
+		// to show, since nothing is wrong yet.
+		seen = l.local(dir, nil)
+	}
 	return pipeline.MergePersonal(seen.file, personal, seen.err)
+}
+
+// ask asks the forge for repo's file behind the reads, one ask at a time. An
+// ask that times out keeps the last file and waits [PipelineFresh] before the
+// next; the forge is never asked while mu is held.
+func (l *PipelineLoader) ask(repo, dir string) *ask {
+	return l.asking.start(repo, "factory/pipeline read", func(ctx context.Context) {
+		seen := l.read(ctx, repo, dir)
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if previous, known := l.repos[repo]; known && ctx.Err() != nil {
+			seen = previous
+		}
+		seen.at = l.now()
+		l.repos[repo] = seen
+	})
 }
 
 func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRead {
@@ -97,7 +145,9 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 	if api == nil {
 		return l.local(dir, errors.New("github is not connected"))
 	}
+	l.mu.Lock()
 	previous := l.repos[repo]
+	l.mu.Unlock()
 	tag := ""
 	if previous.path == pipeline.RepoFile {
 		tag = previous.tag
@@ -130,7 +180,7 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 			return l.problem(err)
 		}
 		key := "markdown:" + sha
-		if seen, ok := l.blobs[key]; ok && sha != "" {
+		if seen, ok := l.blob(key); ok && sha != "" {
 			seen.tag, seen.path = tag, factory.RecipeFile
 			return seen
 		}
@@ -139,7 +189,7 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 		f.From = factory.FromMainBranch
 		seen := pipelineRead{file: f, path: factory.RecipeFile, tag: tag}
 		if sha != "" {
-			l.blobs[key] = seen
+			l.keepBlob(key, seen)
 		}
 		return seen
 	}
@@ -150,7 +200,7 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 		return l.problem(err)
 	}
 	key := "yaml:" + sha
-	if seen, ok := l.blobs[key]; ok && sha != "" {
+	if seen, ok := l.blob(key); ok && sha != "" {
 		seen.tag, seen.path = tag, pipeline.RepoFile
 		return seen
 	}
@@ -159,9 +209,22 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 	f.From = factory.FromMainBranch
 	seen := pipelineRead{file: f, err: err, path: pipeline.RepoFile, tag: tag}
 	if sha != "" {
-		l.blobs[key] = seen
+		l.keepBlob(key, seen)
 	}
 	return seen
+}
+
+func (l *PipelineLoader) blob(key string) (pipelineRead, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	seen, ok := l.blobs[key]
+	return seen, ok
+}
+
+func (l *PipelineLoader) keepBlob(key string, seen pipelineRead) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.blobs[key] = seen
 }
 
 func missing(err error) bool {
