@@ -122,7 +122,9 @@ func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string,
 				g.planNote("the run's stop could not be written: " + err.Error())
 			}
 		}
-		if cut != nil {
+		if run.remoteEngine != nil {
+			a.stopRemoteRun(run)
+		} else if cut != nil {
 			cut()
 		}
 		promise := "its branch is kept"

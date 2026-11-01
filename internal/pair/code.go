@@ -209,13 +209,17 @@ func codeLines(what, how string) string {
 	return fmt.Sprintf("  %s\n  %s   (valid %d minutes)\n", what, how, int(CodeValidFor/time.Minute))
 }
 
+const shareChatsWord = "this shares your chats with the device you pair"
+
 // ChatLines is what a device that is sharing its chats shows: the grant on the
 // line above the code, then the command that takes it. A relay that is not the
 // default is named in the command, so the other device never has to guess it.
 func ChatLines(code *Code, relay string) string {
-	command := "codeaf pair " + code.Shown()
-	if relay != "" {
-		command += " --via " + relay
-	}
-	return codeLines("this shares your chats with the device you pair", "on it run  "+command)
+	command := Command(relay, code.Shown())
+	return codeLines(shareChatsWord, "on it run  "+command)
+}
+
+// ChatCardLines offers the chat's two directions; terminals have no link field.
+func ChatCardLines(code *Code, relay string) string {
+	return codeLines(shareChatsWord, "paste the link the new device shows, or on it run "+Command(relay, code.Shown()))
 }

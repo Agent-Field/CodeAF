@@ -2044,7 +2044,7 @@ This works everywhere a path appears in codeaf's own text:
   attached a picture to, and the `Transcript: file:///…` line an `@task` mention
   leaves behind.
 - **in codeaf's dim `·` notes** — `/status`'s `file` row, `/help`'s `session · …`,
-  `exported · …`, `resumed …`, `new session · …`.
+  `exported · …`, `resumed …`. A new chat says `new conversation · proj-a`, using the project’s base name without a transcript path.
 - **on a tool row** — the target of a `read`, an `edit` or a `write`, and the file name
   above an edit's diff, even when the row was too narrow to show the whole path.
 - **the dim line under a picture**, which is the picture's whole absolute path.
