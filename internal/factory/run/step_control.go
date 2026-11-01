@@ -18,6 +18,13 @@ func (e StepControlRefusal) Error() string { return string(e) }
 // every step's brief carries, so trying again or sending work back says what to
 // do differently. A stop takes none.
 func StepControl(it *factory.Item, name string, rerun bool, words string, now time.Time) error {
+	return stepControl(it, name, rerun, words, "", now)
+}
+
+// stepControl is [StepControl] with the model a rerun moves the step to: ""
+// for the one it had. The log line names a new model, and a step moving to one
+// never resumes a conversation the old model held.
+func stepControl(it *factory.Item, name string, rerun bool, words, model string, now time.Time) error {
 	if factory.JobState(*it) == "done" || it.Publishing {
 		return StepControlRefusal("finished or publishing jobs cannot change steps")
 	}
@@ -62,7 +69,7 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 		if previous.Chat != "" {
 			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Note, At: previous.At, Started: previous.Started})
 		}
-		if planReportPending(name, previous.Result) && previous.Chat != "" {
+		if planReportPending(name, previous.Result) && previous.Chat != "" && model == "" {
 			target.Chat = previous.Chat
 			target.State = factory.PhaseRunning
 			target.Carry = append([]string(nil), previous.Carry...)
@@ -92,6 +99,9 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 	it.Question, it.QKind, it.Asking = "", "", nil
 	it.Approval, it.StopUndo = nil, nil
 	said := map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun]
+	if model != "" {
+		said += " on " + model
+	}
 	if words = strings.TrimSpace(words); rerun && words != "" {
 		it.Notes = append(it.Notes, words)
 		said += ": " + oneLine(words)
@@ -176,11 +186,15 @@ func StepRerun(it *factory.Item, name, words, model string, now time.Time) error
 			return factory.FixedRefusal(name)
 		}
 	}
-	if err := StepControl(it, name, true, words, now); err != nil {
+	if i >= 0 && it.Stages[i].Model == model {
+		model = ""
+	}
+	if err := stepControl(it, name, true, words, model, now); err != nil {
 		return err
 	}
-	if model != "" && it.Stages[i].Model != model {
-		it.Stages[i].Model, it.Stages[i].By = model, factory.ByYou
+	if model != "" {
+		st := &it.Stages[i]
+		st.Model, st.By, st.Why = model, factory.ByYou, oneLine(words)
 	}
 	return nil
 }

@@ -393,7 +393,7 @@ func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJ
 		Words  string      `json:"words,omitempty"`
 		Model  string      `json:"model,omitempty"`
 	}{p.Expect, p.Words, model})
-	if err != nil && model != "" && strings.Contains(err.Error(), `unknown field "model"`) {
+	if model != "" && unknownFactoryField(err, "model") {
 		return appwire.FactoryJobActed{}, factoryTooOld()
 	}
 	return acted, err

@@ -68,3 +68,52 @@ func TestARerunFromAStepCanNameTheModelItRunsOn(t *testing.T) {
 		}
 	}
 }
+
+// A RERUN ON ANOTHER MODEL IS RECORDED like a person's edit: the log says the
+// model, and the step carries who picked it and the person's words as its why.
+func TestARerunOnAnotherModelSaysSoAndKeepsTheWhy(t *testing.T) {
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	it := &factory.Item{ID: 3, State: factory.StateNeedsYou,
+		Stages: []factory.Stage{{Name: "review", Kind: factory.StageChat, On: true, Model: "vendor/old"}},
+		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1}}}}
+	if err := StepRerun(it, "review", "look at the tests", "vendor/new", at); err != nil {
+		t.Fatal(err)
+	}
+	log := it.Stream.Log
+	if len(log) == 0 || log[len(log)-1].Text != "Rerun from review on vendor/new: look at the tests" {
+		t.Fatalf("the log says %+v", log)
+	}
+	if st := it.Stages[0]; st.By != factory.ByYou || st.Why != "look at the tests" {
+		t.Fatalf("the step is %+v", st)
+	}
+	same := &factory.Item{ID: 4, State: factory.StateNeedsYou,
+		Stages: []factory.Stage{{Name: "review", Kind: factory.StageChat, On: true, Model: "vendor/old"}},
+		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1}}}}
+	if err := StepRerun(same, "review", "", "vendor/old", at); err != nil || same.Stream.Log[len(same.Stream.Log)-1].Text != "Rerun from review" {
+		t.Fatalf("a rerun on the model it had = %v, %+v", err, same.Stream.Log)
+	}
+}
+
+// A PLAN WHOSE REPORT IS STILL PENDING is rerun in its own conversation, but
+// not when the rerun names another model: that conversation ran on the old
+// one, so the step starts a fresh one.
+func TestARerunOnAnotherModelStartsAFreshPlanConversation(t *testing.T) {
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	item := func() *factory.Item {
+		return &factory.Item{ID: 5, State: factory.StateNeedsYou,
+			Stages: []factory.Stage{{Name: planStep, Kind: factory.StageChat, On: true}},
+			Stream: &factory.Stream{Phases: []factory.Phase{{Name: planStep, Kind: factory.StageChat, State: factory.PhaseFailed, Round: 1, Chat: "plan/chat.jsonl",
+				Result: &factory.StageResult{Output: stageNoReport}}}}}
+	}
+	kept := item()
+	if err := StepRerun(kept, planStep, "", "", at); err != nil || kept.Stream.Phases[0].Chat != "plan/chat.jsonl" {
+		t.Fatalf("a plain rerun = %v, chat %q", err, kept.Stream.Phases[0].Chat)
+	}
+	fresh := item()
+	if err := StepRerun(fresh, planStep, "", "vendor/new", at); err != nil {
+		t.Fatal(err)
+	}
+	if p := fresh.Stream.Phases[0]; p.Chat != "" || p.State != factory.PhasePending {
+		t.Fatalf("a rerun on another model reuses %+v", p)
+	}
+}

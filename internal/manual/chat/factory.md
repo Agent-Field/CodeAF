@@ -336,7 +336,8 @@ On the app's job page, the job's person can pick the model one conversation step
 
 A pick is refused when the step has already run (`you may not change review, which has already run`), when it is a check or an approval (`test is a check or an approval and runs no model`), when the recipe fixes the step, when the step comes after proof, and when anyone but the job's person makes it (`only the person picks the model a step runs on`). The app offers only models it lists; another is refused as `vendor/x is not a model this engine offers now; models.list names them`. A factory older than the pick answers that it doesn't support that yet. The manager and the plan cannot pick a step's model.
 
-A step that has run takes another model only through Run again from here: that step and every step after it run again (an approval after it asks again), and that step runs on the model you named. A check, an approval and a fixed step take no model there either.
+A step that has run takes another model only through Run again from here: that step and every step after it run again (an approval after it asks again), and that step runs on the model you named, in a fresh conversation. The job's log says `Rerun from <step> on <model>`. A check, an approval and a fixed step take no model there either.
+
 ## budget recovery and external PR commits
 
 Spending-owned Follow PR stops keep a durable budget cause. In Auto, raising
