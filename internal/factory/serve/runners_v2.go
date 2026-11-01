@@ -236,6 +236,9 @@ func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
 	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over})
 }
 
+// registryFile is the runner registry's document under the factory root.
+const registryFile = "runners.json"
+
 // saveRegistry persists only credential hashes and public runner facts under the service lock.
 func (s *workerService) saveRegistry() error {
 	if s.st == nil {
@@ -261,14 +264,14 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), "runners.json"))
+	return os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile))
 }
 
 func (s *workerService) loadRegistry() error {
 	if s.st == nil {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(s.st.Root(), "runners.json"))
+	data, err := os.ReadFile(filepath.Join(s.st.Root(), registryFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

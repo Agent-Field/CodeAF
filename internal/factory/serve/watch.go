@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -31,10 +32,12 @@ type rootWatch struct {
 	once   sync.Once
 	fs     *fsnotify.Watcher
 	hub    *hub
-	kick   chan struct{}
-	due    chan struct{}
-	timer  *time.Timer
-	snap   fileSnap
+	// floor hears only changes a worker's look reads ([touchesFloor]).
+	floor *hub
+	kick  chan struct{}
+	due   chan struct{}
+	timer *time.Timer
+	snap  fileSnap
 }
 
 func watchRoot(root string) *rootWatch {
@@ -44,6 +47,7 @@ func watchRoot(root string) *rootWatch {
 		ctx:    ctx,
 		cancel: cancel,
 		hub:    newHub(),
+		floor:  newHub(),
 		kick:   make(chan struct{}, 1),
 		due:    make(chan struct{}, 1),
 		snap:   snapshot(root),
@@ -139,8 +143,33 @@ func (w *rootWatch) publish() {
 		return
 	}
 	data := changedData(w.snap.files, next.files)
+	if touchesFloor(w.snap.files, next.files) {
+		w.floor.send(data)
+	}
 	w.snap = next
 	w.hub.send(data)
+}
+
+// touchesFloor says whether a change reached a file other than the ones a
+// pull's own bookkeeping writes: the runner registry, where a pull records
+// its heartbeat, and the live record. Neither is read by a look, and waking
+// the open pulls on them made every pull wake every other one, forever.
+func touchesFloor(before, after map[string]string) bool {
+	return changedBeyond(before, after) || changedBeyond(after, before)
+}
+
+// changedBeyond says whether a file of from, other than the bookkeeping, is
+// missing from to or differs there.
+func changedBeyond(from, to map[string]string) bool {
+	for name, sig := range from {
+		if name == registryFile || name == live.File {
+			continue
+		}
+		if other, ok := to[name]; !ok || other != sig {
+			return true
+		}
+	}
+	return false
 }
 
 // fileSnap is one look at the root. sig is the whole look, so a second look

@@ -21,7 +21,6 @@ import (
 )
 
 const workerPollLimit = 30 * time.Second
-const workerPollEvery = 100 * time.Millisecond
 
 type workerService struct {
 	st          *store.Store
@@ -337,8 +336,16 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), h.workers.wait)
 	defer cancel()
-	tick := time.NewTicker(workerPollEvery)
-	defer tick.Stop()
+	// AN OPEN PULL LOOKS AGAIN ONLY WHEN THE FLOOR CHANGED. Every runner slot
+	// holds one open, and a look reads every job on the floor, so a timed
+	// look made an idle machine read slots x jobs documents ten times a
+	// second. Every input of a look (jobs, leases, the takes toggle, runner
+	// settings) is a file under the root the watch follows, including writes
+	// from another process. Joining before the first look keeps a change made
+	// during it. A lease that only expires is requeued by the next pull, at
+	// most one wait later.
+	changed, leave := h.floorChanges()
+	defer leave()
 	for {
 		if ctx.Err() != nil {
 			if r.Context().Err() == nil {
@@ -402,9 +409,20 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 			}
 			return
-		case <-tick.C:
+		case <-changed:
 		}
 	}
+}
+
+// floorChanges is a channel that ticks when the factory root changes, and
+// the call that stops it. With no watch it never ticks, and a pull waits out
+// its wait.
+func (h *Handler) floorChanges() (<-chan string, func()) {
+	if h.watch == nil {
+		return nil, func() {}
+	}
+	ch := h.watch.floor.join()
+	return ch, func() { h.watch.floor.leave(ch) }
 }
 
 func workerLease(held lease.Lease) api.WorkerLease {
