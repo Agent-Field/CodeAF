@@ -57,6 +57,10 @@ const (
 // briefForced are the triggers the cost guard never holds back.
 var briefForced = map[string]bool{BriefTriggerAsk: true, BriefTriggerEnd: true, BriefTriggerRetry: true}
 
+// BriefForced says whether the cost guard lets a trigger through whatever
+// the brief has cost.
+func BriefForced(trigger string) bool { return briefForced[trigger] }
+
 // BriefTriggers is every trigger word, for the wire's enum.
 var BriefTriggers = []string{BriefTriggerStep, BriefTriggerEdit, BriefTriggerRead, BriefTriggerAsk, BriefTriggerEnd, BriefTriggerRetry}
 

@@ -151,14 +151,10 @@ var briefTriggerOf = map[factory.ProgressEvent]string{
 // strongerTrigger keeps the trigger of a burst the cost guard would not hold
 // back over one it would.
 func strongerTrigger(had, next string) string {
-	if had == "" || briefForcedTrigger(next) {
+	if had == "" || factory.BriefForced(next) {
 		return next
 	}
 	return had
-}
-
-func briefForcedTrigger(t string) bool {
-	return t == factory.BriefTriggerAsk || t == factory.BriefTriggerEnd || t == factory.BriefTriggerRetry
 }
 
 // briefDebounce takes each job's triggers as one after wait.
