@@ -71,10 +71,11 @@ const (
 	BriefStatusStub       = "stub"
 )
 
-// The states of a write on its way ([BriefWriting]).
+// The states of a write on its way ([BriefWriting]), which are the reader's
+// status words for them.
 const (
-	BriefGenerating = "generating"
-	BriefFailed     = "failed"
+	BriefGenerating = BriefStatusGenerating
+	BriefFailed     = BriefStatusFailed
 )
 
 // BriefEvidence is what one claim or fact rests on: a step, the try of it,
@@ -528,9 +529,6 @@ var briefKinds = map[string]briefKindFault{
 	BlockYourCall:     withEvidence(yourCallFault),
 	BlockScreenshots:  shotsFault,
 }
-
-// BriefBlockKinds is the palette, in the order the handoff names it.
-var BriefBlockKinds = []string{BlockBullets, BlockFlow, BlockDiagram, BlockTable, BlockWhereToLook, BlockProof, BlockOpenQuestion, BlockYourCall, BlockScreenshots}
 
 // Fault says what is wrong with the block under the palette's limits, ""
 // for nothing. needsYou is whether the job waits on its person, the only

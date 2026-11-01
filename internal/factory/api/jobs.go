@@ -223,6 +223,10 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/github/poll", nil, ActionResult{}},
 }
 
+// EndpointNotFound is the factory's refusal of a route it does not serve, so
+// a caller can tell a factory older than a route from a missing job.
+const EndpointNotFound = "factory endpoint not found"
+
 // JobBrief is GET /v1/jobs/{id}/brief: the job's newest brief version (its
 // stub, made from engine data alone, before any is kept), the reader's status
 // of it, and the keys that changed since the rev the caller saw (`?since=`),
