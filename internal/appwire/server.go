@@ -222,6 +222,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryActorFeature(hello, engine)
 	hello = withFactoryJobStepEditFeature(hello, engine)
 	hello = withFactoryJobRejectPlanFeature(hello, engine)
+	hello = withFactoryJobBriefSeenFeature(hello, engine)
 	hello = withFactoryJobChatsFeature(hello, engine)
 	hello = withFactoryRenameFeature(hello, engine)
 	hello = withFactoryRefreshFeature(hello, engine)

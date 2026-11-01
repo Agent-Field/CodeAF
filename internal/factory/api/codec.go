@@ -107,6 +107,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 var Lost = map[string]string{
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
+	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
