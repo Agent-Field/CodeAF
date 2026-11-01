@@ -12,9 +12,11 @@ const (
 	// identityFresh is how long who a token belongs to stands before GET /user
 	// is asked again. A refusal of the token on any read forgets it sooner.
 	identityFresh = 10 * time.Minute
-	// readCacheRows bounds the answers kept, and readCacheBody the size of one.
-	readCacheRows = 512
-	readCacheBody = 1 << 20
+	// readCacheRows bounds the answers kept, readCacheBody the size of one,
+	// and readCacheBytes their sum; past a bound the cache starts over.
+	readCacheRows  = 512
+	readCacheBody  = 1 << 20
+	readCacheBytes = 32 << 20
 )
 
 // readCacheNow is the cache's clock, so a test can hold it still.
@@ -41,8 +43,9 @@ type readRow struct {
 }
 
 type readCache struct {
-	mu   sync.Mutex
-	rows map[readKey]readRow
+	mu    sync.Mutex
+	rows  map[readKey]readRow
+	bytes int
 	// unreadable is when a token was last told it may not read a branch
 	// policy on this plan ([PolicyUnavailable]), an answer that stands like
 	// identity: the factory and its runner asked about it every minute.
@@ -79,10 +82,12 @@ func (r *readCache) get(k readKey) (readRow, bool) {
 func (r *readCache) put(k readKey, row readRow) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(r.rows) >= readCacheRows {
+	if len(r.rows) >= readCacheRows || r.bytes+len(row.body) > readCacheBytes {
 		clear(r.rows)
+		r.bytes = 0
 	}
 	row.at = readCacheNow()
+	r.bytes += len(row.body) - len(r.rows[k].body)
 	r.rows[k] = row
 }
 
@@ -93,6 +98,7 @@ func (r *readCache) forgetToken(token string) {
 	defer r.mu.Unlock()
 	for k := range r.rows {
 		if k.token == h {
+			r.bytes -= len(r.rows[k].body)
 			delete(r.rows, k)
 		}
 	}
