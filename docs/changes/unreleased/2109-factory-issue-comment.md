@@ -1,6 +1,6 @@
 ---
 kind: added
-title: App clients can comment on a job's GitHub issue, and job reads say what the manager did with each new comment
+title: App clients can comment on a job's GitHub issue and see the manager's read of each new comment
 pr: 2109
 surface: [engine]
 invalidates:
