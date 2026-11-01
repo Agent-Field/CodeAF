@@ -69,7 +69,7 @@ decides which combinations are accepted.
 | `agents.rewind.points` | `in.IDParams` | `ConversationPoints` |
 | `agents.rewind.undo` | `{id, token}` | `Empty` |
 | `agents.run_harness` | `in.RunHarnessParams` | `TurnResult` |
-| `agents.send` | `{attachments, client_id, id, reads, said, submission, text}` | `TurnResult` |
+| `agents.send` | `{attachments, client_id, from, id, reads, said, submission, text}` | `TurnResult` |
 | `agents.set_approval_posture` | `{id, posture}` | `agentResult` |
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
