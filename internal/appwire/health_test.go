@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ type healthEngine struct {
 	health Health
 }
 
-func (h *healthEngine) HealthCheck(context.Context) (Health, error) { return h.health, nil }
+func (h *healthEngine) HealthCheck() (Health, error) { return h.health, nil }
 
 // health.check answers the engine's facts as it gave them, and an engine with
 // no health door answers unknown_method.

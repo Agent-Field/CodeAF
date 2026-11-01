@@ -1,14 +1,10 @@
 package appwire
 
-import (
-	"context"
-	"time"
-)
+import "time"
 
 // health.check: plain facts about this engine an assistant can cite when the
 // person asks whether something is wrong. Every fact is read, never inferred,
-// and the call is cheap: no network, no child process, one filesystem call
-// per disk.
+// and the call is cheap: no network and no child process.
 
 // The roles a disk reading is taken for.
 const (
@@ -17,9 +13,9 @@ const (
 )
 
 // Health is the engine as it stands. Resume is the replies and tasks this
-// start carried on after the last quit, absent when it carried on nothing;
-// Factory is this machine's local factory, absent from an engine that serves
-// none.
+// start set to carry on after the last quit, absent when there were none;
+// Factory is this machine's local factory as factory.local_status shapes it,
+// absent from an engine that does not say.
 type Health struct {
 	Version   string              `json:"version"`
 	Build     string              `json:"build,omitempty"`
@@ -56,15 +52,11 @@ type HealthResult struct {
 
 // HealthChecker is the engine's half of health.check.
 type HealthChecker interface {
-	HealthCheck(ctx context.Context) (Health, error)
+	HealthCheck() (Health, error)
 }
 
 // FeatureHealthCheck is hello's word for an engine that is a [HealthChecker].
 const FeatureHealthCheck = "health.check"
-
-// healthWithin bounds the call: a filesystem that hangs answers late rather
-// than holding the app's request forever.
-const healthWithin = 2 * time.Second
 
 func init() {
 	methods["health.check"] = typed(func(e Engine, _ struct{}) (*HealthResult, error) {
@@ -72,9 +64,7 @@ func init() {
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve health.check")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), healthWithin)
-		defer cancel()
-		health, err := checker.HealthCheck(ctx)
+		health, err := checker.HealthCheck()
 		if err != nil {
 			return nil, err
 		}

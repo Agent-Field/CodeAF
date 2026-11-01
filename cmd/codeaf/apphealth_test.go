@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,7 +24,7 @@ func TestAppHealthCheckSaysTheEnginesFacts(t *testing.T) {
 	started := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	b.startedAt = started
 	b.now = func() time.Time { return started.Add(90 * time.Second) }
-	health, err := b.HealthCheck(context.Background())
+	health, err := b.HealthCheck()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +51,19 @@ func TestAppHealthCheckSaysTheEnginesFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.resumeAfterQuit()
-	health, err = b.HealthCheck(context.Background())
+	health, err = b.HealthCheck()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r := health.Resume; r == nil || !r.RepliesResumed || r.Replies != 1 || r.Tasks != 1 || !r.At.Equal(started.Add(90*time.Second)) {
 		t.Fatalf("the resume reads %+v", health.Resume)
+	}
+}
+
+// A disk that cannot be read says why in its own reading; the check still
+// answers.
+func TestAppHealthDiskThatCannotBeReadSaysWhy(t *testing.T) {
+	if disk := appDisk(appwire.DiskWorkFolder, ""); disk.Error == "" || disk.TotalBytes != 0 {
+		t.Fatalf("an unreadable disk reads %+v", disk)
 	}
 }

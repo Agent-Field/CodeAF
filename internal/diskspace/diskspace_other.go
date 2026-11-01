@@ -1,4 +1,4 @@
-//go:build !unix && !windows
+//go:build !linux && !darwin && !freebsd && !windows
 
 package diskspace
 

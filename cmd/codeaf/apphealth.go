@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/diskspace"
@@ -10,9 +8,10 @@ import (
 )
 
 // HealthCheck is health.check: what this engine knows about itself, read from
-// memory, the state file it already holds, and one filesystem call per disk.
-// It opens no conversation and starts nothing.
-func (b *appBackend) HealthCheck(ctx context.Context) (appwire.Health, error) {
+// memory, the state file it already holds, one filesystem call per disk and
+// the factory status's own small reads. It opens no conversation and starts
+// nothing.
+func (b *appBackend) HealthCheck() (appwire.Health, error) {
 	var health appwire.Health
 	b.locked(func() {
 		health.StartedAt = b.startedAt
@@ -26,8 +25,8 @@ func (b *appBackend) HealthCheck(ctx context.Context) (appwire.Health, error) {
 	work := ""
 	_ = b.state.read(func(f *appStateFile) { work = f.workFolder() })
 	health.Disks = []appwire.HealthDisk{
-		appDisk(ctx, appwire.DiskWorkFolder, work),
-		appDisk(ctx, appwire.DiskCodeafHome, home.Dir()),
+		appDisk(appwire.DiskWorkFolder, work),
+		appDisk(appwire.DiskCodeafHome, home.Dir()),
 	}
 	factory := b.localStatus()
 	health.Factory = &factory
@@ -36,12 +35,8 @@ func (b *appBackend) HealthCheck(ctx context.Context) (appwire.Health, error) {
 
 // appDisk is one disk reading, its failure said in the reading rather than
 // failing the whole check.
-func appDisk(ctx context.Context, role, path string) appwire.HealthDisk {
+func appDisk(role, path string) appwire.HealthDisk {
 	disk := appwire.HealthDisk{Role: role, Path: path}
-	if err := ctx.Err(); err != nil {
-		disk.Error = err.Error()
-		return disk
-	}
 	usage, err := diskspace.Of(path)
 	if err != nil {
 		disk.Error = err.Error()
