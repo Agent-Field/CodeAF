@@ -41,12 +41,15 @@ type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
-	On       []string          `json:"on,omitempty"`
-	Skip     []string          `json:"skip,omitempty"`
-	Remove   []string          `json:"remove,omitempty"`
-	Move     []StepMove        `json:"move,omitempty"`
-	Why      string            `json:"why,omitempty"`
-	Expect   *Expect           `json:"expect,omitempty"`
+	// Model maps a step name to the model it runs on for this job; "" gives
+	// it back to the job's model. Only the job's person sends it.
+	Model  map[string]string `json:"model,omitempty"`
+	On     []string          `json:"on,omitempty"`
+	Skip   []string          `json:"skip,omitempty"`
+	Remove []string          `json:"remove,omitempty"`
+	Move   []StepMove        `json:"move,omitempty"`
+	Why    string            `json:"why,omitempty"`
+	Expect *Expect           `json:"expect,omitempty"`
 }
 
 // StepMove is one step moved in one job: Step is its name, and After the step

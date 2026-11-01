@@ -700,12 +700,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 
 func fromStage(s factory.Stage) StepDef {
 	return StepDef{Name: s.Name, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
-		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
+		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
 	return factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
-		On: !d.Off, When: d.When, Effort: d.Effort, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
+		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 
 // stockNames are the step names the default pipeline spells for any kind; a
