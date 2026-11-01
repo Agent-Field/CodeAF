@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A joined runner runs steps on its own home's model provider
-pr: 0
+pr: 2121
 surface: [engine, docs]
 invalidates:
   - "`codeaf runner join` opened its steps from an empty conversation config, so the first leased step failed with provider base URL is required. It now opens them from the runner home's own provider setup, the one `codeaf chat` there uses."
