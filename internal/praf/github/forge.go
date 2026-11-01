@@ -302,7 +302,16 @@ func readRetryable(err error) bool {
 }
 
 // read is one GET under the read discipline, conditional when etag is set.
+// A caller with no tag of its own reads through the process's read cache.
 func (c *client) read(ctx context.Context, rawurl, etag string) ([]byte, string, error) {
+	if etag != "" {
+		return c.readTagged(ctx, rawurl, etag)
+	}
+	return c.cachedRead(rawurl, 0, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, rawurl, etag) })
+}
+
+// readTagged is one GET with its retries, conditional when etag is set.
+func (c *client) readTagged(ctx context.Context, rawurl, etag string) ([]byte, string, error) {
 	headers, err := c.headersForRepo(ctx, "", "")
 	if err != nil {
 		return nil, "", err
@@ -551,7 +560,8 @@ func (c *client) Me(ctx context.Context) (string, error) {
 	if c.token == "" {
 		return "", nil
 	}
-	body, _, err := c.read(ctx, c.baseURL+"/user", "")
+	url := c.baseURL + "/user"
+	body, _, err := c.cachedRead(url, identityFresh, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, url, etag) })
 	if err != nil {
 		return "", err
 	}
