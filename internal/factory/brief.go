@@ -204,6 +204,11 @@ type BriefVersion struct {
 	Facts           []BriefFact     `json:"facts"`
 	Blocks          []BriefBlock    `json:"blocks"`
 	ChangedKeys     []string        `json:"changed_keys"`
+	// InputHash is the hash of what the writer read ([BriefInputHash]), so
+	// a write over the same inputs is skipped.
+	InputHash string `json:"input_hash,omitempty"`
+	// Dropped is how many parts of the writer's draft validation dropped.
+	Dropped int `json:"dropped,omitempty"`
 }
 
 // BriefWriting is a write of the next version on its way, or the last one
@@ -213,6 +218,8 @@ type BriefWriting struct {
 	AfterStep string    `json:",omitempty"`
 	Failure   string    `json:",omitempty"`
 	At        time.Time `json:",omitzero"`
+	// Hash is the input hash the write was begun on.
+	Hash string `json:",omitempty"`
 }
 
 // BriefStatusOf is what a reader says about the job's brief.

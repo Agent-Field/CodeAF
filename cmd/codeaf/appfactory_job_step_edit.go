@@ -79,6 +79,9 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 		return appwire.FactoryJobStepEdited{}, appwire.Errorf(appwire.CodeUncertain, "the factory answered yes without a receipt this app can read; the edit may have happened, so read the job's steps before trying again")
 	}
 	out := appwire.FactoryJobStepEdited{Factory: got.Factory, Job: p.Job, Version: got.Version, Steps: orSteps(got.Steps), Lines: orLines(got.Lines)}
+	if len(out.Lines) > 0 {
+		b.briefEdited(p.Factory, p.Job)
+	}
 	var current api.Job
 	// A reread that is another job, or older than the receipt, is not the job as
 	// it reads after this edit, so it is left out rather than shown as current.
