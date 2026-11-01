@@ -258,6 +258,7 @@ type taskArguments struct {
 	Brief        string               `json:"brief"`
 	Deliverable  string               `json:"deliverable"`
 	Where        string               `json:"where"`
+	Computer     string               `json:"computer,omitempty"`
 	Ground       string               `json:"ground"`
 	WorkspaceSet *WorkspaceSetRequest `json:"workspace_set,omitempty"`
 	Acceptance   string               `json:"acceptance"`
@@ -297,6 +298,7 @@ type taskSpec struct {
 	irreversible bool
 	workspaceSet *WorkspaceSetRequest
 	title        string
+	computer     string
 	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
 	// door cutting one out of a sentence it had to hand. It is the whole of what
 	// decides whether the work is named again (taskname.go): a name the shaper
@@ -616,6 +618,9 @@ func (a *Agent) taskTools() []bare.Tool {
 	if a.config.mayDelegate() {
 		schema = taskSchemaJSON
 	}
+	if a.config.mayNameTaskComputer() {
+		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+taskComputerSchema, 1)
+	}
 	if WorkspaceOwnershipEnabled(a.config.Place) {
 		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+workspaceSetTaskSchema+`,`, 1)
 	}
@@ -715,6 +720,12 @@ func proposalProblems(contract string, stand taskStand) string {
 // started early (the quality law of an early start: the same brief, sooner).
 func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged {
 	spec, problem := parseTaskArguments(args)
+	// A model cannot opt into placement through an argument its belt did not
+	// offer. Preserve the original treatment of that unknown field; a person
+	// can still choose a computer in the later proposal answer.
+	if !a.config.mayNameTaskComputer() {
+		spec.computer = ""
+	}
 	if problem != "" {
 		// A CONTRACT PROBLEM DOES NOT HIDE A PLACEMENT PROBLEM. Once the call has
 		// enough of a task to place, both readings are already available and each
@@ -723,6 +734,9 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 			problem = proposalProblems(problem, a.resolveTaskGround(spec))
 		}
 		return bare.Settled(rejectToolArguments(ctx, problem), true)
+	}
+	if err := a.checkProposedTaskComputer(ctx, spec); err != nil {
+		return bare.Settled(err.Error(), true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
 	// program the person named, a trivial ask and a depends_on that can never
@@ -890,6 +904,12 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		}
 		return withElsewhere("the person declined this task", elsewhere), false, nil
 	}
+	// A card choice is explicit placement for this proposal only. Admission
+	// still resolves it through the same roster and eligibility checks as a
+	// computer originally named in the tool call or the typed task command.
+	if computer := strings.TrimSpace(answer.Computer); computer != "" {
+		spec.computer = computer
+	}
 	if redirect := strings.TrimSpace(answer.Redirect); redirect != "" {
 		// APPENDED, never merged into the brief's prose. The person's words
 		// arrive last and in their own voice, so the node reads them as the
@@ -991,24 +1011,31 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		a.settleUnstartedHandoff(p.id, spec.title, err)
 		return err.Error(), true, true
 	}
-	joined, stand, asked, err := a.startApprovedHandoff(ctx, p, spec, via, question)
+	start, err := a.startApprovedHandoff(ctx, p, spec, via, question)
+	// A COMPUTER THAT CANNOT TAKE THE TASK IS SAID AS ITSELF, before any run row
+	// is opened: the placement refusal names the computer and the way out.
+	if refusal := (placementRefusal{}); errors.As(err, &refusal) {
+		return refusal.Error(), true, true
+	}
+	elsewhere = withReport(elsewhere, start.placed)
 	// A ROLE WITH NOTHING ALLOWED TO RUN ON IS A QUESTION, NOT A FAILURE: the
 	// task waits, asks, and starts from here once a model is allowed
 	// (taskrouting.go). Nothing ran and nothing was moved onto another model.
 	if receipt, parked := a.parkUnroutedHandoff(ctx, p, spec, elsewhere, via, err); parked {
 		return receipt, false, true
 	}
-	return a.handoffAnswer(p, spec, elsewhere, via, asked, stand, joined, err)
+	return a.handoffAnswer(p, spec, elsewhere, via, start.asked, start.stand, start.joined, err)
 }
 
 // runRoadOwns is an approved hand-off this door starts as a run: the bash
-// belt, or a named program. A session inside a task, or one with no run
-// engine, leaves the hand-off to the older road.
+// belt, a named program, or a task placed on a paired computer. A session
+// inside a task, or one with no run engine, leaves the hand-off to the older
+// road.
 func (a *Agent) runRoadOwns(spec taskSpec) bool {
 	if chatRunEngine == nil || a.config.InTask {
 		return false
 	}
-	return bashBeltAsked() || spec.via != ""
+	return bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")
 }
 
 // handoffDelegate is the program a hand-off named, or nil when it named none.
@@ -1030,11 +1057,16 @@ func (a *Agent) handoffDelegate(spec taskSpec) (*delegate.Delegate, error) {
 // the model finished its sentence. What ends the run is the conversation, the
 // person's stop or the room closing. Whether it joined a run already underway
 // is this door's answer, decided under the start lock.
-func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (bool, taskStand, []string, error) {
+func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (handoffStart, error) {
 	stand, err := a.admitWorkspaceProposal(ctx, p.stand, spec)
 	if err != nil {
-		return false, stand, nil, err
+		return handoffStart{stand: stand}, err
 	}
+	placement, err := a.placeHandoff(ctx, spec, stand, via)
+	if err != nil {
+		return handoffStart{stand: stand}, placementRefusal{err}
+	}
+	ctx = withTaskPlacement(ctx, placement)
 	asked := programAsked(spec)
 	var prior *programOutcome
 	if via != nil {
@@ -1043,9 +1075,46 @@ func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spe
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
 	a.expectRunSource(p.id, spec.source)
-	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalBrief(spec, via), spec.dependsOn, stand, question, via, asked...)
+	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalRunDescription(spec, via, placement), spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
-	return joined, stand, asked, err
+	return handoffStart{joined: joined, stand: stand, asked: asked, placed: placement.sentence}, err
+}
+
+// handoffStart is what starting an approved hand-off settled: whether it
+// joined a run already underway, the stand it runs on, the programs asked
+// for, and the sentence that says which computer it was placed on.
+type handoffStart struct {
+	joined bool
+	stand  taskStand
+	asked  []string
+	placed string
+}
+
+// placementRefusal is a hand-off whose named computer cannot take it. It is
+// said as its own sentence, never as a run that did not start.
+type placementRefusal struct{ err error }
+
+func (r placementRefusal) Error() string { return r.err.Error() }
+func (r placementRefusal) Unwrap() error { return r.err }
+
+// placeHandoff resolves the computer an approved hand-off runs on. The
+// explicit in-place request controls computer placement even when the
+// repository's existing isolation law still prepares a local branch.
+func (a *Agent) placeHandoff(ctx context.Context, spec taskSpec, stand taskStand, via *delegate.Delegate) (taskPlacement, error) {
+	if strings.EqualFold(strings.TrimSpace(spec.where), "in place") {
+		stand.mode = TaskModeInPlace
+	}
+	placement, err := a.resolveTaskComputer(ctx, spec.computer, stand, spec.kind(), via != nil)
+	if err != nil {
+		return placement, err
+	}
+	placement.model = namedModel(spec)
+	placement.effort = string(spec.crewEffort)
+	if spec.thinking != effort.None {
+		placement.effort = spec.thinking.String()
+	}
+	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
+	return placement, nil
 }
 
 // handoffAnswer is what an approved hand-off that was this door's to start
@@ -1222,6 +1291,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 	}
 	spec := taskSpec{
 		title:        strings.TrimSpace(parsed.Title),
+		computer:     strings.TrimSpace(parsed.Computer),
 		irreversible: parsed.Irreversible,
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
@@ -1653,6 +1723,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		hold:   make(chan struct{}),
 		notice: TaskNotice{
 			ID:           id,
+			Computer:     spec.computer,
 			Title:        spec.title,
 			Source:       cloneSource(spec.source),
 			Summary:      spec.summary,
@@ -1933,4 +2004,22 @@ func (a *Agent) admitWorkspaceProposal(ctx context.Context, stand taskStand, spe
 }
 func singletonRunFallback(err error, stand taskStand) bool {
 	return stand.workspaceSet == nil && errors.Is(err, errRunRoadUnavailable)
+}
+
+// Placement validation precedes the proposal card without adding roster work to local proposals.
+func (a *Agent) checkProposedTaskComputer(ctx context.Context, spec taskSpec) error {
+	if spec.computer == "" {
+		return nil
+	}
+	_, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false)
+	return err
+}
+
+// Checks belong only in the instruction transported to another computer.
+func proposalRunDescription(spec taskSpec, via *delegate.Delegate, placement taskPlacement) string {
+	description := proposalBrief(spec, via)
+	if placement.computer != nil && len(spec.checks) > 0 {
+		description += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
+	}
+	return description
 }

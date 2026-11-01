@@ -20,10 +20,12 @@ const Version = 2
 type Member struct {
 	// ReportsTo records the proposed reporting handle while the crew stays flat.
 	ReportsTo string `json:"reports_to,omitempty"`
-	Key       string `json:"key"`
-	File      string `json:"file"`
-	Where     string `json:"where"`
-	Word      string `json:"word"`
+	// SyncID preserves a portable identity when this computer has its own path.
+	SyncID string `json:"sync_id,omitempty"`
+	Key    string `json:"key"`
+	File   string `json:"file"`
+	Where  string `json:"where"`
+	Word   string `json:"word"`
 	// Handle is the member's short name inside this team (handle.go). It is
 	// empty only while the member has no title to derive one from.
 	Handle string `json:"handle,omitempty"`
@@ -42,6 +44,8 @@ type Member struct {
 	// StartID is the Traffic start admitted when this membership was created.
 	// Only that brief may cross its join boundary; handles can be reused.
 	StartID string `json:"start_id,omitempty"`
+	// StartOrigin keeps a foreign start boundary out of this computer's sequence.
+	StartOrigin string `json:"start_origin,omitempty"`
 	// Started says this membership was made by the team manager's team_start
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.
@@ -94,6 +98,9 @@ type Team struct {
 	// "" when it was made with none or before this was written. It is a fact
 	// of the team's making and never moves with the manager seat.
 	Founder string
+	// CreatedBy is who made the team: "person", or the conversation id of the
+	// agent that made it. "" for a team made before this was written.
+	CreatedBy string
 	// Hue and Tier are the team's colour (hue.go).
 	Hue  float64
 	Tier int
@@ -165,7 +172,7 @@ var knownFields = map[string]bool{
 	"state": true, "closed_at": true, "closed_with": true, "archived_at": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
 	"wrap": true, "former_members": true, "former_manager": true, "starts": true, "founder": true,
-	"factory_managed": true, "job_ended": true,
+	"created_by": true, "factory_managed": true, "job_ended": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -179,6 +186,7 @@ type wireTeam struct {
 	FormerMembers []Member  `json:"former_members,omitempty"`
 	FormerManager string    `json:"former_manager,omitempty"`
 	Founder       string    `json:"founder,omitempty"`
+	CreatedBy     string    `json:"created_by,omitempty"`
 	Manager       string    `json:"manager"`
 	Hue           *float64  `json:"hue,omitempty"`
 	HueCleared    bool      `json:"hue_cleared,omitempty"`
@@ -215,7 +223,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &all); err != nil {
 		return err
 	}
-	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Founder: w.Founder, Manager: w.Manager, Made: w.Made,
+	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Founder: w.Founder, CreatedBy: w.CreatedBy, Manager: w.Manager, Made: w.Made,
 		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts, FactoryManaged: w.FactoryManaged, JobEnded: w.JobEnded}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
@@ -247,7 +255,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // MarshalJSON writes the known fields in their order, then any field a later
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
-	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Founder: t.Founder, Manager: t.Manager, Made: t.Made,
+	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Founder: t.Founder, CreatedBy: t.CreatedBy, Manager: t.Manager, Made: t.Made,
 		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts, FactoryManaged: t.FactoryManaged, JobEnded: t.JobEnded}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.

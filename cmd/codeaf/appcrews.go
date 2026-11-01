@@ -471,7 +471,7 @@ func appMembershipMoved(before, after map[string][]string) []string {
 func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
 	f := read.file
 	view := appwire.Crew{
-		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, FactoryManaged: t.FactoryManaged, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
+		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, FactoryManaged: t.FactoryManaged, CreatedBy: t.CreatedBy, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
 		ClosedWith: t.ClosedWith, Report: t.Report, Members: []appwire.CrewMember{},
 		Settings: appwire.CrewSettings{QuestionsUp: t.Settings.QuestionsUp, CapUSDDay: t.Settings.CapUSDDay, DepthLimit: t.Settings.DepthLimit, SubShare: t.Settings.SubShare, Wake: t.Settings.Wake},
 	}
@@ -870,7 +870,7 @@ func (b *appBackend) crewAct(run *appCrewRun, read appCrewRead, t teamstore.Team
 		}); err != nil || !claimed {
 			return
 		}
-		guard.Go("app/crew-start", func() { b.crewStart(t, manager, e) })
+		guard.Go("app/crew-start", func() { b.crewStart(t, manager, e, appMemberAgent(manager)) })
 	}
 }
 
@@ -953,8 +953,10 @@ type appPostureDoor interface {
 
 // crewStart is a manager's start: a new conversation in the crew's folder,
 // added under the manager's handle for it; the conversation reads its brief
-// off the start line itself and takes its first turn.
-func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry) error {
+// off the start line itself and takes its first turn. createdBy is who asked
+// for it: the manager's agent for its own start line, the person for a
+// proposal they accepted.
+func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry, createdBy string) error {
 	handle := strings.TrimSpace(e.To)
 	var pending appPendingStart
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) { pending = f.Pending[appPendingKey(t.ID, handle)] })
@@ -963,7 +965,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	if model == "" {
 		model = pending.Model
 	}
-	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model})
+	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model, CreatedBy: createdBy})
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return err
@@ -1536,7 +1538,7 @@ func (b *appBackend) newTeamAs(id, name, parent string, members []teamstore.Memb
 				used = append(used, t.HueSpec())
 			}
 		}
-		team := teamstore.Team{ID: id, Name: name, Made: b.now(), Founder: managerKey}
+		team := teamstore.Team{ID: id, Name: name, Made: b.now(), Founder: managerKey, CreatedBy: appwire.CreatedByPerson}
 		spec := teamstore.NextHue(used, nil)
 		if hue != nil {
 			spec.Hue = *hue

@@ -38,7 +38,7 @@ func TestR6R23UnavailableLeadershipCannotLeaveNewIntent(t *testing.T) {
 		want string
 	}{
 		{"unjoined", 0, "this computer must join the cluster with persistent storage before it can lead"},
-		{"joined", 4, "this relay does not offer cluster leadership yet; your saved chats are still here"},
+		{"joined", 4, clusterctl.ErrUnsupported.Error()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(clusterctl.Handler(func(r *http.Request, b []byte) (string, string, error) { return reqsign.Verify(r, b, time.Now()) }, func(string) (clusterctl.Backend, error) { return unavailableControl{tc.self, t}, nil }))
@@ -71,7 +71,7 @@ func TestR6R30AbsentHostedControlKeepsLeadershipSentence(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatal(err)
 	}
-	if _, err := client.ClusterStatus(context.Background()); !errors.Is(err, clusterctl.ErrUnsupported) || err.Error() != "this relay does not offer cluster leadership yet; your saved chats are still here" {
+	if _, err := client.ClusterStatus(context.Background()); !errors.Is(err, clusterctl.ErrUnsupported) || err.Error() != clusterctl.ErrUnsupported.Error() {
 		t.Fatal(err)
 	}
 	if _, err := client.LeadCluster(context.Background(), 0); !errors.Is(err, clusterctl.ErrUnsupported) {

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	statehome "github.com/Agent-Field/codeaf/internal/home"
 )
 
 const (
@@ -20,6 +22,16 @@ const (
 
 // ErrNone reports that no identity exists under the home yet.
 var ErrNone = errors.New("identity: none on this machine")
+
+// ErrHomeRemoved refuses to make new keys in a home this process has lost.
+var ErrHomeRemoved = statehome.ErrRemoved
+
+func checkHome(home string) error {
+	if statehome.Removed(home) {
+		return ErrHomeRemoved
+	}
+	return nil
+}
 
 func path(home string) string { return filepath.Join(home, File) }
 
@@ -53,11 +65,16 @@ func Ensure(home string) (Identity, error) {
 // EnsureSolo is Ensure for a computer that needs an identity for itself (a
 // vault key, a first launch) and has not been asked to share it: an identity
 // it makes is solo (solo.go). One that already exists is left as it is.
-func EnsureSolo(home string) (Identity, error) {
+func EnsureSolo(home string) (id Identity, err error) {
+	defer func() { err = homeWriteError(home, err) }()
+	if err := checkHome(home); err != nil {
+		return Identity{}, err
+	}
 	if _, err := Load(home); errors.Is(err, ErrNone) {
-		if err := os.MkdirAll(home, 0o700); err != nil {
+		if err := statehome.MkdirAllUnder(home, home, 0o700); err != nil {
 			return Identity{}, err
 		}
+		statehome.Witness(home)
 		if err := markSolo(home); err != nil {
 			return Identity{}, err
 		}
@@ -69,12 +86,17 @@ func EnsureSolo(home string) (Identity, error) {
 // that already has a vault.key keeps it as the cell key, so its vault still
 // opens. Two processes racing to create agree on whichever wrote first.
 func ensureRoot(home string) (Identity, error) {
+	if err := checkHome(home); err != nil {
+		return Identity{}, err
+	}
+	statehome.Witness(home)
 	if id, err := Load(home); !errors.Is(err, ErrNone) {
 		return id, err
 	}
-	if err := os.MkdirAll(home, 0o700); err != nil {
+	if err := statehome.MkdirAllUnder(home, home, 0o700); err != nil {
 		return Identity{}, err
 	}
+	statehome.Witness(home)
 	cell, err := inheritedCellKey(home)
 	if err != nil {
 		return Identity{}, err
@@ -92,9 +114,13 @@ func ensureRoot(home string) (Identity, error) {
 
 // Save replaces the identity under home.
 func Save(home string, id Identity) error {
-	if err := os.MkdirAll(home, 0o700); err != nil {
+	if err := checkHome(home); err != nil {
 		return err
 	}
+	if err := statehome.MkdirAllUnder(home, home, 0o700); err != nil {
+		return err
+	}
+	statehome.Witness(home)
 	return write(path(home), id.document(), fsreplace.Rename)
 }
 
@@ -121,9 +147,13 @@ func inheritedCellKey(home string) (key, error) {
 
 // write puts v as JSON at target through a private temp file and publish,
 // which is fsreplace.Rename to replace and os.Link to refuse replacing.
-func write(target string, v any, publish func(from, to string) error) error {
+func write(target string, v any, publish func(from, to string) error) (err error) {
+	defer func() { err = homeWriteError(filepath.Dir(target), err) }()
 	raw, err := json.Marshal(v)
 	if err != nil {
+		return err
+	}
+	if err := checkHome(filepath.Dir(target)); err != nil {
 		return err
 	}
 	tmp, err := privateTemp(filepath.Dir(target), raw)
@@ -151,4 +181,12 @@ func writeSync(f *os.File, data []byte) error {
 	_, werr := f.Write(data)
 	serr := f.Sync()
 	return errors.Join(werr, serr, f.Close())
+}
+
+// homeWriteError preserves the removed-home contract when removal follows a check.
+func homeWriteError(home string, err error) error {
+	if errors.Is(err, fs.ErrNotExist) && statehome.Removed(home) {
+		return ErrHomeRemoved
+	}
+	return err
 }

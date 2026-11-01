@@ -1235,9 +1235,13 @@ func (a *app) dropHome() {
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	draft := a.openingHomeDraft
 	a.openingHomeDraft = composerState{}
+	notice := a.homeAccountNotice
+	if a.machineRead.computerRemoved {
+		notice = ""
+	}
 	return homeView{
 		box: draft.box, chips: draft.chips, carrying: len(draft.chips) > 0,
-		msg:        a.homeAccountNotice,
+		msg:        notice,
 		tabs:       a.tabList,
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },
@@ -2528,6 +2532,9 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.cancelTakeover() {
 			return nil
 		}
+		if a.cancelHomeTake() {
+			return nil
+		}
 		// THE @ LIST IS INNER TO THE BOX, and so it goes first. It is drawn
 		// under home's box and belongs to the half-typed token in it
 		// (homeat.go), so esc over an open list means "not that one" and must
@@ -3094,6 +3101,19 @@ func (a *app) homeEnter() tea.Cmd {
 // cursor" is two answers to whether a project somewhere else may be opened, and
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
+	if !a.homeTakeOpening {
+		a.continueChecking = nil
+	}
+	if !a.homeTakeOpening && a.homeTakeAutomatic && (!a.homeTakeAbandoned || a.homeTakeResult == nil) && homeSessionID(line.row) == a.homeTaking {
+		// A local row can still be the old copy of the arriving chat. Joining the
+		// move avoids opening that copy before the replacement has settled.
+		a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
+		a.home.say(continuing, "")
+		return nil
+	}
+	if !a.homeTakeOpening {
+		a.abandonAutomaticTake()
+	}
 	if line.row.DeletionPending {
 		a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
 		return nil
@@ -3109,7 +3129,8 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	if line.row.Transcript == a.file {
 		a.rememberOpen(a.frontTabKey())
 		a.closeHome()
-		return a.homeLandOnTask(line)
+		said := a.spendHomeTakeFor(line)
+		return tea.Batch(a.homeLandOnTask(line), said)
 	}
 	// THE ORDER OF THESE CHECKS IS THE FEATURE. Identity comes first, because a
 	// transcript THIS PROCESS holds answers [session.InUse] true about itself —
@@ -3130,7 +3151,8 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// surface narrating a door it just walked through.
 		cmd, _ := a.bringForward(line.row.Transcript)
 		a.closeHome()
-		return tea.Batch(cmd, a.homeLandOnTask(line))
+		said := a.spendHomeTakeFor(line)
+		return tea.Batch(cmd, a.homeLandOnTask(line), said)
 	case !a.canOpen():
 		h.say(resumeUnavailableWord, "")
 		return nil
@@ -3428,6 +3450,7 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	a.abandonAutomaticTake()
 	a.teamViewSet("")
 	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not
 	// run is refused the same way whichever road would have opened it.
