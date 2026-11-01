@@ -235,7 +235,7 @@ func (h hangingContents) Contents(ctx context.Context, _, _, _, _, _ string) (st
 // gave up and called it "not answering". A first read answers from the
 // checkout in a moment, and a stale one keeps the last file while the forge is
 // asked behind.
-func TestAPipelineReadNeverWaitsOnAForgeThatDoesNotAnswer(t *testing.T) {
+func TestAPipelineReadNeverWaitsOnASilentForge(t *testing.T) {
 	text, sha := "start:\n  labels: [one]\n", "blob-one"
 	hang := false
 	asked := make(chan struct{}, 16)
@@ -283,7 +283,7 @@ func (h hangingContents) User(ctx context.Context, _, _ string) (forge.UserProfi
 
 // The queue and a job's card read a repository's CODEOWNERS; a forge that
 // does not answer once held them, under one lock, for its whole timeout.
-func TestCodeOwnersNeverHoldAReadOnAForgeThatDoesNotAnswer(t *testing.T) {
+func TestCodeOwnersNeverHoldAReadOnASilentForge(t *testing.T) {
 	asked := make(chan struct{}, 16)
 	people := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return hangingContents{asked} }, time.Now)
 	began := time.Now()
