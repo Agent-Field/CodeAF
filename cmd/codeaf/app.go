@@ -581,6 +581,11 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// startedAt is when this backend was made, and lastResume what its start
+	// carried on after the last quit, nil for nothing (apphealth.go). Both
+	// are guarded by mu.
+	startedAt  time.Time
+	lastResume *appwire.HealthResume
 	// stoppingAll is the agents a processes.stop_all is in flight for; a
 	// second for the same agent is answered busy (appprocessactions.go).
 	stoppingAll map[string]bool
@@ -1007,6 +1012,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		left:      make(chan struct{}),
 		mint:      appMint,
 	}
+	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
