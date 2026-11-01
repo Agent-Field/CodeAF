@@ -59,3 +59,33 @@ func TestGiveBackBeforeAnyCheckCarriesOnFromItsStep(t *testing.T) {
 		t.Fatalf("give back before any check: %+v", cur.Stream)
 	}
 }
+
+// A JOB WHOSE BUDGET IS SPENT is still given back: a rerun of its checks needs
+// more budget, so the run carries on from its step as a plain resume does, and
+// the runner stops it at the budget as before. Giving back again does not say
+// twice that the branch changed by hand.
+func TestGiveBackAtTheBudgetResumesAndSaysTheNoteOnce(t *testing.T) {
+	f := newV2Jobs(t)
+	stages := []factory.Stage{
+		{Name: "test", Kind: factory.StageCheck, Ask: "go test ./...", Until: factory.UntilGreen, On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "show it", On: true},
+	}
+	run := &factory.Stream{Cur: 1, Spent: 2, Phases: []factory.Phase{
+		{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1},
+		{Name: "proof", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1},
+	}}
+	it := f.create(t, factory.Item{Kind: factory.KindIssue, State: factory.StateRunning, Assignee: "sam", Cap: 2, Stages: stages, Stream: run})
+	for range 2 {
+		cur, _ := f.st.Get(it.ID)
+		f.post(t, cur, "control", `{"mode":"take_over"}`, 200)
+		cur, _ = f.st.Get(it.ID)
+		f.post(t, cur, "control", `{"mode":"resume_pipeline"}`, 200)
+	}
+	cur, _ := f.st.Get(it.ID)
+	if cur.Manual || cur.State != factory.StateQueued || cur.Stream.Cur != 1 || cur.Stream.Phases[0].State != factory.PhaseDone {
+		t.Fatalf("give back at the budget: manual %v state %s %+v", cur.Manual, cur.State, cur.Stream)
+	}
+	if n := strings.Count(strings.Join(cur.Notes, "\n"), factory.GaveBackNote); n != 1 {
+		t.Fatalf("the note is said %d times: %q", n, cur.Notes)
+	}
+}

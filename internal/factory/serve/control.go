@@ -7,6 +7,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -82,7 +83,7 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		cur.Failure = nil
 		cur.Asking = nil
 		prOpen := cur.PullRequest != nil && cur.PullRequest.State == factory.PROpen
-		if wasManual && !prOpen && cur.Stream != nil {
+		if wasManual && !prOpen && cur.Stream != nil && !slices.Contains(cur.Notes, factory.GaveBackNote) {
 			cur.Notes = append(cur.Notes, factory.GaveBackNote)
 		}
 		if words := strings.TrimSpace(body.Words); words != "" {
@@ -114,14 +115,8 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 			cur.State = factory.StateShipped
 			factory.QueueCIFollowUp(cur, time.Now().UTC())
 		} else if cur.Stream != nil {
-			// GIVING BACK A TAKEN-OVER JOB CHECKS THE PERSON'S COMMITS AGAIN:
-			// the run goes on from the first check or review that had already
-			// passed, with every step after it, and every step reads that the
-			// branch changed by hand.
-			if wasManual {
-				if from := factory.CheckAgainFrom(cur.Stages, cur.Stream.Phases, cur.Stream.Cur); from < cur.Stream.Cur {
-					return run.StepControl(cur, cur.Stream.Phases[from].Name, true, "", time.Now().UTC())
-				}
+			if wasManual && checkAgain(cur, time.Now().UTC()) {
+				return nil
 			}
 			cur.Stream.Paused = false
 			cur.Stream.Ended = time.Time{}
@@ -136,4 +131,17 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		return nil
 	})
 	h.finish(w, err)
+}
+
+// checkAgain is giving back a taken-over job: THE PERSON'S COMMITS ARE CHECKED
+// AGAIN, so the run goes on from the first check or review that had already
+// passed, with every step after it ([factory.CheckAgainFrom]). It says false
+// when there is none to go back to, or when the rerun is refused (a spent
+// budget): the job then resumes from its step as before.
+func checkAgain(it *factory.Item, now time.Time) bool {
+	from := factory.CheckAgainFrom(it.Stages, it.Stream.Phases, it.Stream.Cur)
+	if from >= it.Stream.Cur {
+		return false
+	}
+	return run.StepControl(it, it.Stream.Phases[from].Name, true, "", now) == nil
 }
