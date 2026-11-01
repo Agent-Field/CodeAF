@@ -206,7 +206,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 			}
 			members = append(members, m)
 		}
-		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now()}
+		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now(), CreatedBy: teams.ConversationName(role.key)}
 		f.Teams = append(f.Teams, child)
 		if share := f.SubTeamCap(parent.ID, d); share > 0 {
 			if err := f.SetSettings(child.ID, func(s *teams.Settings) { s.CapUSDDay = &share }); err != nil {
