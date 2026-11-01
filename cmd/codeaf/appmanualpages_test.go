@@ -10,7 +10,7 @@ import (
 // THE APP'S PAGES REACH THE MANUAL THIS PROCESS'S CONVERSATIONS READ, under
 // their prefix, and a set that breaks a bound is bad_params and changes nothing.
 func TestAppManualPagesReachTheManual(t *testing.T) {
-	t.Cleanup(func() { _ = manual.SetAppPages(nil) })
+	t.Cleanup(func() { _, _ = manual.SetAppPages(nil) })
 	b := newFakeBackend(newAppRecorder(), nil)
 	defer b.Close()
 	names, err := b.SetManualPages([]appwire.ManualPage{{Name: "inbox", Markdown: "# Inbox\n\nSwipe to snooze."}})

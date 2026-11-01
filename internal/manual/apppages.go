@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strings"
 	"sync/atomic"
 )
 
@@ -21,8 +22,8 @@ const (
 	// AppPrefix is the folder every app page is filed under.
 	AppPrefix = "workaf/"
 	// MaxAppPages bounds one set; MaxAppPageBytes bounds one page and
-	// MaxAppPagesBytes the whole set. A page is written under the same
-	// two-thousand-character section law as the chat's own.
+	// MaxAppPagesBytes the whole set. Sections are not bounded here: a long
+	// one is cut where it is rendered ([SectionBodyCap]), as the chat's are.
 	MaxAppPages      = 64
 	MaxAppPageBytes  = 32 << 10
 	MaxAppPagesBytes = 512 << 10
@@ -42,18 +43,23 @@ var appPageName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var joined atomic.Pointer[Corpus]
 
 // SetAppPages replaces every app page with pages, checked whole first: a set
-// that breaks a bound changes nothing. An empty set removes them all.
-func SetAppPages(pages []AppPage) error {
+// that breaks a bound changes nothing. An empty set removes them all. It
+// answers the names the pages are filed under, in the order given.
+func SetAppPages(pages []AppPage) ([]string, error) {
 	files, err := appPageFiles(pages)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	names := make([]string, 0, len(pages))
+	for _, page := range pages {
+		names = append(names, AppPrefix+page.Name)
 	}
 	if len(files) == 0 {
 		joined.Store(nil)
-		return nil
+		return names, nil
 	}
 	joined.Store(newCorpus(withPages{base: chatFiles, extra: files}, "chat/*.md"))
-	return nil
+	return names, nil
 }
 
 // WithApp is the corpus the manual tool reads: the chat's own pages and the
@@ -76,6 +82,9 @@ func appPageFiles(pages []AppPage) (map[string][]byte, error) {
 	for _, page := range pages {
 		if !appPageName.MatchString(page.Name) || len(page.Name) > 64 {
 			return nil, fmt.Errorf("app page name %q is not a lowercase slug of at most 64 characters", page.Name)
+		}
+		if strings.TrimSpace(page.Markdown) == "" {
+			return nil, fmt.Errorf("app page %s is empty", page.Name)
 		}
 		if len(page.Markdown) > MaxAppPageBytes {
 			return nil, fmt.Errorf("app page %s is over %d bytes", page.Name, MaxAppPageBytes)

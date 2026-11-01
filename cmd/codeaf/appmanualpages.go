@@ -10,12 +10,11 @@ import (
 // their manual tool. It answers the names the pages are filed under.
 func (b *appBackend) SetManualPages(pages []appwire.ManualPage) ([]string, error) {
 	set := make([]manual.AppPage, 0, len(pages))
-	names := make([]string, 0, len(pages))
 	for _, page := range pages {
 		set = append(set, manual.AppPage{Name: page.Name, Markdown: page.Markdown})
-		names = append(names, manual.AppPrefix+page.Name)
 	}
-	if err := manual.SetAppPages(set); err != nil {
+	names, err := manual.SetAppPages(set)
+	if err != nil {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
 	return names, nil
