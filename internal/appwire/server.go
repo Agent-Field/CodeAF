@@ -589,16 +589,22 @@ var methods = map[string]method{
 		// Submission names which attachments go as pictures and what was marked
 		// on them (media_submission.go).
 		Submission *MessageSubmission `json:"submission,omitempty"`
+		// From names who sent the message on the person's behalf, such as
+		// "afi"; the entry keeps it and the model is told in one line.
+		From string `json:"from,omitempty"`
 	}) (*TurnResult, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs an id")
+		}
+		from, err := CheckMessageFrom(p.From)
+		if err != nil {
+			return nil, err
 		}
 		// Attachments alone are a message: their words are the turn's.
 		if strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0 {
 			return nil, Errorf(CodeBadParams, "agents.send needs some text")
 		}
 		var turn uint64
-		var err error
 		if p.Submission != nil {
 			// THE PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT: an
 			// engine with no door for them refuses before it reads anything, and
@@ -613,24 +619,24 @@ var methods = map[string]method{
 			if err := p.Submission.Check(p.Attachments); err != nil {
 				return nil, err
 			}
-			receipt, err := c.SendComposed(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, Submission: p.Submission})
+			receipt, err := c.SendComposed(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, Submission: p.Submission, From: from})
 			if err != nil {
 				return nil, err
 			}
 			return &TurnResult{Turn: receipt.Turn, MessageID: receipt.MessageID, Delivery: receipt.Delivery, SeenBy: receipt.SeenBy, Queued: receipt.Queued}, nil
 		}
-		if p.Said != nil || len(p.Reads) > 0 {
+		if p.Said != nil || len(p.Reads) > 0 || from != "" {
 			// WHAT THE MESSAGE CARRIED IS SENT WITH IT OR NOT AT ALL: an engine
 			// with no door for it refuses, rather than running the words and
 			// keeping a message the person did not send.
 			s, ok := e.(MessageSender)
 			if !ok {
-				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.send with said or reads")
+				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.send with said, reads or from")
 			}
 			if err := CheckAttachIDs(p.Attachments); err != nil {
 				return nil, err
 			}
-			turn, err = s.SendMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads})
+			turn, err = s.SendMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, From: from})
 		} else if len(p.Attachments) > 0 {
 			t, terr := talker(e, "agents.send with attachments")
 			if terr != nil {
