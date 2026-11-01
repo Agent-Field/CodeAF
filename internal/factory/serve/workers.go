@@ -22,6 +22,11 @@ import (
 
 const workerPollLimit = 30 * time.Second
 
+// workerPollEvery is how often an open pull looks when the factory root has
+// no filesystem watch (the process is out of descriptors, say), and so only
+// a timed look can see a job arrive within the wait.
+const workerPollEvery = 100 * time.Millisecond
+
 type workerService struct {
 	st          *store.Store
 	desk        *lease.Desk
@@ -343,9 +348,12 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	// settings) is a file under the root the watch follows, including writes
 	// from another process. Joining before the first look keeps a change made
 	// during it. A lease that only expires is requeued by the next pull, at
-	// most one wait later.
+	// most one wait later. Without a filesystem watch the pull falls back to
+	// a timed look.
 	changed, leave := h.floorChanges()
 	defer leave()
+	blind, stop := h.blindLooks()
+	defer stop()
 	for {
 		if ctx.Err() != nil {
 			if r.Context().Err() == nil {
@@ -410,6 +418,7 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		case <-changed:
+		case <-blind:
 		}
 	}
 }
@@ -423,6 +432,16 @@ func (h *Handler) floorChanges() (<-chan string, func()) {
 	}
 	ch := h.watch.floor.join()
 	return ch, func() { h.watch.floor.leave(ch) }
+}
+
+// blindLooks ticks only when the root has no filesystem watch, whose own
+// fallback poll is slower than a pull's wait may be.
+func (h *Handler) blindLooks() (<-chan time.Time, func()) {
+	if h.watch != nil && h.watch.fs != nil {
+		return nil, func() {}
+	}
+	tick := time.NewTicker(workerPollEvery)
+	return tick.C, tick.Stop
 }
 
 func workerLease(held lease.Lease) api.WorkerLease {
