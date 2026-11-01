@@ -467,8 +467,10 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 			// A LINE THAT DOES NOT SAY HOW THE TRY ENDED KEEPS WHAT WAS SAID: a
 			// worker's report and a rerun's note carry the try again without
 			// its word, which the factory judged from the report it folded.
-			if line.Result == "" && ph.Rounds[i].Round == line.Round {
-				line.Result, line.Reason = ph.Rounds[i].Result, ph.Rounds[i].Reason
+			// A line that says the try was rejected never keeps a word that said
+			// it passed, so only a line that agrees with the old one keeps it.
+			if old := ph.Rounds[i]; line.Result == "" && old.Round == line.Round && old.Rejected == line.Rejected {
+				line.Result, line.Reason = old.Result, old.Reason
 			}
 			ph.Rounds[i] = line
 			replaced = true

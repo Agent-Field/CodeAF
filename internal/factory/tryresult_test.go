@@ -37,3 +37,19 @@ func TestATrysResultWordAndReasonComeFromItsRuleAndReport(t *testing.T) {
 		}
 	}
 }
+
+// A LINE THAT SAYS A TRY WAS REJECTED NEVER KEEPS A WORD THAT SAID IT PASSED:
+// a rerun's failure note for a try folded "clean" drops the word, while a note
+// that only carries the try again keeps it.
+func TestARoundsWordSurvivesOnlyANoteThatAgreesWithIt(t *testing.T) {
+	ph := &Phase{}
+	NoteRound(ph, 5, RoundLine{Round: 1, Chat: "c1", Result: "clean", Reason: "no findings"})
+	NoteRound(ph, 5, RoundLine{Round: 1, Chat: "c1", Summary: "carried again"})
+	if ph.Rounds[0].Result != "clean" || ph.Rounds[0].Reason != "no findings" {
+		t.Fatalf("a note that only carries the try lost its word: %+v", ph.Rounds[0])
+	}
+	NoteRound(ph, 5, RoundLine{Round: 1, Chat: "c1", Rejected: true, Summary: "publish failed"})
+	if ph.Rounds[0].Result != "" || ph.Rounds[0].Reason != "" {
+		t.Fatalf("a rejected try kept the word of a passed one: %+v", ph.Rounds[0])
+	}
+}

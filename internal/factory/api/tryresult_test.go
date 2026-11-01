@@ -38,7 +38,8 @@ func TestATrysResultReachesTheJobsReadAndStaysOutOfAWorkersReport(t *testing.T) 
 	if got := stream.Phases[0].Rounds; len(got) != 2 || got[0].Result != "not clean" || got[1].Reason != "no findings" {
 		t.Fatalf("the read did not come back whole: %+v", got)
 	}
-	report, err := json.Marshal(FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "review", Round: 2, Rounds: rounds}}}))
+	reshaped := &factory.PipelineChange{Stages: it.Stages, Phases: it.Stream.Phases}
+	report, err := json.Marshal(FromRunReport(factory.RunReport{Pipeline: reshaped, Stages: []factory.StageReport{{Name: "review", Round: 2, Rounds: rounds}}}))
 	if err != nil {
 		t.Fatal(err)
 	}

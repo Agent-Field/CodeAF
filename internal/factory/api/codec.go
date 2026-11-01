@@ -983,16 +983,24 @@ func roundsWire(lines []factory.RoundLine) []RoundLine {
 	return out
 }
 
-// reportedRounds is [roundsWire] as a worker reports them: without how each
-// try ended. The factory judges that itself from the result it folds
-// (run.foldResult), and a factory older than the fields decodes a worker's
-// report strictly, so sending them would cost the whole report.
-func reportedRounds(lines []factory.RoundLine) []RoundLine {
-	out := roundsWire(lines)
-	for i := range out {
-		out[i].Result, out[i].Reason = "", ""
+// withoutTryResults takes how each try ended out of steps a worker reports
+// (its steps' rounds and a reshaped pipeline's). The factory judges that
+// itself from the result it folds (run.foldResult), and a factory older than
+// the fields decodes a worker's report strictly, so sending them would cost
+// the whole report.
+func withoutTryResults(steps []Step, reports []StepReport) {
+	for i := range steps {
+		clearTryResults(steps[i].Rounds)
 	}
-	return out
+	for i := range reports {
+		clearTryResults(reports[i].Rounds)
+	}
+}
+
+func clearTryResults(lines []RoundLine) {
+	for i := range lines {
+		lines[i].Result, lines[i].Reason = "", ""
+	}
 }
 
 // roundsItem is the wire's finished tries as the item keeps them.
