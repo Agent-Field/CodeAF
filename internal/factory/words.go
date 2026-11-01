@@ -280,5 +280,5 @@ const ModelIDMost = 200
 // most [ModelIDMost] characters with no space or control character. Which
 // models exist is the engine's to say, not the factory's.
 func ModelID(id string) bool {
-	return len(id) <= ModelIDMost && !strings.ContainsFunc(id, func(r rune) bool { return r <= ' ' || r == 0x7f })
+	return utf8.RuneCountInString(id) <= ModelIDMost && !strings.ContainsFunc(id, func(r rune) bool { return r <= ' ' || r == 0x7f })
 }

@@ -260,7 +260,15 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 		}
 		phases = append(phases, factory.Phase{Name: ph.Name, Kind: ph.Kind, State: factory.PhasePending, Note: ph.Note})
 	}
-	it.Stages = append([]factory.Stage(nil), change.Stages...)
+	stages := append([]factory.Stage(nil), change.Stages...)
+	// A PERSON'S MODEL PICK OUTLIVES A RUNNER'S RESHAPE: a runner never sends
+	// one (client.PrepareWorkerReport), so each step keeps the pick it had.
+	for i := range stages {
+		if j := factory.StageIndex(it.Stages, stages[i].Name); j >= 0 && stages[i].Model == "" {
+			stages[i].Model = it.Stages[j].Model
+		}
+	}
+	it.Stages = stages
 	it.Stream.Phases = phases
 	if it.Stream.Cur >= len(phases) {
 		it.Stream.Cur = max(len(phases)-1, 0)
