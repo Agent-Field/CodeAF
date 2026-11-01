@@ -507,10 +507,18 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 	if branch == "" {
 		return 0, nil
 	}
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection"), "")
+	endpoint := c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection")
+	if cache.policyUnreadable(c.token, endpoint) {
+		return 0, nil
+	}
+	body, _, err := c.read(ctx, endpoint, "")
 	if err != nil {
 		var apiErr *APIError
-		if PolicyUnavailable(err) || (errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound) {
+		if PolicyUnavailable(err) {
+			cache.notePolicyUnreadable(c.token, endpoint)
+			return 0, nil
+		}
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return 0, nil
 		}
 		return 0, err

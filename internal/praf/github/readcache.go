@@ -26,7 +26,7 @@ var readCacheNow = time.Now
 // minute. Who the token is now stands for [identityFresh]; any other kept
 // answer is asked again with If-None-Match, and a 304, which GitHub does not
 // count against the hourly limit, answers what was kept.
-var cache = &readCache{rows: map[readKey]readRow{}}
+var cache = &readCache{rows: map[readKey]readRow{}, unreadable: map[readKey]time.Time{}}
 
 // readKey is one URL as one token sees it; the token is kept only as a hash.
 type readKey struct {
@@ -43,6 +43,28 @@ type readRow struct {
 type readCache struct {
 	mu   sync.Mutex
 	rows map[readKey]readRow
+	// unreadable is when a token was last told it may not read a branch
+	// policy on this plan ([PolicyUnavailable]), an answer that stands like
+	// identity: the factory and its runner asked about it every minute.
+	unreadable map[readKey]time.Time
+}
+
+// policyUnreadable says whether the token was told, less than
+// [identityFresh] ago, that it may not read the policy at url.
+func (r *readCache) policyUnreadable(token, url string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	at, ok := r.unreadable[keyOf(token, url)]
+	return ok && readCacheNow().Sub(at) < identityFresh
+}
+
+func (r *readCache) notePolicyUnreadable(token, url string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.unreadable) >= readCacheRows {
+		clear(r.unreadable)
+	}
+	r.unreadable[keyOf(token, url)] = readCacheNow()
 }
 
 func keyOf(token, url string) readKey { return readKey{sha256.Sum256([]byte(token)), url} }
@@ -72,6 +94,11 @@ func (r *readCache) forgetToken(token string) {
 	for k := range r.rows {
 		if k.token == h {
 			delete(r.rows, k)
+		}
+	}
+	for k := range r.unreadable {
+		if k.token == h {
+			delete(r.unreadable, k)
 		}
 	}
 }

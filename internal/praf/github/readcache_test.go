@@ -131,3 +131,27 @@ func TestAnUntaggedReadIsAskedAgainConditionally(t *testing.T) {
 		t.Fatalf("sixty reads of an unchanged list cost %d counted calls", n)
 	}
 }
+
+// A branch protection this token may not read is not asked about every
+// minute: the answer (none required) stands like who the token is.
+func TestAnUnreadableBranchProtectionIsAskedOnceAWhile(t *testing.T) {
+	now := holdReadCacheClock(t)
+	f, srv := newCountingForge(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/branches/branch-protection#get-branch-protection"}`))
+	})
+	c := idleClient(t, srv)
+	for range 60 {
+		if n, err := c.RequiredReviews(context.Background(), "o", "r", "main"); err != nil || n != 0 {
+			t.Fatalf("RequiredReviews = %d, %v", n, err)
+		}
+	}
+	if n := f.calls("GET /repos/o/r/branches/main/protection"); n != 1 {
+		t.Fatalf("sixty reads of an unreadable protection asked GitHub %d times", n)
+	}
+	*now = now.Add(identityFresh + time.Second)
+	_, _ = c.RequiredReviews(context.Background(), "o", "r", "main")
+	if n := f.calls("GET /repos/o/r/branches/main/protection"); n != 2 {
+		t.Fatalf("a stale refusal was not asked again: %d", n)
+	}
+}
