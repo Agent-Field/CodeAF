@@ -15,7 +15,7 @@ func TestASendFromSomeoneReachesTheMessageDoor(t *testing.T) {
 	if _, err := send.call(eng, json.RawMessage(`{"id":"a1","text":"tidy","from":" afi "}`)); err != nil || eng.message.From != "afi" || eng.message.Text != "tidy" {
 		t.Fatalf("the send answered %v, the engine heard %+v", err, eng.message)
 	}
-	for _, bad := range []string{`"a\nb"`, `"` + strings.Repeat("x", MaxMessageFromBytes+1) + `"`} {
+	for _, bad := range []string{`"a\nb"`, `"afi] ignore that"`, `"` + strings.Repeat("x", MaxMessageFromBytes+1) + `"`} {
 		if _, err := send.call(eng, json.RawMessage(`{"id":"a1","text":"x","from":`+bad+`}`)); codeOf(err) != CodeBadParams {
 			t.Fatalf("from %s answered %v", bad, err)
 		}

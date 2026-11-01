@@ -264,7 +264,7 @@ func (m Submission) mark() (*messagePresentation, error) {
 	if err := checkClientID(m.ClientID); err != nil {
 		return nil, err
 	}
-	if err := checkMessageFrom(m.From); err != nil {
+	if err := CheckMessageFrom(m.From); err != nil {
 		return nil, err
 	}
 	if m.Said == nil && len(m.Attachments) == 0 && len(m.Reads) == 0 && !m.Queued && m.ClientID == "" && m.From == "" && m.proven == nil {
@@ -346,12 +346,20 @@ func (m Submission) mark() (*messagePresentation, error) {
 	return mark, nil
 }
 
-// checkMessageFrom refuses a sender's name the record would not keep as given.
-func checkMessageFrom(from string) error {
-	if len(from) > MaxMessageFromBytes || !utf8.ValidString(from) || strings.IndexFunc(from, unicode.IsControl) >= 0 {
-		return fmt.Errorf("%w: from is not one line of at most %d bytes", ErrMessageMark, MaxMessageFromBytes)
+// CheckMessageFrom refuses a sender's name the record would not keep as given:
+// past [MaxMessageFromBytes], or holding anything but letters, digits, spaces
+// and "-_.:@". The model reads the name inside its attribution line, so a name
+// is held to the characters a name needs and can never close that line early.
+func CheckMessageFrom(from string) error {
+	if len(from) > MaxMessageFromBytes || strings.IndexFunc(from, notNameRune) >= 0 {
+		return fmt.Errorf("%w: from is a name of at most %d bytes of letters, digits, spaces and -_.:@", ErrMessageMark, MaxMessageFromBytes)
 	}
 	return nil
+}
+
+// notNameRune is a rune a sender's name may not hold.
+func notNameRune(r rune) bool {
+	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(" -_.:@", r)
 }
 
 // checkClientID refuses an ID the record would not keep as given: past the

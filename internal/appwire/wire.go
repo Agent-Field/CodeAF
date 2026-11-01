@@ -510,7 +510,8 @@ type Entry struct {
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
-	// note was read at; a note's direction; a footer's kind and figures; the
+	// note was read at; a note's direction, or on a user entry who sent it on
+	// the person's behalf (agents.send's from); a footer's kind and figures; the
 	// files and links a message of the person's carried (convo.go).
 	State       string       `json:"state,omitempty"`
 	Step        *int         `json:"step,omitempty"`

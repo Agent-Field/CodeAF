@@ -3,7 +3,6 @@ package appwire
 import (
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -151,12 +150,12 @@ type AgentMessage struct {
 // name, never words.
 const MaxMessageFromBytes = session.MaxMessageFromBytes
 
-// CheckMessageFrom is a message's from as it is kept: trimmed, one line,
-// bounded.
+// CheckMessageFrom is a message's from as it is kept: trimmed, then held to
+// [session.CheckMessageFrom].
 func CheckMessageFrom(from string) (string, error) {
 	from = strings.TrimSpace(from)
-	if len(from) > MaxMessageFromBytes || strings.ContainsFunc(from, unicode.IsControl) {
-		return "", Errorf(CodeBadParams, "from is one line of at most %d bytes", MaxMessageFromBytes)
+	if err := session.CheckMessageFrom(from); err != nil {
+		return "", Errorf(CodeBadParams, "%s", strings.TrimPrefix(err.Error(), session.ErrMessageMark.Error()+": "))
 	}
 	return from, nil
 }
