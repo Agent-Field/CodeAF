@@ -21,13 +21,14 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // The three lines a pairing shows, kept here so that the code that prints them
 // and the manual page that quotes them cannot drift apart.
 
-// PairingWeight is what a person reads BEFORE they type a code. It is the whole
-// security posture of this feature in one sentence, in a person's words.
+// PairingWeight tells the approver what accepting a device permits, before the
+// decision. That permission belongs beside the choice that grants it.
 //
 // A PAIRED DEVICE IS A HAND ON THAT MACHINE'S TOOLS. Saying so at the moment of
 // the decision is not a disclaimer; it is the only moment at which the sentence
@@ -72,6 +73,12 @@ type Reach struct {
 	AskCode func(name string) (string, error)
 	// Say is where the pairing's own lines go. Nil says nothing.
 	Say func(string)
+	// WeightOnApprover selects the terminal presentation whose approver explains
+	// the permission. Older callback consumers retain their original notice sequence.
+	WeightOnApprover bool
+	// Sync is the relay this device syncs through, used when nothing more
+	// particular names one; see [Relay].
+	Sync string
 	// Now is the clock, swapped by tests.
 	Now func() time.Time
 }
@@ -95,14 +102,17 @@ func (r Reach) say(line string) {
 // ways this fails that a person cannot tell apart by looking, and errors.go
 // keeps one sentence for each.
 func (r Reach) Open(ctx context.Context) (*Tunnel, error) {
-	if !relay.ValidName(r.Name) {
-		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42, and `codeaf serve` prints the one for a machine", r.Name)
-	}
 	known, found, err := r.Machines.Machine(r.Name)
 	if err != nil {
 		return nil, err
 	}
-	service := RelayFor(known, found)
+	if found && known.Alias == r.Name {
+		r.Name = known.Name
+	}
+	if !relay.ValidName(r.Name) {
+		return nil, fmt.Errorf("%q is not the shape of a machine name — they look like otter-lamp-42, and `codeaf serve` prints the one for a machine", r.Name)
+	}
+	service := RelayFor(known, found, r.Sync)
 	if strings.TrimSpace(service) == "" {
 		return nil, NoRelay(r.Name)
 	}
@@ -127,10 +137,20 @@ func (r Reach) Open(ctx context.Context) (*Tunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	withDeadline(stream, r.now().Add(HandshakeWithin))
+	// A status probe may cancel after dialing; the stream otherwise outlives its dial context.
+	stopClosing := context.AfterFunc(ctx, func() { _ = stream.Close() })
+	defer stopClosing()
+	deadline := r.now().Add(HandshakeWithin)
+	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
+		deadline = until
+	}
+	withDeadline(stream, deadline)
 	tunnel, err := connectAsSurface(stream, machineKey, r.Device, r.Label)
 	if err != nil {
 		_ = stream.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if errors.Is(err, ErrNotThatMachine) {
 			return nil, NotThatMachine(r.Name)
 		}
@@ -152,7 +172,9 @@ func (r Reach) pair(ctx context.Context, service string) (Known, error) {
 	defer func() { _ = stream.Close() }()
 
 	r.say(PairingPreamble(r.Name))
-	r.say(PairingWeight)
+	if !r.WeightOnApprover {
+		r.say(PairingWeight)
+	}
 	typed, err := r.AskCode(r.Name)
 	if err != nil {
 		return Known{}, err
@@ -203,11 +225,13 @@ func (r Reach) dial(ctx context.Context, service string) (io.ReadWriteCloser, er
 	case errors.Is(err, relay.ErrNoMachine):
 		return nil, NotConnected(r.Name)
 	case errors.Is(err, relay.ErrUnreachable):
-		return nil, Unreachable(service)
+		return nil, syncwords.Explain(err, service)
+	case errors.Is(err, relay.ErrNoDoor):
+		return nil, NoDoor(service)
 	case errors.Is(err, relay.ErrTooMany):
 		return nil, Busy()
 	default:
-		return nil, err
+		return nil, syncwords.Explain(err, service)
 	}
 }
 

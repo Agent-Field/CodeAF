@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -106,7 +107,9 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 // TakeSeen continues the lease the person saw on the card. Older callers
 // without that reading still bind the claim to the record read before fetch.
 func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Taken, error) {
+	directoryRead := Trace(t.OnPhase, "directory")
 	view, err := t.Dir.Cell(ctx, id)
+	directoryRead()
 	if err != nil {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
 	}
@@ -269,7 +272,9 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	if t.OnPhase != nil {
 		t.OnPhase(Phase{Name: "first acquire", Started: time.Now()})
 	}
+	acquiring := Trace(t.OnPhase, "acquire")
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
+	acquiring()
 	if err != nil {
 		return "", 0, nil, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
 	}
@@ -316,6 +321,30 @@ func freshDir(dir string) error {
 // staging folder is dropped. A copy is replaced by the staging folder.
 func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) error {
 	defer Trace(t.OnPhase, "restore")()
+	// Snapshots arriving from another computer never carry this computer's local
+	// copy-ready or copy-offered markers, so installing over a `.moving` copy
+	// root must keep or re-stamp them lest its `.lock` sibling hide the chat or
+	// revive the untouched original.
+	keepCopyReady := exists(filepath.Join(c.Root, filepath.FromSlash(cell.CopyReadyPath))) ||
+		(filepath.Base(filepath.Dir(c.Root)) == ".moving" && exists(c.Root+".lock"))
+	offeredFile := filepath.Join(c.Root, filepath.FromSlash(cell.CopyOfferedPath))
+	keepCopyOffered := exists(offeredFile)
+	restoreCopyMarkers := func() error {
+		if keepCopyReady {
+			if err := cell.StampCopyReady(c.Root); err != nil {
+				return err
+			}
+		}
+		if keepCopyOffered && !exists(offeredFile) {
+			if err := os.MkdirAll(filepath.Dir(offeredFile), 0o700); err != nil {
+				return err
+			}
+			if err := os.WriteFile(offeredFile, nil, 0o600); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if t.InPlace == nil || !t.InPlace(c) {
 		if t.Prepare != nil {
 			if err := freshDir(stage.Root); err != nil {
@@ -328,9 +357,15 @@ func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) err
 				return err
 			}
 		}
-		return t.replace(ctx, stage, c)
+		if err := t.replace(ctx, stage, c); err != nil {
+			return err
+		}
+		return restoreCopyMarkers()
 	}
 	if err := t.Fetch.Fetch(ctx, c, head); err != nil {
+		return err
+	}
+	if err := restoreCopyMarkers(); err != nil {
 		return err
 	}
 	return os.RemoveAll(stage.Root)
@@ -373,7 +408,10 @@ func swap(stage, root string) error {
 // here hands it back, so the chat is takeable at once instead of after a TTL.
 func (t Taker) open(ctx context.Context, c cell.Cell, fence uint64) (cell.Cell, error) {
 	for _, hook := range t.After {
-		if err := hook(ctx, c); err != nil {
+		done := Trace(t.OnPhase, "hooks")
+		err := hook(ctx, c)
+		done()
+		if err != nil {
 			return cell.Cell{}, t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: %w", err))
 		}
 	}

@@ -46,6 +46,8 @@ type Joining struct {
 
 // Joined is how a pairing ended on the joining device.
 type Joined struct {
+	// With is an existing computer in the newly joined set of devices.
+	With string
 	// Already is true when this computer held these chats before, so nothing
 	// was changed.
 	Already bool
@@ -105,7 +107,7 @@ func phraseJoin(err error, route Mailbox) error {
 	if errors.Is(err, ErrWrongCode) {
 		return ErrCodeDidNotWork
 	}
-	return phraseBox(err, route.Host)
+	return phraseBox(err, route.URL)
 }
 
 // joinOffer is what this device sends in message 3: its name, then random bytes
@@ -139,7 +141,7 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	if err != nil && !errors.Is(err, identity.ErrNone) {
 		return Joined{}, err
 	}
-	if err == nil && held.ID() == grant.Identity.ID() {
+	if err == nil && !j.Replace && held.ID() == grant.Identity.ID() {
 		return Joined{Already: true}, nil
 	}
 	if err == nil && !j.Replace && !identity.Solo(j.Home) && !slices.Contains(grant.Replaces, held.ID()) {
@@ -158,7 +160,12 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	held, err = identity.Load(j.Home)
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
-		return Joined{Already: true}, nil
+		if !j.Replace {
+			return Joined{Already: true}, nil
+		}
+		// Explicit replacement after approval renews this computer's key even
+		// when the shared account is unchanged, because its old key may be
+		// revoked: the replacing merge below mints a new device.
 	case err == nil && slices.Contains(grant.Replaces, held.ID()):
 		return Joined{Successor: true}, follow(j, held, grant)
 	}
