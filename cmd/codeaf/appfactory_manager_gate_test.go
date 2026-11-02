@@ -15,18 +15,44 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestAppFactoryManagerGateSendBack(t *testing.T) {
+	t.Run("every_waiting_gate_has_an_exact_identity", func(t *testing.T) {
+		for _, kind := range []string{"step", factory.QKindApprove, factory.QKindAskFirst, "cap", "gate", "plan", "scope", factory.QKindOutOfAttempts} {
+			it := planJob("owner")
+			it.ID, it.QKind = 7, kind
+			it.Asking = &factory.Asked{Stage: "approve", With: factory.AskedYou, At: time.Unix(100, 0)}
+			status := factory.StatusForManager(it, false, time.Now())
+			if status.QuestionID == "" || !strings.Contains(status.Text, status.QuestionID) {
+				t.Errorf("%s gate has no exact identity", kind)
+			}
+			it.Stream.Spent += 0.1
+			if factory.PendingQuestionID(it) != status.QuestionID {
+				t.Errorf("%s polling changed the identity", kind)
+			}
+			if kind != "step" {
+				it.Stream.Phases[0].Round++
+				if factory.PendingQuestionID(it) == status.QuestionID {
+					t.Errorf("%s re-used the old plan decision", kind)
+				}
+			}
+		}
+	})
 	for _, wrong := range []bool{false, true} {
 		t.Run(fmt.Sprintf("wrong_id_%v", wrong), func(t *testing.T) {
 			s := newLocalSetup(t)
 			local := s.start()
 			floor := s.backend.local.host.floor
+			if err := floor.SetRepos([]string{"acme/api"}); err != nil {
+				t.Fatal(err)
+			}
 			const words = "do not change README, change a new file NOTES.md instead"
 			var mu sync.Mutex
 			var status, result string
@@ -124,13 +150,8 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			if revised.Steps[0].Round != 2 || revised.Steps[0].State != "pending" || revised.State != api.StateQueued {
 				t.Fatalf("plan did not go back: %s; result: %s", mustJSON(t, revised), gotResult)
 			}
-			// Resume the worker's public wire projection, as a fresh worker does.
-			held, _ := floor.Get(job.ID)
+			// A real worker pulls the revised job and reports the next gate to the app.
 			mirror, err := store.Open(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			resumed, err := mirror.Create(api.ToItem(api.WorkerJob(held)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,10 +160,21 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 				brief <- j
 				return factory.StageResult{Done: true, Output: "The plan uses NOTES.md."}, nil
 			})}})
-			t.Cleanup(func() { _ = runner.Stop(resumed.ID) })
-			if err := runner.Launch(resumed.ID); err != nil {
-				t.Fatal(err)
-			}
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				credential := ""
+				worker.Run(ctx, worker.Options{
+					Dial: func(int) *client.WorkerClient {
+						return client.Open(local.URL, s.backend.local.host.token).Worker(credential)
+					},
+					Keep:   func(_ int, w *client.WorkerClient) { credential = w.Credential() },
+					Attach: api.WorkerAttach{Machine: "test-worker", Name: "test worker", Handle: "owner"},
+					Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 20 * time.Millisecond, BeatEvery: 20 * time.Millisecond,
+				})
+			}()
+			t.Cleanup(func() { cancel(); <-done })
 			select {
 			case j := <-brief:
 				if j.Round != 2 || !slices.Contains(j.Notes, words) {
@@ -152,8 +184,8 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 				t.Fatal("plan did not re-run")
 			}
 			lendWaitFor(t, "fresh approval after plan round 2", func() bool {
-				it, _ := mirror.Get(resumed.ID)
-				return it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove && it.Stream.Phases[0].State == factory.PhaseDone && it.Stream.Phases[0].Round == 2
+				j := read()
+				return j.State == api.StateNeedsYou && j.Steps[0].State == "done" && j.Steps[0].Round == 2 && j.Steps[1].State == "waiting"
 			})
 		})
 	}

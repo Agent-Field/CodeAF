@@ -320,6 +320,20 @@ decides which combinations are accepted.
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
+The job manager's model tools also expose the plan send-back: `factory_status`
+includes the exact pending `question_id` in its text at every waiting gate.
+`factory_answer {action: "reject_plan", question_id, answer}` sends the requested
+changes (1–4,000 characters) through the same typed plan-revision door as
+`factory.job_reject_plan`. It checks the manager binding and exact decision on
+the locked job; a stale decision changes nothing. The prior step runs again with
+the words in a new round, then approval is requested again. Omitting `action`
+retains persisted step replies; other gates keep their existing job controls.
+These model tools add no app-wire method, hello feature or wire error code.
+A confirmed send-back reports acceptance, not worker startup; an unconfirmed
+result directs the manager to read status before retrying and explain the
+outcome to the person without internal identifiers.
+
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET
