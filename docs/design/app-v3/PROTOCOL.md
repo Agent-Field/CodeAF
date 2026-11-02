@@ -313,8 +313,11 @@ decides which combinations are accepted.
 An engine whose hello carries `factory.job_area` sends `area` on each job of
 `factory.queue` and on `factory.job`: the part of the repository the job's
 change touched most, the repository's declared area or else the top-level
-directory with a trailing slash (`"cli/"`). It is absent when the job changed
-no file or only files at the root.
+directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
+`internal`, `pkg`, `lib`, `app`, `apps`, `packages`, `crates`, `cmd`) it is the
+first two segments (`"internal/factory/"`), and a file directly inside one is
+the container (`"internal/"`). Every response that carries the job says the
+same area. It is absent when the job changed no file or only files at the root.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as

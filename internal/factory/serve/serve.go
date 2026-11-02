@@ -170,6 +170,7 @@ type Handler struct {
 	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
+	areas   repoAreas
 	config  Config
 	factory api.Factory
 	mux     *http.ServeMux
@@ -196,8 +197,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
-	h := &Handler{seam: seam, config: config,
+	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
@@ -499,7 +501,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
-	s, it, ok := h.findJobIn(w, r)
+	it, ok := h.findJob(w, r)
 	if !ok {
 		return
 	}
@@ -508,7 +510,6 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
-	api.InRepoAreas(&jobs[0], it, s.Repos)
 	if h.config.CodeOwners != nil && len(itemFiles(it)) > 0 {
 		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
 		if err == nil {
@@ -552,24 +553,17 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 // findJob gives every job door the same id and existence checks, without
 // guessing whether an untyped runner error meant a missing job.
 func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
-	_, it, ok := h.findJobIn(w, r)
-	return it, ok
-}
-
-// findJobIn is [Handler.findJob] with the floor it found the job on, for a
-// read that also says what the job's repository declares.
-func (h *Handler) findJobIn(w http.ResponseWriter, r *http.Request) (factory.Snapshot, factory.Item, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if (err != nil || id <= 0) && !strings.Contains(r.PathValue("id"), "#") {
 		h.fail(w, http.StatusUnprocessableEntity, "job id must be a positive integer")
-		return factory.Snapshot{}, factory.Item{}, false
+		return factory.Item{}, false
 	}
 	if !h.require(w, h.seam.Load != nil) {
-		return factory.Snapshot{}, factory.Item{}, false
+		return factory.Item{}, false
 	}
 	s, err := h.seam.Load()
 	if h.failed(w, err) {
-		return factory.Snapshot{}, factory.Item{}, false
+		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
 		if factory.IsIssueJob(it) && (it.ID == id || factory.JobRef(it) == r.PathValue("id")) {
@@ -577,16 +571,16 @@ func (h *Handler) findJobIn(w http.ResponseWriter, r *http.Request) (factory.Sna
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))
 			if h.authFailed(w, r) {
-				return factory.Snapshot{}, factory.Item{}, false
+				return factory.Item{}, false
 			}
 			if !visible {
 				break
 			}
-			return s, it, true
+			return it, true
 		}
 	}
 	h.fail(w, http.StatusNotFound, "job not found")
-	return factory.Snapshot{}, factory.Item{}, false
+	return factory.Item{}, false
 }
 
 // Repository preserves the picker's facts with product names and JSON keys,

@@ -7,8 +7,8 @@ import (
 )
 
 // A JOB'S AREA IS WHERE MOST OF ITS FILES ARE: a declared area when the
-// repository names its areas, otherwise the top-level directory, and nothing
-// when no file says.
+// repository names its areas, otherwise the top-level directory (two segments
+// under a container such as internal/), and nothing when no file says.
 func TestJobAreaIsWhereMostOfTheJobsFilesAre(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -28,6 +28,13 @@ func TestJobAreaIsWhereMostOfTheJobsFilesAre(t *testing.T) {
 		{"a nested declared area", []string{"internal/tui3"}, []string{"internal/tui3/a.go", "internal/session/b.go", "internal/session/c.go"}, "internal/tui3"},
 		{"no declared area matches falls back to directories", []string{"tui"}, []string{"cmd/x.go"}, "cmd/"},
 		{"a file named like the area is not under it", []string{"Makefile"}, []string{"Makefile"}, ""},
+		{"a container directory's area is its first two segments", nil, []string{
+			"internal/factory/area.go", "internal/factory/api/area.go", "internal/factory/serve/serve.go",
+			"cmd/codeaf/appfactory.go", "cmd/codeaf/app.go", "docs/design/app-v3/PROTOCOL.md"}, "internal/factory/"},
+		{"cmd is a container too", nil, []string{"cmd/codeaf/a.go", "cmd/codeaf/b.go", "internal/factory/c.go"}, "cmd/codeaf/"},
+		{"every container is two segments deep", nil, []string{"src/a/x", "pkg/b/x", "lib/c/x", "app/d/x", "apps/e/x", "packages/f/x", "crates/g/x"}, "app/d/"},
+		{"a file directly inside a container is the container", nil, []string{"internal/doc.go"}, "internal/"},
+		{"a non-container stays one segment", nil, []string{"web/src/a.ts", "web/lib/b.ts"}, "web/"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
