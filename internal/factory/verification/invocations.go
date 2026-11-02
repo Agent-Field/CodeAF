@@ -131,8 +131,11 @@ func observerFunctions() string {
 		names = append(names, p)
 	}
 	sort.Strings(names)
+	// Each wrapper goes through eval. A program name such as golangci-lint is
+	// no POSIX function name, and a shell without bash parses this whole
+	// bash-only block even though it never runs it.
 	for _, p := range names {
-		script += fmt.Sprintf("%s() { if _codeaf_is_check %s \"$@\"; then _codeaf_check %s \"$@\"; else command %s \"$@\"; fi; }\n", p, p, p, p)
+		script += fmt.Sprintf("eval '%s() { if _codeaf_is_check %s \"$@\"; then _codeaf_check %s \"$@\"; else command %s \"$@\"; fi; }'\n", p, p, p, p)
 	}
 	return script + "export -f _codeaf_is_check _codeaf_check _codeaf_worktree_state " + strings.Join(names, " ") + "\n"
 }
