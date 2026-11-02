@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
 // THE APP WIRE'S COPY OF THE ROUTE'S BOUNDS CANNOT DRIFT. factory.pipeline_pr
@@ -48,5 +49,25 @@ func TestAppwirePipelinePRBoundsAreTheRoutesOwn(t *testing.T) {
 	}
 	if len(known) != 9 {
 		t.Errorf("the wire believes %d stages, the route names 9", len(known))
+	}
+}
+
+// factory.issue_comment refuses, before anything is sent, exactly the bodies
+// this route would refuse, and believes exactly the stages it names.
+func TestAppwireIssueCommentBoundsAreTheRoutesOwn(t *testing.T) {
+	if appwire.IssueCommentBodyMax != api.IssueCommentBodyMax {
+		t.Fatalf("body: appwire %d, route %d", appwire.IssueCommentBodyMax, api.IssueCommentBodyMax)
+	}
+	if strings.Join(appwire.IssueCommentStages, ",") != strings.Join(api.IssueCommentStages, ",") {
+		t.Fatalf("stages: appwire %v, route %v", appwire.IssueCommentStages, api.IssueCommentStages)
+	}
+	if appwire.IssueCommentOutcomeRefused != api.IssueCommentRefused || appwire.IssueCommentOutcomeUnknown != api.IssueCommentUnknown {
+		t.Fatal("outcomes drifted")
+	}
+	for _, body := range []string{"", " \n", "x", "a\x00b", "bad \xff", strings.Repeat("x", api.IssueCommentBodyMax), strings.Repeat("x", api.IssueCommentBodyMax+1)} {
+		_, err := appwire.CheckIssueComment(appwire.FactoryIssueCommentParams{Factory: "f", Repo: "a/b", Number: 1, Body: body})
+		if (err == nil) != (issueCommentRefusal(body) == "") {
+			t.Errorf("body %.20q: appwire %v, route %q", body, err, issueCommentRefusal(body))
+		}
 	}
 }

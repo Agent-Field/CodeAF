@@ -135,8 +135,12 @@ type FactoryCapabilities struct {
 	// from the shipped defaults (feature factory.pipeline_edit_rules). True
 	// only for an engine that implements [FactoryPipelineRulesEditor].
 	PipelineEditRules bool `json:"pipeline_edit_rules"`
-	MaxConnections    int  `json:"max_connections"`
-	MaxFlows          int  `json:"max_flows"`
+	// IssueComment: factory.issue_comment is served (feature
+	// factory.issue_comment). True only for an engine that implements
+	// [FactoryIssueCommenter]; only the factory's operator may post.
+	IssueComment   bool `json:"issue_comment"`
+	MaxConnections int  `json:"max_connections"`
+	MaxFlows       int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,

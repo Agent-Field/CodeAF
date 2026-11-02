@@ -31,6 +31,7 @@ func (h *Handler) jobScreens() {
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
+	h.route("/v1/repos/{owner}/{repo}/issues/{number}/comment", map[string]http.HandlerFunc{http.MethodPost: h.issueComment})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{
 		http.MethodGet: h.pipelineCopy, http.MethodPut: h.pipelineCopy, http.MethodDelete: h.pipelineCopy,
 	})

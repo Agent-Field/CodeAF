@@ -231,6 +231,7 @@ decides which combinations are accepted.
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommentDone` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
 | `factory.job_assign_to_me` | `in.FactoryJobActionParams` | `FactoryJobActed` |
