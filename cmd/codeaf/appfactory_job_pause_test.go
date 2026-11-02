@@ -322,7 +322,7 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 				if prepare {
 					stages = append([]factory.Stage{{Name: "prepare", Kind: factory.StageChat, Ask: "prepare", Until: factory.UntilDone, On: true}}, stages...)
 				}
-				it, err := floor.Create(factory.Item{Repo: "acme/api", Title: title, Kind: factory.KindIssue, Assignee: "owner", Autonomy: factory.AutonomyManual, Stages: stages})
+				it, err := floor.Create(factory.Item{Repo: "acme/api", Title: title, Kind: factory.KindIssue, Assignee: "owner", Autonomy: factory.AutonomyAuto, Stages: stages})
 				if err != nil {
 					t.Fatal(err)
 				}
