@@ -88,6 +88,7 @@ func (h *Handler) workerRoutes() {
 	h.workers = svc
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
+	h.route("/v1/workers/leases/{lease}/stop-after-step", map[string]http.HandlerFunc{http.MethodGet: h.workerStopAfterStep})
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
@@ -644,7 +645,11 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if it.PullRequest != nil {
 			detail = "pr · " + it.PullRequest.URL
 		}
-		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: requestWorker(r).Handle, Cost: jobCost(*it), Detail: detail})
+		handle := requestWorker(r).Handle
+		if it.Approval != nil && it.Approval.Automatic {
+			handle = ""
+		}
+		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: jobCost(*it), Detail: detail})
 		return nil
 	})
 }

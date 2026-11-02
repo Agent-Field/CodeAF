@@ -132,7 +132,9 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps], never below recorded spending.
+// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps].
+// An increase above spend resumes a cap wait; a smaller increase keeps the
+// question. A decrease below recorded spending is refused.
 type FactoryJobBudgetParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
@@ -352,6 +354,10 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryJobControl)
 			hello = withFeature(hello, FeatureFactoryGiveBackChecks)
 			hello = withFeature(hello, FeatureFactoryJobAutonomy)
+		}
+		if _, ok := e.(FactoryStepSpending); ok {
+			hello = withFeature(hello, FeatureFactoryJobStopAfterStep)
+			hello = withFeature(hello, FeatureFactoryJobSpendAnswer)
 		}
 		if _, ok := e.(FactoryJobHolder); ok {
 			hello = withFeature(hello, FeatureFactoryJobHold)

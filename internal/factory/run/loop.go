@@ -492,6 +492,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		if err != nil || it.Stream == nil {
 			return
 		}
+		if !lp.stopSpending(c, it) {
+			return
+		}
 		i := nextPhase(it.Stream.Phases)
 		if i >= 0 && it.Stream.Phases[i].Name == factory.FollowPRStep && it.PullRequest == nil {
 			lp.land(c)
@@ -696,7 +699,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
 	}
-	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)
+	question := factory.ApproveQuestion(prevName)
+	if hold != "" && it.StartRules != nil && it.StartRules.UnreadWhy != "" {
+		question += " · " + it.StartRules.UnreadWhy
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, question, factory.PhaseWaiting, "", said)
 	if !ok {
 		return false
 	}
@@ -1562,10 +1569,16 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 		return false
 	}
 	now := lp.r.now()
-	return lp.write(c, func(it *factory.Item) error {
+	line := ""
+	if err := lp.write(c, func(it *factory.Item) error {
 		NoteContinue(it, now)
+		line = "budget raised to " + loopUSD(it.Cap) + " · carrying on"
 		return nil
-	}) == nil
+	}); err != nil {
+		return false
+	}
+	lp.tell(c.id, line)
+	return true
 }
 
 // NoteContinue raises this job's cap when the spend has reached it, and says
@@ -1575,8 +1588,14 @@ func NoteContinue(it *factory.Item, now time.Time) bool {
 	if !factory.ContinueJob(it) {
 		return false
 	}
-	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
+	NoteBudgetRaised(it, now)
 	return true
+}
+
+// NoteBudgetRaised records the selected cap at the door that changes it.
+// The waiting runner separately says this confirmation into the conversation.
+func NoteBudgetRaised(it *factory.Item, now time.Time) {
+	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 }
 
 // failStop records a step that errored and stops the job. The failure is not
@@ -1940,6 +1959,9 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	var cut *factory.StepProgress
 	it.Failure = why
+	if why == nil {
+		it.StopAfterStep = false
+	}
 	it.Recovery = nil
 	it.Approval = nil
 	it.PublishError = ""
@@ -1948,7 +1970,10 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	it.Question, it.QKind = "", ""
 	s := it.Stream
 	if s == nil {
-		return nil
+		// A stop at the start gate still needs an end record, even though
+		// no step began and there is no step failure to keep.
+		s = &factory.Stream{}
+		it.Stream = s
 	}
 	if s.Cur >= 0 && s.Cur < len(s.Phases) {
 		ph := &s.Phases[s.Cur]
@@ -2145,6 +2170,9 @@ func (r *Runner) revive(it factory.Item) error {
 		}
 	}
 	lp.mu.Unlock()
+	// The lease door already said an explicit Resume before queueing this run.
+	log := it.Stream.Log
+	resumeSaid := len(log) > 0 && log[len(log)-1].Text == sayResumed
 	line := sayResumed
 	if i := nextPhase(it.Stream.Phases); i >= 0 {
 		ph := it.Stream.Phases[i]
@@ -2161,14 +2189,18 @@ func (r *Runner) revive(it factory.Item) error {
 			return fmt.Errorf("%s is not paused", it.Ref())
 		}
 		it.Stream.Paused = false
-		loopSay(it, now, "said", line)
+		if !resumeSaid {
+			loopSay(it, now, "said", line)
+		}
 		return nil
 	})
 	if err != nil {
 		lp.forget(c)
 		return err
 	}
-	lp.tell(id, line)
+	if !resumeSaid {
+		lp.tell(id, line)
+	}
 	lp.enqueue(c)
 	return nil
 }
@@ -2203,6 +2235,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		it, err := r.opts.Store.Get(id)
 		if err != nil {
 			return err
+		}
+		if c == nil && it.QKind == factory.QKindSpendStopped {
+			return r.answerStoppedSpending(id, yes, words)
 		}
 		// A STEP'S QUESTION THE PERSON HOLDS outlives the round that asked
 		// it (a pause, a restart): the answer is kept for the step's next

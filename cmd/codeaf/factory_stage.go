@@ -136,6 +136,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
 	cfg.Stage = verification
+	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
+	cfg.RepairStage = factory.IsCIRepairStage(factory.Stage{Name: strings.TrimSpace(spec.VerificationStage)})
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
