@@ -320,7 +320,10 @@ repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
 carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?}`: the
 median to the 80th percentile of the `n` nearest finished jobs, in `repo`
 (absent: every repository), and is absent while fewer than five similar jobs
-finished. `queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
+finished. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
+finished jobs spent past this job's spend so far, over the `n` that spent at
+least that much (absent below five; a running job with `left` alone has `n` 0).
+`queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
 figures see and how many of `of` backtested jobs spent inside their range. The
 repository dry run adds `cost_jobs`, that repository's finished jobs.
 

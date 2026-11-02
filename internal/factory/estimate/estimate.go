@@ -185,6 +185,24 @@ func (b Book) For(it factory.Item) (Range, bool) {
 	return b.cal.widen(r), true
 }
 
+// Left is what a running job will likely spend from here to its end: the
+// median to the 80th percentile of what similar finished jobs spent past the
+// job's spend so far, over the jobs that spent at least that much. False
+// while fewer than [MinJobs] such jobs finished.
+func (b Book) Left(it factory.Item) (Range, bool) {
+	spent := factory.JobSpent(it)
+	var past []Done
+	for _, d := range b.done {
+		if d.Spent >= spent {
+			d.Spent -= spent
+			past = append(past, d)
+		}
+	}
+	r, ok := rangeOf(pointOf(it), past)
+	r.MinLo, r.MinHi = 0, 0 // minutes past a spend are not what this measures
+	return r, ok
+}
+
 // point is where a job sits for the nearest-job search: its repository, its
 // kind, its band, and its five factor scores when it was scored.
 type point struct {

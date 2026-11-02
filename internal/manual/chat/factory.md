@@ -350,6 +350,8 @@ Limits: items read before this change show no size until their text changes or s
 
 A job's cost and time are measured from the factory's own finished jobs, never guessed by a model. An open job's range is the median to the 80th percentile of up to 12 finished jobs nearest to it: the same repository first, then every repository; near means close on the five complexity factors and the same kind of work. The app shows it with its basis, as `$0.40–1.10 · from 12 jobs in api`, and minutes the same way. A dropped job is not counted, because it spent only what it spent before it was dropped; a job run again counts once, with its latest run.
 
+A running job also has what is likely left: what similar finished jobs spent past this job's spend so far, over those that got that far (`about $4 more to finish`).
+
 With fewer than five similar finished jobs there is no figure: the job shows its band and `no cost history yet`.
 
 Each finished job is checked against the range the jobs before it would have given; the factory shows how many landed inside (`8 of 10 inside the range`). When fewer than 6 in 10 land inside, ranges are widened by how far real spend strayed from the median.

@@ -147,3 +147,23 @@ func TestADroppedJobsPartialSpendIsNotAnEstimate(t *testing.T) {
 		t.Fatal("five dropped jobs made a figure")
 	}
 }
+
+func TestARunningJobsLeftIsWhatSimilarJobsSpentPastItsSpendSoFar(t *testing.T) {
+	var items []factory.Item
+	// Spends 0.5 and 1 never got as far as 2; 3, 4, 5, 6, 7 did.
+	for i, usd := range []float64{0.5, 1, 3, 4, 5, 6, 7} {
+		items = append(items, finished(i+1, "acme/api", rubric(1, 0, 1, 0, 0), usd, t0, 10))
+	}
+	running := open("acme/api", rubric(1, 0, 1, 0, 0))
+	running.State = factory.StateRunning
+	running.Stream = &factory.Stream{Spent: 2, Started: t0}
+	left, ok := estimate.Open(items).Left(running)
+	// Past $2 they spent 1, 2, 3, 4, 5 more: median 3, p80 4.
+	if !ok || left.N != 5 || left.USDLo != 3 || left.USDHi != 4 {
+		t.Fatalf("left = %+v %v, want $3–4 from 5 jobs", left, ok)
+	}
+	running.Stream.Spent = 5
+	if _, ok := estimate.Open(items).Left(running); ok {
+		t.Fatal("three jobs got past $5, yet a figure was made")
+	}
+}

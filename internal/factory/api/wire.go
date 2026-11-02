@@ -114,6 +114,18 @@ type Estimate struct {
 	N       int     `json:"n"`
 	Repo    string  `json:"repo,omitempty"`
 	Widened bool    `json:"widened,omitempty"`
+	// Left is a running job's likely spend from here to its end, from the
+	// similar finished jobs that spent at least what it has so far; absent
+	// below five such jobs. A running job with Left but no whole figure has
+	// n 0 and no usd_lo or usd_hi to read.
+	Left *Left `json:"left,omitempty"`
+}
+
+// Left is what a running job will likely spend from now (desk).
+type Left struct {
+	USDLo float64 `json:"usd_lo"`
+	USDHi float64 `json:"usd_hi"`
+	N     int     `json:"n"`
 }
 
 // Calibration is the measured ranges' record (desk): Jobs finished jobs

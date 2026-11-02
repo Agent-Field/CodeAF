@@ -42,3 +42,21 @@ func TestAnOpenJobCarriesItsMeasuredRangeAndTheQueueItsHitRate(t *testing.T) {
 		t.Errorf("wire = %s", raw)
 	}
 }
+
+func TestARunningJobCarriesWhatIsLeft(t *testing.T) {
+	start := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	r := &factory.Rubric{From: factory.RubricFromRead}
+	var items []factory.Item
+	for i := range 6 {
+		items = append(items, factory.Item{ID: i + 1, Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, DoneHow: "answered",
+			Triage: factory.Triage{Rubric: r},
+			Stream: &factory.Stream{Spent: 3, Started: start, Ended: start.Add(20 * time.Minute)}})
+	}
+	items = append(items, factory.Item{ID: 9, Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning,
+		Triage: factory.Triage{Rubric: r}, Stream: &factory.Stream{Spent: 1, Started: start.Add(time.Hour)}})
+	q := FromSnapshot(factory.Snapshot{Now: start.Add(2 * time.Hour), Items: items}, "")
+	raw, _ := json.Marshal(q)
+	if !strings.Contains(string(raw), `"left":{"usd_lo":2,"usd_hi":2,"n":6}`) {
+		t.Fatalf("running job has no left: %s", raw)
+	}
+}

@@ -789,11 +789,19 @@ func estimateOf(book estimate.Book, it factory.Item) *Estimate {
 	if factory.JobState(it) == "done" || (it.Stream != nil && !it.Stream.Ended.IsZero()) {
 		return nil
 	}
-	r, ok := book.For(it)
-	if !ok {
+	var e Estimate
+	if r, ok := book.For(it); ok {
+		e = Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened}
+	}
+	if factory.JobState(it) == "running" && it.Stream != nil {
+		if l, ok := book.Left(it); ok {
+			e.Left = &Left{USDLo: l.USDLo, USDHi: l.USDHi, N: l.N}
+		}
+	}
+	if e.N == 0 && e.Left == nil {
 		return nil
 	}
-	return &Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened}
+	return &e
 }
 
 func calibrationOf(book estimate.Book) *Calibration {
