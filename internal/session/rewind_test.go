@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -698,5 +699,63 @@ func TestRewindKeepUndoSurvivesResume(t *testing.T) {
 	defer resumed.Close()
 	if countMessages(resumed, "keep these words") != 1 {
 		t.Fatal("restored message was not replayed exactly once")
+	}
+}
+
+func TestRewindKeepUndoPreservesSteerInstantAndRestampsOrdinaryMessages(t *testing.T) {
+	const at = "2026-10-15T14:00:00Z"
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	file, _, err := openSessionFile(path, t.TempDir(), "test/model", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []sessionEntry{
+		{Type: "message", Role: "user", Content: "start", Timestamp: at},
+		{Type: "message", Role: "assistant", Content: "working", ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "read", Arguments: "{}"}}}, Timestamp: at},
+		{Type: "message", Role: "tool", ToolCallID: "c1", Content: "result", Timestamp: at},
+		{Type: "message", Role: "user", Content: "correction", Steer: &journalSteer{}, Timestamp: at},
+		{Type: "message", Role: "user", Content: "session note", Note: true, Timestamp: at},
+		{Type: "message", Role: "assistant", Content: "done", Timestamp: at},
+	} {
+		file.writeLine(line)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) { c.SessionFile = path })
+	before := a.Transcript()
+	if len(before) != 7 {
+		t.Fatalf("resumed %d entries, want 7", len(before))
+	}
+	token, err := a.RewindKeep(a.RewindPoints()[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if err := a.UndoRewind(token); err != nil {
+		t.Fatal(err)
+	}
+	finished := time.Now()
+	after := a.Transcript()
+	written := ReadTranscript(path).Entries
+	if len(after) != len(before) || len(written) != len(before) {
+		t.Fatalf("undo entries: live %d, journal %d, want %d", len(after), len(written), len(before))
+	}
+	for i, entry := range after {
+		if entry.Text == "correction" {
+			if !entry.At.Equal(lineInstant(at)) {
+				t.Fatalf("steer instant = %v, want original journal instant %s", entry.At, at)
+			}
+		} else {
+			// appendWindow has always sent ordinary messages through appendMessage,
+			// which stamps their new writes rather than preserving the old instant.
+			if !entry.At.Equal(written[i].At) || entry.At.Before(started) || entry.At.After(finished) {
+				t.Fatalf("%q instant = %v, want its undo write instant %v within [%v, %v]", entry.Text, entry.At, written[i].At, started, finished)
+			}
+		}
+		after[i].At = before[i].At
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("undo changed shaped entries beyond their ordinary write instants")
 	}
 }
