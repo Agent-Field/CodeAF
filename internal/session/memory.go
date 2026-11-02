@@ -992,14 +992,13 @@ func (a *Agent) keepNoticedDurable(text, scope string, replaced *store.Memory, d
 // [Agent.SetModel]'s sake: the last rung of the reflex ladder is the model the
 // conversation is talking to.
 func (a *Agent) reflexClient() reflex.Completer {
-	a.mu.Lock()
-	source, model := a.config.RolesSource, a.model
-	a.mu.Unlock()
-	named, err := reflex.Model(roles.Source(source), model)
+	reader := a.roleModels()
+	model := reader.model
+	named, err := reflex.Model(reader.Source(), model)
 	if err != nil {
 		return nil
 	}
-	fallback := reflex.FallbackModel(roles.Source(source), model)
+	fallback := reflex.FallbackModel(reader.Source(), model)
 	routed := a.routedCompleter()
 	if routed == nil {
 		return nil

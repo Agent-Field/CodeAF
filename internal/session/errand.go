@@ -559,21 +559,31 @@ type ErrandRoute struct {
 // promise a call would read, and under one-model mode that one model. A role
 // with no model anywhere is left out.
 func (a *Agent) ErrandRoutes() (routes []ErrandRoute, oneModel string) {
-	a.mu.Lock()
-	source, floor := roles.Source(a.config.RolesSource), a.model
-	if a.config.OneModel {
-		oneModel = a.model
+	reader := a.roleModels()
+	if reader.one {
+		oneModel = reader.model
 	}
-	a.mu.Unlock()
-	return ErrandRoutesFrom(source, floor), oneModel
+	return reader.routes(reader.model), oneModel
 }
 
 // ErrandRoutesFrom is [Agent.ErrandRoutes] for a settings source and floor
 // model with no agent behind them.
 func ErrandRoutesFrom(source roles.Source, floor string) []ErrandRoute {
+	return roleReader{source: source}.routes(floor)
+}
+
+// ConfigRoutes is [Agent.ErrandRoutes] for a config no agent has opened yet:
+// what each role would resolve to on a session built from cfg, the one-model
+// promise included. A door can check what it is about to hand over.
+func ConfigRoutes(cfg Config) []ErrandRoute {
+	return readerFor(cfg, cfg.Model).routes(cfg.Model)
+}
+
+// routes lists every registered role this reader can name a model for.
+func (r roleReader) routes(floor string) []ErrandRoute {
 	var routes []ErrandRoute
 	for _, role := range roles.Registered() {
-		call, err := roles.ResolveCall(source, role, floor)
+		call, err := r.ResolveCall(role, floor)
 		if err != nil {
 			continue
 		}

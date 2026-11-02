@@ -146,15 +146,15 @@ func (a *Agent) ProposeTeams(ctx context.Context, in TeamProposalInput) (TeamPro
 	}
 	a.mu.Lock()
 	model, closed := a.model, a.closed
-	source, oneModel := a.config.RolesSource, a.config.OneModel
+	reader := readerFor(a.config, model)
 	a.mu.Unlock()
 	if closed {
 		return TeamProposal{}, errors.New("the conversation is closed")
 	}
 	// Only a desktop ask requires an explicit naming role. Terminal asks keep
 	// the conversation floor, and one-model mode explicitly chooses that floor.
-	if in.RequireNaming && !oneModel {
-		if _, err := roles.Resolve(source, roles.RoleTitle, ""); err != nil {
+	if in.RequireNaming {
+		if _, err := reader.Resolve(roles.RoleTitle, ""); err != nil {
 			return TeamProposal{}, ErrNoNamingModel
 		}
 	}
