@@ -78,7 +78,7 @@ func RecipeSource(dir string) (text string, from string, err error) {
 }
 
 func recipeSource(dir string) (string, string, error) {
-	if ref := defaultBranch(dir); ref != "" {
+	if ref := DefaultBranch(dir); ref != "" {
 		spec := ref + ":" + RecipeFile
 		if _, err := recipeGit(dir, "cat-file", "-e", spec); err != nil {
 			return "", FromDefault, nil
@@ -99,9 +99,9 @@ func recipeSource(dir string) (string, string, error) {
 	return string(data), FromWorkingTree, nil
 }
 
-// defaultBranch is the checkout's main branch as a ref git can read, or ""
+// DefaultBranch is the checkout's main branch as a ref git can read, or ""
 // when there is none: origin/HEAD's target, else main, else master.
-func defaultBranch(dir string) string {
+func DefaultBranch(dir string) string {
 	var tries []string
 	if out, err := recipeGit(dir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		if ref := strings.TrimSpace(out); ref != "" {
