@@ -76,7 +76,10 @@ the `stage_result` it reported, and only a report that says done can pass:
 
 A `write` step's done also needs a change in the job's checkout. With none, the round reads
 `the checkout has no change from where the run began` and does not pass, so later steps never
-run on an untouched tree. Other steps may finish with no change.
+run on an untouched tree. The comparison uses the job's original base: a rerun, **Try again**,
+or restarting a stopped step counts the change already on its branch, including committed
+work. Each attempt does not need a new edit. A branch with no change still cannot pass Write,
+even on a rerun. Other steps may finish with no change.
 
 A step that falls short of its until goes round again while it has rounds left (see a second
 round).

@@ -38,18 +38,31 @@ func unchangedWrite(st factory.Stage, job Job, res factory.StageResult) factory.
 }
 
 // changeBase fixes the comparison before any round can commit its edits.
-// A PR includes its existing change; other jobs start at their first HEAD.
+// The branch keeps the pin because Stop may revoke a worker's lease before
+// its first report reaches the factory. A replacement must not pin the edited
+// HEAD. A PR includes its existing change; other jobs start at their first HEAD.
 func changeBase(dir string, it factory.Item) string {
 	if it.ChangeBase != "" {
 		return it.ChangeBase
 	}
 	git := ExecGit{}
-	if isPull(it) {
-		if base, err := git.Run(dir, "merge-base", "HEAD", PullBase(it)); err == nil {
+	branch, _ := git.Run(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	key := "branch." + branch + ".codeaf-change-base"
+	if branch != "" {
+		if base, err := git.Run(dir, "config", "--local", "--get", key); err == nil && base != "" {
 			return base
 		}
 	}
-	base, _ := git.Run(dir, "rev-parse", "HEAD")
+	var base string
+	if isPull(it) {
+		base, _ = git.Run(dir, "merge-base", "HEAD", PullBase(it))
+	}
+	if base == "" {
+		base, _ = git.Run(dir, "rev-parse", "HEAD")
+	}
+	if branch != "" && base != "" {
+		_, _ = git.Run(dir, "config", "--local", key, base)
+	}
 	return base
 }
 
