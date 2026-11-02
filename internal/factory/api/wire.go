@@ -57,6 +57,20 @@ const ReasonHasRunning = "has_running"
 // [factory.RepoOffWords].
 const ReasonRepoOff = "repo_off"
 
+// ReasonInFlight is the reason on the 409 that refuses a comment on a job's
+// issue while another comment on the same job is still being posted, so a
+// double click posts once. Nothing was posted by the refused call.
+const ReasonInFlight = "in_flight"
+
+// The outcome on a failure of a job's issue comment
+// (POST /v1/jobs/{id}/issue_comment): refused says nothing was posted;
+// unknown says GitHub's answer cannot say, so the person reads the issue
+// before posting again. A factory older than the field sends none.
+const (
+	CommentRefused = "refused"
+	CommentUnknown = "unknown"
+)
+
 // ReasonNeedsCheckout is the reason on the 409 that refuses a start whose
 // repository has no checkout on the factory's machine and cannot be cloned
 // there; the error is [factory.NeedsCheckout]'s sentence, naming why. It is
@@ -93,10 +107,72 @@ type QueueDesk struct {
 	Busy         map[int]string `json:"busy,omitempty"`
 	BusyAll      string         `json:"busy_all,omitempty"`
 	LastReadCost float64        `json:"last_read_cost,omitempty"`
-	Marked       []int          `json:"marked,omitempty"`
+	// ScoutPrice is what one Look closer typically costs, for its button.
+	ScoutPrice float64 `json:"scout_price,omitempty"`
+	Marked     []int   `json:"marked,omitempty"`
 	// Checkouts has no omitempty ON PURPOSE: null is a seam that does not
 	// say, and {} is a seam that knows no checkout ([factory.Snapshot]).
 	Checkouts map[string]string `json:"checkouts"`
+	// Estimates is how good the measured ranges are: how many finished jobs
+	// the factory can see, and how many backtested ones spent inside their
+	// range ("8 of 10 inside the range").
+	Estimates *Calibration `json:"estimates,omitempty"`
+}
+
+// Estimate is one job's measured range (desk): dollars and minutes from the
+// 10th to the 90th percentile of N similar finished jobs, in Repo (absent:
+// every repository). Widened says misses widened it. Basis is "read" when
+// the jobs were matched on the job's read, or "kind" when they are the latest
+// finished jobs of the same kind, read or not ("from 12 jobs in api, not
+// read").
+type Estimate struct {
+	USDLo   float64 `json:"usd_lo"`
+	USDHi   float64 `json:"usd_hi"`
+	MinLo   int     `json:"min_lo"`
+	MinHi   int     `json:"min_hi"`
+	N       int     `json:"n"`
+	Repo    string  `json:"repo,omitempty"`
+	Widened bool    `json:"widened,omitempty"`
+	Basis   string  `json:"basis,omitempty"`
+	// Left is a running job's likely spend from here to its end, from the
+	// similar finished jobs that spent at least what it has so far; absent
+	// below five such jobs. A running job with Left but no whole figure has
+	// n 0 and no usd_lo or usd_hi to read.
+	Left *Left `json:"left,omitempty"`
+}
+
+// NewEstimate is GET /v1/repos/{owner}/{repo}/estimate?kind=K's answer:
+// what a job of that kind in that repository is likely to cost before it
+// exists, from the latest finished jobs of the kind (basis "kind"). Estimate
+// is absent while fewer than five such jobs finished.
+type NewEstimate struct {
+	Factory  Factory   `json:"factory"`
+	Repo     string    `json:"repo"`
+	Kind     string    `json:"kind"`
+	Estimate *Estimate `json:"estimate,omitempty"`
+}
+
+// Left is what a running job will likely spend from now (desk).
+type Left struct {
+	USDLo float64 `json:"usd_lo"`
+	USDHi float64 `json:"usd_hi"`
+	N     int     `json:"n"`
+}
+
+// Calibration is the measured ranges' record (desk): Jobs finished jobs
+// seen, Hit of Of backtested ones inside their range, and the same per basis
+// ("read", "kind"), so a job's range shows the record of its own basis.
+type Calibration struct {
+	Jobs  int                `json:"jobs"`
+	Hit   int                `json:"hit"`
+	Of    int                `json:"of"`
+	Basis map[string]HitRate `json:"basis,omitempty"`
+}
+
+// HitRate is Hit of Of backtested ranges inside (desk).
+type HitRate struct {
+	Hit int `json:"hit"`
+	Of  int `json:"of"`
 }
 
 // Since is the handover: what happened since the person last looked.
@@ -247,17 +323,21 @@ type StepDef struct {
 	Until string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
-	UntilSentence string   `json:"until_sentence,omitempty"`
-	Max           int      `json:"max,omitempty"`
-	Fixed         bool     `json:"fixed,omitempty"`
-	Custom        bool     `json:"custom,omitempty"`
-	Off           bool     `json:"off,omitempty"`
-	When          string   `json:"when,omitempty"`   // desk
-	Effort        string   `json:"effort,omitempty"` // desk
-	Fanout        string   `json:"fanout,omitempty"` // desk
-	Proof         []string `json:"proof,omitempty"`  // desk
-	Why           string   `json:"why,omitempty"`    // desk
-	By            string   `json:"by,omitempty"`     // desk
+	UntilSentence string `json:"until_sentence,omitempty"`
+	Max           int    `json:"max,omitempty"`
+	Fixed         bool   `json:"fixed,omitempty"`
+	Custom        bool   `json:"custom,omitempty"`
+	Off           bool   `json:"off,omitempty"`
+	When          string `json:"when,omitempty"`   // desk
+	Effort        string `json:"effort,omitempty"` // desk
+	// UseModel is the model the job's person picked for this step on this
+	// job (factory.Stage.Model), absent for the job's own model. It is the
+	// step's next run; Step.Model is the model it ran on.
+	UseModel string   `json:"use_model,omitempty"`
+	Fanout   string   `json:"fanout,omitempty"` // desk
+	Proof    []string `json:"proof,omitempty"`  // desk
+	Why      string   `json:"why,omitempty"`    // desk
+	By       string   `json:"by,omitempty"`     // desk
 	// Who is who an approve step waits on: absent for the job's person,
 	// "@handle" for a named person, operator for any of the factory's
 	// operators (factory.ApproverWord).
@@ -303,6 +383,13 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	FromJob     int    `json:"from_job,omitempty"`
+	SourceIssue string `json:"source_issue,omitempty"`
+
+	// Following is whether the CALLER follows this job ([ForViewer]); absent
+	// is not following. Nobody else's following is ever answered.
+	Following bool `json:"following,omitempty"`
+
 	AutonomyWhy    string              `json:"autonomy_why,omitempty"`
 	Autonomy       string              `json:"autonomy,omitempty"`
 	FollowPR       bool                `json:"follow_pr,omitempty"`
@@ -341,25 +428,46 @@ type Job struct {
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
-	Size     string       `json:"size,omitempty"`
-	ReadSize *JobReadSize `json:"read_size,omitempty"`
-	Budget   float64      `json:"budget,omitempty"`
+	Size          string       `json:"size,omitempty"`
+	ReadSize      *JobReadSize `json:"read_size,omitempty"`
+	Budget        float64      `json:"budget,omitempty"`
+	StopAfterStep bool         `json:"stop_after_step,omitempty"`
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
-	Model           string            `json:"model,omitempty"`
-	AutomaticModels *bool             `json:"automatic_models,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	DoneHow         string            `json:"done_how,omitempty"`
-	DoneAt          time.Time         `json:"done_at"`
-	Dismissed       bool              `json:"dismissed"`
-	DismissedBy     []string          `json:"dismissed_by,omitempty"`
-	WaitingFor      string            `json:"waiting_for,omitempty"`
-	Overlap         []string          `json:"overlap,omitempty"`
-	Approval        *factory.Approval `json:"approval,omitempty"`
+	Model           string `json:"model,omitempty"`
+	AutomaticModels *bool  `json:"automatic_models,omitempty"`
+	// FactoryModel is the factory's default model the job was last queued
+	// under (factory.Spending), which a step that names no model, on a job
+	// that names none, runs on; absent when the factory sets none.
+	FactoryModel string            `json:"factory_model,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	DoneHow      string            `json:"done_how,omitempty"`
+	DoneAt       time.Time         `json:"done_at"`
+	Dismissed    bool              `json:"dismissed"`
+	DismissedBy  []string          `json:"dismissed_by,omitempty"`
+	WaitingFor   string            `json:"waiting_for,omitempty"`
+	Overlap      []string          `json:"overlap,omitempty"`
+	Approval     *factory.Approval `json:"approval,omitempty"`
+	// Estimate is what jobs like this one cost and took, measured from the
+	// factory's finished jobs; absent on a finished job, on one nobody
+	// scored, and while too few similar jobs finished ("no cost history yet").
+	Estimate *Estimate `json:"estimate,omitempty"`
+	// Scout is the job's last Look closer; absent when nobody looked.
+	Scout *Scout `json:"scout,omitempty"`
+
+	// BriefSeen is the Brief revision the CALLER last saw on this job, absent
+	// for none ([ForViewer]). Nobody else's is ever answered.
+	BriefSeen int `json:"brief_seen,omitempty"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
+	// Area is the part of the repository the job's change touched most
+	// ([factory.JobArea], said by [AreaIn]): the repository's declared area,
+	// or else the top-level directory with a trailing slash ("cli/"), two
+	// segments deep under a container ("internal/factory/"). Absent before
+	// the job changed a file, or when it changed files at the root alone.
+	Area string `json:"area,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
 	Draft *bool  `json:"draft,omitempty"`
 	ID    int    `json:"document_id"`
@@ -406,10 +514,16 @@ type Job struct {
 	// (factory.RuleChecks), for its two ◆ rows; absent before either was
 	// judged.
 	RuleChecks *RuleChecks `json:"rule_checks,omitempty"`
-	AssignedTo string      `json:"assigned_to,omitempty"`
-	Step       *StepAt     `json:"step,omitempty"`
-	Steps      []Step      `json:"steps"`
-	Claims     []Claim     `json:"claims,omitempty"`
+	// Brief is the job's brief mark: the rev of its newest kept version and
+	// the brief's status, so a reader that polls the job reads the brief
+	// itself (GET /v1/jobs/{id}/brief) only when one of them moves. Absent
+	// while the job has only its stub, and from a factory older than the
+	// brief.
+	Brief      *BriefMark `json:"brief,omitempty"`
+	AssignedTo string     `json:"assigned_to,omitempty"`
+	Step       *StepAt    `json:"step,omitempty"`
+	Steps      []Step     `json:"steps"`
+	Claims     []Claim    `json:"claims,omitempty"`
 	// PlannedFiles are the paths the current plan's explicit Files declaration
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
@@ -511,6 +625,14 @@ type RoundLine struct {
 	At        time.Time `json:"at"`
 	StartedAt time.Time `json:"started_at,omitzero"`
 	Chat      string    `json:"chat,omitempty"`
+	// Result and Reason are how the try ended (factory.TryResult): its
+	// rule's word (clean, not clean, green, not green, proven, not proven,
+	// done, not done, blocked) and a counted reason ("2 findings", "12
+	// passed", "1 of 2 claims shown"). A failure closed on retry says stopped,
+	// interrupted or failed from its failure code. Older tries may omit both;
+	// a surface never guesses their outcome from summary.
+	Result string `json:"result,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Can is which verbs this caller may use on this job. It follows the
@@ -529,10 +651,13 @@ type Can struct {
 	Unassign       bool `json:"unassign"`
 	Nudge          bool `json:"nudge"`
 	RaiseBudget    bool `json:"raise_budget"`
+	StopAfterStep  bool `json:"stop_after_step"`
+	SpendAnswer    bool `json:"spend_answer"`
 	Undo           bool `json:"undo"`
 
 	Approve      bool `json:"approve"`
 	RunAgain     bool `json:"run_again"`
+	RunAsNew     bool `json:"run_as_new"`
 	CancelJob    bool `json:"cancel_job"`
 	RetryPublish bool `json:"retry_publish"`
 	Answer       bool `json:"answer"`
@@ -628,14 +753,17 @@ type JobDesk struct {
 	Heard     time.Time `json:"heard"`
 	// Comments has no omitempty ON PURPOSE: null is not read yet, and [] is
 	// read with nothing said ([factory.Item.Comments]).
-	Comments  []Comment  `json:"comments"`
-	Files     []File     `json:"files,omitempty"`
-	CheckRuns []CheckRun `json:"check_runs,omitempty"`
-	Base      string     `json:"base,omitempty"`
-	Head      string     `json:"head,omitempty"`
-	HeadSHA   string     `json:"head_sha,omitempty"`
-	Activity  []Activity `json:"activity,omitempty"`
-	Run       *Run       `json:"run,omitempty"`
+	Comments []Comment `json:"comments"`
+	// CommentReads is what the job's manager did with each new comment, by
+	// the comment's id ([factory.ReadComments]); absent is none.
+	CommentReads []factory.CommentRead `json:"comment_reads,omitempty"`
+	Files        []File                `json:"files,omitempty"`
+	CheckRuns    []CheckRun            `json:"check_runs,omitempty"`
+	Base         string                `json:"base,omitempty"`
+	Head         string                `json:"head,omitempty"`
+	HeadSHA      string                `json:"head_sha,omitempty"`
+	Activity     []Activity            `json:"activity,omitempty"`
+	Run          *Run                  `json:"run,omitempty"`
 }
 
 // Run is a job's bench: the stream's facts that are not per step (desk). Nil
@@ -662,6 +790,10 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	// Files is the plan answer. An explicit empty list stays (it means unknown,
+	// and prose can't fill it in). With no list the field is left out, as an
+	// older factory refuses unknown fields.
+	Files        []string                  `json:"files,omitzero"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Tests        *factory.TestCounts       `json:"tests,omitempty"`
@@ -763,6 +895,8 @@ type PR struct {
 	Mergeable   string `json:"mergeable,omitempty"`
 	ChecksRead  bool   `json:"checks_read,omitempty"`
 	ReviewsRead bool   `json:"reviews_read,omitempty"`
+	// HeadBranch is the branch the pull request comes from.
+	HeadBranch string `json:"head_branch,omitempty"`
 }
 
 // JobMerge is a job's merging: the pipeline's settings pinned when its proof
@@ -826,7 +960,7 @@ type Triage struct {
 	SizeFrom     string    `json:"size_from,omitempty"`
 	Area         string    `json:"area,omitempty"`
 	Readiness    int       `json:"readiness,omitempty"`
-	Est          float64   `json:"est,omitempty"`
+	Rubric       *Rubric   `json:"rubric,omitempty"`
 	DupOf        int       `json:"dup_of,omitempty"`
 	Risk         []string  `json:"risk,omitempty"`
 	Read         string    `json:"read,omitempty"`
@@ -841,6 +975,97 @@ type Triage struct {
 	StartRules   []string  `json:"start_rules,omitempty"`
 }
 
+// Rubric is how complex a job is (desk): five factors scored 0..2, their sum
+// and its band (with the neighbouring band when the sum sits on an edge), and who scored it: "read" (the arrival read, text only) or
+// "scout" (Look closer, with the repository). A factor marked low was judged
+// without seeing what it is about. A model never writes a price.
+type Rubric struct {
+	Scope      Factor `json:"scope"`
+	Clarity    Factor `json:"clarity"`
+	Coupling   Factor `json:"coupling"`
+	Proof      Factor `json:"proof"`
+	Novelty    Factor `json:"novelty"`
+	From       string `json:"from"`
+	Complexity int    `json:"complexity"`
+	Band       string `json:"band"`
+	// BandNear is the band one point away when the sum sits on an edge
+	// (3 or 4, 6 or 7): the desk shows "small–medium" there, not one band.
+	BandNear string `json:"band_near,omitempty"`
+}
+
+// Factor is one rubric factor (desk).
+type Factor struct {
+	Score int    `json:"score"`
+	Why   string `json:"why,omitempty"`
+	Low   bool   `json:"low,omitempty"`
+	// Cite is a scout's evidence, `path:line`, checked to exist.
+	Cite string `json:"cite,omitempty"`
+}
+
+// Scout is a job's Look closer (desk): what a model with read-only tools on
+// the repository found. Every path in it exists at head; dropped counts the
+// paths the answer named that did not (cited is all it named). stale says the
+// issue's text changed since. usd, calls, model and took_ms are the look's own
+// receipt; at is when it was written.
+type Scout struct {
+	Files    []ScoutFile `json:"files,omitempty"`
+	Plan     []string    `json:"plan,omitempty"`
+	Unknowns []string    `json:"unknowns,omitempty"`
+	Tests    []string    `json:"tests,omitempty"`
+	Rubric   *Rubric     `json:"rubric,omitempty"`
+	Cited    int         `json:"cited,omitempty"`
+	Dropped  int         `json:"dropped,omitempty"`
+	Calls    int         `json:"calls,omitempty"`
+	USD      float64     `json:"usd,omitempty"`
+	Model    string      `json:"model,omitempty"`
+	TookMS   int64       `json:"took_ms,omitempty"`
+	Body     string      `json:"body"`
+	Head     string      `json:"head"`
+	At       time.Time   `json:"at"`
+	Stale    bool        `json:"stale,omitempty"`
+}
+
+// ReadResult is POST /v1/read's answer, a person's Read of chosen jobs: the
+// jobs read now, those skipped (already read, not an issue job, not visible,
+// or over the most one read takes) and those whose model call failed, left
+// unread to try again.
+type ReadResult struct {
+	Read    []int `json:"read"`
+	Skipped []int `json:"skipped"`
+	Failed  []int `json:"failed"`
+}
+
+// ReadMost is the most jobs one POST /v1/read reads; the rest are skipped.
+const ReadMost = 20
+
+// ScoutWall is the most time one look closer runs before it must answer.
+const ScoutWall = time.Minute
+
+// ScoutLook is POST /v1/jobs/{id}/scout's answer: the job's scout, and
+// cached when it is the kept look of the same issue text at the same head,
+// which cost nothing.
+type ScoutLook struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Cached  bool    `json:"cached"`
+	Scout   Scout   `json:"scout"`
+}
+
+// The reasons Look closer refuses with.
+const (
+	// ReasonLimit (429): the month's AI limit or the repository's daily
+	// scout limit is reached; the error says which.
+	ReasonLimit = "limit"
+	// ReasonNoAnswer (502): the scout spent its budget without an answer.
+	ReasonNoAnswer = "no_answer"
+)
+
+// ScoutFile is one file or folder a scout expects the work to change.
+type ScoutFile struct {
+	Path string `json:"path"`
+	Why  string `json:"why,omitempty"`
+}
+
 // LogLine is one line of a run's grain (desk).
 type LogLine struct {
 	At    time.Time `json:"at"`
@@ -849,11 +1074,35 @@ type LogLine struct {
 	Text  string    `json:"text"`
 }
 
-// Comment is one thing said on a job's source (desk).
+// Comment is one thing said on a job's source (desk). ID and URL are
+// GitHub's, absent on a comment read before they were kept; tier is the
+// author's standing on the repository (owner, collaborator or stranger),
+// absent until it is read; by_factory marks the factory's own publication.
 type Comment struct {
-	Author string    `json:"author"`
-	Body   string    `json:"body"`
-	At     time.Time `json:"at"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	At        time.Time `json:"at"`
+	ID        string    `json:"id,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	Tier      string    `json:"tier,omitempty"`
+	ByFactory bool      `json:"by_factory,omitempty"`
+}
+
+// EndpointNotFound is a factory's sentence for a route it does not have. A
+// client tells an older factory from a refusal by it, so the words never change.
+const EndpointNotFound = "factory endpoint not found"
+
+// IssueCommentRequest is a person's comment on the job's GitHub issue,
+// posted as that person (POST /v1/jobs/{id}/issue_comment).
+type IssueCommentRequest struct {
+	Body string `json:"body"`
+}
+
+// IssueCommentPosted is GitHub's receipt for one posted comment.
+type IssueCommentPosted struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Comment Comment `json:"comment"`
 }
 
 // File is one file a pull request changes (desk).
@@ -929,6 +1178,9 @@ type DryRun struct {
 	WouldStart []int `json:"would_start"`
 	WouldAsk   []Ask `json:"would_ask"`
 	WouldWait  []Ask `json:"would_wait"`
+	// CostJobs is how many finished jobs of this repository the measured
+	// cost can see; under five, the page says "no cost history yet".
+	CostJobs int `json:"cost_jobs"`
 }
 
 // Ask is one job the pipeline would ask about first, and why.
@@ -971,3 +1223,15 @@ type PublishedEvent = live.PublishedPayload
 
 // PublishFailedEvent names the failure code or the report's reason.
 type PublishFailedEvent = live.FailedPayload
+
+// BriefMark says which brief a job has now ([Job.Brief]).
+type BriefMark struct {
+	Rev    int    `json:"rev"`
+	Status string `json:"status"`
+}
+
+// SpendAnswer answers only a spending hold at the revision the person read.
+type SpendAnswer struct {
+	CarryOn *bool   `json:"carry_on"`
+	Expect  *Expect `json:"expect"`
+}

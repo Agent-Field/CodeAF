@@ -19,6 +19,7 @@ import (
 func (h *Handler) v2Routes() {
 	h.route("/v1/settings", map[string]http.HandlerFunc{http.MethodGet: h.runnerPolicy, http.MethodPatch: h.runnerPolicy})
 	h.route("/v1/rules", map[string]http.HandlerFunc{http.MethodGet: h.houseRules, http.MethodPut: h.houseRules})
+	h.route("/v1/spending", map[string]http.HandlerFunc{http.MethodGet: h.spending, http.MethodPatch: h.spending})
 	h.read("/v1/runners", h.runnersDirectory)
 	h.route("/v1/runners/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/runners/pull", h.pullWorker)
@@ -233,8 +234,17 @@ func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
 		}
 		over = n
 	}
-	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over})
+	asleep := false
+	if h.workers != nil {
+		h.workers.mu.RLock()
+		asleep = h.workers.machineAsleepLocked(self)
+		h.workers.mu.RUnlock()
+	}
+	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over, Asleep: asleep})
 }
+
+// registryFile is the runner registry's document under the factory root.
+const registryFile = "runners.json"
 
 // saveRegistry persists only credential hashes and public runner facts under the service lock.
 func (s *workerService) saveRegistry() error {
@@ -261,22 +271,31 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), "runners.json"))
+	return os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile))
+}
+
+// readRegistry is the saved registry, empty when none was ever saved.
+func readRegistry(root string) (map[string]registeredWorker, error) {
+	rows := map[string]registeredWorker{}
+	data, err := os.ReadFile(filepath.Join(root, registryFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return rows, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(data, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *workerService) loadRegistry() error {
 	if s.st == nil {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(s.st.Root(), "runners.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	rows, err := readRegistry(s.st.Root())
 	if err != nil {
-		return err
-	}
-	rows := map[string]registeredWorker{}
-	if err = json.Unmarshal(data, &rows); err != nil {
 		return err
 	}
 	for key, row := range rows {

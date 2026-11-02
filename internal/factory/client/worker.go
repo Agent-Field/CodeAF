@@ -22,6 +22,9 @@ var ErrNotAttached = errors.New("factory worker: credential not known; attach ag
 // job was stopped, or the lease expired. The worker lets the job go.
 var ErrLeaseGone = errors.New("factory worker: the lease is gone")
 
+// ErrLeaseWithdrawn is a retry or manual handover, rather than a person's Stop.
+var ErrLeaseWithdrawn = fmt.Errorf("factory worker: execution withdrawn: %w", ErrLeaseGone)
+
 // Refusal is a request the factory read and refused, in its own sentence, as
 // opposed to one that never reached it.
 type Refusal struct {
@@ -86,6 +89,12 @@ func (w *WorkerClient) Self(ctx context.Context) (api.RunnerSelf, error) {
 	return out, err
 }
 
+// Presence says whether this runner's computer is asleep.
+func (w *WorkerClient) Presence(ctx context.Context, asleep bool) error {
+	_, err := w.send(ctx, http.MethodPost, "/v1/runners/presence", w.credential, api.RunnerPresence{Asleep: asleep}, nil)
+	return err
+}
+
 // Pull waits up to the factory's long-poll bound for a job. ok is false when
 // none was offered.
 func (w *WorkerClient) Pull(ctx context.Context) (api.WorkerPull, bool, error) {
@@ -141,6 +150,9 @@ func PrepareWorkerReport(report api.WorkerReport, key string) (PreparedWorkerRep
 	report.Pipeline = append([]api.Step(nil), report.Pipeline...)
 	for i := range report.Pipeline {
 		report.Pipeline[i].RoundLimit, report.Pipeline[i].Verification = 0, nil
+		// A step's model pick is the person's, which the factory keeps itself
+		// (run.applyPipeline); a factory older than picks refuses the field.
+		report.Pipeline[i].UseModel = ""
 	}
 	report.Steps = append([]api.StepReport(nil), report.Steps...)
 	for i := range report.Steps {
@@ -181,6 +193,16 @@ func PrepareWorkerReport(report api.WorkerReport, key string) (PreparedWorkerRep
 			return PreparedWorkerReport{}, err
 		}
 		extra.Set(api.StepModelsHeader, string(raw))
+	}
+	if len(report.Models) > 0 {
+		raw, err := json.Marshal(report.Models)
+		if err != nil {
+			return PreparedWorkerReport{}, err
+		}
+		if len(raw) > 64<<10 {
+			return PreparedWorkerReport{}, errors.New("model spend exceeds 64 KiB")
+		}
+		extra.Set(api.ModelSpendHeader, string(raw))
 	}
 	if key != "" {
 		extra.Set("Idempotency-Key", key)
@@ -251,6 +273,9 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 	case resp.StatusCode == http.StatusUnauthorized && path != "/v1/workers/attach":
 		return resp.StatusCode, ErrNotAttached
 	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
+		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
+			return resp.StatusCode, ErrLeaseWithdrawn
+		}
 		return resp.StatusCode, ErrLeaseGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}
@@ -275,4 +300,14 @@ func (w *WorkerClient) RecoveryRetry(ctx context.Context, id int) (time.Time, er
 	var out api.WorkerRecovered
 	_, err := w.send(ctx, http.MethodGet, fmt.Sprintf("/v1/workers/recover/%d", id), w.credential, nil, &out)
 	return out.RetryRequestedAt, err
+}
+
+// StopAfterStep reads the person's current choice under this job's lease.
+// A boundary reads it directly rather than waiting for a periodic heartbeat.
+func (w *WorkerClient) StopAfterStep(ctx context.Context, lease string) (bool, error) {
+	var out struct {
+		On bool `json:"on"`
+	}
+	_, err := w.send(ctx, http.MethodGet, leasePath(lease, "stop-after-step"), w.credential, nil, &out)
+	return out.On, err
 }

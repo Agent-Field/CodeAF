@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
@@ -43,7 +44,8 @@ import (
 // bound these methods end to end.
 
 // FeatureFactoryJobActions is announced in hello when the engine serves
-// factory.job_*.
+// factory.job_*. Job creation keeps separate title and details literal;
+// neither field sets budget or edits the pipeline.
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FeatureFactoryStartPipeline is announced beside FeatureFactoryJobActions when
@@ -57,6 +59,10 @@ const FeatureFactoryStartPipeline = "factory.start_pipeline"
 type FactoryPipelineStarter interface {
 	FactoryJobPipelineStarts()
 }
+
+// FeatureFactoryStopAnyVersion says Stop accepts no expect and ignores an
+// old expect on an active job or its current running step.
+const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
 
 // FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
 // dollars. The job owner can choose either direction, never below recorded spending.
@@ -154,7 +160,9 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps], never below recorded spending.
+// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps].
+// An increase above spend resumes a cap wait; a smaller increase keeps the
+// question. A decrease below recorded spending is refused.
 type FactoryJobBudgetParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
@@ -222,6 +230,30 @@ type FactoryJobStepParams struct {
 	// Words are the person's for a rerun (optional): what to do differently,
 	// kept on the job's notes. A step stop takes none.
 	Words string `json:"words,omitempty"`
+	// Model is, on a rerun, the model the step runs on from now (run again
+	// from here with another model), one of models.list's ids; "" keeps the
+	// step's own. Sent only where [FeatureFactoryJobStepRerunModel] is
+	// announced. A step stop takes none.
+	Model string `json:"model,omitempty"`
+}
+
+// FeatureFactoryJobStepRerunModel is announced beside
+// [FeatureFactoryJobActions] when factory.job_step_rerun carries `model`.
+// factory.job_step_rerun is RUN AGAIN FROM HERE: the step and every step after
+// it go back to pending, so the later steps run again and an approval after it
+// asks again, while earlier steps and money spent are kept. With a model the
+// step runs on it, checked against this engine's models.list; a check, an
+// approval and a fixed step refuse one.
+const FeatureFactoryJobStepRerunModel = "factory.job_step_rerun_model"
+
+func withFactoryJobStepRerunModelFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(Factory); !ok {
+		return hello
+	}
+	if _, ok := e.(FactoryActor); ok {
+		hello = withFeature(hello, FeatureFactoryJobStepRerunModel)
+	}
+	return hello
 }
 
 // FactoryJobCreateParams makes a job. WITHOUT Start THE JOB IS ONLY ADDED TO
@@ -298,6 +330,11 @@ type FactoryRefusal struct {
 	CurrentCommit string     `json:"current_commit,omitempty"`
 	HeadCommit    string     `json:"head_commit,omitempty"`
 	RequestID     string     `json:"request_id,omitempty"`
+	// Outcome is set only on a refusal of factory.issue_comment by a factory
+	// that says it: refused (nothing was posted) or unknown (GitHub's answer
+	// cannot say; read the issue before posting again). Absent from an older
+	// factory, where the code alone says it: uncertain may have posted.
+	Outcome string `json:"outcome,omitempty" enum:"refused,unknown"`
 }
 
 // FactoryActor is the engine's half of factory.job_*. It is optional on top of
@@ -339,8 +376,12 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryActor); ok {
 		hello = withFeature(hello, FeatureFactoryJobActions)
+		hello = withFeature(hello, FeatureFactoryStopAnyVersion)
 		if _, ok := e.(FactoryPipelineStarter); ok {
 			hello = withFeature(hello, FeatureFactoryStartPipeline)
+		}
+		if _, ok := e.(FactoryJobNewRunner); ok {
+			hello = withFeature(hello, FeatureFactoryJobRunAsNew)
 		}
 		if _, ok := e.(FactoryCloser); ok {
 			hello = withFeature(hello, FeatureFactoryJobClose)
@@ -350,8 +391,13 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryGiveBackChecks)
 			hello = withFeature(hello, FeatureFactoryJobAutonomy)
 		}
+		if _, ok := e.(FactoryStepSpending); ok {
+			hello = withFeature(hello, FeatureFactoryJobStopAfterStep)
+			hello = withFeature(hello, FeatureFactoryJobSpendAnswer)
+		}
 		if _, ok := e.(FactoryJobHolder); ok {
 			hello = withFeature(hello, FeatureFactoryJobHold)
+			hello = withFeature(hello, FeatureFactoryJobPause)
 		}
 	}
 	return hello
@@ -370,9 +416,8 @@ var factoryLogin = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0
 
 var factoryCommit = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
-// checkJob trims the factory id and checks the job number and the read the
-// action stands on.
-func checkJob(factory *string, job int, expect *api.Expect) error {
+// checkJobTarget trims the factory id and checks the job number.
+func checkJobTarget(factory *string, job int) error {
 	id, err := factoryID(strings.TrimSpace(*factory))
 	if err != nil {
 		return err
@@ -380,6 +425,14 @@ func checkJob(factory *string, job int, expect *api.Expect) error {
 	*factory = id
 	if job < 1 {
 		return Errorf(CodeBadParams, "job must be a whole number from 1")
+	}
+	return nil
+}
+
+// checkJob requires the version the person read for writes that act in place.
+func checkJob(factory *string, job int, expect *api.Expect) error {
+	if err := checkJobTarget(factory, job); err != nil {
+		return err
 	}
 	if expect == nil || expect.Version == nil || *expect.Version < 1 {
 		return Errorf(CodeBadParams, "expect.version is required: send the version of the job the person read")
@@ -464,6 +517,16 @@ func checkPipelinePickServed(e Engine, p any) error {
 	return Errorf(CodeBadParams, "this engine does not start a job on a picked pipeline")
 }
 
+// checkStop accepts old desks' guards and lets a person stop without a read.
+func checkStop(factory *string, job int, expect *api.Expect) error {
+	if expect == nil {
+		return checkJobTarget(factory, job)
+	}
+	return checkJob(factory, job, expect)
+}
+
+func prepStop(p *FactoryJobActionParams) error { return checkStop(&p.Factory, p.Job, p.Expect) }
+
 func prepDrop(p *FactoryJobDropParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
 
 func prepAssignee(p *FactoryJobAssigneeParams) error {
@@ -546,25 +609,32 @@ func prepChanges(p *FactoryJobChangesParams) error {
 	return err
 }
 
-// prepStepRerun is [prepStep] with the rerun's optional words.
+// prepStepRerun requires the version read and accepts the rerun's optional words.
 func prepStepRerun(p *FactoryJobStepParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
 	words, err := words("words", p.Words, MaxFactoryJobWords, false)
 	if err != nil {
 		return err
 	}
-	p.Words = ""
+	model := strings.TrimSpace(p.Model)
+	if !factory.ModelID(model) {
+		return Errorf(CodeBadParams, "%s", factory.ErrModelID.Error())
+	}
+	p.Words, p.Model = "", ""
 	if err := prepStep(p); err != nil {
 		return err
 	}
-	p.Words = words
+	p.Words, p.Model = words, model
 	return nil
 }
 
 func prepStep(p *FactoryJobStepParams) error {
-	if strings.TrimSpace(p.Words) != "" {
-		return Errorf(CodeBadParams, "only a rerun takes words")
+	if strings.TrimSpace(p.Words) != "" || strings.TrimSpace(p.Model) != "" {
+		return Errorf(CodeBadParams, "only a rerun takes words or a model")
 	}
-	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+	if err := checkStop(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
 	var err error
@@ -592,7 +662,7 @@ func prepCreate(p *FactoryJobCreateParams) error {
 	if p.Title, err = words("title", p.Title, MaxFactoryJobTitle, true); err != nil {
 		return err
 	}
-	if p.Text, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
+	if _, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
 		return err
 	}
 	if p.Assignee != nil {
@@ -619,7 +689,7 @@ func prepCreate(p *FactoryJobCreateParams) error {
 func init() {
 	for name, m := range map[string]method{
 		"factory.job_start":           factoryAction("factory.job_start", prepStart, FactoryActor.FactoryJobStart),
-		"factory.job_stop":            factoryAction("factory.job_stop", prepAction, FactoryActor.FactoryJobStop),
+		"factory.job_stop":            factoryAction("factory.job_stop", prepStop, FactoryActor.FactoryJobStop),
 		"factory.job_dismiss":         factoryAction("factory.job_dismiss", prepAction, FactoryActor.FactoryJobDismiss),
 		"factory.job_drop":            factoryAction("factory.job_drop", prepDrop, FactoryActor.FactoryJobDrop),
 		"factory.job_restore":         factoryAction("factory.job_restore", prepAction, FactoryActor.FactoryJobRestore),

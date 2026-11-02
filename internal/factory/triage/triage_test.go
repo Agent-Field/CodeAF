@@ -19,8 +19,8 @@ func TestPromptCarriesTheItemAndTheVocabulary(t *testing.T) {
 	p := Prompt(it)
 	for _, want := range []string{
 		"acme/api", "kind: issue", "#12", "the meter resets at midnight", "labels: bug, billing",
-		`"read"`, `"type"`, `"size"`, `"est_usd"`, `"risk"`, `"dup"`, `"priority"`, `"reason"`,
-		"bug, feat, chore, question", "S, M, L", "touches money", "touches auth", "has ui", "migration",
+		`"read"`, `"type"`, `"rubric"`, `"risk"`, `"dup"`, `"priority"`, `"reason"`,
+		"bug, feat, chore, question", "touches money", "touches auth", "has ui", "migration",
 		"1 (take it first) to 5 (later)", "at most five words",
 	} {
 		if !strings.Contains(p, want) {
@@ -40,7 +40,7 @@ func TestParseReadsCleanJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := factory.Triage{Read: "the meter resets on the wrong clock", Type: "bug", Size: "S", Est: 1.5,
+	want := factory.Triage{Read: "the meter resets on the wrong clock", Type: "bug",
 		Risk: []string{"touches money"}, Dup: "#9", Priority: 2, Reason: "users see wrong totals every"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Parse = %+v\nwant   %+v", got, want)
@@ -66,11 +66,11 @@ func TestParseRefusesGarbageAndDropsWordsOutsideTheVocabulary(t *testing.T) {
 			t.Errorf("Parse(%q) err = %v, want ErrNoRead", reply, err)
 		}
 	}
-	got, err := Parse(`{"read": "x", "type": "epic", "size": "XL", "est_usd": "$3", "priority": 9, "dup": "maybe 12", "risk": "has ui, migration"}`)
+	got, err := Parse(`{"read": "x", "type": "epic", "priority": 9, "dup": "maybe 12", "risk": "has ui, migration"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Type != "" || got.Size != "" || got.Priority != 0 || got.Dup != "" || got.Est != 3 ||
+	if got.Type != "" || got.Size != "" || got.Priority != 0 || got.Dup != "" ||
 		!reflect.DeepEqual(got.Risk, []string{"has ui", "migration"}) {
 		t.Fatalf("Parse kept a word outside the vocabulary: %+v", got)
 	}
@@ -78,8 +78,8 @@ func TestParseRefusesGarbageAndDropsWordsOutsideTheVocabulary(t *testing.T) {
 
 func TestApplyFillsOnlyWhatIsEmpty(t *testing.T) {
 	it := factory.Item{Triage: factory.Triage{Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, Risk: []string{"has ui"}, Priority: 4}}
-	Apply(&it, factory.Triage{Read: "r", Type: "bug", Size: "S", Est: 2, Risk: []string{"migration"}, Dup: "#3", Priority: 1, Reason: "why"})
-	want := factory.Triage{Read: "r", Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, Est: 2, Risk: []string{"has ui"}, Dup: "#3", Priority: 4, Reason: "why"}
+	Apply(&it, factory.Triage{Read: "r", Type: "bug", Size: "S", Risk: []string{"migration"}, Dup: "#3", Priority: 1, Reason: "why"})
+	want := factory.Triage{Read: "r", Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, Risk: []string{"has ui"}, Dup: "#3", Priority: 4, Reason: "why"}
 	if !reflect.DeepEqual(it.Triage, want) {
 		t.Fatalf("Apply = %+v\nwant  %+v", it.Triage, want)
 	}
@@ -235,5 +235,70 @@ func TestWorkerGivesAFailingCallItsTriesThenStamps(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if got, _ := st.Get(it.ID); got.Triage.TriagedAt.IsZero() {
 		t.Fatal("an item whose call always fails was never stamped")
+	}
+}
+
+// READ NEW ISSUES AS THEY ARRIVE, TURNED OFF, reads nothing: no call and no
+// stamp, and the item is read the first tick after it is turned on again.
+func TestAWorkerWhoseArrivalReadIsOffReadsNothing(t *testing.T) {
+	st := openStore(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "x", State: factory.StateNew, Kind: factory.KindIssue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{asked: make(chan struct{}, 8), answer: func(int) (string, error) { return clean, nil }}
+	off := true
+	opts := Options{Off: func() bool { return off }}
+	ReadOne(context.Background(), st, r.call, opts)
+	if got, _ := st.Get(it.ID); len(r.prompts) != 0 || !got.Triage.TriagedAt.IsZero() {
+		t.Fatalf("read while off: %d calls, %+v", len(r.prompts), got.Triage)
+	}
+	off = false
+	ReadOne(context.Background(), st, r.call, opts)
+	if got, _ := st.Get(it.ID); got.Triage.TriagedAt.IsZero() {
+		t.Fatal("not read once turned on")
+	}
+}
+
+// A PERSON'S CLICK READS EXACTLY THE CHOSEN ITEMS, even with Read new issues
+// as they arrive off: each chosen unread issue once, an already-read or
+// unknown one skipped, and nothing that was not chosen.
+func TestAClickReadsExactlyTheChosenItems(t *testing.T) {
+	st := openStore(t)
+	var ids []int
+	for _, title := range []string{"one", "two", "three"} {
+		it, err := st.Create(factory.Item{Repo: "acme/api", Title: title, State: factory.StateNew, Kind: factory.KindIssue})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, it.ID)
+	}
+	read, err := st.Create(factory.Item{Repo: "acme/api", Title: "read", State: factory.StateNew, Kind: factory.KindIssue, Triage: factory.Triage{Read: "kept"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{asked: make(chan struct{}, 8), answer: func(int) (string, error) { return clean, nil }}
+	got := ReadThese(context.Background(), st, r.call, []int{ids[0], ids[2], read.ID, 999}, Options{Off: func() bool { return true }})
+	if !reflect.DeepEqual(got.Read, []int{ids[0], ids[2]}) || !reflect.DeepEqual(got.Skipped, []int{read.ID, 999}) || len(r.prompts) != 2 {
+		t.Fatalf("read %v skipped %v with %d calls", got.Read, got.Skipped, len(r.prompts))
+	}
+	for i, id := range ids {
+		it, _ := st.Get(id)
+		if chosen := i != 1; it.Triage.TriagedAt.IsZero() == chosen {
+			t.Errorf("#%d chosen %v, read %v", id, chosen, !it.Triage.TriagedAt.IsZero())
+		}
+	}
+}
+
+type brokenStore struct{ Store }
+
+func (brokenStore) List() ([]factory.Item, error) { return nil, errors.New("disk gone") }
+
+// A store that cannot list fails the chosen reads, so the person can try
+// again; it never reports them as skipped.
+func TestAClickReadOnABrokenStoreFailsTheChosenJobs(t *testing.T) {
+	got := ReadThese(context.Background(), brokenStore{}, nil, []int{1, 2}, Options{})
+	if !reflect.DeepEqual(got.Failed, []int{1, 2}) || len(got.Skipped) != 0 {
+		t.Fatalf("broken store = %+v", got)
 	}
 }

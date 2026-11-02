@@ -104,7 +104,7 @@ func TestABareNameInAPathRuleCoversItsFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go"})
+	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go"}, Measured{})
 	if !d.Ask || !strings.Contains(strings.Join(d.Reasons, "; "), "protected · auth · auth/keys.go") {
 		t.Errorf("a start that names auth/keys.go under touch auth = %+v", d)
 	}
@@ -160,7 +160,7 @@ func TestAProtectedPathHoldsInOneWordingAtStartPlanAndChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go", "infra/main.tf"})
+	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"auth/keys.go", "infra/main.tf"}, Measured{})
 	if want := []string{"protected · auth/ · auth/keys.go", "protected · infra/ · infra/main.tf", "ask first · change the schema"}; !reflect.DeepEqual(d.Reasons, want) {
 		t.Fatalf("start reasons %q, want %q", d.Reasons, want)
 	}
@@ -183,7 +183,7 @@ func TestDecideAndDecideJobAgreeOnAPathLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, files := range [][]string{{"auth/keys.go", "infra/main.tf"}, {"docs/readme.md"}} {
-		intake := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, files)
+		intake := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, files, Measured{})
 		dry := f.Decide(Job{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Size: "S", Paths: files})
 		if !reflect.DeepEqual(intake, dry) {
 			t.Errorf("%v: intake %+v, dry run %+v", files, intake, dry)
