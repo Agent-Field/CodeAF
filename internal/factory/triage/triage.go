@@ -658,6 +658,16 @@ func PromptWithStart(it factory.Item, rules []string) string {
 // WhyWords is the most words a rubric factor's why may have.
 const WhyWords = 6
 
+// whyOf is a factor's why at [WhyWords], ending in an ellipsis when the model
+// wrote more, so a cut phrase never reads as a whole one.
+func whyOf(s string) string {
+	why := words(s, WhyWords)
+	if len(strings.Fields(s)) > WhyWords {
+		return why + "…"
+	}
+	return why
+}
+
 // ParseRubric reads a rubric answer, `{"scope": {"score": 1, "why": "…"}, …}`,
 // scored by from. Every factor must be there with a score of 0..2, or there is
 // no rubric: a sum of four factors is not a complexity. A text read has not
@@ -677,7 +687,7 @@ func ParseRubric(raw json.RawMessage, from string) *factory.Rubric {
 		if !ok || score != float64(int(score)) || score < 0 || score > factory.FactorMost {
 			return nil
 		}
-		f.Score, f.Why = int(score), words(oneLine(answer.Why), WhyWords)
+		f.Score, f.Why = int(score), whyOf(answer.Why)
 	}
 	if from == factory.RubricFromRead {
 		r.Scope.Low, r.Coupling.Low = true, true
