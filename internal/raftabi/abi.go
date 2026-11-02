@@ -206,6 +206,8 @@ func (r *Runtime) call(op uint32, d *decoder) ([]byte, error) {
 		return v1Commands(d)
 	case 41, 42, 43, 44, 45:
 		return r.pagedApplication(op, d)
+	case 49:
+		return r.formation(d)
 	case 39:
 		return hostedForward(d)
 	case 36:

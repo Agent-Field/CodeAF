@@ -89,7 +89,7 @@ test('R6 a stale disconnected hint cannot allocate a second forwarding ID',async
 test('R6 R9 HTTP catch-up lets peer progress finish before returning an empty response',{timeout:peerLimits(runtime).ForwardTimeout},async()=>{
  let delivered=false;
  const peer=Object.assign(Object.create((await import('../../src/raft/peers.js')).PersonalPeers.prototype),{tail:Promise.resolve(),pending:0,view:{'5':{voter:false}},refresh:async()=>{},validate:()=>{},wire:()=>new TextEncoder().encode(JSON.stringify({messages:delivered?['append']:[]})),exchange:async()=>({request:{node:'5',applied:'14',messages:[]},raw:new TextEncoder().encode('{"messages":[]}'),rejected:false})});
- const host={peers:peer,asleep:false,leader:()=>undefined,leaderID:()=> '4',replica:()=> '1',states:new Map([['1',{applied:15n}]]),forwarding:{socket:()=>({})},forward:async(node,work)=>{assert.equal(node,'4');assert.equal(work.action,'poke');await peer.serial(()=>{delivered=true;});return {barrier:'15'};}};
+ const host={invalidateRead(){},peers:peer,asleep:false,leader:()=>undefined,leaderID:()=> '4',replica:()=> '1',states:new Map([['1',{applied:15n}]]),forwarding:{socket:()=>({})},forward:async(node,work)=>{assert.equal(node,'4');assert.equal(work.action,'poke');await peer.serial(()=>{delivered=true;});return {barrier:'15'};}};
  peer.host=host;
  const result=await peer.httpExchange(new Uint8Array());assert.deepEqual(JSON.parse(new TextDecoder().decode(result.raw)).messages,['append']);
 });
@@ -99,7 +99,7 @@ test('R6 R9 HTTP catch-up lets peer progress finish before returning an empty re
 test('R6 R9 enrollment retains admitted traffic between unchanged members',async()=>{
  const r=rig(),members={'1':{incarnation:'1',key:r.anchor.raw,voter:true,revoked:false},'4':{incarnation:'1',key:r.personal.raw,voter:true,revoked:false}};
  let view=members;
- const host={runtime,config:()=>({scope:r.host.peers.scope}),states:new Map([['1',{applied:13n}]]),leader:()=>undefined,replica:()=> '1',leaderID:()=> '4',members:new Map([['1',{refreshEnrollment:async()=>view}]]),ctx:{storage:{put:async()=>{},sync:async()=>{}}},voterHint:['1','4'],forwarding:{socket:()=>null},input:async()=>{},hash:()=>'',asleep:false};
+ const host={invalidateRead(){},runtime,config:()=>({scope:r.host.peers.scope}),states:new Map([['1',{applied:13n}]]),leader:()=>undefined,replica:()=> '1',leaderID:()=> '4',members:new Map([['1',{refreshEnrollment:async()=>view}]]),ctx:{storage:{put:async()=>{},sync:async()=>{}}},voterHint:['1','4'],forwarding:{socket:()=>null},input:async()=>{},hash:()=>'',asleep:false};
  const peers=new PersonalPeers(host,'2');host.peers=peers;peers.sockets=()=>[];await peers.refresh();
  peers.enqueue([{from:'4',to:'1',sequence:'7',payload:'AQ=='}]);
  const before=structuredClone(peers.deliveries('1')),used=[...peers.used];
@@ -114,7 +114,7 @@ test('R6 R9 enrollment retains admitted traffic between unchanged members',async
 test('R6 R9 overlapping membership refreshes leave the latest committed view',async()=>{
  const first=Promise.withResolvers(),second=Promise.withResolvers();let calls=0;
  const old={'1':{incarnation:'1',key:'anchor',voter:true,revoked:false}},newer={...old,'5':{incarnation:'1',key:'personal',voter:false,revoked:false}};
- const host={runtime,config:()=>({scope:rig().host.peers.scope}),states:new Map([['1',{applied:13n}]]),leader:()=>undefined,replica:()=> '1',leaderID:()=> '4',members:new Map([['1',{refreshEnrollment:()=>++calls===1?first.promise:second.promise}]]),ctx:{storage:{put:async()=>{},sync:async()=>{}}},voterHint:['1'],forwarding:{socket:()=>null},input:async()=>{},asleep:false};
+ const host={invalidateRead(){},runtime,config:()=>({scope:rig().host.peers.scope}),states:new Map([['1',{applied:13n}]]),leader:()=>undefined,replica:()=> '1',leaderID:()=> '4',members:new Map([['1',{refreshEnrollment:()=>++calls===1?first.promise:second.promise}]]),ctx:{storage:{put:async()=>{},sync:async()=>{}}},voterHint:['1'],forwarding:{socket:()=>null},input:async()=>{},asleep:false};
  const peers=new PersonalPeers(host,'2');host.peers=peers;peers.sockets=()=>[];
  const earlier=peers.refresh();host.states.get('1').applied=14n;const later=peers.refresh();
  second.resolve(newer);await Promise.resolve();await Promise.resolve();first.resolve(old);
@@ -125,7 +125,7 @@ test('R6 R9 overlapping membership refreshes leave the latest committed view',as
 // queue must obtain a new quorum round without holding the peer queue.
 test('R6 R27 a drained voter queue retries a dropped quorum round',async()=>{
  const r=rig(),view={'1':{incarnation:'1',key:r.anchor.raw,voter:true,revoked:false},'4':{incarnation:'1',key:r.personal.raw,voter:true,revoked:false}},reply=Promise.withResolvers(),actions=[];
- const host={runtime,codec:new HostCodec(runtime),config:()=>({scope:r.host.peers.scope}),states:new Map([['1',{applied:13n}]]),leader:()=>undefined,replica:()=> '1',leaderID:()=> '4',members:new Map([['1',{refreshEnrollment:async()=>view}]]),ctx:{storage:{put:async()=>{},sync:async()=>{}}},voterHint:['1','4'],forwarding:{socket:()=>({}),begin:async(node,work)=>{actions.push([node,work.action]);return {id:'retry',promise:reply.promise};}},serial:fn=>fn(),input:async()=>{},pump:async()=>{},wakeMaintenance:async()=>{},asleep:false};
+ const host={invalidateRead(){},runtime,codec:new HostCodec(runtime),config:()=>({scope:r.host.peers.scope}),states:new Map([['1',{applied:13n}]]),leader:()=>undefined,replica:()=> '1',leaderID:()=> '4',members:new Map([['1',{refreshEnrollment:async()=>view}]]),ctx:{storage:{put:async()=>{},sync:async()=>{}}},voterHint:['1','4'],forwarding:{socket:()=>({}),begin:async(node,work)=>{actions.push([node,work.action]);return {id:'retry',promise:reply.promise};}},serial:fn=>fn(),input:async()=>{},pump:async()=>{},wakeMaintenance:async()=>{},asleep:false};
  const peers=new PersonalPeers(host,'2');host.peers=peers;peers.sockets=()=>[];await peers.refresh();actions.length=0;
  peers.anchors=async()=>{};peers.chunks=async()=>{};peers.push=async()=>{};peers.validate=raw=>({request:JSON.parse(new TextDecoder().decode(raw)),obsolete:new Set()});
  for(let n=0;n<peers.limits.Slots[0];n++)peers.enqueue([{from:'1',to:'4',sequence:String(n+1),payload:'CAkQBBgBIAM='}]);

@@ -38,7 +38,10 @@ assert.equal(streamed.status, 401, 'an unsigned stream is refused as unsigned, h
 assert.equal((await call(a, 'POST', '/v1/dir/cells/c1', init())).json.cell.lease.fence, 1);
 assert.equal((await call(a, 'POST', '/v1/dir/cells/c1', init())).status, 409);
 assert.equal(answerOf(await call(b, 'POST', '/v1/dir/cells/c1/acquire', {})), 'lease_held');
-assert.equal((await call(b, 'POST', '/v1/dir/cells/c1/acquire', { force: true })).json.cell.lease.fence, 2);
+const blind = await call(b, 'POST', '/v1/dir/cells/c1/acquire', { force: true });
+assert.deepEqual([blind.status, blind.json.err], [409, 'lease_held']);
+const observed = (await call(b, 'GET', '/v1/dir/cells/c1')).json.cell.lease;
+assert.equal((await call(b, 'POST', '/v1/dir/cells/c1/acquire', { force: true, expect: { device: observed.device, fence: observed.fence } })).json.cell.lease.fence, 2);
 const pub = (fence) => ({ fence, old_head: 'h0', head: 'h1', size: 0, class: 'work', pending: 0 });
 const stale = await call(a, 'POST', '/v1/dir/cells/c1/publish', pub(1));
 assert.deepEqual([stale.status, stale.json.err], [409, 'fence_stale']);

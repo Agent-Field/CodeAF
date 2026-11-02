@@ -16,6 +16,7 @@ import { fromBase64Url } from '../codec.js';
 import { presenceOf, parseBeat } from '../presence.js';
 import { parseHolds } from '../vouch.js';
 import { rotationView } from '../rotation.js';
+import { checkTime } from '../verify.js';
 import { CommittedWatchers, CLOSE_REVOKED, CLOSE_ROTATED } from '../watch.js';
 
 const enc=new TextEncoder(),dec=new TextDecoder('utf-8',{fatal:true});
@@ -23,6 +24,8 @@ const segment=s=>Array.from(enc.encode(s),b=>b.toString(16).padStart(2,'0')).joi
 const unsegment=s=>dec.decode(Uint8Array.from(s.match(/../g)??[],h=>parseInt(h,16)));
 const data=v=>enc.encode(encodeCanonical(v));
 const MIGRATION_PAGE=64,COORDINATOR_QUEUE=64,MIN_MEMBERS=2;
+const PRESENCE_INTERVAL=30_000,PRESENCE_BATCH=64;
+const MEMBER_READS=new Set(['hostView','hostResult','hostSelected','hostPersonal','readEvidence','hostWatchState']);
 const unavailable=()=>new Wire('unreachable',503,1);
 const status={not_found:404,unauthorized:401,revoked:401,rotated:410,bad_request:400,bad_grace:400,self_revoke:400,capacity:507,full:507};
 function requireOK(code){if(code!=='ok')throw new Wire(code,status[code]??409);}
@@ -41,6 +44,8 @@ export class HostedIdentity {
     this.policy=coordinationPolicy(sharedRuntime());this.started=Math.floor(performance.now());this.elapsed=0;this.asleep=false;this.wakeVersion=0;this.alarmTail=Promise.resolve();
     this.ctx=ctx;this.env=env;this.tenant=tenant;this.runtime=sharedRuntime();this.codec=new HostCodec(this.runtime);
     this.source=tenant.migration(ctx.storage,this.runtime);this.tail=Promise.resolve();this.pending=0;this.operationTail=Promise.resolve();this.operations=0;this.waiters=new Set();this.progressVersion=0;this.forwarding=new PersonalForward(this);this.members=new Map();this.states=new Map();this.inactiveMembers=new Set();this.queue=[];this.reads=[];
+    this.seen=new Map();this.pendingIO=new Map();
+    this.readGeneration=0;this.memberWork=0;this.readLease=null;
   }
   serial(fn){
     if(this.pending>=COORDINATOR_QUEUE)return Promise.reject(unavailable());this.pending++;
@@ -91,10 +96,59 @@ export class HostedIdentity {
       await this.progress(deadline);
     }
   }
-  member(id){return this.env.RAFT_MEMBERS.get(this.env.RAFT_MEMBERS.idFromName(this.manifest.config.cluster+'/'+id));}
+  invalidateRead(){this.readGeneration++;this.readLease=null;}
+  member(id){
+    const stub=this.env.RAFT_MEMBERS.get(this.env.RAFT_MEMBERS.idFromName(this.manifest.config.cluster+'/'+id));
+    // Default to mutation: a new member RPC cannot silently bypass the fence.
+    return new Proxy(stub,{get:(target,name)=>{
+      const call=Reflect.get(target,name,target);if(typeof call!=='function')return call;
+      return (...args)=>{
+        if(MEMBER_READS.has(name))return Reflect.apply(call,target,args);
+        this.invalidateRead();this.memberWork++;
+        return Promise.resolve().then(()=>Reflect.apply(call,target,args)).finally(()=>{this.memberWork--;});
+      };
+    }});
+  }
+  leaseCurrent(lease=this.readLease){return lease&&lease.generation===this.readGeneration&&!this.memberWork&&!this.asleep&&performance.now()<lease.until;}
+  async confirmRead(b){
+    if(this.memberWork||this.coordinationBusy())return null;
+    const generation=this.readGeneration,started=performance.now();
+    const selected=await this.members.get(b.node).readEvidence(),conf=this.configuration(selected.conf);
+    const singleton=this.birth&&conf.voters.length===1&&String(conf.voters[0])===this.birth.voters[0];
+    if(conf.joint||conf.outgoing?.length||conf.voters.length!==3&&!singleton)return null;
+    const voters=conf.voters.map(String).filter(id=>this.members.has(id));
+    if(voters.length<(singleton?1:2))return null;
+    const evidence=await Promise.all(voters.map(async node=>({node,...await this.members.get(node).readEvidence()})));
+    if(generation!==this.readGeneration||this.memberWork||this.coordinationBusy())return null;
+    if(!selected.clean||BigInt(selected.index)<BigInt(b.index)||!evidence.every(e=>e.clean&&e.index===selected.index&&e.term===selected.term&&e.conf===selected.conf&&e.leader===selected.leader))return null;
+    const leader=selected.leader;if(leader==='0'||!conf.voters.map(String).includes(leader))return null;
+    if(this.members.has(leader)&&!evidence.some(e=>e.node===leader&&e.role===2))return null;
+    // Every quorum intersects these hosted voters. With clean durable tails,
+    // another commit needs new anchor traffic, which invalidates this fence
+    // before delivery. The deadline additionally bounds idle reuse.
+    return this.readLease={node:b.node,index:BigInt(selected.index),term:selected.term,activation:selected.activation,generation,until:started+this.policy.tick_every*2};
+  }
+  async readAuthority(){
+    this.lastReadAt=Math.max(this.elapsed,performance.now()-this.started);
+    if(this.leaseCurrent())return this.readLease;
+    const b=await this.barrier();return await this.confirmRead(b)??b;
+  }
+  async readView(b,namespace,key,after=null){
+    if(b.generation!==undefined&&!this.leaseCurrent(b))throw unavailable();
+    let row;try{row=await this.members.get(b.node).hostView(b.index,namespace,key,after,b.activation??null);}catch(error){this.invalidateRead();throw unavailable();}
+    if(b.generation!==undefined&&!this.leaseCurrent(b))throw unavailable();return row;
+  }
+  readNow(committed=0){
+    const floor=this.tenant.meta.get('read-time')??0,now=Math.max(Date.now(),Number(committed),floor);
+    if(now>floor)this.tenant.meta.set('read-time',now);return now;
+  }
+  async finishRead(b,reply){
+    await this.ctx.storage.sync();
+    if(b.generation!==undefined&&!this.leaseCurrent(b))throw unavailable();return reply;
+  }
   config(id){
     const c=this.manifest.config;
-    return {cluster:c.cluster,id:String(id),seed:String(BigInt(id)+100n),bootstrap:c.anchors,ceiling:Number(this.manifest.ceiling),scope:{identity:c.identity,cluster:c.cluster,epoch:c.generation,protocol:1},anchors:c.anchors.map((node,i)=>({node,device:'',key:c.anchor_keys[i],incarnation:'1',protocol:1,anchor:true,retired:false,ready_index:'0'}))};
+    return {cluster:c.cluster,id:String(id),seed:String(BigInt(id)+100n),bootstrap:this.source.gate()?.birth?.voters??c.anchors,...(this.source.gate()?.birth?{birth:this.source.gate().birth}:{}),ceiling:Number(this.manifest.ceiling),scope:{identity:c.identity,cluster:c.cluster,epoch:c.generation,protocol:1},anchors:c.anchors.map((node,i)=>({node,device:'',key:c.anchor_keys[i],incarnation:'1',protocol:1,anchor:true,retired:false,ready_index:'0'}))};
   }
   async provision(identityKey){
     let p=await this.ctx.storage.get('raft-provision');
@@ -103,7 +157,7 @@ export class HostedIdentity {
     if(this.source.gate())throw unavailable();
     const anchors=[];for(let i=0;i<3;i++)anchors.push(await keypair());
     const effects=await keypair(),limits=this.tenant.limits;
-    p={config:{cluster:crypto.randomUUID(),generation:'1',identity:this.tenant.identity,signing_key:b64(identityKey),anchors:['1','2','3'],anchor_keys:anchors.map(a=>a.public),effects_key:effects.public,now:Date.now(),grace:{min:limits.minGraceMs,max:limits.maxGraceMs,default:limits.defaultGraceMs}},anchors:anchors.map(a=>a.private),effects:effects.seed};
+    p={singleton:true,config:{cluster:crypto.randomUUID(),generation:'1',identity:this.tenant.identity,signing_key:b64(identityKey),anchors:['1','2','3'],anchor_keys:anchors.map(a=>a.public),effects_key:effects.public,now:Date.now(),grace:{min:limits.minGraceMs,max:limits.maxGraceMs,default:limits.defaultGraceMs}},anchors:anchors.map(a=>a.private),effects:effects.seed};
     await this.ctx.storage.put('raft-provision',p);await this.ctx.storage.sync();return p;
   }
   async ensure(identityKey){
@@ -111,36 +165,38 @@ export class HostedIdentity {
     if(this.ready&&this.inactiveMembers.size){
       for(const id of [...this.inactiveMembers]){
         try{
-          const member=this.member(id);if(!await member.importReceipt(this.manifest))continue;
+          const member=this.member(id);if(!await member.importReceipt(this.manifest,this.birth??this.source.gate()?.birth??null))continue;
           const initialized=await member.initialize(this.config(id));if(initialized.capacity)continue;
           this.members.set(id,member);this.accept(id,initialized);this.accept(id,await member.drainRecovery());
         }catch{this.members.delete(id);this.states.delete(id);}
       }
-      if([...this.members.keys()].filter(id=>!this.inactiveMembers.has(id)).length<MIN_MEMBERS)throw unavailable();
+      if([...this.members.keys()].filter(id=>!this.inactiveMembers.has(id)).length<(this.birth?1:MIN_MEMBERS))throw unavailable();
     }
     if(this.ready)return;
     if(this.initialized)return this.completeEnsure();
     this.provisioning=await this.provision(identityKey);
-    if(!this.source.gate())await this.source.freeze(this.provisioning.config);
+    if(!this.source.gate())await this.source.freeze(this.provisioning.config,this.provisioning.singleton===true);
     this.manifest=await this.source.inventory();
     if(encodeCanonical(this.manifest.config)!==encodeCanonical(this.provisioning.config))throw unavailable();
     const owned=this.source.gate().stage==='raft-owned';
+    this.birth=this.source.gate().birth??null;
+    const imports=this.birth?this.birth.voters:this.manifest.config.anchors;
     if(!owned){
       // Each retry advances a bounded page; the cursor is durable only after
       // all three copies accepted identical bytes. A cut merely repeats a row.
       const imported=[];
-      for(const id of this.manifest.config.anchors)if(await this.member(id).importReceipt(this.manifest))imported.push(id);
-      if(imported.length<3){
+      for(const id of imports)if(await this.member(id).importReceipt(this.manifest,this.birth))imported.push(id);
+      if(imported.length<imports.length){
         let cursor=await this.ctx.storage.get('raft-import-cursor')??{namespace:'',key:''},count=0;
         for(const row of this.ctx.storage.sql.exec(`SELECT namespace,key,data FROM legacy_rows WHERE namespace>? OR (namespace=? AND key>?) ORDER BY namespace,key LIMIT ${MIGRATION_PAGE+1}`,cursor.namespace,cursor.namespace,cursor.key)){
           if(count++===MIGRATION_PAGE)throw unavailable();
           const copied={namespace:row.namespace,key:row.key,data:bytes(row.data)};
-          for(const id of this.manifest.config.anchors){
+          for(const id of imports){
             if(!imported.includes(id)){await this.member(id).legacyImport(this.config(id),this.manifest,copied);}
           }
           cursor={namespace:row.namespace,key:row.key};await this.ctx.storage.put('raft-import-cursor',cursor);await this.ctx.storage.sync();
         }
-        for(const id of this.manifest.config.anchors){
+        for(const id of imports){
           if(!imported.includes(id)){await this.member(id).legacyImport(this.config(id),this.manifest,null,true);}
         }
       }
@@ -148,9 +204,9 @@ export class HostedIdentity {
     // AFTER publication, absent or unclaimed stores are excluded, never
     // imported again under old voter IDs. Two actual survivors are required.
     const receipts=[];
-    for(const id of this.manifest.config.anchors){
+    for(const id of (owned?this.manifest.config.anchors:imports)){
       try{
-        const receipt=await this.member(id).importReceipt(this.manifest);if(!receipt)continue;
+        const receipt=await this.member(id).importReceipt(this.manifest,this.birth??this.source.gate()?.birth??null);if(!receipt)continue;
         const member=this.member(id);this.members.set(id,member);receipts.push(receipt);
         const initialized=await member.initialize(this.config(id));
         // Durable import receipts cover all anchors; serving needs a live
@@ -160,10 +216,10 @@ export class HostedIdentity {
         this.accept(id,await member.drainRecovery());
       }catch(error){this.members.delete(id);this.states.delete(id);if(!owned)throw error;}
     }
-    if(this.members.size<MIN_MEMBERS)throw unavailable();
+    if(this.members.size<(this.birth?1:MIN_MEMBERS))throw unavailable();
     if(owned){await this.pump();await this.restorePeers();}
     else{await this.pump();await this.elect();await this.barrier();}
-    if(!owned)await this.source.own(receipts);
+    if(!owned){await this.source.own(receipts);if(this.birth){await this.ctx.storage.put('raft-formation-imported',imports);await this.ctx.storage.sync();}}
     this.started=Math.floor(performance.now())-this.elapsed;
     this.source.route(()=>true);
     this.watchers=new CommittedWatchers(this.ctx,this.tenant.limits.maxWatchers,this.tenant.watchers.ttlMs,at=>this.ctx.waitUntil(this.armAlarm(at)));
@@ -178,6 +234,15 @@ export class HostedIdentity {
   }
   async completeEnsure(){
     const b=await this.barrier(),header=await this.members.get(b.node).hostView(b.index,'membership','registry');
+    this.forming=!!this.birth&&!header.raw;
+    if(this.forming){
+      const conf=this.configuration(header.app.conf);
+      if(conf.joint||conf.outgoing?.length||conf.voters.length!==3){
+        const root=await this.members.get(b.node).hostView(b.index,'state','identity');await this.rememberRetirement(this.project('identity',root.raw));
+        if(!this.peers)await this.restorePeers();
+        await this.wakeMaintenance();this.ready=true;return;
+      }
+    }
     if(!header.raw){
       const anchors=this.config(this.manifest.config.anchors[0]).anchors;
       requireOK((await this.anchorCommand({init_membership:{anchors,limit:this.policy.max_member_records}},Date.now())).value.code);
@@ -185,6 +250,7 @@ export class HostedIdentity {
     const root=await this.barrierRecord({namespace:'state',key:'identity'});
     await this.rememberRetirement(this.project('identity',root));
     if(!this.peers)await this.restorePeers();else await this.peers.recover();
+    this.forming=false;
     this.membershipPending=!!(header.raw&&decodeCanonical(dec.decode(header.raw)).pending);
     await this.reconcileMembership();
     await this.wakeMaintenance();this.ready=true;
@@ -214,7 +280,8 @@ export class HostedIdentity {
     await this.peers.refresh();
     await this.peers.recover();
   }
-  accept(id,e){if(!e)return;if(e.status){this.inactiveMembers?.delete(String(id));this.states.set(String(id),e.status);}this.queue.push(...(e.send??[]).map(m=>({...m,from:String(id),to:String(m.to)})));this.reads.push(...(e.reads??[]).map(r=>({...r,node:String(id)})));this.signal();}
+  accept(id,e){if(!e)return;if(e.status){this.inactiveMembers?.delete(String(id));this.states.set(String(id),e.status);}
+    if(e.applicationVersion!==undefined)this.appliedVersion=this.appliedVersion===undefined?BigInt(e.applicationVersion):this.appliedVersion>BigInt(e.applicationVersion)?this.appliedVersion:BigInt(e.applicationVersion);this.queue.push(...(e.send??[]).map(m=>({...m,from:String(id),to:String(m.to)})));this.reads.push(...(e.reads??[]).map(r=>({...r,node:String(id)})));this.signal();}
   async input(id,tag,value){const result=await this.members.get(String(id)).hostInput(tag,value);this.accept(id,result);return result;}
   // Reserve durable sequence ranges before emission. Concurrent public and
   // peer turns share one allocator, and recovery skips every unused sequence.
@@ -245,13 +312,32 @@ export class HostedIdentity {
     if(this.peers)this.peers.blocked=new Set();
     this.pumping=this.pumpQueue();
     try{await this.pumping;}finally{this.pumping=null;}
+    await this.notifyApplied();
     if(this.peers)await this.peers.push();
+  }
+  async notifyApplied(){
+    if(!this.watchers||this.appliedVersion===undefined||this.notifiedVersion===this.appliedVersion)return;
+    const id=this.replica();if(!id)return;
+    const index=this.states.get(id).applied,devices=[...new Set([...this.ctx.getWebSockets().filter(ws=>!ws.deserializeAttachment()?.clusterPeer).map(ws=>this.ctx.getTags(ws)[0]),...this.pendingIO.keys()])];
+    let version;
+    for(let offset=0;offset===0||offset<devices.length;offset+=64){
+      const state=await this.members.get(id).hostWatchState(index,devices.slice(offset,offset+64));version=BigInt(state.version);
+      await this.rememberRetirement(state.identity);
+      if(state.identity.rotation){this.watchers.closeAll(CLOSE_ROTATED,'rotated');for(const device of this.pendingIO.keys())this.stopIO(device,'rotated');}
+      for(const device of state.revoked){this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');this.stopIO(device,'revoked');}
+    }
+    this.watchers.broadcast(String(version));this.notifiedVersion=version;
+    if(this.retireAt)await this.armAlarm(this.retireAt);
   }
   async pumpQueue(){
     for(let n=0;this.queue.length;n++){
       if(n>=2048){this.queue=[];throw unavailable();}
-      const m=this.queue.shift(),to=this.members.get(m.to);if(!to){if(this.peers)await this.peers.send(m);continue;}
-      const snapshot=this.codec.inspect(4,m.bytes).snapshot;
+      const m=this.queue.shift(),to=this.members.get(m.to),snapshot=this.codec.inspect(4,m.bytes).snapshot;
+      if(!to){
+        if(this.forming&&this.manifest.config.anchors.includes(m.to)){if(snapshot.length)await this.input(m.from,12,{peer:m.to,snapshot:true,success:false});}
+        else if(this.peers)await this.peers.send(m);
+        continue;
+      }
       try{
         if(snapshot.length){
           const meta=this.codec.inspect(3,snapshot),current=await to.hostInput(0);this.accept(m.to,current);
@@ -285,13 +371,13 @@ export class HostedIdentity {
     for(const id of this.members.keys()){await this.input(id,16);await this.pump();if(this.leader())return;}
     throw unavailable();
   }
-  async barrier(id=crypto.randomUUID(),deadline=Date.now()+(this.peers?.limits.ForwardTimeout??this.policy.tick_every)){
+  async barrier(id=crypto.randomUUID(),deadline=Date.now()+(this.peers?.limits.ForwardTimeout??this.policy.tick_every),background=false){
     await this.elect();const leader=this.leader();
-    if(!leader){try{const reply=await this.remote({action:'read',id});return this.appliedReplica(reply.barrier,deadline);}catch(error){if(this.leader())return this.barrier(id,deadline);throw error;}}
-    try{await this.input(leader,4,id);await this.pump();}
-    catch(error){await this.refreshRoute();if(this.leader()!==leader)return this.barrier(id,deadline);throw error;}
+    if(!leader){try{const reply=await this.remote({action:background?'idle-read':'read',id});return this.appliedReplica(reply.barrier,deadline);}catch(error){if(this.leader())return this.barrier(id,deadline,background);throw error;}}
+    try{await this.input(leader,background?15:4,id);await this.pump();}
+    catch(error){await this.refreshRoute();if(this.leader()!==leader)return this.barrier(id,deadline,background);throw error;}
     try{for(;;){
-      if(this.leader()!==leader){await this.refreshRoute();if(this.leader()!==leader)return this.barrier(id,deadline);}
+      if(this.leader()!==leader){await this.refreshRoute();if(this.leader()!==leader)return this.barrier(id,deadline,background);}
       const at=this.reads.findIndex(r=>r.node===leader&&r.id===id);if(at>=0)return this.reads.splice(at,1)[0];
       if(!this.externalVoter())throw unavailable();await this.progress(deadline);
     }}
@@ -344,13 +430,31 @@ export class HostedIdentity {
   project(kind,raw){return JSON.parse(this.projectJSON(kind,raw));}
   async authorize(device,certificate,write=false){
     await this.wakeMaintenance();
-    requireOK((await this.commitEffect({device_seen:{device}},Date.now())).code);
-    const b=await this.barrier(),member=this.members.get(b.node),root=await member.hostView(b.index,'state','identity'),actor=await member.hostView(b.index,'state','device/'+segment(device));
-    const r=response(this.runtime.call(frame(32).blob(root.raw).blob(actor.raw??new Uint8Array()).str(device).str(certificate).u32(write?1:0).finish()));requireOK(r.str());r.end();return {barrier:b,app:root.app,identity:this.project('identity',root.raw)};
+    const b=await this.readAuthority(),root=await this.readView(b,'state','identity'),actor=await this.readView(b,'state','device/'+segment(device));
+    const r=response(this.runtime.call(frame(32).blob(root.raw).blob(actor.raw??new Uint8Array()).str(device).str(certificate).u32(write?1:0).finish()));requireOK(r.str());r.end();this.noteSeen(device);return {barrier:b,app:root.app,identity:this.project('identity',root.raw)};
+  }
+  // Presence is advisory, like unflushed store statistics. It may be lost on
+  // eviction, but never delays authority checks or grows with request volume.
+  noteSeen(device,now=Date.now()){
+    const pending=this.seen.get(device);
+    if(pending){pending.at=now;return;}
+    if(this.seen.size>=PRESENCE_BATCH)return;
+    this.seen.set(device,{at:now,due:now+PRESENCE_INTERVAL});
+    this.ctx.waitUntil(this.wakeMaintenance());
+  }
+  async flushSeen(now){
+    for(const [device,pending]of this.seen){
+      if(pending.due>now)continue;
+      const at=pending.at;
+      try{requireOK((await this.commitEffect({device_seen:{device}},at)).code);}catch{return;}
+      if(pending.at===at)this.seen.delete(device);
+      else pending.due=now+PRESENCE_INTERVAL;
+      return;
+    }
   }
   async listingJSON(b,app){
     const devices=[],cells=[];let identity='null',after='';
-    for(;;){const page=await this.members.get(b.node).hostView(b.index,'state','',after);if(!page.rows.length)break;
+    for(;;){const page=await this.readView(b,'state','',after);if(!page.rows.length)break;
       // The coordinator holds the only public mutation queue throughout pages.
       for(const row of page.rows){
         after=row.key;
@@ -423,7 +527,7 @@ export class HostedIdentity {
   }
   async maintenance(now=Date.now(),elapsed=Math.floor(performance.now())){
     if(this.asleep)return;
-    const wakeVersion=this.wakeVersion,busy=this.coordinationBusy()||!!this.wakePending;
+    const wakeVersion=this.wakeVersion,busy=this.coordinationBusy()||!!this.wakePending||this.seen.size>0;
     this.wakePending=false;
     this.elapsed=Math.max(this.elapsed,elapsed-this.started);
     // Followers must advance their election clocks before any authority read:
@@ -457,6 +561,11 @@ export class HostedIdentity {
       // upload receipts and the raw body pages of a large request that was cut
       // short, and those are not canonical records to decode.
       if(app.rows.some(row=>{if(!row.key.startsWith('join/'))return false;const value=decodeCanonical(dec.decode(row.data));return value.decision&&!value.outcome;}))await this.effects.replay(code=>this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),scan,now);
+      if(this.forming){
+        this.formationSoon=false;
+        try{this.formationSoon=await this.formNext();}catch{}
+        if(this.formationSoon){await this.flushSeen(now);return;}
+      }
       let remoteAck,remoteStatus;
       const schedule=async(acks=[])=>{
         if(remote){
@@ -512,10 +621,47 @@ export class HostedIdentity {
           }
         }catch{this.asleep=false;}
       }
+      await this.flushSeen(now);
+      if(!this.asleep&&this.elapsed-this.lastReadAt<this.policy.idle_after/2){
+        try{await this.confirmRead(await this.barrier(undefined,undefined,true));}catch{this.invalidateRead();}
+      }
     }finally{
-      if(!this.asleep)await this.armAlarm(now+this.policy.tick_every);
+      if(!this.asleep)await this.armAlarm(now+(this.forming&&this.formationSoon?1:this.policy.tick_every));
       if(this.holds.next!==null)await this.armAlarm(this.holds.next);
     }
+  }
+  async formNext(){
+    const leader=this.leader();if(!leader)return;
+    const b=await this.barrier(undefined,undefined,true),header=await this.members.get(b.node).hostView(b.index,'membership','registry');
+    if(header.raw){this.forming=false;await this.peers.refresh();return false;}
+    const imported=await this.ctx.storage.get('raft-formation-imported')??[...this.birth.voters],conf=this.configuration(header.app.conf);
+    const configured=new Set([...conf.voters,...(conf.outgoing??[]),...(conf.learners??[])]);
+    for(const id of this.manifest.config.anchors){
+      if(this.members.has(id)||!configured.has(id)&&!imported.includes(id))continue;
+      const member=this.member(id),receipt=await member.importReceipt(this.manifest,this.birth);
+      if(!receipt){
+        if(imported.includes(id)||!configured.has(id))continue;
+        for(const row of this.source.rows())await member.legacyImport(this.config(id),this.manifest,row);
+        await member.legacyImport(this.config(id),this.manifest,null,true);
+      }
+      if(!imported.includes(id)){imported.push(id);await this.ctx.storage.put('raft-formation-imported',imported);await this.ctx.storage.sync();}
+      const initialized=await member.initialize(this.config(id));if(initialized.capacity)throw unavailable();
+      this.members.set(id,member);this.accept(id,initialized);this.accept(id,await member.drainRecovery());await this.input(leader,1);await this.pump();return true;
+    }
+    const result=await this.members.get(leader).formation();this.accept(leader,result);await this.pump();
+    if(result.settle){
+      const anchors=this.config(this.manifest.config.anchors[0]).anchors;
+      requireOK((await this.anchorCommand({init_membership:{anchors,limit:this.policy.max_member_records}},Date.now())).value.code);
+      this.forming=false;await this.peers.refresh();
+    }
+    return !!result.progressed;
+  }
+  async prepareCoordination(){
+    if(!this.forming)return;
+    try{
+      for(let turn=0;turn<16&&this.forming;turn++)await this.formNext();
+      if(this.forming)throw unavailable();
+    }catch{throw unavailable();}
   }
   async personal(action,{proof,actor='',certificate=''}={}){
     const b=await this.barrier();
@@ -537,6 +683,7 @@ export class HostedIdentity {
     await this.peers.refresh();
   }
   async enroll(proof){
+    await this.prepareCoordination();
     await this.reconcileMembership();
     for(let stage=0;stage<3;stage++){
       const out=await this.personal('admission',{proof});
@@ -584,6 +731,7 @@ export class HostedIdentity {
     }
   }
   async control(method,actor,certificate,proof,names=false){
+    await this.prepareCoordination();
     await this.reconcileMembership();const out=await this.personal(method==='POST'?'lead':'status',{actor,certificate,proof});
     if(out.code!=='ok')return new Response('this computer is not allowed to coordinate this cluster',{status:out.code==='bad_request'?400:403});
     if(method!=='POST'){
@@ -610,9 +758,13 @@ export class HostedIdentity {
   }
   async api(raw,q,actor) {
     await this.ensure(unb64(q.identity_key));
- await this.wakeMaintenance();
+    await this.prepareCoordination();
+    await this.wakeMaintenance();
     if(q.cluster!==this.manifest.config.cluster||q.identity_key!==this.manifest.config.signing_key)throw new Wire('unauthorized',401);
-    requireOK((await this.commitEffect({device_seen:{device:actor}},Date.now())).code);
+    // Native commands carry a caller-signed time. Commit the server's clock
+    // witness separately so backdated enrollment cannot revive expired scope.
+    requireOK((await this.commitEffect({advance_time:{}},this.readNow())).code);
+    this.noteSeen(actor);
     const b=await this.barrier(),member=this.members.get(b.node);
     const root=await member.hostView(b.index,'state','identity');
     clusterIngress(this.runtime,raw,root.app.now);
@@ -636,17 +788,38 @@ export class HostedIdentity {
     if(q.action==='assignment')delete out.grant;
     return this.jsonBytes(encodeCanonical(out));
   }
+  waitIO(device,write){
+    const waits=this.pendingIO.get(device)??new Set(),entry={write,error:null};
+    entry.stopped=new Promise((_,reject)=>{entry.reject=reject;});entry.stopped.catch(()=>{});
+    waits.add(entry);this.pendingIO.set(device,waits);
+    return {entry,stopped:entry.stopped,close:()=>{waits.delete(entry);if(!waits.size)this.pendingIO.delete(device);}};
+  }
+  stopIO(device,code){
+    for(const entry of this.pendingIO.get(device)??[]){
+      if(code==='rotated'&&!entry.write)continue;
+      entry.error=new Wire(code,code==='revoked'?401:410);entry.reject(entry.error);
+    }
+  }
   async dispatch(c,route){
     if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>this.serve(c,route));
     const cert=c.request.headers.get('codeaf-cert');
-    await this.operation(async()=>{
+    const ticket=await this.operation(async()=>{
       await this.ensure(fromBase64Url(c.request.headers.get('codeaf-identity')));
-      await this.authorize(c.device,cert,route.write);
+      const authority=await this.authorize(c.device,cert,route.write);
+      return {authority,io:this.waitIO(c.device,route.write)};
     });
     // Blob waits cannot hold the coordination queue: revoke/rotation must be
     // able to commit during I/O, and Has must not block queued frame puts.
-    const result=await route.handler(c,route.args);await this.ctx.storage.sync();
-    await this.operation(()=>this.authorize(c.device,cert,route.write));return result;
+    try{
+      if(ticket.io.entry.error)throw ticket.io.entry.error;
+      const work=Promise.resolve().then(()=>route.handler(c,route.args));
+      c.retainPut?.(work);
+      const result=await Promise.race([work,ticket.io.stopped]);await this.ctx.storage.sync();
+      await this.operation(async()=>{
+        const current=await this.readAuthority();
+        if(current.node!==ticket.authority.barrier.node||current.index!==ticket.authority.barrier.index)await this.authorize(c.device,cert,route.write);
+      });return result;
+    }finally{ticket.io.close();}
   }
   async serve(c,route){
     const {request,device,body}=c,url=new URL(request.url),path=url.pathname,cert=request.headers.get('codeaf-cert');
@@ -661,22 +834,26 @@ export class HostedIdentity {
       if(holds.length)await this.holds.renew(Date.now(),this.watchers.holdEvidence(Date.now()));
       if(this.holds.next!==null)await this.armAlarm(this.holds.next);return reply;
     }
+    if(request.method==='GET'){
+      const authority=await this.authorize(device,cert,false),b=authority.barrier;
+      const now=this.readNow(authority.app.now),app={...authority.app,now:String(now)};
+      checkTime(request.headers.get('codeaf-time'),now);
+      if(path==='/v1/identity/rotation')return this.finishRead(b,json(rotationView(authority.identity.rotation,now,this.tenant.limits)));
+      if(path==='/v1/dir/list'||path==='/v1/dir/presence'){
+        const raw=await this.listingJSON(b,app),reply=path.endsWith('/presence')?json(presenceOf(JSON.parse(raw).devices,this.watchers.online(),now)):this.jsonBytes(raw);
+        reply.headers.set('Codeaf-Dir-Version',app.version);return this.finishRead(b,reply);
+      }
+      const row=await this.readView(b,'state','cell/'+segment(decodeURIComponent(route.args[0])));if(!row.raw)throw new Wire('not_found',404);
+      const reply=this.jsonBytes('{"now":'+now+',"cell":'+this.projectJSON('cell',row.raw)+'}');reply.headers.set('codeaf-conditional-takes','1');return this.finishRead(b,reply);
+    }
     const join=/^\/v1\/dir\/requests\/([^/]+)\/(approve|deny)$/.exec(path);
     if(join){await this.authorize(device,cert,true);const code=decodeURIComponent(join[1]).trim().toLowerCase();const box=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code));await this.effects.admit(box,code,Date.now());}
-    let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,Date.now(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
+    let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,this.readNow(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
     const result=await this.commitV1(raw);
-    const b=await this.barrier(),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw),version=snapshot.app.version;
+    const b=await this.appliedReplica(result.index),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw),version=snapshot.app.version;
     await this.rememberRetirement(identity);
     this.watchers.broadcast(version);
     if(join){const code=decodeURIComponent(join[1]).trim().toLowerCase();await this.effects.deliver(this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),code,Date.now());unwrap(await this.env.LINK_GATE.get(this.env.LINK_GATE.idFromName('gate')).decided(code));}
-    if(request.method==='GET'){
-      if(path==='/v1/identity/rotation')return json(rotationView(identity.rotation,Number(snapshot.app.now),this.tenant.limits));
-      if(path==='/v1/dir/list'||path==='/v1/dir/presence'){
-        const raw=await this.listingJSON(b,snapshot.app),reply=path.endsWith('/presence')?json(presenceOf(JSON.parse(raw).devices,this.watchers.online(),Number(snapshot.app.now))):this.jsonBytes(raw);reply.headers.set('Codeaf-Dir-Version',version);return reply;
-      }
-      const row=await this.members.get(b.node).hostView(b.index,'state','cell/'+segment(decodeURIComponent(route.args[0])));if(!row.raw)throw new Wire('not_found',404);
-      const reply=this.jsonBytes('{"now":'+row.app.now+',"cell":'+this.projectJSON('cell',row.raw)+'}');reply.headers.set('codeaf-conditional-takes','1');return reply;
-    }
     if(path==='/v1/identity/rotation'){
       this.watchers.closeAll(CLOSE_ROTATED,'rotated');if(identity.rotation?.retire_at)await this.ctx.storage.setAlarm(identity.rotation.retire_at);
       return json(rotationView(identity.rotation,Number(snapshot.app.now),this.tenant.limits));

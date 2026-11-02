@@ -22,6 +22,7 @@ test('R25 archived requests above 64 KiB and just under 1 MiB commit in workerd'
  try{
   await h.start();
   for(const c of fixture.cases)await exact(h,c);
+  await h.control({op:'form-cluster'});
   const before=await h.control({op:'metrics'});console.log(JSON.stringify({peakCoreBytes:before.peakMemory,activeHandles:before.active,reservedBytes:before.reservedBytes}));
   assert.equal(before.active,3,'cold object recreation leaked live handles');
   const cluster=JSON.parse((await h.control({op:'source'})).gate).config.cluster;
@@ -45,6 +46,7 @@ test('R25 interrupted workerd staging stays atomic and bounded after restart',{t
    const failed=await send(h,c);assert(failed.status>=500,`interruption returned ${failed.status}`);await failed.text();
    await h.start();
    const absent=await send(h,c,true);assert.equal(absent.status,404);await absent.text();
+   await h.control({op:'form-cluster'});
    const cluster=JSON.parse((await h.control({op:'source'})).gate).config.cluster;
    for(const node of ['1','2','3']){const state=await h.control({op:'staging',cluster,node});assert(state.rows.n>0);assert(state.rows.n<=33);assert(state.rows.bytes<=1048576+65536);assert.equal(state.app.version,'0');}
    if(attempt===0)await h.start(cut);
@@ -95,6 +97,7 @@ test('R25 maximum legacy title escaping remains lossless in workerd',{timeout:60
   }
   await h.start();const headers={...c.headers};headers['Codeaf-Sig']=sign(null,Buffer.from(`codeaf-req-v1\nGET\n${c.uri}\n${headers['Codeaf-Time']}\n${sha('')}`),key).toString('base64url');
   const read=await h.mf.dispatchFetch('http://local'+c.uri,{headers});assert.equal(read.status,200,(await read.clone().text()).slice(0,200));assert.equal((await read.json()).cell.title,title);
+  await h.control({op:'form-cluster'});
   const metrics=await h.control({op:'metrics'});assert.equal(metrics.active,3);assert(metrics.peakMemory<=metrics.coreBudget,JSON.stringify(metrics));console.log(JSON.stringify({escapedTitleCoreBytes:metrics.peakMemory,activeHandles:metrics.active}));
  }finally{await h.close();}
 });
@@ -113,6 +116,7 @@ test('R25 small legacy resumes preserve large retained frame plans in workerd',{
    const response=await send(h,request);assert.equal(response.status,200,(await response.clone().text()).slice(0,200));
    const view=await response.json();assert.equal(view.cell.lease.fence,fence);assert.deepEqual(view.cell.frames,JSON.parse(c.body).frames);
   }
+  await h.control({op:'form-cluster'});
   const metrics=await h.control({op:'metrics'});console.log(JSON.stringify({resumedFrameCoreBytes:metrics.peakMemory,activeHandles:metrics.active}));assert.equal(metrics.active,3);assert(metrics.peakMemory<=metrics.coreBudget);
  }finally{await h.close();}
 });

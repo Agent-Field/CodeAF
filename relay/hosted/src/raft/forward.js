@@ -22,7 +22,7 @@ export class PersonalForward {
   const flight=new Flight(),pending={ws,node,release:flight.enter(),reply:null};
   const promise=flight.idle(host.peers.limits.ForwardTimeout).then(completed=>{if(!completed)this.finish(id,null);return pending.reply;});
   this.pending.set(id,pending);
-  try{ws.send(raw);}catch{this.finish(id,null);}
+  try{host.invalidateRead();ws.send(raw);}catch{this.finish(id,null);}
   return {id,promise};
  }
  finish(id,reply){const p=this.pending.get(id);if(!p)return;this.pending.delete(id);p.reply=reply;p.release();this.host.signal();}

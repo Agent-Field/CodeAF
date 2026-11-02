@@ -85,7 +85,7 @@ export class IdentityDO extends DurableObject {
   async #noteLeft(ws) {
     const device = this.watchers.left(ws);
     const identity = device && (await this.ctx.storage.get('identity'));
-    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.operation(async()=>{await this.host.wakeMaintenance();await this.host.commitEffect({device_seen:{device}},Date.now());});
+    if (identity && !(await this.#isGone()) && this.host?.ready) this.host.noteSeen(device);
   }
 
   async #serve(request) {
@@ -137,6 +137,7 @@ export class IdentityDO extends DurableObject {
     const route = matchRoute(request.method, url.pathname);
     const caller = await checkCert(signedHeaders(request));
     const leave = route.frames ? this.#enterPut() : () => {};
+    let putWork;
     try {
       const body = await readBody(request, route.limit, route.over);
       const who = await checkRequest(caller, { method: request.method, uri: signedUri(this.env, url) }, body, Date.now());
@@ -145,10 +146,12 @@ export class IdentityDO extends DurableObject {
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
       this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
-      const reply=await this.host.dispatch({tenant,device:who.device,body,request,env:this.env},route);
+      const reply=await this.host.dispatch({tenant,device:who.device,body,request,env:this.env,retainPut:work=>{if(route.frames)putWork=work;}},route);
       this.watchers=this.host.watchers;return reply;
     } finally {
-      leave();
+      // A rejected response can precede the actual blob write. Has and erasure
+      // must still wait for that write, including its durable index updates.
+      if(putWork)this.ctx.waitUntil(putWork.then(leave,leave));else leave();
     }
   }
 

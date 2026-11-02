@@ -100,6 +100,17 @@ An open Home or compatibility events viewer pings every 10 seconds. The platform
 
 Connections naming held chats share a renewal cycle every 30 seconds on both relays while fresh hold evidence is available. Each cycle uses bounded batches; the 10-second presence pings between cycles do not commit another renewal. Presence alone never renews a chat.
 
+## First connection and hosted read authority
+
+A new, empty identity can save its first change before the hosted relay finishes
+preparing its other copies. Machine coordination can briefly ask you to retry
+until that preparation finishes. Existing identities keep their voting group.
+
+Ordinary hosted reads reuse recently confirmed authority. Once that confirmation
+expires, an unavailable majority makes reads fail rather than use stale device
+permissions. Revocation and rotation remain committed changes; device activity
+is advisory and can appear after a short delay.
+
 ## Hosted relay memory capacity and retry
 
 After every voter has completed the group's idle barrier, the hosted relay frees its working memory for other households and keeps the saved directory in persistent storage. The next request reloads those copies and obtains a fresh majority response. Busy groups keep their memory. When busy groups fill the relay's memory allowance, another activation receives HTTP 503 with retry guidance; retrying after a group sleeps can succeed.

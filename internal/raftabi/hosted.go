@@ -22,7 +22,7 @@ func hostedEffect(d *decoder) ([]byte, error) {
 	if cs.Decode(raw, &change) != nil && (j.Decode(&change) != nil || j.Decode(new(any)) != io.EOF) {
 		return nil, errFrame
 	}
-	if change.DeviceSeen == nil && change.RenewHolds == nil && change.AdmitJoin == nil && change.CompleteJoin == nil && change.RecordUpload == nil {
+	if change.AdvanceTime == nil && change.DeviceSeen == nil && change.RenewHolds == nil && change.AdmitJoin == nil && change.CompleteJoin == nil && change.RecordUpload == nil {
 		return nil, errFrame
 	}
 	key := ed25519.NewKeyFromSeed(seed)

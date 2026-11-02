@@ -9,10 +9,23 @@ pids=""
 stop() { for p in $pids; do kill "$p" 2>/dev/null || true; done; rm -rf "$work"; }
 trap stop EXIT
 
+# All local workers consume the same reactor. Multiple custom-build watchers
+# otherwise keep rewriting it and restarting each other during requests.
+sh ../../scripts/raft-hosted-build.sh
+node --input-type=module - "$work/wrangler.toml" <<'JS'
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+const config = readFileSync('wrangler.toml', 'utf8')
+  .replace(/^\[build\][\s\S]*?(?=^\[|$(?![\s\S]))/m, '')
+  .replace(/^main = "([^"]+)"/m, (_, path) => `main = ${JSON.stringify(resolve(path))}`);
+writeFileSync(process.argv[2], config);
+JS
+
 start() { # port, extra wrangler args
   port=$1; shift
   : >"$work/$port.log"
-  node_modules/.bin/wrangler dev --local --ip 127.0.0.1 --port "$port" --persist-to "$work/$port" "$@" >"$work/$port.log" 2>&1 &
+  # Reuse the opt-in local proxy transport policy; retries remain off by default.
+  sh test/local.sh node_modules/.bin/wrangler dev --config "$work/wrangler.toml" --local --ip 127.0.0.1 --port "$port" --persist-to "$work/$port" "$@" >"$work/$port.log" 2>&1 &
   last=$!
   pids="$pids $last"
   for _ in $(seq 60); do grep -q 'Ready on' "$work/$port.log" && return 0; sleep 1; done

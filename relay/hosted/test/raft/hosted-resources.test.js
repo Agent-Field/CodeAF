@@ -26,6 +26,7 @@ test('H4 R27 public Worker stays within isolate and ordinary-turn CPU budgets',{
  try{
   await h.start();inspector=await inspect(h.mf);
   const begin=performance.now();assert.equal((await h.call(a,'POST','/v1/dir/cells/chat',{head:'saved',class:'work',size:0,keys:{}})).status,200);report.coldMs=performance.now()-begin;
+  await h.control({op:'form-cluster'});
   await h.control({op:'reset-metrics'});const before=await sample();report.samples.push(before);
   for(let i=0;i<24;i++){
    const start=performance.now(),r=await h.call(a,'GET','/v1/dir/cells/chat');assert.equal(r.status,200);report.calls.push(performance.now()-start);

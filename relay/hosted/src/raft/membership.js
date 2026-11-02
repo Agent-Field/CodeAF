@@ -28,8 +28,10 @@ export function committedRegistry(runtime, store) {
 
 // Only authenticated internal provisioning supplies the three public anchor
 // records. Before registry commitment, personal keys cannot submit peer data.
-export function provisionedRegistry(runtime, config) {
-  const raw = new TextEncoder().encode(encodeCanonical({ anchors: config.anchors, voters: config.bootstrap }));
-  const r = response(runtime.call(frame(19).blob(raw).finish())), peers = decode(r.blob()); r.end();
+export function provisionedRegistry(runtime, config, store) {
+  const raw = new TextEncoder().encode(encodeCanonical({ anchors: config.anchors, voters: config.anchors.map(a=>a.node) }));
+  const w=frame(19).blob(raw);
+  if(config.birth)w.blob(unb64(store.application().conf)).blob(store.read('membership','legacy-import')).blob(new TextEncoder().encode(encodeCanonical(config.birth)));
+  const r = response(runtime.call(w.finish())), peers = decode(r.blob()); r.end();
   return Object.fromEntries(peers.map(p => [p.node, { incarnation: p.incarnation, key: p.key, voter: p.voter, revoked: p.revoked }]));
 }
