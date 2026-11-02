@@ -375,13 +375,17 @@ factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
 
 A job read (`factory.job`, and jobs in `factory.queue`) carries
-`start_rules {ask_first, never, unread?, unread_why?}` after it starts.
+`start_rules {ask_first, never, unread?, unread_why?, unread_file?, unread_line?}` after it starts.
 `unread: true` means the repository's `.codeaf/factory.yaml` could not be read.
 A person's Start still succeeds, using the factory's rules; a job without its
 own budget receives the built-in default job budget. Its plan holds for a
 person, including in Auto. Activity says `Started with the repository's rules
 unread; its plan will wait for you`. `unread_why` names the file, the parser's
 line when available, and a safe explanation (one line, under 160 characters).
+`unread_file` is the repository-relative path (`.codeaf/factory.yaml` today);
+`unread_line` is the parser's positive line number, omitted when unknown.
+The plan approval question includes `unread_why`; no build step starts until
+a person approves, including in Auto. These fields survive worker reports.
 It carries no raw transport errors, absolute paths or credentials. Fix the
 named file before reviewing the plan. A clean read without a positive default
 budget still refuses a job without its own budget. Unread factory rules still

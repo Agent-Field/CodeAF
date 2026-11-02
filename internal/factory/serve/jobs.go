@@ -128,7 +128,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
-			rules.UnreadWhy = pipeline.UnreadWhy(err)
+			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
 			file, fileErr = &f, err
 		}
 		var budget float64

@@ -455,3 +455,11 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 ## runner recovery window — running time versus waiting for reconnect
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+
+## Unread repository rules — file and line before plan approval
+
+When repository rules cannot be read, the plan approval question shows the
+safe explanation, including `.codeaf/factory.yaml` and the parser's line when
+known. No build step starts until you approve that question, including in Auto.
+The job read also carries the repository-relative `unread_file` and, when known,
+`unread_line` beside `unread_why`.

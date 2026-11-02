@@ -207,7 +207,7 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			for until := time.Now().Add(time.Second); time.Now().Before(until); {
 				var held api.Job
 				s.must("factory.job", params, &held)
-				if held.State != api.StateNeedsYou || held.NeedsYou == nil || held.NeedsYou.Question == nil || !strings.Contains(held.NeedsYou.Question.Text, wantWhy) {
+				if held.State != api.StateNeedsYou || held.NeedsYou == nil || len(held.Questions) == 0 || !strings.Contains(held.Questions[0].Text, wantWhy) {
 					t.Errorf("person must see unread reason: %+v", held.NeedsYou)
 					break
 				}
@@ -227,9 +227,15 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			var held api.Job
 			s.must("factory.job", params, &held)
 			params["expect"] = map[string]any{"version": held.Version}
+			params["commit"] = held.HeadCommit
 			var approved appwire.FactoryJobActed
 			s.must("factory.job_approve", params, &approved)
-			eventually(t, "approval releases the next step", func() bool { return writes.Load() > 0 })
+			for deadline := time.Now().Add(factory.ApprovalUndo + 5*time.Second); writes.Load() == 0 && time.Now().Before(deadline); {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if writes.Load() == 0 {
+				t.Fatal("approval did not release the next step")
+			}
 		})
 	}
 }
