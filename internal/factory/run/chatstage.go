@@ -87,6 +87,10 @@ type ConversationSpec struct {
 	Model           string
 	AutomaticModels *bool
 	Effort          string
+	// StepEffort is the step's own effort word (cheap, strong or ""): with
+	// no model of the step's or the job's, the maker opens the step on the
+	// model that effort runs on.
+	StepEffort string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -257,6 +261,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Model:             stageModel(job),
 		AutomaticModels:   stageAutomatic(job),
 		Effort:            job.Item.Effort,
+		StepEffort:        job.Stage.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
 		VerifyChecks:      checksVerification(job.Stage),

@@ -26,3 +26,19 @@ func TestAStepWithItsOwnModelOpensOnIt(t *testing.T) {
 		t.Fatalf("opened on %q, automatic %v", spec.Model, spec.AutomaticModels)
 	}
 }
+
+// A STEP'S EFFORT WORD GOES WITH ITS CONVERSATION, so the maker can open a
+// cheap or strong step on the model that effort runs on.
+func TestAStepsEffortWordReachesItsConversation(t *testing.T) {
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	job := reviewJob()
+	job.Stage.Effort = "cheap"
+	if _, err := NewChatExecutor(maker).Run(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if got := maker.Opened()[0].Spec.StepEffort; got != "cheap" {
+		t.Fatalf("step effort %q", got)
+	}
+}
