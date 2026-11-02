@@ -241,6 +241,20 @@ as a frame can fold the line into it; the words are the same either way.
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
 
+## Stopped and interrupted rounds after Carry on or retry
+
+After you Stop a running step or job and carry on from that step, its earlier
+round says `stopped`. A round cut by a lost runner, including an engine
+restart, says `interrupted` when retried. Neither means the work failed its
+completion rule, so neither says "didn't pass" or "fixing them". A real step
+error remains a failed round and says `failed` when retried. Reported results
+still use their rule's words, such as `clean`, `not clean` or `green`.
+
+The words do not change attempt counting. An explicit retry advances the
+round number and grants that step its configured rounds again. Automatic
+recovery keeps its separate limit of three retries. Saved history from older
+runs keeps its recorded words; there is no history migration.
+
 ## pressing run goes straight to the first step — does the manager reshape the run, manager set, shape steps
 
 Pressing `r`, or saying `start` in the item's chat, starts the run at its first step (usually

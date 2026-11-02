@@ -122,7 +122,6 @@ type loopCtl struct {
 	// Guarded by floorLoop.mu.
 	pending     string // the question the item waits on: "" is none
 	paused      bool
-	resume      chan struct{}
 	roundCancel context.CancelFunc
 	// opened is the chat the round now running opened, and carry the chat a
 	// pause cut short, which the next round continues rather than replaces.
@@ -1302,20 +1301,13 @@ func shortfall(res factory.StageResult) string {
 	return factory.Shortfall(res)
 }
 
-// held waits while the item is paused, and answers false when it stopped.
+// held ends a paused drive so its bench and worker lease can serve another
+// job. The saved stream keeps the interrupted step for the ordinary resume path.
 func (lp *floorLoop) held(c *loopCtl) bool {
 	lp.mu.Lock()
-	paused, resume := c.paused, c.resume
+	paused := c.paused
 	lp.mu.Unlock()
-	if !paused {
-		return c.ctx.Err() == nil
-	}
-	select {
-	case <-resume:
-		return c.ctx.Err() == nil
-	case <-c.ctx.Done():
-		return false
-	}
+	return !paused && c.ctx.Err() == nil
 }
 
 // round runs one round under its own ctx, which a pause cancels. again is a
@@ -2059,13 +2051,9 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 		}
 		c.paused = next
 		if next {
-			c.resume = make(chan struct{})
 			if c.roundCancel != nil {
 				c.roundCancel()
 			}
-		} else if c.resume != nil {
-			close(c.resume)
-			c.resume = nil
 		}
 		return next, true
 	}()

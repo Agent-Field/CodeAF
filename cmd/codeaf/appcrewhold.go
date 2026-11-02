@@ -34,6 +34,13 @@ package main
 // not a member the person must do something about: it is not said, the row is
 // not marked, it is not counted towards the widening wait, and it is tried
 // again on the next poll, by which time the key is here.
+//
+// NOR IS A FACTORY STEP WHOSE JOURNAL IS LOCKED. The usual holder is this
+// process's own runner, after Give back, and that is not another codeaf
+// window. A step's questions reach the person through the factory either way,
+// so the failure is quiet: nothing is said, the row does not read as unheld,
+// and when the journal is free the next try holds the step without saying it
+// is open here again. An ordinary member's lock is still said.
 
 import (
 	"errors"
@@ -44,6 +51,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -95,6 +103,25 @@ func appHoldReason(err error) string {
 	return reason
 }
 
+// appHoldIsWindowLock says the journal is open somewhere the app did not join.
+// The door says that as the other-window conflict. A lock that arrives as
+// itself is the same fact.
+func appHoldIsWindowLock(err error) bool {
+	if errors.Is(err, session.ErrSessionLocked) {
+		return true
+	}
+	var wire *appwire.Error
+	return errors.As(err, &wire) && wire.Code == appwire.CodeConflict && strings.Contains(wire.Message, appWindowConflict)
+}
+
+// factoryStageMember says this agent is a factory job's step. A step's
+// questions reach the person through the factory, so a locked journal is
+// not a window the person has to close.
+func (b *appBackend) factoryStageMember(agent string) bool {
+	_, member, ok := b.crewSeatOf(agent)
+	return ok && member.FactoryStage
+}
+
 // appWaitingForKey says whether a hold failed only because no key has been
 // handed over yet ([config.ErrNoAPIKey]). The refusal reaches here either as
 // itself or as the wire error the app's opener made of it, which says it in the
@@ -116,7 +143,8 @@ func appMemberWho(m teamstore.Member) string {
 }
 
 // holdFailed records one failed hold and sets when the member is tried again.
-// quiet is a conversation that is not on this machine, which is never said.
+// quiet is a failure that is not said: a conversation that is not on this
+// machine, or a factory step whose journal is locked.
 func (b *appBackend) holdFailed(run *appCrewRun, agent string, err error, quiet bool) {
 	if b.isClosing() {
 		return

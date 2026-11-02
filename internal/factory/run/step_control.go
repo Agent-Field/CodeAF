@@ -78,7 +78,14 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 			target.Carry = append([]string(nil), previous.Carry...)
 		}
 		if previous.Failure != nil && previous.Round > 0 {
-			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Failure.Detail, Rejected: true, At: previous.Failure.At, Started: previous.Started})
+			result := "failed"
+			switch previous.Failure.Code {
+			case factory.CodeStopped:
+				result = "stopped"
+			case factory.CodeMachineLost:
+				result = "interrupted"
+			}
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Failure.Detail, Rejected: result == "failed", Result: result, At: previous.Failure.At, Started: previous.Started})
 		}
 		it.State = factory.StateQueued
 		it.Failure = nil
