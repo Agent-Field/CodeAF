@@ -18,6 +18,10 @@ const (
 	MethodDelegateList  = "Delegate.List"
 	MethodDelegateStart = "Delegate.Start"
 	MethodTaskStart     = "Task.Start"
+	// Placement uses new methods so an older Task.Start never silently drops
+	// a computer choice. The optional welcome capability gates both controls.
+	MethodTaskStartOn = "Task.StartOn"
+	MethodTaskRunHere = "Task.RunHere"
 	// MethodTaskRedoStronger runs the newest task again with every seat nobody
 	// pinned one step stronger ([session.Agent.RedoStronger]).
 	MethodTaskRedoStronger = "Task.RedoStronger"
@@ -175,6 +179,16 @@ type TaskStartArgs struct {
 	Effort string `json:"effort,omitempty"`
 }
 
+// TaskStartOnArgs belongs only to the new named-computer method. The older
+// TaskStartArgs and Task.Start request keep their bytes and meaning unchanged.
+type TaskStartOnArgs struct {
+	Brief    string `json:"brief"`
+	Solo     bool   `json:"solo,omitempty"`
+	Computer string `json:"computer"`
+	Effort   string `json:"effort,omitempty"`
+	Session  string `json:"session,omitempty"`
+}
+
 // TaskRedoArgs names the task to run again stronger; 0 is the newest one.
 type TaskRedoArgs struct {
 	ID uint64 `json:"id,omitempty"`
@@ -216,15 +230,14 @@ type TaskPending struct {
 	IDs []uint64 `json:"ids"`
 }
 
-// TaskResolveArgs is one person's answer to one proposal, in the engine's own
-// three fields ([session.TaskAnswer]): whether it may run, the correction to
-// append if they redirected it, and the model they picked where the card
-// offered a choice.
+// TaskResolveArgs carries one person's proposal answer. The optional computer
+// choice leaves the bytes of earlier answers unchanged when it is absent.
 type TaskResolveArgs struct {
 	ID       uint64 `json:"id"`
 	Approved bool   `json:"approved,omitempty"`
 	Redirect string `json:"redirect,omitempty"`
 	Model    string `json:"model,omitempty"`
+	Computer string `json:"computer,omitempty"`
 }
 
 // TaskHoldArgs names the proposal whose first typed rune stopped its clock.
