@@ -53,8 +53,17 @@ func TestAnIdlePullDoesNotRereadAnUnchangedFloor(t *testing.T) {
 	// One read settles the request, one is the first look, and one more is
 	// allowed for the watch reporting the job's own creation late. A timed
 	// look made ten more for every second of the wait.
-	if n := reads.Load(); n > 3 {
-		t.Fatalf("an idle one-second pull read the unchanged floor %d times", n)
+	limit, why := int64(3), "an idle one-second pull read the unchanged floor %d times"
+	// A HOST WITH NO INOTIFY INSTANCE LEFT GETS NO WATCH. Every process of
+	// the user shares one small pool, so a busy test machine runs out and the
+	// pull falls back to its timed look, as designed. That pull is held to the
+	// fallback's own bound, one look per tick, which no load can raise.
+	if !serve.WatchesItsRoot(f.handler) {
+		t.Log("no filesystem watch on this host: checking the timed look's bound")
+		limit, why = 2+int64(time.Second/serve.WorkerPollEvery), "an unwatched one-second pull read the floor %d times, more than one look per tick"
+	}
+	if n := reads.Load(); n > limit {
+		t.Fatalf(why, n)
 	}
 }
 
