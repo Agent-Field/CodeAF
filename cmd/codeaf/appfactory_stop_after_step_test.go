@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
@@ -26,6 +27,7 @@ import (
 // A held fake model round makes the person's toggle precede the step boundary.
 func TestFactoryStopAfterStep(t *testing.T) {
 	t.Run("spending answer guards", testSpendAnswerGuards)
+	t.Run("unconfirmed answer is sent once", testSpendAnswerUncertain)
 	t.Run("saved questions", testSavedSpendingQuestions)
 	t.Run("unfinished step resumes", testUnfinishedSpendingStep)
 	t.Run("owner and guard", testSpendingStopOwnerAndGuard)
@@ -185,6 +187,37 @@ func TestFactoryStopAfterStep(t *testing.T) {
 				}
 				if read()["stop_after_step"] == true {
 					t.Fatal("flag survived the answer or off")
+				}
+				if choice != "off" {
+					events, err := history.Since(context.Background(), time.Time{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					answered := 0
+					for _, event := range events {
+						if event.Job == job.ID && event.Kind == record.Answered {
+							answered++
+						}
+					}
+					if answered != 1 {
+						t.Fatalf("answered events=%d want=1", answered)
+					}
+					questions, _ := read()["questions"].([]any)
+					want := "yes"
+					if choice == "no" {
+						want = "no"
+					}
+					found := false
+					for _, question := range questions {
+						q, _ := question.(map[string]any)
+						a, _ := q["answer"].(map[string]any)
+						if q["kind"] == "spend_stopped" && a["text"] == want {
+							found = true
+						}
+					}
+					if !found {
+						t.Fatalf("saved %s spending answer missing: %v", want, questions)
+					}
 				}
 			})
 		}
@@ -361,5 +394,28 @@ func testSpendAnswerGuards(t *testing.T) {
 			alice.w.mustFail(method, stale, appwire.CodeStale)
 		}
 		f.same(t, job.ID, was, "refused spending answer")
+	}
+}
+
+func testSpendAnswerUncertain(t *testing.T) {
+	var posts atomic.Int64
+	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts.Add(1)
+			if r.URL.Path != "/v1/jobs/4/spend_answer" {
+				t.Errorf("unexpected write: %s", r.URL.Path)
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"receipt unavailable"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"document_id":4,"version":7,"state":"needs_you","needs_you":{"kind":"spend_stopped"}}`))
+	})
+	hub := testFactoryHub(t)
+	_, conn := attachStub(t, hub, stub, actionTestCredential)
+	wire := newFactoryWire(t, hub)
+	wire.mustFail("factory.job_spend_answer", map[string]any{"factory": conn.ID, "job": 4, "carry_on": true, "expect": map[string]any{"version": 7}}, appwire.CodeUncertain)
+	if posts.Load() != 1 {
+		t.Fatalf("unconfirmed writes=%d want=1", posts.Load())
 	}
 }
