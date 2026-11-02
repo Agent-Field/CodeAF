@@ -115,9 +115,11 @@ export class PersonalPeers {
   const box=this.boxes.get(node),chunks=[...(box?.credits??[])].sort(([a],[b])=>BigInt(a)<BigInt(b)?-1:1).map(([node,sequence])=>({node,sequence}));
   const r=response(this.host.runtime.call(frame(38).u32(1).blob(enc.encode(JSON.stringify({...extra,chunks,generation:this.generation,messages:this.deliveries(node)}))).finish()));const raw=r.blob();r.end();return raw;
  }
- async recover(){
+ async recover(configuration=null){
   const from=this.host.leader();if(!from)return;
-  for(const [to,member]of Object.entries(this.view))if(!member.revoked&&!this.host.members.has(to)){
+  const conf=this.host.configuration(configuration??(await this.host.members.get(from).readEvidence()).conf);
+  const configured=new Set(['voters','outgoing','learners','learners_next'].flatMap(key=>conf[key]??[]).map(String));
+  for(const [to,member]of Object.entries(this.view))if(configured.has(to)&&!member.revoked&&!this.host.members.has(to)){
    await this.host.input(from,12,{peer:to,snapshot:true,success:false});
    await this.host.input(from,12,{peer:to,snapshot:false,success:false});
   }

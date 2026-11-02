@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hostedFixture } from './hosted-fixture.js';
 
+test('the first write does not recover peers outside the committed singleton configuration',{timeout:30000},async()=>{
+ const h=await hostedFixture({fixture:true}),a=h.client();
+ try{
+  await h.start();
+  assert.equal((await h.call(a,'PUT','/v1/dir/devices/'+a.device,{V:1,name:'c2VhbGVk',platform:'linux'})).status,204);
+  const metrics=await h.control({op:'metrics'});
+  assert.equal(metrics.idleReads,0,'the initial transport view has no prior delivery to refresh');
+  assert.equal(metrics.peerFailures,0,'unconfigured anchors have no failed Raft delivery to recover');
+ }finally{await h.close();}
+});
+
 test('a new identity commits its first write without either additional anchor',{timeout:30000},async()=>{
  const h=await hostedFixture({fixture:true}),a=h.client();
  try{

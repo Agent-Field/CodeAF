@@ -239,7 +239,7 @@ export class HostedIdentity {
       const conf=this.configuration(header.app.conf);
       if(conf.joint||conf.outgoing?.length||conf.voters.length!==3){
         const root=await this.members.get(b.node).hostView(b.index,'state','identity');await this.rememberRetirement(this.project('identity',root.raw));
-        if(!this.peers)await this.restorePeers();
+        if(!this.peers)await this.restorePeers(header.app.conf);
         await this.wakeMaintenance();this.ready=true;return;
       }
     }
@@ -255,7 +255,7 @@ export class HostedIdentity {
     await this.reconcileMembership();
     await this.wakeMaintenance();this.ready=true;
   }
-  async restorePeers(){
+  async restorePeers(initialConf=null){
     const generation=await this.ctx.storage.get('raft-router-generation')??'0';
     if(typeof generation!=='string'||!/^(0|[1-9][0-9]*)$/.test(generation)||BigInt(generation)>=(1n<<64n)-1n)throw unavailable();
     const saved=await this.ctx.storage.get('raft-router-sleep'),active=await this.ctx.storage.get('raft-maintenance');
@@ -277,8 +277,9 @@ export class HostedIdentity {
     await this.ctx.storage.put('raft-router-generation',next);await this.ctx.storage.sync();
     this.peers=new PersonalPeers(this,next);
     for(const ws of this.peers.sockets())this.peers.close(ws);
-    await this.peers.refresh();
-    await this.peers.recover();
+    this.peers.restoring=initialConf!==null;
+    try{await this.peers.refresh();}finally{this.peers.restoring=false;}
+    await this.peers.recover(initialConf);
   }
   accept(id,e){if(!e)return;if(e.status){this.inactiveMembers?.delete(String(id));this.states.set(String(id),e.status);}
     if(e.applicationVersion!==undefined)this.appliedVersion=this.appliedVersion===undefined?BigInt(e.applicationVersion):this.appliedVersion>BigInt(e.applicationVersion)?this.appliedVersion:BigInt(e.applicationVersion);this.queue.push(...(e.send??[]).map(m=>({...m,from:String(id),to:String(m.to)})));this.reads.push(...(e.reads??[]).map(r=>({...r,node:String(id)})));this.signal();}

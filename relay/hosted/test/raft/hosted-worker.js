@@ -11,7 +11,7 @@ import {CORE_MEMORY_BUDGET} from '../../src/raft/abi.js';
 import { runtimeMetrics,sharedRuntime } from '../../src/raft/actor.js';
 import {coordinationPolicy} from '../../src/raft/liveness.js';
 const recoveryHistory=new Map();
-const measurements={turns:0,wall:[],membership:0,campaigns:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0,presenceCommits:0,proposals:0,barriers:0,authorizations:0};
+const measurements={turns:0,wall:[],membership:0,campaigns:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0,presenceCommits:0,proposals:0,barriers:0,authorizations:0,idleReads:0,peerFailures:0};
 async function measured(fn){const start=performance.now();measurements.turns++;try{return await fn();}finally{measurements.wall.push(performance.now()-start);}}
 import { policyOf } from '../../src/rules.js';
 
@@ -24,6 +24,7 @@ export class IdentityDO extends Source {
       host=value;if(!host)return;
       const commit=host.commit.bind(host);host.commit=raw=>{this.lastCommand=raw.slice();return commit(raw);};
       const effect=host.commitEffect.bind(host);host.commitEffect=(change,...args)=>{if(change.device_seen)measurements.presenceCommits++;return effect(change,...args);};
+      const input=host.input.bind(host);host.input=(node,tag,...args)=>{if(tag===15)measurements.idleReads++;if(tag===12)measurements.peerFailures++;return input(node,tag,...args);};
       for(const [method,counter]of [['commit','proposals'],['barrier','barriers'],['authorize','authorizations']]){const original=host[method].bind(host);host[method]=(...args)=>{measurements[counter]++;return original(...args);};}
     }});
     const accept=ctx.acceptWebSocket.bind(ctx);
