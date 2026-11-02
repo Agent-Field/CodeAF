@@ -247,7 +247,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 	defer file.Close()
 	var calls []calllog.Record
 	starts := map[string]time.Time{}
-	var providerUSD, ledgerUSD float64
+	var providerUSD, ledgerUSD, memoryUSD float64
 	total, memory, afterEnd := 0, 0, 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
@@ -285,6 +285,9 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 			t.Errorf("ledger model=%s", row.Model)
 		}
 		ledgerUSD += row.USD
+		if row.Role == "memory" {
+			memoryUSD += row.USD
+		}
 	}
 	t.Logf("memory calls started after job end=%d", afterEnd)
 	if afterEnd != 0 {
@@ -328,17 +331,23 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 				count++
 			}
 		}
+		stepEnd := phase.At
+		for _, next := range it.Stream.Phases {
+			if next.Started.After(phase.Started) && next.Started.Before(stepEnd) {
+				stepEnd = next.Started
+			}
+		}
 		workEnd := phase.Started
 		if phase.Kind == factory.StageCheck {
-			workEnd = phase.At
+			workEnd = stepEnd
 		}
 		for _, row := range calls {
 			at, _ := time.Parse(time.RFC3339Nano, row.Time)
-			if row.Tag == "turn" && at.After(workEnd) && !at.After(phase.At) {
+			if row.Tag == "turn" && at.After(workEnd) && !at.After(stepEnd) {
 				workEnd = at
 			}
 		}
-		delay := max(int64(0), phase.At.Sub(workEnd).Milliseconds())
+		delay := max(int64(0), stepEnd.Sub(workEnd).Milliseconds())
 		// Parallel compiler requests overlap. Count their wall-time union in
 		// this stage's tail rather than adding their request durations.
 		intervals := [][2]time.Time{}
@@ -351,8 +360,8 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 			if begin.Before(workEnd) {
 				begin = workEnd
 			}
-			if end.After(phase.At) {
-				end = phase.At
+			if end.After(stepEnd) {
+				end = stepEnd
 			}
 			if end.After(begin) {
 				intervals = append(intervals, [2]time.Time{begin, end})
@@ -381,7 +390,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 		t.Logf("memory-only median_ms=%d max_ms=%d", memoryDelays[len(memoryDelays)/2], memoryDelays[len(memoryDelays)-1])
 		t.Logf("step-end median_ms=%d max_ms=%d", delays[len(delays)/2], delays[len(delays)-1])
 	}
-	t.Logf("TOTAL calls=%d memory_calls=%d provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, providerUSD, ledgerUSD, headerUSD)
+	t.Logf("TOTAL calls=%d memory_calls=%d memory_USD=%.8f provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, memoryUSD, providerUSD, ledgerUSD, headerUSD)
 	t.Logf("ledger_minus_terminal_call_log_USD=%.8f (late receipts are ledger rows)", ledgerUSD-providerUSD)
 	if ledgerUSD+0.000001 < providerUSD {
 		t.Errorf("ledger lost provider-reported cost: %.8f vs %.8f", ledgerUSD, providerUSD)
