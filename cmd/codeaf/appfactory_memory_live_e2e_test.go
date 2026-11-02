@@ -294,8 +294,20 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 		count, usd := 0, 0.0
 		for _, row := range ledger {
 			if row.Session == header.ID && row.Role == "memory" {
-				count += row.Calls
 				usd += row.USD
+			}
+		}
+		for _, row := range calls {
+			if row.Tag != "memory" {
+				continue
+			}
+			at, _ := time.Parse(time.RFC3339Nano, row.Time)
+			owned := row.Node == header.ID && header.ID != ""
+			if row.Node == "" {
+				owned = !at.Before(phase.Started) && !at.After(phase.At)
+			}
+			if owned {
+				count++
 			}
 		}
 		workEnd := phase.Started
