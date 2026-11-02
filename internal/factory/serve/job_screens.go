@@ -22,6 +22,7 @@ import (
 func (h *Handler) jobScreens() {
 	h.postJob("assignee", h.config.Store != nil, h.changeAssignee)
 	h.postJob("sync", true, h.guarded("sync", h.onlyOwner(h.syncJob)))
+	h.postJob("issue_comment", true, h.issueComment)
 	for _, verb := range []string{"stop", "rerun"} {
 		h.postJob("steps/{sid}/"+verb, h.config.Store != nil, h.stepControl(verb == "rerun"))
 	}
@@ -29,6 +30,7 @@ func (h *Handler) jobScreens() {
 		http.MethodGet: h.readStepEdits, http.MethodPost: h.editSteps,
 	})
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
+	h.read("/v1/jobs/{id}/brief", h.readJobBrief)
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{
@@ -154,7 +156,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
 	for _, mv := range body.Move {
 		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
 		// rather than guessed.
@@ -167,7 +169,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	for _, addition := range body.Add {
 		d := addition.Step
 		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
-		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" {
+		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" || d.UseModel != "" {
 			h.fail(w, 422, "new steps accept name, kind, ask, until and effort, and a check its max")
 			return
 		}
