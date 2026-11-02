@@ -260,3 +260,8 @@ func NeedsPublishApproval(it Item) bool {
 	}
 	return false
 }
+
+// NextStepQuestion is what Manual asks before a step no approve step answers for.
+func NextStepQuestion(step string) string {
+	return step + " is next · continue, or send back the step before?"
+}

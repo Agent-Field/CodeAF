@@ -330,8 +330,17 @@ passing proof as a draft PR through the same recorded, exact-commit approval doo
 It repairs and updates that same PR within the job's budget and retry limits. The
 service records each approved publication; a worker cannot manufacture consent.
 Neither explicit Auto nor Manual grants automatic merging, even when a recipe permits it. **Merge remains
-your decision.** Manual asks at enabled plan gates and before publication or repair
-pushes. Optional per-step skips remain available; neither mode resets retry limits.
+your decision.** Optional per-step skips remain available; neither mode resets retry limits.
+
+## Manual asks before every step
+
+Manual asks before each step's first round, and before publication or repair pushes:
+**Write is next · continue, or send back the step before?** Approve runs the step. Request
+changes sends the finished step before it back with your words, and the ask comes again
+when that finishes. Start answers for the first step and an approve step answers for the
+step after it, so neither asks twice. Retries and send-backs of a step that already ran do
+not ask. Switching to Manual applies from the next step not yet run; switching to Auto passes
+an ask that is standing. Older jobs with no saved mode keep only their approve steps.
 
 ## Retry a failed step or a failed message
 

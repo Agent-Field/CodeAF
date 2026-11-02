@@ -25,6 +25,9 @@ func ApproveBackTarget(s *Stream) (gate, prev int) {
 	if ph.Kind == StageGate {
 		return s.Cur, PreviousWork(s.Phases, s.Cur)
 	}
+	if prev := PreviousWork(s.Phases, s.Cur); WaitingToStart(ph) && prev >= 0 {
+		return s.Cur, prev
+	}
 	if ph.Result != nil && ph.Result.Done && s.Cur+1 < len(s.Phases) && s.Phases[s.Cur+1].Kind == StageGate && s.Phases[s.Cur+1].State == PhasePending {
 		return s.Cur + 1, s.Cur
 	}
@@ -62,6 +65,12 @@ func PlanSendsBack(it Item) (backTo string, ok bool) {
 		return "", false
 	}
 	return it.Stream.Phases[prev].Name, true
+}
+
+// WaitingToStart is a step held before its first round: Manual's ask stands on
+// it, and a no there sends back the work before it as an approve step's no does.
+func WaitingToStart(ph Phase) bool {
+	return ph.Kind != StageGate && ph.State == PhaseWaiting && ph.Round == 0
 }
 
 // PlanWaiting says the item is a plan waiting for its person: needs you, with
