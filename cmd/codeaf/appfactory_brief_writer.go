@@ -41,7 +41,11 @@ var _ appwire.FactoryJobBriefWriter = (*appBackend)(nil)
 const briefPurpose = "factory_brief"
 
 // briefMaxTokens bounds the writer's answer: four blocks of short claims.
-const briefMaxTokens = 2000
+// MEASURED, NOT GUESSED: ten live briefs on deepseek/deepseek-v4.1-flash with
+// the bound at 4096 wrote 1189 to 2860 tokens (median 2036, p95 about 2830),
+// and at the old 2000 about half were cut, which read as invalid JSON or as
+// an empty answer the adapter asked again for. The p95 and a quarter's margin.
+const briefMaxTokens = 3600
 
 func (b *appBackend) FactoryJobBriefWrite(ctx context.Context, p appwire.FactoryJobBriefWriteParams) (appwire.FactoryJobBriefWritten, error) {
 	if _, err := b.localHostOf(p.Factory); err != nil {

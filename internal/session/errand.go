@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -362,7 +363,12 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	defer cancel()
 	go a.watchErrand(ctx, cancel)
 	pick := errandPick{model: ask.Model, effort: ask.Effort}
-	callCtx := withErrandPick(withFirstRungOnly(withDetachedUsage(ctx)), pick)
+	// EVERY CALL THE ERRAND MADE IS ITS COST, the answers the adapter asked
+	// again for included: those were paid for, and the caller books this
+	// answer's usage to its job.
+	var superseded ErrandUsage
+	callCtx := provider.WithDiscardedUsage(withErrandPick(withFirstRungOnly(withDetachedUsage(ctx)), pick),
+		func(_, _ string, r *ai.Response) { superseded = superseded.plus(errandUsage(r)) })
 	// The conversation's own model is the ladder's floor, as it is for a
 	// title: a role nobody configured still answers on the model already paid
 	// for, rather than not at all.
@@ -370,9 +376,9 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	// Rejected output still cost money. Book it on the agent's auxiliary
 	// ledger and job meter under the caller's purpose, never on a later turn.
 	a.addDetachedUsageAs(response, model, 1, ask.Purpose)
-	answer := ErrandAnswer{Model: model, Role: ask.Role, Took: time.Since(started)}
+	answer := ErrandAnswer{Model: model, Role: ask.Role, Took: time.Since(started), Usage: superseded}
 	if response != nil {
-		answer.Usage = errandUsage(response)
+		answer.Usage = superseded.plus(errandUsage(response))
 		if response.Model != "" {
 			answer.Model = response.Model
 		}
@@ -475,6 +481,11 @@ func errandUsage(response *ai.Response) ErrandUsage {
 		usage.CostUSD = *response.Usage.Cost
 	}
 	return usage
+}
+
+// plus is two calls' usage together.
+func (u ErrandUsage) plus(o ErrandUsage) ErrandUsage {
+	return ErrandUsage{In: u.In + o.In, Out: u.Out + o.Out, CostUSD: u.CostUSD + o.CostUSD}
 }
 
 // errandProvider is the service a model is reached through, or "" when this
