@@ -41,6 +41,25 @@ It is given two tools that no other conversation has:
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## plan file list — structured files, unknown paths and Auto approval
+
+A plan's `stage_result` answer includes `files`, an array of every file it will
+change or add, relative to the repository root. `output` carries the plan's prose.
+The plan schema requires `files`; code validates the paths before using them.
+The list allows at most 200 entries and each path at most 512 bytes. Absolute
+paths, traversal, folders, globs and any other invalid entry make the whole list
+unknown. An empty list is unknown too; the model must not guess.
+
+One existing correction attempt asks a completed plan without a checkable list
+to report again. It shares the existing correction budget and step limits. If
+no valid list arrives, protected-path rules still pause Auto for your approval;
+prose alone never supplies the safety list. A provider can ignore the schema,
+so a required field does not guarantee a valid list or bypass the pause.
+
+Older saved plans still read strict `Files:` declarations outside code blocks.
+When a structured list exists, any conflicting or invalid declaration makes the
+list unknown. The current-round, finished-plan rules still apply.
+
 ## how a step is judged — until done, clean, proven, green, what findings count, claims need evidence
 
 Whether a factory step is finished is decided by code, not by the step's conversation, from
@@ -321,10 +340,14 @@ from the job's budget like the job's steps: everything done for the job spends f
   stopping work cannot reverse a provider charge already incurred.
 - **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,
   $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
-  recorded spend is at most $5. The server rechecks spend while writing the new cap. At exact
-  equality the cap is valid but no more paid work may begin. Choose a higher cap to continue;
-  a budget question never exempts the manager from the limit. Start is a single-word button;
-  the Budget field shows its ceiling.
+  recorded spend is at most $5. The server rechecks spend while writing the new cap.
+  Raising the cap above recorded spend answers a budget question and resumes the interrupted
+  step in Auto or Manual, on this computer or a leased worker. The same conversation, round
+  and spend are kept. Chat says `budget raised to $10 · carrying on` for a $10 cap.
+  An increase still at or below spend keeps the question with the current budget; no more
+  paid work may begin. A decrease below spend is refused. Continue still raises the cap as
+  before. A budget change does not approve publication or answer another kind of question.
+  Start is a single-word button; the Budget field shows its ceiling.
 
 ## Which model and branch does a factory step use?
 
@@ -730,7 +753,7 @@ already-published repair.
 ## persisted Plan decisions, cheap status and report recovery
 
 An ordinary manager turn can call `factory_status` to read saved job facts and
-its current step-question ID without inspecting the workspace. Common status-only
+the exact current question ID at every kind of waiting gate without inspecting the workspace. Common status-only
 questions (`status`, `Everything ok here?`, `Any updates?`, `How is the plan coming along?`,
 `Where do we stand here? What's next?`, `Are we stuck?`) receive that read directly,
 whether the manager is idle or working, even at its spending rail.
@@ -742,17 +765,40 @@ ordinary conversation so the requested work is retained. In Auto this read is ro
 explicit tool denials still apply. The desktop also hides old producer-marked steering
 acknowledgements; the original user message, ordinary model replies and internal audit stay.
 
+## Save a step reply after restart
+
 The manager can use `factory_answer` with `question_id` and the person's answer,
 including an engineering choice delegated with “you decide”, after the temporary
 inbox turn or after a restart. Only this job's current manager can answer; its binding is rechecked under the
 job's write lock. The exact ask and round must still match; polling and spending
 updates do not invalidate it.
 The answer is saved before a warm worker is signalled, or the cold continuation
-is queued. Status-only questions are read without becoming steering notes. Manual takeover and publication retain control. A failed tool call means nothing was saved. If the answer was saved but worker
+is queued. Status-only questions are read without becoming steering notes. Manual takeover and publication retain control. A refused action saves nothing. An unconfirmed result requires a status read before retrying. If the answer was saved but worker
 notification failed, the tool confirms the saved decision and reports the delivery
 problem instead. Retry the same `question_id` and answer to confirm/redeliver it;
 a newer question stays intact and never receives the old answer. Readiness
 completion also preserves a critical decision arriving during its final checks.
+
+## Request changes to a waiting plan through its manager
+
+When you ask for changes at a plan approval gate, the manager reads saved status
+and sends the plan back with your words. The finished step before the gate runs
+again in a new round, with your words in its brief. Approval is requested again
+after that step finishes. This does not approve the plan or publish anything.
+
+The manager uses `factory_answer` with `action: "reject_plan"`, the exact
+`question_id` from `factory_status`, and your words in `answer` (1–4,000
+characters). A changed decision, another manager, or a gate without a finished
+step to return to is refused. Other gate decisions retain their job controls;
+ordinary step replies use the default `answer` action.
+
+The manager must check an action's result before saying it happened. A refused
+action leaves the job waiting and the manager explains that plainly, without
+internal tool names or identifiers. A send-back confirmation means the request
+was accepted; it does not mean a worker has started. If the result is uncertain,
+the manager says so and reads saved status before retrying.
+
+## Resumed Plan report recovery
 
 A resumed Plan restores its planning role, completion door and saved answer in
 its existing conversation. An idle Plan gets at most three report reminders and

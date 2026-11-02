@@ -438,6 +438,47 @@ manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its ol
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
 
+The job manager's model tools also expose the plan send-back: `factory_status`
+includes the exact pending `question_id` in its text at every waiting gate.
+`factory_answer {action: "reject_plan", question_id, answer}` sends the requested
+changes (1–4,000 characters) through the same typed plan-revision door as
+`factory.job_reject_plan`. It checks the manager binding and exact decision on
+the locked job; a stale decision changes nothing. The prior step runs again with
+the words in a new round, then approval is requested again. Omitting `action`
+retains persisted step replies; other gates keep their existing job controls.
+These model tools add no app-wire method, hello feature or wire error code.
+A confirmed send-back reports acceptance, not worker startup; an unconfirmed
+result directs the manager to read status before retrying and explain the
+outcome to the person without internal identifiers.
+
+`factory.job_set_budget` keeps its existing params (`factory`, `job`, `budget`,
+required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
+$30. Raising the cap above recorded spend resolves a `cap` question and resumes
+the interrupted step in the same conversation and round, with spend retained,
+in Auto or Manual on local and leased runners. Chat records one
+`budget raised to $10 · carrying on` line for a $10 cap. An increase at or below
+spend updates the question and keeps work waiting. A decrease below spend is
+still refused (`bad_params`). Other questions and publication approvals are
+unchanged. This corrects existing behavior; method names, errors and hello
+feature identifiers are unchanged.
+An engine whose hello carries `factory.plan_files_answer` reads structured plan
+files. `factory.job` keeps its existing `{factory, job}` request and `Job` reply;
+`steps[].files` carries the plan step's answer (`null` for an absent field, `[]`
+for an explicit unknown list). Worker step reports and pulls carry the same
+`files` array in `StepResult`. `planned_files` is derived from the current finished
+plan, never from prose or a cache. No method or error code changes.
+
+The plan's model fills `stage_result.files` as part of its answer, alongside
+`output`; the plan schema requires the field. At most 200 entries, 512 bytes per
+path, with the strict repository-relative declaration path rules. Any invalid
+entry, empty list or disagreement with a `Files:` declaration makes the list
+unknown. An absent field falls back to the strict declaration for older plans.
+One existing correction attempt asks for a missing or invalid list within the
+existing step budget. A provider that ignores the schema can still omit it;
+the protected-path gate then pauses safely. The stored unknown-list hold suffix
+remains `the plan names no files`; visible words describe the missing checkable
+list rather than claiming the plan names no files in prose.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET
@@ -492,6 +533,24 @@ binary file is `unreadable` with `binary`; a repository with no checkout on the
 factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
 
+A job read (`factory.job`, and jobs in `factory.queue`) carries
+`start_rules {ask_first, never, unread?, unread_why?, unread_file?, unread_line?}` after it starts.
+`unread: true` means the repository's `.codeaf/factory.yaml` could not be read.
+A person's Start still succeeds, using the factory's rules; a job without its
+own budget receives the built-in default job budget. Its plan holds for a
+person, including in Auto. Activity says `Started with the repository's rules
+unread; its plan will wait for you`. `unread_why` names the file, the parser's
+line when available, and a safe explanation (one line, under 160 characters).
+`unread_file` is the repository-relative path (`.codeaf/factory.yaml` today);
+`unread_line` is the parser's positive line number, omitted when unknown.
+The plan approval question includes `unread_why`; no build step starts until
+a person approves, including in Auto. These fields survive worker reports.
+It carries no raw transport errors, absolute paths or credentials. Fix the
+named file before reviewing the plan. A clean read without a positive default
+budget still refuses a job without its own budget. Unread factory rules still
+refuse Start and leave the job new. These are additive job fields under the
+existing factory features; method parameters and replies otherwise stay the
+same.
 A job's `steps[].rounds[]` carries the engine's optional `result` word:
 `done`, `not done`, `clean`, `not clean`, `green`, `not green`, `proven`,
 `not proven`, or `blocked` for a reported result. When a retry closes a step
@@ -1351,6 +1410,20 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
 
+### Job note receipts and pull request comments
+
+A manager's `factory_item` note remains saved on the job after all steps finish.
+The tool result is computed from the saved job: it names the next remaining
+conversation step that reads notes, or says no remaining step will read the note and it is not in the pull
+request. The approval question is `save a note on the job?`. A running round
+already has its brief; a subsequent round can read the note if it runs again.
+Deterministic checks, publication steps and approval gates are not note readers.
+
+No app method, parameters, reply fields, hello feature or error codes change.
+`factory.issue_comment` still targets the source issue, not the job's created
+pull request. The note receipt directs the person to comment on the PR in
+GitHub, using its saved URL when present; it does not claim that a manager has
+a PR comment tool. No comment or PR body edit is performed by saving a note.
 ## Stop spending after this step
 
 Hello feature `factory.job_stop_after_step` enables
