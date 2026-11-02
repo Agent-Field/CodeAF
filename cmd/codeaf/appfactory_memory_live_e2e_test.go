@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -69,7 +70,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 		copy := r.Clone(r.Context())
 		u := *r.URL
 		copy.URL = &u
-		if strings.Contains(u.Host, "openrouter.ai") {
+		if r.Method == http.MethodPost && strings.Contains(u.Host, "openrouter.ai") {
 			copy.URL.Scheme = "http"
 			copy.URL.Host = recorder.server.Listener.Addr().String()
 		}
@@ -190,6 +191,11 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	}
 	if gh.count() != 0 {
 		t.Errorf("GitHub requests: %d", gh.count())
+	}
+	memoryAwaitReceipts(t, callPath)
+	it, err = floor.Get(id)
+	if err != nil {
+		t.Fatal(err)
 	}
 	memoryMeasureTable(t, callPath, it)
 	recorder.mu.Lock()
@@ -318,8 +324,9 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 		t.Logf("step-end median_ms=%d max_ms=%d", delays[len(delays)/2], delays[len(delays)-1])
 	}
 	t.Logf("TOTAL calls=%d memory_calls=%d provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, providerUSD, ledgerUSD, factory.JobSpent(it))
-	if math.Abs(providerUSD-ledgerUSD) > 0.000001 {
-		t.Errorf("ledger differs from provider: %.8f vs %.8f", ledgerUSD, providerUSD)
+	t.Logf("ledger_minus_terminal_call_log_USD=%.8f (late receipts are ledger rows)", ledgerUSD-providerUSD)
+	if ledgerUSD+0.000001 < providerUSD {
+		t.Errorf("ledger lost provider-reported cost: %.8f vs %.8f", ledgerUSD, providerUSD)
 	}
 	if math.Abs(factory.JobSpent(it)-ledgerUSD) > 0.000001 {
 		t.Errorf("job header differs from ledger: %.8f vs %.8f", factory.JobSpent(it), ledgerUSD)
@@ -329,5 +336,32 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 	}
 	if memory == 0 {
 		t.Error("no memory call measured")
+	}
+}
+
+// Receipt recovery is measured after the job, outside every stage-tail interval.
+// The live fixture does not turn the two-second user wait into a receipt wait.
+func memoryAwaitReceipts(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64<<10), 4<<20)
+	for scanner.Scan() {
+		var row calllog.Record
+		if json.Unmarshal(scanner.Bytes(), &row) != nil {
+			continue
+		}
+		if row.Phase != "start" && row.Tag == "memory" && row.Cost == 0 && (row.Error != "" || row.Ended != "") {
+			t.Logf("waiting %s for interrupted-call receipts after the job ended", provider.ReceiptWait+time.Second)
+			time.Sleep(provider.ReceiptWait + time.Second)
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
 	}
 }
