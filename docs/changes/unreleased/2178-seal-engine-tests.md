@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: seal tests run codeaf's own engine, and every make test target stages it first
-pr: 0
+pr: 2178
 invalidates:
   - >-
     Was true: three internal/session seal tests accepted any furrow on PATH,
