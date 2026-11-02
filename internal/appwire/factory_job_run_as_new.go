@@ -2,9 +2,9 @@ package appwire
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-	"strings"
 )
 
 // FeatureFactoryJobRunAsNew starts an ended job's request as a separate job.
@@ -14,7 +14,7 @@ const FeatureFactoryJobRunAsNew = "factory.job_run_as_new"
 const JobActRunAsNew = "run_as_new"
 
 // FactoryJobRunAsNewParams names the source and, optionally, the new assignee.
-// Expect guards the source read, like every other job action.
+// Expect optionally guards the source read; the source itself is never changed.
 type FactoryJobRunAsNewParams struct {
 	Factory  string      `json:"factory"`
 	Job      int         `json:"job"`
@@ -28,8 +28,13 @@ type FactoryJobNewRunner interface {
 }
 
 func prepRunAsNew(p *FactoryJobRunAsNewParams) error {
-	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+	if err := checkJobTarget(&p.Factory, p.Job); err != nil {
 		return err
+	}
+	if p.Expect != nil {
+		if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+			return err
+		}
 	}
 	if p.Assignee != nil {
 		login := strings.TrimPrefix(strings.TrimSpace(*p.Assignee), "@")

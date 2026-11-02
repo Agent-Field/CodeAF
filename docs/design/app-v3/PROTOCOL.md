@@ -1204,8 +1204,8 @@ older ones answer `unavailable`.
 ### Run an ended job as a new job
 
 Hello feature `factory.job_run_as_new` adds
-`factory.job_run_as_new {factory, job, assignee?, expect}`. Like other job
-writes, `expect.version` is required and guards the source job. The engine
+`factory.job_run_as_new {factory, job, assignee?, expect?}`. When supplied,
+`expect.version` must be positive and guards the source job. The engine
 sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
 applies the same ownership and repository guards as `run_again`, and accepts
 failed, stopped, closed and done jobs. Running work is refused.

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -14,18 +16,30 @@ import (
 func TestAppFactoryRunAsNew(t *testing.T) {
 	for _, ending := range []string{"failed", "stopped", "closed", "done", "running", "repo off", "no checkout", "launch refused"} {
 		t.Run(ending, func(t *testing.T) {
-			// The start guard can read this fixture credential; no runner is started.
 			t.Setenv("OPENROUTER_API_KEY", "sk-test-not-real")
 			s := newLocalSetup(t)
-			if ending == "launch refused" {
-				hook := s.backend.local.seamHook
-				s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
-					seam = hook(seam)
-					seam.Launch = func(int) error { return factoryrun.AlreadyRunning("fixture") }
-					return seam
+			// Connect the fixture identity after serving, so local_start cannot
+			// turn on an automatic worker. Launch still uses the real lease desk.
+			var connected atomic.Bool
+			hook := s.backend.local.seamHook
+			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
+				seam = hook(seam)
+				seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+					if !connected.Load() {
+						return factory.GitHubLink{}, nil
+					}
+					return factory.GitHubLink{Login: "owner"}, nil
 				}
+				if ending == "launch refused" {
+					seam.Launch = func(int) error { return factoryrun.AlreadyRunning("fixture") }
+				}
+				return seam
 			}
 			st := s.start()
+			if st.Runner {
+				t.Fatal("fixture started an automatic runner")
+			}
+			connected.Store(true)
 			if ending != "no checkout" {
 				if err := s.backend.local.host.floor.SetCheckout("acme/api", t.TempDir()); err != nil {
 					t.Fatal(err)
@@ -36,7 +50,7 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 				Ask:  &factory.JobAsk{Text: "  cheaper; ship it; plan first\n", Source: factory.AskApp},
 				Talk: "old-conversation", Head: "old-branch",
 				State: factory.StateNew, Autonomy: factory.AutonomyManual, Cap: 20,
-				Stages:      []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "Keep the words", Model: "test/model"}},
+				Stages:      []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Ask: "Keep the words", Model: "test/model"}},
 				PullRequest: &factory.PullRequest{Number: 90, State: factory.PROpen},
 				Stream:      &factory.Stream{Spent: 3}, Failure: &factory.Failure{Step: "write", Code: "failed", Next: "stopped"},
 			}
@@ -95,10 +109,10 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 				if job.Title != source.Title || job.Ask == nil || job.Ask.Text != source.Ask.Text || job.Budget != 20 || job.PR != nil || job.Failure != nil || job.Cost != 0 || job.Num != 0 || job.Autonomy != source.Autonomy || job.Repo != source.Repo || job.SourceIssue != source.URL || job.Desk == nil || job.Desk.Body != source.Body || job.Desk.Head != "" || job.Desk.Talk != "" {
 					t.Errorf("new job did not copy only the request: %+v", job)
 				}
-				if job.State != "queued" && job.State != "running" {
+				if job.State != "queued" {
 					t.Errorf("new job state = %q", job.State)
 				}
-				if len(job.Steps) != 1 || job.Steps[0].Model != "test/model" || !job.PipelineDecided || job.PipelineCopy == nil {
+				if len(job.Steps) != 1 || job.Steps[0].UseModel != "test/model" || !job.PipelineDecided || job.PipelineCopy == nil {
 					t.Errorf("steps or decided pipeline lost: %+v", job)
 				}
 				if !strings.Contains(s.hello, "factory.job_run_as_new") {
