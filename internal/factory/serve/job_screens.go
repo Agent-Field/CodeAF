@@ -22,6 +22,7 @@ import (
 func (h *Handler) jobScreens() {
 	h.postJob("assignee", h.config.Store != nil, h.changeAssignee)
 	h.postJob("sync", true, h.guarded("sync", h.onlyOwner(h.syncJob)))
+	h.postJob("issue_comment", true, h.issueComment)
 	for _, verb := range []string{"stop", "rerun"} {
 		h.postJob("steps/{sid}/"+verb, h.config.Store != nil, h.stepControl(verb == "rerun"))
 	}

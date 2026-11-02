@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/manual"
+
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -45,11 +47,11 @@ const (
 // with the cut saying so and naming the sections the rest is in. The headings
 // are collected only when there is a cut to explain, so the common read pays
 // nothing for them.
-func boundedPage(name, text string) string {
+func boundedPage(corpus *manual.Corpus, name, text string) string {
 	if len(text) <= manualPageCap {
 		return text
 	}
-	sections := boundedList(manualHeadings(name))
+	sections := boundedList(manualHeadings(corpus, name))
 	return bounded(text, func(shown, total int) string { return pageCutNotice(shown, total, sections) })
 }
 

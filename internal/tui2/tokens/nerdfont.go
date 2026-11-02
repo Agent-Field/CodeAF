@@ -41,6 +41,12 @@ package tokens
 const NFFailedCell = "nf-fa-times_circle_o"
 
 var vocabulary = []GlyphBinding{
+	// The Command key label is content too, so only the platform door upgrades it.
+	{ID: GPlatformMac, Name: "PlatformMac", Meaning: "device platform (mac)", Plain: GlyphPlatformMac, NerdFont: "\uF179", NFName: "nf-fa-apple", ASCII: "M", UsualTint: TextTertiary, PlainAmbiguous: false, NFAmbiguous: true, AutoUpgrade: false},
+	{ID: GPlatformLinux, Name: "PlatformLinux", Meaning: "device platform (linux)", Plain: GlyphPlatformLinux, NerdFont: "\uF17C", NFName: "nf-fa-linux", ASCII: "L", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
+	{ID: GPlatformWindows, Name: "PlatformWindows", Meaning: "device platform (windows)", Plain: GlyphPlatformWindows, NerdFont: "\uF17A", NFName: "nf-fa-windows", ASCII: "W", UsualTint: TextTertiary, PlainAmbiguous: false, NFAmbiguous: true, AutoUpgrade: true},
+	{ID: GPlatformMobile, Name: "PlatformMobile", Meaning: "device platform (mobile)", Plain: GlyphPlatformMobile, NerdFont: "\uF10B", NFName: "nf-fa-mobile_phone", ASCII: "P", UsualTint: TextTertiary, PlainAmbiguous: false, NFAmbiguous: true, AutoUpgrade: true},
+	{ID: GPlatformOther, Name: "PlatformOther", Meaning: "device platform (other)", Plain: GlyphPlatformOther, NerdFont: "\uF108", NFName: "nf-fa-desktop", ASCII: "?", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
 	{ID: GMapLeft, Name: "MapLeft", Meaning: "a connection travelling left", Plain: GlyphMapLeft, NerdFont: "\uF0D9", NFName: "nf-fa-caret_left", ASCII: "<", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
 	{ID: GMapUp, Name: "MapUp", Meaning: "a connection travelling up", Plain: GlyphMapUp, NerdFont: "\uF0D8", NFName: "nf-fa-caret_up", ASCII: "^", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
 	{ID: GMapDown, Name: "MapDown", Meaning: "a connection travelling down", Plain: GlyphMapDown, NerdFont: "\uF0D7", NFName: "nf-fa-caret_down", ASCII: "v", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},

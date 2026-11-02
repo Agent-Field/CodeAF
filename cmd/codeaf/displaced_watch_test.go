@@ -141,7 +141,7 @@ func takeLiveChatFromHome(t *testing.T, h *hostedMoveRig) (cell.Cell, error) {
 	if _, err := io.WriteString(typed, "  "); err != nil {
 		return cell.Cell{}, err
 	}
-	h.wait("running chat on Home", func() bool { return strings.Contains(screen.String(), "running on original computer") })
+	h.wait("running chat on Home", func() bool { return strings.Contains(screen.String(), "held on original computer") })
 	if _, err := io.WriteString(typed, "\r"); err != nil {
 		return cell.Cell{}, err
 	}

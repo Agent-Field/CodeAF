@@ -34,6 +34,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // PendingDevice is a request to join as the person sees it. Code is what the
@@ -93,9 +95,20 @@ const (
 )
 
 // linkShape is what link pairing is typed as (contract section 2): a short
-// code with an optional key, or a codeaf URL. The six-digit code of the
-// older pairing never matches.
-var linkShape = regexp.MustCompile(`(?i)^(https?://)?(codeaf\.agentfield\.ai/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^(https?://)?(codeaf\.agentfield\.ai|codeaf\.link)/p/.+$`)
+// code with an optional key, or a codeaf URL from any channel's hosted origin
+// (plus the retired host). The six-digit code of the older pairing never matches.
+var linkShape = buildLinkShape()
+
+func buildLinkShape() *regexp.Regexp {
+	hosts := syncsetup.HostedLinkHosts()
+	quoted := make([]string, 0, len(hosts)+1)
+	for _, h := range hosts {
+		quoted = append(quoted, regexp.QuoteMeta(h))
+	}
+	live := strings.Join(quoted, "|")
+	all := strings.Join(append(quoted, regexp.QuoteMeta("codeaf.link")), "|")
+	return regexp.MustCompile(`(?i)^(https?://)?((?:` + live + `)/p/)?[0-9a-hjkmnp-tv-z]{8}([.#].+)?$|^(https?://)?(?:` + all + `)/p/.+$`)
+}
 
 // isPairLink is the one recogniser for a link pasted or typed where no pairing
 // was asked for: it carries the key, or it is a codeaf URL (the retired host too, so it is answered, not typed into a chat). A bare
@@ -136,15 +149,18 @@ func isLinkShape(typed string) bool {
 
 // platformInfo is the icon and word a platform is shown as. A platform not
 // listed reads as `other`, so a new one needs a row here and no code.
-type platformInfo struct{ icon, word string }
+type platformInfo struct {
+	icon tokens.GlyphID
+	word string
+}
 
 var platforms = map[string]platformInfo{
-	"darwin":  {"⌘", "Mac"},
-	"linux":   {"$", "Linux"},
-	"windows": {"▦", "Windows"},
-	"ios":     {"▯", "iPhone or iPad"},
-	"android": {"▯", "Android"},
-	"other":   {"·", "unknown system"},
+	"darwin":  {tokens.GPlatformMac, "Mac"},
+	"linux":   {tokens.GPlatformLinux, "Linux"},
+	"windows": {tokens.GPlatformWindows, "Windows"},
+	"ios":     {tokens.GPlatformMobile, "iPhone or iPad"},
+	"android": {tokens.GPlatformMobile, "Android"},
+	"other":   {tokens.GPlatformOther, "unknown system"},
 }
 
 func platformOf(name string) platformInfo {
@@ -213,7 +229,7 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 		a.toastJoined(m.req.Name, m.req.Device)
 	default:
 		a.pair.close()
-		a.note(fmt.Sprintf(approveDenied, m.req.Name))
+		a.toast(fmt.Sprintf(approveDenied, m.req.Name))
 	}
 	return nil
 }
@@ -247,7 +263,7 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 	}
 	r, info := c.req, platformOf(c.req.Platform)
 	out := dressed(wrap(approveAsk, max(width, 4)), pal.ink)
-	out = append(out, pal.accent(fit("  "+info.icon+" "+r.Name+" · "+info.word, width)))
+	out = append(out, pal.accent(fit("  "+pal.glyph(info.icon)+" "+r.Name+" · "+info.word, width)))
 	out = append(out, pal.dim(fit("  "+requestAge(r, now), width)))
 	out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
 	line := c.line
@@ -342,9 +358,7 @@ func (a *app) openApprove(typed string) tea.Cmd {
 func (a *app) showCard(c panelCard) {
 	a.closeLists()
 	a.dismissWelcome()
-	// HOME IS THE WHOLE SCREEN and draws no panel, so a card opened from it
-	// would be state nobody can see: the person steps out to the box first.
-	a.closeHome()
+	// Home hosts this panel in its standing card, so opening it needs no conversation.
 	a.pair.close()
 	a.pair.open, a.pair.card = true, c
 	a.touch()

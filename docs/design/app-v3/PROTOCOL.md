@@ -69,7 +69,7 @@ decides which combinations are accepted.
 | `agents.rewind.points` | `in.IDParams` | `ConversationPoints` |
 | `agents.rewind.undo` | `{id, token}` | `Empty` |
 | `agents.run_harness` | `in.RunHarnessParams` | `TurnResult` |
-| `agents.send` | `{attachments, client_id, id, reads, said, submission, text}` | `TurnResult` |
+| `agents.send` | `{attachments, client_id, from, id, reads, said, submission, text}` | `TurnResult` |
 | `agents.set_approval_posture` | `{id, posture}` | `agentResult` |
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
@@ -234,6 +234,7 @@ decides which combinations are accepted.
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
 | `factory.job_assign_to_me` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -241,6 +242,7 @@ decides which combinations are accepted.
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
+| `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
@@ -260,6 +262,7 @@ decides which combinations are accepted.
 | `factory.job_step_stop` | `in.FactoryJobStepParams` | `FactoryJobActed` |
 | `factory.job_stop` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_unassign` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommented` |
 | `factory.job_undo` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.link_copy` | `in.FactoryLinkCopyParams` | `FactoryLinkMade` |
 | `factory.link_create` | `in.FactoryLinkCreateParams` | `FactoryLinkMade` |
@@ -288,6 +291,8 @@ decides which combinations are accepted.
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
+| `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
+| `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_clone` | `in.FactorySetupFolderParams` | `FactorySetupView` |
@@ -320,6 +325,22 @@ decides which combinations are accepted.
 |---|---|---|
 | `harness.list` | `{}` | `HarnessListResult` |
 
+## health methods
+
+| method | params | result |
+|---|---|---|
+| `health.check` | `{}` | `HealthResult` |
+
+`health.check` answers plain facts an assistant can cite: `version` and
+`build`, `started_at` and `uptime_s` for this engine process, `resume` when
+this start carried on replies or tasks the last quit stopped (`at`,
+`replies_resumed`, `replies`, `tasks`; absent when there was nothing),
+`disks` with `free_bytes` and `total_bytes` for the filesystem of the work
+folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
+`error` instead when it could not be read, and `factory`, the local factory's
+status as `factory.local_status` shapes it. It reads memory, the app state and
+one filesystem call per disk; it starts nothing. hello says `health.check`.
+
 ## inbox methods
 
 | method | params | result |
@@ -338,6 +359,19 @@ decides which combinations are accepted.
 | `keys.check` | `in.KeyParams` | `KeyCheck` |
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
+
+## manual methods
+
+| method | params | result |
+|---|---|---|
+| `manual.corpus.set` | `in.ManualCorpusParams` | `ManualCorpusResult` |
+
+`manual.corpus.set` registers the app's own manual pages, replacing every page
+an earlier call set. Each page is `{name, markdown}`: a lowercase slug and its non-empty
+Markdown, at most 64 pages, 32 KiB a page and 512 KiB in all; an empty list
+removes them. The engine keeps them in memory for its lifetime and the chat's
+`manual` tool searches them beside codeaf's own pages, filed as
+`workaf/<name>`. The answer lists those names. hello says `manual.corpus.set`.
 
 ## media methods
 
@@ -659,6 +693,7 @@ serves, and one the allowed models admit. An engine without the feature leaves
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |
