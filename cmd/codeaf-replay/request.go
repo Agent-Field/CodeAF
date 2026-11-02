@@ -378,6 +378,13 @@ var callSiteRoles = map[string]lane.Role{
 	"taskname": lane.RoleAuxiliary,
 	"jobname":  lane.RoleAuxiliary,
 	"caption":  lane.RoleAuxiliary,
+	// cmd/codeaf/appfactory_brief_writer.go writes a factory job's brief as an
+	// errand nobody waits on: the page keeps the previous version meanwhile.
+	"brief":   lane.RoleAuxiliary,
+	"shaper":  lane.RoleAuxiliary,
+	"intake":  lane.RoleAuxiliary,
+	"careful": lane.RoleAuxiliary,
+	"distill": lane.RoleAuxiliary,
 	// internal/session/errand_insight.go registers the page-AI family, and
 	// errandRole answers auxiliary for every one of them, so these rows are that
 	// file's own reading.
@@ -389,10 +396,6 @@ var callSiteRoles = map[string]lane.Role{
 	"insight_views":         lane.RoleAuxiliary,
 	"insight_factory_read":  lane.RoleAuxiliary,
 	"insight_factory_scout": lane.RoleAuxiliary,
-	"shaper":                lane.RoleAuxiliary,
-	"intake":                lane.RoleAuxiliary,
-	"careful":               lane.RoleAuxiliary,
-	"distill":               lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

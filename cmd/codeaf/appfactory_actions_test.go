@@ -511,6 +511,26 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		}
 	})
 
+	// RUN AGAIN FROM HERE WITH ANOTHER MODEL: the rerun carries a model this
+	// engine offers, in its listed spelling, and the factory keeps it on the
+	// step; one the engine does not offer is refused before anything is sent.
+	t.Run("a rerun names the model the step runs on", func(t *testing.T) {
+		running := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "alice",
+			Stages: []factory.Stage{{Name: "build", Kind: factory.StageChat, Ask: "build it", On: true}},
+			Stream: &factory.Stream{Phases: []factory.Phase{{Name: "build", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
+		alice.act(t, "factory.job_step_stop", running.ID, map[string]any{"step": "build"})
+		alice.w.backend.listModels = func() ([]appwire.Model, error) {
+			return []appwire.Model{{ID: "vendor/new", Provider: "openrouter"}}, nil
+		}
+		defer func() { alice.w.backend.listModels = nil }()
+		alice.w.mustFail("factory.job_step_rerun", alice.params(t, running.ID, map[string]any{"step": "build", "model": "vendor/nowhere"}), appwire.CodeBadParams)
+		alice.act(t, "factory.job_step_rerun", running.ID, map[string]any{"step": "build", "model": "Vendor/New"})
+		cur, err := f.st.Get(running.ID)
+		if err != nil || cur.Stages[0].Model != "vendor/new" || cur.Stream.Phases[0].State != factory.PhasePending {
+			t.Fatalf("rerun on another model: %+v %+v %v", cur.Stages, cur.Stream.Phases, err)
+		}
+	})
+
 	// NO FRAME CARRIES A CREDENTIAL, a session, a device code or a GitHub token.
 	alice.w.neverSaid(f.secrets(alice, bob)...)
 	bob.w.neverSaid(f.secrets(alice, bob)...)
