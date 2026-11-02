@@ -2170,6 +2170,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		if err != nil {
 			return err
 		}
+		if c == nil && it.QKind == factory.QKindSpendStopped {
+			return r.answerStoppedSpending(id, yes, words)
+		}
 		// A STEP'S QUESTION THE PERSON HOLDS outlives the round that asked
 		// it (a pause, a restart): the answer is kept for the step's next
 		// round (inbox.go).

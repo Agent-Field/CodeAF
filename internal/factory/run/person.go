@@ -107,7 +107,7 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		it.Question, it.QKind, it.Asking = "", "", nil
 		it.State = factory.StateRunning
 		if !yes {
-			stopStored(it, now)
+			stopSpendingItem(it, now)
 		}
 		return nil
 	}
