@@ -22,6 +22,7 @@ func TestFactoryStepRetryWaitsForPreviousLeaseCleanup(t *testing.T) {
 	t.Setenv("CODEAF_BASE_URL", model.server.URL)
 	g := newRunRig(t)
 	freshEngineProcess(t)
+	freshEngineFactoryStore(t)
 	s.backend.open = appOpenInProcess
 	s.backend.local.parent = func() session.Config {
 		return session.Config{Workspace: g.workspace, Model: "test/model", OneModel: true, APIKey: "test-key", BaseURL: model.server.URL}
