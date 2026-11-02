@@ -56,7 +56,10 @@ func metReason(until string, r StageResult) string {
 // no result, the findings, a failed exit, or how many claims were shown.
 func Shortfall(r StageResult) string {
 	switch {
-	case !r.Done:
+	case !r.Done && r.Exit != 0:
+		// A COMMAND THAT FAILED REPORTED NOTHING AND SAID THE ONE USEFUL FACT.
+		return "exit " + strconv.Itoa(r.Exit)
+	case !r.Done && r.Findings == 0:
 		return "no result"
 	case r.Findings == 1:
 		return "1 finding"
