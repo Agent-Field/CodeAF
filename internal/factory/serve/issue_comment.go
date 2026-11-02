@@ -31,6 +31,12 @@ import (
 // Its author's standing is not asked here: the poll's read of the comment
 // brings it, and only then does the job's manager handle the comment
 // ([factory.ReadComments]), so a comment is read by one path whoever posted it.
+//
+// EVERY FAILURE OF THIS ROUTE'S OWN SAYS WHETHER ANYTHING WAS POSTED, in
+// outcome: refused (nothing was) or unknown (GitHub's answer cannot say). A
+// DOUBLE CLICK POSTS ONCE: while one comment on a job is being posted, another
+// on the same job is refused (409 in_flight). A repository that is off takes
+// no comment (offVerbs).
 
 const (
 	issueCommentReconnect = "Reconnect GitHub to comment on the issue"
@@ -56,19 +62,24 @@ func (h *Handler) issueComment(w http.ResponseWriter, r *http.Request, it factor
 	}
 	words := strings.TrimSpace(body.Body)
 	if words == "" || utf8.RuneCountInString(words) > factory.IssueCommentMost {
-		h.fail(w, http.StatusUnprocessableEntity, factory.IssueCommentBounds)
+		h.commentFailed(w, http.StatusUnprocessableEntity, "", factory.IssueCommentBounds)
 		return
 	}
 	owner, repo, ok := issueOf(it)
 	if !ok {
-		h.fail(w, http.StatusConflict, "this job has no GitHub issue to comment on")
+		h.commentFailed(w, http.StatusConflict, "", "this job has no GitHub issue to comment on")
 		return
 	}
 	token, viaSession := h.personGitHubToken(r)
 	if token == "" {
-		h.fail(w, http.StatusUnauthorized, issueCommentReconnect)
+		h.commentFailed(w, http.StatusUnauthorized, "", issueCommentReconnect)
 		return
 	}
+	if _, busy := h.commentFlights.LoadOrStore(it.ID, struct{}{}); busy {
+		h.commentFailed(w, http.StatusConflict, api.ReasonInFlight, "a comment on this job is already being posted; nothing more was posted")
+		return
+	}
+	defer h.commentFlights.Delete(it.ID)
 	ctx, cancel := context.WithTimeout(r.Context(), issueCommentTimeout)
 	defer cancel()
 	var got githubPostedComment
@@ -78,7 +89,7 @@ func (h *Handler) issueComment(w http.ResponseWriter, r *http.Request, it factor
 		if code == http.StatusUnauthorized && viaSession {
 			h.endGitHub(r, token)
 		}
-		h.fail(w, code, refusal)
+		h.commentFailed(w, code, "", refusal)
 		return
 	}
 	posted := factory.Comment{ID: strconv.FormatInt(got.ID, 10), URL: got.HTMLURL, Author: got.User.Login, Body: words, At: got.Created}
@@ -138,4 +149,18 @@ func keepPosted(list []factory.Comment, c factory.Comment) []factory.Comment {
 		list = list[len(list)-factorygithub.CommentsMost:]
 	}
 	return list
+}
+
+// commentFailed answers a failure of this route with its outcome: a 502 is
+// the only answer that cannot say whether GitHub took the comment. An empty
+// reason is the status's own.
+func (h *Handler) commentFailed(w http.ResponseWriter, status int, reason, words string) {
+	if reason == "" {
+		reason = reasonFor(status)
+	}
+	outcome := api.CommentRefused
+	if status == http.StatusBadGateway {
+		outcome = api.CommentUnknown
+	}
+	h.writeRefusal(w, status, refusalBody{Error: words, Reason: reason, Outcome: outcome})
 }

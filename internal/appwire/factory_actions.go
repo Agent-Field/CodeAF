@@ -265,6 +265,11 @@ type FactoryRefusal struct {
 	CurrentCommit string     `json:"current_commit,omitempty"`
 	HeadCommit    string     `json:"head_commit,omitempty"`
 	RequestID     string     `json:"request_id,omitempty"`
+	// Outcome is set only on a refusal of factory.issue_comment by a factory
+	// that says it: refused (nothing was posted) or unknown (GitHub's answer
+	// cannot say; read the issue before posting again). Absent from an older
+	// factory, where the code alone says it: uncertain may have posted.
+	Outcome string `json:"outcome,omitempty" enum:"refused,unknown"`
 }
 
 // FactoryActor is the engine's half of factory.job_*. It is optional on top of

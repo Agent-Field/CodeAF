@@ -167,6 +167,7 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		CurrentCommit string     `json:"current_commit"`
 		HeadCommit    string     `json:"head_commit"`
 		JobPerson     string     `json:"job_person"`
+		Outcome       string     `json:"outcome"`
 		RequestID     string     `json:"request_id"`
 	}
 	_ = json.Unmarshal(bytes.TrimSpace(r.body), &body)
@@ -182,6 +183,7 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		NowState: clean(body.NowState), Taker: clean(body.Taker), Machine: clean(body.Machine),
 		ApprovedBy: clean(body.ApprovedBy), Event: clean(body.Event), Commit: clean(body.Commit),
 		CurrentCommit: clean(body.CurrentCommit), HeadCommit: clean(body.HeadCommit), RequestID: clean(body.RequestID),
+		Outcome: refusalOutcome(body.Outcome),
 	}
 	words := clean(body.Error)
 	refused := func(code, fallback string) error {
@@ -212,11 +214,31 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		// written) goes in front of the warning instead of being dropped.
 		const maybe = "the action may have happened, so read the job before trying again"
 		if words != "" {
-			return appwire.Errorf(appwire.CodeUncertain, "%s · %s", words, maybe)
+			return withOutcome(appwire.Errorf(appwire.CodeUncertain, "%s · %s", words, maybe), detail)
 		}
-		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; %s", maybe)
+		return withOutcome(appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; %s", maybe), detail)
 	}
-	return appFactoryFailure(r)
+	return withOutcome(appFactoryFailure(r), detail)
+}
+
+// refusalOutcome is the factory's word for whether a comment was posted, or
+// "" for any other word (and from a factory older than the field).
+func refusalOutcome(word string) string {
+	if word == api.CommentRefused || word == api.CommentUnknown {
+		return word
+	}
+	return ""
+}
+
+// withOutcome carries the typed detail on a refusal that says whether
+// anything was posted, so the app can switch on it whatever the status was.
+// A refusal without an outcome is left exactly as it was.
+func withOutcome(err error, detail *appwire.FactoryRefusal) error {
+	var e *appwire.Error
+	if detail.Outcome != "" && errors.As(err, &e) && e.Detail == nil {
+		e.Detail = detail
+	}
+	return err
 }
 
 // acted builds the answer to a successful write: what the factory said, and
