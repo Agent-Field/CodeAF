@@ -787,8 +787,9 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
-	// Files is the plan answer, including an explicit empty (unknown) list.
-	Files        []string                  `json:"files"`
+	// Files is the plan answer. An older factory refuses unknown fields, so a
+	// step without a list says nothing; an empty list reads as no answer.
+	Files        []string                  `json:"files,omitempty"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Tests        *factory.TestCounts       `json:"tests,omitempty"`
