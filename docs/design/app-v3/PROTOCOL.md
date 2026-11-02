@@ -237,6 +237,7 @@ decides which combinations are accepted.
 | `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
 | `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
+| `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -281,11 +282,13 @@ decides which combinations are accepted.
 | `factory.pipeline_copy_clear` | `in.FactoryPipelineCopyClearParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_copy_set` | `in.FactoryPipelineCopySetParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_pr` | `in.FactoryPipelinePRParams` | `FactoryPipelinePRDone` |
+| `factory.pipeline_prs` | `in.FactoryPipelinePRsParams` | `FactoryPipelinePRs` |
 | `factory.pipeline_preview` | `in.FactoryPipelinePreviewParams` | `FactoryPipelinePreview` |
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
@@ -311,6 +314,47 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+
+An engine whose hello carries the feature `factory.pipeline_pr_update` (and
+capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
+the number of an open pull request from a branch of the same repository into
+its default branch, and optionally `expected_head_sha`. The file is committed
+onto that pull request's head branch: `outcome` is `updated` (`pr.head_sha` is
+the new commit) or `unchanged` (`pr` is the pull request as it stands), and a
+refusal before any write names stage `head`. `branch`, `body` and
+`expected_base_sha` are refused with `pr`. An engine without the feature refuses
+`pr` as an unknown field.
+
+An engine whose hello carries the feature `factory.pipeline_source_ref` (and
+capabilities `pipeline_source_ref: true`) lets `factory.pipeline_source` take
+`ref`, one string: an open pull request's number in decimal (`"42"`), resolved
+to its head when the read is made, or the 40-hex commit at its head. The pull
+request must be open, from a branch of the same repository into its default
+branch, and change only the pipeline file; anything else is `conflict`. The
+answer is that file at that head, with `base_sha` the head and `ref` and `pr`
+saying what was read; `factory.pipeline_preview` takes that `base_sha`, and
+`factory.pipeline_pr` takes it as `expected_head_sha` with `pr`. A read without
+`ref` answers no `ref` or `pr`. An engine without the feature refuses `ref` as
+an unknown field; a factory older than the read refuses it, and the engine says
+the factory cannot read a pull request.
+An engine whose hello carries the feature `factory.repo_read` (and
+`FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
+path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
+checkout (`GET /v1/repos/{owner}/{repo}/read`), from git's object store at the
+default branch's tip, or at job `job`'s head commit when the checkout has it.
+`op` is `tree` (a folder's children: `entries` of `{path, type, size?}`, at most
+500), `grep` (lines matching the RE2 `pattern`, at most 256 bytes: `hits` of
+`{path, line, text}`, at most 50, searched for at most 5 seconds) or `read`
+(lines `from`..`to` of one file: `text`, at most 400 lines and 32 KiB, with
+`size` and `eof`). `truncated` says a bound stopped the answer. `untrusted` is
+always true: the text is the repository's own and is data, never
+instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
+`.git/`, `.npmrc`, `.netrc`, `.pypirc`, `credentials*`, `*secret*`, `*.p12`,
+`*.pfx`, `.aws/`, `.ssh/`, `.docker/config.json`, `kubeconfig`) are absent from
+`tree` and `grep`, and naming one is `forbidden` with the message `denied`; a
+binary file is `unreadable` with `binary`; a repository with no checkout on the
+factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
+factory older than the route is `conflict`.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as

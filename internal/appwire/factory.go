@@ -119,6 +119,18 @@ type FactoryCapabilities struct {
 	// True only for an engine that implements [FactoryPipelineOpener]; whether
 	// THIS caller holds a sign-in and GitHub access is answered by the call.
 	PipelinePR bool `json:"pipeline_pr"`
+	// PipelinePRUpdate: factory.pipeline_pr takes pr and adds a commit to that
+	// open pull request (feature factory.pipeline_pr_update). True only for an
+	// engine that implements [FactoryPipelinePRUpdater].
+	PipelinePRUpdate bool `json:"pipeline_pr_update"`
+	// PipelineSourceRef: factory.pipeline_source takes ref and reads an open
+	// pipeline pull request's head (feature factory.pipeline_source_ref). True
+	// only for an engine that implements [FactoryPipelineSourceRefReader].
+	PipelineSourceRef bool `json:"pipeline_source_ref"`
+	// PipelinePRs: factory.pipeline_prs is served (feature
+	// factory.pipeline_prs). True only for an engine that implements
+	// [FactoryPipelinePRLister]. It reads and writes nothing else.
+	PipelinePRs bool `json:"pipeline_prs"`
 	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
 	// served (feature factory.pipeline_edit). True only for an engine that
 	// implements [FactoryPipelineEditor]. Neither writes anything.
@@ -138,7 +150,11 @@ type FactoryCapabilities struct {
 	// SpendByRepo: factory.spend_by_repo is served (feature
 	// factory.spend_by_repo). True only for an engine that implements
 	// [FactorySpender]; a factory older than the route answers not found.
-	SpendByRepo    bool `json:"spend_by_repo"`
+	SpendByRepo bool `json:"spend_by_repo"`
+	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
+	// only for an engine that implements [FactoryRepoReader]; whether the
+	// factory has a checkout of a repository is answered by the call.
+	RepoRead       bool `json:"repo_read"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }
