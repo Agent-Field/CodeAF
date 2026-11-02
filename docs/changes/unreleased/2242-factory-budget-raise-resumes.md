@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Raising a job budget resumes its capped step
-pr: 0
+pr: 2242
 surface: [engine]
 invalidates:
   - "Changing Budget could save the higher limit while leaving the interrupted step waiting on the old spending question."
