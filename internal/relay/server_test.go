@@ -1,13 +1,17 @@
 package relay
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -161,23 +165,175 @@ func TestAKeySomebodyOnlyCopiedCannotRegister(t *testing.T) {
 	}
 }
 
-// RULE THREE: a live registration is never taken over.
-func TestALiveNameIsNotHandedToASecondMachine(t *testing.T) {
+// RULE THREE: a live registration is never taken over, and only the SAME key
+// may replace a registration whose socket went silent.
+func TestOnlyTheSameKeyMayReplaceASilentRegistration(t *testing.T) {
+	owner, squatter := collidingKeys(t)
+	name := NameFor(owner.PublicKey().Bytes())
+	if got := NameFor(squatter.PublicKey().Bytes()); got != name {
+		t.Fatalf("colliding keys derived %q and %q", name, got)
+	}
+
+	// registerSilent completes the registration proof by hand and then never
+	// runs carrier.pump(), so the socket holds the name without answering opPing.
+	registerSilent := func(t *testing.T, address string, key *ecdh.PrivateKey) net.Conn {
+		t.Helper()
+		conn, err := upgrade(context.Background(), address, EnginePath, header(name, EncodeKey(key.PublicKey().Bytes())))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = conn.Close() })
+		if err := proveToRelay(conn, name, key); err != nil {
+			t.Fatal(err)
+		}
+		return conn
+	}
+
+	t.Run("different key with silent old is refused", func(t *testing.T) {
+		service, address := live(t)
+		service.probeWithin = 30 * time.Millisecond
+		_ = registerSilent(t, address, owner)
+
+		impostor, err := Register(context.Background(), address, squatter)
+		if err == nil {
+			_ = impostor.Close()
+			t.Fatal("a colliding key took over a silent registration")
+		}
+		if !errors.Is(err, ErrNameTaken) {
+			t.Fatalf("colliding key got %v; want ErrNameTaken", err)
+		}
+		if ledgers := service.Ledgers(); len(ledgers) != 1 || ledgers[0].Name != name {
+			t.Fatalf("silent owner lost its registration: %+v", ledgers)
+		}
+	})
+
+	t.Run("same key with live old is refused", func(t *testing.T) {
+		service, address := live(t)
+		service.probeWithin = 30 * time.Millisecond
+		first, err := Register(context.Background(), address, owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = first.Close() }()
+
+		second, err := Register(context.Background(), address, owner)
+		if err == nil {
+			_ = second.Close()
+			t.Fatal("a second registration replaced a live machine")
+		}
+		if !errors.Is(err, ErrNameTaken) {
+			t.Fatalf("live replacement got %v; want ErrNameTaken", err)
+		}
+	})
+
+	t.Run("same key with silent old replaces it", func(t *testing.T) {
+		service, address := live(t)
+		service.probeWithin = 30 * time.Millisecond
+		_ = registerSilent(t, address, owner)
+
+		replacement, err := Register(context.Background(), address, owner)
+		if err != nil {
+			t.Fatalf("same key could not replace its own silent socket: %v", err)
+		}
+		defer func() { _ = replacement.Close() }()
+
+		surface, err := Dial(context.Background(), address, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = surface.Close() }()
+		engine, err := replacement.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = engine.Close() }()
+		if _, err := surface.Write([]byte("ok")); err != nil {
+			t.Fatal(err)
+		}
+		if got := readN(t, engine, 2); got != "ok" {
+			t.Fatalf("replacement read %q", got)
+		}
+	})
+}
+
+// muxStream carries real read and write deadlines so handshakes above this
+// package can time out silent peers and clear the deadline afterward.
+func TestMuxStreamEnforcesAndClearsDeadlines(t *testing.T) {
 	_, address := live(t)
-	key := aKey(t)
-	first, err := Register(context.Background(), address, key)
+	registration, err := Register(context.Background(), address, aKey(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = first.Close() }()
+	defer func() { _ = registration.Close() }()
 
-	second, err := Register(context.Background(), address, key)
-	if err == nil {
-		_ = second.Close()
-		t.Fatal("a second machine took a name that was already connected")
+	surface, err := Dial(context.Background(), address, registration.Name())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !errors.Is(err, ErrNameTaken) {
-		t.Fatalf("the refusal was %v, which a caller cannot tell apart from any other", err)
+	defer func() { _ = surface.Close() }()
+
+	engine, err := registration.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = engine.Close() }()
+
+	deadliner, ok := engine.(interface {
+		SetDeadline(time.Time) error
+		SetReadDeadline(time.Time) error
+		SetWriteDeadline(time.Time) error
+	})
+	if !ok {
+		t.Fatalf("%T does not implement stream deadlines", engine)
+	}
+
+	if err := deadliner.SetReadDeadline(time.Now().Add(20 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	var one [1]byte
+	if _, err := engine.Read(one[:]); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("silent read returned %v; want os.ErrDeadlineExceeded", err)
+	}
+
+	if err := deadliner.SetWriteDeadline(time.Now().Add(-time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Write([]byte("x")); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("expired write returned %v; want os.ErrDeadlineExceeded", err)
+	}
+
+	if err := deadliner.SetDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := surface.Write([]byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+	if got := readN(t, engine, 2); got != "hi" {
+		t.Fatalf("after clearing deadline, read %q", got)
+	}
+	if _, err := engine.Write([]byte("ok")); err != nil {
+		t.Fatal(err)
+	}
+	if got := readN(t, surface, 2); got != "ok" {
+		t.Fatalf("after clearing deadline, surface read %q", got)
+	}
+}
+
+func collidingKeys(t *testing.T) (*ecdh.PrivateKey, *ecdh.PrivateKey) {
+	t.Helper()
+	seen := map[string]*ecdh.PrivateKey{}
+	var seed [32]byte
+	for i := uint64(1); ; i++ {
+		binary.LittleEndian.PutUint64(seed[:8], i)
+		key, err := ecdh.X25519().NewPrivateKey(seed[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := NameFor(key.PublicKey().Bytes())
+		if first, ok := seen[name]; ok && !bytes.Equal(first.PublicKey().Bytes(), key.PublicKey().Bytes()) {
+			return first, key
+		}
+		seen[name] = key
 	}
 }
 

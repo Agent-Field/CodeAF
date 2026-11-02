@@ -86,25 +86,27 @@ func (f *factoryEngine) FactorySignInCancel(context.Context, string, string) err
 
 // A VALID REQUEST FOR EACH METHOD, so the tests below can walk the table.
 var factoryGood = map[string]string{
-	"factory.capabilities":   `{}`,
-	"factory.list":           `{}`,
-	"factory.attach":         `{"url":"https://f.example"}`,
-	"factory.detach":         `{"factory":"f"}`,
-	"factory.me":             `{"factory":"f"}`,
-	"factory.queue":          `{"factory":"f"}`,
-	"factory.job":            `{"factory":"f","job":1}`,
-	"factory.repos":          `{"factory":"f"}`,
-	"factory.pipeline":       `{"factory":"f","repo":"o/r"}`,
-	"factory.runners":        `{"factory":"f"}`,
-	"factory.people":         `{"factory":"f"}`,
-	"factory.activity":       `{"factory":"f"}`,
-	"factory.setup":          `{"factory":"f"}`,
-	"factory.access_check":   `{"link":"codeaf://factory/join?url=x","caller":"w1"}`,
-	"factory.access_sign_in": `{"link":"codeaf://factory/join?url=x","caller":"w1"}`,
-	"factory.access_cancel":  `{"link":"codeaf://factory/join?url=x","caller":"w1"}`,
-	"factory.sign_in_start":  `{"factory":"f","caller":"w1"}`,
-	"factory.sign_in_poll":   `{"flow":"f1","caller":"w1"}`,
-	"factory.sign_in_cancel": `{"flow":"f1","caller":"w1"}`,
+	"factory.capabilities":    `{}`,
+	"factory.list":            `{}`,
+	"factory.attach":          `{"url":"https://f.example"}`,
+	"factory.detach":          `{"factory":"f"}`,
+	"factory.me":              `{"factory":"f"}`,
+	"factory.queue":           `{"factory":"f"}`,
+	"factory.job":             `{"factory":"f","job":1}`,
+	"factory.repos":           `{"factory":"f"}`,
+	"factory.pipeline":        `{"factory":"f","repo":"o/r"}`,
+	"factory.runners":         `{"factory":"f"}`,
+	"factory.people":          `{"factory":"f"}`,
+	"factory.activity":        `{"factory":"f"}`,
+	"factory.setup":           `{"factory":"f"}`,
+	"factory.access_check":    `{"link":"codeaf://factory/join?url=x","caller":"w1"}`,
+	"factory.access_sign_in":  `{"link":"codeaf://factory/join?url=x","caller":"w1"}`,
+	"factory.access_cancel":   `{"link":"codeaf://factory/join?url=x","caller":"w1"}`,
+	"factory.sign_in_start":   `{"factory":"f","caller":"w1"}`,
+	"factory.sign_in_poll":    `{"flow":"f1","caller":"w1"}`,
+	"factory.sign_in_cancel":  `{"flow":"f1","caller":"w1"}`,
+	"factory.sessions_take":   `{}`,
+	"factory.session_restore": `{"factory":"f","url":"https://f.example","token":"t"}`,
 }
 
 func TestEveryFactoryMethodHasAValidRequestHere(t *testing.T) {
@@ -259,6 +261,13 @@ func TestFactoryResultsHaveNoSecretField(t *testing.T) {
 		}
 	}
 	for name, m := range factoryMethods {
+		// THE ONE EXEMPTION: factory.sessions_take is how the app's core takes a
+		// sign-in to keep in the keychain (factory_sessions.go). It answers each
+		// change once; cmd/codeaf's TestAppFactorySignInSurvivesARestartThroughTheKeeper
+		// proves a second take answers nothing.
+		if name == "factory.sessions_take" {
+			continue
+		}
 		walk(name, m.result)
 	}
 }

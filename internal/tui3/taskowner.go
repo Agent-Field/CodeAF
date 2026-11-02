@@ -455,6 +455,7 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 	}
 	guest.told = true
 	if guest.node != nil {
+		guest.node.takeComputerNotice(notice)
 		guest.node.stopped, guest.node.ending = notice.Stopped, notice.Ending
 		live := taskLiveLines(notice)
 		guest.node.doing, guest.node.mending, guest.node.waiting = live.doing, live.mending, live.waiting
@@ -1086,6 +1087,7 @@ func taskGuestNode(item tasksItem) *taskNode {
 		title = strings.TrimSpace(item.entry.Label)
 	}
 	return &taskNode{
+		computer: item.entry.Computer, unreachable: item.entry.Unreachable, ranElsewhere: item.entry.RanElsewhere,
 		id:       id,
 		ident:    identFor(id),
 		title:    title,

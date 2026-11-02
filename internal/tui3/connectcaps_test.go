@@ -105,8 +105,8 @@ func TestTheConnectionsTabIsOnTheBarAndOwnsNoRegistryRow(t *testing.T) {
 	if !found {
 		t.Fatalf("the tab bar has no %s tab: %v", tabConnections, settingTabs)
 	}
-	if at != len(settingTabs)-2 {
-		t.Fatalf("%s sits at %d of %d, want the end of the bar", tabConnections, at, len(settingTabs))
+	if at != len(settingTabs)-3 {
+		t.Fatalf("%s sits at %d of %d, want before Devices and Privacy", tabConnections, at, len(settingTabs))
 	}
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
 	for _, row := range registry.Rows() {

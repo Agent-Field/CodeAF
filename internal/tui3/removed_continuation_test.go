@@ -70,7 +70,7 @@ func TestRemovedComputerOffersNoContinuation(t *testing.T) {
 		if strings.Contains(text, "latest chat here?") || strings.Contains(text, "continue here") {
 			t.Errorf("removed computer offered continuing: %s", text)
 		}
-		if !strings.Contains(text, "this device was removed") {
+		if !strings.Contains(text, removedPairNotice) {
 			t.Errorf("removal sentence missing: %s", text)
 		}
 		if _, claimed := a.resumeKeyHandler(resumeKey); claimed {

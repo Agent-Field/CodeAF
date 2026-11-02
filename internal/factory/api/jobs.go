@@ -8,6 +8,7 @@ func ForViewer(job *Job, it factory.Item, viewer string) {
 	if job.State == StateNeedsYou && it.Person() != "" && factory.NormalizeHandle(viewer) != it.Person() {
 		job.WaitingFor = "@" + it.Person()
 	}
+	job.BriefSeen = factory.BriefSeenBy(it, viewer)
 }
 
 // NewJob keeps hand-off metadata in the binary; the app sends no store shape.
@@ -27,6 +28,13 @@ type NewJob struct {
 // JobAction carries the read a person acted on so mutations can reject stale pages.
 type JobAction struct {
 	Expect *Expect `json:"expect,omitempty"`
+}
+
+// BriefSeenRequest is the Brief revision the caller saw. It carries no
+// expect: a seen mark changes nothing another reader sees, and the factory
+// keeps the job's version as it was.
+type BriefSeenRequest struct {
+	Rev int `json:"rev"`
 }
 
 type AssigneeRequest struct {
@@ -207,6 +215,7 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/assignee", AssigneeRequest{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/sync", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/issue_comment", IssueCommentRequest{}, IssueCommentPosted{}},
+	{"POST", "/v1/jobs/{id}/brief_seen", BriefSeenRequest{}, ActionResult{}},
 	{"GET", "/v1/jobs/{id}/step-edits", nil, StepEdits{}},
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},

@@ -33,7 +33,10 @@ func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	label, err := pair.Offer(ctx, route, grant, ui)
+	if err := ownDeviceRecord(ctx, home.Dir(), route); err != nil {
+		return "", explainSyncUnreachable(err, route.URL)
+	}
+	label, err := pair.Offer(ctx, route, grant, chatOfferUI{OfferUI: ui, service: route.Shown})
 	return label, explainSyncUnreachable(err, route.URL)
 }
 
@@ -45,6 +48,11 @@ func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pai
 		return pair.Joined{}, err
 	}
 	joined, err := pair.Join(ctx, route, pairJoining(false), typed, ui)
+	if err == nil {
+		if f, e := pullFleet(home.Dir(), route)(ctx); e == nil {
+			joined.With = f.With
+		}
+	}
 	return joined, explainSyncUnreachable(err, route.URL)
 }
 
@@ -58,6 +66,9 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 		return pair.Joined{}, err
 	}
 	joined, err := pair.Join(ctx, route, pairJoining(true), typed, ui)
+	if err == nil {
+		err = ownDeviceRecord(ctx, home.Dir(), route)
+	}
 	return joined, explainSyncUnreachable(err, route.URL)
 }
 
@@ -66,4 +77,18 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 func (chatPairDoor) HasOwnChats() bool {
 	_, err := identity.Load(home.Dir())
 	return err == nil
+}
+
+// PairCommand is read when instructions are drawn, so a saved --via is reflected immediately.
+func (chatPairDoor) PairCommand() string { return pair.Command(pairingRelay(home.Dir()).URL, "") }
+
+// chatOfferUI gives the chat's link field its own directions while preserving
+// every approval and cancellation operation of the ordinary offer.
+type chatOfferUI struct {
+	pair.OfferUI
+	service string
+}
+
+func (u chatOfferUI) Show(code *pair.Code, _ string) {
+	u.OfferUI.Show(code, pair.ChatCardLines(code, u.service))
 }

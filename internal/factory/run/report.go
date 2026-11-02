@@ -457,8 +457,10 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	if round < 1 {
 		round = 1
 	}
+	word, reason := factory.TryResult(st, res)
 	factory.NoteRound(ph, factory.RoundLinesMost, factory.RoundLine{
 		Rejected: !factory.Met(st, res) && res.ExecutionBlocked == "", Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
+		Result: word, Reason: reason,
 	})
 	it.Stream.Findings = res.Findings
 	sheet := makesSheet(st)

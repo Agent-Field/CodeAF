@@ -57,10 +57,10 @@ func TestAppAProcessThatOpenedWithoutAKeyOpensOnceOneArrives(t *testing.T) {
 	}
 }
 
-// EVERY OTHER DOOR KEEPS ITS FIRST ANSWER. A pipe or a host reads its key
-// before it serves anything, so the memo hands every later conversation the
-// open it already made, failed or not, and only the app's door opens again.
-func TestOnlyTheAppsDoorOpensAFailedProcessHalfAgain(t *testing.T) {
+// A FAILED OPEN IS TRIED AGAIN ON EVERY DOOR. A host's first connection can
+// precede its first vault pull and the app is handed its key after it starts,
+// so a failure is never the memo's answer; a success is, and is shared.
+func TestEveryDoorOpensAFailedProcessHalfAgain(t *testing.T) {
 	root := resolvedTempDir(t)
 	wakeEnvironment(t, root)
 	t.Setenv("OPENROUTER_API_KEY", "")
@@ -69,9 +69,6 @@ func TestOnlyTheAppsDoorOpensAFailedProcessHalfAgain(t *testing.T) {
 		t.Fatal("the process half opened with no key anywhere")
 	}
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	if _, err := openEngineProcess(); err == nil {
-		t.Fatal("a door that is not the app opened its process half a second time")
-	}
 	// Callers racing to open it again build ONE process half between them.
 	opened := make([]*v3Process, 8)
 	var wg sync.WaitGroup
