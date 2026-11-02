@@ -34,6 +34,57 @@ export class IdentityDO extends Source {
     const exec=ctx.storage.sql.exec.bind(ctx.storage.sql);
     ctx.storage.sql.exec=(query,...args)=>{if(!/^\s*(SELECT|PRAGMA)/i.test(query))measurements.writes++;return exec(query,...args);};
   }
+  interruptNextRead(mode){
+    const host=this.current.host;let pending=true;
+    for(const [id,member] of host.members){
+      host.members.set(id,new Proxy(member,{get(target,name){
+        const call=Reflect.get(target,name,target);
+        if(name==='hostView')return async(...args)=>{
+          const result=await Reflect.apply(call,target,args);
+          if(pending){
+            pending=mode==='always';const leader=host.leader()??host.replica();
+            await host.members.get(leader).scheduled();
+            if(mode==='no-quorum'){for(const node of [...host.members.keys()])if(node!==leader){host.members.delete(node);host.states.delete(node);}host.queue=[];}
+          }
+          return result;
+        };
+        return typeof call==='function'?(...args)=>Reflect.apply(call,target,args):call;
+      }}));
+    }
+    return true;
+  }
+  transientPeerFailure(blocked){
+    this.blockedPeerCalls=blocked;
+    if(!blocked)return true;
+    const host=this.current.host,self=this,leader=host.leader();
+    for(const [id,member]of host.members){
+      if(id===leader)continue;
+      host.members.set(id,new Proxy(member,{get(target,name){
+        const call=Reflect.get(target,name,target);
+        if(name==='peer')return async(...args)=>{
+          if(self.blockedPeerCalls)throw new Error('fixture: temporary peer RPC failure');
+          return Reflect.apply(call,target,args);
+        };
+        return typeof call==='function'?(...args)=>Reflect.apply(call,target,args):call;
+      }}));
+    }
+    return true;
+  }
+  async transientCapacity(blocked){
+    this.blockedAnchors=blocked;
+    if(!this.transientEnvironment){
+      const cfg=await this.ctx.storage.get('raft-provision'),ns=this.env.RAFT_MEMBERS,self=this;
+      const missing=new Set(cfg.config.anchors.slice(1).map(node=>ns.idFromName(cfg.config.cluster+'/'+node).toString()));
+      this.transientEnvironment={...this.env,RAFT_MEMBERS:{idFromName:name=>ns.idFromName(name),get:id=>{
+        const stub=ns.get(id);return new Proxy(stub,{get(target,name){
+          if(name==='initialize'&&missing.has(id.toString())&&self.blockedAnchors)return async()=>({capacity:true});
+          const value=Reflect.get(target,name,target);return typeof value==='function'?async(...args)=>Reflect.apply(value,target,args):value;
+        }});
+      }}};
+      this.rebuilt=new Source(this.ctx,this.transientEnvironment);
+    }
+    return true;
+  }
   get current(){return this.rebuilt??this;}
   async directCommit(raw){return this.host.operation(async()=>(await this.host.commit(unb64(raw))).value.code);}
   async formed(){
@@ -291,6 +342,9 @@ export default {
       if(op==='form-cluster'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).formed();return Response.json(true);}
       if(op==='formation-turn')return new Response(encodeCanonical(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).formationTurn()));
       if(op==='quiet-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).quietState());
+      if(op==='interrupt-next-read')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).interruptNextRead(records));
+      if(op==='transient-peer-failure')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transientPeerFailure(records));
+      if(op==='transient-capacity')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transientCapacity(records));
       if(op==='evict-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictIdle());
       if(op==='presence-turn')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceTurn()??true);
       if(op==='member-alarm')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).alarmState());

@@ -26,9 +26,10 @@ const segment=s=>Array.from(enc.encode(s),b=>b.toString(16).padStart(2,'0')).joi
 const unsegment=s=>dec.decode(Uint8Array.from(s.match(/../g)??[],h=>parseInt(h,16)));
 const data=v=>enc.encode(encodeCanonical(v));
 const MIGRATION_PAGE=64,COORDINATOR_QUEUE=64,MIN_MEMBERS=2;
-const PRESENCE_INTERVAL=30_000,PRESENCE_BATCH=64;
+const PRESENCE_INTERVAL=30_000,PRESENCE_BATCH=64,READ_ATTEMPTS=3;
 const MEMBER_READS=new Set(['hostView','hostResult','hostSelected','hostPersonal','readEvidence','hostWatchState']);
 const unavailable=()=>new Wire('unreachable',503,1);
+const interruptedRead=()=>Object.assign(unavailable(),{readInterrupted:true});
 const status={not_found:404,unauthorized:401,revoked:401,rotated:410,bad_request:400,bad_grace:400,self_revoke:400,capacity:507,full:507};
 function requireOK(code){if(code!=='ok')throw new Wire(code,status[code]??409);}
 async function keypair(){
@@ -135,10 +136,21 @@ export class HostedIdentity {
     if(this.leaseCurrent())return this.readLease;
     const b=await this.barrier();return await this.confirmRead(b)??b;
   }
+  checkRead(b){if(b.generation!==undefined&&!this.leaseCurrent(b))throw interruptedRead();}
+  async retryRead(read){
+    const deadline=Date.now()+(this.peers?.limits.ForwardTimeout??this.policy.tick_every);
+    for(let attempt=0;;attempt++){
+      try{return await read();}
+      catch(error){
+        if(!error.readInterrupted||attempt+1>=READ_ATTEMPTS||Date.now()>=deadline)throw error;
+        this.invalidateRead();
+      }
+    }
+  }
   async readView(b,namespace,key,after=null){
-    if(b.generation!==undefined&&!this.leaseCurrent(b))throw unavailable();
+    this.checkRead(b);
     let row;try{row=await this.members.get(b.node).hostView(b.index,namespace,key,after,b.activation??null);}catch(error){this.invalidateRead();throw unavailable();}
-    if(b.generation!==undefined&&!this.leaseCurrent(b))throw unavailable();return row;
+    this.checkRead(b);return row;
   }
   readNow(committed=0){
     const floor=this.tenant.meta.get('read-time')??0,now=Math.max(Date.now(),Number(committed),floor);
@@ -146,7 +158,7 @@ export class HostedIdentity {
   }
   async finishRead(b,reply){
     await this.ctx.storage.sync();
-    if(b.generation!==undefined&&!this.leaseCurrent(b))throw unavailable();return reply;
+    this.checkRead(b);return reply;
   }
   config(id){
     const c=this.manifest.config;
@@ -164,7 +176,7 @@ export class HostedIdentity {
   }
   async ensure(identityKey){
     // Recover inactive members without replacing live routing or sockets.
-    if(this.ready&&this.inactiveMembers.size){
+    if((this.ready||this.initialized)&&this.inactiveMembers.size){
       for(const id of [...this.inactiveMembers]){
         try{
           const member=this.member(id);if(!await member.importReceipt(this.manifest,this.birth??this.source.gate()?.birth??null))continue;
@@ -216,7 +228,7 @@ export class HostedIdentity {
         if(initialized.capacity){this.inactiveMembers.add(id);this.members.delete(id);this.states.delete(id);continue;}
         this.accept(id,initialized);this.elapsed=Math.max(this.elapsed,initialized.elapsed??0);
         this.accept(id,await member.drainRecovery());
-      }catch(error){this.members.delete(id);this.states.delete(id);if(!owned)throw error;}
+      }catch(error){this.inactiveMembers.add(id);this.members.delete(id);this.states.delete(id);if(!owned)throw error;}
     }
     if(this.members.size<(this.birth?1:MIN_MEMBERS))throw unavailable();
     if(owned){await this.pump();await this.restorePeers();}
@@ -360,7 +372,7 @@ export class HostedIdentity {
         if(snapshot.length)await this.input(m.from,12,{peer:m.to,snapshot:true,success:result.installed===true});
       }catch(error){
         if(snapshot.length)await this.input(m.from,12,{peer:m.to,snapshot:true,success:false});
-        this.members.delete(m.to);this.states.delete(m.to);
+        this.inactiveMembers?.add(m.to);this.members.delete(m.to);this.states.delete(m.to);
       }
     }
   }
@@ -541,7 +553,7 @@ export class HostedIdentity {
         const batch=await member.scheduled();
         if(batch){this.accept(id,{send:batch.send.map(m=>({to:m.to,bytes:unb64(m.bytes)}))});await this.pump();await member.acknowledgeScheduled(batch.id);}
         const effects=await member.schedule(this.elapsed,now,busy);this.accept(id,effects);plans.set(id,effects.plan);
-      }catch{this.members.delete(id);this.states.delete(id);}
+      }catch{this.inactiveMembers?.add(id);this.members.delete(id);this.states.delete(id);}
     }
     await this.pump();
     try{
@@ -805,13 +817,13 @@ export class HostedIdentity {
     }
   }
   async dispatch(c,route){
-    if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>this.serve(c,route));
+    if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(()=>this.serve(c,route)):this.serve(c,route));
     const cert=c.request.headers.get('codeaf-cert');
-    const ticket=await this.operation(async()=>{
+    const ticket=await this.operation(()=>this.retryRead(async()=>{
       await this.ensure(fromBase64Url(c.request.headers.get('codeaf-identity')));
       const authority=await this.authorize(c.device,cert,route.write);
       return {authority,io:this.waitIO(c.device,route.write)};
-    });
+    }));
     // Blob waits cannot hold the coordination queue: revoke/rotation must be
     // able to commit during I/O, and Has must not block queued frame puts.
     try{
@@ -819,10 +831,12 @@ export class HostedIdentity {
       const work=Promise.resolve().then(()=>route.handler(c,route.args));
       c.retainPut?.(work);
       const result=await Promise.race([work,ticket.io.stopped]);await this.ctx.storage.sync();
-      await this.operation(async()=>{
+      await this.operation(()=>this.retryRead(async()=>{
         const current=await this.readAuthority();
-        if(current.node!==ticket.authority.barrier.node||current.index!==ticket.authority.barrier.index)await this.authorize(c.device,cert,route.write);
-      });return result;
+        const changed=current.node!==ticket.authority.barrier.node||current.index!==ticket.authority.barrier.index;
+        const authority=changed?await this.authorize(c.device,cert,route.write):null;
+        this.checkRead(authority?.barrier??current);
+      }));return result;
     }finally{ticket.io.close();}
   }
   async serve(c,route){
