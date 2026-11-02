@@ -173,12 +173,18 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 		over := recorder.cost >= 1
 		recorder.mu.Unlock()
 		if over {
+			var stopped appwire.FactoryJobActed
+			w.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id}, &stopped)
 			cancel()
 			t.Fatal("live run reached $1; no further calls authorized")
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	if ctx.Err() != nil {
+		var stopped appwire.FactoryJobActed
+		w.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id}, &stopped)
+	}
 	if it.State != factory.StateLanded {
 		t.Errorf("job state=%s question=%q failure=%+v", it.State, it.Question, it.Failure)
 	}
@@ -249,7 +255,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 		ledgerUSD += row.USD
 	}
 	t.Log("stage turn | memory calls | memory USD | step-end ms | memory-only ms")
-	var delays []int64
+	var delays, memoryDelays []int64
 	if it.Stream == nil {
 		t.Fatal("no stage stream recorded")
 	}
@@ -302,10 +308,13 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 			}
 		}
 		delays = append(delays, delay)
+		memoryDelays = append(memoryDelays, memoryMS)
 		t.Logf("%s/%d | %d | %.8f | %d | %d", phase.Name, phase.Round, count, usd, delay, memoryMS)
 	}
 	sort.Slice(delays, func(i, j int) bool { return delays[i] < delays[j] })
+	sort.Slice(memoryDelays, func(i, j int) bool { return memoryDelays[i] < memoryDelays[j] })
 	if len(delays) > 0 {
+		t.Logf("memory-only median_ms=%d max_ms=%d", memoryDelays[len(memoryDelays)/2], memoryDelays[len(memoryDelays)-1])
 		t.Logf("step-end median_ms=%d max_ms=%d", delays[len(delays)/2], delays[len(delays)-1])
 	}
 	t.Logf("TOTAL calls=%d memory_calls=%d provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, providerUSD, ledgerUSD, factory.JobSpent(it))
