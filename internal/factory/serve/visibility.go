@@ -235,10 +235,13 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 // the returned snapshot is still the whole floor.
 func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
 	// Watched repositories belong in the picker before their first job exists.
-	// Preserve existing recipe facts and add only missing watched names.
+	// Preserve existing recipe facts and add only missing watched names, each
+	// with what its own pipeline says, so a first job can state its budget.
 	if h.config.Store != nil {
 		if watched, err := h.config.Store.Repos(); err == nil {
+			known := len(s.Repos)
 			s = withWatchedRepos(s, watched, h.config.Store.CheckoutDir)
+			h.readRecipes(s.Repos[known:])
 		}
 	}
 	allow, filter := h.repoAccess(r, repoKeys(s))
@@ -287,6 +290,20 @@ func withCheckout(checkouts map[string]string, repo, dir string) map[string]stri
 	}
 	out[repo] = dir
 	return out
+}
+
+// readRecipes fills in each repository's recipe, the same read a repository
+// with jobs gets on the floor. A read that fails leaves the repository listed
+// with no recipe: a figure nobody chose is never shown.
+func (h *Handler) readRecipes(repos []factory.Repo) {
+	if h.seam.RecipeAt == nil {
+		return
+	}
+	for i := range repos {
+		if recipe, _, _, err := h.seam.RecipeAt(repos[i].Name); err == nil {
+			repos[i].Recipe, repos[i].Habits = recipe, recipe.Habits
+		}
+	}
 }
 
 func anyAllowed(allow map[string]bool) bool {

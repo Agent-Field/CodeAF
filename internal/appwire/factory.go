@@ -34,6 +34,9 @@ import (
 // FeatureFactory is announced in hello when the engine serves factory.*.
 const FeatureFactory = "factory.remote"
 
+// FeatureFactoryPlanFilesAnswer announces structured plan files on step reads.
+const FeatureFactoryPlanFilesAnswer = "factory.plan_files_answer"
+
 // The states a connection is seen in.
 const (
 	FactoryOK            = "ok"
@@ -151,6 +154,10 @@ type FactoryCapabilities struct {
 	// factory.spend_by_repo). True only for an engine that implements
 	// [FactorySpender]; a factory older than the route answers not found.
 	SpendByRepo bool `json:"spend_by_repo"`
+	// SpendByModel: factory.spend_by_model is served (feature
+	// factory.spend_by_model). True only for an engine that implements
+	// [FactoryModelSpender]; a factory older than the route answers not found.
+	SpendByModel bool `json:"spend_by_model"`
 	// RepoFacts: factory.repo_facts is served (feature factory.repo_facts).
 	// True only for an engine that implements [FactoryRepoFactsReader]; a
 	// factory older than the route answers not found.
@@ -387,6 +394,7 @@ type Factory interface {
 func withFactoryFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); ok {
 		hello = withFeature(hello, FeatureFactory)
+		hello = withFeature(hello, FeatureFactoryPlanFilesAnswer)
 	}
 	return hello
 }

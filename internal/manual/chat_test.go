@@ -38,6 +38,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
 		{"can codeaf use WSL", "running-commands-on-windows"},
 		{"Git Bash", "running-commands-on-windows"},
+		{"why did Defender block my command on Windows", "running-commands-on-windows"},
+		{"Windows refused to start the shell access denied", "running-commands-on-windows"},
+		{"Windows command line too long 32,767 characters", "running-commands-on-windows"},
 		// R4 and R3 keep command routes and explicit-choice remedies reachable.
 		{"gh api says not found on Windows", "running-commands-on-windows"},
 		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
