@@ -233,6 +233,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryEstimateFeature(hello, engine)
 	hello = withFactoryScoutFeature(hello, engine)
 	hello = withFactoryReadOnArrivalFeature(hello, engine)
+	hello = withFactoryReadFeature(hello, engine)
 	hello = withFactoryJobBriefFeature(hello, engine)
 	hello = withFactoryJobBriefWriterFeature(hello, engine)
 	hello = withFactoryRepoReadFeature(hello, engine)

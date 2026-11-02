@@ -527,6 +527,13 @@ func (w *worker) once(ctx context.Context) tick {
 	if !found {
 		return tickIdle
 	}
+	return w.read(ctx, it, CallTries)
+}
+
+// read reads one item, marked in flight. A call that fails is stamped (read,
+// with nothing learned) only at its tries-th failure, so a passing outage is
+// tried again; tries 1 never stamps a failure, for a person who can retry.
+func (w *worker) read(ctx context.Context, it factory.Item, tries int) tick {
 	// THE READ IS MARKED IN FLIGHT on the store, when the store keeps such
 	// marks, so a window drawing the floor shows `reading` on this row for
 	// as long as the call takes.
@@ -549,7 +556,7 @@ func (w *worker) once(ctx context.Context) tick {
 	if callErr != nil {
 		w.fails[it.ID]++
 		w.say("triage: " + it.Ref() + ": " + callErr.Error())
-		if w.fails[it.ID] < CallTries {
+		if tries <= 1 || w.fails[it.ID] < tries {
 			return tickFailed
 		}
 	}
@@ -563,7 +570,7 @@ func (w *worker) once(ctx context.Context) tick {
 		}
 	}
 	now := time.Now()
-	err = w.st.Annotate(it.ID, func(cur *factory.Item) error {
+	err := w.st.Annotate(it.ID, func(cur *factory.Item) error {
 		if !Wants(*cur) {
 			return errAlreadyRead
 		}
@@ -577,6 +584,42 @@ func (w *worker) once(ctx context.Context) tick {
 		w.say("triage: " + it.Ref() + ": write: " + err.Error())
 	}
 	return tickRead
+}
+
+// ClickMost is the most items one click reads.
+const ClickMost = 20
+
+// Clicked is what a person's Read did: the items read, those skipped (already
+// read, not an issue job, or not on the floor) and those whose call failed,
+// left unread so the person can try again.
+type Clicked struct {
+	Read, Skipped, Failed []int
+}
+
+// ReadThese reads exactly the chosen items, now, for a person who asked:
+// whether Read new issues as they arrive is on does not matter (opts.Off is
+// not consulted). At most [ClickMost] are read; the rest are skipped.
+func ReadThese(ctx context.Context, st Store, call Call, ids []int, opts Options) Clicked {
+	w := &worker{st: st, call: call, fails: map[int]int{}, opts: opts}
+	out := Clicked{Read: []int{}, Skipped: []int{}, Failed: []int{}}
+	items, _ := st.List()
+	byID := make(map[int]factory.Item, len(items))
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	for _, id := range ids {
+		it, ok := byID[id]
+		if !ok || !factory.IsIssueJob(it) || !Wants(it) || len(out.Read)+len(out.Failed) >= ClickMost || ctx.Err() != nil {
+			out.Skipped = append(out.Skipped, id)
+			continue
+		}
+		if w.read(ctx, it, 1) == tickFailed {
+			out.Failed = append(out.Failed, id)
+			continue
+		}
+		out.Read = append(out.Read, id)
+	}
+	return out
 }
 
 var errAlreadyRead = errors.New("triage: already read")

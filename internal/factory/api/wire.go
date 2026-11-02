@@ -962,6 +962,16 @@ type Scout struct {
 	Stale    bool        `json:"stale,omitempty"`
 }
 
+// ReadResult is POST /v1/read's answer, a person's Read of chosen jobs: the
+// jobs read now, those skipped (already read, not an issue job, not visible,
+// or over the most one read takes) and those whose model call failed, left
+// unread to try again.
+type ReadResult struct {
+	Read    []int `json:"read"`
+	Skipped []int `json:"skipped"`
+	Failed  []int `json:"failed"`
+}
+
 // ScoutLook is POST /v1/jobs/{id}/scout's answer: the job's scout, and
 // cached when it is the kept look of the same issue text at the same head,
 // which cost nothing.

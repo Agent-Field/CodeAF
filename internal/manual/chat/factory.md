@@ -374,9 +374,13 @@ Its complexity replaces the read's, and its questions become the job's when the 
 
 Limits: $10 of looks a month per factory (`Monthly limit for AI reached`) and 20 looks a day per repository (`Daily limit for this repo reached`). A repository that is not checked out cannot be looked at.
 
-## read new issues as they arrive — automatic issue read, look before an automatic start, turn the factory's AI off
+## read new issues as they arrive — automatic issue read, Read N new issues, read one issue, look before an automatic start
 
-On by default. Each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start. Turned off, the factory's AI reads nothing by itself: new issues show no read, automatic starts go ahead on their labels, and Look closer still works when you press it. Only the factory's operator can change it.
+Off by default: the factory's AI runs only when you click or on your schedule. With it off, new issues arrive unread. Backlog offers `Read N new issues · about $X` (the last read's cost times N), and each row has Read and Look closer. A click reads exactly the issues chosen, at most 20 at a time; an issue whose read failed stays unread so you can try again.
+
+Turned on, each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start.
+
+Reading never changes which jobs start on their own: only a size label decides that, read or not. Only the factory's operator can change this setting.
 
 ## which model runs factory jobs — Task models and one model
 

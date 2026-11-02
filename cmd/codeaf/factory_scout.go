@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/reporead"
 	"github.com/Agent-Field/codeaf/internal/factory/scout"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/triage"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -78,5 +79,24 @@ func factoryScoutChat(load func() (config.Config, error)) scout.Chat {
 			return scout.Reply{USD: usd, Model: model}, errors.New("the model answered nothing")
 		}
 		return scout.Reply{Text: response.Text(), USD: usd, Model: model}, nil
+	}
+}
+
+// factoryClickRead is a person's Read of chosen jobs on the floor st, for
+// serve.Config.Read: the arrival read's own call and prompt, each priced read
+// noted on the floor and the spend ledger as the worker's are, whether or not
+// new issues are read as they arrive. A machine with no key reads nothing,
+// and every chosen job comes back failed.
+func factoryClickRead(st *store.Store, load func() (config.Config, error)) func(ctx context.Context, ids []int) api.ReadResult {
+	if st == nil || load == nil {
+		return nil
+	}
+	return func(ctx context.Context, ids []int) api.ReadResult {
+		call, ok := factoryTriageCallNoting(load, func(usd float64) { _ = st.NoteReadCost(usd) })
+		if !ok {
+			return api.ReadResult{Read: []int{}, Skipped: []int{}, Failed: append([]int{}, ids...)}
+		}
+		got := triage.ReadThese(ctx, st, call, ids, triage.Options{AskFirst: factoryIntake(st).AskFirst})
+		return api.ReadResult{Read: got.Read, Skipped: got.Skipped, Failed: got.Failed}
 	}
 }

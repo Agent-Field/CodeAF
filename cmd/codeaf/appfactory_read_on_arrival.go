@@ -5,7 +5,7 @@ package main
 // The engine's half of appwire.FactoryArrivalReader: the factory's
 // `read_on_arrival` in GET /v1/settings, changed by PATCH (an operator's
 // write). A factory older than the setting answers settings without it, and
-// a factory that never had the setting reads every arrival, so that reads on.
+// such a factory reads every arrival, so that reads on.
 
 import (
 	"context"

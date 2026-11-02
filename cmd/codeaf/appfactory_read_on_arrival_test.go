@@ -8,9 +8,9 @@ import (
 )
 
 // READ NEW ISSUES AS THEY ARRIVE, AGAINST THE REAL SERVER AND STORE: the app
-// reads the factory's setting (on, on a factory that never saved it); a
+// reads the factory's setting (off, on a factory that never saved it); a
 // teammate who is not the operator cannot change it; the operator turns it
-// off, and the floor's own settings say off.
+// on, and the floor's own settings say on.
 func TestAppFactoryReadOnArrivalAgainstTheRealServer(t *testing.T) {
 	f := startAdminFactory(t)
 	alice := f.signIn(t, 1, "alice")
@@ -23,16 +23,16 @@ func TestAppFactoryReadOnArrivalAgainstTheRealServer(t *testing.T) {
 	}
 	var got appwire.FactoryReadOnArrival
 	alice.w.must("factory.read_on_arrival", map[string]any{"factory": alice.conn.ID}, &got)
-	if !got.On {
-		t.Fatal("a new factory reads as off")
+	if got.On {
+		t.Fatal("a new factory reads as on")
 	}
-	bob.w.mustFail("factory.read_on_arrival", map[string]any{"factory": bob.conn.ID, "on": false}, appwire.CodeForbidden)
-	if saved, _ := f.st.RunnerSettings(); !saved.ReadOnArrival {
-		t.Fatal("a teammate turned it off")
+	bob.w.mustFail("factory.read_on_arrival", map[string]any{"factory": bob.conn.ID, "on": true}, appwire.CodeForbidden)
+	if saved, _ := f.st.RunnerSettings(); saved.ReadOnArrival {
+		t.Fatal("a teammate turned it on")
 	}
-	alice.w.must("factory.read_on_arrival", map[string]any{"factory": alice.conn.ID, "on": false}, &got)
+	alice.w.must("factory.read_on_arrival", map[string]any{"factory": alice.conn.ID, "on": true}, &got)
 	saved, err := f.st.RunnerSettings()
-	if got.On || err != nil || saved.ReadOnArrival {
-		t.Fatalf("after turning it off: answer %+v, saved %+v, %v", got, saved, err)
+	if !got.On || err != nil || !saved.ReadOnArrival {
+		t.Fatalf("after turning it on: answer %+v, saved %+v, %v", got, saved, err)
 	}
 }

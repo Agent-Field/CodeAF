@@ -286,6 +286,7 @@ decides which combinations are accepted.
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
+| `factory.read` | `in.FactoryReadParams` | `ReadResult` |
 | `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
@@ -353,11 +354,20 @@ its budget is `no_answer`; a repository with no checkout is `not_cloned`.
 
 An engine whose hello carries the feature `factory.read_on_arrival` serves
 `factory.read_on_arrival {factory, on?}` → `{on}`: "Read new issues as they
-arrive", the factory's `read_on_arrival` in `GET /v1/settings`. On (the
-default), each new issue gets the arrival read and a job the start rules would
-start gets a look closer before it launches; off, the factory's AI reads
-nothing by itself and a person's Look closer still works. With `on` the
-operator changes it (`PATCH /v1/settings`); anyone else is `forbidden`.
+arrive", the factory's `read_on_arrival` in `GET /v1/settings`. Off (the
+default: AI runs only on a person's click or schedule), the factory's AI reads
+nothing by itself; on, each new issue gets the arrival read and a job the start
+rules would start gets a look closer before it launches. Either way only a size
+label (or a measured PR diff) decides a start. With `on` the operator changes
+it (`PATCH /v1/settings`); anyone else is `forbidden`.
+
+An engine whose hello carries the feature `factory.read` serves `factory.read
+{factory, jobs}` (`POST /v1/read`): the arrival read of exactly the chosen jobs,
+now, whatever `read_on_arrival` says. It answers `ReadResult {read, skipped,
+failed}`: jobs read now; jobs skipped (already read, not an issue job, not
+visible to the caller, or past the first 20 read); jobs whose model call
+failed, left unread to try again. A factory with no model key fails every job.
+`queue.desk.last_read_cost` is what the last read cost, for "about $X".
 
 An engine whose hello carries the feature `factory.repo_read` (and
 `FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,

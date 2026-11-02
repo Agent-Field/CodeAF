@@ -84,7 +84,7 @@ func runFactoryTriage(ctx context.Context, st *store.Store, newIntake func(*stor
 
 // factoryReadsOnArrival is the floor's "Read new issues as they arrive",
 // read each time so a change on the settings page takes effect on the next
-// tick. An unreadable settings file reads as the default, on.
+// tick. An unreadable settings file reads as the default, off.
 func factoryReadsOnArrival(st *store.Store) bool {
 	settings, _ := st.RunnerSettings()
 	return settings.ReadOnArrival
