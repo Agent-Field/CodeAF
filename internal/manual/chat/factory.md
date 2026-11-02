@@ -1,5 +1,20 @@
 # The factory
 
+## save a job note after steps finish — who reads it and PR comments
+
+A `factory_item` note asks `save a note on the job?`. After your yes, it stays
+on the job even when all steps have finished. The tool's answer names the next
+remaining step that reads it when it runs. Done and failed steps are finished;
+deterministic checks, publish steps and approval gates do not read notes. A running round already has its
+brief, so its next round can read a newly saved note if it runs again.
+
+With no remaining reader, the answer says `no remaining step will read it` and
+`It is not in the pull request.` Saving a note neither edits the PR body nor
+posts a comment. You can comment on the pull request in GitHub; the answer gives
+the saved PR link, or says to wait until a PR exists. The note tool does not post
+PR comments. The app's `factory.issue_comment` posts on the job's source issue,
+which can be different from the PR created for the job.
+
 ## what is the factory — jobs, runners and a pull request at the end
 
 The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own.
@@ -130,7 +145,7 @@ On a machine with a factory set up, a conversation can hand work over. Every one
 
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
-The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question or save an answer to the exact persisted step question; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
@@ -171,6 +186,20 @@ A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, 
 - Precedence: the factory's copy, else main's file, else the built-in steps.
 
 Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps. Steps that use kind, when, effort or fanout are saved as a copy only when the factory has confirmed it runs them for the file they were edited from, as for a pull request. A factory older than this feature answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
+
+## repository rules unread — bad factory.yaml, Start, plan waiting for you
+
+If the repository's `.codeaf/factory.yaml` cannot be read, pressing Start or
+starting from chat still starts the job with the factory's own rules. A job
+without its own budget gets the built-in default job budget. Activity says
+`Started with the repository's rules unread; its plan will wait for you`.
+The job records a short explanation naming the file and the parser's line
+when available. Fix that file before reviewing the plan. The plan waits for
+you, including in Auto, rather than continuing without the repository's rules.
+
+The factory's own rules being unread still prevents a start and leaves the job
+new. A clean read with no positive default budget still refuses a job that has
+no budget of its own.
 
 ## a rule asks first — protected paths, Auto paused at the plan, a plan that touches auth, why a job waits on a rule
 
@@ -511,6 +540,14 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 ## runner recovery window — running time versus waiting for reconnect
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+
+## Unread repository rules — file and line before plan approval
+
+When repository rules cannot be read, the plan approval question shows the
+safe explanation, including `.codeaf/factory.yaml` and the parser's line when
+known. No build step starts until you approve that question, including in Auto.
+The job read also carries the repository-relative `unread_file` and, when known,
+`unread_line` beside `unread_why`.
 
 ## Run again as a new job — copy failed, stopped, closed or done work
 

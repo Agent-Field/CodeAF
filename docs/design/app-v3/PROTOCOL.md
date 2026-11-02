@@ -256,6 +256,8 @@ decides which combinations are accepted.
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_stop_after_step` | `in.FactoryJobStopAfterStepParams` | `FactoryJobActed` |
+| `factory.job_spend_answer` | `in.FactoryJobSpendAnswerParams` | `FactoryJobActed` |
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
@@ -436,6 +438,29 @@ manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its ol
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
 
+The job manager's model tools also expose the plan send-back: `factory_status`
+includes the exact pending `question_id` in its text at every waiting gate.
+`factory_answer {action: "reject_plan", question_id, answer}` sends the requested
+changes (1–4,000 characters) through the same typed plan-revision door as
+`factory.job_reject_plan`. It checks the manager binding and exact decision on
+the locked job; a stale decision changes nothing. The prior step runs again with
+the words in a new round, then approval is requested again. Omitting `action`
+retains persisted step replies; other gates keep their existing job controls.
+These model tools add no app-wire method, hello feature or wire error code.
+A confirmed send-back reports acceptance, not worker startup; an unconfirmed
+result directs the manager to read status before retrying and explain the
+outcome to the person without internal identifiers.
+
+`factory.job_set_budget` keeps its existing params (`factory`, `job`, `budget`,
+required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
+$30. Raising the cap above recorded spend resolves a `cap` question and resumes
+the interrupted step in the same conversation and round, with spend retained,
+in Auto or Manual on local and leased runners. Chat records one
+`budget raised to $10 · carrying on` line for a $10 cap. An increase at or below
+spend updates the question and keeps work waiting. A decrease below spend is
+still refused (`bad_params`). Other questions and publication approvals are
+unchanged. This corrects existing behavior; method names, errors and hello
+feature identifiers are unchanged.
 An engine whose hello carries `factory.plan_files_answer` reads structured plan
 files. `factory.job` keeps its existing `{factory, job}` request and `Job` reply;
 `steps[].files` carries the plan step's answer (`null` for an absent field, `[]`
@@ -508,6 +533,24 @@ binary file is `unreadable` with `binary`; a repository with no checkout on the
 factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
 
+A job read (`factory.job`, and jobs in `factory.queue`) carries
+`start_rules {ask_first, never, unread?, unread_why?, unread_file?, unread_line?}` after it starts.
+`unread: true` means the repository's `.codeaf/factory.yaml` could not be read.
+A person's Start still succeeds, using the factory's rules; a job without its
+own budget receives the built-in default job budget. Its plan holds for a
+person, including in Auto. Activity says `Started with the repository's rules
+unread; its plan will wait for you`. `unread_why` names the file, the parser's
+line when available, and a safe explanation (one line, under 160 characters).
+`unread_file` is the repository-relative path (`.codeaf/factory.yaml` today);
+`unread_line` is the parser's positive line number, omitted when unknown.
+The plan approval question includes `unread_why`; no build step starts until
+a person approves, including in Auto. These fields survive worker reports.
+It carries no raw transport errors, absolute paths or credentials. Fix the
+named file before reviewing the plan. A clean read without a positive default
+budget still refuses a job without its own budget. Unread factory rules still
+refuse Start and leave the job new. These are additive job fields under the
+existing factory features; method parameters and replies otherwise stay the
+same.
 A job's `steps[].rounds[]` carries the engine's optional `result` word:
 `done`, `not done`, `clean`, `not clean`, `green`, `not green`, `proven`,
 `not proven`, or `blocked` for a reported result. When a retry closes a step
@@ -1366,6 +1409,59 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Job note receipts and pull request comments
+
+A manager's `factory_item` note remains saved on the job after all steps finish.
+The tool result is computed from the saved job: it names the next remaining
+conversation step that reads notes, or says no remaining step will read the note and it is not in the pull
+request. The approval question is `save a note on the job?`. A running round
+already has its brief; a subsequent round can read the note if it runs again.
+Deterministic checks, publication steps and approval gates are not note readers.
+
+No app method, parameters, reply fields, hello feature or error codes change.
+`factory.issue_comment` still targets the source issue, not the job's created
+pull request. The note receipt directs the person to comment on the PR in
+GitHub, using its saved URL when present; it does not claim that a manager has
+a PR comment tool. No comment or PR body edit is performed by saving a note.
+## Stop spending after this step
+
+Hello feature `factory.job_stop_after_step` enables
+`factory.job_stop_after_step {factory, job, on: bool, expect?}`. It returns
+`FactoryJobActed` with action `stop_after_step`. The write is
+`POST /v1/jobs/{id}/stop-after-step {on, expect?}`. The job read carries
+`stop_after_step: true` while armed, and `can.stop_after_step` grants the owner
+this toggle on a running or queued job. Missing or nonboolean `on` is
+`bad_params`; another owner is `forbidden`, a stale guard is `stale`, and an
+inactive job is refused. An unconfirmed write is `uncertain` and is never retried.
+
+The current step finishes. Before the next step, or before landing when there
+is no next step, the job waits in `needs_you`, question kind `spend_stopped`:
+"Stopped spending after <Step> as you asked · $<spent> so far. Carry on?"
+Hello advertises `factory.job_spend_answer` exactly when it advertises
+`factory.job_stop_after_step`. The narrow door is
+`factory.job_spend_answer {factory, job, carry_on: bool, expect}` and returns
+`FactoryJobActed` with action `spend_answer`. It sends one
+`POST /v1/jobs/{id}/spend_answer {carry_on, expect}`. Missing or nonboolean
+`carry_on`, or missing `expect.version`, is `bad_params`. Under the revision
+lock the factory requires the current question to be `spend_stopped` and the
+caller to own the job: another question is `conflict`, a changed revision is
+`stale`, and another owner is `forbidden`. Refusals record nothing.
+`can.spend_answer` is true only for the owner while that question waits.
+`carry_on: true` behaves like yes on `/answer`, clearing the flag and continuing
+at the next step; false behaves like no, stopping as the person's stop. Both
+keep the same `answered` event and saved answer as `/answer`. An unconfirmed
+write is `uncertain` and is never retried. This door cannot answer another
+question, approve a plan or decline a start. Off before the boundary
+withdraws the hold. A step's own question or failure comes first and leaves
+the flag armed. A queued job without a started step runs its first step before
+holding. Landing and any automatic publication remain behind the hold.
+
+Each accepted toggle records `stop_after_step_changed`, the person's identity,
+and `stop_after_step=true` or `stop_after_step=false`. Workers read the saved
+choice at every step boundary through their own live lease:
+`GET /v1/workers/leases/{lease}/stop-after-step` returns `{on: bool}`.
+An unreadable choice falls back to the last value the runner saved; the next boundary reads it again.
 
 ### Run an ended job as a new job
 

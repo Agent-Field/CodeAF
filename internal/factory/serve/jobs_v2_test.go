@@ -1089,7 +1089,7 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 }
 
 func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
-	for _, mode := range []string{"auto", "manual", "takeover", "critical"} {
+	for _, mode := range []string{"auto", "manual", "takeover", "critical", "manual-approval", "manual-question"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newV2Jobs(t)
 			it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
@@ -1102,6 +1102,14 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				case "critical":
 					cur.QKind = "scope"
 					cur.Question = "Choose the public API"
+				case "manual-approval":
+					cur.Autonomy = factory.AutonomyManual
+					cur.QKind = factory.QKindApprove
+					cur.Question = "Approve the plan?"
+				case "manual-question":
+					cur.Autonomy = factory.AutonomyManual
+					cur.QKind = "scope"
+					cur.Question = "Choose the public API"
 				}
 				return nil
 			})
@@ -1110,11 +1118,13 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 			if got.Cap != 10 || got.Stream.Spent != 5 || f.st.PollNudged().IsZero() {
 				t.Fatal("cap did not persist or wake observation")
 			}
-			if mode == "auto" {
+			// A raise above spend answers only the cap's own ask, on Auto or Manual.
+			// Take over and any other question stay with the person.
+			if mode == "auto" || mode == "manual" {
 				if got.State != factory.StateQueued || got.Question != "" {
 					t.Fatal("automatic cap recovery stranded")
 				}
-			} else if got.State != factory.StateNeedsYou || got.Question == "" {
+			} else if want := map[string]string{"manual-approval": "Approve the plan?", "manual-question": "Choose the public API", "critical": "Choose the public API"}[mode]; got.State != factory.StateNeedsYou || got.Question == "" || (want != "" && got.Question != want) {
 				t.Fatal("budget edit erased a separate user decision")
 			}
 		})

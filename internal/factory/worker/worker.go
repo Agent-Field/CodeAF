@@ -330,6 +330,15 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		j.converse(ctx)
 		return
 	}
+	// Older factories omit this capability and have no boundary read door.
+	if pulled.Job.Can.StopAfterStep || it.StopAfterStep {
+		o.Runner.SetStopAfterStepReader(it.ID, func(ctx context.Context) (bool, error) {
+			readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+			defer cancel()
+			return w.StopAfterStep(readCtx, pulled.Lease.ID)
+		})
+		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
+	}
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
@@ -526,10 +535,19 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			if s.Budget <= 0 {
 				continue
 			}
-			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Cap = s.Budget; return nil }); err != nil {
+			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
+				it.Cap = s.Budget
+				if it.QKind == "cap" && s.Budget <= factory.JobSpent(*it) {
+					it.Question, _ = (*run.Money)(nil).CapQuestion(*it)
+					if it.Asking != nil {
+						it.Asking.Question = it.Question
+					}
+				}
+				return nil
+			}); err != nil {
 				return false
 			}
-			if it, err := j.o.Mirror.Get(j.id); s.Yes && err == nil && it.QKind == "cap" && s.Budget > factory.JobSpent(it) && factory.Automatic(it) && !it.Publishing {
+			if it, err := j.o.Mirror.Get(j.id); s.Yes && err == nil && it.QKind == "cap" && s.Budget > factory.JobSpent(it) && !it.Publishing {
 				_ = r.Answer(j.id, true, factory.ChoiceContinue)
 			}
 		case lease.SignalHold:

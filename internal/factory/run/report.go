@@ -316,7 +316,7 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		q.At = now
 	}
 	q.With = factory.AskedYou
-	if q.Stage != "" {
+	if q.Stage != "" && kind != factory.QKindSpendStopped {
 		i := phaseIndex(it, q.Stage)
 		if i < 0 {
 			return fmt.Errorf("question names an unknown step")
