@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Mark a job pull request ready for review
-pr: 0
+pr: 2238
 surface: [engine]
 invalidates:
   - "Was true: a draft PR blocked Merge and required GitHub or the manager to mark it ready. Is true now: the job offers a direct ready-for-review action to the person who may merge it."
