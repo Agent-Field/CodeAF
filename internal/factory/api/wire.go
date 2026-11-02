@@ -855,7 +855,7 @@ type Triage struct {
 	SizeFrom     string    `json:"size_from,omitempty"`
 	Area         string    `json:"area,omitempty"`
 	Readiness    int       `json:"readiness,omitempty"`
-	Est          float64   `json:"est,omitempty"`
+	Rubric       *Rubric   `json:"rubric,omitempty"`
 	DupOf        int       `json:"dup_of,omitempty"`
 	Risk         []string  `json:"risk,omitempty"`
 	Read         string    `json:"read,omitempty"`
@@ -868,6 +868,28 @@ type Triage struct {
 	StartMatched []string  `json:"start_matched,omitempty"`
 	StartPaths   []string  `json:"start_paths,omitempty"`
 	StartRules   []string  `json:"start_rules,omitempty"`
+}
+
+// Rubric is how complex a job is (desk): five factors scored 0..2, their sum
+// and its band, and who scored it: "read" (the arrival read, text only) or
+// "scout" (Look closer, with the repository). A factor marked low was judged
+// without seeing what it is about. A model never writes a price.
+type Rubric struct {
+	Scope      Factor `json:"scope"`
+	Clarity    Factor `json:"clarity"`
+	Coupling   Factor `json:"coupling"`
+	Proof      Factor `json:"proof"`
+	Novelty    Factor `json:"novelty"`
+	From       string `json:"from"`
+	Complexity int    `json:"complexity"`
+	Band       string `json:"band"`
+}
+
+// Factor is one rubric factor (desk).
+type Factor struct {
+	Score int    `json:"score"`
+	Why   string `json:"why,omitempty"`
+	Low   bool   `json:"low,omitempty"`
 }
 
 // LogLine is one line of a run's grain (desk).

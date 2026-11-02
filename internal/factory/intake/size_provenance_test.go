@@ -22,7 +22,7 @@ func TestTheShownSizeNeverGrantsAStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	read := factory.Triage{Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: time.Unix(100, 0), Est: 0.1, StartJudged: true, StartMatched: []string{}}
+	read := factory.Triage{Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: time.Unix(100, 0), StartJudged: true, StartMatched: []string{}}
 	for _, tc := range []struct {
 		name   string
 		labels []string

@@ -113,8 +113,7 @@ func factoryAddSchemaJSON() string {
 		`"body":{"type":"string","description":"What the work is and why, in a few sentences: what is wrong or wanted, and how somebody would know it is done. This is the reason the person reads on the card."},` +
 		`"repo":{"type":"string","description":"The repository's short name as the person says it, or this workspace's name when they do not name one."},` +
 		`"kind":{"type":"string","enum":[` + quoted(factoryKinds) + `],"description":"What sort of work it is."},` +
-		`"size":{"type":"string","enum":[` + quoted(factorySizes) + `],"description":"Your guess at its size, when you have one."},` +
-		`"estimate_usd":{"type":"number","description":"Your guess at what running it will cost, in dollars, when you have one."}` +
+		`"size":{"type":"string","enum":[` + quoted(factorySizes) + `],"description":"Your guess at its size, when you have one."}` +
 		`},"required":["title","body","repo","kind"],"additionalProperties":false}`
 }
 
@@ -188,12 +187,11 @@ func (a *Agent) factoryAddTool() bare.Tool {
 		Schema:      json.RawMessage(factoryAddSchemaJSON()),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Title    string  `json:"title"`
-				Body     string  `json:"body"`
-				Repo     string  `json:"repo"`
-				Kind     string  `json:"kind"`
-				Size     string  `json:"size"`
-				Estimate float64 `json:"estimate_usd"`
+				Title string `json:"title"`
+				Body  string `json:"body"`
+				Repo  string `json:"repo"`
+				Kind  string `json:"kind"`
+				Size  string `json:"size"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
@@ -206,9 +204,6 @@ func (a *Agent) factoryAddTool() bare.Tool {
 				Repo:  strings.TrimSpace(parsed.Repo),
 				Kind:  strings.ToLower(strings.TrimSpace(parsed.Kind)),
 				Size:  strings.ToUpper(strings.TrimSpace(parsed.Size)),
-			}
-			if parsed.Estimate > 0 {
-				notice.Estimate = parsed.Estimate
 			}
 			if notice.Title == "" || notice.Body == "" || notice.Repo == "" {
 				return rejectToolArguments(ctx, "Invalid arguments: factory_add needs a title, a body saying what and why, and the repo it belongs to."), true, nil
@@ -275,7 +270,7 @@ func factoryItem(notice FactoryNotice, now time.Time) factory.Item {
 // is stamped SizeFromChat: it is not the read, nothing shows it, and the read
 // replaces it when it lands.
 func chatTriage(triageType string, notice FactoryNotice) factory.Triage {
-	t := factory.Triage{Type: triageType, Size: notice.Size, Est: notice.Estimate}
+	t := factory.Triage{Type: triageType, Size: notice.Size}
 	if t.Size != "" {
 		t.SizeFrom = factory.SizeFromChat
 	}

@@ -116,7 +116,7 @@ func TestCommentsAreReadOnlyWhenTheCountMoves(t *testing.T) {
 func read(t *testing.T, st *store.Store, id int, words string) {
 	t.Helper()
 	if err := st.Annotate(id, func(it *factory.Item) error {
-		it.Triage.Read, it.Triage.Est, it.Triage.Priority = words, 3, 2
+		it.Triage.Read, it.Triage.Rubric, it.Triage.Priority = words, &factory.Rubric{}, 2
 		it.Triage.TriagedAt = time.Now()
 		return nil
 	}); err != nil {
@@ -172,7 +172,7 @@ func TestAnUpstreamChangeIsReadAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = st.Get(issue.ID)
-	if got.Triage.Read != "" || !got.Triage.TriagedAt.IsZero() || got.Triage.Est != 0 || got.Triage.Priority != 0 {
+	if got.Triage.Read != "" || !got.Triage.TriagedAt.IsZero() || got.Triage.Rubric != nil || got.Triage.Priority != 0 {
 		t.Fatalf("a body change kept the old read: %+v", got.Triage)
 	}
 	want := []string{factory.EventArrived, factory.EventRead, factory.EventChanged, factory.EventChanged}

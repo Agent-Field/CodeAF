@@ -144,7 +144,7 @@ func TestLexerQuotesAndPlainWordsPreserved(t *testing.T) {
 
 func TestExistingWordsAndSubstringsUnchanged(t *testing.T) {
 	it := tokenItem()
-	it.Triage.Est = 1
+	it.Triage.Rubric = &Rubric{}
 	for q, want := range map[string]bool{
 		"bugs": true, "cheap": true, "prs": false, "webhooks": true, "dana": true, "api": true,
 		"acme": true, "unknown:thing": false, "label": false, "": true,

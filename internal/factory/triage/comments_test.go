@@ -31,7 +31,7 @@ func TestPromptCarriesTheLastThreeComments(t *testing.T) {
 	if strings.Index(p, "body:") > strings.Index(p, "latest comments") {
 		t.Fatal("the comments came before the body")
 	}
-	for _, word := range []string{"bug, feat, chore, question", "S, M, L", "priority"} {
+	for _, word := range []string{"bug, feat, chore, question", "scope", "priority"} {
 		if !strings.Contains(p, word) {
 			t.Fatalf("the vocabulary lost %q", word)
 		}
