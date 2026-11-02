@@ -941,3 +941,7 @@ If a no-change report was refused against the same PR head, comments and check
 state, **Try again** returns without starting a paid round. It says to wait for
 a new push or comment, or stop the job. New PR facts permit a fresh attempt.
 Attempt exhaustion alone never opens Merge or acknowledges a requested change.
+
+When the refusal concerns local checkout changes, Try again first rereads the
+checkout without calling a model. An unchanged checkout remains refused without
+spending; restoring the clean published checkout permits a fresh assessment.
