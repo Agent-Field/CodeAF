@@ -198,6 +198,24 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			if err != nil || len(hits) == 0 {
 				t.Fatalf("job memory output lost: %v %v", hits, err)
 			}
+			if n == 0 {
+				inventory, err := session.KnowledgeHistory(workspace).Inventory(context.Background())
+				if err != nil || len(inventory) != 1 {
+					t.Fatalf("job inventory: %v %v", inventory, err)
+				}
+				for extra := 0; extra < 65; extra++ {
+					if err := vault.Capture(knowledge.Source{ID: fmt.Sprintf("large-%d", extra), Session: inventory[0].Session, Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: "Cedar queues jobs.", Job: true}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := vault.Flush(context.Background(), "fixture", true); err != nil {
+					t.Fatal(err)
+				}
+				snapshot, err := vault.Snapshot()
+				if err != nil || snapshot.Pending != 0 {
+					t.Errorf("finished-turn compilation left captured sources unpublished: pending=%d error=%v", snapshot.Pending, err)
+				}
+			}
 			before := calls.Load()
 			if err := vault.Flush(context.Background(), "fixture", true); err != nil {
 				t.Fatal(err)
@@ -290,6 +308,66 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			}
 		}
 	})
+	t.Run("captured job migration", func(t *testing.T) {
+		v := knowledge.Open(t.TempDir())
+		if err := v.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		source := knowledge.Source{ID: "old", Session: "old-job", Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: "Cedar queues jobs."}
+		history := memoryFixtureHistory{source: source, journal: knowledge.Journal{ID: "old-journal", Session: source.Session, Size: 1}}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- v.Run(ctx, history, func() string { return "" }) }()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			snapshot, err := v.Snapshot()
+			if err != nil {
+				cancel()
+				t.Fatal(err)
+			}
+			if snapshot.Build.Phase == knowledge.BuildFailed {
+				break
+			}
+			if time.Now().After(deadline) {
+				cancel()
+				t.Fatal("old journal cursor never imported")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+		<-done
+		history.journal.Job = true
+		observed := &memoryObservedHistory{History: history, passes: make(chan struct{}, 4)}
+		ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
+		before := calls.Load()
+		go func() { done <- v.Run(ctx, observed, func() string { return "fixture" }) }()
+		for pass := 0; pass < 2; pass++ {
+			select {
+			case <-observed.passes:
+			case <-time.After(5 * time.Second):
+				cancel()
+				t.Fatal("migrated inventory did not run")
+			}
+		}
+		cancel()
+		<-done
+		if calls.Load() != before {
+			t.Errorf("already captured ended job still spent: %d provider calls", calls.Load()-before)
+		}
+	})
+}
+
+type memoryFixtureHistory struct {
+	source  knowledge.Source
+	journal knowledge.Journal
+}
+
+func (h memoryFixtureHistory) Inventory(context.Context) ([]knowledge.Journal, error) {
+	return []knowledge.Journal{h.journal}, nil
+}
+func (h memoryFixtureHistory) Read(context.Context, knowledge.Journal, knowledge.JournalCursor) (knowledge.JournalBatch, error) {
+	return knowledge.JournalBatch{Sources: []knowledge.Source{h.source}, Cursor: knowledge.JournalCursor{Offset: 1}}, nil
 }
 
 // Observe the real worker through its exported history interface, without a
