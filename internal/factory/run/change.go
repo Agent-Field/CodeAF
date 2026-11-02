@@ -41,16 +41,16 @@ func unchangedWrite(st factory.Stage, job Job, res factory.StageResult) factory.
 // The branch keeps the pin because Stop may revoke a worker's lease before
 // its first report reaches the factory. A replacement must not pin the edited
 // HEAD. A PR includes its existing change; other jobs start at their first HEAD.
-func changeBase(dir string, it factory.Item) string {
+func changeBase(dir string, it factory.Item) (string, error) {
 	if it.ChangeBase != "" {
-		return it.ChangeBase
+		return it.ChangeBase, nil
 	}
 	git := ExecGit{}
 	branch, _ := git.Run(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
 	key := "branch." + branch + ".codeaf-change-base"
 	if branch != "" {
 		if base, err := git.Run(dir, "config", "--local", "--get", key); err == nil && base != "" {
-			return base
+			return base, nil
 		}
 	}
 	var base string
@@ -61,9 +61,11 @@ func changeBase(dir string, it factory.Item) string {
 		base, _ = git.Run(dir, "rev-parse", "HEAD")
 	}
 	if branch != "" && base != "" {
-		_, _ = git.Run(dir, "config", "--local", key, base)
+		if _, err := git.Run(dir, "config", "--local", key, base); err != nil {
+			return "", fmt.Errorf("could not preserve the job's change base: %w", err)
+		}
 	}
-	return base
+	return base, nil
 }
 
 // readChange includes committed, staged, unstaged and untracked work. Git's

@@ -1497,7 +1497,10 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	if dirErr == nil && dir != "" && it.ChangeBase == "" {
-		if base := changeBase(dir, it); base != "" {
+		base, err := changeBase(dir, it)
+		if err != nil {
+			dirErr = err
+		} else if base != "" {
 			it.ChangeBase = base
 			_ = lp.write(c, func(saved *factory.Item) error { saved.ChangeBase = base; return nil })
 		}

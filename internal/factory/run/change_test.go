@@ -14,7 +14,10 @@ import (
 
 func TestChangeIncludesCommittedStagedUnstagedAndUntrackedFiles(t *testing.T) {
 	dir := gitRig(t)
-	base := changeBase(dir, factory.Item{Kind: factory.KindIssue})
+	base, err := changeBase(dir, factory.Item{Kind: factory.KindIssue})
+	if err != nil {
+		t.Fatal(err)
+	}
 	mustGit(t, dir, "checkout", "-q", "-b", "factory/change")
 	write := func(path, content string) {
 		t.Helper()
@@ -76,7 +79,11 @@ func TestChangeForPRIncludesItsOriginalDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	change, err := readChange(dir, changeBase(dir, it))
+	base, err := changeBase(dir, it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change, err := readChange(dir, base)
 	if err != nil {
 		t.Fatal(err)
 	}

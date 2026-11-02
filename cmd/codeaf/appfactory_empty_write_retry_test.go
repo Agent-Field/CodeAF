@@ -91,7 +91,7 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 					defer close(done)
 					worker.Run(ctx, worker.Options{
 						Dial:   func(int) *client.WorkerClient { return client.Open(st.URL, s.backend.local.host.token).Worker("") },
-						Attach: api.WorkerAttach{Machine: "unreported-write", Name: "unreported write", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+						Attach: api.WorkerAttach{Machine: "pause-fixture", Name: "pause fixture", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
 						Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: time.Hour, BeatEvery: 20 * time.Millisecond,
 					})
 				}()

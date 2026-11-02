@@ -79,7 +79,8 @@ A `write` step's done also needs a change in the job's checkout. With none, the 
 run on an untouched tree. The comparison uses the job's original base: a rerun, **Try again**,
 or restarting a stopped step counts the change already on its branch, including committed
 work. Each attempt does not need a new edit. A branch with no change still cannot pass Write,
-even on a rerun. Other steps may finish with no change.
+even on a rerun. If the original base cannot be preserved, the round fails before editing;
+try again after the repository becomes writable. Other steps may finish with no change.
 
 A step that falls short of its until goes round again while it has rounds left (see a second
 round).
