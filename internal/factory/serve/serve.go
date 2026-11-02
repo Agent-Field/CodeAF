@@ -499,7 +499,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
-	it, ok := h.findJob(w, r)
+	s, it, ok := h.findJobIn(w, r)
 	if !ok {
 		return
 	}
@@ -508,6 +508,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	api.InRepoAreas(&jobs[0], it, s.Repos)
 	if h.config.CodeOwners != nil && len(itemFiles(it)) > 0 {
 		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
 		if err == nil {
@@ -551,17 +552,24 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 // findJob gives every job door the same id and existence checks, without
 // guessing whether an untyped runner error meant a missing job.
 func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
+	_, it, ok := h.findJobIn(w, r)
+	return it, ok
+}
+
+// findJobIn is [Handler.findJob] with the floor it found the job on, for a
+// read that also says what the job's repository declares.
+func (h *Handler) findJobIn(w http.ResponseWriter, r *http.Request) (factory.Snapshot, factory.Item, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if (err != nil || id <= 0) && !strings.Contains(r.PathValue("id"), "#") {
 		h.fail(w, http.StatusUnprocessableEntity, "job id must be a positive integer")
-		return factory.Item{}, false
+		return factory.Snapshot{}, factory.Item{}, false
 	}
 	if !h.require(w, h.seam.Load != nil) {
-		return factory.Item{}, false
+		return factory.Snapshot{}, factory.Item{}, false
 	}
 	s, err := h.seam.Load()
 	if h.failed(w, err) {
-		return factory.Item{}, false
+		return factory.Snapshot{}, factory.Item{}, false
 	}
 	for _, it := range s.Items {
 		if factory.IsIssueJob(it) && (it.ID == id || factory.JobRef(it) == r.PathValue("id")) {
@@ -569,16 +577,16 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))
 			if h.authFailed(w, r) {
-				return factory.Item{}, false
+				return factory.Snapshot{}, factory.Item{}, false
 			}
 			if !visible {
 				break
 			}
-			return it, true
+			return s, it, true
 		}
 	}
 	h.fail(w, http.StatusNotFound, "job not found")
-	return factory.Item{}, false
+	return factory.Snapshot{}, factory.Item{}, false
 }
 
 // Repository preserves the picker's facts with product names and JSON keys,

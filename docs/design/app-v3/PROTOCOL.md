@@ -307,6 +307,12 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries `factory.job_area` sends `area` on each job of
+`factory.queue` and on `factory.job`: the part of the repository the job's
+change touched most, the repository's declared area or else the top-level
+directory with a trailing slash (`"cli/"`). It is absent when the job changed
+no file or only files at the root.
+
 ## files methods
 
 | method | params | result |

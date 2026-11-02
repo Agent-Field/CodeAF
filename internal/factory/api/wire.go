@@ -364,6 +364,11 @@ type Job struct {
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
+	// Area is the part of the repository the job's change touched most
+	// ([factory.JobArea]): the repository's declared area, or else the
+	// top-level directory with a trailing slash ("cli/"). Absent before the
+	// job changed a file, or when it changed files at the root alone.
+	Area string `json:"area,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
 	Draft *bool  `json:"draft,omitempty"`
 	ID    int    `json:"document_id"`
