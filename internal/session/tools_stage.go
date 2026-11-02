@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -55,7 +56,13 @@ const (
 const stageResultDescription = "This IS one stage of a factory item. Follow its brief; independent parts may go to tasks. Report this step's result. Successful done ends the step immediately; use final false for an intermediate report. Findings count unresolved problems; until clean needs zero. Claims need evidence in their stated medium. Nothing is posted anywhere."
 const planEditDescription = "Propose stage changes: add sentences, skip or on named stages. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
 
-func stageResultSchemaJSON() string {
+func stageResultSchemaJSON(plan bool) string {
+	// A plan names its files and publishes nothing; every other stage does the
+	// reverse. Words here cost money on every call, so each carries only its own.
+	required, ownField := `["done"]`, stagePublishSummaryField
+	if plan {
+		required, ownField = `["done","files"]`, stageFilesField()
+	}
 	return `{"type":"object","properties":{` +
 		`"final":{"type":"boolean","description":"Defaults to done; false keeps working."},` +
 		`"done":{"type":"boolean","description":"Ask completed."},` +
@@ -64,11 +71,17 @@ func stageResultSchemaJSON() string {
 		`"text":{"type":"string"},"ok":{"type":"boolean"},"evidence":{"type":"string"},` +
 		`"medium":{"type":"string","description":"test, screenshot, transcript, benchmark or policy."}` +
 		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
-		`"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},` +
+		ownField +
 		`"notes":{"type":"array","items":{"type":"string"},"description":"Sentences for the stages after this one."},` +
 		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},` +
 		`"output":{"type":"string","description":"What changed and what was verified; omit guessed test totals."}` +
-		`},"required":["done"],"additionalProperties":false}`
+		`},"required":` + required + `,"additionalProperties":false}`
+}
+
+const stagePublishSummaryField = `"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},`
+
+func stageFilesField() string {
+	return `"files":{"type":"array","maxItems":` + strconv.Itoa(factory.PlanFilesMost) + `,"items":{"type":"string","maxLength":` + strconv.Itoa(factory.PlanPathMost) + `},"description":"Every repo-relative file to touch or add; no folders or globs."},`
 }
 
 func planEditSchemaJSON() string {
@@ -107,6 +120,7 @@ type stageClaim struct {
 // stageResultArgs is `stage_result`'s arguments. Done is a pointer so a call
 // that never said it is told so, rather than read as a stage that failed.
 type stageResultArgs struct {
+	Files          json.RawMessage         `json:"files"`
 	PublishSummary []string                `json:"publish_summary"`
 	Done           *bool                   `json:"done"`
 	Final          *bool                   `json:"final"`
@@ -136,8 +150,15 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 	if parsed.Final != nil {
 		final = *parsed.Final
 	}
+	var files []string
+	if len(parsed.Files) > 0 {
+		if json.Unmarshal(parsed.Files, &files) != nil || files == nil {
+			files = []string{}
+		}
+	}
 	result := factory.StageResult{
 		Checkpoint: !final,
+		Files:      files,
 		Repair:     parsed.Repair, PublishSummary: cleanNames(parsed.PublishSummary),
 		Done:     *parsed.Done,
 		Findings: parsed.Findings,
@@ -165,10 +186,11 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 // and a refusal is read back as `not reported: <why>` in the same turn, so the
 // model can put the report right and call again.
 func (a *Agent) stageResultTool() bare.Tool {
+	schema := stageResultSchemaJSON(a.config.PlanStage)
 	return bare.Tool{
 		Name:        stageResultToolName,
 		Description: stageResultDescription,
-		Schema:      json.RawMessage(stageResultSchemaJSON()),
+		Schema:      json.RawMessage(schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			result, invalid := parseStageResult(args)
 			if invalid != "" {

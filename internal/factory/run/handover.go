@@ -55,18 +55,15 @@ const (
 	// briefPlanWrite is the plan step's own instruction: the plan goes where
 	// the steps after it will read it.
 	briefPlanWrite = "Write the plan in output: what you'll change, in which files, and how you'll know it works."
-	// briefPlanFiles is the shape of the one list the factory reads from a
-	// plan ([factory.ParsePlanFiles]), said so the plan writes it that way.
-	//
-	// A PLAN NOBODY TOLD THE SHAPE LISTS ITS FILES IN ITS OWN. On 2026-10-28 a
-	// plan named every file under "CHANGE, PER FILE", as numbered prose, the
-	// parser found no list, and Auto paused a job that touched nothing
-	// protected. The parser stays strict; the plan is told what it reads.
-	briefPlanFiles = "End the plan with its file list, exactly in this shape, the only part of a plan the factory reads to check it against protected paths:\n" +
+	// briefPlanFiles tells the plan to fill its report, rather than leaving a
+	// safety declaration only in prose. The Files: example remains for readers
+	// of plans saved before the structured field existed.
+	briefPlanFiles = "In stage_result, fill files with every repository-relative file you will touch or add, for example files: [\"cmd/app/main.go\", \"docs/usage.md\"]. This structured answer is required for a plan; prose naming files is not a file list the factory can check. Follow the schema limits; files, not folders or globs. If the files are genuinely unknown, do not guess: leave files empty and the factory will pause for a person.\n" +
+		"End the plan with its file list, exactly in this shape, for compatibility with older readers:\n" +
 		"Files:\n" +
 		"- cmd/app/main.go\n" +
 		"- docs/usage.md\n" +
-		"The Files: line alone, then one line per file you will touch or add: a dash, a space, its path from the repository root, nothing else on the line. Files, not folders; no globs; a path with a space goes in backticks. Not inside a code block, and only one such list. A plan without it waits for a person whenever a protected path is in force."
+		"The Files: line alone, then one line per file you will touch or add: a dash, a space, its path from the repository root, nothing else on the line. Files, not folders; no globs; a path with a space goes in backticks. Not inside a code block, and only one such list. If you include this declaration, it must agree with the structured files list. A plan without a valid file list waits for a person whenever a protected path is in force."
 	// briefPlanAbove stands for the plan's words on its own line, which the
 	// plan's paragraph already carries whole.
 	briefPlanAbove = "its plan is above"
@@ -239,7 +236,7 @@ func claimsCut(n int) []string {
 }
 
 // planFiles is the write step's `files the plan names:` paragraph: the paths
-// the finished plan declares ([factory.ParsePlanFiles], the same reading the
+// the finished plan declares ([factory.StageResult.PlanFiles], the same reading the
 // job's planned files are drawn from), at most [briefFilesMost] of them. nil
 // for every other step, for a plan that did not finish, and for one that
 // declared no list.
@@ -247,7 +244,7 @@ func planFiles(job Job, steps []earlier, plan int) []string {
 	if plan < 0 || !steps[plan].result.Done || !strings.EqualFold(stageLabel(job.Stage), writeStep) {
 		return nil
 	}
-	files := factory.ParsePlanFiles(steps[plan].result.Output)
+	files := steps[plan].result.PlanFiles()
 	if len(files) == 0 {
 		return nil
 	}

@@ -277,6 +277,10 @@ func asked(prev, cur factory.Item, lines []factory.LogLine) (*factory.Asked, str
 	} else if s := cur.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) {
 		q.Stage = s.Phases[s.Cur].Name
 	}
+	if cur.QKind == factory.QKindSpendStopped {
+		q.Stage = ""
+		q.Options = []string{"yes", "no"}
+	}
 	return &q, cur.QKind
 }
 

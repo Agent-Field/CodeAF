@@ -568,6 +568,7 @@ type Item struct {
 	PublishStatus *Publishing `json:",omitempty"`
 	Triage        Triage
 	Stages        []Stage // the item's copy of the recipe, toggled
+	StopAfterStep bool
 	Cap           float64
 
 	// Assignee is the forge's person; Taker and Starter keep the person who

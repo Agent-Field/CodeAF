@@ -301,3 +301,13 @@ func (w *WorkerClient) RecoveryRetry(ctx context.Context, id int) (time.Time, er
 	_, err := w.send(ctx, http.MethodGet, fmt.Sprintf("/v1/workers/recover/%d", id), w.credential, nil, &out)
 	return out.RetryRequestedAt, err
 }
+
+// StopAfterStep reads the person's current choice under this job's lease.
+// A boundary reads it directly rather than waiting for a periodic heartbeat.
+func (w *WorkerClient) StopAfterStep(ctx context.Context, lease string) (bool, error) {
+	var out struct {
+		On bool `json:"on"`
+	}
+	_, err := w.send(ctx, http.MethodGet, leasePath(lease, "stop-after-step"), w.credential, nil, &out)
+	return out.On, err
+}

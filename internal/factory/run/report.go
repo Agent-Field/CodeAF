@@ -317,7 +317,7 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		q.At = now
 	}
 	q.With = factory.AskedYou
-	if q.Stage != "" {
+	if q.Stage != "" && kind != factory.QKindSpendStopped {
 		i := phaseIndex(it, q.Stage)
 		if i < 0 {
 			return fmt.Errorf("question names an unknown step")
@@ -525,7 +525,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	// ([factory.PlanFilesOf]); the cache remains for older builds reading the
 	// same persisted item.
 	if res.Done && strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
-		it.PlannedFiles = factory.ParsePlanFiles(res.Output)
+		it.PlannedFiles = res.PlanFiles()
 	}
 }
 
