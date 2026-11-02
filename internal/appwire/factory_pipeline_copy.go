@@ -16,9 +16,9 @@ import (
 // write, kept in the factory's store, so the jobs THAT FACTORY starts
 // afterwards run it at once. Nothing is pushed and no pull request is opened;
 // factory.pipeline_pr stays the way to share the steps with the repository.
-// The owner decided this on 2026-10-28 (factory.RecipeSource records who reads
-// what, and the precedence: the factory's copy, else main's file, else the
-// built-in steps). The copy clears itself once main's file says the same.
+// The factory's copy wins over main's file, and main's file over the built-in
+// steps (factory.RecipeSource records who reads what). The copy clears itself
+// once main's file says the same.
 //
 // THE PARAMS ARE {factory, repo, text, expect} and {factory, repo, expect}.
 // expect.version is REQUIRED on both, from 1: the copy_version of the
