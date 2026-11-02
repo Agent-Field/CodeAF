@@ -85,14 +85,11 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			}
 			s.backend.local.rules = read
 			var launch func(int) error
-			var signedIn atomic.Bool
 			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
-				// Keep the automatic model worker off; below, a real worker uses a scripted plan.
+				// The election lock below keeps the automatic worker off; a real
+				// worker uses the scripted model after Start.
 				seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
-					if signedIn.Load() {
-						return factory.GitHubLink{Login: "owner"}, nil
-					}
-					return factory.GitHubLink{}, nil
+					return factory.GitHubLink{Login: "owner"}, nil
 				}
 				st, err := store.Open(v3FactoryRoot())
 				if err != nil {
@@ -106,6 +103,15 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				seam.Launch = launch
 				return seam
 			}
+			election, err := store.Open(v3FactoryRoot())
+			if err != nil {
+				t.Fatal(err)
+			}
+			release, ok := election.TryWorker()
+			if !ok {
+				t.Fatal("runner election lock unavailable")
+			}
+			t.Cleanup(release)
 			status := s.start()
 			floor := s.backend.local.host.floor
 			if err := floor.SetCheckout("acme/api", dir); err != nil {
@@ -264,7 +270,6 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			s.must("factory.job", params, &held)
 			params["expect"] = map[string]any{"version": held.Version}
 			params["commit"] = held.HeadCommit
-			signedIn.Store(true)
 			var approved appwire.FactoryJobActed
 			s.must("factory.job_approve", params, &approved)
 			for deadline := time.Now().Add(factory.ApprovalUndo + 5*time.Second); func() bool { model.mu.Lock(); defer model.mu.Unlock(); return len(model.models) == callsAtHold }() && time.Now().Before(deadline); {
