@@ -56,6 +56,9 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		return StepControlRefusal("job budget reached; raise Budget before trying again")
 	}
 	if rerun {
+		if err := unchangedFollowRefusal(*it, s.Phases[index]); err != nil {
+			return err
+		}
 		it.Recovery = nil
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {

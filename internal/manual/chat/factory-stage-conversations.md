@@ -936,3 +936,8 @@ the diff, description, feedback and unfinished-work checks. Missing or incomplet
 fields are returned to the model during `stage_result`, so it can correct the
 report in the same conversation. Prose alone does not complete the assessment.
 The runner still checks that the published head and clean checkout agree.
+
+If a no-change report was refused against the same PR head, comments and check
+state, **Try again** returns without starting a paid round. It says to wait for
+a new push or comment, or stop the job. New PR facts permit a fresh attempt.
+Attempt exhaustion alone never opens Merge or acknowledges a requested change.
