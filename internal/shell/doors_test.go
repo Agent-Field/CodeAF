@@ -25,10 +25,11 @@ func TestUnixDoorArgv(t *testing.T) {
 		{"exec/bare/tools.go", "newBashTool", `append([]string{shell}, shellArgs...)`},
 		{"exec/bare/streaming.go", "StreamingShell", `getShellConfig(command)`},
 		{"session/jobs.go", "jobShell", `shell.Preferred()`},
+		{"session/jobs.go", "jobShell", `shell.PipefailArgs(program, flags, command)`},
 		// Job spawning moved under the cancellable admission door without changing its argv.
 		{"session/jobs.go", "startInUnder", `append([]string{program}, shellArgs...)`},
-		{"session/tools_watch.go", "runTick", `append([]string{shell}, append(shellArgs, spec.command)...)`},
-		{"session/automation_run.go", "automationLookCommand", `append([]string{shell}, append(args, command)...)`},
+		{"session/tools_watch.go", "runTick", `append([]string{shell}, shellArgs...)`},
+		{"session/automation_run.go", "automationLookCommand", `append([]string{shell}, args...)`},
 		{"session/principal_audit.go", "runOneCheck", `[]string{bash, "-c", check}`},
 		{"verify/run.go", "RunReading", `[]string{bash, "-c", strictPreamble + strategy.Command}`},
 	} {

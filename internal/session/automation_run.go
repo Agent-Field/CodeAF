@@ -171,13 +171,13 @@ func automationLookCommand(ctx context.Context, workspace, command string) (auto
 	if err := markTaskStorageUncertain(workspace); err != nil {
 		return automation.Sight{}, err
 	}
-	shell, args, shellErr := jobShell()
+	shell, args, shellErr := jobShell(command)
 	if shellErr != nil {
 		return automation.Sight{}, shellErr
 	}
 	// I0: an automation look has host access but still uses the command runner.
 	process, err := procexec.Host.In(workspace).Command(ctx, procexec.ExecRequest{
-		Argv: append([]string{shell}, append(args, command)...), Env: bare.StreamingEnv(),
+		Argv: append([]string{shell}, args...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
 	})
 	if err != nil {
