@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A raised budget resumes an Auto job its runner parked at the cap
-pr: 0
+pr: 2169
 surface: [engine]
 invalidates:
   - "Was true: raise_budget resumed an Auto job only when its desk copy had no open ask. A worker's report puts the cap question on that copy as Asking, so a held job parked at its cap stayed parked. Is true now: when the open ask is the cap question and the new cap clears the spend, the raise answers it \"continue\" through the answer door a person's answer uses. The ask comes down, the ledger records budget_changed and then answered, and the timeline says the budget was raised and the job carries on."
