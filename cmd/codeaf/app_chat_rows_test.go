@@ -162,10 +162,14 @@ func TestAppChatRowsR2SavedTurnTime(t *testing.T) {
 	if _, err := e.Seal(t.Context(), c, cellstore.TurnInfo{}); err != nil {
 		t.Fatal(err)
 	}
-	b, _, _ := appDeviceBackend(t, home)
-	if _, err := b.ListChats(); err != nil {
-		t.Fatal(err)
-	}
+	s := appDeviceSync(t, home)
+	appDeviceBackend(t, home)
+	// The startup pass publishes in the background; chats.list never waits
+	// for it (#2031).
+	appSyncWait(t, "the startup pass to publish the chat", func() bool {
+		_, err := s.Dir.Cell(t.Context(), c.ID)
+		return err == nil
+	})
 	_, _, wire := appDeviceBackend(t, peer)
 	check := func(want time.Time) {
 		t.Helper()
@@ -180,7 +184,6 @@ func TestAppChatRowsR2SavedTurnTime(t *testing.T) {
 		}
 	}
 	check(saved)
-	s := appDeviceSync(t, home)
 	v, err := s.Dir.Acquire(t.Context(), c.ID, directory.AcquireOpts{})
 	if err != nil {
 		t.Fatal(err)
@@ -245,10 +248,9 @@ func TestAppChatStartupR3QuietRelease(t *testing.T) {
 	}
 	c := appFinishedCell(t, home, "Startup R3")
 	b, _, _ := appDeviceBackend(t, home)
-	// List joins the finite startup pass without opening a chat.
-	if _, err := b.ListChats(); err != nil {
-		t.Fatal(err)
-	}
+	// The startup pass publishes in the background without opening a chat;
+	// chats.list never waits for it (#2031).
+	appSyncWait(t, "the startup pass to release the chat", func() bool { return releases.Load() > 0 })
 	v, err := s.Dir.Cell(t.Context(), c.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -263,10 +265,8 @@ func TestAppChatStartupR3QuietRelease(t *testing.T) {
 	if err := b.Close(); err != nil {
 		t.Fatal(err)
 	}
-	restarted, _, _ := appDeviceBackend(t, home)
-	if _, err := restarted.ListChats(); err != nil {
-		t.Fatal(err)
-	}
+	// One whole startup pass of the restarted app, observed as it settles.
+	r1PublicationRounds(t, &appBackend{left: make(chan struct{}), emit: newAppRecorder()})
 	if releases.Load() != 1 {
 		t.Fatal("R3 restart released an existing chat")
 	}
