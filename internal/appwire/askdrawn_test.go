@@ -7,9 +7,9 @@ import (
 
 type drawnAttender struct{ fakeEngine }
 
-func (drawnAttender) DeferAsk(string, string) (*Ask, error) { return nil, nil }
-func (drawnAttender) ShowAsk(string, string) (*Ask, error)  { return nil, nil }
-func (drawnAttender) Since(string, string) (Since, error)   { return Since{}, nil }
+func (*drawnAttender) DeferAsk(string, string) (*Ask, error) { return nil, nil }
+func (*drawnAttender) ShowAsk(string, string) (*Ask, error)  { return nil, nil }
+func (*drawnAttender) Since(string, string) (Since, error)   { return Since{}, nil }
 
 // A surface sends asks.shown when it has drawn an ask's card; an engine whose
 // choice clock waits for that says so, and an older one does not.
