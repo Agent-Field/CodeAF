@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -193,6 +194,166 @@ func TestFactoryCommandStepRetryAfterOutOfAttempts(t *testing.T) {
 					break
 				}
 			}
+		})
+	}
+}
+
+// Rerunning Write from a Manual approval replaces the worker that is still
+// waiting at the gate. Write must call its model before lease recovery, and
+// the replacement must ask for approval again without reporting a Stop.
+func TestFactoryStepRerunFromApproveGate(t *testing.T) {
+	for _, slots := range []string{"", "2", "1"} {
+		name := slots
+		if name == "" {
+			name = "default"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := newLocalSetup(t)
+			s.backend.emit = s.server
+			t.Setenv(factoryBenchesEnv, slots)
+			model := newStageModel(t)
+			t.Setenv("OPENROUTER_API_KEY", "test-key")
+			t.Setenv("CODEAF_BASE_URL", model.server.URL)
+			g := newRunRig(t)
+			freshEngineProcess(t)
+			freshEngineFactoryStore(t)
+			s.backend.open = appOpenInProcess
+			s.backend.local.parent = func() session.Config {
+				return session.Config{Workspace: g.workspace, Model: "test/model", OneModel: true, APIKey: "test-key", BaseURL: model.server.URL}
+			}
+			st := s.start()
+			floor := s.backend.local.host.floor
+			if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
+				t.Fatal(err)
+			}
+			id, err := floor.Add(context.Background(), factory.Item{
+				Repo: "acme/api", Num: 7, Kind: factory.KindIssue, Tier: factory.TierOwner, Cap: 10,
+				Title: "Rerun Write from the Test gate", Autonomy: factory.AutonomyManual,
+				Stages: []factory.Stage{
+					{Name: "write", Kind: factory.StageChat, On: true, Ask: "Write the change and report done.", Until: factory.UntilDone, Max: 1},
+					{Name: "approve-test", Kind: factory.StageGate, On: true},
+					{Name: "test", Kind: factory.StageCheck, On: true, Ask: "true", Until: factory.UntilGreen, Max: 1},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			read := func() api.Job {
+				var j api.Job
+				s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &j)
+				if j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline || j.Failure != nil && j.Failure.Code == factory.CodeStopped {
+					t.Fatalf("rerun reported offline or stopped: %+v", j)
+				}
+				for _, step := range j.Steps {
+					if step.Failure != nil {
+						t.Fatalf("step failed: %+v", step)
+					}
+				}
+				return j
+			}
+			act := func(method string, extra map[string]any) {
+				j := read()
+				p := map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": j.Version}}
+				for k, v := range extra {
+					p[k] = v
+				}
+				s.must(method, p, &appwire.FactoryJobActed{})
+			}
+			wait := func(what string, ok func(api.Job) bool) api.Job {
+				t.Helper()
+				deadline := time.Now().Add(10 * time.Second)
+				for {
+					j := read()
+					if ok(j) {
+						return j
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("%s: state=%s needs=%+v held=%+v steps=%+v", what, j.State, j.NeedsYou, j.HeldBy, j.Steps)
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+			}
+			calls := func() int {
+				model.mu.Lock()
+				defer model.mu.Unlock()
+				n := 0
+				for _, belt := range model.belts {
+					for _, tool := range belt {
+						if tool == "stage_result" {
+							n++
+							break
+						}
+					}
+				}
+				return n
+			}
+			gate := func(j api.Job) bool {
+				return j.State == api.StateNeedsYou && j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsApprovePlan && j.Steps[0].State == "done" && j.Steps[1].State == "waiting"
+			}
+			act("factory.job_start", nil)
+			first := wait("Manual job reaches Test approval", gate)
+			if first.Autonomy != factory.AutonomyManual || first.HeldBy == nil || calls() == 0 {
+				t.Fatalf("approval must hold a live worker after a model step: %+v calls=%d", first, calls())
+			}
+			var chats appwire.FactoryJobChats
+			s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": id}, &chats)
+			for attempt := 1; attempt <= 3; attempt++ {
+				before := calls()
+				started := time.Now()
+				act("factory.job_step_rerun", map[string]any{"step": "write"})
+				wait("rerun Write must call its model within 10 seconds, before the 60-second lease timeout", func(api.Job) bool { return calls() > before })
+				elapsed := time.Since(started)
+				after := wait("Write finishes and Test asks again", gate)
+				if after.Steps[2].State != "pending" || after.HeldBy == nil {
+					t.Fatalf("Test must still wait for approval with its worker holding the lease: %+v", after)
+				}
+				t.Logf("rerun %d: model called in %s; Write=%s gate=%s Test=%s", attempt, elapsed, after.Steps[0].State, after.Steps[1].State, after.Steps[2].State)
+			}
+			// Manager notices are asynchronous; read the saved rows and emitted events
+			// after the replacement has reported its new gate.
+			time.Sleep(600 * time.Millisecond)
+			var page appwire.EntriesResult
+			s.must("agents.entries", map[string]any{"id": chats.Agent, "limit": 200}, &page)
+			for _, e := range page.Entries {
+				if e.ErrorKind == appwire.ErrorStopped || e.Text == "stopped" || e.Progress != nil && e.Progress.Event == string(factory.ProgressStopped) {
+					t.Errorf("rerun added a stopped row: %+v", e)
+				}
+			}
+			s.mu.Lock()
+			lines := append([]string(nil), s.lines...)
+			s.mu.Unlock()
+			for _, line := range lines {
+				if strings.Contains(line, `"runner_offline"`) {
+					t.Errorf("runner_offline event: %s", line)
+				}
+				var envelope struct {
+					Event string `json:"event"`
+				}
+				if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Event != appwire.EventTurnDone && envelope.Event != appwire.EventEntryAdded {
+					continue
+				}
+				var ev struct {
+					Event string `json:"event"`
+					Data  struct {
+						Agent     string        `json:"agent"`
+						ErrorKind string        `json:"error_kind"`
+						Entry     appwire.Entry `json:"entry"`
+					} `json:"data"`
+				}
+				if err := json.Unmarshal([]byte(line), &ev); err != nil {
+					t.Fatal(err)
+				}
+				if ev.Event == appwire.EventTurnDone && ev.Data.Agent == chats.Agent && ev.Data.ErrorKind == appwire.ErrorStopped {
+					t.Errorf("rerun emitted a stopped manager turn: %s", line)
+				}
+				if ev.Event == appwire.EventEntryAdded && ev.Data.Entry.Agent == chats.Agent && (ev.Data.Entry.ErrorKind == appwire.ErrorStopped || ev.Data.Entry.Text == "stopped" || ev.Data.Entry.Progress != nil && ev.Data.Entry.Progress.Event == string(factory.ProgressStopped)) {
+					t.Errorf("rerun emitted a stopped row: %s", line)
+				}
+			}
+			read()
 		})
 	}
 }
