@@ -294,9 +294,9 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 			}
 		}
 		delay := max(int64(0), phase.At.Sub(workEnd).Milliseconds())
-		// Compiler calls are serial. Intersect their intervals with the measured
-		// stage tail so background work after stream close is not counted as wait.
-		var memoryMS int64
+		// Parallel compiler requests overlap. Count their wall-time union in
+		// this stage's tail rather than adding their request durations.
+		intervals := [][2]time.Time{}
 		for _, row := range calls {
 			if row.Tag != "memory" {
 				continue
@@ -310,7 +310,20 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 				end = phase.At
 			}
 			if end.After(begin) {
+				intervals = append(intervals, [2]time.Time{begin, end})
+			}
+		}
+		sort.Slice(intervals, func(i, j int) bool { return intervals[i][0].Before(intervals[j][0]) })
+		var memoryMS int64
+		var covered time.Time
+		for _, interval := range intervals {
+			begin, end := interval[0], interval[1]
+			if begin.Before(covered) {
+				begin = covered
+			}
+			if end.After(begin) {
 				memoryMS += end.Sub(begin).Milliseconds()
+				covered = end
 			}
 		}
 		delays = append(delays, delay)
