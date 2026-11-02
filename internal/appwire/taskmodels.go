@@ -2,6 +2,7 @@ package appwire
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -33,6 +34,22 @@ const (
 	// Auto never picks it; unpinned, it is the build's own small-work model.
 	// Engines that serve it say [FeatureTaskModelsAuxiliary] in the hello.
 	RoleAuxiliary = "auxiliary"
+	// RoleInsight is the model every page AI writes with, and each override
+	// is one page feature: a repository's notes, an answer to a question about
+	// it, the themes in its backlog, a pipeline built with AI, a factory's
+	// topic views, and a factory's arrival read and closer look. They are errand roles,
+	// not task roles; Auto never picks them. An override nobody pinned
+	// follows insight, and insight nobody pinned runs on the engine's default
+	// for it when there is one, else on its tier. Engines that serve them say
+	// [FeatureTaskModelsInsight] in the hello.
+	RoleInsight             = "insight"
+	RoleInsightNotes        = "insight_notes"
+	RoleInsightAsk          = "insight_ask"
+	RoleInsightThemes       = "insight_themes"
+	RoleInsightPipeline     = "insight_pipeline"
+	RoleInsightViews        = "insight_views"
+	RoleInsightFactoryRead  = "insight_factory_read"
+	RoleInsightFactoryScout = "insight_factory_scout"
 
 	// WarnPinNotAllowed is a role pinned to a model the allowed models no
 	// longer admit: the pin is kept, and the role runs on Auto until the
@@ -115,6 +132,67 @@ type TaskModelRoles struct {
 	// many available models it could be pinned to. Absent from an engine that
 	// does not serve it ([FeatureTaskModelsAuxiliary]).
 	Auxiliary *TaskModelRole `json:"auxiliary,omitempty"`
+	// The page AI's roles ([RoleInsight]); absent from an engine that does not
+	// serve them ([FeatureTaskModelsInsight]).
+	Insight             *TaskModelRole `json:"insight,omitempty"`
+	InsightNotes        *TaskModelRole `json:"insight_notes,omitempty"`
+	InsightAsk          *TaskModelRole `json:"insight_ask,omitempty"`
+	InsightThemes       *TaskModelRole `json:"insight_themes,omitempty"`
+	InsightPipeline     *TaskModelRole `json:"insight_pipeline,omitempty"`
+	InsightViews        *TaskModelRole `json:"insight_views,omitempty"`
+	InsightFactoryRead  *TaskModelRole `json:"insight_factory_read,omitempty"`
+	InsightFactoryScout *TaskModelRole `json:"insight_factory_scout,omitempty"`
+}
+
+// insightRoles is each page-AI role with its name in the person's words, the
+// family first, in the order a settings screen lists them. The label rides
+// the row so a desk draws a role it has never heard of with no work of its own.
+var insightRoles = []struct{ key, label string }{
+	{RoleInsight, "Page AI"}, {RoleInsightNotes, "Repo notes"}, {RoleInsightAsk, "Repo ask"},
+	{RoleInsightThemes, "Repo themes"}, {RoleInsightPipeline, "Build with AI"}, {RoleInsightViews, "Topic views"},
+	{RoleInsightFactoryRead, "Factory read"}, {RoleInsightFactoryScout, "Factory scout"},
+}
+
+// InsightRoleKeys is the page AI's roles, in [insightRoles]' order.
+var InsightRoleKeys = func() []string {
+	keys := make([]string, len(insightRoles))
+	for i, role := range insightRoles {
+		keys[i] = role.key
+	}
+	return keys
+}()
+
+// InsightLabel is a page-AI role's name in the person's words, "" for a word
+// that is not one.
+func InsightLabel(key string) string {
+	for _, role := range insightRoles {
+		if role.key == key {
+			return role.label
+		}
+	}
+	return ""
+}
+
+// InsightRow is the field that carries one page-AI role's row, or nil for a
+// word that is not one, so a caller fills every row from [InsightRoleKeys].
+func (r *TaskModelRoles) InsightRow(role string) **TaskModelRole {
+	return map[string]**TaskModelRole{
+		RoleInsight: &r.Insight, RoleInsightNotes: &r.InsightNotes, RoleInsightAsk: &r.InsightAsk,
+		RoleInsightThemes: &r.InsightThemes, RoleInsightPipeline: &r.InsightPipeline, RoleInsightViews: &r.InsightViews,
+		RoleInsightFactoryRead: &r.InsightFactoryRead, RoleInsightFactoryScout: &r.InsightFactoryScout,
+	}[role]
+}
+
+// FeatureTaskModelsInsight is the hello's word for an engine whose
+// settings.models.get answers roles.insight and its three overrides, whose
+// settings.models.set takes those pins, and whose agents.errand routes them.
+const FeatureTaskModelsInsight = "settings.models.insight"
+
+func withTaskModelsInsightFeature(h Hello, e Engine) Hello {
+	if _, ok := e.(TaskModelsLister); !ok {
+		return h
+	}
+	return withFeature(h, FeatureTaskModelsInsight)
 }
 
 // FeatureTaskModelsAuxiliary is the hello's word for an engine whose
@@ -135,6 +213,16 @@ type TaskModelRole struct {
 	Pin           *ModelRef `json:"pin"`
 	Warning       *string   `json:"warning" enum:"pin_not_allowed,provider_unavailable,pin_unknown,no_eligible"`
 	EligibleCount int       `json:"eligible_count"`
+	// Default is the model an unpinned role runs on because the engine chose
+	// it, not the person: insight's default while its provider is connected
+	// and the allowed models admit it. Absent, an unpinned role follows its
+	// tier. It is never a pin and is never written.
+	Default *ModelRef `json:"default,omitempty"`
+	// Follows names the role an unpinned override runs as: "insight".
+	Follows string `json:"follows,omitempty"`
+	// Label is the row's name in the person's words ("Build with AI"), sent
+	// on the page AI's rows only; absent on the task roles.
+	Label string `json:"label,omitempty"`
 }
 
 // TaskModelsProvider is one provider's header. A provider with no key is
@@ -242,6 +330,16 @@ type TaskModelPinsWire struct {
 	Checker *ModelRef `json:"checker,omitempty" nullable:"true"`
 	// Auxiliary is the small-jobs model; null gives the build's default back.
 	Auxiliary *ModelRef `json:"auxiliary,omitempty" nullable:"true"`
+	// The page AI's pins; null on an override follows insight again, null on
+	// insight gives back the engine's default or the tier.
+	Insight             *ModelRef `json:"insight,omitempty" nullable:"true"`
+	InsightNotes        *ModelRef `json:"insight_notes,omitempty" nullable:"true"`
+	InsightAsk          *ModelRef `json:"insight_ask,omitempty" nullable:"true"`
+	InsightThemes       *ModelRef `json:"insight_themes,omitempty" nullable:"true"`
+	InsightPipeline     *ModelRef `json:"insight_pipeline,omitempty" nullable:"true"`
+	InsightViews        *ModelRef `json:"insight_views,omitempty" nullable:"true"`
+	InsightFactoryRead  *ModelRef `json:"insight_factory_read,omitempty" nullable:"true"`
+	InsightFactoryScout *ModelRef `json:"insight_factory_scout,omitempty" nullable:"true"`
 }
 
 // TaskModelsResult is settings.models.get's and settings.models.set's answer.
@@ -408,12 +506,12 @@ func decodeTaskModelsPatch(raw json.RawMessage) (TaskModelsPatch, error) {
 		case "pins":
 			var pins map[string]json.RawMessage
 			if json.Unmarshal(value, &pins) != nil || pins == nil {
-				return patch, Errorf(CodeBadParams, "pins is {worker?, planner?, checker?, auxiliary?}")
+				return patch, Errorf(CodeBadParams, "pins is {worker?, planner?, checker?, auxiliary?, %s? …}", strings.Join(InsightRoleKeys, "?, "))
 			}
 			patch.Pins = map[string]*ModelRef{}
 			for role, pin := range pins {
-				if !taskModelRole(role) && role != RoleAuxiliary {
-					return patch, Errorf(CodeBadParams, "pins: %q is not a role · worker, planner, checker or auxiliary", role)
+				if !taskModelRole(role) && role != RoleAuxiliary && !slices.Contains(InsightRoleKeys, role) {
+					return patch, Errorf(CodeBadParams, "pins: %q is not a role · worker, planner, checker, auxiliary or %s", role, strings.Join(InsightRoleKeys, ", "))
 				}
 				if string(pin) == "null" {
 					patch.Pins[role] = nil
