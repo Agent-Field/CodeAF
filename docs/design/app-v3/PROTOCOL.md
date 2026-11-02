@@ -364,7 +364,7 @@ Step Stop still requires the named step to be current and running, and refuses
 finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
-requests. Other job actions still require their existing guards.
+requests. Other job actions retain their guards except Pause and Resume, described below.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
@@ -376,7 +376,12 @@ its conversation when available. Pause releases the worker lease and capacity
 slot after the cancelled round's final work and spending are saved. Resume queues
 the saved run for a worker: it continues as soon as a slot is free, or reads as
 an ordinary queued job with the existing waiting presentation while slots are busy.
-No model round starts while it waits.
+No model round starts while it waits. Progress alone never makes Pause or Resume
+stale: both accept an outdated `expect.version`. A stopped or finished job refuses
+Pause with `conflict` and “<job> is not running”; a stopped job refuses Resume
+with `conflict` and “<job> is not paused”. A refusal changes neither the job nor
+its activity record and starts no model round. Stop committed before Resume wins.
+No additional hello feature is needed; desks still send the same `expect` shape.
 
 The job's person may use these actions. `can.hold` permits a queued or running
 job, excluding a job waiting for a person, finished or publishing; `can.resume`
@@ -385,8 +390,10 @@ after its lease is released, with `can.resume: true`,
 `state_presentation.kind: "paused"`, title `Paused`, and no new question.
 After Resume, `state` is `queued` until a worker takes a free slot; its paused
 flag is cleared and the ordinary queue presentation applies. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
-name the caller. Existing errors apply: `forbidden` for another person's job,
-`conflict` for an inapplicable state, `stale` for an outdated version, and
+name the caller. Explicit Resume also writes exactly one `resumed` line into the
+manager chat, including while the old lease drains; a repeated Resume adds none.
+Automatic continuation does not add this explicit-action note. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, and
 `bad_params` for an
 invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
 uses a new chat.

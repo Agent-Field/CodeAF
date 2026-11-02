@@ -62,7 +62,7 @@ const (
 	sayShipped   = "Published · the result is available on GitHub; this does not mean it has been merged."                                                                                                                                                                                                                                          // approved, or shipped itself as a habit
 	sayStopped   = "stopped"
 	sayPaused    = "paused"
-	sayResumed   = "resumed"
+	sayResumed   = ResumeNote
 	sayTrying    = "trying %s again"
 	saySteer     = "steer: %s"       // what the person typed during a run
 	sayBack      = "sent back to %s" // sent back to plan: <the person's words>, from an approve step
@@ -84,6 +84,9 @@ const talkOwedMost = 200
 // ErrTalkGone is a [Talk.Say] for a conversation that is not there any more:
 // its lines are dropped rather than owed.
 var ErrTalkGone = errors.New("the item's conversation is gone")
+
+// ResumeNote is the explicit Resume line shared by the lease door and runner.
+const ResumeNote = "resumed"
 
 // Talk is the manager conversation's file, read and written. cmd/codeaf wires
 // internal/session's doors ([session.AppendProgress], [session.PersonLines],
