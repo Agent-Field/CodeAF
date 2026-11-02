@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -78,4 +79,81 @@ func TestJobReadCarriesTheBriefMark(t *testing.T) {
 	if j := f.read(t, it); j.Brief == nil || *j.Brief != (api.BriefMark{Rev: 1, Status: factory.BriefStatusGenerating}) {
 		t.Fatalf("mark = %+v", j.Brief)
 	}
+}
+
+func (f *v2Jobs) briefPost(t *testing.T, it factory.Item, verb, body string, status int, out any) {
+	t.Helper()
+	w := f.post(t, it, "brief/"+verb, body, status)
+	if out != nil {
+		if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A WRITE OF THE BRIEF, THROUGH THE FACTORY: begin hands the writer its
+// prompt and the job's input and marks the brief generating; the same
+// inputs begin nothing; keep checks the draft against the job, keeps what
+// passed, says each drop, and books the call's cost to the job.
+func TestJobBriefBeginAndKeep(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Title: "Fix retries", Stream: &factory.Stream{Spent: 1, Phases: []factory.Phase{
+		{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}},
+	}}})
+	var begin api.BriefBegin
+	f.briefPost(t, it, "begin", `{"trigger":"step"}`, 200, &begin)
+	if begin.Skip != "" || begin.Hash == "" || !strings.Contains(begin.System, "ONE JSON object") || !strings.Contains(begin.Input, `"title":"Fix retries"`) {
+		t.Fatalf("begin = %+v", begin)
+	}
+	if b := f.brief(t, it, "", 200); b.Status != factory.BriefStatusGenerating {
+		t.Fatalf("status = %s", b.Status)
+	}
+	draft := `{"verdict":"Fixed; 3 tests pass.","verdict_evidence":[{"step":"test","try":1,"kind":"tests"}],"blocks":[{"kind":"bullets","heading":"What happened","bullets":[{"text":"4 tests pass","evidence":[{"step":"test","try":1,"kind":"tests"}]},{"text":"a cause","evidence":[{"step":"test","try":1,"kind":"tests"}]}]}]}`
+	keep, _ := json.Marshal(api.BriefKeepRequest{Hash: begin.Hash, Model: "deepseek/deepseek-v4.1-flash", CostUSD: 0.002, Draft: draft})
+	var kept api.BriefKept
+	f.briefPost(t, it, "keep", string(keep), 200, &kept)
+	if !kept.Kept || kept.Status != factory.BriefStatusReady || kept.Brief.Rev != 1 || kept.Brief.Model != "deepseek/deepseek-v4.1-flash" ||
+		len(kept.Brief.Blocks) != 1 || len(kept.Brief.Blocks[0].Bullets) != 1 || len(kept.Drops) != 1 || kept.Brief.Facts[0].Value != "3 passed" {
+		t.Fatalf("kept = %+v", kept)
+	}
+	if cur, _ := f.st.Get(it.ID); cur.Stream.Spent != 1.002 {
+		t.Fatalf("job spend = %v", cur.Stream.Spent)
+	}
+	begin = api.BriefBegin{}
+	f.briefPost(t, it, "begin", `{"trigger":"ask"}`, 200, &begin)
+	if begin.Skip != factory.BriefSkipUnchanged || begin.Input != "" {
+		t.Fatalf("same inputs = %+v", begin)
+	}
+	f.briefPost(t, it, "begin", `{"trigger":"retry"}`, 200, &begin)
+	kept = api.BriefKept{}
+	f.briefPost(t, it, "keep", `{"hash":"x","failure":"model_failed"}`, 200, &kept)
+	if kept.Kept || kept.Status != factory.BriefStatusFailed || kept.Failure != "model_failed" || kept.Brief.Rev != 1 {
+		t.Fatalf("failed write = %+v", kept)
+	}
+	f.briefPost(t, it, "begin", `{"trigger":"whenever"}`, 422, nil)
+	f.briefPost(t, it, "keep", `{"hash":"x"}`, 422, nil)
+	f.person = "mei"
+	f.briefPost(t, it, "begin", `{"trigger":"retry"}`, 403, nil)
+}
+
+// A SPOT OF THE BRIEF OPENS ON ITS HUNKS from the job's change, with the
+// writer's notes; a spot the newest version lacks is not found.
+func TestJobBriefSpotReadsItsHunks(t *testing.T) {
+	f := newV2Jobs(t)
+	it := factory.Item{State: factory.StateRunning, Assignee: "sam", Change: &factory.Change{
+		Patch: "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,2 +1,3 @@ func Send() {\n x\n+y\n",
+	}}
+	it.KeepBrief(factory.BriefVersion{Verdict: "Fixed.", Blocks: []factory.BriefBlock{{Kind: factory.BlockWhereToLook, Heading: "Where to look", Rest: "nothing else",
+		Spots: []factory.BriefSpot{{ID: "1", File: "a.go", Symbol: "Send", Lines: 1, Why: "the send", Notes: []factory.BriefNote{{Hunk: "a.go:1", Text: "adds y"}}}}}}})
+	it = f.create(t, it)
+	w := verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d/brief/spots/1", it.ID), "")
+	checkJSON(t, w, 200)
+	var got api.JobBriefSpot
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Rev != 1 || got.File != "a.go" || len(got.Hunks) != 1 || got.Hunks[0].Added != 1 || len(got.Annotations) != 1 || got.Annotations[0].Text != "adds y" {
+		t.Fatalf("spot = %+v", got)
+	}
+	checkJSON(t, verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d/brief/spots/2", it.ID), ""), 404)
 }

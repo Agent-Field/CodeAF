@@ -114,6 +114,9 @@ type Config struct {
 	// applies without restarting the service.
 	TokensPath   string
 	PollingEvery time.Duration
+	// GitHubLimit is when GitHub's spent rate limit resets, zero when it is
+	// not spent. About says it, so an app can show why nothing is read.
+	GitHubLimit func() time.Time
 	// Store enables worker writes to the same documents the local runner uses.
 	Store *store.Store
 	// LeaseOptions supplies the claims desk's TTL and deterministic clock.
@@ -757,6 +760,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 // about is the join preview. It is the one /v1 read that does not require a
 // token, and it names no job or repository.
 func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
+	limited, resumes := h.githubLimited()
 	h.write(w, http.StatusOK, struct {
 		Factory       api.Factory `json:"factory"`
 		Scheme        string      `json:"scheme"`
@@ -770,8 +774,31 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		// AccessCheckPost is optional and public: POST /v1/factory-access takes
 		// verb "check", so a client need not put a link's secret in a URL.
 		AccessCheckPost bool `json:"access_check_post"`
+		// GitHubLimited is the sentence an app shows while GitHub's rate
+		// limit is spent, and GitHubResumesAt is when it resets.
+		GitHubLimited   string     `json:"github_limited,omitempty"`
+		GitHubResumesAt *time.Time `json:"github_resumes_at,omitempty"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy(), true})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes})
+}
+
+// githubLimited is the reason and reset time about carries while GitHub's
+// rate limit is spent, and nothing otherwise.
+func (h *Handler) githubLimited() (string, *time.Time) {
+	if h.config.GitHubLimit == nil {
+		return "", nil
+	}
+	until := h.config.GitHubLimit()
+	if until.IsZero() || !h.now().Before(until) {
+		return "", nil
+	}
+	return GitHubLimitedWords(until), &until
+}
+
+// GitHubLimitedWords is the one sentence that names a spent GitHub rate
+// limit, in the factory's own log and on its about page.
+func GitHubLimitedWords(until time.Time) string {
+	return "GitHub is rate-limited until " + until.Local().Format("15:04") + "; the factory keeps serving and reads GitHub again then"
 }
 
 func (h *Handler) accessMode() string {
