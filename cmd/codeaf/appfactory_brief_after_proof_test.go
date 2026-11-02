@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -196,6 +197,52 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 			t.Fatalf("refresh = %+v", first)
 		}
 	})
+
+	t.Run("end during a write is retried", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateLanded)
+		held := &heldBriefDoor{briefDoor: door, entered: make(chan struct{}), release: make(chan struct{})}
+		defer close(held.release)
+		s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+			return &appConn{Conv: held, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+		}
+		written := make(chan error, 1)
+		go func() {
+			_, err := s.backend.FactoryJobBriefWrite(context.Background(), appwire.FactoryJobBriefWriteParams{Factory: params["factory"].(string), Job: id})
+			written <- err
+		}()
+		select {
+		case <-held.entered:
+		case <-time.After(3 * time.Second):
+			t.Fatal("model never entered the first write")
+		}
+		briefPublishReceipt(t, s, id)
+		// The first answer remains blocked beyond the test host's debounce.
+		time.Sleep(100 * time.Millisecond)
+		held.release <- struct{}{}
+		select {
+		case err := <-written:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("first write never finished")
+		}
+		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 && g["verdict_behind"] == false })
+	})
+	t.Run("stop without an active round refreshes", func(t *testing.T) {
+		s, _, id, params := briefAfterProofSetup(t, factory.StateQueued)
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
+		if err := r.Stop(id); err != nil {
+			t.Fatal(err)
+		}
+		cur, _ := s.backend.local.host.floor.Get(id)
+		if cur.Failure != nil {
+			t.Fatalf("stop cut a step unexpectedly: %+v", cur.Failure)
+		}
+		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+	})
 	t.Run("plain step still costs too much", func(t *testing.T) {
 		it := factory.Item{Stream: &factory.Stream{Spent: 0.01}, Briefs: []factory.BriefVersion{{CostUSD: 0.02, InputHash: "old"}}}
 		if factory.BriefCostAllowed(it) {
@@ -269,4 +316,24 @@ func briefAfterProofRead(t *testing.T, s *localSetup, params map[string]any, ok 
 	raw, _ := json.Marshal(got)
 	t.Fatalf("brief never reached expected version/status: %s", raw)
 	return nil
+}
+
+// heldBriefDoor holds the first answer while the job reaches publication.
+type heldBriefDoor struct {
+	*briefDoor
+	first   atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (d *heldBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (session.ErrandAnswer, error) {
+	if d.first.CompareAndSwap(false, true) {
+		close(d.entered)
+		select {
+		case <-d.release:
+		case <-ctx.Done():
+			return session.ErrandAnswer{Reason: session.ErrandDeadline}, nil
+		}
+	}
+	return d.briefDoor.RunErrand(ctx, ask)
 }
