@@ -188,3 +188,29 @@ func TestARepoFileCannotGiveTheScoutOrdersOrASecret(t *testing.T) {
 		}
 	}
 }
+
+func TestAFileWhyCutAtTheLimitEndsInAnEllipsisAndAWholeOneDoesNot(t *testing.T) {
+	dir := repo(t)
+	s := &script{says: []string{`{"answer": {"files": [
+		{"path": "src/delivery.go", "why": "one two three four five six seven eight nine ten eleven twelve thirteen"},
+		{"path": "src/delivery_test.go", "why": "one two three four five six seven eight nine ten eleven twelve"},
+		{"path": "src", "why": "one two three four five six seven eight nine ten eleven, twelve, thirteen"}
+	]}}`}}
+	got, err := scout.Run(context.Background(), item, lookIn(dir), s.chat, scout.DefaultBudget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"one two three four five six seven eight nine ten eleven twelve…",
+		"one two three four five six seven eight nine ten eleven twelve",
+		"one two three four five six seven eight nine ten eleven, twelve…",
+	}
+	if len(got.Files) != len(want) {
+		t.Fatalf("files = %+v", got.Files)
+	}
+	for i, w := range want {
+		if got.Files[i].Why != w {
+			t.Errorf("file %d: why = %q, want %q", i, got.Files[i].Why, w)
+		}
+	}
+}
