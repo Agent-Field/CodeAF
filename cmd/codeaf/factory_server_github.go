@@ -13,7 +13,7 @@ import (
 )
 
 // factoryServerSeam keeps app grants on read doors; workers retain their own credentials.
-func factoryServerSeam(st *store.Store, tokensPath string) factory.Seam {
+func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) factory.Seam {
 	grantPath := factorygithub.GrantPath(tokensPath)
 	readToken := func(ctx context.Context) string {
 		token, _, _ := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
@@ -40,13 +40,14 @@ func factoryServerSeam(st *store.Store, tokensPath string) factory.Seam {
 			return factory.GitHubLink{Login: grant.Login, Via: via}, err
 		}
 		login, err := forge.NewClient(token).Me(ctx)
+		limit.saw(err)
 		return factory.GitHubLink{Login: login, Via: via}, err
 	}
 	return nudgeOnWatch(seam, st)
 }
 
 // startFactoryServerPoll rebuilds the read source per tick so replacing a grant takes effect.
-func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string) {
+func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit) {
 	guard.Go("factory/server-read", func() {
 		waker := factorygithub.NewWaker(st)
 		cursor := ""
@@ -59,6 +60,7 @@ func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath str
 			if src := factoryGitHub(ctx, st, token); src != nil {
 				next, err := factorygithub.PollOnce(ctx, src, st, cursor, time.Now)
 				cursor = next
+				limit.saw(err)
 				if err != nil {
 					failed++
 				} else {

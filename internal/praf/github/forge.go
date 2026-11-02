@@ -317,7 +317,9 @@ func (c *client) read(ctx context.Context, rawurl, etag string) ([]byte, string,
 			return nil, "", err
 		}
 		lastErr = err
-		if attempt == readAttempts-1 {
+		// A LIMIT THAT OUTLASTS ONE PAUSE IS AN ANSWER: every try before
+		// the reset is refused the same way, and sleeping only holds the caller.
+		if attempt == readAttempts-1 || rateSpentPastPause(err) {
 			break
 		}
 		if serr := c.sleep(ctx, c.pause(err, time.Duration(2*(attempt+1))*time.Second)); serr != nil {
@@ -356,6 +358,13 @@ func (c *client) write(ctx context.Context, method, rawurl string, payload any) 
 
 // pause is the wait before the next try: what GitHub asked for when it said,
 // capped at [maxRateSleep], and the fallback otherwise.
+// rateSpentPastPause is a rate limit whose reset is further off than the
+// longest pause a read takes.
+func rateSpentPastPause(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.RetryAfter > maxRateSleep
+}
+
 func (c *client) pause(err error, fallback time.Duration) time.Duration {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {

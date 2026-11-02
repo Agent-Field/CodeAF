@@ -237,6 +237,7 @@ decides which combinations are accepted.
 | `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
 | `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
+| `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
