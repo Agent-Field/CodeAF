@@ -173,3 +173,16 @@ func TestARunningJobsLeftIsWhatSimilarJobsSpentPastItsSpendSoFar(t *testing.T) {
 		t.Fatal("three jobs got past $5, yet a figure was made")
 	}
 }
+
+// A repository is one repository whatever the case of its name, both when
+// counting its jobs and when picking the nearest of them.
+func TestARepositorysJobsMatchWhateverTheCaseOfItsName(t *testing.T) {
+	var items []factory.Item
+	for i := range 5 {
+		items = append(items, finished(i+1, "Acme/API", rubric(1, 0, 1, 0, 0), 1, t0, 20))
+	}
+	r, ok := estimate.Open(items).For(open("acme/api", rubric(1, 0, 1, 0, 0)))
+	if !ok || r.Repo != "Acme/API" && r.Repo != "acme/api" {
+		t.Fatalf("range = %+v ok %v, want the repository's own jobs", r, ok)
+	}
+}

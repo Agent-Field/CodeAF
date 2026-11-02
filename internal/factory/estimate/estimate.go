@@ -263,7 +263,7 @@ func nearest(p point, done []Done) (inRepo, all []Done) {
 		if len(every[dist]) < Nearest {
 			every[dist] = append(every[dist], i)
 		}
-		if done[i].Repo == p.repo && len(repo[dist]) < Nearest {
+		if strings.EqualFold(done[i].Repo, p.repo) && len(repo[dist]) < Nearest {
 			repo[dist] = append(repo[dist], i)
 		}
 	}
