@@ -39,7 +39,7 @@ const briefDraft = `{"verdict":"Fixed. Retries no longer double-send; 3 tests pa
 // THE WRITER, THROUGH THE APP'S DOOR: factory.job_brief_write asks the job's
 // agent one errand under the brief role with the factory's prompt and input,
 // hands its answer to the factory, which keeps what its check passes, says
-// what it dropped and books the cost to the job; the brief then reads it.
+// what it dropped; the brief then reads it. Billing belongs to the session.
 func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 	s := newLocalSetup(t)
 	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: briefDraft, Model: "deepseek/deepseek-v4.1-flash", Usage: session.ErrandUsage{CostUSD: 0.002}}}
@@ -75,7 +75,7 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 	if read.Brief.Rev != 1 || read.Brief.Verdict != "Fixed. Retries no longer double-send; 3 tests pass." {
 		t.Fatalf("read = %+v", read)
 	}
-	if cur, _ := floor.Get(it.ID); cur.Stream.Spent != 1.002 {
+	if cur, _ := floor.Get(it.ID); cur.Stream.Spent != 1 {
 		t.Fatalf("job spend = %v", cur.Stream.Spent)
 	}
 
