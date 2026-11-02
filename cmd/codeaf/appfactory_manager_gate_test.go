@@ -45,8 +45,9 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			}
 		}
 	})
-	for _, wrong := range []bool{false, true} {
-		t.Run(fmt.Sprintf("wrong_id_%v", wrong), func(t *testing.T) {
+	for _, scenario := range []string{"send_back", "wrong_id", "wrong_gate"} {
+		t.Run(scenario, func(t *testing.T) {
+			wrong := scenario == "wrong_id"
 			s := newLocalSetup(t)
 			local := s.start()
 			floor := s.backend.local.host.floor
@@ -114,6 +115,9 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			}
 			item := planJob("owner")
 			item.WorktreeMachine = "test-worker"
+			if scenario == "wrong_gate" {
+				item.QKind = "cap"
+			}
 			item.Repo, item.Num, item.Kind, item.Title = "acme/api", 7, factory.KindIssue, "Revise the plan"
 			item.Asking = &factory.Asked{Stage: "approve", With: factory.AskedYou, Question: item.Question, At: time.Now()}
 			item.Stages = []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true, Until: factory.UntilDone}, {Name: "approve", Kind: factory.StageGate, On: true}, {Name: "build", Kind: factory.StageChat, On: true, Until: factory.UntilDone}}
@@ -134,13 +138,13 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			mu.Lock()
 			gotStatus, gotResult := status, result
 			mu.Unlock()
-			if wrong {
+			if scenario != "send_back" {
 				if !strings.Contains(gotResult, "factory_status") || !strings.Contains(gotResult, "Nothing changed") || !strings.Contains(gotResult, "requested action did not happen") || strings.Contains(gotResult, "Action not confirmed") {
 					t.Fatalf("refusal lacks recovery and honest outcome: %s", gotResult)
 				}
 				after, _ := json.Marshal(read())
 				if string(after) != string(before) {
-					t.Fatalf("wrong id changed the job: %s", after)
+					t.Fatalf("refused action changed the job: %s", after)
 				}
 				return
 			}

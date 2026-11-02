@@ -447,6 +447,11 @@ func (d seamRunDoor) RejectPendingPlan(ctx context.Context, conversation, questi
 		return nil
 	})
 	if err != nil {
+		var refused factoryrun.PlanRevisionRefusal
+		var stale *store.StaleError
+		if errors.As(err, &refused) || errors.As(err, &stale) {
+			return "", fmt.Errorf("Nothing changed: %w", err)
+		}
 		return "", err
 	}
 	return "Plan sent back with the requested changes. The previous step will run again with those words and approval will be requested again afterward. This confirms the send-back, not that a worker has started; read factory_status for current progress.", nil
