@@ -23,8 +23,7 @@ import (
 // conversation and resumes the same step without losing its chat or spending.
 func TestFactoryRunningJobPause(t *testing.T) {
 	t.Run("leased round", func(t *testing.T) {
-		s := newLocalSetup(t)
-		status := s.start()
+		s, status := newPauseSetup(t)
 		floor := s.backend.local.host.floor
 		mirror, err := store.Open(t.TempDir())
 		if err != nil {
@@ -49,25 +48,12 @@ func TestFactoryRunningJobPause(t *testing.T) {
 			}
 			_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
 		}}
-		runner := factoryrun.New(factoryrun.Options{Store: mirror, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.NewChatExecutor(maker)}})
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan struct{})
-		var mu sync.Mutex
-		credential := ""
-		go func() {
-			defer close(done)
-			worker.Run(ctx, worker.Options{
-				Dial: func(int) *client.WorkerClient {
-					mu.Lock()
-					defer mu.Unlock()
-					return client.Open(status.URL, s.backend.local.host.token).Worker(credential)
-				},
-				Keep:   func(_ int, w *client.WorkerClient) { mu.Lock(); defer mu.Unlock(); credential = w.Credential() },
-				Attach: api.WorkerAttach{Machine: "pause-fixture", Name: "pause fixture", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
-				Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 20 * time.Millisecond, BeatEvery: 20 * time.Millisecond,
-			})
-		}()
-		t.Cleanup(func() { cancel(); <-done })
+		chat := factoryrun.NewChatExecutor(maker)
+		runner := factoryrun.New(factoryrun.Options{Store: mirror, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+			job.Spend(0.125)
+			return chat.Run(ctx, job)
+		})}})
+		startPauseWorker(t, s, status, runner, mirror)
 		it, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Pause this round", Kind: factory.KindIssue, Autonomy: factory.AutonomyManual, Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: factory.UntilDone, On: true}}})
 		if err != nil {
 			t.Fatal(err)
@@ -125,7 +111,7 @@ func TestFactoryRunningJobPause(t *testing.T) {
 			t.Fatal("pause did not cancel the model round")
 		}
 		paused := wait("paused", func(j api.Job) bool { return j.StatePresentation.Kind == "paused" && j.Can.Resume })
-		if paused.StatePresentation.Title != "Paused" || paused.Can.Hold || paused.NeedsYou != nil || paused.Failure != nil {
+		if paused.StatePresentation.Title != "Paused" || paused.Can.Hold || paused.NeedsYou != nil || paused.Failure != nil || paused.Cost != 0.125 {
 			t.Fatalf("paused job: %+v", paused)
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -141,7 +127,7 @@ func TestFactoryRunningJobPause(t *testing.T) {
 			t.Fatalf("resumed chat %q, want %q", second.Spec.Resume, first.ID())
 		}
 		close(finish)
-		wait("finished step", func(j api.Job) bool { return len(j.Steps) > 0 && j.Steps[0].State == api.StepDone })
+		wait("finished step", func(j api.Job) bool { return len(j.Steps) > 0 && j.Steps[0].State == api.StepDone && j.Cost == 0.25 })
 		history, err := record.Open(floor, record.Options{})
 		if err != nil {
 			t.Fatal(err)
@@ -208,11 +194,10 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		}
 	})
 	t.Run("no lease and refusals", func(t *testing.T) {
-		s := newLocalSetup(t)
-		status := s.start()
+		s, status := newPauseSetup(t)
 		floor := s.backend.local.host.floor
 		for _, state := range []factory.State{factory.StateRunning, factory.StateNew, factory.StateNeedsYou, factory.StateLanded} {
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Saved job", Kind: factory.KindIssue, State: state, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1, Chat: "saved-chat"}}, Spent: 0.25}})
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Saved job", Kind: factory.KindIssue, State: state, Autonomy: factory.AutonomyManual, Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: factory.UntilDone, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1, Chat: "saved-chat"}}, Spent: 0.25}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -232,10 +217,78 @@ func TestFactoryRunningJobPause(t *testing.T) {
 			}
 			params["expect"] = map[string]any{"version": j.Version}
 			s.must("factory.job_resume", params, &appwire.FactoryJobActed{})
+			j = api.Job{}
 			s.must("factory.job", params, &j)
 			if j.State != api.StateQueued || j.Desk.Run.Paused || j.Cost != 0.25 {
 				t.Fatalf("unleased resume: %+v", j)
 			}
+			mirror, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			opened := make(chan factoryrun.ConversationSpec, 1)
+			maker := &factoryrun.FakeMaker{Script: func(ctx context.Context, c *factoryrun.FakeConversation) {
+				opened <- c.Spec
+				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+			}}
+			runner := factoryrun.New(factoryrun.Options{Store: mirror, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.NewChatExecutor(maker)}})
+			startPauseWorker(t, s, status, runner, mirror)
+			select {
+			case spec := <-opened:
+				if spec.Resume != "saved-chat" {
+					t.Fatalf("unleased resumed chat %q, want saved-chat", spec.Resume)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("unleased resume never ran its saved step")
+			}
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				j = api.Job{}
+				s.must("factory.job", params, &j)
+				if len(j.Steps) > 0 && j.Steps[0].State == api.StepDone {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("unleased resumed step never finished: %+v", j)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if j.Cost != 0.25 {
+				t.Fatalf("unleased resume changed recorded spend: %v", j.Cost)
+			}
 		}
 	})
+}
+
+func startPauseWorker(t *testing.T, s *localSetup, status appwire.FactoryLocalStatus, runner *factoryrun.Runner, mirror *store.Store) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	var mu sync.Mutex
+	credential := ""
+	go func() {
+		defer close(done)
+		worker.Run(ctx, worker.Options{
+			Dial: func(int) *client.WorkerClient {
+				mu.Lock()
+				defer mu.Unlock()
+				return client.Open(status.URL, s.backend.local.host.token).Worker(credential)
+			},
+			Keep:   func(_ int, w *client.WorkerClient) { mu.Lock(); defer mu.Unlock(); credential = w.Credential() },
+			Attach: api.WorkerAttach{Machine: "pause-fixture", Name: "pause fixture", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+			Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 20 * time.Millisecond, BeatEvery: 20 * time.Millisecond,
+		})
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+}
+
+// The fixture opens the real solo server without starting the automatic worker;
+// each test supplies its own real lease worker with a scripted model instead.
+func newPauseSetup(t *testing.T) (*localSetup, appwire.FactoryLocalStatus) {
+	t.Helper()
+	s := newLocalSetup(t)
+	if err := s.backend.startLocal(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return s, s.backend.localStatus()
 }

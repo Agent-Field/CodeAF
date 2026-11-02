@@ -6,9 +6,13 @@ import (
 )
 
 // FeatureFactoryJobHold is factory.job_hold and factory.job_resume: a person
-// keeps a queued job from starting, then lets it go on. The job's own
+// keeps a queued job from starting or pauses a running step, then resumes it.
+// Work and the step conversation are kept. The job's own
 // can.hold and can.resume say when each applies.
 const FeatureFactoryJobHold = "factory.job_hold"
+
+// FeatureFactoryJobPause says Hold and Resume also apply to running jobs.
+const FeatureFactoryJobPause = "factory.job_pause"
 
 // The actions a [FactoryJobActed] from a hold names.
 const (

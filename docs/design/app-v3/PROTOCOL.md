@@ -320,6 +320,27 @@ decides which combinations are accepted.
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
+`factory.job_pause` in hello features says `factory.job_hold` also pauses a
+running job. Both `factory.job_hold` and `factory.job_resume` take
+`{factory, job, expect: {version}}` (`FactoryJobActionParams`) and return
+`FactoryJobActed`, with action `hold` or `resume`. Hold keeps a queued job from
+starting or cancels a running step's current model round. Its work, conversation
+and recorded spending stay. Resume continues the same step and round, reopening
+its conversation when available; a job without a live lease is queued for a
+worker. A running pause keeps its capacity slot until resumed or stopped.
+
+The job's person may use these actions. `can.hold` permits a queued or running
+job, excluding a job waiting for a person, finished or publishing; `can.resume`
+permits a paused job. The job retains its existing `state` vocabulary; a paused
+running job has `state_presentation.kind: "paused"`, title `Paused`, and no new
+question. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
+name the caller. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, `stale` for an outdated version, and
+`bad_params` for an
+invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
+uses a new chat.
+
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET

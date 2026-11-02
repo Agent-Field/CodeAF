@@ -224,6 +224,9 @@ func (d *Doors) Pause(id int) error {
 // person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if on && it.State != factory.StateQueued && (it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing) {
+			return false, fmt.Errorf("%s is not running", it.Ref())
+		}
 		paused := run.StoredPaused(*it)
 		switch {
 		case paused == on:
@@ -231,7 +234,7 @@ func (d *Doors) Hold(id int, on bool) error {
 		case held == nil && on && it.State == factory.StateQueued:
 			return false, run.HoldQueued(it, now)
 		case held == nil && on:
-			return false, fmt.Errorf("%s is not running", it.Ref())
+			return false, run.PauseItem(it, now)
 		case held == nil:
 			return false, run.ResumeItem(it, now)
 		}
