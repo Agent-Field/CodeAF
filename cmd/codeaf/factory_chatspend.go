@@ -63,10 +63,10 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 	if items, err := d.floor.List(); err == nil {
 		for _, it := range items {
 			if talk.is(it.Talk) {
-				return &jobChat{floor: d.floor, id: it.ID, talk: talk}
+				return &jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}
 			}
 			if ownsStageChat(it, talk) {
-				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk}}
+				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}}
 			}
 		}
 	}
@@ -77,10 +77,10 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 		}
 		for _, it := range items {
 			if talk.is(it.Talk) {
-				return &jobChat{floor: d.floor, id: it.ID, talk: talk}
+				return &jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}
 			}
 			if ownsStageChat(it, talk) {
-				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk}}
+				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}}
 			}
 		}
 	}
@@ -88,6 +88,17 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 }
 
 type ownedStageBudget struct{ session.JobChat }
+
+// FactoryJob names the job on this chat's ledger rows.
+func (c ownedStageBudget) FactoryJob() string {
+	if named, ok := c.JobChat.(session.JobLedgerName); ok {
+		return named.FactoryJob()
+	}
+	return ""
+}
+
+// FactoryJob names the job on this chat's ledger rows.
+func (c *jobChat) FactoryJob() string { return c.name }
 
 func (c ownedStageBudget) FactoryAuto() bool {
 	if p, ok := c.JobChat.(interface{ FactoryAuto() bool }); ok {
@@ -113,6 +124,8 @@ type jobChat struct {
 	id     int
 	talk   talkKey
 	failed atomic.Bool
+	// name is the job as the spend ledger names it ([factory.LedgerName]).
+	name string
 
 	// read is what each holder's document last answered, keyed by its path.
 	// THE BUDGET IS WATCHED TEN TIMES A SECOND FOR AS LONG AS THE CHAT IS OPEN
