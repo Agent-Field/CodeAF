@@ -79,7 +79,7 @@ func TestMemoryCompileTailLifecycle(t *testing.T) {
 				return transport.RoundTrip(clone)
 			})}
 			t.Cleanup(func() { http.DefaultClient = original })
-			meter := &stageBudget{floor: floor, item: item}
+			meter := &memoryDelayedJobBudget{stageBudget: &stageBudget{floor: floor, item: item}}
 			workspace := t.TempDir()
 			agent, err := session.New(session.Config{Workspace: workspace, SessionFile: filepath.Join(workspace, "chat.jsonl"), ProfileDir: filepath.Join(s.home, "memory-profile"), Model: knowledge.Model, APIKey: "fixture", BaseURL: server.URL, JobBudget: meter, Unattended: true, DeterministicNames: true})
 			if err != nil {
@@ -194,4 +194,17 @@ func TestMemoryCompileTailLifecycle(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The ledger can be observable before the job meter finishes its separate write.
+// Delay that public budget callback so the fixture exercises this order reliably.
+type memoryDelayedJobBudget struct {
+	*stageBudget
+}
+
+func (b *memoryDelayedJobBudget) Spend(usd float64) {
+	if usd == .02 {
+		time.Sleep(100 * time.Millisecond)
+	}
+	b.stageBudget.Spend(usd)
 }
