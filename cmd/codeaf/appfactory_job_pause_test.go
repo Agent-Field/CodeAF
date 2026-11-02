@@ -60,10 +60,20 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		}
 		params := map[string]any{"factory": status.Factory, "job": it.ID}
 		read := func() api.Job { var j api.Job; s.must("factory.job", params, &j); return j }
+		// A live round moves the job's version between the read and the write,
+		// which is the stale answer a person's next read clears.
 		act := func(method string) {
-			j := read()
-			params["expect"] = map[string]any{"version": j.Version}
-			s.must(method, params, &appwire.FactoryJobActed{})
+			t.Helper()
+			for try := 0; ; try++ {
+				params["expect"] = map[string]any{"version": read().Version}
+				_, code, words := s.call(method, params)
+				if code == "" {
+					return
+				}
+				if code != appwire.CodeStale || try == 4 {
+					t.Fatalf("%s: %s: %s", method, code, words)
+				}
+			}
 		}
 		wait := func(what string, predicate func(api.Job) bool) api.Job {
 			t.Helper()
