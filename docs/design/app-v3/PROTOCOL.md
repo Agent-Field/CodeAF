@@ -320,6 +320,17 @@ decides which combinations are accepted.
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
+`factory.activity` records automatic approvals and their publications with
+`actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
+approval keeps `actor: {kind: "person", name: "@handle"}` and their handle.
+Automatic approval has an empty `approval.decided_by`. A stale action after
+an automatic approval says `approved automatically at HH:MM` (UTC), with no
+`by` or `approved_by`; `reason: "stale"`, the receipt event and commit remain.
+Saved events keep their original attribution. Automatic approval trailers
+use `Factory-Approval: evt_<id> factory <commit>`; personal trailers keep
+`@handle`. Workers must accept the factory actor to publish automatic approvals.
+No method, parameter, reply field, error code or hello feature is added.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET

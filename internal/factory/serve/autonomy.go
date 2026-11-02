@@ -119,7 +119,7 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 		} else if h.seam.Answer == nil {
 			continue
 		}
-		a.State, a.Automatic, a.DecidedBy = "approving", true, cur.Person()
+		a.State, a.Automatic, a.DecidedBy = "approving", true, ""
 		a.At, a.UndoUntil, a.Commit = h.clock().UTC(), h.clock().UTC(), cur.HeadCommit
 		if e = h.config.Store.Update(cur.ID, func(saved *factory.Item) error {
 			if !h.automaticApprovalAllowed(*saved) || saved.HeadCommit != cur.HeadCommit {

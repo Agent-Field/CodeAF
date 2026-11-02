@@ -110,13 +110,15 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 			detail = "start · " + it.AskedFirstReason
 		}
 	}
+	actor := record.Actor{}
 	if it.Approval != nil && it.Approval.Automatic {
+		handle, actor = "", record.Actor{Kind: "factory"}
 		detail += " · Auto mode"
 	}
 	if edited {
 		detail += " · edited"
 	}
-	event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Approved, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: detail, Commit: it.HeadCommit})
+	event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Approved, Job: it.ID, Actor: actor, Handle: handle, Cost: jobCost(it), Detail: detail, Commit: it.HeadCommit})
 	return event.ID, err
 }
 

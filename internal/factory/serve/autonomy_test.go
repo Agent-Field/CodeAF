@@ -36,7 +36,7 @@ func TestAutoProofUsesRecordedHeadApprovalWithoutUIApprove(t *testing.T) {
 	for _, e := range events {
 		if e.Kind == record.Approved {
 			approved++
-			if e.Handle != "sam" || e.Commit != in.HeadCommit || !strings.Contains(e.Detail, "Auto mode") {
+			if e.Handle != "" || e.Actor.Kind != "factory" || e.Commit != in.HeadCommit || !strings.Contains(e.Detail, "Auto mode") {
 				t.Fatalf("bad recorded authority: %+v", e)
 			}
 		}

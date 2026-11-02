@@ -118,7 +118,11 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			if it.Stream != nil {
 				cost = it.Stream.Spent
 			}
-			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: it.Person(), Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
+			handle := it.Person()
+			if it.Approval != nil && it.Approval.Automatic {
+				handle = ""
+			}
+			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
 				return factory.StageResult{}, fmt.Errorf("posted %s · %s; could not record post: %w", verb, rcpt.URL, err)
 			}
 		}
