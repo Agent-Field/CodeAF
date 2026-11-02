@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Factory retries start without waiting for a worker timeout
-pr: 0
+pr: 2230
 surface: [engine]
 invalidates:
   - "Was true: with multiple worker slots, Try again could leave a job running with its selected step pending until the replacement worker timed out. Is true now: the replacement waits for the previous worker's local cleanup before starting the selected round."
