@@ -288,8 +288,8 @@ func TestBeginAndEndBrief(t *testing.T) {
 	if it.BriefWriting.Failure != "model_failed" || BriefSpent(it) != 0.002 {
 		t.Fatalf("failure: %+v", it.BriefWriting)
 	}
-	if got := JobSpent(it) - spent; got < 0.0029 || got > 0.0031 {
-		t.Fatalf("the job was charged %v", got)
+	if got := JobSpent(it) - spent; got != 0 {
+		t.Fatalf("keeping the brief charged the job again: %v", got)
 	}
 }
 
