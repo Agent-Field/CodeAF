@@ -61,11 +61,13 @@ type appStateFile struct {
 	WorkFolder string `json:"work_folder,omitempty"`
 	// DayCapUSD is LEGACY and read-only: the daily limit is the profile's
 	// (appdaylimit.go), and this is read once, to hand it over.
-	DayCapUSD          *float64            `json:"day_cap_usd,omitempty"`
-	ProposedTaskClockS *int                `json:"proposed_task_clock_s,omitempty"`
-	IdleCloseDays      *int                `json:"idle_close_days,omitempty"`
-	Budgets            map[string]float64  `json:"budgets,omitempty"`
-	Raises             map[string]appRaise `json:"raises,omitempty"`
+	DayCapUSD          *float64           `json:"day_cap_usd,omitempty"`
+	ProposedTaskClockS *int               `json:"proposed_task_clock_s,omitempty"`
+	IdleCloseDays      *int               `json:"idle_close_days,omitempty"`
+	Budgets            map[string]float64 `json:"budgets,omitempty"`
+	// CreatedBy is who started each agent made here (appcreatedby.go).
+	CreatedBy map[string]string   `json:"created_by,omitempty"`
+	Raises    map[string]appRaise `json:"raises,omitempty"`
 	// Unlimited is the agents a person said have no budget of their own, and
 	// when (appbudget.go). A zero in Budgets never meant that, so it is kept
 	// apart rather than read into a figure an older file already holds.
@@ -211,6 +213,10 @@ func (f appStateFile) clone() appStateFile {
 	out.Budgets = make(map[string]float64, len(f.Budgets))
 	for k, v := range f.Budgets {
 		out.Budgets[k] = v
+	}
+	out.CreatedBy = make(map[string]string, len(f.CreatedBy))
+	for k, v := range f.CreatedBy {
+		out.CreatedBy[k] = v
 	}
 	out.Raises = make(map[string]appRaise, len(f.Raises))
 	for k, v := range f.Raises {

@@ -90,6 +90,12 @@ func (a *app) taskRetried(msg taskRetriedMsg) {
 // The live graph overrides a saved landing while preserving its transcript and identity.
 func (a *app) currentTaskEntry(entry session.TaskIndexEntry) session.TaskIndexEntry {
 	node := a.taskSheetNodeFor(&entry)
+	// An older node may predate the executor in the saved row. Only a named
+	// placement or an explicit local replacement can supersede that fact.
+	if node != nil && (node.computerKnown || node.computer != "" || node.remote != nil && node.remote.Abandoned) {
+		entry.Status, entry.Ending = string(node.state), node.ending
+		entry.Computer, entry.Unreachable, entry.RanElsewhere = node.computer, node.unreachable, node.ranElsewhere
+	}
 	if node != nil && node.crew != nil {
 		entry.Crew = node.crew
 	}

@@ -726,10 +726,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// the surface holds it to that (chatv3_host_shared_test.go).
 	counted := countedAgent(agent)
 	options := tui3.Options{
-		Agent:     counted,
-		Build:     welcome.Build,
-		Host:      dest,
-		Workspace: welcome.Workspace,
+		Agent:       counted,
+		Build:       welcome.Build,
+		Host:        dest,
+		SyncService: welcome.SyncService,
+		Workspace:   welcome.Workspace,
 		// The engine's own journal path, shown with its machine in front of it
 		// wherever the surface shows it (internal/tui3's host.go).
 		SessionFile:       welcome.SessionFile,
@@ -1056,7 +1057,8 @@ type hostSeams struct {
 	// whenever there is nothing to say, which is what a status-line segment
 	// draws as nothing at all. It reads `reconnecting to devbox — trying for up
 	// to 5 minutes` while a dropped link is being redialled.
-	Link func() string
+	Link        func() string
+	SendRefusal func() string
 	// Ping measures one empty call and back. The surface owns its cadence and
 	// rolling estimate; this door only hands over the wire's typed method.
 	Ping func() (time.Duration, error)
@@ -1090,7 +1092,7 @@ func newHostSeams(client *remote.Client) hostSeams {
 	initial := client.Held()
 	var readInitial atomic.Bool
 	return hostSeams{
-		Link: client.LinkNote, Ping: client.Ping, Notice: client.TakeNotice,
+		Link: client.LinkNote, SendRefusal: client.SendRefusal, Ping: client.Ping, Notice: client.TakeNotice,
 		EngineBuild: func() string { return client.Welcome().Build },
 		Held: func() ([]remote.HeldQuestion, error) {
 			// Arrival and replay share one snapshot. Re-querying before drawing

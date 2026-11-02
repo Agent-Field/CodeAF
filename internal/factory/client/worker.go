@@ -141,6 +141,9 @@ func PrepareWorkerReport(report api.WorkerReport, key string) (PreparedWorkerRep
 	report.Pipeline = append([]api.Step(nil), report.Pipeline...)
 	for i := range report.Pipeline {
 		report.Pipeline[i].RoundLimit, report.Pipeline[i].Verification = 0, nil
+		// A step's model pick is the person's, which the factory keeps itself
+		// (run.applyPipeline); a factory older than picks refuses the field.
+		report.Pipeline[i].UseModel = ""
 	}
 	report.Steps = append([]api.StepReport(nil), report.Steps...)
 	for i := range report.Steps {

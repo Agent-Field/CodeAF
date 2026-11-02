@@ -102,7 +102,7 @@ func (a *app) statusItems() []deckItem {
 		// link the row says `devbox · 3ms`; /status has room to say what that
 		// number is. While redialling, the existing sentence is already whole
 		// and is kept verbatim instead.
-		if a.hosted() && item.label == deckSegWords[segLink] && a.linkLatency > 0 && a.linkNote() == "" {
+		if a.hosted() && item.label == deckSegWords[segLink] && a.linkLatencyFresh() && a.linkNote() == "" {
 			item.value = "the round trip to " + a.host + " is about " + latencyWord(a.linkLatency)
 		}
 		// AND AN OWNED SESSION SAYS WHERE IT ACTUALLY IS, here and nowhere else.

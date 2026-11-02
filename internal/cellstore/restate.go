@@ -14,13 +14,19 @@ import (
 )
 
 // chainNames are the entries of .cell/ that a restore never writes: the chain
-// describes the past rather than belongs to any turn's content (L12), and
-// meta.json is the harness's own, composed afresh by every seal.
+// describes the past rather than belongs to any turn's content (L12), meta.json
+// is the harness's own composed afresh by every seal, and local publication,
+// adoption, and legacy-copy markers are written after sealing or materializing
+// so snapshots either omit them or hold an earlier turn's stale upload note.
 var chainNames = map[string]bool{
-	path.Base(TurnsPath):     true,
-	path.Base(ReceiptsDir):   true,
-	path.Base(BlobsDir):      true,
-	path.Base(cell.MetaPath): true,
+	path.Base(TurnsPath):            true,
+	path.Base(ReceiptsDir):          true,
+	path.Base(BlobsDir):             true,
+	path.Base(cell.MetaPath):        true,
+	path.Base(publishedPath):        true,
+	path.Base(adoptedPath):          true,
+	path.Base(cell.CopyReadyPath):   true,
+	path.Base(cell.CopyOfferedPath): true,
 }
 
 // restoreKeepingChain puts the workspace and the rest of .cell/ (the

@@ -247,17 +247,21 @@ type StepDef struct {
 	Until string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
-	UntilSentence string   `json:"until_sentence,omitempty"`
-	Max           int      `json:"max,omitempty"`
-	Fixed         bool     `json:"fixed,omitempty"`
-	Custom        bool     `json:"custom,omitempty"`
-	Off           bool     `json:"off,omitempty"`
-	When          string   `json:"when,omitempty"`   // desk
-	Effort        string   `json:"effort,omitempty"` // desk
-	Fanout        string   `json:"fanout,omitempty"` // desk
-	Proof         []string `json:"proof,omitempty"`  // desk
-	Why           string   `json:"why,omitempty"`    // desk
-	By            string   `json:"by,omitempty"`     // desk
+	UntilSentence string `json:"until_sentence,omitempty"`
+	Max           int    `json:"max,omitempty"`
+	Fixed         bool   `json:"fixed,omitempty"`
+	Custom        bool   `json:"custom,omitempty"`
+	Off           bool   `json:"off,omitempty"`
+	When          string `json:"when,omitempty"`   // desk
+	Effort        string `json:"effort,omitempty"` // desk
+	// UseModel is the model the job's person picked for this step on this
+	// job (factory.Stage.Model), absent for the job's own model. It is the
+	// step's next run; Step.Model is the model it ran on.
+	UseModel string   `json:"use_model,omitempty"`
+	Fanout   string   `json:"fanout,omitempty"` // desk
+	Proof    []string `json:"proof,omitempty"`  // desk
+	Why      string   `json:"why,omitempty"`    // desk
+	By       string   `json:"by,omitempty"`     // desk
 	// Who is who an approve step waits on: absent for the job's person,
 	// "@handle" for a named person, operator for any of the factory's
 	// operators (factory.ApproverWord).
@@ -303,6 +307,10 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	// Following is whether the CALLER follows this job ([ForViewer]); absent
+	// is not following. Nobody else's following is ever answered.
+	Following bool `json:"following,omitempty"`
+
 	AutonomyWhy    string              `json:"autonomy_why,omitempty"`
 	Autonomy       string              `json:"autonomy,omitempty"`
 	FollowPR       bool                `json:"follow_pr,omitempty"`
@@ -357,6 +365,10 @@ type Job struct {
 	WaitingFor      string            `json:"waiting_for,omitempty"`
 	Overlap         []string          `json:"overlap,omitempty"`
 	Approval        *factory.Approval `json:"approval,omitempty"`
+
+	// BriefSeen is the Brief revision the CALLER last saw on this job, absent
+	// for none ([ForViewer]). Nobody else's is ever answered.
+	BriefSeen int `json:"brief_seen,omitempty"`
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
@@ -517,6 +529,14 @@ type RoundLine struct {
 	At        time.Time `json:"at"`
 	StartedAt time.Time `json:"started_at,omitzero"`
 	Chat      string    `json:"chat,omitempty"`
+	// Result and Reason are how the try ended (factory.TryResult): its
+	// rule's word (clean, not clean, green, not green, proven, not proven,
+	// done, not done, blocked) and a counted reason ("2 findings", "12
+	// passed", "1 of 2 claims shown"). Both are absent on a try recorded
+	// before they were and on one that ended without a report; a surface
+	// shows the try's number alone then, and never guesses from summary.
+	Result string `json:"result,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Can is which verbs this caller may use on this job. It follows the
@@ -634,14 +654,17 @@ type JobDesk struct {
 	Heard     time.Time `json:"heard"`
 	// Comments has no omitempty ON PURPOSE: null is not read yet, and [] is
 	// read with nothing said ([factory.Item.Comments]).
-	Comments  []Comment  `json:"comments"`
-	Files     []File     `json:"files,omitempty"`
-	CheckRuns []CheckRun `json:"check_runs,omitempty"`
-	Base      string     `json:"base,omitempty"`
-	Head      string     `json:"head,omitempty"`
-	HeadSHA   string     `json:"head_sha,omitempty"`
-	Activity  []Activity `json:"activity,omitempty"`
-	Run       *Run       `json:"run,omitempty"`
+	Comments []Comment `json:"comments"`
+	// CommentReads is what the job's manager did with each new comment, by
+	// the comment's id ([factory.ReadComments]); absent is none.
+	CommentReads []factory.CommentRead `json:"comment_reads,omitempty"`
+	Files        []File                `json:"files,omitempty"`
+	CheckRuns    []CheckRun            `json:"check_runs,omitempty"`
+	Base         string                `json:"base,omitempty"`
+	Head         string                `json:"head,omitempty"`
+	HeadSHA      string                `json:"head_sha,omitempty"`
+	Activity     []Activity            `json:"activity,omitempty"`
+	Run          *Run                  `json:"run,omitempty"`
 }
 
 // Run is a job's bench: the stream's facts that are not per step (desk). Nil
@@ -855,11 +878,35 @@ type LogLine struct {
 	Text  string    `json:"text"`
 }
 
-// Comment is one thing said on a job's source (desk).
+// Comment is one thing said on a job's source (desk). ID and URL are
+// GitHub's, absent on a comment read before they were kept; tier is the
+// author's standing on the repository (owner, collaborator or stranger),
+// absent until it is read; by_factory marks the factory's own publication.
 type Comment struct {
-	Author string    `json:"author"`
-	Body   string    `json:"body"`
-	At     time.Time `json:"at"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	At        time.Time `json:"at"`
+	ID        string    `json:"id,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	Tier      string    `json:"tier,omitempty"`
+	ByFactory bool      `json:"by_factory,omitempty"`
+}
+
+// EndpointNotFound is a factory's sentence for a route it does not have. A
+// client tells an older factory from a refusal by it, so the words never change.
+const EndpointNotFound = "factory endpoint not found"
+
+// IssueCommentRequest is a person's comment on the job's GitHub issue,
+// posted as that person (POST /v1/jobs/{id}/issue_comment).
+type IssueCommentRequest struct {
+	Body string `json:"body"`
+}
+
+// IssueCommentPosted is GitHub's receipt for one posted comment.
+type IssueCommentPosted struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Comment Comment `json:"comment"`
 }
 
 // File is one file a pull request changes (desk).

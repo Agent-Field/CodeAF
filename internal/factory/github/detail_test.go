@@ -40,8 +40,17 @@ func TestReadCarriesThePageCommentsFilesAndChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pr.URL != "https://github.com/acme/api/pull/9" || len(pr.Comments) != 1 || pr.Comments[0].Body != "looks right" {
+	if pr.URL != "https://github.com/acme/api/pull/9" || len(pr.Comments) != 2 || pr.Comments[0].Body != "looks right" {
 		t.Fatalf("the pull request's page or comments: %+v", pr)
+	}
+	// Each comment keeps its id, page and its author's standing, which is
+	// what the job's manager reads it by; the factory's own is marked.
+	bob, own := pr.Comments[0], pr.Comments[1]
+	if bob.ID != "901" || bob.URL != "https://github.com/acme/api/pull/9#issuecomment-901" || bob.Tier != factory.TierStranger || bob.ByFactory {
+		t.Fatalf("a comment lost its id, page or standing: %+v", bob)
+	}
+	if own.ID != "902" || !own.ByFactory || own.Tier == "" {
+		t.Fatalf("the factory's own comment is not marked: %+v", own)
 	}
 	wantFiles := []factory.FileChange{{Path: "big.go", Added: 29, Removed: 24}, {Path: "small.go", Added: 1, Removed: 1}}
 	if !reflect.DeepEqual(pr.Files, wantFiles) {
