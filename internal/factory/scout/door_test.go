@@ -89,3 +89,15 @@ func TestLookCloserStopsAtItsLimits(t *testing.T) {
 		t.Fatalf("over the day: err %v", err)
 	}
 }
+
+// A look that answered without a tool call never learned the commit from a
+// tool, so the door stamps the head it checked; otherwise its cache never hits.
+func TestALookThatReadNoFileIsStillCachedOnTheHead(t *testing.T) {
+	st, it := floor(t)
+	runs := 0
+	door := scout.Door{Floor: st, Run: counting(&runs, ""), Head: head("aaa"), Limits: scout.DefaultLimits, Now: func() time.Time { return now }}
+	_, _, _ = door.Look(context.Background(), it.ID, false)
+	if _, cached, err := door.Look(context.Background(), it.ID, false); err != nil || !cached || runs != 1 {
+		t.Fatalf("second look cached %v err %v runs %d", cached, err, runs)
+	}
+}

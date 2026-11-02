@@ -13,5 +13,5 @@ unknowns, tests and a cited rubric. Every shown path exists. Looks are
 cached on the issue text and head, and limited to $10 a month and 20 a day
 per repository. `read_on_arrival` (default off) turns on the arrival read
 and a look before each automatic start; `factory.read` reads chosen issues
-on a click. Starts are decided by size labels as before. A rubric whose sum sits on a band's edge (3 or 4, 6 or 7) names
+on a click. A read never starts a job: size labels and the start rules decide. A rubric whose sum sits on a band's edge (3 or 4, 6 or 7) names
 the neighbouring band as `band_near`, so the app shows both.
