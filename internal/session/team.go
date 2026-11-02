@@ -1040,15 +1040,43 @@ func (a *Agent) readTeamCursorsLocked() {
 		return
 	}
 	var stored struct {
-		Read map[string]string `json:"read"`
+		Read   map[string]string `json:"read"`
+		Device string            `json:"device,omitempty"`
 	}
 	if json.Unmarshal(raw, &stored) != nil {
 		return
 	}
+	// A COPIED FILE'S POSITIONS COUNT ANOTHER COMPUTER'S LOG. A chat continued
+	// here from another computer brings its cursor file along, and those ids
+	// number lines this computer never wrote, so every team starts again from
+	// [Agent.firstTeamCursor], exactly as for a team met for the first time;
+	// that keeps the directive a rouse opened this conversation for.
+	sharing := config.TeamsShareAt(a.config.teamProfile())
+	if sharing && stored.Device != "" && stored.Device != teamCursorDevice() {
+		return
+	}
 	for id, cursor := range stored.Read {
-		if strings.TrimSpace(cursor) != "" {
-			a.team.cursors[id] = cursor
+		if strings.TrimSpace(cursor) == "" {
+			continue
 		}
+		// An untagged file can still have travelled: it was written before its
+		// computer paired. A position past the end of this computer's log was
+		// not written here, and keeping it would silently skip every local line
+		// up to it, so that team alone starts again. A position at or before the
+		// end can at worst hand a line over twice, the direction this must fail
+		// in, and a log that cannot be read keeps the cursor as it always did.
+		if sharing {
+			if tail, err := teams.ReadTraffic(a.config.teamProfile(), id, "", 1); err == nil {
+				end := teamLogStart
+				if len(tail) > 0 {
+					end = tail[len(tail)-1].ID
+				}
+				if cursor > end {
+					continue
+				}
+			}
+		}
+		a.team.cursors[id] = cursor
 	}
 }
 
@@ -1064,9 +1092,14 @@ func (a *Agent) saveTeamCursorsLocked() {
 	for id, cursor := range a.team.cursors {
 		read[id] = cursor
 	}
+	device := ""
+	if config.TeamsShareAt(a.config.teamProfile()) {
+		device = teamCursorDevice()
+	}
 	raw, err := json.Marshal(struct {
-		Read map[string]string `json:"read"`
-	}{read})
+		Read   map[string]string `json:"read"`
+		Device string            `json:"device,omitempty"`
+	}{read, device})
 	if err != nil {
 		return
 	}
@@ -1162,7 +1195,7 @@ func (a *Agent) teamDigest(profile string) string {
 			continue
 		}
 		team = managedView(file, team)
-		log, _ := teams.ReadTraffic(profile, role.id, "", teamStateLook)
+		log, _ := teams.ReadHistory(profile, role.id, teamStateLook)
 		states := memberStates(team, keys, now, log, &a.team.journals)
 		markShared(file, team, states)
 		parts = append(parts, teams.Digest(team, states, recentOf(log), teamDigestBudget))

@@ -1,0 +1,10 @@
+{
+  "history/false/0": " \u001b[38;5;110m✓\u001b[39m \u001b[38;5;252mcreate hello.txt containing the word KIWI\u001b[39m                                                                                         \u001b[38;5;243mdone · 2 steps\u001b[39m             ",
+  "history/false/1": "   \u001b[38;5;243m2 steps · done\u001b[39m",
+  "history/true/0": " \u001b[38;5;110m✓\u001b[39m \u001b[38;5;252mcreate hello.txt containing the word KIWI\u001b[39m                                                                                         \u001b[38;5;243mdone · 2 steps\u001b[39m             ",
+  "history/true/1": "   \u001b[38;5;243m2 steps · done\u001b[39m",
+  "rail/160": "  \u001b[38;5;146m⠋\u001b[39m \u001b[38;5;252mreplace the whole content of notes.txt with the requested words\u001b[39m                                                                                           \u001b[38;5;243m4m\u001b[39m",
+  "rail/20": "  \u001b[38;5;146m⠋\u001b[39m \u001b[38;5;252mreplace the …\u001b[39m \u001b[38;5;243m4m\u001b[39m",
+  "rail/40": "  \u001b[38;5;146m⠋\u001b[39m \u001b[38;5;252mreplace the whole content of not…\u001b[39m \u001b[38;5;243m4m\u001b[39m",
+  "rail/80": "  \u001b[38;5;146m⠋\u001b[39m \u001b[38;5;252mreplace the whole content of notes.txt with the requested words\u001b[39m           \u001b[38;5;243m4m\u001b[39m"
+}

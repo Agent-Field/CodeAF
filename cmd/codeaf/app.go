@@ -581,6 +581,11 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// startedAt is when this backend was made, and lastResume what its start
+	// carried on after the last quit, nil for nothing (apphealth.go). Both
+	// are guarded by mu.
+	startedAt  time.Time
+	lastResume *appwire.HealthResume
 	// stoppingAll is the agents a processes.stop_all is in flight for; a
 	// second for the same agent is answered busy (appprocessactions.go).
 	stoppingAll map[string]bool
@@ -1007,6 +1012,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		left:      make(chan struct{}),
 		mint:      appMint,
 	}
+	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
@@ -1093,6 +1099,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	b.watchCloseClaim(row.Dir)
+	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
@@ -1126,6 +1133,10 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	disk := appRowView(row)
 	disk.Location = a.view.Location
+	disk.CreatedBy = createdBy
+	if a.view.CreatedBy == "" {
+		a.view.CreatedBy = createdBy
+	}
 	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
 	// An agent this process is opening is its own word too: the disk has not
@@ -1344,12 +1355,7 @@ func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error)
 	if err := (session.Submission{ClientID: ask.ClientID}).Check(); err != nil {
 		return appCreatePrep{}, appEngineError(err)
 	}
-	// No workspace is the work folder the person chose, or their home folder.
-	workspace := ask.Workspace
-	if strings.TrimSpace(workspace) == "" {
-		_ = b.state.read(func(f *appStateFile) { workspace = f.workFolder() })
-	}
-	resolved, err := engineWorkspace(workspace)
+	resolved, err := b.createWorkspace(ask.Workspace)
 	if err != nil {
 		return appCreatePrep{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
@@ -1413,6 +1419,10 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			return appwire.Agent{}, nil, appEngineError(err)
 		}
 	}
+	createdBy, err := b.keepCreatedBy(appAgentID(transcript), ask.CreatedBy)
+	if err != nil {
+		return appwire.Agent{}, nil, appEngineError(err)
+	}
 	var view appwire.Agent
 	first := appFirst{clientID: ask.ClientID}
 	b.locked(func() {
@@ -1457,6 +1467,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		}
 		a.view.Workspace = resolved
 		a.view.Model = model
+		a.view.CreatedBy = createdBy
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
 			// STARTING, NOT WORKING: no turn runs until the conversation is open,
@@ -2582,6 +2593,9 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	userEntry := appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
+	}
+	if shown != nil {
+		userEntry.From = shown.from
 	}
 	userEntry.Queued = shown != nil && shown.queued && appKeepsQueued(live.conn.Conv)
 	appComposedFields(&userEntry, composedMark)
@@ -3844,6 +3858,9 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil && item.Person.ClientID != "" {
 			entry.ClientID = item.Person.ClientID
 		}
+		if entry.Kind == appwire.EntryUser && item.Person != nil {
+			entry.From = item.Person.From
+		}
 		entries = append(entries, entry)
 		from = append(from, i)
 	}
@@ -3995,8 +4012,32 @@ func (b *appBackend) Warm() {
 	}
 	defer close(b.warmed)
 	defer guard.Recover("app/warm")
-	_, _ = b.process()
+	if proc, err := b.process(); err == nil {
+		b.warmFirstChat(proc)
+	}
 	b.sweepOutputs()
+}
+
+// createWorkspace is the folder agents.create opens a conversation in: the
+// one asked for, or with none the work folder the person chose, or their home
+// folder.
+func (b *appBackend) createWorkspace(asked string) (string, error) {
+	workspace := asked
+	if strings.TrimSpace(workspace) == "" {
+		_ = b.state.read(func(f *appStateFile) { workspace = f.workFolder() })
+	}
+	return engineWorkspace(workspace)
+}
+
+// warmFirstChat does now what a new chat's start would otherwise wait for:
+// the skill shelf read for the folder a new chat opens in, and the day's spend
+// the first turn is checked against. Both are kept, so the first message finds
+// them done and only what changed since is read again.
+func (b *appBackend) warmFirstChat(proc *v3Process) {
+	if workspace, err := b.createWorkspace(""); err == nil {
+		importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
+	}
+	_, _ = session.DailySpendUSD(session.UsageLedgerPath(), b.now())
 }
 
 // process is the engine's shared process half. Once open it is kept; an open

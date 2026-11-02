@@ -43,7 +43,10 @@ type doctorSnapshot struct {
 	Key keyReport
 	// Cells is what the cells' working files hold against the disk budget, "" when
 	// they hold nothing.
-	Cells string
+	Cells       string
+	EngineStore []string
+	SyncIssues  []string
+	Fixes       []string
 }
 
 // fallbackKeyEnv is the compatibility variable [config.Load] accepts for an
@@ -87,11 +90,12 @@ func runDoctor(args []string) error {
 func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	flags := commandFlags("doctor")
 	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	fix := flags.Bool("fix", false, "repair safe engine store and sync state")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: codeaf doctor [--db path]")
+		return fmt.Errorf("usage: codeaf doctor [--db path] [--fix]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -128,6 +132,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	// moves the store and moves nothing about who this machine can talk to.
 	snapshot.Key = readKeyReport(strings.TrimSpace(env.Get(config.ProfileDirEnv)))
 	snapshot.Cells = cellsUsage()
+	snapshot.EngineStore, snapshot.SyncIssues, snapshot.Fixes = inspectAndRepairDoctor(*fix)
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
 }
@@ -249,6 +254,15 @@ func formatDoctor(snapshot doctorSnapshot) string {
 	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
+	}
+	for _, line := range snapshot.EngineStore {
+		block += fmt.Sprintf("%-16s %s\n", "engine store", line)
+	}
+	for _, line := range snapshot.SyncIssues {
+		block += fmt.Sprintf("%-16s %s\n", "sync", line)
+	}
+	for _, line := range snapshot.Fixes {
+		block += line + "\n"
 	}
 	return block
 }

@@ -13,6 +13,7 @@ import (
 )
 
 func TestOwnershipChatRoutesScratchWithoutMovingTheProject(t *testing.T) {
+	// macOS mktemp needs an explicit template to create its file inside the assigned TMPDIR.
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	project := t.TempDir()
@@ -20,7 +21,7 @@ func TestOwnershipChatRoutesScratchWithoutMovingTheProject(t *testing.T) {
 		c.Workspace = project
 		c.Place = Place{Dir: t.TempDir(), Workspace: project}
 	})
-	if a.config.Workspace != project {
+	if canonicalPath(a.config.Workspace) != canonicalPath(project) {
 		t.Fatal("a borrowed project was moved")
 	}
 	registry, err := workspaceidentity.Open(home.Join("workspace-identities"))
@@ -31,7 +32,7 @@ func TestOwnershipChatRoutesScratchWithoutMovingTheProject(t *testing.T) {
 	if err != nil || chat.Role != workspaceidentity.Chat {
 		t.Fatalf("chat identity missing: %v", err)
 	}
-	result, err := a.config.seat().In(project).Exec(context.Background(), executor.ExecRequest{Argv: []string{"sh", "-c", "mktemp"}}, nil)
+	result, err := a.config.seat().In(project).Exec(context.Background(), executor.ExecRequest{Argv: []string{"sh", "-c", `mktemp "$TMPDIR/codeaf-runtime.XXXXXX"`}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

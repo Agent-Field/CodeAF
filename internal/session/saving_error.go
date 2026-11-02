@@ -31,3 +31,6 @@ func SavingError(transcript string, cause error) error {
 	}
 	return &UnsavedChatError{Transcript: transcript, Cause: cause}
 }
+
+// LocalDurable confirms that this agent completed its local transcript and capture close.
+func (a *Agent) LocalDurable() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.localDurable }

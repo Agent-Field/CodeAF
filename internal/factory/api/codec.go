@@ -107,6 +107,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 var Lost = map[string]string{
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
+	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
@@ -978,9 +979,29 @@ func roundsWire(lines []factory.RoundLine) []RoundLine {
 	}
 	out := make([]RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat}
+		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
 	}
 	return out
+}
+
+// withoutTryResults takes how each try ended out of steps a worker reports
+// (its steps' rounds and a reshaped pipeline's). The factory judges that
+// itself from the result it folds (run.foldResult), and a factory older than
+// the fields decodes a worker's report strictly, so sending them would cost
+// the whole report.
+func withoutTryResults(steps []Step, reports []StepReport) {
+	for i := range steps {
+		clearTryResults(steps[i].Rounds)
+	}
+	for i := range reports {
+		clearTryResults(reports[i].Rounds)
+	}
+}
+
+func clearTryResults(lines []RoundLine) {
+	for i := range lines {
+		lines[i].Result, lines[i].Reason = "", ""
+	}
 }
 
 // roundsItem is the wire's finished tries as the item keeps them.
@@ -990,7 +1011,7 @@ func roundsItem(lines []RoundLine) []factory.RoundLine {
 	}
 	out := make([]factory.RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat}
+		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
 	}
 	return out
 }

@@ -26,7 +26,7 @@ func TestOfferCopy(t *testing.T) {
 
 func TestStatusLineCopy(t *testing.T) {
 	cases := map[Status]string{
-		Running: "running on host-a",
+		Running: "held on host-a",
 		Off:     "host-a offline",
 		Branch:  "2 turns from host-a: merge / discard",
 		Idle:    "",
@@ -54,7 +54,7 @@ func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
 // continuing it here stops it there.
 func TestTakeoverLineNamesTheDeviceARunningChatIsOn(t *testing.T) {
 	r := Row{Status: Running, Device: "host-a", DurableAgo: 12 * time.Second}
-	if got, want := TakeoverLine(r), "running on host-a; last saved turn 12s ago"; got != want {
+	if got, want := TakeoverLine(r), "held on host-a; last saved turn 12s ago"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -84,11 +84,11 @@ func TestFrozenSentences(t *testing.T) {
 	}
 	for got, want := range map[string]string{
 		NoIdentity:   "this machine has no identity yet: codeaf identity import",
-		Unreachable:  "other machines unreachable",
+		Unreachable:  "the sync service is not answering",
 		ClockOff:     "this computer's clock is off by more than 5 minutes",
 		ReplacedGone: "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)",
 		Replaced:     "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)",
-		Removed:      "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back",
+		Removed:      "this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back",
 		SlowDown:     "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows",
 		TooManyNew:   "this network has started too many new identities today; sync begins when it allows more",
 	} {
