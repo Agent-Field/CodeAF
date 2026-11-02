@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,7 +50,7 @@ func TestFactoryRunningJobPause(t *testing.T) {
 			_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
 		}}
 		chat := factoryrun.NewChatExecutor(maker)
-		runner := factoryrun.New(factoryrun.Options{Store: mirror, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+		runner := factoryrun.New(factoryrun.Options{Store: mirror, Talk: sessionTalk{}, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
 			job.Spend(0.125)
 			return chat.Run(ctx, job)
 		})}})
@@ -60,20 +61,10 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		}
 		params := map[string]any{"factory": status.Factory, "job": it.ID}
 		read := func() api.Job { var j api.Job; s.must("factory.job", params, &j); return j }
-		// A live round moves the job's version between the read and the write,
-		// which is the stale answer a person's next read clears.
 		act := func(method string) {
 			t.Helper()
-			for try := 0; ; try++ {
-				params["expect"] = map[string]any{"version": read().Version}
-				_, code, words := s.call(method, params)
-				if code == "" {
-					return
-				}
-				if code != appwire.CodeStale || try == 4 {
-					t.Fatalf("%s: %s: %s", method, code, words)
-				}
-			}
+			params["expect"] = map[string]any{"version": 1}
+			s.must(method, params, &appwire.FactoryJobActed{})
 		}
 		wait := func(what string, predicate func(api.Job) bool) api.Job {
 			t.Helper()
@@ -99,6 +90,11 @@ func TestFactoryRunningJobPause(t *testing.T) {
 				return nil
 			}
 		}
+		s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+			return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+		}
+		var chats appwire.FactoryJobChats
+		s.must("factory.job_chats", params, &chats)
 		desk, err := lease.Open(floor, lease.Options{})
 		if err != nil {
 			t.Fatal(err)
@@ -114,6 +110,7 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		if !j.Can.Hold || j.Can.Resume {
 			t.Fatalf("running controls: hold=%v resume=%v", j.Can.Hold, j.Can.Resume)
 		}
+
 		act("factory.job_hold")
 		select {
 		case <-cancelled:
@@ -154,6 +151,17 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		}
 		if strings.Join(receipts, ",") != "held:owner,resumed:owner" {
 			t.Fatalf("pause receipts: %v", receipts)
+		}
+		var page appwire.EntriesResult
+		s.must("agents.entries", map[string]any{"id": chats.Agent, "limit": 200}, &page)
+		resumed := 0
+		for _, entry := range page.Entries {
+			if entry.Text == "resumed" {
+				resumed++
+			}
+		}
+		if resumed != 1 {
+			t.Errorf("manager chat has %d resumed lines, want 1", resumed)
 		}
 		if !strings.Contains(s.hello, `"factory.job_pause"`) {
 			t.Fatalf("hello lacks factory.job_pause: %s", s.hello)
@@ -491,4 +499,151 @@ func newPauseSetup(t *testing.T) (*localSetup, appwire.FactoryLocalStatus) {
 		t.Fatal(err)
 	}
 	return s, s.backend.localStatus()
+}
+
+// Stop is committed first: this covers that ordering, not every concurrent interleaving.
+func TestFactoryPauseResumeRule(t *testing.T) {
+	for _, paused := range []bool{false, true} {
+		method := "factory.job_hold"
+		if paused {
+			method = "factory.job_resume"
+		}
+		t.Run(method+" stale progress", func(t *testing.T) {
+			s, status := newPauseSetup(t)
+			floor := s.backend.local.host.floor
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning,
+				Stream: &factory.Stream{Paused: paused, Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			params := map[string]any{"factory": status.Factory, "job": it.ID}
+			var before api.Job
+			s.must("factory.job", params, &before)
+			if err := floor.Update(it.ID, func(it *factory.Item) error { it.Stream.Spent = .25; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			params["expect"] = map[string]any{"version": before.Version}
+			var acted appwire.FactoryJobActed
+			s.must(method, params, &acted)
+			if acted.Current == nil || acted.Current.Desk.Run.Paused == paused || acted.Current.Cost != .25 {
+				t.Fatalf("stale action did not take effect: %+v", acted.Current)
+			}
+		})
+	}
+	t.Run("pause finished job", func(t *testing.T) {
+		s, status := newPauseSetup(t)
+		it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped})
+		if err != nil {
+			t.Fatal(err)
+		}
+		params := map[string]any{"factory": status.Factory, "job": it.ID, "expect": map[string]any{"version": 999}}
+		var before api.Job
+		s.must("factory.job", params, &before)
+		_, code, words := s.call("factory.job_hold", params)
+		if code != appwire.CodeConflict || !strings.Contains(words, "is not running") {
+			t.Fatalf("finished pause: %s %s", code, words)
+		}
+		var after api.Job
+		s.must("factory.job", params, &after)
+		if !reflect.DeepEqual(before, after) {
+			t.Fatal("finished job changed")
+		}
+	})
+
+	for _, method := range []string{"factory.job_hold", "factory.job_resume"} {
+		t.Run(method+" after stop", func(t *testing.T) {
+			s, status := newPauseSetup(t)
+			floor := s.backend.local.host.floor
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning,
+				Stream: &factory.Stream{Paused: true, Spent: .25, Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1, Chat: "saved-chat"}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			params := map[string]any{"factory": status.Factory, "job": it.ID}
+			var before api.Job
+			s.must("factory.job", params, &before)
+			params["expect"] = map[string]any{"version": before.Version}
+			s.must("factory.job_stop", params, &appwire.FactoryJobActed{})
+			var stopped api.Job
+			s.must("factory.job", params, &stopped)
+			var activity appwire.FactoryActivity
+			s.must("factory.activity", map[string]any{"factory": status.Factory}, &activity)
+			_, code, words := s.call(method, params)
+			want := "is not paused"
+			if method == "factory.job_hold" {
+				want = "is not running"
+			}
+			if code != appwire.CodeConflict || !strings.Contains(words, want) {
+				t.Errorf("%s: code=%s words=%q, want conflict containing %q", method, code, words, want)
+			}
+			var after api.Job
+			s.must("factory.job", params, &after)
+			var recorded appwire.FactoryActivity
+			s.must("factory.activity", map[string]any{"factory": status.Factory}, &recorded)
+			if !reflect.DeepEqual(stopped, after) || !reflect.DeepEqual(activity, recorded) {
+				t.Fatal("refused action changed job or record")
+			}
+			desk, err := lease.Open(floor, lease.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := desk.Pull(lease.Worker{ID: "resume-fixture", Handle: "owner", Solo: true}); err != lease.ErrNoJob {
+				t.Fatalf("stopped job became runnable: %v", err)
+			}
+		})
+	}
+}
+
+func TestFactoryResumeChat(t *testing.T) {
+	for _, leased := range []bool{false, true} {
+		name := "unleased"
+		if leased {
+			name = "leased"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, status := newPauseSetup(t)
+			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+				return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+			}
+			floor := s.backend.local.host.floor
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateQueued,
+				Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1, Chat: "saved-chat"}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if leased {
+				desk, err := lease.Open(floor, lease.Options{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := desk.Pull(lease.Worker{ID: "chat-fixture", Handle: "owner", Solo: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			params := map[string]any{"factory": status.Factory, "job": it.ID}
+			var chats appwire.FactoryJobChats
+			s.must("factory.job_chats", params, &chats)
+			act := func(method string) {
+				t.Helper()
+				var j api.Job
+				s.must("factory.job", params, &j)
+				params["expect"] = map[string]any{"version": j.Version}
+				s.must(method, params, &appwire.FactoryJobActed{})
+			}
+			act("factory.job_hold")
+			act("factory.job_resume")
+			act("factory.job_resume")
+			var page appwire.EntriesResult
+			s.must("agents.entries", map[string]any{"id": chats.Agent, "limit": 200}, &page)
+			count := 0
+			for _, e := range page.Entries {
+				if e.Text == "resumed" {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("manager chat has %d resumed lines, want 1", count)
+			}
+		})
+	}
 }
