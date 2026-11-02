@@ -57,6 +57,20 @@ const ReasonHasRunning = "has_running"
 // [factory.RepoOffWords].
 const ReasonRepoOff = "repo_off"
 
+// ReasonInFlight is the reason on the 409 that refuses a comment on a job's
+// issue while another comment on the same job is still being posted, so a
+// double click posts once. Nothing was posted by the refused call.
+const ReasonInFlight = "in_flight"
+
+// The outcome on a failure of a job's issue comment
+// (POST /v1/jobs/{id}/issue_comment): refused says nothing was posted;
+// unknown says GitHub's answer cannot say, so the person reads the issue
+// before posting again. A factory older than the field sends none.
+const (
+	CommentRefused = "refused"
+	CommentUnknown = "unknown"
+)
+
 // ReasonNeedsCheckout is the reason on the 409 that refuses a start whose
 // repository has no checkout on the factory's machine and cannot be cloned
 // there; the error is [factory.NeedsCheckout]'s sentence, naming why. It is
@@ -372,6 +386,12 @@ type Job struct {
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
+	// Area is the part of the repository the job's change touched most
+	// ([factory.JobArea], said by [AreaIn]): the repository's declared area,
+	// or else the top-level directory with a trailing slash ("cli/"), two
+	// segments deep under a container ("internal/factory/"). Absent before
+	// the job changed a file, or when it changed files at the root alone.
+	Area string `json:"area,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
 	Draft *bool  `json:"draft,omitempty"`
 	ID    int    `json:"document_id"`
@@ -855,7 +875,7 @@ type Triage struct {
 	SizeFrom     string    `json:"size_from,omitempty"`
 	Area         string    `json:"area,omitempty"`
 	Readiness    int       `json:"readiness,omitempty"`
-	Est          float64   `json:"est,omitempty"`
+	Rubric       *Rubric   `json:"rubric,omitempty"`
 	DupOf        int       `json:"dup_of,omitempty"`
 	Risk         []string  `json:"risk,omitempty"`
 	Read         string    `json:"read,omitempty"`
@@ -868,6 +888,28 @@ type Triage struct {
 	StartMatched []string  `json:"start_matched,omitempty"`
 	StartPaths   []string  `json:"start_paths,omitempty"`
 	StartRules   []string  `json:"start_rules,omitempty"`
+}
+
+// Rubric is how complex a job is (desk): five factors scored 0..2, their sum
+// and its band, and who scored it: "read" (the arrival read, text only) or
+// "scout" (Look closer, with the repository). A factor marked low was judged
+// without seeing what it is about. A model never writes a price.
+type Rubric struct {
+	Scope      Factor `json:"scope"`
+	Clarity    Factor `json:"clarity"`
+	Coupling   Factor `json:"coupling"`
+	Proof      Factor `json:"proof"`
+	Novelty    Factor `json:"novelty"`
+	From       string `json:"from"`
+	Complexity int    `json:"complexity"`
+	Band       string `json:"band"`
+}
+
+// Factor is one rubric factor (desk).
+type Factor struct {
+	Score int    `json:"score"`
+	Why   string `json:"why,omitempty"`
+	Low   bool   `json:"low,omitempty"`
 }
 
 // LogLine is one line of a run's grain (desk).

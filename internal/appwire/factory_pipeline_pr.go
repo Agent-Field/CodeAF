@@ -54,10 +54,28 @@ import (
 // ALL OF THIS IS OPTIONAL AND DISTINCT FROM every other factory feature. An
 // engine that is not a [FactoryPipelineOpener] answers the method as
 // unknown_method and does not announce [FeatureFactoryPipelinePR].
+//
+// ADDING A COMMIT TO AN OPEN PULL REQUEST is the same method with pr, the
+// number of a pull request that is open, from a branch of the same repository
+// into its default branch, and optionally expected_head_sha, the head the draft
+// started from. The file is committed onto that pull request's head branch and
+// no new pull request is opened. branch, body and expected_base_sha shape a
+// new pull request only and are refused with pr. The answer is "updated" (pr
+// carries the new head_sha) or "unchanged" (pr carries the head that already
+// holds these bytes), and a failure never leaves a branch: the head branch was
+// there before the call. A head that is not the expected one, a closed pull
+// request or one from another repository is refused at stage "head" with
+// nothing written. Only an engine that is a [FactoryPipelinePRUpdater]
+// announces [FeatureFactoryPipelinePRUpdate]; any other refuses pr and
+// expected_head_sha as unknown fields (bad_params), as before.
 
 // FeatureFactoryPipelinePR is announced in hello when the engine serves
 // factory.pipeline_pr.
 const FeatureFactoryPipelinePR = "factory.pipeline_pr"
+
+// FeatureFactoryPipelinePRUpdate is announced in hello when factory.pipeline_pr
+// takes pr, adding a commit to an open pull request.
+const FeatureFactoryPipelinePRUpdate = "factory.pipeline_pr_update"
 
 // The bounds are the route's own (internal/factory/serve/pipeline_pr.go), and a
 // test in that package fails when one drifts. A request that exceeds one is
@@ -79,14 +97,17 @@ const (
 const (
 	PipelinePROutcomeOpened    = "opened"
 	PipelinePROutcomeUnchanged = "unchanged"
+	PipelinePROutcomeUpdated   = "updated"
 	PipelinePROutcomeRefused   = "refused"
 	PipelinePROutcomeNotOpened = "not_opened"
 	PipelinePROutcomeUnknown   = "unknown"
 )
 
 // PipelinePRStages are the stages the route names a failure at, in the order of
-// its sequence. A stage outside this list is not believed.
-var PipelinePRStages = []string{"request", "credential", "repository", "permission", "base", "file", "branch", "commit", "pull_request"}
+// its sequences. "head" is the open pull request an update reads; "base",
+// "branch" and "pull_request" belong to opening one. A stage outside this list
+// is not believed.
+var PipelinePRStages = []string{"request", "credential", "repository", "permission", "base", "head", "file", "branch", "commit", "pull_request"}
 
 var pipelinePRBaseSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
@@ -105,6 +126,12 @@ type FactoryPipelinePRParams struct {
 	// ExpectedBaseSHA is the 40-hex commit the draft started from; when it is not
 	// the default branch's tip, the factory writes nothing.
 	ExpectedBaseSHA string `json:"expected_base_sha,omitempty"`
+	// PR is the number of an OPEN pull request to add the commit to instead of
+	// opening a new one (feature factory.pipeline_pr_update).
+	PR int `json:"pr,omitempty"`
+	// ExpectedHeadSHA is, with PR, the 40-hex commit the pull request's head was
+	// when the draft started; when it has moved, the factory writes nothing.
+	ExpectedHeadSHA string `json:"expected_head_sha,omitempty"`
 }
 
 // FactoryPipelinePR is the pull request GitHub confirmed.
@@ -119,12 +146,14 @@ type FactoryPipelinePR struct {
 
 // FactoryPipelinePRDone is the answer to a pull request that was opened, or
 // that did not need to be. It repeats the connection and repository that were
-// asked for. For "unchanged" PR is absent: the default branch already holds
-// these bytes and nothing was written.
+// asked for. For "unchanged" without pr, PR is absent: the default branch
+// already holds these bytes and nothing was written. With pr, PR is always the
+// pull request asked for: "updated" with HeadSHA the new commit, "unchanged"
+// with HeadSHA the head that already holds these bytes.
 type FactoryPipelinePRDone struct {
 	Factory string             `json:"factory"`
 	Repo    string             `json:"repo"`
-	Outcome string             `json:"outcome" enum:"opened,unchanged"`
+	Outcome string             `json:"outcome" enum:"opened,updated,unchanged"`
 	PR      *FactoryPipelinePR `json:"pr,omitempty"`
 	BaseSHA string             `json:"base_sha"`
 }
@@ -150,6 +179,25 @@ type FactoryPipelinePRFailure struct {
 // Detail is a [FactoryPipelinePRFailure].
 type FactoryPipelineOpener interface {
 	FactoryPipelinePR(ctx context.Context, p FactoryPipelinePRParams) (FactoryPipelinePRDone, error)
+}
+
+// FactoryPipelinePRUpdater marks a [FactoryPipelineOpener] whose
+// FactoryPipelinePR also takes PR and ExpectedHeadSHA.
+type FactoryPipelinePRUpdater interface {
+	PipelinePRUpdates()
+}
+
+func withFactoryPipelinePRUpdateFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(FactoryPipelineOpener); ok && servesPipelinePRUpdate(e) {
+		hello = withFeature(hello, FeatureFactoryPipelinePRUpdate)
+	}
+	return hello
+}
+
+func servesPipelinePRUpdate(e Engine) bool {
+	_, factory := e.(Factory)
+	_, updater := e.(FactoryPipelinePRUpdater)
+	return factory && updater
 }
 
 func withFactoryPipelinePRFeature(hello Hello, e Engine) Hello {
@@ -224,6 +272,23 @@ func CheckPipelinePR(p FactoryPipelinePRParams) (FactoryPipelinePRParams, error)
 			return p, Errorf(CodeBadParams, "expected_base_sha must be a 40-character commit SHA")
 		}
 	}
+	return checkPipelinePRUpdate(p)
+}
+
+// checkPipelinePRUpdate bounds pr and expected_head_sha, the route's own rules.
+func checkPipelinePRUpdate(p FactoryPipelinePRParams) (FactoryPipelinePRParams, error) {
+	if p.PR == 0 && p.ExpectedHeadSHA == "" {
+		return p, nil
+	}
+	p.ExpectedHeadSHA = strings.ToLower(strings.TrimSpace(p.ExpectedHeadSHA))
+	switch {
+	case p.PR <= 0:
+		return p, Errorf(CodeBadParams, "pr must be the number of an open pull request")
+	case p.Branch != "" || p.Body != "" || p.ExpectedBaseSHA != "":
+		return p, Errorf(CodeBadParams, "branch, body and expected_base_sha are for a new pull request; leave them out with pr")
+	case p.ExpectedHeadSHA != "" && !ValidPipelinePRCommit(p.ExpectedHeadSHA):
+		return p, Errorf(CodeBadParams, "expected_head_sha must be a 40-character commit SHA")
+	}
 	return p, nil
 }
 
@@ -247,6 +312,10 @@ func pipelinePRMethod(name string) method {
 		var p FactoryPipelinePRParams
 		if err := decodeStrict(name, raw, &p); err != nil {
 			return nil, err
+		}
+		// An engine without the update word keeps the fields it never had.
+		if (p.PR != 0 || p.ExpectedHeadSHA != "") && !servesPipelinePRUpdate(e) {
+			return nil, Errorf(CodeBadParams, "%s: unknown field \"pr\"", name)
 		}
 		p, err := CheckPipelinePR(p)
 		if err != nil {

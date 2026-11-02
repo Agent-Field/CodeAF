@@ -103,7 +103,7 @@ func TestFactoryRulesFromForgeReachIntakeAndPipeline(t *testing.T) {
 	}
 	it, err := st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, Tier: factory.TierOwner,
 		Title: "Fix documentation", State: factory.StateNew, Labels: []string{"agent-ready", "size:S"},
-		Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: time.Unix(100, 0)}})
+		Triage: factory.Triage{Size: "S", TriagedAt: time.Unix(100, 0)}})
 	if err != nil {
 		t.Fatal(err)
 	}
