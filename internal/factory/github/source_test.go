@@ -618,3 +618,22 @@ func TestRepairPushKeepsPRTitleAndBodyInsidePublicBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestSeparateJobTitleIsLiteral(t *testing.T) {
+	f := newFixture()
+	_, api := f.serve(t)
+	src := New(api, []string{"acme/api"}, time.Now)
+	const title = "Fix auto-save $5"
+	_, err := src.Write(context.Background(), factory.Action{Verb: "open-pr", Item: factory.Item{Repo: "acme/api", Title: title, Body: "Append one line with hello"}, Branch: "fix-auto-save", Body: "Proof passed", Draft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.posted) == 0 {
+		t.Fatal("no pull request sent")
+	}
+	if got := f.posted[len(f.posted)-1]["title"]; got != title {
+		t.Fatalf("PR title = %q; want %q", got, title)
+	}
+}
