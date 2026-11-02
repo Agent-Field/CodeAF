@@ -116,3 +116,22 @@ func TestTheSpendingToolHandsTheLoopFinishedFigures(t *testing.T) {
 		t.Fatalf("the spending read did not compute the rate and the projection:\n%s", result)
 	}
 }
+
+// The rate line names its basis in whole days, so its figures come from those
+// days. A window an hour past ten days — what ten calendar days are across the
+// autumn clock change — is still "$0.05 a day over those 10 days", and thirty of
+// those days is $1.50, not a figure a reader cannot get back by multiplying.
+func TestTheRateLineMultipliesTheDaysItNames(t *testing.T) {
+	since := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	lines := spendRateLines(store.SpendWindow{
+		Since: since,
+		Until: since.Add(10*24*time.Hour + time.Hour),
+		Runs:  10,
+		Cost:  0.50,
+	}, 0)
+	block := strings.Join(lines, "\n")
+	if !strings.Contains(block, "$0.05 a day over those 10 days") ||
+		!strings.Contains(block, "a week is $0.35 and thirty days is $1.50") {
+		t.Fatalf("the projections do not follow from the days the line names: %q", block)
+	}
+}
