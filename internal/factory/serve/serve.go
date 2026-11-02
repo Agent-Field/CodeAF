@@ -252,7 +252,7 @@ func New(seam factory.Seam, config Config) *Handler {
 		h.setupMu.Unlock()
 	}
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
-		h.fail(w, http.StatusNotFound, "factory endpoint not found")
+		h.fail(w, http.StatusNotFound, api.EndpointNotFound)
 	})
 	// The dashboard lives in the codeaf app; outside /v1 the factory only says so.
 	h.read("/", h.root)
@@ -366,7 +366,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Noncanonical paths are refused here so ServeMux cannot replace the JSON
 	// contract with an HTML redirect that carries no factory identity.
 	if r.URL.Path != path.Clean(r.URL.Path) {
-		h.fail(w, http.StatusNotFound, "factory endpoint not found")
+		h.fail(w, http.StatusNotFound, api.EndpointNotFound)
 		return
 	}
 	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {

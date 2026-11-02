@@ -894,15 +894,17 @@ type journalDivision struct {
 // counts every request to the provider, Turns only the ones a turn of the
 // person's made (see [Agent.addAuxiliaryUsage]).
 type journalUsage struct {
-	Model      string  `json:"model,omitempty"`
-	Input      int     `json:"input,omitempty"`
-	Output     int     `json:"output,omitempty"`
-	CacheRead  int     `json:"cacheRead,omitempty"`
-	CacheWrite int     `json:"cacheWrite,omitempty"`
-	CostUSD    float64 `json:"costUsd,omitempty"`
-	Calls      int     `json:"calls,omitempty"`
-	DurationMS int64   `json:"durationMs,omitempty"`
-	Aux        bool    `json:"aux,omitempty"`
+	// RemoteEvent makes mirrored charges idempotent across cursor replay.
+	RemoteEvent string  `json:"remote_event,omitempty"`
+	Model       string  `json:"model,omitempty"`
+	Input       int     `json:"input,omitempty"`
+	Output      int     `json:"output,omitempty"`
+	CacheRead   int     `json:"cacheRead,omitempty"`
+	CacheWrite  int     `json:"cacheWrite,omitempty"`
+	CostUSD     float64 `json:"costUsd,omitempty"`
+	Calls       int     `json:"calls,omitempty"`
+	DurationMS  int64   `json:"durationMs,omitempty"`
+	Aux         bool    `json:"aux,omitempty"`
 	// Empty marks a paid auxiliary call that reached its output ceiling without
 	// returning any answer. Role says which errand it was; today only a reflex
 	// writes the mark.
@@ -1144,6 +1146,7 @@ func (p journalPart) placeholderBecause(reason string) ai.ContentPart {
 // lock orders the writes, this one keeps a write from being interleaved by
 // anything that reaches the file another way.
 type sessionFile struct {
+	remoteSeen map[string]bool
 	// onWrite hears each line that reached the file, once the lock is released.
 	onWrite func()
 	mu      sync.Mutex
@@ -1748,6 +1751,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		journal.stamps = &stampIndex{}
 	}
 	journal.restored = replayed.usage
+	journal.remoteSeen = replayed.remoteSeen
 
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
@@ -1911,6 +1915,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// compaction marker for the same reason the title does — where a picture came
 	// from is a fact about the file, not about the tail of the transcript.
 	images := make(map[string]string)
+	remoteSeen := make(map[string]bool)
 	// And the note index with it, for the same reason and in the same pass: the
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
@@ -2194,6 +2199,12 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				continue
 			}
 			used := entry.Usage
+			if used.RemoteEvent != "" {
+				if remoteSeen[used.RemoteEvent] {
+					continue
+				}
+				remoteSeen[used.RemoteEvent] = true
+			}
 			spent.Input += used.Input
 			spent.Output += used.Output
 			spent.CacheRead += used.CacheRead
@@ -2326,6 +2337,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		stopped = ""
 	}
 	return replayedSession{
+		remoteSeen:     remoteSeen,
 		stopped:        stopped,
 		messages:       messages,
 		unread:         unread,
@@ -2490,8 +2502,9 @@ func legacyCompactionNote(summary string) string {
 type replayedSession struct {
 	modelSwitches []ModelSwitch
 	// userLines is read-only physical provenance for display reads, nil on resume.
-	userLines map[any]int
-	messages  []ai.Message
+	userLines  map[any]int
+	remoteSeen map[string]bool
+	messages   []ai.Message
 	// requests is what the file's request lines said, read beside the rebuild
 	// for a page watching the work with no lane to it ([RequestBooks]).
 	requests RequestBooks
