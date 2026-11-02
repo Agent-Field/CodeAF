@@ -728,7 +728,7 @@ func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item)
 }
 
 func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
-	if !h.requireVerb(w, h.seam.New != nil) {
+	if !h.requireVerb(w, h.seam.New != nil || h.seam.NewJob != nil) {
 		return
 	}
 	var body api.NewJob
@@ -850,13 +850,22 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// New has one words argument today. Join the title and brief here so a
-	// wire client does not need to know the seam's terminal-input shape.
-	words := body.Title
-	if body.Text != "" {
-		words += "\n\n" + body.Text
+	// Separate fields are prose, not a terminal sentence with chips.
+	var id int
+	var err error
+	literal := body.Source == factory.AskApp || body.Source == "hand-off" || body.Text != ""
+	if literal && h.seam.NewJob != nil {
+		id, err = h.seam.NewJob(body.Repo, body.Title, body.Text)
+	} else {
+		if !h.requireVerb(w, h.seam.New != nil) {
+			return
+		}
+		words := body.Title
+		if body.Text != "" {
+			words += "\n\n" + body.Text
+		}
+		id, err = h.seam.New(body.Repo, words)
 	}
-	id, err := h.seam.New(body.Repo, words)
 	if h.failed(w, err) {
 		return
 	}
@@ -900,8 +909,8 @@ func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if err != nil {
 		return err
 	}
-	ask := strings.TrimSpace(body.Text)
-	if ask == "" {
+	ask := body.Text
+	if ask == "" && (body.Source == "" || body.Source == factory.AskTUI) {
 		ask = strings.TrimSpace(body.Title)
 	}
 	now := h.clock()
@@ -911,7 +920,7 @@ func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	}
 	return h.config.Store.Update(id, func(it *factory.Item) error {
 		if body.Source == "hand-off" {
-			it.Title = body.Title
+			it.Title = strings.TrimSpace(body.Title)
 		}
 		if body.Start == "now" {
 			it.Marked = true
