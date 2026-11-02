@@ -270,6 +270,7 @@ type job struct {
 	thread       []factory.Message
 	pending      *pendingDelivery
 	blocked      string
+	withdrawn    bool
 	control      *client.PreparedWorkerReport
 	controlTries int
 	controlSent  bool
@@ -460,7 +461,7 @@ func (j *job) beat(ctx context.Context) bool {
 	beatCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
 	defer cancel()
 	hb, err := j.w.Heartbeat(beatCtx, j.lease)
-	if gone(err) {
+	if j.lostLease(err) {
 		return false
 	}
 	if err == nil {
@@ -591,7 +592,11 @@ const StopWait = 5 * time.Second
 // ending and the lease will expire into the queue for another worker.
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
-	_ = j.o.Runner.Stop(j.id)
+	if j.withdrawn {
+		j.o.Runner.Withdraw(j.id)
+	} else {
+		_ = j.o.Runner.Stop(j.id)
+	}
 	for deadline := time.Now().Add(StopWait); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -635,4 +640,11 @@ func final(it factory.Item) api.WorkerDone {
 
 func gone(err error) bool {
 	return errors.Is(err, client.ErrLeaseGone) || errors.Is(err, client.ErrNotAttached)
+}
+
+func (j *job) lostLease(err error) bool {
+	if errors.Is(err, client.ErrLeaseWithdrawn) {
+		j.withdrawn = true
+	}
+	return gone(err)
 }
