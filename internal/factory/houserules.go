@@ -138,14 +138,19 @@ type StartRules struct {
 	// started, so the lines above may lack its own: the approval after its
 	// plan is then always a person's.
 	Unread bool `json:"unread,omitempty"`
+	// UnreadWhy names the repository file and a safe diagnostic for a person
+	// to fix; it never carries a raw read error.
+	UnreadWhy  string `json:"unread_why,omitempty"`
+	UnreadFile string `json:"unread_file,omitempty"`
+	UnreadLine int    `json:"unread_line,omitempty"`
 }
 
 // StartRulesUnreadHold is the hold a plan gets when its job started with the
 // repository's rules unread ([StartRules.Unread]).
 const StartRulesUnreadHold = "ask first · the repository's rules could not be read"
 
-// PlanNoFiles ends the hold a plan gets when it declared no file list
-// ([ParsePlanFiles]) under a protected path: `protected · auth/, infra/ ·
+// PlanNoFiles ends the hold a plan gets when it has no checkable file list
+// ([PlanFilesOf]) under a protected path: `protected · auth/, infra/ ·
 // the plan names no files`, the protected paths in force where a match's
 // path goes, so the hold says what the files could not be checked against.
 // A hold saved before the paths were kept is the head and these words alone.

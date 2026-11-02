@@ -27,6 +27,8 @@ func enrich(e *Event) {
 			e.Verb = "reran step"
 		case HandOffNotNow:
 			e.Verb = "put away hand-off"
+		case RunAsNew:
+			e.Verb = "ran as new"
 		case AutoStarted, Started:
 			e.Verb = "started"
 		case Held:
@@ -59,6 +61,8 @@ func enrich(e *Event) {
 			e.Verb = "failed"
 		case "priority_changed":
 			e.Verb = "changed priority"
+		case StopAfterStepChanged:
+			e.Verb = "changed spending stop"
 		case BudgetChanged:
 			e.Verb = "changed budget"
 		case "budget_raised":
