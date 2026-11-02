@@ -318,6 +318,7 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
 | `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
 
@@ -340,8 +341,6 @@ the model. Only the factory's operator may set them (`forbidden` otherwise).
 `expect` is the three values as last read; a factory that keeps others answers
 `stale` and changes nothing. A refused value is `bad_params` before anything is
 sent; an unconfirmed write is `uncertain`.
-
-| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
