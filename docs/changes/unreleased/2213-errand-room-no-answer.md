@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: An errand gets the output room it asks for and says when it gave no answer
-pr: 0
+pr: 2213
 surface: [app, engine]
 invalidates:
   - "agents.errand held max_tokens to 4096. It now allows up to 8192, and agents.errand.models reports the new bound."
