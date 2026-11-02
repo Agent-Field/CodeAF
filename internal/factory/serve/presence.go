@@ -195,9 +195,11 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		byJob[held.Job] = held
 	}
 	names := map[string]string{}
+	var registered []registeredWorker
 	if h.workers != nil {
 		h.workers.mu.RLock()
 		for _, row := range h.workers.credentials {
+			registered = append(registered, row)
 			name := strings.TrimSpace(row.Worker.Machine)
 			if name == "" {
 				name = row.Name
@@ -208,6 +210,7 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 	}
 	for i := range jobs {
 		presentPinnedComputer(&jobs[i], roster, h.clock())
+		h.presentComputersDown(&jobs[i], registered, h.clock())
 		presentQueuedCapacity(&jobs[i], capacity)
 		if p := jobs[i].Publishing; p != nil && p.State == "queued" && jobs[i].Desk != nil && jobs[i].Desk.WorktreeMachine != "" {
 			online := false

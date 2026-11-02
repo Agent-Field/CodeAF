@@ -69,7 +69,8 @@ func TestQueuedCapacityReadsLiveUsageOncePerComputerAndRefreshesAfterAChange(t *
 	check("waiting_for_capacity")
 	c.request(t, "PUT", "/v1/runners/mbp", c.priya, api.RunnerSettings{Slots: 3}, 200, nil)
 	check("waiting_for_runner")
-	// An old registration is never evidence of full online capacity.
+	// An old registration is never evidence of full online capacity: the job
+	// waits for the computer, not for a slot on it.
 	c.now = c.now.Add(2 * c.h.runnerOfflineAfter())
-	check("waiting_for_runner")
+	check(api.WaitingForComputer)
 }

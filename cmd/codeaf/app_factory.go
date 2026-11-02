@@ -38,6 +38,9 @@ import (
 // appFactoryHost mounts the solo floor without opening a second listener.
 // Service election and worker election use the same files as terminal windows.
 type appFactoryHost struct {
+	// asleep is what this process was last told by the Mac's power door. A new
+	// process starts awake, so its runner corrects what a lost wake left saved.
+	asleep atomic.Bool
 	// seam is the floor's door the service serves, kept for what the app asks
 	// of this machine's factory directly (a job's conversations).
 	seam                               factory.Seam
@@ -555,7 +558,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
 	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
-	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
+	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
 	if runtime.GOOS == "darwin" {
@@ -657,7 +660,16 @@ func (h *appFactoryHost) defaultModel() string {
 
 // Power uses the elected runner's saved registration, so a second process
 // never registers a duplicate merely to report this machine sleeping.
+// runnerDial is the worker door into target for this host's runner, which
+// knows whether this Mac has said it is going to sleep.
+func (h *appFactoryHost) runnerDial(target factoryTarget) *factoryWorkerDial {
+	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
+	dial.awake = func() bool { return !h.asleep.Load() }
+	return dial
+}
+
 func (h *appFactoryHost) power(ctx context.Context, asleep bool) error {
+	h.asleep.Store(asleep)
 	dial := newFactoryWorkerDial(h.floor, nil)
 	all := dial.readCreds()
 	data, err := os.ReadFile(filepath.Join(h.floor.Root(), "attach.json"))

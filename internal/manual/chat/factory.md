@@ -42,6 +42,12 @@ that computer is offline or asleep, the job says **Waiting for <computer>
 starts it. Only that computer's own person sees its name; anyone else reads
 **Waiting for its computer**.
 
+A queued job with no computer yet says the same when every computer that could
+take it is offline or asleep: **Waiting for <computer> (asleep for 5 min)**. This
+wins over **Starting now**, because Start now gives a slot and nothing takes the
+job until a computer is back. A team's unassigned job reads **Waiting to start**,
+since it can go to anyone. The manager says the job is waiting for its computer.
+
 Two overrides act on one queued job, and only its person may use them:
 
 - **Start now** lets that job take one slot above Jobs at once, this one time,

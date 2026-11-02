@@ -155,9 +155,12 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
 	}
 	if !proven(j.Runner) {
-		if j.StatePresentation.Kind == api.WaitingForComputer {
+		if j.StatePresentation.Kind == api.WaitingForComputer && j.Runner != "" {
 			j.StatePresentation.Title = "Waiting for its computer"
 			j.StatePresentation.Detail = "Waiting for the computer its work is on, which is not running now."
+		} else if j.StatePresentation.Kind == api.WaitingForComputer && !mine(j.AssignedTo) {
+			j.StatePresentation.Title = "Waiting for a computer"
+			j.StatePresentation.Detail = "Waiting for a computer to come back. None that can take this job is running now."
 		}
 		j.Runner = ""
 	}

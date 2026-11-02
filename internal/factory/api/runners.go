@@ -124,6 +124,9 @@ type RunnerSelf struct {
 	// runner may take above Slots. The runner keeps that many more slots
 	// ready until they are taken. An older factory never sends it.
 	OverLimit int `json:"over_limit,omitempty"`
+	// Asleep is whether the factory has this computer asleep. It refuses the
+	// computer every job while it does, so a runner that knows better says so.
+	Asleep bool `json:"asleep,omitempty"`
 }
 
 // People is absent as a section in solo mode and populated only in a team.

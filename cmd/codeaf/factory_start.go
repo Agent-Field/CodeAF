@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -93,6 +94,9 @@ func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (
 			return fmt.Sprintf(sayStartResumed, ref), nil
 		}
 		if it.State == factory.StateQueued {
+			if wait := serve.QueuedWait(st, it, time.Now()); wait != "" {
+				return ref + " is queued. " + wait, nil
+			}
 			return fmt.Sprintf(sayStartQueued, ref), nil
 		}
 		return fmt.Sprintf(sayStartRunning, ref), nil

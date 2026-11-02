@@ -86,6 +86,12 @@ func (w *WorkerClient) Self(ctx context.Context) (api.RunnerSelf, error) {
 	return out, err
 }
 
+// Presence says whether this runner's computer is asleep.
+func (w *WorkerClient) Presence(ctx context.Context, asleep bool) error {
+	_, err := w.send(ctx, http.MethodPost, "/v1/runners/presence", w.credential, api.RunnerPresence{Asleep: asleep}, nil)
+	return err
+}
+
 // Pull waits up to the factory's long-poll bound for a job. ok is false when
 // none was offered.
 func (w *WorkerClient) Pull(ctx context.Context) (api.WorkerPull, bool, error) {
