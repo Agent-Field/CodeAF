@@ -190,3 +190,54 @@ func TestDecideAndDecideJobAgreeOnAPathLine(t *testing.T) {
 		}
 	}
 }
+
+// A BARE ASK-FIRST LINE THAT LOOKS LIKE A PATH IS ONE, by the rule the desk
+// shows: a `touch`, `touches` or `path:` line names its path; a bare line is a
+// path when it has no space, or holds a slash or a star; anything else is a
+// sentence; a blank line is nothing.
+func TestAskFirstPathReadsABareLineAsTheDeskDoes(t *testing.T) {
+	for _, tc := range []struct{ rule, want string }{
+		{"billing/", "billing/"},
+		{"src/**", "src/**"},
+		{"*.lock", "*.lock"},
+		{"docs/README.md", "docs/README.md"},
+		{"  billing/  ", "billing/"},
+		{"touch billing/", "billing/"},
+		{"Touches src/Auth/", "src/Auth/"},
+		{"path: infra/", "infra/"},
+		{"a public API shape changes", ""},
+		{"change the database schema", ""},
+		{"", ""},
+		{"   ", ""},
+	} {
+		if got := AskFirstPath(tc.rule); got != tc.want {
+			t.Errorf("AskFirstPath(%q) = %q, want %q", tc.rule, got, tc.want)
+		}
+	}
+}
+
+// A bare `billing/` guards everything under it at a start and in a plan, and
+// is never also an unjudged sentence.
+func TestABareAskFirstPathHoldsAtStartAndPlan(t *testing.T) {
+	f, err := Parse("start:\n  labels: [ready]\n  ask_first: [billing/]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"billing/invoice.go"}, Measured{})
+	if want := []string{"protected · billing/ · billing/invoice.go"}; !reflect.DeepEqual(d.Reasons, want) {
+		t.Errorf("start reasons %q, want %q", d.Reasons, want)
+	}
+	if d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"docs/readme.md"}, Measured{}); !d.Start {
+		t.Errorf("an unguarded start under a bare path = %+v", d)
+	}
+	rules := StartRulesOf(f)
+	if !GuardsPaths(rules) {
+		t.Error("a bare path line does not guard paths")
+	}
+	if got := PlanHold(rules, []string{"billing/invoice.go"}); got != "protected · billing/ · billing/invoice.go" {
+		t.Errorf("plan hold %q", got)
+	}
+	if got := PlanHold(rules, []string{"cmd/main.go"}); got != "" {
+		t.Errorf("an unguarded plan was held: %q", got)
+	}
+}

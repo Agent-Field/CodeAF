@@ -297,13 +297,14 @@ func (b *appBackend) FactoryJobStop(ctx context.Context, p appwire.FactoryJobAct
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStop, p.Job, factoryVerbStop, guardBody{p.Expect})
 }
 
-// FactoryJobHold keeps a queued job from starting. The factory refuses a job
-// that is not queued, and only the job's person may hold it.
+// FactoryJobHold holds a queued job or pauses a running step, keeping its
+// work and conversation. Only the job's person may hold it.
 func (b *appBackend) FactoryJobHold(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActHold, p.Job, factoryVerbHold, guardBody{p.Expect})
 }
 
-// FactoryJobResume lets a held job go on: it waits in the queue again.
+// FactoryJobResume continues a paused step in its conversation when possible.
+// It takes a free slot through the queue, waiting when all slots are busy.
 func (b *appBackend) FactoryJobResume(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActResume, p.Job, factoryVerbResume, guardBody{p.Expect})
 }
@@ -455,4 +456,12 @@ func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobC
 		return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeUncertain, "the factory made a job but did not say which; read the queue before trying again")
 	}
 	return h.acted(ctx, p.Factory, appwire.JobActCreate, a.ID, a), nil
+}
+
+// FactoryJobRunAsNew starts a separate job and answers its new number.
+func (b *appBackend) FactoryJobRunAsNew(ctx context.Context, p appwire.FactoryJobRunAsNewParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRunAsNew, p.Job, "run-as-new", struct {
+		Assignee *string     `json:"assignee,omitempty"`
+		Expect   *api.Expect `json:"expect,omitempty"`
+	}{p.Assignee, p.Expect})
 }

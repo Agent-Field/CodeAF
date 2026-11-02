@@ -152,7 +152,7 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return refuseMerge("the pull request has commits you did not approve")
 	}
 	if pr.Draft {
-		return refuseMerge("the pull request is a draft")
+		return refuseMerge("the pull request is a draft: " + DraftWhy(it))
 	}
 	switch pr.Mergeable {
 	case MergeableNo:

@@ -84,7 +84,7 @@ func startActionFactoryWith(t *testing.T, more func(*serve.Config)) *actionFacto
 		},
 		Launch: func(id int) error { f.launched.Add(1); return doors.Launch(id) },
 		Hold:   doors.Hold,
-		Stop:   doors.Stop, Answer: doors.Answer, SignOff: doors.SignOff,
+		Stop:   doors.Stop, Answer: doors.Answer, SpendAnswer: doors.SpendAnswer, SignOff: doors.SignOff,
 		SendBack: func(id int, words string) error { f.sentBack.Store(words); return nil },
 		New: func(repo, words string) (int, error) {
 			title, _, _ := strings.Cut(words, "\n")

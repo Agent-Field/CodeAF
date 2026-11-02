@@ -210,7 +210,7 @@ func mustStandInJSON(value any) json.RawMessage {
 
 func shortEngineHome(t *testing.T) {
 	t.Helper()
-	root, err := os.MkdirTemp("", "eh")
+	root, err := os.MkdirTemp(shortSocketParent(t), "eh")
 	if err != nil {
 		t.Fatalf("make a state root: %v", err)
 	}

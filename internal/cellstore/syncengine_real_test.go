@@ -10,17 +10,14 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 )
 
 // TestSyncEngineRoundTripRealEngine runs the real CLI verbs: seal a cell, export
 // it, record the frames as published, and see a second export send nothing. It
 // skips while the engine build has no sync verbs.
 func TestSyncEngineRoundTripRealEngine(t *testing.T) {
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	c := newCell(t)
 	if err := os.WriteFile(filepath.Join(c.Root, "note.txt"), []byte("hello"), 0o600); err != nil {
 		t.Fatal(err)
