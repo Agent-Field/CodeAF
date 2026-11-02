@@ -8,20 +8,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // C5 requires a moved chat's snapshot to include composer ! work, including
 // a file changed after an initial snapshot that could otherwise be reused.
 func TestUserBashChangesReachTheTurnEndSnapshot(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	// The session suite pins the engine away by default. This real-store proof
-	// deliberately resolves the configured test engine or the embedded engine.
-	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
-	bin, err := furrow.ResolveBinary()
-	if err != nil {
-		t.Skipf("requires the cell engine: %v", err)
-	}
+	bin := sealEngine(t)
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.HostBound})
 	if err != nil {
 		t.Fatal(err)

@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
@@ -24,7 +24,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -81,10 +80,7 @@ type driveRig struct {
 func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRig {
 	t.Helper()
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	clock := &driveClock{directorytest.NewFakeClock()}
 	clock.Advance(time.Since(clock.Now()))
 	storeDir := t.TempDir()
@@ -436,10 +432,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 // fence 0, and nothing is written under the home's sync directory.
 func TestDriveSideOffIsStageZero(t *testing.T) {
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	hosted(t, "") // a build with no default relay: empty now means the built-in one
 	t.Setenv(home.EnvVar, t.TempDir())
 	h := t.TempDir()
