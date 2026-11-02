@@ -25,13 +25,15 @@ var ErrAppKeys = errors.New("keys are kept by the app")
 type AppCredentials struct {
 	mu   sync.RWMutex
 	keys map[string]string
+	// handed counts the times each provider's key was handed over or removed.
+	handed map[string]uint64
 }
 
 var appCredentials atomic.Pointer[AppCredentials]
 
 // NewAppCredentials is an empty set of app keys.
 func NewAppCredentials() *AppCredentials {
-	return &AppCredentials{keys: make(map[string]string)}
+	return &AppCredentials{keys: make(map[string]string), handed: make(map[string]uint64)}
 }
 
 // UseAppCredentials installs the keys every key reader consults first, before
@@ -53,12 +55,13 @@ func (c *AppCredentials) Set(provider, key string) {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
 	trace.Secret(key)
 	redact.Register(key)
-	c.change(func() { c.keys[provider] = key })
+	c.change(func() { c.keys[provider] = key; c.handed[provider]++ })
 }
 
 // Remove disconnects one provider for the rest of this launch.
 func (c *AppCredentials) Remove(provider string) {
-	c.change(func() { c.keys[strings.ToLower(strings.TrimSpace(provider))] = "" })
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	c.change(func() { c.keys[provider] = ""; c.handed[provider]++ })
 }
 
 // change makes one change to the keys held. A key handed over is a credential
@@ -94,6 +97,15 @@ func appKey(provider string) (string, bool) {
 		return source.Key(provider)
 	}
 	return "", false
+}
+
+// Handed counts how many times a provider's key was handed over or removed. A
+// reading kept from that key compares this to know it is out of date, including
+// when the same key is handed over again after a refusal.
+func (c *AppCredentials) Handed(provider string) uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.handed[strings.ToLower(strings.TrimSpace(provider))]
 }
 
 // Snapshot is a copy of the keys by provider. Nothing writes it anywhere.
