@@ -101,6 +101,7 @@ func TestFactoryCommandStepRetryAfterOutOfAttempts(t *testing.T) {
 			t.Setenv(factoryBenchesEnv, "")
 			g := newRunRig(t)
 			freshEngineProcess(t)
+			freshEngineFactoryStore(t)
 			s.backend.open = appOpenInProcess
 			s.backend.local.parent = func() session.Config { return session.Config{Workspace: g.workspace} }
 			st := s.start()
