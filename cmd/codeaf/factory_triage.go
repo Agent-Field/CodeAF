@@ -78,7 +78,16 @@ func runFactoryTriage(ctx context.Context, st *store.Store, newIntake func(*stor
 	in := newIntake(st)
 	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
 		AskFirst: in.AskFirst, AfterTick: in.Once,
+		Off: func() bool { return !factoryReadsOnArrival(st) },
 	})
+}
+
+// factoryReadsOnArrival is the floor's "Read new issues as they arrive",
+// read each time so a change on the settings page takes effect on the next
+// tick. An unreadable settings file reads as the default, off.
+func factoryReadsOnArrival(st *store.Store) bool {
+	settings, _ := st.RunnerSettings()
+	return settings.ReadOnArrival
 }
 
 // waitForFactoryTriage answers the worker's call and the triage lock's
@@ -147,7 +156,9 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 			return "", err
 		}
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryTriageName))
-		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)})
+		// The read asks at temperature 0, so the same issue read twice lands
+		// in the same band.
+		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)}, ai.WithTemperature(0))
 		if err != nil {
 			return "", err
 		}
@@ -169,6 +180,14 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 // same policy the manager and stages do (factory_taskmodels.go): the same
 // route, and a refusal when it cannot be met — never the low tier's model.
 func factoryTriageModel(settings config.Config) (string, error) {
+	return factoryRoleModel(settings, roles.RoleInsightFactoryRead)
+}
+
+// factoryRoleModel is the model one factory AI call runs on: the launch's or
+// the profile's one model when there is one, else the call's page-AI role
+// (insight_factory_read or insight_factory_scout, then the insight family's
+// pin and the engine's default for it), else the small-work seat.
+func factoryRoleModel(settings config.Config, role roles.Role) (string, error) {
 	if parent := factoryWorkerParent(); parent.OneModel {
 		return strings.TrimSpace(parent.Model), nil
 	}
@@ -176,6 +195,11 @@ func factoryTriageModel(settings config.Config) (string, error) {
 		return "", err
 	} else if one {
 		return send, nil
+	}
+	if source, err := v3RolesSource("", settings.ProfileDir); err == nil {
+		if m, err := roles.Resolve(source, role, ""); err == nil && strings.TrimSpace(m) != "" {
+			return strings.TrimSpace(m), nil
+		}
 	}
 	if m := strings.TrimSpace(config.TierSeatAt(settings.ProfileDir, config.ModelTierLow).Model); m != "" {
 		return m, nil
@@ -191,6 +215,12 @@ func factoryTriageModel(settings config.Config) (string, error) {
 //
 // It answers the dollars it wrote, 0 when none were known.
 func recordFactoryTriageUsage(settings config.Config, model string, response *ai.Response) float64 {
+	return recordFactoryAIUsage(settings, model, factoryTriageName, response)
+}
+
+// recordFactoryAIUsage puts one factory AI call's cost on the spend ledger
+// under name in the role column, on the low seat, and answers its dollars.
+func recordFactoryAIUsage(settings config.Config, model, name string, response *ai.Response) float64 {
 	line := session.UsageLine{Model: model, Calls: 1}
 	if response != nil && response.Usage != nil {
 		used := response.Usage
@@ -201,6 +231,6 @@ func recordFactoryTriageUsage(settings config.Config, model string, response *ai
 			line.USD = float64(used.PromptTokens)*prompt + float64(used.CompletionTokens)*completion
 		}
 	}
-	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(factoryTriageName), session.SeatLow))
+	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(name), session.SeatLow))
 	return line.USD
 }
