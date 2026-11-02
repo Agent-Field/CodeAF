@@ -16,7 +16,9 @@ import (
 // 4 changed no file and has no area, job 5 started this morning, and the other
 // repository's job is not counted anywhere.
 func TestRepoFactsCountFinishedMergedSpendAreasAndStuckStepsForOneRepo(t *testing.T) {
-	day := func(month time.Month, d, hour int) time.Time { return time.Date(2026, month, d, hour, 0, 0, 0, time.UTC) }
+	day := func(month time.Month, d, hour int) time.Time {
+		return time.Date(2026, month, d, hour, 0, 0, 0, time.UTC)
+	}
 	files := func(paths ...string) *factory.Change {
 		c := &factory.Change{}
 		for _, p := range paths {
@@ -24,7 +26,9 @@ func TestRepoFactsCountFinishedMergedSpendAreasAndStuckStepsForOneRepo(t *testin
 		}
 		return c
 	}
-	merged := func(at time.Time) *factory.PullRequest { return &factory.PullRequest{State: factory.PRMerged, MergedAt: at} }
+	merged := func(at time.Time) *factory.PullRequest {
+		return &factory.PullRequest{State: factory.PRMerged, MergedAt: at}
+	}
 	items := []factory.Item{
 		{ID: 1, Repo: "acme/api", State: factory.StateShipped, Change: files("webhooks/a.go", "webhooks/b.go"), PullRequest: merged(day(time.October, 27, 9)),
 			AnsweredQuestions: []factory.Question{{}},
