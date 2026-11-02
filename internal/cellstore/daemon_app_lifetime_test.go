@@ -142,11 +142,13 @@ func TestDesktopSavingHelperLifetime(t *testing.T) {
 			stopped := time.Now()
 			deadline := stopped.Add(75 * time.Second)
 			for {
-				conn, err := net.DialTimeout("unix", socket, time.Second)
-				if err != nil {
+				args, err := os.ReadFile("/proc/" + pid + "/cmdline")
+				if os.IsNotExist(err) || (err == nil && len(args) == 0) {
 					break
 				}
-				conn.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
 				if time.Now().After(deadline) {
 					t.Fatal("helper outlived touching by 75 seconds without Stop")
 				}

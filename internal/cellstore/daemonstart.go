@@ -19,15 +19,14 @@ import (
 // after it exits starts it again, so the value costs latency, never correctness.
 const idleMinutes = "10"
 
-// testIdleMinutes is how long a daemon started by a test binary outlives its
-// last client. A test that crashes before its teardown runs leaves the daemon
-// behind, and a short idle exit is what lets that leak heal itself.
-const testIdleMinutes = "1"
+// appIdleMinutes lets desktop helpers and abandoned test helpers expire soon
+// after their engine ends. The app touches its own helpers while it is alive.
+const appIdleMinutes = "1"
 
 // idleFlag is the --idle-minutes value the daemon is started with.
 func idleFlag() string {
-	if testing.Testing() {
-		return testIdleMinutes
+	if appDaemonLifetime.Load() || testing.Testing() {
+		return appIdleMinutes
 	}
 	return idleMinutes
 }

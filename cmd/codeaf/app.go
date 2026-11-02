@@ -140,6 +140,7 @@ func runApp(args []string) error {
 	// The app's process ending is the app leaving too, even while something
 	// else still holds its pipe open, and leaving is bounded (appleave.go).
 	ctx, leaving := context.WithCancel(context.Background())
+	cellstore.SetAppDaemonLifetime(ctx)
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
