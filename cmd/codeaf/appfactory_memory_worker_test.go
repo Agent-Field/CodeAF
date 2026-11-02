@@ -27,6 +27,10 @@ func TestMemoryPauseStopsFinishedStageTail(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause tail", 0)
 }
 
+func TestMemoryPauseClosesTailAdmission(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "pause boundary", 0)
+}
+
 func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "finish", 0)
 }
@@ -48,7 +52,8 @@ func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *te
 }
 
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
-	pauseTail := end == "pause tail"
+	pauseBoundary := end == "pause boundary"
+	pauseTail := end == "pause tail" || pauseBoundary
 	settlingQuit := end == "settling quit"
 	stop, quit := end == "stop" || settlingQuit, end == "quit" || settlingQuit
 	quitDone := make(chan struct{})
@@ -58,6 +63,9 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	cancelled := make(chan struct{}, 1)
 	started := make(chan struct{}, 1)
 	var memoryCalls atomic.Int64
+	finishMemory := make(chan struct{})
+	finishPaidCall := sync.OnceFunc(func() { close(finishMemory) })
+	t.Cleanup(finishPaidCall)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			select {
@@ -83,15 +91,28 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			_ = json.Unmarshal([]byte(body.Messages[1].Content), &payload)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		if payload["messages"] != nil {
-			memoryCalls.Add(1)
+		if payload["messages"] != nil || (pauseBoundary && len(payload) > 0) {
+			n := memoryCalls.Add(1)
 			select {
 			case started <- struct{}{}:
 			default:
 			}
 			fmt.Fprintf(w, "data: {\"id\":\"gen-late-memory\",\"model\":%q,\"choices\":[{\"delta\":{\"content\":\"{\\\"claims\\\":[]}\"}}]}\n\n", knowledge.Model)
 			w.(http.Flusher).Flush()
-			<-r.Context().Done()
+			if pauseBoundary && n == 1 {
+				select {
+				case <-finishMemory:
+					var p map[string]any
+					_ = json.Unmarshal([]byte(body.Messages[1].Content), &p)
+					result, _ := json.Marshal(memoryRichReply(p))
+					raw, _ := json.Marshal(map[string]any{"model": knowledge.Model, "choices": []any{map[string]any{"delta": map[string]any{"content": string(result)}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 20, "completion_tokens": 5, "cost": .02}})
+					fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
+					return
+				case <-r.Context().Done():
+				}
+			} else {
+				<-r.Context().Done()
+			}
 			select {
 			case cancelled <- struct{}{}:
 			default:
@@ -203,6 +224,14 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	if pauseTail {
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 		s.must("factory.job_hold", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
+	}
+	if pauseBoundary {
+		finishPaidCall()
+		time.Sleep(250 * time.Millisecond)
+		if got := memoryCalls.Load(); got != 1 {
+			t.Fatalf("Pause returned but admitted %d new memory calls", got-1)
+		}
+		return
 	}
 	select {
 	case <-cancelled:
