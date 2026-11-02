@@ -31,6 +31,9 @@ import (
 // factory.job_brief.
 const FeatureFactoryJobBrief = "factory.job_brief"
 
+// FeatureFactoryJobBriefVerdictBehind announces computed verdict freshness.
+const FeatureFactoryJobBriefVerdictBehind = "factory.job_brief_verdict_behind"
+
 // FactoryJobBriefParams names one job of one factory, and optionally the
 // brief rev the person last saw.
 type FactoryJobBriefParams struct {
@@ -50,6 +53,7 @@ type FactoryJobBrief struct {
 	FailedAfter      string               `json:"failed_after,omitempty"`
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`
+	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
 }
 
@@ -64,6 +68,7 @@ func withFactoryJobBriefFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryJobBriefer); ok {
 		hello = withFeature(hello, FeatureFactoryJobBrief)
+		hello = withFeature(hello, FeatureFactoryJobBriefVerdictBehind)
 	}
 	return hello
 }
