@@ -1,7 +1,7 @@
 ---
 kind: added
 title: codeaf jobs can stop spending after the current step
-pr: 0
+pr: 2218
 surface: [engine]
 invalidates:
   - "A job's Spend controls could only change its dollar budget. The owner can now let the current step finish and hold before the next step or landing."
