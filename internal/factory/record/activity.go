@@ -59,6 +59,8 @@ func enrich(e *Event) {
 			e.Verb = "failed"
 		case "priority_changed":
 			e.Verb = "changed priority"
+		case StopAfterStepChanged:
+			e.Verb = "changed spending stop"
 		case BudgetChanged:
 			e.Verb = "changed budget"
 		case "budget_raised":

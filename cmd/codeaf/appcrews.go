@@ -1093,7 +1093,7 @@ func (b *appBackend) agentMember(agent string) (teamstore.Member, error) {
 // holdMembers opens only the members with work selected by neededMembers,
 // one at a time. A member that cannot be opened is said, once, and tried
 // again later (appcrewhold.go): a member nobody holds is a member whose
-// questions reach nobody.
+// questions reach nobody. A factory step whose journal is locked is quiet instead.
 func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 	now := b.now()
 	for agent := range held {
@@ -1129,7 +1129,11 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 				return
 			}
 			if err != nil {
-				b.holdFailed(run, agent, err, false)
+				// A factory step whose journal is locked is not said as another
+				// window. The usual holder is this process's runner. The next
+				// try holds the step once that journal is free.
+				quiet := appHoldIsWindowLock(err) && b.factoryStageMember(agent)
+				b.holdFailed(run, agent, err, quiet)
 				return
 			}
 			b.holdRecovered(run, agent)

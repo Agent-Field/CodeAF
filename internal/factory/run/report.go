@@ -20,7 +20,9 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if math.IsNaN(report.Cost) || math.IsInf(report.Cost, 0) || report.Cost < 0 {
 		return fmt.Errorf("cost must be a finite nonnegative dollar amount")
 	}
-	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou {
+	// Resume may queue a paused job before its old lease has flushed the
+	// cancelled round. That holder still owes the job its work and spending.
+	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued {
 		return fmt.Errorf("job is no longer running")
 	}
 	if report.PR != nil && report.CommentURL != "" {
@@ -314,7 +316,7 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		q.At = now
 	}
 	q.With = factory.AskedYou
-	if q.Stage != "" {
+	if q.Stage != "" && kind != factory.QKindSpendStopped {
 		i := phaseIndex(it, q.Stage)
 		if i < 0 {
 			return fmt.Errorf("question names an unknown step")
@@ -541,6 +543,11 @@ func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 // FinishReport uses the local runner's landing gate before releasing a hold.
 // A worker may report interruption or a question, but cannot approve proof.
 func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
+	// A paused drive releases its lease without ending the saved run. A
+	// resume already queued by the person must survive that release too.
+	if state == factory.StateNew && (storedPaused(*it) || it.State == factory.StateQueued) {
+		return nil
+	}
 	ensureStream(it, now)
 	switch state {
 	case "", factory.StateLanded:

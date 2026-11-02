@@ -25,6 +25,7 @@ func (h *Handler) verbs() {
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
 	h.postJob("drop", h.config.Store != nil || s.Dismiss != nil, h.onlyOwner(h.drop))
 	h.postJob("answer", s.Answer != nil, h.answer)
+	h.postJob("spend_answer", s.SpendAnswer != nil, h.spendAnswer)
 	h.postJob("reject_plan", h.config.Store != nil && s.Answer != nil, h.rejectPlan)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
@@ -47,7 +48,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -216,15 +217,10 @@ func (h *Handler) idVerb(door func(int) error) jobAction {
 	}
 }
 
-// holdVerb is pause (on) and resume. A hold of a queued job, or the end of
-// one, is a decision on the queue that only the job's person makes, and it is
-// recorded with who made it.
+// holdVerb is pause (on) and resume. Only the job's person may hold or
+// resume its queue or running step, and each action records who made it.
 func (h *Handler) holdVerb(on bool) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
-		if it.State != factory.StateQueued {
-			h.finish(w, h.seam.Hold(it.ID, on))
-			return
-		}
 		if !h.owns(w, r, it) {
 			return
 		}
@@ -349,6 +345,9 @@ func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, r
 // mayAnswer refuses a job-person kind when the caller is not that person.
 // A job with no person yet, and a free question, are not this check.
 func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if it.QKind == factory.QKindSpendStopped {
+		return h.owns(w, r, it)
+	}
 	if h.mode() == api.FactorySolo {
 		return true
 	}
