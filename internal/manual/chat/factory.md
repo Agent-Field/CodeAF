@@ -12,6 +12,20 @@ Three things make one factory:
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
 
+## finding jobs with desktop search and ⌘K
+
+Desktop search can find jobs in connected factories before you open their jobs
+lists. Search by title words, request text when the factory includes it in its
+queue, repository, or issue or pull request number: `12`, `#12`, `repo#12` or
+`owner/repo#12`. Matching ignores case. Title matches appear before request text
+and repository matches; newer jobs appear first within each rank.
+
+Search shows only jobs your factory sign-in can see. Dismissed and dropped jobs
+are excluded. Other closed jobs appear only during the week they closed.
+Search does not start a stopped local factory. Factories have a shared
+1.5-second search deadline; a slow or unavailable factory contributes no results
+for that search, while the other results remain available.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.
@@ -41,6 +55,12 @@ that computer is offline or asleep, the job says **Waiting for <computer>
 (offline for 3 h)** instead, and no free slot elsewhere or Jobs at once setting
 starts it. Only that computer's own person sees its name; anyone else reads
 **Waiting for its computer**.
+
+A queued job with no computer yet says the same when every computer that could
+take it is offline or asleep: **Waiting for <computer> (asleep for 5 min)**. This
+wins over **Starting now**, because Start now gives a slot and nothing takes the
+job until a computer is back. A team's unassigned job reads **Waiting to start**,
+since it can go to anyone. The manager says the job is waiting for its computer.
 
 Two overrides act on one queued job, and only its person may use them:
 
@@ -351,6 +371,12 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
+## first-run setup in the app — Continue before every repository is read, skipped, checkout folder room
+
+**Continue ends reading early.** While setup reads open issues into Backlog, Continue stops the read in progress once at least one chosen repository is read, and moves on to checkouts, or straight to done when every chosen repository already has a checkout; before then it is refused with `Wait until one repo is read`. Repositories already read stay read and are watched. Each one still reading or waiting says skipped: the issues it already brought stay in Backlog, held until you start them, and it is not watched, so it is off until you turn it on in Repos. Back from checkouts reads every chosen repository again.
+
+**Setup shows each repository's size** in megabytes, as GitHub quotes it, and checks a checkout folder before cloning: whether you can write there and how much free space its disk has, measured at the nearest folder that already exists. A file in the way says `~/notes.txt is a file, not a folder`, and a folder you may not open says `codeaf cannot look inside ~/private`. Checking makes no folder; on Windows it makes and removes one small check file to learn whether you can write there.
+
 ## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
@@ -410,6 +436,16 @@ An explicit `--one-model` launch keeps its pin. Interactive chats keep their own
 
 
 
+## the factory's spending defaults — default budget per job, the most an automatic job may cost before it asks, the factory's default model for steps
+
+A factory can keep three settings for every repository it watches, said once instead of in each repository's `.codeaf/factory.yaml`. In the app they are on the Spending page. Everyone signed in can read them; only the factory's operator can change them, and on a team they live on the shared server.
+
+- **Default budget per job**: the budget a job gets when it has none and its repository's file names no `default_budget`. Without it the built-in $5 applies. A job always has a budget, so it is a positive amount; clearing it gives the $5 back. A repository's own `default_budget` stands.
+- **Most a job may cost to start on its own**: a job whose budget is above it asks you before it starts by itself (with Start on its own on); a job you start is not held by it. Without it the built-in $5 applies. Where a repository sets `start.max_cost`, the stricter of the two holds. Zero makes every such job ask first.
+- **Default model**: the model a step runs on when neither the step nor its job names one; without it steps run on the runner's own default. The app offers only models it lists. With Task models on one model, steps keep that one model. A job carries the default that stood when it was queued, so a runner on another machine uses it too.
+
+Each figure is at most $10,000. A change applies to jobs queued after it; a job already queued keeps its budget and model. A settings file the factory cannot read refuses to start jobs rather than starting them on figures nobody chose.
+
 ## pick one step's model for one job — a step's own model, the job's model, use_model
 
 On the app's job page, the job's person can pick the model one conversation step of that job runs on, before the step runs. The step then opens on that model and does not choose models automatically; a model chosen for the whole job does not move it. Choosing the job's model again gives the step back. The pick changes only this job, never the repository's steps.
@@ -463,3 +499,28 @@ safe explanation, including `.codeaf/factory.yaml` and the parser's line when
 known. No build step starts until you approve that question, including in Auto.
 The job read also carries the repository-relative `unread_file` and, when known,
 `unread_line` beside `unread_why`.
+
+## Run again as a new job — copy failed, stopped, closed or done work
+
+**Run again as a new job** starts a separate job with a new job number. It is available after work has ended: failed, stopped, closed or done. A job still running cannot be copied this way. The old job stays as it was.
+
+The new job keeps the repository, title and details exactly as saved, autonomy, budget limit, steps, the decided pipeline copy and step models. Words such as “cheaper” or “ship it” in those details stay words; they do not change the steps or budget. A source issue stays a reference link only. The new job does not claim its issue number or automatically close that issue.
+
+The new job gets its own branch and conversations when it runs. It starts with nothing spent and no earlier pull request, failure or run history. Its page links to the old job, and both jobs' records name who started the copy.
+
+This is a person's Start: the same model, checkout, repository switch and start refusals apply. If Start is refused, no new job remains. Accepted work waits for runner capacity under the usual Jobs at once limit. Omitting an assignee starts it as the caller's job; an explicit assignee names the new job's person.
+
+## App job title and details — literal words, auto-save, budgets and hand-off
+
+Creating a job with a separate title in the app, or handing off an agent,
+keeps the title as written with outer whitespace removed. Details keep their
+spacing and line breaks in the job's ask and body; empty details stay empty.
+Words in either field,
+including `auto`, `ship it`, `plan first`, `$5`, `security`, `two review rounds`
+and `cheaper`, do not set a budget or change approval steps, review rounds,
+effort or security. The repository's pipeline remains in effect. A draft pull
+request takes its title from the job title alone.
+
+Terminal factory sentences still read those words as chips. Existing jobs are
+not rewritten; this applies when a new job is created. Factories without the
+separate-title creation capability retain their existing creation behavior.
