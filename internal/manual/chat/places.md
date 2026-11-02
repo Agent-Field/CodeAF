@@ -762,7 +762,10 @@ end cancel it, including a request in flight. Paid receipts still charge the job
 The worker can remain occupied briefly after work finishes to report those prices.
 Paid memory that finishes after its stage closes stays in that stage’s saved
 spending total when the conversation reopens.
-Quit drops the pass; saved sources stay pending for its next finished turn, and
+Quit cancels the pass. The worker allows up to five additional seconds to settle
+paid calls through its existing accounting receipt before deleting its local job
+copy. Receipts arriving after shutdown are not guaranteed to reach the job; pending
+receipt recovery does not survive quit. Saved sources stay pending for its next finished turn, and
 idle learning never takes over a job's sources. The next admitted pass also
 includes earlier steps skipped while another pass was running. Unchanged source input
 reuses completed receipts. Extraction, page organization and evidence review can

@@ -662,8 +662,15 @@ func gone(err error) bool {
 // A revoked lease cannot carry execution reports. Its acknowledged request can
 // still reconcile accounting alone through the existing receipt door.
 func (j *job) settleAccounting(ctx context.Context) {
-	if j.spendReport == nil || ctx.Err() != nil {
+	if j.spendReport == nil {
 		return
+	}
+	if ctx.Err() != nil {
+		// Quit cancels execution, but the existing accounting receipt still
+		// needs a live context before cleanup removes the paid job's mirror.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), StopWait)
+		defer cancel()
 	}
 	deadline := time.Now().Add(provider.ReceiptWait + time.Second)
 	for j.o.Runner.Running(j.id) && time.Now().Before(deadline) {
