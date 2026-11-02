@@ -297,8 +297,11 @@ func TestPublishCommitsPushesAndOpensThePullRequestWithTheTrailer(t *testing.T) 
 		t.Fatalf("published job = %s %+v", it.State, it.PullRequest)
 	}
 	branch := "factory/12-total-double-counts"
-	if msg := mustGit(t, g.bare, "log", "-1", "--format=%B", branch); msg != "Total double-counts\n\n"+testTrailer {
-		t.Fatalf("the remote's commit says %q", msg)
+	// The approval trailer, then codeaf's shared attribution, which names no
+	// model because the runner, not one model, makes this commit.
+	signed := "Total double-counts\n\n" + testTrailer + "\n\nAssisted-by: CodeAF\nCo-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>"
+	if msg := mustGit(t, g.bare, "log", "-1", "--format=%B", branch); msg != signed {
+		t.Fatalf("the remote's commit says %q, want %q", msg, signed)
 	}
 	if status := mustGit(t, g.dir, "status", "--porcelain"); status != "" {
 		t.Fatalf("work left uncommitted: %q", status)

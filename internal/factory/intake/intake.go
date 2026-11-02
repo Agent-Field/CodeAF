@@ -218,8 +218,8 @@ var pathWords = regexp.MustCompile(`[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.*?-]*)+`)
 func Job(it factory.Item) pipeline.Job {
 	j := pipeline.Job{
 		ID: it.ID, Kind: it.Kind, Tier: it.Tier, Labels: it.Labels,
-		Size: factory.JobSize(it), Cost: it.Triage.Est, CostKnown: it.Triage.Est > 0,
-		Cap: it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
+		Size: factory.JobSize(it),
+		Cap:  it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
 		Paths: append([]string(nil), it.Triage.StartPaths...),
 	}
 	text := it.Title + "\n" + it.Body

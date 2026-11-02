@@ -278,10 +278,14 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 		rows = floorKeep(open, factory.Match("risky"))
 		head = "risky"
 	case floorAskCheapest:
-		rows = floorKeep(open, func(it factory.Item) bool { return it.Triage.Est > 0 })
-		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Triage.Est < rows[j].Triage.Est })
+		// No model writes a price, so cheapest is least complex first: the
+		// rubric's sum, which finished jobs are measured against.
+		rows = floorKeep(open, func(it factory.Item) bool { return it.Triage.Rubric != nil })
+		sort.SliceStable(rows, func(i, j int) bool {
+			return rows[i].Triage.Rubric.Complexity() < rows[j].Triage.Rubric.Complexity()
+		})
 		rows = floorTop(rows, floorTopRows)
-		head = "cheapest first"
+		head = "least complex first"
 	case floorAskOldest:
 		rows = floorKeep(open, func(it factory.Item) bool { return !it.Created.IsZero() })
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Created.Before(rows[j].Created) })
@@ -355,8 +359,8 @@ func FloorRow(it factory.Item, now time.Time) string {
 			add("size " + s)
 		}
 	}
-	if it.Triage.Est > 0 {
-		add("est " + floorDollars(it.Triage.Est))
+	if r := it.Triage.Rubric; r != nil {
+		add("complexity " + strconv.Itoa(r.Complexity()) + "/10, " + r.Band() + " (" + r.From + ")")
 	}
 	add(floorPriority(it.Triage))
 	state := string(it.State)

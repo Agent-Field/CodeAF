@@ -35,6 +35,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 			}
 		}
 		jobs[i] = FromItem(it)
+		AreaIn(&jobs[i], s.Repos)
 		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
 		ForViewer(&jobs[i], it, me)
@@ -165,6 +166,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
+	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)
@@ -771,13 +773,32 @@ func fromDesk(it factory.Item) *JobDesk {
 }
 
 func fromTriage(t factory.Triage) Triage {
-	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: fromRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func toTriage(t Triage) factory.Triage {
-	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: toRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
+}
+
+// fromRubric is a rubric on the wire, with its sum and band said, so the
+// desk never adds factors itself.
+func fromRubric(r *factory.Rubric) *Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x factory.Factor) Factor { return Factor{Score: x.Score, Why: x.Why, Low: x.Low} }
+	return &Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty),
+		From: r.From, Complexity: r.Complexity(), Band: r.Band()}
+}
+
+func toRubric(r *Rubric) *factory.Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x Factor) factory.Factor { return factory.Factor{Score: x.Score, Why: x.Why, Low: x.Low} }
+	return &factory.Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty), From: r.From}
 }
 
 func fromLog(l factory.LogLine) LogLine {
