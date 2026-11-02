@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -53,5 +55,32 @@ func TestAnErrandUsesOnlyAHeldConversationAndAServedModel(t *testing.T) {
 	b.locked(func() { b.agents["a"].live.conn.Conv = &fakeConversation{} })
 	if got, err := b.Errand(t.Context(), "a", session.ErrandAsk{Purpose: "status"}); err != nil || got.Reason != appwire.ErrandUnavailable {
 		t.Fatalf("older owner: %+v %v", got, err)
+	}
+}
+
+// AN OWNER THAT FAILED IS STILL A REASON, BUT ITS WORDS ARE KEPT where a
+// person can read them: the engine's log names the agent, the purpose and the
+// error, so "unavailable" is never the only trace of why.
+func TestAnErrandOwnersFailureIsLoggedWithItsWords(t *testing.T) {
+	var log bytes.Buffer
+	was := errandLog
+	errandLog = &log
+	defer func() { errandLog = was }()
+	b := newFakeBackend(newAppRecorder(), func(appOpenAsk) (*appConn, error) { return nil, nil })
+	defer b.Close()
+	door := &appErrandDoor{fakeConversation: &fakeConversation{}, fail: errors.New("loopback did not answer in time")}
+	b.locked(func() {
+		b.agents["a"] = &appAgent{view: appwire.Agent{ID: "a"}, transcript: filepath.Join(t.TempDir(), "transcript.jsonl"),
+			live: &appLive{conn: &appConn{Conv: door, Release: func() {}}}}
+	})
+	got, err := b.Errand(t.Context(), "a", session.ErrandAsk{Purpose: "factory_brief"})
+	if err != nil || got.Reason != appwire.ErrandUnavailable {
+		t.Fatalf("a failed owner: %+v %v", got, err)
+	}
+	line := log.String()
+	for _, want := range []string{"agent a", "factory_brief", "loopback did not answer in time"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("the log does not say %q: %q", want, line)
+		}
 	}
 }
