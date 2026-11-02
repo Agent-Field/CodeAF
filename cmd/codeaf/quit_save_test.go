@@ -21,7 +21,8 @@ func (failedSaveAgent) Close() error {
 }
 
 // B7 puts the failure on the restored screen even when stderr is a log.
-func TestQuitSaveFailureUsesTheRestoredSurfaceOutput(t *testing.T) {
+// L4-H4c preserves the nonzero receipt for a real local saving failure.
+func TestL4QuitSaveFailureUsesTheRestoredSurfaceOutput(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Cleanup(cell.UseAvailabilityInTests(false))
 	oldRun, oldFlush := runSurfaceProgram, flushFinalSaves
@@ -76,7 +77,8 @@ func TestQuitSaveFailureUsesTheRestoredSurfaceOutput(t *testing.T) {
 }
 
 // B7 reports a final save failure once without exposing the engine's error.
-func TestQuitSaveFailureIsOnePlainSentence(t *testing.T) {
+// L4-H4c keeps local failure words distinct from an upload-only receipt.
+func TestL4QuitSaveFailureIsOnePlainSentence(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	finalSaving.Lock()
 	finalSaving.surface = false

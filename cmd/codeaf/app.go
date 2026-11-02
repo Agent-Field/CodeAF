@@ -140,6 +140,7 @@ func runApp(args []string) error {
 	// The app's process ending is the app leaving too, even while something
 	// else still holds its pipe open, and leaving is bounded (appleave.go).
 	ctx, leaving := context.WithCancel(context.Background())
+	cellstore.SetAppDaemonLifetime(ctx)
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
@@ -571,6 +572,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// briefs takes the progress news of this machine's factory's jobs as
+	// writes of their briefs (appfactory_brief_writer.go).
+	briefs *briefDebounce
 	// factories is the attached-factory registry (appfactory.go), made by the
 	// first factory.* call.
 	factories   *appFactoryHub
@@ -581,6 +585,11 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// startedAt is when this backend was made, and lastResume what its start
+	// carried on after the last quit, nil for nothing (apphealth.go). Both
+	// are guarded by mu.
+	startedAt  time.Time
+	lastResume *appwire.HealthResume
 	// stoppingAll is the agents a processes.stop_all is in flight for; a
 	// second for the same agent is answered busy (appprocessactions.go).
 	stoppingAll map[string]bool
@@ -593,6 +602,9 @@ type appBackend struct {
 	crewRun    *appCrewRun
 	emit       appwire.Emitter
 	open       appOpener
+	// listModels answers models.list for checks that must agree with it (a
+	// factory step's model); nil is [appBackend.ListModels]. Tests set it.
+	listModels func() ([]appwire.Model, error)
 	now        func() time.Time
 	// after is the claim-expiry clock, replaceable without sleeping in tests.
 	after         func(time.Duration, func()) func()
@@ -664,8 +676,10 @@ type appBackend struct {
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
 	// keys are the keys the app handed over (appaccount.go); keyClient and
-	// keyAddress replace the network and OpenRouter's address in a test, and
-	// vendored and codexBegin the other providers' descriptions and the
+	// keyAddress replace the network and OpenRouter's API base in a test so
+	// the key proof and model listing use the same server. Its listing answers
+	// for any bearer, so only the key endpoint proves acceptance. The vendored
+	// and codexBegin seams replace the other providers' descriptions and the
 	// ChatGPT sign-in's browser flow.
 	keys       *config.AppCredentials
 	keyClient  *http.Client
@@ -1007,10 +1021,12 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		left:      make(chan struct{}),
 		mint:      appMint,
 	}
+	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
+	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
@@ -1091,33 +1107,39 @@ func appRowView(row session.SessionRow) appwire.Agent {
 
 // remember files what the disk said about an agent, without touching one this
 // process is holding: a held conversation's own facts are newer than the disk's.
-func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
+func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	b.watchCloseClaim(row.Dir)
+	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
-	// Publish cannot miss an agent first remembered from a saved row.
-	// Holding both locks makes its initial location agree with the inventory;
-	// a later publication will see the new agent and send its location change.
-	lockRememberedLocation := func() *appwire.Location {
-		b.chats.mu.Lock()
-		defer b.chats.mu.Unlock()
-		// The backend lock stays held after the inventory lock is released.
-		// The remainder of remember owns its existing deferred release.
-		b.mu.Lock()
-		if cached, ok := b.chats.byAgent[row.ID]; ok {
-			return chatLocation(cached)
-		}
-		return nil
+	a, view := b.rememberHeld(row, createdBy)
+	b.flushSync(a)
+	b.locked(func() { view.Location = a.view.Location })
+	return view
+}
+
+// rememberHeld files the row under both the chat inventory's lock and the
+// backend's. Publish cannot miss an agent first remembered from a saved row:
+// holding both makes its initial location agree with the inventory, and a later
+// publication will see the new agent and send its location change.
+func (b *appBackend) rememberHeld(row session.SessionRow, createdBy string) (*appAgent, appwire.Agent) {
+	b.chats.mu.Lock()
+	defer b.chats.mu.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var location *appwire.Location
+	if cached, ok := b.chats.byAgent[row.ID]; ok {
+		location = chatLocation(cached)
 	}
-	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
 	a.noteRowLocked(row.ReplyAt, appRowAskedAt(row))
-	defer func() {
-		b.mu.Unlock()
-		b.flushSync(a)
-		b.locked(func() { view.Location = a.view.Location })
-	}()
+	return a, b.rememberRowLocked(a, row, location, createdBy)
+}
+
+// rememberRowLocked lays the disk's row over the agent's record and answers
+// the view it settles on. Callers hold b.mu.
+func (b *appBackend) rememberRowLocked(a *appAgent, row session.SessionRow, location *appwire.Location, createdBy string) appwire.Agent {
 	if a.transcript == "" {
 		a.transcript = row.Transcript
 		if a.view.Location == nil {
@@ -1126,6 +1148,10 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	disk := appRowView(row)
 	disk.Location = a.view.Location
+	disk.CreatedBy = createdBy
+	if a.view.CreatedBy == "" {
+		a.view.CreatedBy = createdBy
+	}
 	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
 	// An agent this process is opening is its own word too: the disk has not
@@ -1344,12 +1370,7 @@ func (b *appBackend) prepareCreate(ask appwire.CreateAsk) (appCreatePrep, error)
 	if err := (session.Submission{ClientID: ask.ClientID}).Check(); err != nil {
 		return appCreatePrep{}, appEngineError(err)
 	}
-	// No workspace is the work folder the person chose, or their home folder.
-	workspace := ask.Workspace
-	if strings.TrimSpace(workspace) == "" {
-		_ = b.state.read(func(f *appStateFile) { workspace = f.workFolder() })
-	}
-	resolved, err := engineWorkspace(workspace)
+	resolved, err := b.createWorkspace(ask.Workspace)
 	if err != nil {
 		return appCreatePrep{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
 	}
@@ -1413,6 +1434,10 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			return appwire.Agent{}, nil, appEngineError(err)
 		}
 	}
+	createdBy, err := b.keepCreatedBy(appAgentID(transcript), ask.CreatedBy)
+	if err != nil {
+		return appwire.Agent{}, nil, appEngineError(err)
+	}
 	var view appwire.Agent
 	first := appFirst{clientID: ask.ClientID}
 	b.locked(func() {
@@ -1457,6 +1482,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		}
 		a.view.Workspace = resolved
 		a.view.Model = model
+		a.view.CreatedBy = createdBy
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
 			// STARTING, NOT WORKING: no turn runs until the conversation is open,
@@ -2331,6 +2357,14 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	return b.startLocked(a, text, clientID, shown)
 }
 
+// knownWorkRefusalGated asks knownWorkRefusal holding the agent's gate, so the
+// answer is not read mid-way through an open or a let-go.
+func (b *appBackend) knownWorkRefusalGated(a *appAgent) error {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	return b.knownWorkRefusal(a)
+}
+
 // Retry sends the words of the agent's last failed turn again.
 func (b *appBackend) Retry(id string) (uint64, error) {
 	b.resetCloseResumes(id)
@@ -2338,10 +2372,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	a.gate.Lock()
-	err = b.knownWorkRefusal(a)
-	a.gate.Unlock()
-	if err != nil {
+	if err := b.knownWorkRefusalGated(a); err != nil {
 		return 0, err
 	}
 	var text, clientID string
@@ -2582,6 +2613,9 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	userEntry := appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
+	}
+	if shown != nil {
+		userEntry.From = shown.from
 	}
 	userEntry.Queued = shown != nil && shown.queued && appKeepsQueued(live.conn.Conv)
 	appComposedFields(&userEntry, composedMark)
@@ -3844,6 +3878,9 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil && item.Person.ClientID != "" {
 			entry.ClientID = item.Person.ClientID
 		}
+		if entry.Kind == appwire.EntryUser && item.Person != nil {
+			entry.From = item.Person.From
+		}
 		entries = append(entries, entry)
 		from = append(from, i)
 	}
@@ -3995,8 +4032,32 @@ func (b *appBackend) Warm() {
 	}
 	defer close(b.warmed)
 	defer guard.Recover("app/warm")
-	_, _ = b.process()
+	if proc, err := b.process(); err == nil {
+		b.warmFirstChat(proc)
+	}
 	b.sweepOutputs()
+}
+
+// createWorkspace is the folder agents.create opens a conversation in: the
+// one asked for, or with none the work folder the person chose, or their home
+// folder.
+func (b *appBackend) createWorkspace(asked string) (string, error) {
+	workspace := asked
+	if strings.TrimSpace(workspace) == "" {
+		_ = b.state.read(func(f *appStateFile) { workspace = f.workFolder() })
+	}
+	return engineWorkspace(workspace)
+}
+
+// warmFirstChat does now what a new chat's start would otherwise wait for:
+// the skill shelf read for the folder a new chat opens in, and the day's spend
+// the first turn is checked against. Both are kept, so the first message finds
+// them done and only what changed since is read again.
+func (b *appBackend) warmFirstChat(proc *v3Process) {
+	if workspace, err := b.createWorkspace(""); err == nil {
+		importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
+	}
+	_, _ = session.DailySpendUSD(session.UsageLedgerPath(), b.now())
 }
 
 // process is the engine's shared process half. Once open it is kept; an open
@@ -4434,6 +4495,9 @@ func (b *appBackend) Close() error {
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()
+	}
+	if b.briefs != nil {
+		b.briefs.stop()
 	}
 	if warmed != nil {
 		<-warmed

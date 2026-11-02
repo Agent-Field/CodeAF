@@ -155,10 +155,10 @@ func TestApprovalsDoorTellsAStoppedComputerItWasStopped(t *testing.T) {
 	}
 
 	stopped := rig.approvalsAt(rig.homeB)
-	if _, err := stopped.Devices(ctx); err == nil || err.Error() != chatlist.Removed {
-		t.Fatalf("the stopped computer's device list said %v, want %q", err, chatlist.Removed)
+	if _, err := stopped.Devices(ctx); err == nil || err.Error() != chatlist.RemovedChat {
+		t.Fatalf("the stopped computer's device list said %v, want %q", err, chatlist.RemovedChat)
 	}
-	if err := stopped.Revoke(ctx, p.Device); err == nil || err.Error() != chatlist.Removed {
-		t.Fatalf("the stopped computer's revoke said %v, want %q", err, chatlist.Removed)
+	if err := stopped.Revoke(ctx, p.Device); err == nil || err.Error() != chatlist.RemovedChat {
+		t.Fatalf("the stopped computer's revoke said %v, want %q", err, chatlist.RemovedChat)
 	}
 }

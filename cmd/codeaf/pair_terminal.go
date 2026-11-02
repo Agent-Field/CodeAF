@@ -71,8 +71,9 @@ func (s *lineSource) finish(line chan string) {
 
 // terminal is a person at a plain terminal: what they read and what they type.
 type terminal struct {
-	out   io.Writer
-	lines *lineSource
+	out         io.Writer
+	lines       *lineSource
+	waitingStop func()
 }
 
 func newTerminal(in io.Reader, out io.Writer) *terminal {
@@ -80,13 +81,21 @@ func newTerminal(in io.Reader, out io.Writer) *terminal {
 }
 
 // say prints one line.
-func (t *terminal) say(line string) { fmt.Fprintln(t.out, line) }
+func (t *terminal) say(line string) { t.stopProgress(); fmt.Fprintln(t.out, line) }
+
+func (t *terminal) stopProgress() {
+	if t.waitingStop != nil {
+		t.waitingStop()
+		t.waitingStop = nil
+	}
+}
 
 // confirm puts a question with the pair package's own choice under it and
 // answers whether the person said yes. THERE IS NO DEFAULT: Enter, the end of
 // the input, silence and every word but y and yes are a no, because a stray key
 // must never let a device in.
 func (t *terminal) confirm(ctx context.Context, question string) bool {
+	t.stopProgress()
 	fmt.Fprint(t.out, question+"  "+pair.AskChoice+" ")
 	typed, ok := t.lines.next(ctx)
 	if !ok {
@@ -108,6 +117,7 @@ func saidYes(typed string) bool {
 // approveLink uses the same deliberate approval key as the chat card. Code
 // pairing keeps its own yes/no question because its comparison is different.
 func (t *terminal) approveLink(ctx context.Context, question string) bool {
+	t.stopProgress()
 	fmt.Fprint(t.out, question+"  a / d ")
 	typed, ok := t.lines.next(ctx)
 	if !ok {
@@ -120,7 +130,7 @@ func (t *terminal) approveLink(ctx context.Context, question string) bool {
 // offerScreen is the device that shows the code, as a terminal.
 type offerScreen struct{ *terminal }
 
-func (s offerScreen) Show(_ *pair.Code, lines string) { fmt.Fprint(s.out, lines) }
+func (s offerScreen) Show(_ *pair.Code, lines string) { s.stopProgress(); fmt.Fprint(s.out, lines) }
 
 func (s offerScreen) Burned() { s.say(pair.BurnLine) }
 
@@ -147,6 +157,12 @@ func serveApprover(ctx context.Context, in *os.File, out io.Writer) func(label, 
 	return func(label, words string) bool {
 		asked, stop := context.WithTimeout(ctx, pair.ConfirmWithin)
 		defer stop()
-		return person.confirm(asked, pair.AskMachineLine(label, words))
+		return confirmMachine(person, asked, label, words)
 	}
+}
+
+// confirmMachine puts the permission weight at the point of the serving decision.
+func confirmMachine(person *terminal, ctx context.Context, label, words string) bool {
+	person.say(pair.PairingWeight)
+	return person.confirm(ctx, pair.AskMachineLine(label, words))
 }

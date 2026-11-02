@@ -60,6 +60,9 @@ type TeamsSeam struct {
 	// ask from the same cursor is answered with nothing from a stat. It may
 	// block.
 	Traffic func(team, after string, limit int) ([]teamstore.Entry, error)
+	// DisplayTraffic is optional for older remote engines. Its cursor is local
+	// even when a mirror change replaces the entire time-ordered display tail.
+	DisplayTraffic func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error)
 
 	// ── DELEGATION (DESIGN.md section 8) ──
 	//
@@ -166,10 +169,17 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			if since != "" && since == stamp {
 				return nil, stamp, true, nil
 			}
-			f, err := teamstore.LoadHued(dir, reserved)
+			var f *teamstore.File
+			var err error
+			if config.TeamsShareAt(dir) {
+				f, err = teamstore.Snapshot(dir)
+			} else {
+				f, err = teamstore.LoadHued(dir, reserved)
+			}
 			if err != nil {
 				return nil, stamp, false, err
 			}
+			f.Colour(reserved)
 			return f.Teams, stamp, false, nil
 		},
 		Update: func(change func(*teamstore.File) error) ([]teamstore.Team, string, error) {
@@ -182,6 +192,9 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 		Traffic: func(team, after string, limit int) ([]teamstore.Entry, error) {
 			entries, _, err := watch.Traffic(dir, team, after, limit)
 			return entries, err
+		},
+		DisplayTraffic: func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error) {
+			return watch.History(dir, team, after, version, limit)
 		},
 		Defaults: func() (teamstore.Defaults, error) { return teamstore.DefaultsAt(dir), nil },
 		ApplyDefault: func(key, raw string) (teamstore.Defaults, error) {
@@ -242,6 +255,8 @@ func teamsAcceptClosingLocal(dir, id string) (bool, error) {
 // teamsDisk is the window's side of the seam: the door, the queue of edits
 // not yet written, and the read asked for when nothing was held.
 type teamsDisk struct {
+	// The file refresh also runs when no team has a held manager.
+	refreshing bool
 	// door is [Options.Teams]; its zero value is the local seam.
 	door TeamsSeam
 	// watch is the local seam's stat-before-read memory of the logs.

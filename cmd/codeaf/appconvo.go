@@ -35,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -973,9 +974,25 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 	}
 	full = filepath.Clean(full)
 	stat := appwire.FileStat{Path: path, State: appwire.FileExists}
-	if rel, err := filepath.Rel(workspace, full); workspace == "" || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		stat.State = appwire.FileOutside
-		return stat
+	// One folder can be spelled two ways. macOS reaches /tmp and /var through
+	// links, and a project can sit under a linked folder, so a file a picker or
+	// a drag names /private/tmp/demo/notes.md is inside a workspace typed as
+	// /tmp/demo. The spelled test stays first, so nothing inside by spelling is
+	// newly called outside; only a path outside by spelling is resolved, and it
+	// is inside when its resolved place is. same is that file in the
+	// workspace's own spelling and rel its path inside the workspace: the keys a
+	// change recorded under another spelling of it is found by.
+	same, rel := full, ""
+	if appWithin(workspace, full) {
+		rel, _ = filepath.Rel(workspace, full)
+	} else {
+		root, place := appCanonical(workspace), appCanonical(full)
+		inside, err := filepath.Rel(root, place)
+		if err != nil || !appWithin(root, place) {
+			stat.State = appwire.FileOutside
+			return stat
+		}
+		same, rel = filepath.Join(workspace, inside), inside
 	}
 	info, err := os.Stat(full)
 	if err != nil {
@@ -984,12 +1001,12 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 	}
 	size := info.Size()
 	stat.Size = &size
-	if !info.IsDir() {
-		if file, err := os.Open(full); err == nil {
-			head := make([]byte, 8000)
-			n, _ := io.ReadFull(file, head)
-			_ = file.Close()
-			stat.Binary = bytes.IndexByte(head[:n], 0) >= 0
+	// The first bytes are read only from a regular file, through the opener
+	// that also refuses a FIFO or a device put in its place between the stat
+	// and the open: opening either would wait for a writer and hold the request.
+	if info.Mode().IsRegular() {
+		if head, err := skills.ReadRegularHead(full, 8000); err == nil {
+			stat.Binary = bytes.IndexByte(head, 0) >= 0
 		}
 	}
 	if change, ok := changed[full]; ok {
@@ -997,6 +1014,14 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 		add, del := change.Add, change.Del
 		stat.Add, stat.Del = &add, &del
 	} else if change, ok := changed[path]; ok {
+		stat.State = appwire.FileChanged
+		add, del := change.Add, change.Del
+		stat.Add, stat.Del = &add, &del
+	} else if change, ok := changed[same]; ok {
+		stat.State = appwire.FileChanged
+		add, del := change.Add, change.Del
+		stat.Add, stat.Del = &add, &del
+	} else if change, ok := changed[rel]; ok && rel != "" {
 		stat.State = appwire.FileChanged
 		add, del := change.Add, change.Del
 		stat.Add, stat.Del = &add, &del
@@ -1184,7 +1209,7 @@ func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
 	submission := session.Submission{
 		Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads,
-		Queued: shown.queued, Creation: shown.creation,
+		Queued: shown.queued, Creation: shown.creation, From: shown.from,
 	}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
@@ -1440,11 +1465,11 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		said = *message.Said
 	}
 	shown := appAttachShown(said, kept)
-	if shown == nil && (message.Said != nil || len(reads) > 0) {
+	if shown == nil && (message.Said != nil || len(reads) > 0 || message.From != "") {
 		shown = &appSending{text: said}
 	}
 	if shown != nil {
-		shown.reads = reads
+		shown.reads, shown.from = reads, message.From
 	}
 	// THE PICTURES ARE RESOLVED AND CHECKED WHOLE BEFORE THE CONVERSATION IS
 	// OPENED: a message the engine would refuse leaves every chip staged.
@@ -1456,7 +1481,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 	}
 	if composed != nil {
 		if shown == nil {
-			shown = &appSending{text: said, reads: reads}
+			shown = &appSending{text: said, reads: reads, from: message.From}
 		}
 		shown.composed = composed
 	}
@@ -1467,7 +1492,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		shown.creation = creation
 	}
 	attempted := b.referenceAttempt(kept)
-	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
+	turn, err := b.sendLocked(a, appAttributed(message.From, appAttachWords(message.Text, kept)), message.ClientID, shown)
 	if err != nil {
 		b.referenceRefused(attempted, err)
 		return 0, nil, err
@@ -1509,11 +1534,31 @@ type appSending struct {
 	// retry; never inferred from membership. Shared, never written after it is
 	// set.
 	creation *session.CreationContext
+	// from names who sent the message on the person's behalf
+	// ([appAttributed]); "" is the person's own.
+	from string
 	// bare says the sending exists only to carry creation: the door gave no
 	// words of the person's apart from text, so Said stays nil and the line
 	// reads as the plain message it is. A sending the door built for Said,
 	// reads or attachments is never bare, even when its words equal text.
 	bare bool
+}
+
+// appAttribution is the one line the model reads above a message someone sent
+// on the person's behalf. It is the least the model needs: who wrote the words,
+// and that they speak for the person, so it neither mistakes them for the
+// person's own nor treats them as a stranger's.
+func appAttribution(from string) string {
+	return "[sent by " + from + " on the person's behalf]"
+}
+
+// appAttributed is words as the model is sent them: under the attribution line
+// when from names a sender, else unchanged.
+func appAttributed(from, words string) string {
+	if from == "" {
+		return words
+	}
+	return appAttribution(from) + "\n" + words
 }
 
 // appNoTeam is the explicit none the person's own send states.

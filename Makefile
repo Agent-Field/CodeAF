@@ -148,7 +148,16 @@ FRESH_FLAG := $(if $(filter $(LOCKED_PKGS),$(PKGS)),-count=1)
 SUITE_LOCK := ./scripts/one-suite.sh
 TREE_LOCK := $(if $(filter ./...,$(PKGS)),$(SUITE_LOCK))
 
-test:
+# EVERY TEST TARGET STAGES THE PINNED FURROW FIRST. The seal, sync and cell
+# proofs run codeaf's own engine — the embedded copy, never one on PATH — and a
+# test binary built from a tree with nothing staged carries none, so those
+# proofs skip (internal/cell/celltest.Engine says which and why). A skip is right
+# for a plain `go test` on a laptop and wrong for the gate, which is these
+# targets: staging here is what makes "green" include them, and test-touched
+# and the pull request's touched legs reach it through scripts/touched-verdict.py,
+# which runs this target. It is the same fetch `build` depends on, so it fails
+# loudly offline and accepts FURROW_ARTIFACT exactly as a build does.
+test: furrow
 	@set -u; \
 	module="$$(go list -m)" || exit 1; \
 	packages="$$(go list $(PKGS))" || exit 1; \
@@ -183,7 +192,7 @@ test:
 # One named regression is the fastest trustworthy edit loop. RUN is required:
 # an omitted selector must not silently turn a focused command into a full
 # package run. The ordinary test target still owns the ledger and timeout.
-test-focus:
+test-focus: furrow
 	@test -n "$(RUN)" || { echo "usage: make test-focus PKGS=./internal/pkg RUN='^TestName$$'"; exit 2; }
 	go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) -run '$(RUN)' $(TEST_SKIP) $(PKGS)
 
@@ -217,6 +226,9 @@ test-tooling:
 	bash scripts/touched-verdict_test.sh
 	bash scripts/one-suite_test.sh
 	bash scripts/shard-test_test.sh
+	bash scripts/relay-fingerprint_test.sh
+	bash scripts/relay-wrangler-config_test.sh
+	bash scripts/relay-deploy_test.sh
 	bash bench/canary/lib/repo_test.sh
 
 manual-gates:

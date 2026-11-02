@@ -61,6 +61,9 @@ type messagePresentation struct {
 	// exactly as accepted ([Submission.ClientID]). It is correlation and
 	// nothing else: no request, route or replay reads it.
 	ClientID string `json:"client_id,omitempty"`
+	// From is who sent the person's message on their behalf
+	// ([Submission.From]); absent for the person's own.
+	From string `json:"from,omitempty"`
 	// Creation is the creation provenance the accepting door stated
 	// ([Submission.Creation]), kept on the person's own line so a turn asked
 	// again from that line ([Agent.ResumeStoppedTurn]) keeps it. Nil is unknown.

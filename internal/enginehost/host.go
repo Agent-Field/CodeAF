@@ -24,6 +24,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
@@ -124,6 +125,10 @@ type Options struct {
 	// told to every asker ([remote.HostSelf.Cells]) so a door in the other mode
 	// can replace an idle host or refuse a busy one instead of attaching.
 	Cells bool
+
+	// HomeRemoved ends the process when shutdown can no longer save into its
+	// original home. The command owns process exit; libraries only call this hook.
+	HomeRemoved func()
 }
 
 // Host is one workspace's conversations, and the socket they are reached
@@ -209,7 +214,9 @@ func Run(workspace string, opts Options) error {
 	// THE ENVIRONMENT IS RECORDED BEFORE THE SOCKET ANSWERS. Only the lock
 	// owner writes it, so a replacement cannot publish the previous host's
 	// fingerprint during its birth. A failed write leaves the answer unknown.
-	_ = os.Remove(filepath.Join(dir, environmentName))
+	for _, name := range []string{environmentName, syncEnvironmentName, syncUnnamedName} {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 	_ = writeEnvironment(dir, workspace)
 
 	// Whatever socket file is lying there belongs to a host that is gone: the
@@ -817,6 +824,30 @@ func (h *Host) stopped() bool {
 // not wait at all. A second host already saving holds it too; this one then
 // saves without it.
 func (h *Host) shutdown() {
+	if h.opts.HomeRemoved != nil {
+		root := home.Dir()
+		if home.Removed(root) {
+			h.opts.HomeRemoved()
+			return
+		}
+		finished := make(chan struct{})
+		defer close(finished)
+		go func() {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-finished:
+					return
+				case <-ticker.C:
+					if home.Removed(root) {
+						h.opts.HomeRemoved()
+						return
+					}
+				}
+			}
+		}()
+	}
 	h.mu.Lock()
 	h.closed = true
 	sessions := make([]*remote.Session, 0, len(h.sessions))

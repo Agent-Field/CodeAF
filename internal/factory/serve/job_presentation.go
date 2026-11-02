@@ -110,6 +110,7 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	// The plan's target and the caller's right to answer are the job's own
 	// facts (api.CanFor); whether this factory takes the revision is its own.
 	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
+	j.Can.SpendAnswer = j.Can.SpendAnswer && h.seam.SpendAnswer != nil
 	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil
 	j.Can.Resume = j.Can.Resume && h.seam.Hold != nil
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
@@ -155,9 +156,12 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
 	}
 	if !proven(j.Runner) {
-		if j.StatePresentation.Kind == api.WaitingForComputer {
+		if j.StatePresentation.Kind == api.WaitingForComputer && j.Runner != "" {
 			j.StatePresentation.Title = "Waiting for its computer"
 			j.StatePresentation.Detail = "Waiting for the computer its work is on, which is not running now."
+		} else if j.StatePresentation.Kind == api.WaitingForComputer && !mine(j.AssignedTo) {
+			j.StatePresentation.Title = "Waiting for a computer"
+			j.StatePresentation.Detail = "Waiting for a computer to come back. None that can take this job is running now."
 		}
 		j.Runner = ""
 	}

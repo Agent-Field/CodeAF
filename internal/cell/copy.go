@@ -1,19 +1,28 @@
 package cell
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // copyCheckpoint is a process-death seam; production never pauses construction.
 var copyCheckpoint = func(string) {}
+
+// CopyReadyPath marks a legacy copy whose initial turn is durable on this
+// computer; snapshots never carry it because it is local bookkeeping.
+const CopyReadyPath = StateDir + "/copy-ready"
 
 // CopyOfferedPath is local bookkeeping inside the harness-owned state area.
 const CopyOfferedPath = StateDir + "/copy-offered"
@@ -27,16 +36,87 @@ func CopyRoot(original string) string {
 	return filepath.Join(filepath.Dir(original), ".moving", encode128(raw))
 }
 
+// CopyFolderReadme is the note in the folder that holds moved chats. The
+// folder's name reads like a transfer in progress, and removing it by hand
+// would delete those chats, so the folder says what it is (#2072). The name is
+// kept: older builds and copies already made look for it.
+const CopyFolderReadme = "README.txt"
+
+const copyFolderNote = `This folder holds your codeaf chats. They are the live copies codeaf writes to,
+not a move in progress. Do not delete it or anything in it: that deletes those
+chats. The older originals beside it stay untouched for older codeaf builds.
+`
+
+// explainCopyFolder writes the note once; an existing note is left as it is.
+func explainCopyFolder(dir string) error {
+	f, err := os.OpenFile(filepath.Join(dir, CopyFolderReadme), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(copyFolderNote)
+	return errors.Join(err, f.Close())
+}
+
 // Copied resolves only a fully prepared, durable copy. A crash before the
 // completion marker leaves the original as the only visible conversation.
 func Copied(original string) string {
 	root := CopyRoot(original)
-	if _, err := os.Stat(filepath.Join(root, StateDir, "copy-ready")); err == nil {
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(CopyReadyPath))); err == nil {
 		if _, err := OpenAt(root, filepath.Base(root)); err == nil {
 			return root
 		}
 	}
 	return original
+}
+
+// StampCopyReady records on disk that root is a completed `.moving` copy on
+// this computer so Home and legacy-open paths resolve it instead of the
+// untouched original.
+func StampCopyReady(root string) error {
+	p := filepath.Join(root, filepath.FromSlash(CopyReadyPath))
+	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	return errors.Join(f.Sync(), f.Close())
+}
+
+// hasSealedTurns reports whether root already holds a cell with at least one
+// sealed turn or adopted remote head. Engine.Seal appends to turns.jsonl only
+// after composing meta.json and capturing the snapshot, and Materialize writes
+// adopted.json only after restoring an incoming head, so either file proves
+// root holds real conversation history rather than a half-copied scratch tree.
+func hasSealedTurns(root string) bool {
+	if raw, err := os.ReadFile(filepath.Join(root, StateDir, "turns.jsonl")); err == nil {
+		sc := bufio.NewScanner(bytes.NewReader(raw))
+		for sc.Scan() {
+			line := bytes.TrimSpace(sc.Bytes())
+			if len(line) == 0 {
+				continue
+			}
+			var turn struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal(line, &turn) == nil && strings.TrimSpace(turn.ID) != "" {
+				return true
+			}
+		}
+	}
+	if raw, err := os.ReadFile(filepath.Join(root, StateDir, "adopted.json")); err == nil {
+		var adopted struct {
+			Head string `json:"head"`
+		}
+		if json.Unmarshal(raw, &adopted) == nil && strings.TrimSpace(adopted.Head) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // CopyLegacy makes a private byte copy and invokes prepare before publishing
@@ -55,6 +135,9 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	if err := os.MkdirAll(filepath.Dir(root), 0700); err != nil {
 		return Cell{}, err
 	}
+	if err := explainCopyFolder(filepath.Dir(root)); err != nil {
+		return Cell{}, err
+	}
 	lock, err := os.OpenFile(root+".lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return Cell{}, err
@@ -65,6 +148,20 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	}
 	if Copied(original) != original {
 		return OpenAt(root, filepath.Base(root))
+	}
+	// Never wipe a destination that already holds sealed turns even if an
+	// earlier restore or take-back lost its copy-ready marker: reopen and
+	// re-stamp it when its cell record is valid, or fail loudly so newer turns
+	// cannot be destroyed.
+	if hasSealedTurns(root) {
+		c, openErr := OpenAt(root, filepath.Base(root))
+		if openErr != nil {
+			return Cell{}, fmt.Errorf("copy destination %s already holds sealed turns: %w", root, openErr)
+		}
+		if err := StampCopyReady(root); err != nil {
+			return Cell{}, err
+		}
+		return c, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return Cell{}, err
@@ -108,11 +205,7 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	if err := ctx.Err(); err != nil {
 		return Cell{}, err
 	}
-	f, err := os.OpenFile(filepath.Join(root, StateDir, "copy-ready"), os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return Cell{}, err
-	}
-	if err := errors.Join(f.Sync(), f.Close()); err != nil {
+	if err := StampCopyReady(root); err != nil {
 		return Cell{}, err
 	}
 	copyCheckpoint("published")

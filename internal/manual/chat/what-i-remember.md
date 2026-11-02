@@ -649,7 +649,7 @@ the same error is counted against itself. There is no command or panel for it,
 it is not on the Memories tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
 
-## Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
+## Are my memories shared across computers? Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
 
 Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 

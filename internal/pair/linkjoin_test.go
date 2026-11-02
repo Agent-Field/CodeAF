@@ -124,7 +124,7 @@ func TestJoinByLinkApproved(t *testing.T) {
 	ui, done := r.start(t, context.Background())
 	in := waitInvite(t, ui)
 
-	if !strings.HasPrefix(in.Ref.URL(), "https://codeaf.agentfield.ai/p/"+in.Ref.Code+"#") || len(in.Check) != 4 {
+	if !strings.HasPrefix(in.Ref.URL(), LinkOrigin+"/p/"+in.Ref.Code+"#") || len(in.Check) != 4 {
 		t.Fatalf("the invite looks wrong: %+v", in)
 	}
 	ref, err := ReadLink(in.Ref.Token())

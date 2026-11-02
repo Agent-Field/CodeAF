@@ -156,6 +156,7 @@ func runRemoteEngine(args []string) error {
 		}
 	}
 	err := remote.Serve(os.Stdin, os.Stdout, remote.Options{
+		SyncService: chatSyncService(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, *workspace, *file)
 		},
@@ -429,9 +430,11 @@ func nothingHolds(workspace string) bool {
 
 // differentEngineEnvironmentSentence names the host's workspace so the command
 // stops the folder actually holding the old environment, including from Home.
+// It offers --no-host first: that opens this window with this terminal's
+// environment and never interrupts the other window (#2072).
 func differentEngineEnvironmentSentence(workspace string) string {
 	stop := engineStopWords(workspace)
-	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
+	return "the background engine for this folder started with a different environment than this terminal and is still in use — codeaf chat --no-host opens this window on its own and leaves the other one running; or, after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
 }
 
 // settleCellsMode checks the capability of an already-running host before
@@ -943,7 +946,8 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
 	err = enginehost.Run(workspace, enginehost.Options{
-		Cells: cell.Available(),
+		HomeRemoved: func() { os.Exit(0) },
+		Cells:       cell.Available(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
 		}, // usage writer owner: see CloseUsage after the host returns
@@ -1239,6 +1243,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
 			built, ok := current.(*session.Agent)
 			if !ok {
@@ -1510,14 +1515,12 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 // For the pipe engine this changes nothing at all: one conversation calls it
 // once, exactly as before.
 //
-// A FAILED OPEN IS FINAL FOR EVERY DOOR BUT THE APP. A pipe or a host reads its
-// key from the environment and the profile before it serves anything, so the
-// open that failed for the want of one would fail the same way again. The app
-// is handed its keys over the wire AFTER it has started ([appBackend.SetKey]),
-// so the open that ran before the key arrived is not the answer for the rest of
-// the process: [openAppEngineProcess] tries it again. A success is never
-// replaced, and mu makes every opener wait for the one in flight, so two
-// callers can never build two process halves.
+// A FAILED OPEN IS TRIED AGAIN. The app is handed its keys over the wire AFTER
+// it has started ([appBackend.SetKey]), and a host's first connection can
+// precede its first vault pull, so the open that failed then is not the answer
+// for the rest of the process. A success is never replaced, and mu makes every
+// opener wait for the one in flight, so two callers can never build two
+// process halves.
 var engineProcess struct {
 	mu    sync.Mutex
 	tried bool
@@ -1525,22 +1528,22 @@ var engineProcess struct {
 	err   error
 }
 
-func openEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(false) }
-
-// openAppEngineProcess is [openEngineProcess] for the app, where a process half
-// that failed to open is opened again by the next caller rather than handed
-// back as the same error for as long as the window stays open.
-func openAppEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(true) }
-
-func openEngineProcessRetrying(retryFailed bool) (*v3Process, error) {
+// openEngineProcess opens the process half once and keeps only a success. A
+// first connection can precede the serving computer's first vault pull, and the
+// app is handed its keys after it has started, so a failed open is tried again
+// by the next caller rather than handed back for the rest of the process.
+func openEngineProcess() (*v3Process, error) {
 	engineProcess.mu.Lock()
 	defer engineProcess.mu.Unlock()
-	if !engineProcess.tried || (retryFailed && engineProcess.proc == nil) {
+	if engineProcess.proc == nil {
 		engineProcess.proc, engineProcess.err = openV3Process("engine")
 		engineProcess.tried = true
 	}
 	return engineProcess.proc, engineProcess.err
 }
+
+// openAppEngineProcess is [openEngineProcess] for the app's doors.
+func openAppEngineProcess() (*v3Process, error) { return openEngineProcess() }
 
 // openedEngineProcess is the process half when it is already open, and nil
 // when it is not; it never opens one. A key that moves while nothing is open

@@ -2,7 +2,7 @@ package pair
 
 import (
 	"errors"
-	"fmt"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"net/url"
 )
 
@@ -24,7 +24,7 @@ type serviceTimeout struct {
 }
 
 func (e serviceTimeout) Error() string {
-	return fmt.Sprintf("the sync service at %s did not answer in time — try again", e.address)
+	return syncwords.Explain(e.cause, e.address).Error()
 }
 
 func (e serviceTimeout) Unwrap() error { return e.cause }

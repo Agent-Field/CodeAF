@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -87,7 +88,7 @@ const (
 )
 
 var settingTabs = []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams,
-	tabSafety, tabSpending, tabConnections, tabPrivacy}
+	tabSafety, tabSpending, tabConnections, tabDevices, tabPrivacy}
 var settingTabCategory = map[string]string{
 	tabSpending: config.CategorySpending, tabSafety: config.CategorySafety,
 	tabTasks: config.CategoryTasks, tabTeams: config.CategoryTeams,
@@ -319,6 +320,12 @@ var settingUI = map[string]settingMeta{
 		tab: tabTasks, label: "task model", widget: widgetSelect,
 		about: "the model a task's worker runs on when you have not asked for another. " +
 			"Blank leaves it to the crew: your /crew pin, or the model picked for each task.",
+	},
+	// Placement sits beside the worker model because both describe the work
+	// handed out from this conversation rather than the chat's own calls.
+	config.KeyTaskRunsOn: {
+		tab: tabTasks, label: "Run tasks on", widget: widgetCycle,
+		about: taskComputerHint,
 	},
 	// THE CREW'S THREE SEATS ARE REGISTRY ROWS AND ARE NOT DRAWN AS THREE ROWS.
 	// Each is empty for AUTO — codeaf routes that seat per task — and a model id
@@ -593,6 +600,9 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "turn work", widget: widgetCycle,
 		about: "fold completed turn machinery into one worked chip, or keep it open.",
 	},
+	config.KeyTeamsShare: {
+		tab: tabGeneral, label: "share teams", widget: widgetCycle,
+	},
 	config.KeyIcons: {
 		tab: tabDisplay, label: "step icons",
 		about:  "Rich icons normally; plain symbols when your terminal needs them.",
@@ -854,7 +864,7 @@ func (s *sheet) finishCategory() {
 	}
 	// Lead with the controls a developer commonly changes, not registry order.
 	if title == tabTasks {
-		priority := map[string]int{config.KeyTaskParallel: 0, config.KeyTaskModel: 1, config.KeyTaskAudit: 2, config.KeyTaskSettle: 3, config.KeyTaskRepairRounds: 4}
+		priority := map[string]int{config.KeyTaskParallel: 0, config.KeyTaskModel: 1, config.KeyTaskRunsOn: 2, config.KeyTaskAudit: 3, config.KeyTaskSettle: 4, config.KeyTaskRepairRounds: 5}
 		rank := func(item sheetItem) int {
 			if n, ok := priority[item.row.Key]; ok {
 				return n
@@ -924,6 +934,10 @@ type sheetItem struct {
 	// reason: an item is an item, and only what draws it and what the cursor
 	// does with it ask which kind this one is.
 	read *railReading
+	// dev is set on the rows of the Devices tab, which reuse [deviceCard] and
+	// add one door to `/pair` rather than reading the settings registry
+	// (settings_devices.go).
+	dev *deviceSheetRow
 	// hitAt and hitLen say where the search landed on this row's own label —
 	// an offset and a length into the sheet's hit span, the bytes the query
 	// matched, which the row draws carried in bold ([overlayLinesHit]). Both
@@ -944,8 +958,10 @@ func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 // sheet is the panel's whole state. The zero value is closed and costs the
 // frame nothing.
 type sheet struct {
-	advanced map[string]bool
-	tab      int
+	taskComputers    bool
+	taskComputerRows []session.TaskComputer
+	advanced         map[string]bool
+	tab              int
 	// host is the machine the session runs on over --host, "" otherwise.
 	host string
 	// teamDefaultsWrite says the teams seam can change that machine's `teams.`
@@ -991,7 +1007,14 @@ type sheet struct {
 
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
-	rows []config.Setting
+	// cellsUnavailable, approvals, dev and now serve the Devices tab, which
+	// hosts a [deviceCard] over the surface's own [Approvals] door and clock
+	// (settings_devices.go).
+	cellsUnavailable string
+	approvals        Approvals
+	dev              *deviceCard
+	now              func() time.Time
+	rows             []config.Setting
 	// matchFields is the field list the search hands the fuzzy matcher one row
 	// at a time, reused rather than rebuilt: a rebuild runs per keystroke over
 	// every row, and a fresh slice per row is the one allocation it does not
@@ -1285,6 +1308,8 @@ func (a *app) raiseSettings() {
 		write = true
 	}
 	a.sheet = sheet{
+		taskComputers:     a.taskComputersAvailable(),
+		taskComputerRows:  a.taskComputerRows,
 		host:              a.host,
 		teamDefaultsWrite: write,
 		registry:          a.registry(),
@@ -1296,17 +1321,20 @@ func (a *app) raiseSettings() {
 		// conversation-wide reading taken on the way up and refreshed after every
 		// write ([app.readAutonomy]), not a door asked here. Opening a page is on
 		// the update loop, where a surface may not wait on a network.
-		autonomy:     a.autonomyRules,
-		autonomyDoor: a.hasAutonomyDoor(),
-		conns:        a.conns,
-		modelRows:    a.modelConnectionRows,
-		liveModel:    a.conversationModel,
-		sources:      a.sources,
-		force:        a.laneForceNow,
-		defaults:     settingDefaults(),
-		sessionModel: a.model,
-		routing:      a.routing,
-		today:        a.todayReading(),
+		autonomy:         a.autonomyRules,
+		autonomyDoor:     a.hasAutonomyDoor(),
+		conns:            a.conns,
+		cellsUnavailable: a.cellsUnavailable,
+		approvals:        a.approvals,
+		now:              a.now,
+		modelRows:        a.modelConnectionRows,
+		liveModel:        a.conversationModel,
+		sources:          a.sources,
+		force:            a.laneForceNow,
+		defaults:         settingDefaults(),
+		sessionModel:     a.model,
+		routing:          a.routing,
+		today:            a.todayReading(),
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
@@ -1346,6 +1374,7 @@ func (a *app) closeSettings() {
 // dropSettings is [placeSettings]'s `close`. Nothing but the router calls it.
 func (a *app) dropSettings() {
 	a.sheet = sheet{}
+	a.letGoOffHome()
 	a.touch()
 }
 
@@ -1472,6 +1501,10 @@ func (s *sheet) build() {
 		return
 	}
 	if query == "" {
+		if s.onDevices() {
+			s.buildDevices()
+			return
+		}
 		// THE SPENDING TAB LAYS ITSELF OUT, because three of its rows are not
 		// registry rows at all and the order of the rest is a reading of how
 		// often a person worries about each one rather than of registry order
@@ -1558,7 +1591,7 @@ func (s *sheet) build() {
 			if len(s.items) == start {
 				s.items = append(s.items, sheetItem{head: title})
 			}
-			s.items = append(s.items, sheetItem{row: one.row, meta: one.meta, hitAt: one.hitAt, hitLen: one.hitLen})
+			s.items = append(s.items, sheetItem{row: s.taskComputerSetting(one.row), meta: one.meta, hitAt: one.hitAt, hitLen: one.hitLen})
 		}
 		// A ROLE IS FOUND BY ITS OWN NAME, or by the line that says what it does.
 		// Somebody searching for "planner" is not searching for a registry key —
@@ -1595,6 +1628,9 @@ func (s *sheet) build() {
 		if title == tabConnections {
 			s.buildConnections()
 		}
+		if title == tabDevices {
+			best = max(best, s.appendDevicesSearch(terms))
+		}
 		if len(s.items) > start {
 			groups = append(groups, resultGroup{start, len(s.items), tab, best})
 		}
@@ -1629,6 +1665,9 @@ func (s *sheet) build() {
 // sheet rebuilds after every write, so the selected search row follows keys and
 // pins immediately while ordinary frame rendering stays read-only.
 func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
+	if row.Key == config.KeyTaskRunsOn && !s.taskComputers {
+		return settingMeta{}, false
+	}
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
@@ -1655,8 +1694,8 @@ func (s *sheet) tabRows() []config.Setting {
 	title := settingTabs[s.tab]
 	mine := make([]config.Setting, 0, len(s.rows))
 	for _, row := range s.rows {
-		if meta, ok := settingMetaFor(row); ok && meta.tab == title {
-			mine = append(mine, row)
+		if meta, ok := s.metaFor(row); ok && meta.tab == title {
+			mine = append(mine, s.taskComputerSetting(row))
 		}
 	}
 	led := map[string]bool{}
@@ -1744,7 +1783,7 @@ func (s *sheet) settingMatch(row config.Setting, meta settingMeta, tab string, t
 	fields[4] = tab
 	presentation := row.ChatPresentation()
 	fields = append(fields, presentation.Aliases...)
-	fields = append(fields, settingValueWord(row))
+	fields = append(fields, s.settingValueWord(row))
 	if old, ok := settingUI[row.Key]; ok {
 		fields = append(fields, old.label, old.tab)
 	}
@@ -1815,6 +1854,7 @@ func (s *sheet) move(delta int) {
 		at = next
 	}
 	s.cursor = at
+	s.syncDeviceCursor()
 }
 
 func abs(n int) int {
@@ -2249,12 +2289,19 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 		if bind := a.takeSpendRailBindCmd(); bind != nil {
 			cmd = tea.Batch(cmd, bind)
 		}
+		if devCmd := a.ensureSheetDevices(); devCmd != nil {
+			cmd = tea.Batch(cmd, devCmd)
+		}
 	}()
 	if !a.at(pageSettings) {
 		return nil, false
 	}
 	s := &a.sheet
 	defer a.touch()
+	if s.dev != nil && s.dev.removing != nil {
+		cmd, _ := s.dev.key(a, msg.String())
+		return cmd, true
+	}
 	// THE THREE BOXES THAT TAKE THE WHOLE KEYBOARD ARE READ BEFORE THE ROUTER AND
 	// ARE NOT HERE. They are [placeSettings.owns], because a layer inside a place
 	// that has claimed every key outranks even the six classes — and the router
@@ -2329,11 +2376,37 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 		s.move(sheetRows)
 	case "home":
 		s.cursor = s.clampCursor(0)
+		s.syncDeviceCursor()
 	case "end":
 		s.cursor = s.clampCursor(len(s.items) - 1)
+		s.syncDeviceCursor()
 
 	case "enter":
 		return a.activate(), true
+	case "r":
+		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
+			if s.dev != nil && s.dev.loaded {
+				s.syncDeviceCursor()
+				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.unavailable {
+					return a.revoke(s.dev), true
+				}
+			}
+			return nil, true
+		}
+		s.query.insert("r")
+		s.build()
+	case "n":
+		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
+			if s.dev != nil && s.dev.loaded {
+				s.syncDeviceCursor()
+				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.unavailable {
+					s.dev.startNaming()
+				}
+			}
+			return nil, true
+		}
+		s.query.insert("n")
+		s.build()
 	case " ", "space":
 		// A SPACE WHILE A SEARCH IS TYPED IS A WORD IN THE QUERY and not a
 		// press on whatever row the cursor happens to share the screen with.
@@ -2407,6 +2480,9 @@ func (s *sheet) tabBy(delta int) {
 	// SERVICE, because coming back to a tab you left half-read and finding it
 	// collapsed is the tab forgetting where you were.
 	s.conn.armed, s.conn.entry = false, nil
+	if s.dev != nil {
+		s.dev.naming = nil
+	}
 	s.build()
 }
 
@@ -2429,6 +2505,30 @@ func (a *app) activate() tea.Cmd {
 		}
 		s.advanced[settingTabs[s.tab]] = !s.advanced[settingTabs[s.tab]]
 		s.build()
+		return nil
+	}
+	if item.dev != nil {
+		if item.dev.add {
+			a.closeSettings()
+			return a.runPair("")
+		}
+		if s.searching() {
+			wantID := item.dev.id
+			s.query.reset()
+			for at, title := range settingTabs {
+				if title == tabDevices {
+					s.tab = at
+				}
+			}
+			s.build()
+			for at, candidate := range s.items {
+				if candidate.dev != nil && !candidate.dev.add && candidate.dev.id == wantID {
+					s.cursor = at
+					break
+				}
+			}
+			s.syncDeviceCursor()
+		}
 		return nil
 	}
 	if item.conn != nil {
@@ -2537,6 +2637,12 @@ func (a *app) activate() tea.Cmd {
 			return nil
 		}
 		choice := &sheetChoice{item: item, current: item.row.Value()}
+		if item.row.Key == config.KeyTaskRunsOn {
+			choice.current = config.TaskRunsOnAt(s.profileDir)
+			if taskComputerName(s.taskComputerRows, choice.current) == config.TaskRunsHere {
+				choice.current = ""
+			}
+		}
 		for i, value := range item.row.Choices {
 			if value == choice.current {
 				choice.cursor = i
@@ -2544,6 +2650,9 @@ func (a *app) activate() tea.Cmd {
 			}
 		}
 		s.choice = choice
+		if item.row.Key == config.KeyTaskRunsOn {
+			return a.readTaskComputers()
+		}
 
 	case widgetLane:
 		// ENTER ON THIS ROW OPENS THE MACHINES. It used to walk four words —
@@ -2739,6 +2848,11 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 	// banked rule through, and it rebuilds the policy from these same three rows.
 	note := ""
 	switch item.row.Key {
+	case config.KeyTaskRunsOn:
+		if a.task != nil {
+			a.task.computerPreference = config.TaskRunsOnAt(a.profileDir)
+			a.markCardStale(a.task)
+		}
 	case config.KeyUpdateAuto:
 		// THE LIVE SESSION SEES THE ROW IT JUST CHANGED. The grace re-reads
 		// this flag, so turning it off in the panel must reach the running
@@ -3132,8 +3246,11 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 		if bind := a.takeSpendRailBindCmd(); bind != nil {
 			cmd = tea.Batch(cmd, bind)
 		}
+		if devCmd := a.ensureSheetDevices(); devCmd != nil {
+			cmd = tea.Batch(cmd, devCmd)
+		}
 	}()
-	if a.sheet.conn.entry != nil {
+	if a.sheet.conn.entry != nil || a.sheet.devTyping() {
 		// A BOX BEING TYPED INTO IS NOT A LIST. Every press is swallowed and none
 		// of them acts — esc is the way out, which is the way out of every box on
 		// this surface (connectpanel.go's [app.connectPanelPress] says it first).
@@ -3192,6 +3309,9 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 			a.sheet.tab = tab
 			a.sheet.cursor, a.sheet.top, a.sheet.msg = 0, 0, ""
 			a.sheet.conn.armed, a.sheet.conn.entry = false, nil
+			if a.sheet.dev != nil {
+				a.sheet.dev.naming = nil
+			}
 			a.sheet.build()
 			a.saySettingsHost()
 			a.touch()
@@ -3204,6 +3324,7 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 		// that was passing through.
 		if a.sheet.cursor != hit.index {
 			a.sheet.cursor = hit.index
+			a.sheet.syncDeviceCursor()
 			a.touch()
 			return nil
 		}
@@ -3514,6 +3635,8 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 		word := "nothing matches"
 		if s.onConnections() {
 			word = s.connEmptyWord()
+		} else if s.onDevices() && !s.searching() {
+			word = s.devEmptyWord()
 		}
 		put(placeLead+pal.dim(word), -1)
 		return lines, owner
@@ -3593,6 +3716,7 @@ func (s *sheet) cursorLastLine(owner []int, at, width int) int {
 		entryOpen := item.conn != nil && item.conn.entry != nil
 		entryOpen = entryOpen || (item.service != nil && s.conn.entry != nil &&
 			s.conn.entry.id == modelConnectionID(item.service.id))
+		entryOpen = entryOpen || (item.dev != nil && s.devTyping())
 		if entryOpen {
 			last := at
 			for last+1 < len(owner) && owner[last+1] == s.cursor {
@@ -3639,6 +3763,9 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if item.conn != nil {
 		return s.connRowLines(item.conn, selected, hovered, width, boxRows, pal)
 	}
+	if item.dev != nil {
+		return s.devRowLines(item.dev, s.itemHit(item), selected, hovered, width, pal)
+	}
 	if item.service != nil {
 		head := overlayLines(item.service.name, item.service.value, selected, false, hovered, width, pal)
 		entry := s.conn.entry
@@ -3677,7 +3804,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// The unit is the registry's ([config.Setting.Unit]), so it is stated once,
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
-	value := settingValueWord(item.row)
+	value := s.settingValueWord(item.row)
 
 	if hosted, ok := s.hostedTeamReading(item); ok {
 		value = hosted
@@ -3862,6 +3989,9 @@ func (s *sheet) footNote() string {
 	if s.onConnections() {
 		return s.connFootNote()
 	}
+	if s.onDevices() {
+		return ""
+	}
 	// THE TEAMS TAB IS DEFAULTS, and says where the exceptions live: a team's
 	// own overrides are on its card on the teams page (teamsheet.go). Over
 	// --host it says whose defaults the teams there really read.
@@ -3920,6 +4050,8 @@ func (s *sheet) keysLine() string {
 		return s.connKeysLine()
 	case s.onConnections():
 		return s.connKeysLine()
+	case s.onDevices() && !s.searching():
+		return s.devicesKeysLine()
 	default:
 		// A PINNED ROLE HAS A KEY THE REST OF THE SHEET DOES NOT, so the legend
 		// says so on the row it works on and nowhere else — a line that offered
@@ -3935,6 +4067,10 @@ func (s *sheet) keysLine() string {
 		if item, ok := s.current(); ok {
 			switch {
 			case item.memoryDoor, item.crewDoor:
+				action = "open"
+			case item.dev != nil && item.dev.add:
+				action = "add"
+			case item.dev != nil:
 				action = "open"
 			case item.advancedDoor:
 				action = "expand"
@@ -3952,16 +4088,16 @@ func (s *sheet) keysLine() string {
 	}
 }
 
-// sheetLayerOwnsKeys is whether one of the three layers inside this panel has
-// taken the WHOLE keyboard ([placeSettings.owns]). The foot asks, because a
-// hint line that named the router's `tab` while a layer had it would be naming
-// a key nothing on screen answers (pages.go's [app.placeHintSaid]).
+// sheetLayerOwnsKeys is whether one of the layers inside this panel has taken
+// the WHOLE keyboard ([placeSettings.owns]). The foot asks, because a hint line
+// that named the router's `tab` while a layer had it would be naming a key
+// nothing on screen answers (pages.go's [app.placeHintSaid]).
 func (a *app) sheetLayerOwnsKeys() bool {
 	if !a.at(pageSettings) {
 		return false
 	}
 	s := &a.sheet
-	return s.edit != nil || s.sel != nil || s.choice != nil || s.conn.entry != nil
+	return s.edit != nil || s.sel != nil || s.choice != nil || s.conn.entry != nil || s.devTyping()
 }
 
 // hoveredSheetRow is the item the pointer is over, or -1.

@@ -98,7 +98,7 @@ func (a *app) attended(now time.Time) bool {
 // pollMachines asks the directory if, and only if, the schedule allows: home is
 // showing, somebody is at the window, and the wait is over.
 func (a *app) pollMachines(now time.Time) tea.Cmd {
-	wanted := (a.at(pageHome) || a.watchesConversation()) && a.attended(now)
+	wanted := !a.hosted() && (a.at(pageHome) || a.watchesConversation()) && a.attended(now)
 	followed := a.tendWatch(wanted)
 	if !wanted || !a.machinePoll.ready(now) {
 		return followed
@@ -126,6 +126,6 @@ func (a *app) fileMachines(msg homeMachinesMsg) {
 	changed := msg.err == nil && !chatlist.Same(a.machineRead.rows, msg.rows)
 	a.machinePoll.landed(now, changed, a.socketUp() && msg.err == nil)
 	if msg.err == nil {
-		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version, sendHolds: a.machineRead.sendHolds, computerRemoved: a.machineRead.computerRemoved}
+		a.machineRead = machineReading{rows: msg.rows, at: now, version: msg.version, sendHolds: a.machineRead.sendHolds, computerRemoved: a.machineRead.computerRemoved, host: a.machineRead.host, checking: a.machineRead.checking}
 	}
 }

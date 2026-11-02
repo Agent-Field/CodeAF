@@ -163,8 +163,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		config: config,
-		system: system,
+		taskComputerPrompt: config.mayNameTaskComputer(),
+		config:             config,
+		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
 		// file deciding what another door's worker is told.
@@ -391,6 +392,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// The region above the last pass is shaped and let go of, so its marks
 		// go with it ([presentationIndex.retain]).
 		agent.presentation.retain(agent.messages)
+		file.retainStamps(agent.messages)
 		agent.restorePasses(replayed.passes)
 		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
 		// session resumed onto a model without vision — the journal remembers
@@ -422,6 +424,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// that has not spoken since the field arrived would read as free on
 		// home forever.
 		agent.stampRestoredSpend(agent.usage)
+		// The earlier region has been shaped and its message indexes pruned.
+		// Let the replay go before returning a large read's working memory.
+		readBytes := replayed.readBytes
+		replayed = replayedSession{}
+		restored = nil
+		releaseAfterLargeRead(readBytes)
 	}
 	// AND WHERE THIS CONVERSATION IS ABOUT. The referred places ride on the same
 	// meta.json everything else about the session's identity does (places.go), so
@@ -2881,6 +2889,7 @@ func (a *Agent) Close() (saveErr error) {
 	// cancellations were cut above; join their accepted lifetimes before any
 	// store is closed. Setup may have created the graph since the first snapshot.
 	a.waitOrchestrations()
+	a.waitEndingBeltRun(beltDone, closeGrace)
 	a.mu.Lock()
 	tasks = a.tasks
 	a.mu.Unlock()
@@ -2986,10 +2995,16 @@ func (a *Agent) Close() (saveErr error) {
 		}
 		return err
 	}
-	if file == nil {
-		return nil
+	var localErr error
+	if file != nil {
+		localErr = file.Close()
 	}
-	return file.Close()
+	if localErr == nil {
+		a.mu.Lock()
+		a.localDurable = true
+		a.mu.Unlock()
+	}
+	return localErr
 }
 
 // ── transcript ──────────────────────────────────────────────────────────────
@@ -3162,9 +3177,10 @@ func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) func() {
 	return func() { a.presentation.forget(kept) }
 }
 
-// retainPresentationLocked cuts the presentation marks back to the messages
-// this session still holds — the transcript and every queue of messages not yet
-// in it — after a boundary that let messages go ([presentationIndex.retain]).
+// retainPresentationLocked cuts the presentation marks and journal stamps back
+// to the messages this session still holds — the transcript and every queue of
+// messages not yet in it — after a boundary that let messages go
+// ([presentationIndex.retain]).
 func (a *Agent) retainPresentationLocked() {
 	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.followups))
 	for _, user := range a.steering {
@@ -3177,6 +3193,7 @@ func (a *Agent) retainPresentationLocked() {
 		queued = append(queued, follow.message.message)
 	}
 	a.presentation.retain(a.messages, queued)
+	a.file.retainStamps(a.messages, queued)
 }
 
 func (a *Agent) record(message ai.Message) {
@@ -5371,6 +5388,9 @@ type PersonMark struct {
 	// record accepted it ([Submission.ClientID]), and empty on every line whose
 	// door named none. It is never guessed for a legacy line.
 	ClientID string
+	// From is who sent the message on the person's behalf, as the record kept
+	// it ([Submission.From]); empty for the person's own.
+	From string
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5541,7 +5561,7 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 			// on it and the reads its words were written from. A line with no
 			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID, From: mark.From}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}

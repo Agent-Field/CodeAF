@@ -55,7 +55,10 @@ import (
 
 // stageMaker opens stage conversations from parent, the launch's own config.
 type stageMaker struct {
-	floor      *store.Store
+	floor *store.Store
+	// jobs is where the job a step runs for is kept: the worker's mirror of
+	// the job the factory leased it. Nil is floor.
+	jobs       *store.Store
 	parent     session.Config
 	current    func() session.Config
 	refusal    func() error
@@ -72,6 +75,12 @@ func factoryStageMaker(floor *store.Store, workspace, profileDir string, parent 
 // including a resumed round whose journal predates the one-model launch.
 func factoryStageMakerFrom(floor *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
 	return stageMaker{floor: floor, current: current, workspace: workspace, profileDir: profileDir}
+}
+
+// withJobs reads and books a step's money on jobs, the worker's mirror.
+func (m stageMaker) withJobs(jobs *store.Store) stageMaker {
+	m.jobs = jobs
+	return m
 }
 
 // withRefusal gives the maker the reason its parent was last refused.
@@ -118,11 +127,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
-	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
 	cfg.AutomaticModels = spec.AutomaticModels
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		cfg.Model = model
-	}
+	cfg.Model = stageOpenModel(cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)
 	if cfg.OneModel || fallback == cfg.Model {
 		fallback = ""
@@ -130,6 +136,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
 	cfg.Stage = verification
+	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
+	cfg.RepairStage = factory.IsCIRepairStage(factory.Stage{Name: strings.TrimSpace(spec.VerificationStage)})
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
@@ -140,7 +148,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// Stages carry no manager tool authority. Their separate live meter charges
 	// the same job before round completion, including delegated provider calls.
 	cfg.JobChat = nil
-	budget := &stageBudget{floor: m.floor, item: spec.Item}
+	jobs := m.jobs
+	if jobs == nil {
+		jobs = m.floor
+	}
+	budget := &stageBudget{floor: jobs, item: spec.Item}
 	cfg.JobBudget = budget
 	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
@@ -226,6 +238,20 @@ func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where 
 		return parent, err
 	}
 	return v3PointAt(parent, place)
+}
+
+// stageOpenModel is the model a step opens on: THE STEP'S OR JOB'S OWN, WHEN A
+// PERSON CHOSE ONE, over everything; else the factory's default model; else
+// the launch's. A launch on one model for every task keeps that model rather
+// than the factory's default, which nobody picked for this job.
+func stageOpenModel(cfg session.Config, spec factoryrun.ConversationSpec) string {
+	if model := strings.TrimSpace(spec.Model); model != "" {
+		return model
+	}
+	if model := strings.TrimSpace(spec.FactoryModel); model != "" && !cfg.OneModel {
+		return model
+	}
+	return cfg.Model
 }
 
 // factoryPostureEnv pins the posture a stage conversation runs at, in the

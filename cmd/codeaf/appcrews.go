@@ -471,7 +471,7 @@ func appMembershipMoved(before, after map[string][]string) []string {
 func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
 	f := read.file
 	view := appwire.Crew{
-		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, FactoryManaged: t.FactoryManaged, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
+		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, FactoryManaged: t.FactoryManaged, CreatedBy: t.CreatedBy, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
 		ClosedWith: t.ClosedWith, Report: t.Report, Members: []appwire.CrewMember{},
 		Settings: appwire.CrewSettings{QuestionsUp: t.Settings.QuestionsUp, CapUSDDay: t.Settings.CapUSDDay, DepthLimit: t.Settings.DepthLimit, SubShare: t.Settings.SubShare, Wake: t.Settings.Wake},
 	}
@@ -870,7 +870,7 @@ func (b *appBackend) crewAct(run *appCrewRun, read appCrewRead, t teamstore.Team
 		}); err != nil || !claimed {
 			return
 		}
-		guard.Go("app/crew-start", func() { b.crewStart(t, manager, e) })
+		guard.Go("app/crew-start", func() { b.crewStart(t, manager, e, appMemberAgent(manager)) })
 	}
 }
 
@@ -953,8 +953,10 @@ type appPostureDoor interface {
 
 // crewStart is a manager's start: a new conversation in the crew's folder,
 // added under the manager's handle for it; the conversation reads its brief
-// off the start line itself and takes its first turn.
-func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry) error {
+// off the start line itself and takes its first turn. createdBy is who asked
+// for it: the manager's agent for its own start line, the person for a
+// proposal they accepted.
+func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry, createdBy string) error {
 	handle := strings.TrimSpace(e.To)
 	var pending appPendingStart
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) { pending = f.Pending[appPendingKey(t.ID, handle)] })
@@ -963,7 +965,7 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	if model == "" {
 		model = pending.Model
 	}
-	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model})
+	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model, CreatedBy: createdBy})
 	if err != nil {
 		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		return err
@@ -1091,7 +1093,7 @@ func (b *appBackend) agentMember(agent string) (teamstore.Member, error) {
 // holdMembers opens only the members with work selected by neededMembers,
 // one at a time. A member that cannot be opened is said, once, and tried
 // again later (appcrewhold.go): a member nobody holds is a member whose
-// questions reach nobody.
+// questions reach nobody. A factory step whose journal is locked is quiet instead.
 func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 	now := b.now()
 	for agent := range held {
@@ -1127,7 +1129,11 @@ func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
 				return
 			}
 			if err != nil {
-				b.holdFailed(run, agent, err, false)
+				// A factory step whose journal is locked is not said as another
+				// window. The usual holder is this process's runner. The next
+				// try holds the step once that journal is free.
+				quiet := appHoldIsWindowLock(err) && b.factoryStageMember(agent)
+				b.holdFailed(run, agent, err, quiet)
 				return
 			}
 			b.holdRecovered(run, agent)
@@ -1536,7 +1542,7 @@ func (b *appBackend) newTeamAs(id, name, parent string, members []teamstore.Memb
 				used = append(used, t.HueSpec())
 			}
 		}
-		team := teamstore.Team{ID: id, Name: name, Made: b.now(), Founder: managerKey}
+		team := teamstore.Team{ID: id, Name: name, Made: b.now(), Founder: managerKey, CreatedBy: appwire.CreatedByPerson}
 		spec := teamstore.NextHue(used, nil)
 		if hue != nil {
 			spec.Hue = *hue
@@ -1941,7 +1947,7 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", target, t.Name)
 	}
-	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 {
+	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 || ask.From != "" {
 		return b.crewMessageWith(t, member, target, ask)
 	}
 	shown := appStated(ask.Text, appInTeam(t.ID))
@@ -1972,7 +1978,7 @@ func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error)
 // instead, and every chip stays staged for the person to send again when the
 // turn ends.
 func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, target string, ask appwire.CrewMessage) (appwire.Entry, error) {
-	turn, shown, err := b.sendMessageFor(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads}, appInTeam(t.ID))
+	turn, shown, err := b.sendMessageFor(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads, From: ask.From}, appInTeam(t.ID))
 	var wire *appwire.Error
 	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
 		if len(ask.Attachments) > 0 {
@@ -2002,7 +2008,7 @@ func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, 
 	if strings.TrimSpace(logged) != "" {
 		b.tellManager(t, member, logged)
 	}
-	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: ask.ClientID, Attachments: views, Reads: reads}, nil
+	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: ask.ClientID, Attachments: views, Reads: reads, From: ask.From}, nil
 }
 
 // tellManager puts the person's words to a member on the crew's log.

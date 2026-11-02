@@ -19,11 +19,13 @@ The separate `relay` binary accepts the same flags.
 | `--store <dir>` | Persistent coordination and encrypted chunks. Without it, only the blind transport and pairing mailbox run; chat sync needs storage. |
 | `--quiet` | Suppress arrival, departure and request logs. |
 | `--status=false` | Disable `GET /status`. |
-| `--trust-proxy` | Use the first `X-Forwarded-For` address for pairing limits, only behind a proxy that sets it. |
+| `--trust-proxy` | use the first `X-Forwarded-For` address for registration, dial and pairing limits; absent or blank falls back to the socket peer. only behind a proxy that sets it. |
 
 Set `CODEAF_SYNC_URL=https://relay.example.com` on each computer, or use
 `codeaf pair --via https://relay.example.com`. Pair the computers with the same
 identity and relay. `CODEAF_SYNC_URL=off` stops sync, including existing clients.
+
+forwarding headers are ignored by default. behind Railway, a load balancer or nginx, pass `--trust-proxy` or every caller shares one allowance. enable it only behind a proxy that sets the header.
 
 The relay supplies no TLS or list of allowed people. Use a TLS proxy and a private
 network or a proxy that checks callers: any valid signature can create an identity.

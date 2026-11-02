@@ -454,6 +454,7 @@ func (b *besideAgent) Detach() error {
 func hostLink(seams hostSeams) tui3.LinkSeam {
 	return tui3.LinkSeam{
 		Note:           seams.Link,
+		SendRefusal:    seams.SendRefusal,
 		EngineBuild:    seams.EngineBuild,
 		Ping:           seams.Ping,
 		Notice:         seams.Notice,

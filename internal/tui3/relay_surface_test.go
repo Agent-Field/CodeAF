@@ -106,7 +106,10 @@ func TestRemovedComputerReopensWithTheSameProjectLabel(t *testing.T) {
 			spend(t, a, a.takeBeside(Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/next/transcript.jsonl"}))
 			a.title = "Next chat"
 			a.Update(homeMachinesMsg{err: directory.ErrRevoked})
-			a.width = 160
+			// The frame is wide enough for the whole label. A temporary folder
+			// under macOS's physical /private/var/folders spelling, named after
+			// this test, is longer than a 160-column row leaves for the project.
+			a.width = 260
 			a.touch()
 			a.tabsRow(a.width)
 			span := tabSpanFor(t, a, "Copy chat")
@@ -213,7 +216,7 @@ func TestHolderReportsRenewalOutageAndRecovery(t *testing.T) {
 	for range 3 {
 		a.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
 	}
-	outage := "this chat is not syncing because other machines are unreachable; it keeps working here"
+	outage := "the sync service is not answering; this chat keeps working here and catches up when it is back"
 	if got := plain(frame(a)); strings.Count(got, outage) != 1 {
 		t.Fatalf("outage notice count is wrong: %s", got)
 	}

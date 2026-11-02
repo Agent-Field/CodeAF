@@ -46,6 +46,37 @@ func KnowsHead(c cell.Cell, head string) (bool, error) {
 	return false, err
 }
 
+// Extends says whether this computer's newest turn is head or was sealed on
+// top of it. A computer whose own turns did not reach the service (it ran
+// unsynced, or its last upload died with it) still owns that work: publishing
+// it continues the record's history instead of replacing it. An adopted head
+// has no line in the log, but its first local child names it as the parent.
+func Extends(c cell.Cell, head string) (bool, error) {
+	local, err := Head(c)
+	if err != nil || local == nil {
+		return head == "", err
+	}
+	turns, err := Turns(c)
+	if err != nil {
+		return false, err
+	}
+	parent := make(map[string]string, len(turns))
+	for _, t := range turns {
+		parent[t.ID] = t.Parent
+	}
+	for at, seen := local.Turn.ID, 0; seen <= len(turns); seen++ {
+		if at == head {
+			return true, nil
+		}
+		next, ok := parent[at]
+		if !ok || next == "" {
+			return false, nil
+		}
+		at = next
+	}
+	return false, nil
+}
+
 // NotePublished records a head that the directory accepted or this device
 // received, so a later take can distinguish uploaded history from local work.
 func NotePublished(c cell.Cell, head string) error {

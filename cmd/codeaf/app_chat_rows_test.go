@@ -99,9 +99,12 @@ func TestAppChatRowsR1P2PresenceIsIndependentOfClosedChat(t *testing.T) {
 	for _, row := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
 		rows[row.Cell] = row
 	}
-	for _, id := range ids[:2] {
+	// A lapsed lease of this computer's own is free rather than off (#2072),
+	// so the chat this backend made reads idle; presence is reported either way.
+	for i, id := range ids[:2] {
 		row := rows[id]
-		if row.Status != "off" || row.Online == nil || !*row.Online || row.Line != "" || row.TakeoverLine != "" {
+		want := map[int]string{0: "off", 1: "idle"}[i]
+		if row.Status != want || row.Online == nil || !*row.Online || row.Line != "" || row.TakeoverLine != "" {
 			t.Errorf("R1 online holder with closed chat: %+v", row)
 		}
 	}

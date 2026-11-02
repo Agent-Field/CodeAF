@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
@@ -139,7 +141,13 @@ func TestContinueTakeReplacesAnOutstandingListing(t *testing.T) {
 	src := &continuationListing{row: leftOffRow(heldCell, "tower", chatlist.Running, time.Minute)}
 	taker := &fakeTaker{}
 	a, _ := heldLab(t, src, taker)
-	old := a.askChats()()
+	// The listing travels with its five-second progress tick, so the answer is
+	// read now, before the take, exactly as an answer already in flight would be.
+	asked, ok := a.askChats()().(tea.BatchMsg)
+	if !ok || len(asked) == 0 {
+		t.Fatalf("the listing did not travel as a batch: %T", asked)
+	}
+	old := asked[0]()
 	taker.on = func(string) { src.change(func(row *chatlist.Row) { row.Mine, row.Status = true, chatlist.Here }) }
 	drain(t, a, a.takeRemote(src.row))
 	if !a.machineRead.rows[0].Mine {

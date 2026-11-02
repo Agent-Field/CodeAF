@@ -480,15 +480,7 @@ func SessionWorkspaces() map[string]string {
 		if !bucket.IsDir() {
 			continue
 		}
-		sessions, err := os.ReadDir(filepath.Join(root, bucket.Name()))
-		if err != nil {
-			continue
-		}
-		for _, entry := range sessions {
-			if !entry.IsDir() {
-				continue
-			}
-			dir := filepath.Join(root, bucket.Name(), entry.Name())
+		for _, dir := range BucketSessionDirs(filepath.Join(root, bucket.Name())) {
 			meta, err := LoadMeta(dir)
 			if err != nil || meta.ID == "" || strings.TrimSpace(meta.Workspace) == "" {
 				continue
@@ -497,6 +489,120 @@ func SessionWorkspaces() map[string]string {
 		}
 	}
 	return answered
+}
+
+var (
+	bucketCopyRoot = cell.CopyRoot
+	bucketCopied   = cell.Copied
+	bucketOpenAt   = cell.OpenAt
+)
+
+// BucketSessionDirs returns every conversation folder in one project bucket,
+// whether it lives at the bucket's top level or in the bucket's `.moving` copy
+// root, each once. A completed copy in `.moving` replaces its untouched legacy
+// original, while an unfinished copy scratch folder stays hidden so a half-made
+// copy can never appear beside or instead of the original.
+//
+// It reads `.moving` at most once up front and checks copy roots only for
+// originals whose destination name is present in that `.moving` directory; a
+// bucket with no `.moving` directory pays zero per-folder copy work.
+func BucketSessionDirs(bucket string) []string {
+	entries, err := os.ReadDir(bucket)
+	if err != nil {
+		return nil
+	}
+	hasMoving := false
+	for _, entry := range entries {
+		if entry.Name() == ".moving" {
+			hasMoving = true
+			break
+		}
+	}
+	var (
+		movingDir     string
+		movingEntries []os.DirEntry
+		movingDirs    map[string]bool
+		movingLocks   map[string]bool
+	)
+	if hasMoving {
+		movingDir = filepath.Join(bucket, ".moving")
+		if list, readErr := os.ReadDir(movingDir); readErr == nil {
+			movingEntries = list
+			for _, entry := range list {
+				name := entry.Name()
+				if strings.HasSuffix(name, ".lock") {
+					if movingLocks == nil {
+						movingLocks = make(map[string]bool)
+					}
+					movingLocks[strings.TrimSuffix(name, ".lock")] = true
+					continue
+				}
+				if !entry.IsDir() || skipBucketDirName(name) {
+					continue
+				}
+				if movingDirs == nil {
+					movingDirs = make(map[string]bool, len(list))
+				}
+				movingDirs[name] = true
+			}
+		}
+	}
+	seen := make(map[string]bool, len(entries)+len(movingDirs))
+	dirs := make([]string, 0, len(entries)+len(movingDirs))
+	var claimedCopy map[string]bool
+	if len(movingDirs) > 0 {
+		claimedCopy = make(map[string]bool, len(movingDirs))
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || skipBucketDirName(entry.Name()) {
+			continue
+		}
+		orig := filepath.Clean(filepath.Join(bucket, entry.Name()))
+		resolved := orig
+		if len(movingDirs) > 0 {
+			copyName := filepath.Base(bucketCopyRoot(orig))
+			if movingDirs[copyName] {
+				claimedCopy[copyName] = true
+				resolved = filepath.Clean(bucketCopied(orig))
+			}
+		}
+		if !seen[resolved] {
+			seen[resolved] = true
+			dirs = append(dirs, resolved)
+		}
+	}
+	for _, entry := range movingEntries {
+		name := entry.Name()
+		if !entry.IsDir() || skipBucketDirName(name) || claimedCopy[name] {
+			continue
+		}
+		mDir := filepath.Clean(filepath.Join(movingDir, name))
+		if seen[mDir] {
+			continue
+		}
+		if movingLocks[name] {
+			// CopyLegacy creates `<root>.lock` before populating `.moving/<hash>`
+			// and stamps `copy-ready` only after sealing; if the legacy original
+			// is gone, an unfinished copy still stays hidden.
+			if _, readyErr := os.Stat(filepath.Join(mDir, filepath.FromSlash(cell.CopyReadyPath))); readyErr != nil {
+				continue
+			}
+			if _, openErr := bucketOpenAt(mDir, name); openErr != nil {
+				continue
+			}
+		}
+		seen[mDir] = true
+		dirs = append(dirs, mDir)
+	}
+	return dirs
+}
+
+func skipBucketDirName(name string) bool {
+	return strings.HasPrefix(name, ".") ||
+		strings.HasSuffix(name, ".lock") ||
+		strings.HasSuffix(name, ".taking") ||
+		strings.HasSuffix(name, ".arriving") ||
+		strings.HasSuffix(name, ".replaced")
 }
 
 // ReadRows is the rows of the named conversations and of nothing else, keyed by
@@ -556,7 +662,7 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 	if transcript == "." || !isFolder {
 		return false
 	}
-	bucketDir := filepath.Dir(dir)
+	bucketDir := BucketOf(transcript)
 	if filepath.Dir(bucketDir) != filepath.Clean(strings.TrimSpace(root)) {
 		return false
 	}
@@ -666,8 +772,8 @@ func readWorld(root string, now time.Time) World {
 // launch that opened and closed is not a project, and a section header over no
 // rows is a heading that says nothing.
 func readProject(dir, bucket string, now time.Time) (Project, bool) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	sessionDirs := BucketSessionDirs(dir)
+	if len(sessionDirs) == 0 {
 		return Project{}, false
 	}
 	// The index is the BUCKET's, read once for every session in it
@@ -683,11 +789,9 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 	}
 
 	project := Project{Bucket: bucket, Dir: dir}
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		row, ok := readSessionRow(filepath.Join(dir, entry.Name()), entry.Name(), now)
+	byID := make(map[string]int, len(sessionDirs))
+	for _, sessionDir := range sessionDirs {
+		row, ok := readResolvedSessionRow(sessionDir, filepath.Base(sessionDir), now)
 		if !ok {
 			continue
 		}
@@ -695,6 +799,13 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 			project.Path = projectPath(row)
 		}
 		row.Tasks = rollUp(byTask[row.ID], row)
+		if idx, exists := byID[row.ID]; exists {
+			if preferSessionRow(row, project.Sessions[idx]) {
+				project.Sessions[idx] = row
+			}
+			continue
+		}
+		byID[row.ID] = len(project.Sessions)
 		project.Sessions = append(project.Sessions, row)
 	}
 	if len(project.Sessions) == 0 {
@@ -729,6 +840,20 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 	return project, true
 }
 
+func preferSessionRow(candidate, existing SessionRow) bool {
+	if candidate.Open != existing.Open {
+		return candidate.Open
+	}
+	if candidate.Archived != existing.Archived {
+		return !candidate.Archived
+	}
+	if !candidate.At.Equal(existing.At) {
+		return candidate.At.After(existing.At)
+	}
+	return filepath.Base(filepath.Dir(candidate.Dir)) == ".moving" &&
+		filepath.Base(filepath.Dir(existing.Dir)) != ".moving"
+}
+
 // readSessionRow reads one session folder, and answers false for a folder that
 // is not a conversation somebody has had.
 //
@@ -741,9 +866,21 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
 func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
-	if copy := cell.Copied(dir); copy != dir {
-		dir, id = copy, filepath.Base(copy)
+	// Callers such as ReadRows pass an explicit folder path rather than a
+	// pre-resolved BucketSessionDirs entry; resolve a `.moving` copy only when
+	// the folder sits at the bucket's top level and the bucket actually has a
+	// `.moving` directory.
+	if filepath.Base(filepath.Dir(dir)) != ".moving" {
+		if _, err := os.Stat(filepath.Join(filepath.Dir(dir), ".moving")); err == nil {
+			if copy := bucketCopied(dir); copy != dir {
+				dir, id = copy, filepath.Base(copy)
+			}
+		}
 	}
+	return readResolvedSessionRow(dir, id, now)
+}
+
+func readResolvedSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	pending := false
 	if _, err := os.Stat(filepath.Join(dir, conversationDeletedFile)); err == nil {
 		if _, err := os.Stat(filepath.Join(dir, conversationTaskCleanupFile)); err != nil {

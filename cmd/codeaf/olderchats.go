@@ -177,8 +177,11 @@ func olderChatCopyable(meta session.Meta) bool {
 
 // movablePlace resolves a completed copy or prepares one when the person opens
 // an older chat. Selection runs on the existing asynchronous opening door.
+// Sync off means not talking to the service, never forgetting a completed copy
+// already on this computer, so an existing `.moving` copy is opened even when
+// sync is quiet or off.
 func movablePlace(ctx context.Context, place session.Place) (session.Place, error) {
-	if place.Dir == "" || !cell.Available() || !syncsetup.MayTalk(home.Dir()) {
+	if place.Dir == "" {
 		return place, nil
 	}
 	if _, err := cell.OpenAt(place.Dir, place.ID()); err == nil {
@@ -187,6 +190,9 @@ func movablePlace(ctx context.Context, place session.Place) (session.Place, erro
 	original := place.Dir
 	copied := cell.Copied(original)
 	if copied == original {
+		if !cell.Available() || !syncsetup.MayTalk(home.Dir()) {
+			return place, nil
+		}
 		if _, err := os.Stat(filepath.Join(original, "transcript.jsonl")); os.IsNotExist(err) {
 			return place, nil
 		}

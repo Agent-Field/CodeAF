@@ -57,6 +57,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -355,8 +356,8 @@ func (q UsageQuery) matches(line UsageLine) bool {
 // counted as consumed — [scanUsage]'s rule, so one absurd row costs its own
 // record and never the rows after it. A last line with no newline is a write in
 // flight and is neither parsed nor counted, as there.
-func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLine) error) (UsageScanStats, error) {
-	var stats UsageScanStats
+func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLine) error) (stats UsageScanStats, err error) {
+	defer func() { usageBytesScanned.Add(stats.Bytes) }()
 	if limit >= 0 {
 		r = io.LimitReader(r, limit)
 	}
@@ -392,6 +393,10 @@ func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLi
 		}
 	}
 }
+
+// usageBytesScanned is every whole ledger line's bytes any scan has read, so
+// a test can tell a read of what was appended from a read of everything.
+var usageBytesScanned atomic.Int64
 
 // usageTailError is the end of the reading: the end of the file (with or
 // without a partial line after the last whole one) is no error at all.

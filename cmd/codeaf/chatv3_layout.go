@@ -544,7 +544,7 @@ func v3NextSessionFrom(current session.Place, workspace, launchDir string) (sess
 			// cannot be inherited: it is minted with the folder, below.
 			root = workspace
 		}
-		return v3MintSession(filepath.Dir(dir), root,
+		return v3MintSession(session.BucketOf(current.Transcript()), root,
 			v3StampLaunchDir(launchDir, root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
@@ -659,15 +659,11 @@ type v3Folder struct {
 // deliverables is never empty whatever its journal says — those are somebody's
 // content, and no groom of a bookkeeping file may take them.
 func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
-	entries, err := os.ReadDir(bucket)
-	if err != nil {
+	sessionDirs := session.BucketSessionDirs(bucket)
+	if len(sessionDirs) == 0 {
 		return nil, nil
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := cell.Copied(filepath.Join(bucket, entry.Name()))
+	for _, dir := range sessionDirs {
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
 			continue
@@ -676,7 +672,7 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 		folder.meta, _ = session.LoadMeta(dir)
 		folder.at = folder.meta.LastUserAt
 		if folder.at.IsZero() {
-			if info, err := entry.Info(); err == nil {
+			if info, err := os.Stat(dir); err == nil {
 				folder.at = info.ModTime()
 			}
 		}
@@ -843,9 +839,9 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 		class = executor.HostBound
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
-	watch := &cellstore.SealWatch{Say: say}
+	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}

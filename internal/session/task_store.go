@@ -772,8 +772,12 @@ type runRecord struct {
 	JobCallID   string `json:"job_call_id,omitempty"`
 	JobExitCode *int   `json:"job_exit_code,omitempty"`
 
-	RecoveredCompletion bool            `json:"recoveredCompletion,omitempty"`
-	CrewState           *TaskCrewRecord `json:"crewState,omitempty"`
+	Remote              *TaskRemoteRecord `json:"remote,omitempty"`
+	Computer            string            `json:"computer,omitempty"`
+	Unreachable         bool              `json:"unreachable,omitempty"`
+	RanElsewhere        bool              `json:"ran_elsewhere,omitempty"`
+	RecoveredCompletion bool              `json:"recoveredCompletion,omitempty"`
+	CrewState           *TaskCrewRecord   `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
@@ -1208,6 +1212,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 	}
 	return runRecord{
 		JobCommand: notice.JobCommand, JobCallID: notice.JobCallID, JobExitCode: notice.JobExitCode,
+		Remote: cloneTaskRemote(notice.Remote), Computer: notice.Computer, Unreachable: notice.Unreachable, RanElsewhere: notice.RanElsewhere,
 		CrewState:           notice.CrewState,
 		ID:                  notice.ID,
 		Run:                 notice.Run,
@@ -1259,6 +1264,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
 		JobCommand: record.JobCommand, JobCallID: record.JobCallID, JobExitCode: record.JobExitCode,
+		Remote: cloneTaskRemote(record.Remote), Computer: record.Computer, Unreachable: record.Unreachable, RanElsewhere: record.RanElsewhere,
 		CrewState: record.CrewState,
 		ID:        record.ID,
 		Run:       record.Run,

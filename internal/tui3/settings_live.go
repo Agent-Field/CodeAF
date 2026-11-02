@@ -10,6 +10,7 @@ func (a *app) refreshProfileUI() {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
+	a.teamsShare = config.TeamsShareAt(a.profileDir)
 	a.adoptIcons()
 	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	a.askWait = a.consentWait()

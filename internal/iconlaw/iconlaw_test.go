@@ -48,6 +48,7 @@ import (
 // flag.
 var surfaces = []string{
 	"../atlas",    // C16 holds the architecture map to the same vocabulary.
+	"../chatlist", // The Home strip receives marks from its surface.
 	"../tui3",     // v3, the live chat
 	"../head",     // the resident's head
 	"../resident", // the resident itself
@@ -63,6 +64,7 @@ var surfaces = []string{
 // state the vocabulary already had a mark for, and a build that finds one has
 // found a surface drawing outside the table again.
 var ownedRunes = map[rune]string{
+
 	'○': "tokens.GQueued",
 	'◐': "tokens.GWorking",
 	'✓': "tokens.GSettled",
@@ -96,9 +98,13 @@ var ownedRunes = map[rune]string{
 
 // exemptions are the (file, rune) pairs allowed to spell a mark, with the
 // reason each one is out. A reason is required: an exemption without one is how
-// a list like this stops meaning anything. There is exactly one, and it is not
-// a mark at all.
+// a list like this stops meaning anything. Protocol bytes and literal keyboard
+// labels are content rather than platform or state marks.
 var exemptions = map[string]string{
+	// The Mac modifier is a key label, so replacing it with an Apple platform
+	// icon would tell the person to press a key that their keyboard does not name.
+	"internal/tui3/chords.go" + tokens.GlyphPlatformMac: "the macOS Command key label is keyboard text, not the device platform mark",
+
 	"internal/resident/bank.go⚑": "resident.NoteMark is a PROTOCOL BYTE, not a cell on a screen: " +
 		"a job-board note is written with it and read back by prefix (cmd/codeaf/chat.go strips it " +
 		"before anybody sees the line). Routing it through the tier would make the bytes in the " +
@@ -153,6 +159,16 @@ func TestNoSurfaceSpellsAnIconItself(t *testing.T) {
 						continue
 					}
 					slot, owned := ownedRunes[r]
+					// Platform slots must use the door on every surface. Presence in
+					// chatlist is supplied by its caller, including the filled circle.
+					for _, id := range []tokens.GlyphID{tokens.GPlatformMac, tokens.GPlatformLinux, tokens.GPlatformWindows, tokens.GPlatformMobile, tokens.GPlatformOther} {
+						if string(r) == tokens.Plain.Glyph(id) {
+							slot, owned = "the platform glyph slot", true
+						}
+					}
+					if surface == "../chatlist" && string(r) == tokens.Plain.Glyph(tokens.GStepDone) {
+						slot, owned = "tokens.GStepDone", true
+					}
 					if surface == "../atlas" {
 						for _, b := range tokens.Vocabulary() {
 							if !b.Geometry && b.Plain == string(r) && r > 127 {
@@ -226,4 +242,14 @@ func literalText(lit *ast.BasicLit) (string, bool) {
 // the repository root — so a carve-out reads as the file a person would open.
 func repoPath(path string) string {
 	return "internal/" + strings.TrimPrefix(filepath.ToSlash(path), "../")
+}
+
+// L4-H8c: The presence words package stays inside the glyph-law walk.
+func TestL4B2ChatlistIsUnderIconLaw(t *testing.T) {
+	for _, surface := range surfaces {
+		if surface == "../chatlist" {
+			return
+		}
+	}
+	t.Fatal("internal/chatlist is outside the icon-law walk")
 }

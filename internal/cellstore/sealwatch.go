@@ -1,6 +1,9 @@
 package cellstore
 
 import (
+	"errors"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -43,14 +46,18 @@ type SealWatch struct {
 	// it.
 	OnTail func()
 	// Quiet is TailQuiet unless a test sets it shorter.
-	Quiet   time.Duration
-	mu      sync.Mutex
-	idle    bool
-	started bool
-	tail    *time.Timer
-	cause   string
-	said    []string
-	failing bool
+	Quiet       time.Duration
+	mu          sync.Mutex
+	idle        bool
+	started     bool
+	tail        *time.Timer
+	cause       string
+	said        []string
+	changes     chan struct{}
+	failing     bool
+	syncFailing bool
+	// SyncAddress is selected by the door, so failures without a URL still name the right service.
+	SyncAddress string
 	// requiredEnd follows conversation writes, so later bookkeeping cannot hide recovery.
 	requiredEnd int64
 }
@@ -58,6 +65,10 @@ type SealWatch struct {
 // Report takes the outcome of one seal: nil when it held, the error when it did
 // not. It matches [Options.Report], so a watch's method is the recorder's hook.
 func (w *SealWatch) Report(err error) {
+	if syncwords.NetworkFailure(err) {
+		w.SyncReport(err)
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err == nil {
@@ -103,6 +114,34 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	select {
+	case w.changes <- struct{}{}:
+	default:
+	}
+}
+
+// Changes wakes a reader when a sentence is queued. One signal may stand for
+// several sentences; a receiver drains Take until it returns "".
+func (w *SealWatch) Changes() <-chan struct{} {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	return w.changes
+}
+
+// Owed reports whether a reader that drains Take must look again although
+// nothing woke it: a sentence is waiting, or sealing is failing, whose recovery
+// is found only by asking Take or Failing. It never looks for that recovery
+// itself, so a reader's own Take stays the one check per look.
+func (w *SealWatch) Owed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.failing || len(w.said) > 0
 }
 
 // Waiting arms a newly constructed chat that is waiting for its first input.
@@ -264,4 +303,32 @@ func (w *SealWatch) ownTurnSaved() bool {
 		}
 	}
 	return true
+}
+
+// SyncReport is fed only by a completed service call. Local sealing has its
+// own report path and cannot clear an outage while the network still refuses.
+func (w *SealWatch) SyncReport(err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err == nil {
+		if w.syncFailing {
+			w.say(syncwords.Recovered)
+		}
+		w.syncFailing = false
+		return
+	}
+	if !syncwords.NetworkFailure(err) {
+		return
+	}
+	var request *url.Error
+	if errors.As(err, &request) {
+		w.SyncAddress = request.URL
+	}
+	if w.SyncAddress == "" {
+		w.SyncAddress = syncwords.HostedURL
+	}
+	if !w.syncFailing {
+		w.say(syncwords.Outage(w.SyncAddress))
+	}
+	w.syncFailing = true
 }

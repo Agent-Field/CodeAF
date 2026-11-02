@@ -31,7 +31,7 @@ func (g *Native) PersonalStatus(ctx context.Context, actor, certificate string) 
 		if code != cs.OK {
 			return directory.ErrUnauthorized
 		}
-		out = clusterctl.Status{Ready: status.Ready, LeadershipUnavailable: status.Self == 0, Cluster: status.Cluster, Self: status.Self, Leader: status.Leader, Membership: status.Membership, Configuration: status.Configuration}
+		out = clusterctl.Status{Members: status.Members, Ready: status.Ready, LeadershipUnavailable: status.Self == 0, Cluster: status.Cluster, Self: status.Self, Leader: status.Leader, Membership: status.Membership, Configuration: status.Configuration}
 
 		return nil
 	})

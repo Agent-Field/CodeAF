@@ -1,13 +1,14 @@
 package tui3
 
-import "github.com/Agent-Field/codeaf/internal/chatlist"
+const removedPairNotice = "removed by another of your devices — pair again to sync"
 
 func (a *app) removedComputer() {
 	a.machineRead.computerRemoved = true
 	a.leftOff.row = nil
 	a.continueGeneration++
 	a.dropHomeAsk()
-	a.homeAccountNotice = chatlist.Removed
-	a.home.say(chatlist.Removed, "")
+	a.homeAccountNotice = removedPairNotice
+	a.addMachine.known, a.addMachine.size = true, 1
+	a.home.say("", "")
 	a.touch()
 }

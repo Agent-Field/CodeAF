@@ -53,6 +53,10 @@ import (
 // session, every test, and every headless frame. Nothing half-works there: no
 // segment is drawn, no notice is looked for, and no question is asked about.
 type LinkSeam struct {
+	// SendRefusal reads known connection state before the composer spends a draft.
+	// Nil is a local connection with no remote-send gate.
+	SendRefusal func() string
+
 	// EngineBuild reads the latest welcome already held by the client. It
 	// changes after redial onto a replacement engine and never touches the wire.
 	EngineBuild func() string
@@ -203,7 +207,7 @@ func (a *app) linkSegment() string {
 	if note := a.linkNote(); note != "" {
 		return note
 	}
-	if !a.hosted() || a.linkLatency <= 0 {
+	if !a.hosted() || !a.linkLatencyFresh() {
 		return ""
 	}
 	return a.host + " · " + latencyWord(a.linkLatency)
@@ -230,6 +234,24 @@ func (a *app) linkNoting() bool { return a.linkNote() != "" }
 // adds twelve empty round trips a minute rather than turning observation into
 // traffic.
 const hostPingEvery = 5 * time.Second
+
+// hostPingMargin tolerates a normal reply without keeping an unanswered reading.
+const hostPingMargin = time.Second
+
+func (a *app) linkLatencyFresh() bool {
+	return a.linkLatency > 0 && !a.linkLatencyAt.IsZero() && a.now().Sub(a.linkLatencyAt) < hostPingEvery+hostPingMargin
+}
+
+type linkLatencyExpiredMsg struct{ at time.Time }
+
+// linkLatencyExpiry repaints an idle bar even while its next ping is still waiting.
+func (a *app) linkLatencyExpiry() tea.Cmd {
+	if !a.linkLatencyFresh() {
+		return nil
+	}
+	at := a.linkLatencyAt
+	return surfaceTick(hostPingEvery+hostPingMargin, func(time.Time) tea.Msg { return linkLatencyExpiredMsg{at: at} })
+}
 
 // latencyHandful is the EWMA's effective window. A quarter of each new sample
 // moves the reading, so a brief spike is visible without making the status row
@@ -276,11 +298,12 @@ func (a *app) linkPingBack(msg linkPingMsg) {
 	if msg.err != nil || msg.elapsed <= 0 {
 		return
 	}
-	if a.linkLatency <= 0 {
+	if !a.linkLatencyFresh() {
 		a.linkLatency = msg.elapsed
 	} else {
 		a.linkLatency = (a.linkLatency*time.Duration(latencyHandful-1) + msg.elapsed) / latencyHandful
 	}
+	a.linkLatencyAt = a.now()
 	a.touch()
 }
 

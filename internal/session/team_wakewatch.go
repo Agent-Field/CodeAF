@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -832,9 +833,15 @@ func SetTeamResume(open func(file, workspace string) error) {
 // closed over by the goroutine below: the note it may write when the wake fails
 // is stamped with THAT turn, not with whichever turn this conversation is in
 // when the wake gives up. A wake nothing caused (a watch tick) passes none.
-func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string, prov teams.Provenance) {
+//
+// A target on another computer cannot be woken from here: that refusal is
+// returned, and nothing is opened.
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string, prov teams.Provenance) string {
+	if refusal := a.teamDeliveryRefusal(context.Background(), targets); refusal != "" {
+		return refusal
+	}
 	if profile == "" || !wakes || len(targets) == 0 {
-		return
+		return ""
 	}
 	a.team.mu.Lock()
 	self := append([]string(nil), a.teamKeysLocked()...)
@@ -847,7 +854,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 		absent = append(absent, member)
 	}
 	if len(absent) == 0 {
-		return
+		return ""
 	}
 	guard.Go("team rouse", func() {
 		for _, member := range absent {
@@ -867,6 +874,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 			}
 		}
 	})
+	return ""
 }
 
 // rouseMember opens one conversation when nothing holds it, and says why not

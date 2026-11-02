@@ -253,6 +253,13 @@ const (
 	// that is invisible to everything that reads roles.
 	RoleSpellOut Role = "spellout"
 
+	// RoleBrief writes a factory job's brief: the verdict and the blocks of
+	// the job's state in one screen, from the job's own records. It is a small
+	// call a person reads but does not wait on, so it sits on the small-work
+	// tier, the one the app's small-jobs model pins. Registered from
+	// cmd/codeaf/appfactory_brief_writer.go, which owns the call.
+	RoleBrief Role = "brief"
+
 	// RoleDivision reviews a DIVISION as a plan. A worker halfway through its
 	// own work has named the parts it wants to hand out, and this is the one
 	// call that reads them TOGETHER — the evidence, the parent's own brief, and
@@ -280,6 +287,28 @@ const (
 	// yet", this one for parts whose failure is quiet wrongness. Registered from
 	// internal/session/task_divide.go, which owns the field that reaches it.
 	RoleCareful Role = "careful"
+)
+
+// The page-AI roles: the calls an app makes on an agent's errand door to write
+// about what is on a page (a repository's notes, an answer to a question about
+// it, the themes in its backlog, a pipeline built with AI, a factory's topic
+// views, and a factory's arrival read and closer look). They are one FAMILY: `insight` is the model
+// every page AI runs on, and each override is one page feature a person may
+// point somewhere else. An override nobody pinned is the family's choice, so a
+// person who sets `insight` once has set every page.
+const (
+	RoleInsight       Role = "insight"
+	RoleInsightNotes  Role = "insight_notes"
+	RoleInsightAsk    Role = "insight_ask"
+	RoleInsightThemes Role = "insight_themes"
+	// RoleInsightPipeline is a pipeline's steps written with AI.
+	RoleInsightPipeline Role = "insight_pipeline"
+	// RoleInsightViews is a factory's topic views.
+	RoleInsightViews Role = "insight_views"
+	// RoleInsightFactoryRead is the read of what arrived in a factory, and
+	// RoleInsightFactoryScout is the closer look a person asks for after it.
+	RoleInsightFactoryRead  Role = "insight_factory_read"
+	RoleInsightFactoryScout Role = "insight_factory_scout"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
@@ -551,9 +580,11 @@ func Known(name string) bool {
 }
 
 var vocabulary = []Role{
-	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
+	RoleAuditor, RoleBrief, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
-	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
+	RoleImageGen, RoleInsight, RoleInsightAsk, RoleInsightFactoryRead,
+	RoleInsightFactoryScout, RoleInsightNotes, RoleInsightPipeline,
+	RoleInsightThemes, RoleInsightViews, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
@@ -594,7 +625,9 @@ func TierOf(role Role) (Tier, bool) {
 // The ladder is exact, most specific first:
 //
 //  1. the role's own pin, settings key "roles.<role>" — one call, one model,
-//     set deliberately;
+//     set deliberately; a role registered under a family ([RegisterUnder]) then reads the
+//     family's pin; then the role's own default and its family's
+//     ([DefaultKey]), which an engine supplies and never writes;
 //  2. the model on the role's tier, key "tiers.<tier>" — the setting a person
 //     actually maintains;
 //  3. sessionDefault — the model the session is already talking to.
@@ -666,8 +699,15 @@ func Ladder(src Source, role Role, sessionDefault string) ([]Call, error) {
 		seen[model] = true
 		rungs = append(rungs, candidate)
 	}
-	if value, ok := read(src, PinKey(role)); ok {
-		add(call(value))
+	// The pins of the role and its family, then their defaults: a person's
+	// choice anywhere in the family outranks a default the engine supplies.
+	chain := lineage(role)
+	for _, key := range []func(Role) string{PinKey, DefaultKey} {
+		for _, member := range chain {
+			if value, ok := read(src, key(member)); ok {
+				add(call(value))
+			}
+		}
 	}
 	if value, ok := read(src, TierKey(tier)); ok {
 		add(call(value))

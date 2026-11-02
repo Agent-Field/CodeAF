@@ -15,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -25,7 +26,10 @@ type LinkUI interface {
 }
 
 // Fleet is what a device sees of the identity it just joined.
-type Fleet struct{ Devices, Workspaces int }
+type Fleet struct {
+	Devices, Workspaces int
+	With                string
+}
 
 // LinkJoining is this computer as the device that asks to join.
 type LinkJoining struct {
@@ -217,7 +221,7 @@ func phraseLink(err error, host string) error {
 	case errors.Is(err, directory.ErrTooOld):
 		return ErrRelayTooOld
 	case errors.Is(err, directory.ErrUnreachable):
-		return CannotReachHost(host)
+		return syncwords.Explain(err, host)
 	}
-	return err
+	return syncwords.Explain(err, host)
 }

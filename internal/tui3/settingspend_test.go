@@ -116,7 +116,7 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 		}
 	}
 	// AND THE BAR READS IN THE DESIGN'S ORDER.
-	want2 := []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams, tabSafety, tabSpending, tabConnections, tabPrivacy}
+	want2 := []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams, tabSafety, tabSpending, tabConnections, tabDevices, tabPrivacy}
 	if strings.Join(settingTabs, " ") != strings.Join(want2, " ") {
 		t.Fatalf("the tab bar reads %v", settingTabs)
 	}

@@ -15,6 +15,7 @@ import (
 	"errors"
 	"net/http"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -64,12 +65,20 @@ func (s homeSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 // pullFleet counts what the identity holds, as this computer now sees it.
 func pullFleet(dir string, route pair.Mailbox) func(context.Context) (pair.Fleet, error) {
 	return func(ctx context.Context) (pair.Fleet, error) {
-		client, _, err := homeDirectory(dir, route)
+		client, id, err := homeDirectory(dir, route)
 		if err != nil {
 			return pair.Fleet{}, err
 		}
 		listing, err := client.List(ctx)
-		return fleetOf(listing), err
+		fleet := fleetOf(listing)
+		if err == nil {
+			dev, e := identity.Device(dir)
+			if e != nil {
+				return fleet, e
+			}
+			fleet.With = pairingPeer(listing, directory.MetadataKey(id.CellKey()), dev.ID())
+		}
+		return fleet, err
 	}
 }
 
@@ -93,7 +102,7 @@ func fleetOf(l directory.Listing) pair.Fleet {
 func linkJoining(dir string) func(pair.Mailbox, bool) pair.LinkJoining {
 	return func(route pair.Mailbox, replace bool) pair.LinkJoining {
 		return pair.LinkJoining{
-			Joining: pairJoiningAt(dir)(replace), Platform: runtime.GOOS, Host: route.Host, Via: syncsetup.Named(route.URL),
+			Joining: pairJoiningAt(dir)(replace), Platform: runtime.GOOS, Host: route.URL, Via: syncsetup.Named(route.URL),
 			Pull: pullFleet(dir, route),
 		}
 	}
@@ -108,6 +117,9 @@ func (s inviteScreen) Invited(in pair.Invite) { s.say(pair.InviteLines(in)) }
 func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) error {
 	route, err := d.mailbox(relay)
 	if err != nil {
+		return err
+	}
+	if err := d.pairingStatus(ctx, route, replace); err != nil {
 		return err
 	}
 	joining := d.linking(route, replace)
@@ -130,10 +142,8 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 	if joined.Already {
 		d.term.say(joined.Sentence())
 	} else {
-		d.term.say(pair.JoinedFleetLine(joined.Fleet.Workspaces))
-	}
-	if !joined.Already {
 		d.recordOwnDeviceOrSay(ctx, route)
+		d.term.say(pair.PairedWithLine(joined.Fleet.With))
 		d.term.say(terminalSharingLine)
 	}
 	return nil
@@ -146,11 +156,17 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	if err != nil {
 		return err
 	}
-	if relay == "" {
+	// A page already on this computer's service keeps that explicit route.
+	// A different service must still face the mailbox's configured route below,
+	// so a pasted link cannot redirect approval to another service.
+	if relay == "" && pair.CheckLinkService(typed, pairingRelay(home.Dir()).URL) == nil {
 		relay = pair.LinkRelay(typed)
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {
+		return err
+	}
+	if err := pair.CheckLinkService(typed, route.URL); err != nil {
 		return err
 	}
 	who, err := d.approver(route)
@@ -168,11 +184,11 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	if err := who.Approve(ctx, asking); err != nil {
 		return err
 	}
-	if err := identity.EndSolo(home.Dir()); err != nil {
+	if err := identity.EndSolo(d.joining(false).Home); err != nil {
 		return err
 	}
-	d.term.say(pair.ApprovedLine(asking.Name))
 	d.recordOwnDeviceOrSay(ctx, route)
+	d.term.say(pair.ApprovedLine(asking.Name))
 	return nil
 }
 
@@ -199,4 +215,19 @@ func linkApprover(dir string) func(pair.Mailbox) (pair.Approver, error) {
 			SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
 		}, nil
 	}
+}
+
+// pairingPeer reads names after joining, so pairing needs no new wire fields.
+func pairingPeer(l directory.Listing, key []byte, self string) string {
+	var names []string
+	for id, dev := range l.Devices {
+		if id != self && !dev.Revoked {
+			names = append(names, openName(key, dev.Name))
+		}
+	}
+	sort.Strings(names)
+	if len(names) > 0 {
+		return names[0]
+	}
+	return ""
 }

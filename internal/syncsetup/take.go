@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,15 +16,20 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // TakeOptions is what the surface tells the take side about this machine.
@@ -95,7 +101,7 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	s := c.sync
 	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
-	engine := landing{Engine: sync, workspace: c.eng.WorkspaceOf}
+	engine := landing{Engine: sync, workspace: c.eng.WorkspaceOf, rootFor: c.opt.RootFor}
 	pub := &cellsync.Publisher{Engine: engine, Store: sc.Store, Dir: s.Dir}
 	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
 	// id on this machine; only the edits set aside live in the branch, and a
@@ -147,7 +153,30 @@ func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error
 	return c.take(ctx, id, nil, true)
 }
 
-func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (Continued, error) {
+func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (out Continued, err error) {
+	// Measure one attempt on its own copy: observers must not leak into another
+	// continue, and diagnostics must survive both early refusal and late failure.
+	started := time.Now()
+	phases := map[string]time.Duration{}
+	observed := *c
+	report := c.opt.OnPhase
+	observed.opt.OnPhase = func(p handoff.Phase) {
+		if !p.Ended.IsZero() {
+			phases[p.Name] += p.Ended.Sub(p.Started)
+		}
+		if report != nil {
+			report(p)
+		}
+	}
+	c = &observed
+	defer func() {
+		outcome := "done"
+		if err != nil {
+			outcome = "failed"
+		}
+		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s total=%s outcome=%s", id,
+			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)
+	}()
 	root := c.opt.RootFor(id)
 	defer handoff.Arrive(root)()
 	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
@@ -156,7 +185,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, err
 	}
 	localCapture()
+	directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
 	view, err := c.sync.Dir.Cell(ctx, id)
+	directoryRead()
 	if err != nil {
 		return Continued{}, err
 	}
@@ -193,7 +224,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
 	}
+	directoryRead = handoff.Trace(c.opt.OnPhase, "directory")
 	from := c.sync.deviceName(lease.Device)
+	directoryRead()
 	if lease.Device == c.sync.Device.ID() {
 		from = ""
 	}
@@ -201,7 +234,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	c.retireHolder(ctx, id)
 	retired()
 	sc := c.sync.scope(id)
-	defer sc.Settle()
+	defer func() {
+		defer handoff.Trace(c.opt.OnPhase, "filing")()
+		sc.Settle()
+	}()
 	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
 	if project, here := projectOf(root); here {
 		intendedPrimary = project
@@ -261,6 +297,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err != nil {
 		return Continued{}, err
 	}
+	defer handoff.Trace(c.opt.OnPhase, "filing")()
 	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
 	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
 	if err != nil {
@@ -309,7 +346,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
-	out := Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
+	if c.sync.teamsSharing() {
+		if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
+			if c.opt.Notify != nil {
+				c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + err.Error())
+			}
+		}
+	}
+	out = Continued{Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
 	if taken.Kept != "" {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
@@ -430,6 +474,16 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 type landing struct {
 	cellsync.Engine
 	workspace func(cell.Cell) string
+	rootFor   func(string) string
+}
+
+// Holds consults the existing chat rather than its fresh staging folder, so a
+// return still fetches only its delta before installing the replacement.
+func (l landing) Holds(c cell.Cell) bool {
+	if l.rootFor != nil {
+		c.Root = l.rootFor(c.ID)
+	}
+	return l.Engine.Holds(c)
 }
 
 func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, error) {
@@ -613,7 +667,7 @@ func (c *Continuer) pullVault(ctx context.Context, at cell.Cell) error {
 	if err != nil {
 		return err
 	}
-	return c.sync.withVault(func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
+	return c.sync.withVaultWithin(ctx, vaultBusyWait, func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
 }
 
 // files is the withheld files of c as a carrier: the workspace the engine seals
@@ -640,14 +694,38 @@ func (s *Sync) files(eng cellstore.Engine, c cell.Cell) (vaultsync.Files, error)
 // under the vault scope, so vaultsync stays unaware of counting, and what the
 // run moved is written when it ends.
 func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
+	return s.withVaultWithin(context.Background(), 0, use, extra...)
+}
+
+// A CONTINUE WAITS FOR THE VAULT; A BACKGROUND EXCHANGE DOES NOT. Every running
+// chat's drive pushes the vault under state-sync.lock, and over a slow relay it
+// holds the lock for seconds. A background exchange that finds it busy may skip,
+// because the holder is already carrying the same state; a continue's pull may
+// not, because it is the last step of a move the person asked for, and failing
+// it handed the chat back with "could not be put in this folder" (D4 in the
+// two-network test). So the continue waits up to vaultBusyWait, then fails as
+// before.
+const (
+	vaultBusyWait  = 30 * time.Second
+	vaultBusyRetry = 100 * time.Millisecond
+)
+
+// withVaultWithin is withVault for a caller that waits up to within for another
+// codeaf on this computer to finish its own exchange; zero never waits.
+func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
 	stateMu.Lock()
 	defer stateMu.Unlock()
+	// Refuse before opening the lock file as well as before creating keys, so
+	// a replacement directory receives none of the previous home's state.
+	if home.Removed(s.Home) {
+		return identity.ErrHomeRemoved
+	}
 	lock, err := os.OpenFile(filepath.Join(s.Home, "state-sync.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := filelock.Lock(lock, true, true); err != nil {
+	if err := lockState(ctx, lock, within); err != nil {
 		return err
 	}
 
@@ -661,6 +739,29 @@ func (s *Sync) withVault(use func(vaultsync.Syncer) error, extra ...vaultsync.Ca
 		Carry: append(s.carried(), extra...)})
 }
 
+// lockState takes the vault's lock without blocking, and while another process
+// holds it retries every vaultBusyRetry until within has passed or ctx ends. The
+// answer after the bound is the busy refusal itself, so a caller that gives up
+// says what it always said.
+func lockState(ctx context.Context, lock *os.File, within time.Duration) error {
+	err := filelock.Lock(lock, true, true)
+	if within <= 0 || !filelock.IsBusy(err) {
+		return err
+	}
+	deadline := time.Now().Add(within)
+	tick := time.NewTicker(vaultBusyRetry)
+	defer tick.Stop()
+	for filelock.IsBusy(err) && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		case <-tick.C:
+		}
+		err = filelock.Lock(lock, true, true)
+	}
+	return err
+}
+
 // profile is the directory the product reads config.json and credentials.json
 // from, the same one its own stores resolve.
 func (s *Sync) profile() string {
@@ -670,10 +771,24 @@ func (s *Sync) profile() string {
 	return s.Home
 }
 
+// teamsSharing reads this computer's local opt-in for team sharing.
+func (s *Sync) teamsSharing() bool { return config.TeamsShareAt(s.profile()) }
+
 // carried is the profile state that travels in the vault beside the secrets.
 func (s *Sync) carried() []vaultsync.Carrier {
 	dir := s.profile()
-	return []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home), preferences(dir, s.Home), sharedMemories(s.Home)}
+	carried := []vaultsync.Carrier{vaultsync.Credentials(filepath.Join(dir, vaultsync.CredentialsFile)), providerKeys(dir, s.Home), preferences(dir, s.Home), sharedMemories(s.Home)}
+	if !s.teamsSharing() {
+		return carried
+	}
+	if s.teamsCache == nil {
+		s.teamsCache = &teamIdentityCache{}
+	}
+	s.teamsCache.scanned = false
+	report := func(err error) { teams.SharingError(dir, err) }
+	return append(carried,
+		vaultsync.BestEffort(syncedTeams(dir, s.Home, s.Device.ID(), s.teamsCache), s.teamsSharing, report),
+		vaultsync.BestEffort(vaultsync.Windows("team-traffic", s.Device.ID(), &teamTraffic{teamKeys: teamKeys{dir, s.Home, s.Device.ID(), s.teamsCache}, peers: s.pairedTrafficDevices}, filepath.Join(s.Home, "teams-traffic-sync.ledger"), teams.TrafficSyncEvery), s.teamsSharing, report))
 }
 
 // Discard sets a branch aside: it is archived, not deleted, so it leaves every
@@ -724,4 +839,33 @@ func (s *Sync) Driving(ctx context.Context, c cell.Cell) (*cellsync.Driving, err
 		d.Fence, d.Head = v.Cell.Lease.Fence, v.Cell.Head
 	}
 	return d, nil
+}
+
+// ReleaseUnused gives up only the unused acquisition returned to this window.
+// The directory checks the fence, so a later writer's ownership is never released.
+func (c *Continuer) ReleaseUnused(ctx context.Context, id string, fence uint64) error {
+	// Match the close path's bounded retry: a transient refusal must not strand
+	// an otherwise successful automatic acquisition without an open conversation.
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := c.sync.Dir.Release(ctx, id, fence)
+		if errors.Is(err, directory.ErrFenceStale) {
+			return nil
+		}
+		if !errors.Is(err, directory.ErrUnreachable) && !errors.Is(err, wireauth.ErrUnavailable) {
+			return err
+		}
+		if _, bounded := ctx.Deadline(); !bounded {
+			return err
+		}
+		timer := time.NewTimer(cellsync.ReleaseRetryEvery)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

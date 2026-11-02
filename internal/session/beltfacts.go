@@ -879,6 +879,9 @@ func promptWithBeltFacts(config Config) string {
 	for strings.Contains(page, "\n\n\n") {
 		page = strings.ReplaceAll(page, "\n\n\n", "\n\n")
 	}
+	if config.mayNameTaskComputer() && config.mayProposeTask() {
+		page += "\n\nA task that works in its own copy can run on a paired computer. The optional `computer` argument on `propose_task` names its shown name; omitted uses Run tasks on, whose default is this computer. A remote task runs alone; wait for it to finish before proposing more work."
+	}
 	return page
 }
 

@@ -66,14 +66,14 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	socket := s.Socket
+	if socket == "" {
+		socket = socketFor(bin)
+	}
 	// Seals and durability fences always use codeaf's one daemon. The CLI's
 	// implicit daemon is per data directory and escapes codeaf's child lifecycle;
 	// invoking its direct sync would also miss the retained writer's pending group.
 	if s.Run == nil && (op.Verb() == "seal" || op.Verb() == "sync") {
-		socket := s.Socket
-		if socket == "" {
-			socket = socketFor(bin)
-		}
 		return (Daemon{Socket: socket, Binary: bin}).Do(ctx, t, op)
 	}
 	argv := append([]string{bin}, op.Args()...)
@@ -84,7 +84,8 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		argv = append(argv, "--timeline", t.Timeline)
 	}
 	environ := append(os.Environ(), dataDirEnv+"="+t.DataDir)
-	return s.run(ctx, t.Tree, append(environ, opEnv(op)...), argv...)
+	out, err := s.run(ctx, t.Tree, append(environ, opEnv(op)...), argv...)
+	return out, classifyStoreBusyError(t.DataDir, socket, err)
 }
 
 // EnvOp is an Op that carries secrets. A spawn hands them to the engine

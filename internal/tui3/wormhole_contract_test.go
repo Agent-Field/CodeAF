@@ -22,6 +22,9 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 200, 70
 	drain(t, a, a.openHome())
+	if _, ok := a.homeLineOf("c-run"); !ok {
+		t.Fatal("fixture did not expose the local stale row")
+	}
 	at := filepath.Join(lab.root, "copies", "c-run")
 	work := filepath.Join(at, "work")
 	transcript := filepath.Join(at, ".cell", "transcript.jsonl")
@@ -45,8 +48,8 @@ func TestC5OnlineContinueOpensTheArrivedCopy(t *testing.T) {
 		}
 	}}
 	drain(t, a, a.askMachines())
-	if _, ok := a.homeLineOf("c-run"); !ok {
-		t.Fatal("fixture did not expose the local stale row")
+	if local, remote := rowsOf(a, "c-run"); local != 0 || remote != 1 {
+		t.Fatalf("local stale row and sync row did not merge into one row: local=%d remote=%d", local, remote)
 	}
 	standOn(t, a, "c-run")
 	drive(t, a, key("enter"))

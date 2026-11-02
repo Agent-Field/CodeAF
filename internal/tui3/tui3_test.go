@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -105,6 +106,13 @@ func waitOut(cmd tea.Cmd) tea.Msg {
 // temporary root is still removed on the way out — os.Exit runs no deferred
 // call.
 func runTests(m *testing.M) int {
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintf(os.Stderr, "tui3 tests: %v\n", err)
+		return 1
+	}
+	// The scratch roots were read at package initialisation, before the
+	// temporary folder took its physical spelling; fixtures now live under it.
+	homeScratchRoots[0] = filepath.Clean(os.TempDir())
 	root, err := os.MkdirTemp("", "codeaf-tui3-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui3 tests: no temporary state root: %v\n", err)
@@ -1985,8 +1993,8 @@ func TestNewOnAFreshConversationReplacesIt(t *testing.T) {
 		t.Fatalf("replacing a fresh conversation left %d open", a.openCount())
 	}
 	got := plain(frame(a))
-	if !strings.Contains(got, "new session · /tmp/next.jsonl") {
-		t.Fatalf("/new has to name the file:\n%s", got)
+	if !strings.Contains(got, "new conversation · lab") {
+		t.Fatalf("/new has to name the project:\n%s", got)
 	}
 }
 

@@ -37,7 +37,10 @@ func artifactAppendViolations(path string, file *ast.File) (funnels int, violati
 		"renderlog.go":    "renderLedger.append",
 		"sessionfile.go":  "openSessionFile",
 		"task_index.go":   "appendTaskIndex",
-		"usage_ledger.go": "openUsageLedger",
+		// A remote task's mirrored money and step events are their own ledgers.
+		"task_remote_money.go":  "appendRemoteUsage",
+		"task_remote_record.go": "remoteStepMirror.append",
+		"usage_ledger.go":       "openUsageLedger",
 	}
 	ast.Inspect(file, func(node ast.Node) bool {
 		flag, ok := node.(*ast.Ident)

@@ -49,9 +49,10 @@ type Client interface {
 // AcquireOpts says how a device takes a lease. Its JSON is the acquire
 // request body, and an empty body means the zero value.
 type AcquireOpts struct {
-	// RequireConditional is a continuation's local safety requirement, even
-	// when the observed holder has gone quiet. An ordinary non-forced resume
-	// still works on older services, whose live-holder check is already atomic.
+	// RequireConditional asks the coordinating runtime to check the expected
+	// holder and fence even when the observed holder has gone quiet. A service
+	// without conditional takes still takes a lapsed lease, because its
+	// live-holder check is already atomic; only Force waits for the promise.
 	RequireConditional bool `json:"-"`
 	// Force takes the lease from a live holder. It is for a person who chose to
 	// continue a chat where it runs now: waiting out the holder's lease would
@@ -93,9 +94,9 @@ var (
 	ErrUnauthorized = errors.New("directory: unauthorized")
 	ErrUnreachable  = errors.New("directory: unreachable") // transport; callers degrade
 	ErrTooOld       = errors.New("directory: this relay is too old for that")
-	// ErrConditionalTake names the update needed before an old service can
-	// safely move chats; its other read and pairing doors remain usable.
-	ErrConditionalTake = errors.New("the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service")
+	// ErrConditionalTake is the one feature an older service cannot offer
+	// safely. It says what still works and the one thing to do instead.
+	ErrConditionalTake = errors.New(conditionalTakeFeature + " waits for a sync service update; all else works, so close it there and continue here")
 )
 
 // ReleaseQuiet distinguishes background preparation from quitting an open

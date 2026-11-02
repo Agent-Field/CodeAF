@@ -263,6 +263,13 @@ func watchCancel(ctx context.Context, call *BashCall, done <-chan struct{}) {
 	guard.Go("exec/bare cancel watch", func() {
 		select {
 		case <-ctx.Done():
+			// Both cases can be ready after a successful call returns. Its
+			// background processes no longer belong to this cancellation.
+			select {
+			case <-done:
+				return
+			default:
+			}
 			if _, _, adopted := call.close(); !adopted {
 				killProcessGroup(call.cmd)
 			}

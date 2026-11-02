@@ -8,6 +8,7 @@ import { checkDeclared,readBody } from './body.js';
 import { serveLink } from './link/front.js';
 import { isPagePath, servePage } from './page.js';
 import { servePair } from './pair/front.js';
+import { isMachineDoor, serveMachineDoor } from './engine/door.js';
 import { matchRoute } from './routes.js';
 import { identityOf } from './verify.js';
 import { notFound, respond } from './wire.js';
@@ -36,6 +37,7 @@ export function dispatch(outer, env) {
   const { pathname } = new URL(request.url);
   if (pathname.startsWith('/v1/link/')) return serveLink(request, env);
   if (pathname.startsWith('/v1/pair')) return servePair(request, env);
+  if (isMachineDoor(pathname)) return serveMachineDoor(request, env);
   if (pathname.startsWith('/v1/') || pathname.startsWith('/v2/cluster/')) return forward(request, env);
   throw notFound();
 }

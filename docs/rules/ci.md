@@ -57,9 +57,19 @@ of tests exempted from passing on a clean checkout.
 `Full check` (`ci-full.yml`) runs nightly and validates promotion candidates.
 It runs full tests, cross builds and container-based remote checks; binary size
 is reported separately. `Promote to staging` requires a successful fresh Full
-check on its exact candidate before moving the pointer. `Release` guards branch
-ancestry, tests the applicable release surface and publishes platform builds.
-Inspect workflow definitions and live branch rules for current required checks.
+check on its exact candidate before moving the pointer. `Release` (`release.yml`)
+guards branch ancestry, tests the applicable release surface, builds platform
+binaries, and runs the `relay` job before `publish`. The `relay` job hashes the
+hosted relay's inputs with `scripts/relay-fingerprint.sh`, skips when the live
+Worker's deployment tag already matches, otherwise generates the channel's
+Wrangler configuration with `scripts/relay-wrangler-config.sh`, creates the
+channel's R2 bucket if needed, deploys the channel's Worker (`caf-fabric-dev` on
+`dev`, `caf-fabric-staging` on `staging`, `caf-fabric` on `main` and `stable`
+when the repository variable `RELAY_DEPLOY_PRODUCTION` is `true`), proves the
+live service with `internal/relay/hosted_test.go` (`CODEAF_RELAY_HOSTED_URL`)
+and `codeaf-release service --url`, and rolls back to the recorded prior version
+id and stops `publish` if verification fails. Inspect workflow definitions and
+live branch rules for current required checks.
 
 CI does not run the race detector. Run `go test -race` on the affected package
 when investigating a concurrency issue. A green ordinary test run does not

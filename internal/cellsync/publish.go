@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // ErrSuperseded means another device took the lease while this one was
@@ -19,6 +20,10 @@ var ErrSuperseded = fmt.Errorf("cellsync: another device continued this chat: %w
 // Publisher makes turns durable: objects into the store first, the head in the
 // directory last. Dir is already bound to this device.
 type Publisher struct {
+	// CheckHeld makes even a small independent upload ask which objects the
+	// relay lacks. Task-only cells use it because they have no directory head
+	// from which to assume what another sender has already published.
+	CheckHeld bool
 	// WarmFrameHints opts into the bounded existing-frame prototype.
 	WarmFrameHints bool
 	Engine         Engine
@@ -83,7 +88,7 @@ func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in Pub
 	frames = unionFrames(d.Frames, frames)
 	fence, err := p.advance(ctx, *d, head, in, frames)
 	if err != nil {
-		return ex, err
+		return ex, syncwords.UploadFailure(err)
 	}
 	d.Fence, d.Head, d.Frames = fence, head, frames
 	return ex, nil
@@ -147,7 +152,7 @@ func (p *Publisher) put(ctx context.Context, f FrameFile) (string, int64, error)
 		return "", 0, err
 	}
 	id, err := p.Store.PutFrame(ctx, frame)
-	return id, int64(len(frame)), err
+	return id, int64(len(frame)), syncwords.UploadFailure(err)
 }
 
 // advance moves the directory head and answers the fence now held.

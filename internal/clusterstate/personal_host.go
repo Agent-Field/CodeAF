@@ -138,9 +138,17 @@ func PlanPersonalAdmission(cluster string, proof V1Request, now int64, read Read
 	return out, nil
 }
 
+// MemberLabel keeps optional status replies small without copying transport records.
+type MemberLabel struct {
+	Node   uint64 `json:"node"`
+	Device string `json:"device,omitempty"`
+	Anchor bool   `json:"anchor,omitempty"`
+}
+
 // PersonalControl is the shared status shape. All counters use the canonical
 // directory encoding, including fields nested in membership and configuration.
 type PersonalControl struct {
+	Members               []MemberLabel `json:"members,omitempty"`
 	Ready                 []uint64      `json:"ready,omitempty"`
 	LeadershipUnavailable bool          `json:"leadership_unavailable,omitempty"`
 	Cluster               string        `json:"cluster"`
@@ -166,7 +174,7 @@ func PersonalControlView(cluster, actor, certificate string, conf Configuration,
 	}
 	out.Membership = h
 	for _, peer := range peers {
-		if peer.Revoked || peer.Voter {
+		if peer.Revoked {
 			continue
 		}
 		raw, e := read(MemberKey(peer.Node))
@@ -177,6 +185,7 @@ func PersonalControlView(cluster, actor, certificate string, conf Configuration,
 		if Decode(raw, &m) != nil {
 			return out, BadRequest, ErrDependency
 		}
+		out.Members = append(out.Members, MemberLabel{Node: m.Node, Device: m.Device, Anchor: m.Anchor})
 		if LearnerReady(m, conf, progress[m.Node], m.ReadyIndex) {
 			out.Ready = append(out.Ready, m.Node)
 		}

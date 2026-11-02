@@ -1218,6 +1218,11 @@ longer evidence that anybody is looking at *that* conversation.
 
 ## How long a task gets before it is stopped
 
+For a task on another computer, the default wall is six hours; a time limit
+sent by this chat replaces it. The other computer's spending permission still
+applies. See *Tasks on another computer*. The checkpoint clocks below describe
+local session-tree work.
+
 Two clocks, and neither is a hard stop.
 
 **One hour per checkpoint.** The run, every correction round and every check inside it
@@ -2342,10 +2347,13 @@ program on its files, and a land cannot vouch for it”.
 
 Attributes in either branch, the merge base, nested `.gitattributes`,
 `info/attributes`, and global or system attribute files all count. If their
-meaning or readability cannot be established, the land refuses. These checks
-need Git's tree-attribute and attribute-file-location queries (Git 2.42 or newer
-provides both), and run only when a filter program is configured: without one, an
-older Git lands as before. Attribute path lists and answers are limited to 8 MiB per read;
+meaning or readability cannot be established, the land refuses. With a filter
+program configured, a Git without the newer queries (such as Apple Git 2.39 on
+macOS) reads each tree’s attributes through a temporary index outside the
+repository and locates global and system attribute files itself. A non-Apple Git
+older than 2.42 still refuses if it cannot locate its system attribute file.
+Without a filter program, these checks do not run. Attribute path lists and
+answers are limited to 8 MiB per read;
 attribute files outside committed trees share an 8 MiB budget per checkout.
 
 Custom merge programs, sparse checkouts and branch-specific merge options still
@@ -2683,7 +2691,13 @@ and stay there.
 
 ## Does a task survive a restart?
 
-The graph survives. The running work does not.
+For a task on another computer, reopening the chat follows the saved attempt
+and brings its answer home once. Restarting `codeaf serve --take-tasks` on that computer
+follows a child still running there; a child that died is interrupted, never
+automatically run again. See *Tasks on another computer* for `run it here`.
+
+For the local session-tree tasks described below, the graph survives but the
+running worker does not.
 
 When a session comes back:
 
@@ -3221,7 +3235,20 @@ pointer — they still point at your turn, never at the parent task's own journa
 
 ## The optional arguments on propose_task
 
-Four more arguments, all optional. Every bad value is an ordinary result, not an error.
+These arguments are optional. Bad values return a refusal the model can correct.
+
+**`computer`** — the shown name of a paired computer that runs
+`codeaf serve --take-tasks`. This argument and its model guidance appear only
+while **Run tasks on** names a paired computer. At the default `this computer`,
+the model gets the ordinary local tool. You can still name a computer for one
+task with `/task --on`. The task needs its own independent
+copy, and both ends need Linux or macOS; Windows is not yet supported. Omitted
+uses **Run tasks on**, whose default is `this computer`. An explicit choice wins;
+`here` and `this computer` run locally. An unknown name returns
+`no paired computer is named "<name>" — your computers are: <names>` as a tool
+error. The chat and transcript stay here. A remote task runs alone in this
+conversation; wait for it to finish before proposing more tasks. See *Tasks on
+another computer* for the return path, spending and recovery.
 
 **`depends_on`** — an array of task ids that must finish first. The task waits for them,
 and their reports are put in front of it when it starts — every one of them, bounded

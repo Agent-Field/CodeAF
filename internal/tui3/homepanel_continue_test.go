@@ -100,13 +100,13 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	}
 }
 
-// A chat running on another machine is continued from the same screen: it says
+// A chat held on another machine is continued from the same screen: it says
 // where the chat runs now, and confirming takes it.
 func TestTakeoverScreenOffersARunningChat(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, continueRows, 200)
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on host-a; last saved turn 2m ago") {
+	if text := homeText(a); !strings.Contains(text, "held on host-a; last saved turn 2m ago") {
 		t.Fatalf("the screen does not name where the chat runs:\n%s", text)
 	}
 	confirm(t, a)
@@ -189,7 +189,7 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 }
 
 // winnerTakes is a Source that lists the chat as off until it is asked again,
-// and then as running on the device that won it.
+// and then as held on the device that won it.
 type winnerTakes struct{ asked int }
 
 func (w *winnerTakes) Rows(context.Context) ([]chatlist.Row, error) {
@@ -212,8 +212,18 @@ func TestTakeoverScreenLostRace(t *testing.T) {
 	if !strings.Contains(text, "another device continued this chat first") {
 		t.Fatalf("R25 visible refusal changed:\n%s", text)
 	}
-	if !strings.Contains(text, "Port the picker  running on desk") || !strings.Contains(text, lostRaceWord) {
-		t.Fatalf("the row did not come back as running on the winner, with one line saying so:\n%s", text)
+	q, card := a.homeAsking()
+	if !card || q.question.Options[0].Label != continueRetry || q.question.Options[1].Label != continueStay {
+		t.Fatalf("the refusal did not stay on its retry card:\n%s", text)
+	}
+	found := false
+	for _, row := range a.machineRead.rows {
+		if row.Cell == "c-off" && row.Device == "desk" && row.Status == chatlist.Running {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the refreshed row lost its holder: %+v", a.machineRead.rows)
 	}
 	if len(taker.cells) != 1 {
 		t.Fatalf("the takeover ran %d times", len(taker.cells))
@@ -353,7 +363,7 @@ func TestC7HomeExplainsAnOldSyncService(t *testing.T) {
 	a := continueHome(t, &fakeTaker{err: directory.ErrConditionalTake}, continueRows, 220)
 	standOn(t, a, "c-off")
 	confirm(t, a)
-	if !strings.Contains(homeText(a), "the sync service must be updated before chats can move") {
+	if !strings.Contains(homeText(a), "waits for a sync service update") {
 		t.Fatalf("old service refusal missing:\n%s", homeText(a))
 	}
 }
@@ -483,7 +493,7 @@ func TestTakeoverCardOfAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	a.dirFeed = feed
 	a.rebuildMachines()
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on build-box; last saved turn 15s ago") {
+	if text := homeText(a); !strings.Contains(text, "held on build-box; last saved turn 15s ago") {
 		t.Fatalf("an online device's card lost running on:\n%s", text)
 	}
 	feed.state.Online = nil

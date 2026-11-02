@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
@@ -24,7 +24,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -81,10 +80,7 @@ type driveRig struct {
 func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRig {
 	t.Helper()
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	clock := &driveClock{directorytest.NewFakeClock()}
 	clock.Advance(time.Since(clock.Now()))
 	storeDir := t.TempDir()
@@ -225,10 +221,12 @@ func (r *driveRig) startChat(notices *noticeLog) *chat {
 	return &chat{r: r, drive: drive, seat: executor.Gated(seat, drive.Gate)}
 }
 
-// say is one scripted model turn: it writes a file and the seat seals the call.
+// say is one scripted model turn: it records a reply, writes a file and seals the call.
 func (c *chat) say() error {
 	c.calls++
 	name := filepath.Join(c.r.work, "note"+string(rune('a'+c.calls))+".txt")
+	// Publication ignores unused chats, so each scripted reply must reach the transcript.
+	appendTo(c.r.t, transcriptOf(c.r.cell), "{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"fixture turn\"}\n")
 	call := executor.Call{Tool: "bash", Args: []byte(`{"command":"echo"}`)}
 	return c.seat.Around(context.Background(), call, func() ([]byte, bool) {
 		return nil, os.WriteFile(name, []byte("turn "+name), 0o600) != nil
@@ -335,6 +333,8 @@ func countFiles(t *testing.T, dir string) (n int) {
 // C5 also requires the kept work to be announced rather than silently forked.
 func TestDriveSideSupersededStopsTools(t *testing.T) {
 	r := newDriveRig(t)
+	// Suppress watches and heartbeats so A can seal its next call before discovering the takeover.
+	r.a.Dir = offlineDir{Client: r.a.Dir, down: func() bool { return true }}
 	ctx := context.Background()
 	var notices noticeLog
 	c := r.startChat(&notices)
@@ -357,12 +357,13 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 	c.mustSay() // A does not know yet; this turn is unpublished
 	want := chatlist.Superseded("laptop")
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := c.drive.Viewer(); return viewer })
+	// The early viewer notice precedes branching, so wait for the kept-work notice too.
+	kept := chatlist.KeptEdits(1, "tower")
+	waitFor(t, "the superseded and kept-work lines to be shown", func() bool {
+		return notices.last() == want && notices.has(kept)
+	})
 	if line, _ := c.drive.Viewer(); line != want {
 		t.Fatalf("line = %q, want %q", line, want)
-	}
-	waitFor(t, "the superseded line to be shown", func() bool { return notices.last() == want })
-	if kept := chatlist.KeptEdits(1, "tower"); !notices.has(kept) {
-		t.Fatalf("the displaced window silently kept a branch; notices = %v, want %q", notices.all(), kept)
 	}
 
 	v, err := r.a.Dir.Cell(ctx, r.cell.ID)
@@ -431,10 +432,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 // fence 0, and nothing is written under the home's sync directory.
 func TestDriveSideOffIsStageZero(t *testing.T) {
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	hosted(t, "") // a build with no default relay: empty now means the built-in one
 	t.Setenv(home.EnvVar, t.TempDir())
 	h := t.TempDir()

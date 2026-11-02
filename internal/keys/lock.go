@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	codeafhome "github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
@@ -12,7 +13,9 @@ import (
 // and processes. The state-sync lock cannot serve this purpose: its owner calls
 // vault transactions while holding it during a network round.
 func LockHome(home string) (func(), error) {
-	if err := os.MkdirAll(home, 0700); err != nil {
+	// A home that was in use and has since been removed is not made again
+	// ([home.MkdirAllUnder]); a first use still creates it.
+	if err := codeafhome.MkdirAllUnder(home, home, 0700); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(filepath.Join(home, "vault.enc.lock"), os.O_CREATE|os.O_RDWR, 0600)

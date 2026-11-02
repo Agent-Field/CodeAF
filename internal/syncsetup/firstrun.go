@@ -2,14 +2,26 @@ package syncsetup
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// FirstRunLine is the one sentence a person is told, once, when their chats
-// start to sync through the hosted relay without them having chosen it. It asks
-// for nothing: there is no sign-in and no consent wall, only the two ways out.
-const FirstRunLine = "Your chats sync end-to-end encrypted through codeaf's fabric (codeaf.agentfield.ai/fabric), a sync service that only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own with CODEAF_SYNC_URL=<url>."
+// FirstRunLineFor formats the one sentence a person is told, once, when their
+// chats start to sync through a hosted relay without them having chosen it. It
+// asks for nothing: there is no sign-in and no consent wall, only the two ways
+// out.
+func FirstRunLineFor(relayURL string) string {
+	shown := strings.TrimSpace(relayURL)
+	if u, err := url.Parse(shown); err == nil && u.Host != "" {
+		shown = u.Host + strings.TrimRight(u.Path, "/")
+	}
+	return "Your chats sync end-to-end encrypted through codeaf's fabric (" + shown + "), a sync service that only ever sees ciphertext; turn that off with CODEAF_SYNC_URL=off, or use your own with CODEAF_SYNC_URL=<url>."
+}
+
+// FirstRunLine is the first-run sentence for this binary's hosted sync service.
+var FirstRunLine = FirstRunLineFor(HostedRelayURL)
 
 // toldFile marks that the line has been said on this computer.
 const toldFile = "sync-told"

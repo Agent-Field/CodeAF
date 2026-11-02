@@ -187,5 +187,20 @@
  },
  "nf-fa-thumb_tack": {
   "code": "f08d"
+ },
+ "nf-fa-apple": {
+  "code": "f179"
+ },
+ "nf-fa-linux": {
+  "code": "f17c"
+ },
+ "nf-fa-windows": {
+  "code": "f17a"
+ },
+ "nf-fa-desktop": {
+  "code": "f108"
+ },
+ "nf-fa-mobile_phone": {
+  "code": "f10b"
  }
 }

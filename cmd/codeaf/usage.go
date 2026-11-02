@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
+	"github.com/Agent-Field/codeaf/internal/devbox"
 )
 
 // This file is the ONE SEAM every subcommand's flags are built and parsed at.
@@ -350,12 +351,18 @@ var longerCommands = []string{"cache clean"}
 // flag anybody added, which is the same defect the environment table's
 // interpolated dollar figures were fixed for.
 func usageForCommand(name string) string {
+	if name == "devbox" {
+		return devboxUsage
+	}
 	// Collection editing has its own short reference page so the front page
 	// can introduce organization without listing every membership operation.
 	if name == "collections" {
 		return collectionsUsage
 	}
 	lines := strings.Split(usageText, "\n")
+	if strings.HasPrefix(name, "devbox ") {
+		lines = strings.Split(devboxUsage, "\n")
+	}
 	var blocks []string
 	for index := 0; index < len(lines); index++ {
 		if !strings.HasPrefix(lines[index], "  codeaf ") {
@@ -450,6 +457,10 @@ func askedForHelp(args []string) bool {
 
 // commandHelp answers that gesture for a door with no flag set of its own.
 func commandHelp(name string) error {
+	if name == "devbox" {
+		writeCommandUsage(usageOut, devboxFlags("devbox", true, &devbox.Options{}))
+		return exitHelped
+	}
 	if name == "cluster" {
 		fmt.Fprint(usageOut, clusterHelp)
 		return exitHelped
@@ -523,7 +534,7 @@ func commandWords() []string {
 // programs this build carries are joined to it where it is read
 // ([commandWords]).
 var knownCommands = []string{
-	"chat", "resume", "pair", "serve", "devices", "cluster", "do", "plan", "revise", "run", "exec",
+	"chat", "resume", "pair", "serve", "devbox", "devices", "cluster", "do", "plan", "revise", "run", "exec",
 	"show", "models", "pool", "notebook", "collections", "competence", "services", "patch",
 	"doc", "web", "image",
 	"doctor",

@@ -86,7 +86,7 @@ func (a *app) openWorkCompletion(c *workCompletion) tea.Cmd {
 			}
 		}
 		if node := a.tasks[c.task]; node != nil {
-			return a.openTaskRecord(&session.TaskIndexEntry{ID: id, Title: node.label, Label: node.label, Status: string(node.state), SessionID: a.taskSheetSelfID(), Crew: node.crew, Cost: node.spent(), Model: node.model})
+			return a.openTaskRecord(&session.TaskIndexEntry{ID: id, Title: node.label, Label: node.label, Status: string(node.state), SessionID: a.taskSheetSelfID(), Crew: node.crew, Cost: node.spent(), Model: node.model, Computer: node.computer, Unreachable: node.unreachable, RanElsewhere: node.ranElsewhere})
 		}
 	}
 	return nil
@@ -141,12 +141,15 @@ func (a *app) completionRows(cs []workCompletion, width int) []row {
 			word = session.ProjectTask(session.TaskFacts{State: session.TaskFailed}).Word
 		}
 		action := ""
+		placement := ""
 		door := false
 		if c.task != 0 {
 			door = a.tasks[c.task] != nil
+			placement = a.taskComputerWords(a.tasks[c.task])
 			for _, saved := range a.comp.tasks {
 				if saved.ID == strconv.FormatUint(c.task, 10) && a.taskSheetOwnsEntry(&saved) {
 					door = true
+					placement = a.taskEntryComputerWords(saved)
 					break
 				}
 			}
@@ -165,11 +168,15 @@ func (a *app) completionRows(cs []workCompletion, width int) []row {
 			hit = hitWorkCompletion
 		}
 		tail := railSep + word
+		if placement != "" {
+			tail += railSep + placement
+		}
+		facts := tail
 		if action != "" {
 			tail += railSep + action
 		}
 		name := fit(title, max(1, width-2-ansi.StringWidth(tail)))
-		line := "  " + a.pal.ink(name) + a.pal.dim(railSep+word)
+		line := "  " + a.pal.ink(name) + a.pal.dim(facts)
 		if action != "" {
 			line += a.pal.dim(railSep) + a.pal.accent(action)
 		}

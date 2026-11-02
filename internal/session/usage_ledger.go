@@ -160,6 +160,10 @@ type UsageLine struct {
 	// supplied one. Older, auxiliary, or late receipt rows may have no identity;
 	// absence must never be read as a single aggregate run.
 	Run string `json:"run,omitempty"`
+	// Computer and RemoteEvent identify a mirrored call independently of cursor
+	// checkpoints, so a replay cannot charge the same call twice.
+	Computer    string `json:"computer,omitempty"`
+	RemoteEvent string `json:"remote_event,omitempty"`
 	// At is the instant the call was journaled, RFC3339 with nanoseconds.
 	At time.Time `json:"at"`
 	// Day is At's LOCAL calendar day, "2006-01-02". It is written down rather
@@ -264,6 +268,12 @@ type UsageLine struct {
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
+	// FactoryJob is the factory job this call was spent for, as
+	// `owner/name#number` ([JobLedgerName]), on every row of a job's family:
+	// its steps, its own chat and their children. It is what lets the factory
+	// say which models its jobs used without opening a transcript, and it is
+	// empty on every other row and on every row written before it existed.
+	FactoryJob string `json:"factory_job,omitempty"`
 
 	// ── what the lane that served it did (docs/ARCHITECTURE.md, Decision 10)
 	//
@@ -974,10 +984,10 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // now happens on a writer goroutine ([RecordUsage]), the lock is still released
 // before the hand-off so no reader of the session's totals ever queues behind
 // the ledger at all.
-func (a *Agent) recordUsageLine(call bankedCall) {
+func (a *Agent) recordUsageLine(call bankedCall) error {
 	used := call.used
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
-		return
+		return nil
 	}
 	path := strings.TrimSpace(a.config.usageLedger)
 	if path == "" {
@@ -1012,6 +1022,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		Root:       strings.TrimSpace(a.config.rootSession),
 		Automation: strings.TrimSpace(a.config.automationID),
 		Workspace:  strings.TrimSpace(a.config.Workspace),
+		FactoryJob: a.factoryJobName(),
 	}
 
 	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat
@@ -1029,6 +1040,11 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 	}
 	line = TagUsage(line, roles.Role(call.role), seat)
 	line = withUsageBilling(line, call.billing)
+	if remote := call.remote; remote != nil {
+		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
+		line.Seat = remote.Seat
+		return appendRemoteUsage(path, line)
+	}
 
 	// THE LANE HALF OF THE LINE GOES ON THROUGH ONE DOOR, and it comes in as an
 	// argument rather than being read from anywhere here — because the only
@@ -1053,6 +1069,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 	if a.config.mayBashBelt() {
 		a.recordPlanSpend(used, call.model)
 	}
+	return nil
 }
 
 // usageTaskID spells a node's id the way the task index spells it, and answers

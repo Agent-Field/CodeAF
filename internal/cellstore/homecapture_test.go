@@ -182,8 +182,9 @@ func TestStartupInALargeHomeWalksNoHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := seat.Around(t.Context(), executor.Call{Tool: "read"}, func() ([]byte, bool) {
-		return []byte("ok"), false
+	// Warm capture only prepares an unused chat, so a completed call must give Drain a turn to save.
+	if err := seat.Around(t.Context(), executor.Call{Tool: "read", Changed: []string{}}, func() ([]byte, bool) {
+		return []byte("fixture"), false
 	}); err != nil {
 		t.Fatal(err)
 	}

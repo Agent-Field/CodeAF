@@ -13,6 +13,8 @@ import (
 
 type deadlineChatListing struct{}
 
+func (deadlineChatListing) RelayHost() string { return "sync.example" }
+
 func (deadlineChatListing) Rows(context.Context) ([]chatlist.Row, error) {
 	return nil, fmt.Errorf("%w: %w", directory.ErrUnreachable, context.DeadlineExceeded)
 }
@@ -21,7 +23,7 @@ func (deadlineChatListing) Rows(context.Context) ([]chatlist.Row, error) {
 func TestHomeOwnershipDeadlineDoesNotClaimTheNetworkIsUnreachable(t *testing.T) {
 	a := machinesHome(t, deadlineChatListing{}, 200)
 	frame := homeText(a)
-	if !strings.Contains(frame, "other machines did not answer in time") || strings.Contains(frame, "other machines unreachable") {
+	if !strings.Contains(frame, "sync.example did not answer in 25s; still trying") || strings.Contains(frame, "the sync service is not answering") {
 		t.Fatalf("ownership read deadline was misreported:\n%s", frame)
 	}
 }
@@ -35,7 +37,7 @@ func TestSendOwnershipDeadlineKeepsWordsAndNamesTheDeadline(t *testing.T) {
 	a.machines = deadlineChatListing{}
 	a.input.setText("keep these words")
 	drive(t, a, key("enter"))
-	if got := plain(lastNote(t, a)); !strings.Contains(got, chatlist.ReadTimedOut) || strings.Contains(got, chatlist.Unreachable) {
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "sync.example has not answered; your message is still in the box, press enter to send it") || strings.Contains(got, chatlist.Unreachable) {
 		t.Fatalf("deadline = %q", got)
 	}
 	if len(agent.sent) != 0 || a.input.String() != "keep these words" {

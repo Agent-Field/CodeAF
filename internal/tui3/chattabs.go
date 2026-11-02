@@ -1423,6 +1423,9 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // refusals said in the same words, because one gesture with two spellings of
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
+	if cmd, remote := a.teamsRemoteGo(teamMember{Key: tab.key, File: tab.file, Word: tab.word}, func() tea.Cmd { return a.tabGo(tab) }); remote {
+		return cmd
+	}
 	defer func() {
 		if !a.conversationOpening {
 			a.tabSettleTeam()

@@ -148,6 +148,10 @@ type Crew struct {
 	// had when the crew was made, each with the agent that owned it then.
 	HistoryTasks []CrewHistoryTask `json:"history_tasks,omitempty"`
 	Items        []CrewItem        `json:"items,omitempty"`
+	// CreatedBy is who made the crew: "person", or the conversation id of the
+	// agent whose team_start made it. Absent for a crew made before this was
+	// kept.
+	CreatedBy string `json:"created_by,omitempty"`
 }
 
 // CrewHistoryTask is one task from before a crew was made. Task is its id in
@@ -438,6 +442,9 @@ type CrewMessage struct {
 	ClientID    string        `json:"client_id"`
 	Attachments []string      `json:"attachments,omitempty"`
 	Reads       []MessageRead `json:"reads,omitempty"`
+	// From names who sent the message on the person's behalf, as agents.send's
+	// from does.
+	From string `json:"from,omitempty"`
 	// Submission is refused: a crew message carries no pictures.
 	Submission *MessageSubmission `json:"submission,omitempty"`
 }
@@ -637,6 +644,11 @@ var crewMethods = map[string]method{
 		if err := refuseSubmission(p.Submission, "crews.message"); err != nil {
 			return nil, err
 		}
+		from, err := CheckMessageFrom(p.From)
+		if err != nil {
+			return nil, err
+		}
+		p.From = from
 		entry, err := c.CrewMessage(p)
 		if err != nil {
 			return nil, err

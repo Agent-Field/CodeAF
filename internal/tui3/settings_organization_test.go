@@ -13,7 +13,7 @@ func TestSettingsOrganizationCategoriesAndAdvancedSearch(t *testing.T) {
 	if settingTabs[a.sheet.tab] != tabGeneral {
 		t.Fatal("settings must open on General")
 	}
-	want := "General,Models,Memory,Tasks,AI teams,Permissions,Spending,Connections,Privacy"
+	want := "General,Models,Memory,Tasks,AI teams,Permissions,Spending,Connections,Devices,Privacy"
 	if strings.Join(settingTabs, ",") != want {
 		t.Fatalf("categories: %v", settingTabs)
 	}

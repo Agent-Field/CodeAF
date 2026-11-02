@@ -124,6 +124,19 @@ Shell commands have a narrower signal: pictures declared in `bash`'s `outputs`
 are already inspected and recorded. Other shell-made files are not discovered
 automatically; there is no filesystem scan. `share_deliverable` can explicitly
 hand over an existing file.
+## Why did a compact worker reject a write with “write needs text”?
+
+Chat writes require a string `content` field, including with `append:true`. A
+missing or null `content` returns
+`Invalid arguments: content is required and must be a string` before changing
+files or creating directories. An explicit `content:""` is valid.
+
+The compact worker toolbelt uses `write` with `path` and `text`, rather than the
+chat toolbelt's `path` and `content`. Its `text` field must be a string. A missing,
+null or differently typed `text` returns
+`write needs text as a string (use text, not content; an empty string is allowed)`
+before creating directories or changing a file. Retry with the required `text`
+field. An explicit `text:""` intentionally writes an empty file.
 
 ## Can you append to a file, or add to the end without rewriting it?
 
@@ -1192,6 +1205,11 @@ reaches, even when the question was looked up in different words.
 
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means codeaf does not do it.`
+
+**In the desktop app, the app's own pages are in it too.** The app registers its
+pages when it starts, and `manual` searches them beside codeaf's own. Their names
+start with `workaf/`, such as `workaf/inbox`, so an answer always says whether it
+came from the app's pages or from codeaf's. They last until the app quits.
 
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
