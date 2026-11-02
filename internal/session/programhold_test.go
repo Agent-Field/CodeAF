@@ -7,8 +7,10 @@ package session
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -169,6 +171,9 @@ func TestTheChatsFileToolsAreRefusedAFolderAProgramHolds(t *testing.T) {
 		scopedCall("write", filepath.Join(elsewhere, "notes.md")),
 		withdrawnCall("c9", "edit_video", `{"action":"measure","path":"cut.mp4"}`),
 		withdrawnCall("c10", "bash", `{"command":"echo hi > note.txt"}`),
+		// A factory stage's two verbs hand their report to the runner in memory.
+		withdrawnCall("c20", "stage_result", `{"done":true}`),
+		withdrawnCall("c21", "plan_edit", `{"skip":["review"]}`),
 	} {
 		if _, refusal, ok := guard.PreAction(context.Background(), nil, nil, call); !ok {
 			t.Fatalf("%s was refused though it writes nothing in the held folder: %q", call.Function.Name, refusal.text)
@@ -212,6 +217,18 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 	// a checkout with no git history, or a git that errors, is written in place,
 	// and the recipe door refuses that write when the folder is held
 	// (WriteHeldRefusal, cmd/codeaf/factory.go) — a person's yes is no exception.
+	//
+	// `share_deliverable` only READS the file it shares (a read-only, no-follow
+	// open, openRegularIn). What it writes is codeaf's own: the receipt and lock
+	// beside the deliverables index (share_operation.go), the index row
+	// (artifact_append.go), and, for a task worker's file, an owned copy in the
+	// owning conversation's artifacts folder (share_publish.go's snapshot). It
+	// never puts a file in the folder it read from, so a held folder is safe.
+	//
+	// A factory stage's `stage_result` and `plan_edit` hand a report or a
+	// proposal to the runner's door, which keeps it in memory
+	// (internal/factory/run's chatstage.go) and reads the stage's journal; they
+	// write no file at all.
 	notFolderWrites := map[string]bool{
 		"bash": true, "read": true, "ls": true, "find": true, "grep": true,
 		"manual": true, "ask": true, "jobs": true, "watch": true,
@@ -224,6 +241,7 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 		"settings": true, "change_setting": true,
 		"automation": true, "automation_report": true,
 		"factory_add": true, "factory_recipe": true,
+		"share_deliverable": true, "stage_result": true, "plan_edit": true,
 		"items": true, "revise_assignment": true, "divide_work": true,
 		"build_harness": true, "list_harnesses": true, "list_subharnesses": true,
 		"propose_subharness": true, "revise_design": true,
@@ -259,6 +277,53 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 			t.Errorf("%s has no path inside the workspace for its folder hold: %q, %v", call.Function.Name, path, ok)
 		}
 	}
+}
+
+// SHARING A FILE IN A HELD FOLDER READS IT AND WRITES NOTHING THERE. The
+// classification above calls share_deliverable a reader; this is that claim
+// through the real door and the registered tool: the hold lets the call
+// through, the file is recorded on codeaf's own index, and the held folder
+// holds exactly what it held before, byte for byte.
+func TestSharingAFileInAHeldFolderWritesNothingThere(t *testing.T) {
+	w := newShareWorld(t)
+	report := w.file(t, "report.md", []byte("# Results\n"))
+	held := holdFolder(t, w.workspace, "Fix the parser")
+	before := folderListing(t, w.workspace)
+	call := withdrawnCall("s1", "share_deliverable", `{"operation_id":"share-held","paths":["report.md"]}`)
+	if _, refusal, ok := (programHoldGuard{agent: w.agent}).PreAction(context.Background(), nil, nil, call); !ok {
+		t.Fatalf("sharing from the held folder was refused: %q", refusal.text)
+	}
+	result, bad := w.share(t, w.shareCall(t, "s1"), "share-held", "report.md")
+	if bad || result.Status != ShareOpAccepted || len(result.Files) != 1 || result.Files[0].Path != report {
+		t.Fatalf("the share = %+v (error %v), want %s recorded where it is", result, bad, report)
+	}
+	if after := folderListing(t, w.workspace); !reflect.DeepEqual(after, before) {
+		t.Fatalf("sharing wrote into the held folder:\nbefore %v\nafter  %v", before, after)
+	}
+	held.Finish("")
+}
+
+// folderListing is every entry under dir with its bytes, a directory as "/".
+func folderListing(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	listing := map[string]string{}
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || path == dir {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, path)
+		if entry.IsDir() {
+			listing[rel] = "/"
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		listing[rel] = string(raw)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return listing
 }
 
 // AN ORDINARY TASK IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS, OR ONE AROUND
