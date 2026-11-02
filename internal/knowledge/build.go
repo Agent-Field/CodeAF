@@ -81,7 +81,11 @@ func (v *Vault) StartBuild() error {
 	if err = saveState(tx, "job", job); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	v.forgetConsent()
+	return nil
 }
 
 // Run belongs to the application process, so changing chats and closing Memory
@@ -220,6 +224,7 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if _, err = db.Exec("INSERT OR IGNORE INTO state(key,payload) VALUES('config',?)", mustJSON(document{"enabled": true, "schema": 1, "created_at": time.Now().UTC().Format(time.RFC3339Nano)})); err != nil {
 			return err
 		}
+		v.forgetConsent()
 	}
 	imported := int(number(job["imported"]))
 	problems := int(number(job["problems"]))

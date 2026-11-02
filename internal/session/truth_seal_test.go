@@ -12,7 +12,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/lawcheck"
 )
 
@@ -46,12 +45,7 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 // a fresh folder, and open it: the dials and cursors are the same.
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestSealedTreeCarriesTheSessionTruthC1bModelChoice(t *testing.T) {
-	// The suite pins furrow away; this proof uses the explicit test engine.
-	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
-	bin, err := furrow.ResolveBinary()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := sealEngine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	here := newSealMachine(t)
 	there := newSealMachine(t)
@@ -276,11 +270,7 @@ func slurp(t *testing.T, path string) string {
 // folder's own node journals.
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestSealedTreeCarriesTaskHistory(t *testing.T) {
-	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
-	bin, err := furrow.ResolveBinary()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := sealEngine(t)
 	here, there := newSealMachine(t), newSealMachine(t)
 	dir := sessionInCell(t, here)
 	RunLandedTasks(t, dir, "map the parser", "fix the reconciler")
