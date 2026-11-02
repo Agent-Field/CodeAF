@@ -758,7 +758,8 @@ unfinished pass continues with that job while the next step works. A job has at
 most one pass running; later turns do not queue more. Pause, Stop and the job's
 end cancel it, including a request in flight. Paid receipts still charge the job.
 Quit drops the pass; saved sources stay pending for its next finished turn, and
-idle learning never takes over a job's sources. Unchanged source input
+idle learning never takes over a job's sources. The next admitted pass also
+includes earlier steps skipped while another pass was running. Unchanged source input
 reuses completed receipts. Extraction, page organization and evidence review can
 require separate model requests in that compilation. Sources and completed
 progress survive cancellation for a later active turn.

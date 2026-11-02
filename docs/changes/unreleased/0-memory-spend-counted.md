@@ -29,3 +29,6 @@ step still sees the full job spend, including late memory receipts.
 
 Pending provider receipt recovery still has the ordinary-chat quit limit: it is
 not durable, and quitting before the receipt arrives can leave a charge unpriced.
+
+The next admitted job pass includes earlier steps skipped while another pass was
+running, preserving their searchable evidence and original citations.

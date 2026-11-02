@@ -77,7 +77,11 @@ func (a *Agent) startKnowledge() {
 	if a.jobBudgetOf() != nil {
 		// The marker survives a restart: recovery must not turn a stage into an
 		// independent source of spending after its job has stopped.
-		if err := os.WriteFile(path+".knowledge-job", []byte("turn-owned\n"), 0600); err != nil {
+		marker := "turn-owned\n"
+		if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+			marker = "job:" + named.FactoryJob() + "\n"
+		}
+		if err := os.WriteFile(path+".knowledge-job", []byte(marker), 0600); err != nil {
 			j.lastError = err.Error()
 		}
 		close(j.done)

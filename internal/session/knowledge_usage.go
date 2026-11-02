@@ -88,9 +88,12 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	if j == nil || !j.vault.Enabled() {
 		return
 	}
-	owner := a.id
-	if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
-		owner = named.FactoryJob()
+	owner, _, err := knowledgeJobOwner(a.file.journalName())
+	if err != nil {
+		return
+	}
+	if owner == "" {
+		owner = a.id
 	}
 	key := config.ProfilePath(a.config.ProfileDir, "") + ":" + owner
 	jobKnowledgeCompilers.Lock()
@@ -164,64 +167,74 @@ func (a *Agent) cancelJobKnowledge() {
 }
 
 func (a *Agent) compileJobKnowledge(ctx context.Context, j *knowledgeJournal) {
-	for {
-		j.mu.Lock()
-		before := j.offset
-		j.mu.Unlock()
-		if err := a.scanKnowledge(ctx, j, a.file.journalName(), a.id); err != nil {
-			return
-		}
-		j.mu.Lock()
-		after := j.offset
-		j.mu.Unlock()
-		if after == before {
-			break
-		}
-	}
-	if err := a.captureJobKnowledgeTasks(ctx, j); err != nil {
+	sessions, err := a.captureJobKnowledge(ctx, j)
+	if err != nil {
 		return
 	}
 	key := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).Default().Key
-	if err := j.vault.Flush(provider.WithSession(ctx, a.id), key, true); err != nil && ctx.Err() == nil {
+	ctx = knowledge.WithOwnerSessions(provider.WithSession(ctx, a.id), sessions)
+	if err := j.vault.Flush(ctx, key, true); err != nil && ctx.Err() == nil {
 		j.mu.Lock()
 		j.lastError = err.Error()
 		j.mu.Unlock()
 	}
 }
 
-// Task source identities remain intact so saved citations still name the report.
-// The owning turn admits them; idle compilation must never buy work for a job.
-func (a *Agent) captureJobKnowledgeTasks(ctx context.Context, j *knowledgeJournal) error {
+// The next finished turn includes sibling stages skipped during an earlier
+// pass. Sources retain their original session IDs and searchable citations.
+func (a *Agent) captureJobKnowledge(ctx context.Context, j *knowledgeJournal) ([]string, error) {
 	if a.config.Place.Dir == "" {
-		return nil
+		for {
+			j.mu.Lock()
+			before := j.offset
+			j.mu.Unlock()
+			if err := a.scanKnowledge(ctx, j, a.file.journalName(), a.id); err != nil {
+				return nil, err
+			}
+			j.mu.Lock()
+			after := j.offset
+			j.mu.Unlock()
+			if before == after {
+				break
+			}
+		}
+		return []string{a.id}, nil
+	}
+	owner, _, err := knowledgeJobOwner(a.file.journalName())
+	if err != nil {
+		return nil, err
 	}
 	history := KnowledgeHistory(filepath.Dir(filepath.Dir(a.config.Place.Dir)), a.config.ProfileDir)
 	journals, err := history.Inventory(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	sessions := []string{a.id}
 	_, since := j.vault.ConfirmConsent()
 	for _, journal := range journals {
-		if !strings.HasPrefix(journal.Session, "task:"+a.id+":") {
+		if journal.JobOwner != owner || owner == "" {
 			continue
+		}
+		if !strings.HasPrefix(journal.Session, "task:") && journal.Session != a.id {
+			sessions = append(sessions, journal.Session)
 		}
 		cursor := knowledge.JournalCursor{Scope: journal.Project}
 		for cursor.Offset < journal.Size {
 			batch, err := history.Read(ctx, journal, cursor)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			for _, source := range batch.Sources {
 				stamp, err := time.Parse(time.RFC3339Nano, source.TS)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				if stamp.Before(since) {
 					continue
 				}
 				source.Job = true
 				if err := j.vault.Capture(source); err != nil {
-					return err
+					return nil, err
 				}
 			}
 			if batch.Cursor.Offset <= cursor.Offset {
@@ -230,5 +243,5 @@ func (a *Agent) captureJobKnowledgeTasks(ctx context.Context, j *knowledgeJourna
 			cursor = batch.Cursor
 		}
 	}
-	return nil
+	return sessions, nil
 }

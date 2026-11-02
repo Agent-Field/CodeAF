@@ -36,7 +36,9 @@ type Journal struct {
 	Error                string
 	Size                 int64
 	Modified             time.Time
-	Job                  bool
+	// JobOwner groups stage and task journals without changing source identities.
+	JobOwner string
+	Job      bool
 }
 type JournalCursor struct {
 	Offset            int64

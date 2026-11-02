@@ -47,3 +47,11 @@ func (v *Vault) WithCalls(calls func(context.Context) (context.Context, error)) 
 	copy.calls = calls
 	return &copy
 }
+
+type ownerSessionsKey struct{}
+
+// WithOwnerSessions admits the saved conversations of one job to a compilation.
+// Citation identities and the initiating call's billing session remain unchanged.
+func WithOwnerSessions(ctx context.Context, sessions []string) context.Context {
+	return context.WithValue(ctx, ownerSessionsKey{}, append([]string(nil), sessions...))
+}

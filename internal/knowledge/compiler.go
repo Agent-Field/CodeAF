@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -99,7 +100,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 			return err
 		}
 	}
-	before, err := pendingCompilerSources(db, provider.SessionFrom(ctx), through)
+	before, err := pendingCompilerSources(db, ctx, through)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		if err != nil {
 			return err
 		}
-		remaining, err := pendingCompilerSources(db, provider.SessionFrom(ctx), through)
+		remaining, err := pendingCompilerSources(db, ctx, through)
 		if err != nil {
 			return err
 		}
@@ -211,7 +212,8 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 		previous = repaired
 		revision++
 	}
-	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(e.payload,'$.job'),0)=0) OR (?<>'' AND (json_extract(e.payload,'$.session')=? OR substr(json_extract(e.payload,'$.session'),1,length(?))=?))) ORDER BY e.arrived,e.id LIMIT 64", partition, through, provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx), "task:"+provider.SessionFrom(model.ctx)+":", "task:"+provider.SessionFrom(model.ctx)+":")
+	selection, args := compilerSourceSelection(model.ctx, "e.payload")
+	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') AND ("+selection+") ORDER BY e.arrived,e.id LIMIT 64", append([]any{partition, through}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -305,8 +307,26 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 	return vault, nil
 }
 
-func pendingCompilerSources(db *sql.DB, owner string, through int64) (int, error) {
+func pendingCompilerSources(db *sql.DB, ctx context.Context, through int64) (int, error) {
 	var pending int
-	err := db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND (json_extract(payload,'$.session')=? OR substr(json_extract(payload,'$.session'),1,length(?))=?)))", through, owner, owner, owner, "task:"+owner+":", "task:"+owner+":").Scan(&pending)
+	selection, args := compilerSourceSelection(ctx, "payload")
+	err := db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ("+selection+")", append([]any{through}, args...)...).Scan(&pending)
 	return pending, err
+}
+
+func compilerSourceSelection(ctx context.Context, payload string) (string, []any) {
+	owners, bound := ctx.Value(ownerSessionsKey{}).([]string)
+	if !bound && provider.SessionFrom(ctx) != "" {
+		owners = []string{provider.SessionFrom(ctx)}
+	}
+	if len(owners) == 0 {
+		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0", nil
+	}
+	clauses := make([]string, 0, len(owners))
+	args := make([]any, 0, len(owners)*3)
+	for _, owner := range owners {
+		clauses = append(clauses, "(json_extract("+payload+",'$.session')=? OR substr(json_extract("+payload+",'$.session'),1,length(?))=?)")
+		args = append(args, owner, "task:"+owner+":", "task:"+owner+":")
+	}
+	return strings.Join(clauses, " OR "), args
 }

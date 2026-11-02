@@ -58,7 +58,10 @@ reports keep their source identities and compile with the owner’s finished tur
 charged to that job. Each finished owned turn can start one compilation. `jobKnowledgeWait` caps its
 stage-end wait at two seconds; unfinished compilation continues under the job's
 lifetime across stage conversation closes. Only one compiler per job runs at a
-time, and later finished turns do not queue compilers. The runner cancels that
+time, and later finished turns do not queue compilers. History groups sibling
+stage journals by their durable job owner. The next admitted pass captures those
+journals and selects their original session IDs through `WithOwnerSessions`, so
+a skipped stage remains eligible without changing its citations. The runner cancels that
 lifetime on termination. Owner admission is checked before requests and retries;
 Pause and Stop cancel the active call, and no new call starts for a paused or
 ended job. Quit drops compilation, retaining source journals and checkpoints for
