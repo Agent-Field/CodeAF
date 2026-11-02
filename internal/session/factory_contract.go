@@ -214,6 +214,14 @@ type JobChatDoor interface {
 	Chat(transcript string) JobChat
 }
 
+// JobModelSpend is a job budget that records which model a priced call ran
+// on. SpendModel books the same dollars Spend does, plus the model, the call
+// count and the measured tokens. A budget that is only a JobChat still takes
+// the dollars; the model on that call stays unknown.
+type JobModelSpend interface {
+	SpendModel(usd float64, model string, calls, input, output int)
+}
+
 // JobChat is one job's chat's half of the job's money.
 type JobChat interface {
 	// Spend adds usd, one call's dollars, to the job's spend. THE CALL IS

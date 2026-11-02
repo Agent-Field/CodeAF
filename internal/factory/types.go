@@ -350,6 +350,9 @@ type Stream struct {
 	Findings int
 	Bench    int
 	Room     string // the item team's id, when known; its Traffic is this log
+	// Models is this run's priced calls by the model that answered. A run
+	// recorded before the field has none; that spend cannot be tied to a model.
+	Models []ModelUse `json:",omitempty"`
 }
 
 // Claim is one row of a proof sheet: what was claimed, whether it was shown,
@@ -691,6 +694,9 @@ type Item struct {
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
 	ChatSpent float64 `json:",omitempty"`
+	// ChatModels is the model split of ChatSpent. The next start carries it
+	// onto the run with the dollars and clears it (run's freshStream).
+	ChatModels []ModelUse `json:",omitempty"`
 	// Thread is replicated from the worker so every machine reads the same
 	// conversation. AnsweredQuestions keeps asks after the open gate clears.
 	Thread            []Message  `json:",omitempty"`

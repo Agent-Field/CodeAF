@@ -23,8 +23,9 @@ import (
 // doors, because they only write files under the desk's lock: no process owns
 // the floor.
 type Doors struct {
-	desk *Desk
-	read StartRead
+	desk    *Desk
+	read    StartRead
+	resumed func(int)
 }
 
 // StartRead is one job's pipeline read with the factory's own rules in it, as
@@ -44,6 +45,12 @@ func NewDoors(desk *Desk) *Doors { return &Doors{desk: desk} }
 // the steps and carries the rules a person's Start would give it.
 func (d *Doors) WithStartRead(read StartRead) *Doors {
 	d.read = read
+	return d
+}
+
+// WithTalk gives explicit Resume the same manager conversation writer as the runner.
+func (d *Doors) WithTalk(talk run.Talk) *Doors {
+	d.resumed = run.ResumeReporter(d.desk.store, talk)
 	return d
 }
 
@@ -236,7 +243,11 @@ func (d *Doors) Pause(id int) error {
 // queued job nobody holds yet is held where it is: no worker takes it until a
 // person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	resumed := false
+	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if !on && !factory.UnderWay(*it) {
+			return false, fmt.Errorf("%s is not paused", it.Ref())
+		}
 		if on && it.State != factory.StateQueued && (it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing) {
 			return false, fmt.Errorf("%s is not running", it.Ref())
 		}
@@ -251,12 +262,23 @@ func (d *Doors) Hold(id int, on bool) error {
 		case !on:
 			// Resume queues even while the old worker drains its cancelled
 			// round. It must take capacity through Pull again.
-			return false, run.ResumeItem(it, now)
+			if err := run.ResumeItem(it, now); err != nil {
+				return false, err
+			}
+			resumed = true
+			return false, nil
 		}
 		it.Stream.Paused = on
 		signal(doc, id, Signal{Verb: SignalHold, Yes: on})
 		return true, nil
 	})
+	if err != nil {
+		return err
+	}
+	if resumed && d.resumed != nil {
+		d.resumed(id)
+	}
+	return nil
 }
 
 // Answer answers the question the job waits on. A job that asked before it
