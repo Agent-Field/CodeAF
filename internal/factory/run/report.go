@@ -513,7 +513,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	// ([factory.PlanFilesOf]); the cache remains for older builds reading the
 	// same persisted item.
 	if res.Done && strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
-		it.PlannedFiles = factory.ParsePlanFiles(res.Output)
+		it.PlannedFiles = res.PlanFiles()
 	}
 }
 
