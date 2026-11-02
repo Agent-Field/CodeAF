@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"context"
 	"encoding/json"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
