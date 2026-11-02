@@ -18,7 +18,7 @@ import (
 // Earlier committed work belongs to the job even when its replacement attempt
 // makes no new edit. An empty branch still needs the person's decision.
 func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
-	for _, action := range []string{"rerun", "try again", "resume after stop", "empty rerun"} {
+	for _, action := range []string{"rerun", "try again", "resume after stop", "resume after reported stop", "empty rerun"} {
 		t.Run(action, func(t *testing.T) {
 			s := newLocalSetup(t)
 			s.backend.emit = s.server
@@ -44,7 +44,7 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			switch action {
 			case "try again":
 				command += fmt.Sprintf("; test -f %q", ready)
-			case "resume after stop":
+			case "resume after stop", "resume after reported stop":
 				command += fmt.Sprintf("; touch %q; while ! test -f %q; do sleep 0.05; done", entered, ready)
 			case "empty rerun":
 				command = "true"
@@ -93,8 +93,12 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 				return waiting(job) && job.Steps[0].State == "done" && job.Steps[1].State == "waiting"
 			}
 			act("factory.job_start", nil)
-			if action == "resume after stop" {
+			if strings.HasPrefix(action, "resume after") {
 				wait("earlier attempt commits before Stop", func(api.Job) bool { _, err := os.Stat(entered); return err == nil })
+				if action == "resume after reported stop" {
+					wait("first attempt is reported before Stop", func(job api.Job) bool { return job.Steps[0].State == "running" && job.Steps[0].Round > 0 })
+				}
+				t.Logf("before Stop: write=%s round=%d", read().Steps[0].State, read().Steps[0].Round)
 				act("factory.job_step_stop", map[string]any{"step": "write"})
 				wait("Stop ends the earlier attempt", func(job api.Job) bool { return job.Failure != nil && job.Failure.Code == factory.CodeStopped })
 			} else {
