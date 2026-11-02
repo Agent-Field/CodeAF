@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -11,7 +12,11 @@ import (
 // step on the small-work model (models.tiers.low), a strong step on the
 // checks model (models.tiers.high). They are the rows Settings already
 // shows and sets, so the app reads and changes them where it does today.
-var factoryEffortTiers = map[string]string{"cheap": config.ModelTierLow, "strong": config.ModelTierHigh}
+// The words come from factory.EffortWords, cheap first.
+var factoryEffortTiers = map[string]string{
+	factory.EffortWords[0]: config.ModelTierLow,
+	factory.EffortWords[1]: config.ModelTierHigh,
+}
 
 // factoryStepModel is the model a step's conversation opens on, "" to keep
 // the launch's default: the step's or the job's own pick first, then the
