@@ -73,6 +73,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			return fmt.Errorf("failed publishing requires a code")
 		}
 		it.PublishStatus = p
+		it.PublishError = ""
+		if p.State == "failed" {
+			it.PublishError = publish.Reason(p.Code, p.Detail)
+		}
 	}
 	if report.FollowUp != nil {
 		if it.FollowUp == nil || report.FollowUp.HeadSHA != it.FollowUp.HeadSHA || (report.FollowUp.Attempt != it.FollowUp.Attempt && !completed) {

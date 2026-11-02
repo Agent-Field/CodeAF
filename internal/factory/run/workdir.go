@@ -428,8 +428,7 @@ var ErrNoRemote = errors.New("no remote to push to")
 
 // GitPush is the post stage's push over git: `git push -u origin <branch>`
 // from dir, after checking there is an `origin` at all. NEVER A FORCE-PUSH:
-// the refspec is the bare branch, so a remote branch that moved refuses the
-// push and the person decides.
+// a remote branch that moved refuses the push, and [placeRejected] decides.
 func GitPush(git Git) func(dir, branch string) error {
 	if git == nil {
 		git = ExecGit{}
