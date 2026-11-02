@@ -354,8 +354,18 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 					return nil
 				}
 			}
+			desk, err := lease.Open(floor, lease.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			launch := func(id int) {
+				t.Helper()
+				if err := lease.NewDoors(desk).Launch(id); err != nil {
+					t.Fatal(err)
+				}
+			}
 			a := create("A", true)
-			act(a, "factory.job_start")
+			launch(a)
 			first := next("A")
 			wait(a, "running", func(j api.Job) bool {
 				return j.State == api.StateRunning && j.Cost == 0.125 && len(j.Steps) == 2 && j.Steps[0].State == api.StepDone
@@ -364,7 +374,7 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 			var waiting api.StatePresentation
 			if busy {
 				b = create("B", false)
-				act(b, "factory.job_start")
+				launch(b)
 				queued := wait(b, "waiting for capacity", func(j api.Job) bool { return j.StatePresentation.Kind == "waiting_for_capacity" })
 				waiting = queued.StatePresentation
 			}
