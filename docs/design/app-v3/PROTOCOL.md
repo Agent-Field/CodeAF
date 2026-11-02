@@ -468,6 +468,25 @@ binary file is `unreadable` with `binary`; a repository with no checkout on the
 factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
 
+A job's `steps[].rounds[]` carries the engine's optional `result` word:
+`done`, `not done`, `clean`, `not clean`, `green`, `not green`, `proven`,
+`not proven`, or `blocked` for a reported result. When a retry closes a step
+that ended on a recorded failure, failure code `stopped` sends
+`result: "stopped"`, and `machine_lost` (including a runner lost across an
+engine restart) sends `result: "interrupted"`. Both have `rejected: false`
+(the false field may be omitted). Other step errors send `result: "failed"`
+and `rejected: true`. Display an explicit result word when present;
+otherwise `rejected: true` can read as "didn't pass". Only rejected rounds
+with a later round warrant "fixing them". Summary text never classifies an
+outcome. Existing saved lines are not migrated.
+
+This corrects outcomes carried by the existing `factory.job` and
+`factory.queue` replies; method parameters, hello features and error codes
+are unchanged. Round numbering and limits are unchanged: an explicit rerun
+advances the round and grants the step's configured allowance anew; automatic
+recovery still consumes its separate bounded retry allowance. Result words
+and the rejected flag do not determine those allowances.
+
 An engine whose hello carries `factory.job_area` sends `area` on each job of
 `factory.queue` and on `factory.job`: the part of the repository the job's
 change touched most, the repository's declared area or else the top-level
