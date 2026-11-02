@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -42,12 +43,15 @@ type houseRulesBody struct {
 // (trimmed, repeats dropped). One that sends `expect` is refused with 409 when
 // the rules changed after the writer read them. Every refusal before the save carries the phase
 // marker (phase.go), so a client knows it changed nothing.
+//
+// Both answers carry changed_by and changed_at, who made the last save and
+// when; rules that were never saved carry neither.
 func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.config.Store != nil) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		rules, err := h.config.Store.HouseRules()
+		rules, err := h.config.Store.KeptHouseRules()
 		if h.failed(w, err) {
 			return
 		}
@@ -89,7 +93,8 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 		expect = &clean
 	}
 	clearPhase(w)
-	saved, err := h.config.Store.ChangeHouseRules(func(cur *factory.HouseRules) error {
+	by := h.rulesChange(r)
+	saved, err := h.config.Store.ChangeHouseRules(by, func(cur *factory.HouseRules) error {
 		if expect != nil && !sameRules(*expect, *cur) {
 			return errRulesMoved
 		}
@@ -115,7 +120,19 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.write(w, 200, saved)
+	h.write(w, 200, factory.KeptRules{HouseRules: saved, RulesChange: by})
+}
+
+// rulesChange is the change a write of the rules records: the person who sent
+// it, or the factory's operator when the request names nobody (a script's
+// credential), and the time of the write to the second.
+func (h *Handler) rulesChange(r *http.Request) factory.RulesChange {
+	handle, err := h.callerHandle(r)
+	if err != nil || factory.NormalizeHandle(handle) == "" {
+		handle = h.operatorLogin(r)
+	}
+	at := h.clock().UTC().Truncate(time.Second)
+	return factory.RulesChange{ChangedBy: factory.NormalizeHandle(handle), ChangedAt: &at}
 }
 
 // sameRules says whether a writer's read is what the factory keeps. The adapt

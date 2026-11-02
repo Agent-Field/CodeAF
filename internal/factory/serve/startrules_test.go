@@ -19,7 +19,7 @@ import (
 // own rules ride along when it is queued.
 func TestAStartStampsTheRulesTheJobStartsUnder(t *testing.T) {
 	f := newV2Jobs(t)
-	if _, err := f.st.ChangeHouseRules(func(h *factory.HouseRules) error {
+	if _, err := f.st.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error {
 		h.Rules = []string{"no new dependencies without asking"}
 		return nil
 	}); err != nil {

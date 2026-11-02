@@ -27,15 +27,15 @@ var _ appwire.FactoryRulesKeeper = (*appBackend)(nil)
 const appFactoryRulesRoute = "/v1/rules"
 
 func (b *appBackend) FactoryRules(ctx context.Context, id string) (appwire.FactoryRules, error) {
-	var rules factory.HouseRules
-	if err := b.factoryHub().read(ctx, id, appFactoryRulesRoute, appFactorySmall, &rules); err != nil {
+	var kept factory.KeptRules
+	if err := b.factoryHub().read(ctx, id, appFactoryRulesRoute, appFactorySmall, &kept); err != nil {
 		return appwire.FactoryRules{}, err
 	}
-	clean, err := rules.Clean()
+	clean, err := kept.HouseRules.Clean()
 	if err != nil {
 		return appwire.FactoryRules{}, appwire.Errorf(appwire.CodeEngine, "the factory sent rules this app cannot read")
 	}
-	return appwire.FactoryRules{Factory: id, Rules: clean}, nil
+	return appwire.FactoryRules{Factory: id, Rules: clean, RulesChange: kept.RulesChange}, nil
 }
 
 func (b *appBackend) FactoryRulesSet(ctx context.Context, p appwire.FactoryRulesSetParams) (appwire.FactoryRules, error) {
@@ -94,15 +94,16 @@ func (b *appBackend) FactoryRulesSet(ctx context.Context, p appwire.FactoryRules
 	if r.status != http.StatusOK {
 		return none, rulesUncertain()
 	}
-	var saved factory.HouseRules
+	var saved factory.KeptRules
 	if r.bodyBad || json.Unmarshal(r.body, &saved) != nil {
 		return none, rulesUncertain()
 	}
-	if saved, err = saved.Clean(); err != nil {
+	clean, err = saved.HouseRules.Clean()
+	if err != nil {
 		return none, rulesUncertain()
 	}
 	h.touch(p.Factory)
-	return appwire.FactoryRules{Factory: p.Factory, Rules: saved}, nil
+	return appwire.FactoryRules{Factory: p.Factory, Rules: clean, RulesChange: saved.RulesChange}, nil
 }
 
 func rulesUncertain() error {

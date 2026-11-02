@@ -21,7 +21,7 @@ func TestHouseRulesAreKeptCleanedAndNeverForgottenQuietly(t *testing.T) {
 	if err != nil || !none.Empty() || none.Rules == nil {
 		t.Fatalf("a new factory has rules %#v, %v", none, err)
 	}
-	saved, err := st.ChangeHouseRules(func(h *factory.HouseRules) error {
+	saved, err := st.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error {
 		h.Rules = []string{" no new dependencies without asking ", "No new dependencies without asking"}
 		h.AskFirst = []string{"touch auth/"}
 		return nil
@@ -39,7 +39,7 @@ func TestHouseRulesAreKeptCleanedAndNeverForgottenQuietly(t *testing.T) {
 	if items, err := st.List(); err != nil || len(items) != 0 {
 		t.Fatalf("the rules file was listed as a job: %v, %v", items, err)
 	}
-	if _, err := st.ChangeHouseRules(func(h *factory.HouseRules) error { h.Rules = []string{"a\nb"}; return nil }); err == nil {
+	if _, err := st.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error { h.Rules = []string{"a\nb"}; return nil }); err == nil {
 		t.Fatal("a two-line rule was saved")
 	}
 	if again, _ := st.HouseRules(); !reflect.DeepEqual(again, want) {

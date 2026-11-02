@@ -32,11 +32,18 @@ import (
 // factory.rules and factory.rules_set.
 const FeatureFactoryRules = "factory.rules"
 
+// FeatureFactoryRulesChangedBy is announced in hello when factory.rules
+// carries changed_by and changed_at: who last changed the factory's rules,
+// and when. Both are absent for rules that were never written.
+const FeatureFactoryRulesChangedBy = "factory.rules_changed_by"
+
 // FactoryRules is the read: the connection and the factory's rules as it keeps
-// them, every list present (`[]` when empty).
+// them, every list present (`[]` when empty), with changed_by and changed_at
+// beside them when the rules were ever written.
 type FactoryRules struct {
 	Factory string             `json:"factory"`
 	Rules   factory.HouseRules `json:"rules"`
+	factory.RulesChange
 }
 
 // FactoryRulesSetParams is the whole request. The lists are pointers so that
@@ -73,6 +80,7 @@ func withFactoryRulesFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryRulesKeeper); ok {
 		hello = withFeature(hello, FeatureFactoryRules)
+		hello = withFeature(hello, FeatureFactoryRulesChangedBy)
 	}
 	return hello
 }

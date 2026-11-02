@@ -314,6 +314,17 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries the feature `factory.rules_changed_by` answers
+`factory.rules` and `factory.rules_set` with `changed_by`, the GitHub login of
+the person who made the last write of the factory's rules, and `changed_at`,
+the RFC3339 time of that write in UTC to the second, beside `rules`:
+`{"factory": "...", "rules": {...}, "changed_by": "octocat",
+"changed_at": "2026-10-11T12:00:00Z"}`. The rules belong to the factory, not to
+one repository, so there is one pair per factory. Both fields are absent when
+the rules were never written, and when the factory last wrote them with a build
+that did not record the change. A write sent with the factory's script
+credential records the factory's operator.
+
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
 the number of an open pull request from a branch of the same repository into
