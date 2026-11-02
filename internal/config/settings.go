@@ -1234,6 +1234,10 @@ var OperatorEnvPins = []string{
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
 	"CODEAF_WIRE_LOG",
+	// CODEAF_GITHUB_LOG names a file for one line per GitHub request
+	// (internal/githubcalls). It is for measuring one run's rate-limit spend, so
+	// it is not a setting anyone keeps.
+	"CODEAF_GITHUB_LOG",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
