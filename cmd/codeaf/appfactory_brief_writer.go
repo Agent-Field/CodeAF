@@ -109,6 +109,9 @@ func (b *appBackend) briefErrand(ctx context.Context, factoryID string, job int,
 	}
 	answer, err := b.Errand(ctx, chats.Agent, ask)
 	if err != nil && answer.Reason == "" {
+		// A refused ask or route is the writer's own fault; its words go to
+		// the log beside the reason the brief keeps.
+		fmt.Fprintf(errandLog, "codeaf app: job %d brief errand refused: %v\n", job, err)
 		answer.Reason = session.ErrandModelFailed
 	}
 	if answer.Reason != "" {
