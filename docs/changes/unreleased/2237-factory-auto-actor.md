@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Automatic factory approvals and publications no longer credit a person
-pr: 0
+pr: 2237
 surface: [engine, docs]
 invalidates:
   - "Automatic approval and publication events credited the job owner or runner as though they had acted. New automatic events identify the factory instead, and stale replies say approved automatically at the approval time."
