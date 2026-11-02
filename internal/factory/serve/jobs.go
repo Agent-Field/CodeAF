@@ -678,7 +678,7 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	resumeCap := false
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			if body.Budget < cur.Cap && body.Budget < factory.JobSpent(*cur) {
+			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
 				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
 				return budgetRefused
 			}
@@ -689,7 +689,9 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 					if cur.Asking != nil {
 						cur.Asking.Question = cur.Question
 					}
-				} else {
+				} else if !cur.Manual {
+					// Take over keeps the job in the person's hands; a raise doesn't
+					// hand it back.
 					resumeCap = true
 					run.NoteBudgetRaised(cur, time.Now())
 					if held {

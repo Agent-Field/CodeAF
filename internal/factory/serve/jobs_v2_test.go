@@ -1110,7 +1110,9 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 			if got.Cap != 10 || got.Stream.Spent != 5 || f.st.PollNudged().IsZero() {
 				t.Fatal("cap did not persist or wake observation")
 			}
-			if mode == "auto" {
+			// On Manual a raise above spend is the answer to "carry on?"; Take over
+			// and a question that isn't the cap's stay with the person.
+			if mode == "auto" || mode == "manual" {
 				if got.State != factory.StateQueued || got.Question != "" {
 					t.Fatal("automatic cap recovery stranded")
 				}
