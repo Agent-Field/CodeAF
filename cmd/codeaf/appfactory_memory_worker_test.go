@@ -23,18 +23,24 @@ import (
 )
 
 func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) {
-	memoryLateReceiptFactoryHeader(t, false, 0)
+	memoryLateReceiptFactoryHeader(t, "finish", 0)
 }
 
 func TestMemoryLateReceiptReachesFactoryHeaderAfterStop(t *testing.T) {
-	memoryLateReceiptFactoryHeader(t, true, 0)
+	memoryLateReceiptFactoryHeader(t, "stop", 0)
 }
 
 func TestMemoryLateReceiptPreservesExistingJobSpend(t *testing.T) {
-	memoryLateReceiptFactoryHeader(t, true, .30)
+	memoryLateReceiptFactoryHeader(t, "stop", .30)
 }
 
-func memoryLateReceiptFactoryHeader(t *testing.T, stop bool, existing float64) {
+func TestMemoryLateReceiptReachesFactoryHeaderAfterQuit(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "quit", 0)
+}
+
+func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
+	stop, quit := end == "stop", end == "quit"
+	quitDone := make(chan struct{})
 	s := newLocalSetup(t)
 	release := make(chan struct{})
 	releaseReceipt := sync.OnceFunc(func() { close(release) })
@@ -149,17 +155,21 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool, existing float64) {
 	s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 	var acted appwire.FactoryJobActed
 	s.must("factory.job_start", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
-	if stop {
+	if stop || quit {
 		select {
 		case <-started:
 		case <-time.After(10 * time.Second):
 			t.Fatal("memory did not start")
 		}
-		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
-		s.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
+		if quit {
+			go func() { s.backend.closeLocalFactory(); close(quitDone) }()
+		} else {
+			s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+			s.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
+		}
 	}
 	deadline := time.Now().Add(10 * time.Second)
-	for !stop {
+	for !stop && !quit {
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 		finished := false
 		for _, step := range job.Steps {
@@ -182,11 +192,15 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool, existing float64) {
 	// the receipt is deliberately still unavailable. A settlement-aware worker
 	// may retain that lease; either way the public job must receive the charge.
 	delay := 750 * time.Millisecond
-	if stop {
+	if stop || quit {
 		delay = 6 * time.Second
 	}
 	until := time.Now().Add(delay)
 	for time.Now().Before(until) {
+		if quit {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
 		var runners api.Runners
 		s.must("factory.runners", map[string]any{"factory": st.Factory}, &runners)
 		busy := false
@@ -204,6 +218,13 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool, existing float64) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	releaseReceipt()
+	if quit {
+		select {
+		case <-quitDone:
+		case <-time.After(5 * time.Second):
+			t.Fatal("quit did not finish within its bounded wait")
+		}
+	}
 	item, err := floor.Get(id)
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +245,15 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool, existing float64) {
 				}
 			}
 		}
-		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+		if quit {
+			stored, err := floor.Get(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			job.Cost = factory.JobSpent(stored)
+		} else {
+			s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+		}
 		if memoryUSD >= .02 && math.Abs(job.Cost-usd-existing) < .000001 {
 			return
 		}
