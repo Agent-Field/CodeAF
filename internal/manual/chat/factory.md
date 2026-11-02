@@ -152,6 +152,20 @@ A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, 
 
 Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps. Steps that use kind, when, effort or fanout are saved as a copy only when the factory has confirmed it runs them for the file they were edited from, as for a pull request. A factory older than this feature answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
 
+## repository rules unread — bad factory.yaml, Start, plan waiting for you
+
+If the repository's `.codeaf/factory.yaml` cannot be read, pressing Start or
+starting from chat still starts the job with the factory's own rules. A job
+without its own budget gets the built-in default job budget. Activity says
+`Started with the repository's rules unread; its plan will wait for you`.
+The job records a short explanation naming the file and the parser's line
+when available. Fix that file before reviewing the plan. The plan waits for
+you, including in Auto, rather than continuing without the repository's rules.
+
+The factory's own rules being unread still prevents a start and leaves the job
+new. A clean read with no positive default budget still refuses a job that has
+no budget of its own.
+
 ## a rule asks first — protected paths, Auto paused at the plan, a plan that touches auth, why a job waits on a rule
 
 Ask-first paths and never paths are one kind of rule, **protected paths**. When a job starts, the protected paths it starts under (the repository's and the factory's) go with it, and every step is told them on one line, "ask before touching: auth/, infra/". A job is held at its start, after its plan and before its change is published whenever a file it names or changes is under one (`touch auth/`, or a bare `auth`, covers everything under `auth/`). The approval is never routine, even in Auto: the job waits with `protected · auth/ · auth/login.go`, shown as "A protected path: auth/ · auth/login.go". A plan step is told to end its plan with its file list in the one shape the factory reads, a line that says only `Files:` and then a `- path` line per file, outside any code block; nothing else in a plan is read as its files. A plan without that list waits with `protected · auth/ · the plan names no files` (every protected path in force), shown as "The plan didn't list its files, so the factory couldn't check them against auth/. Approve, or send it back to list them." Answering it clears the hold. The job keeps what each check found: on its Steps panel, **Before it starts** and **Before publishing** show a green ◆ and "passed" when nothing a rule guards was touched, and stay amber with "asked" when a rule made the job wait for you. A job a person started was not checked at its start, so that row shows no finding. Ask-first sentences, which nothing can check against files, are told on their own line, "ask before you: …", and hold a job before it starts with "ask first ·" and the sentence.

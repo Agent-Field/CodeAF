@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +25,24 @@ import (
 )
 
 func TestFactoryStartBadRepositoryFile(t *testing.T) {
+	t.Run("safe diagnostics", func(t *testing.T) {
+		fallback := pipeline.RepoFile + ": could not read repository rules; check the file's syntax and access"
+		cases := []struct {
+			err  error
+			want string
+		}{
+			{nil, ""},
+			{errors.New("open /private/checkout/.codeaf/factory.yaml: denied token=private-token\nstack text"), fallback},
+			{errors.New("yaml: line 7: unknown anchor 'private-token' referenced"), pipeline.RepoFile + " line 7: could not read repository rules; check the file's syntax and access"},
+			{errors.New("open /private/checkout: yaml: line 7: did not find expected key\nstack private-token"), pipeline.RepoFile + " line 7: did not find expected key"},
+			{errors.New(strings.Repeat("private-token", 200)), fallback},
+		}
+		for _, tc := range cases {
+			if got := pipeline.UnreadWhy(tc.err); got != tc.want || len(got) >= 160 || strings.ContainsAny(got, "\r\n") {
+				t.Errorf("diagnostic %q, want %q", got, tc.want)
+			}
+		}
+	})
 	for _, road := range []string{"app", "chat", "house rules unread", "clean file without budget"} {
 		t.Run(road, func(t *testing.T) {
 			s := newLocalSetup(t)
