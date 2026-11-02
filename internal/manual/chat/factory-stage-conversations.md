@@ -231,6 +231,9 @@ Retry and giving the job back to the pipeline withdraw the previous execution. T
 not report that you stopped it. Taking over automatic work keeps its results for the
 working chat; giving it back checks those changes before continuing.
 
+With several worker slots, a retry waits for the previous worker's local cleanup
+before starting its selected round. Other jobs can keep running during that handover.
+
 A line about one step's round (`started`, `done`, an `asking you:` it waits on, the `stopped`
 that cut it) also names that step and round beside its words, so a surface that draws each round
 as a frame can fold the line into it; the words are the same either way.
