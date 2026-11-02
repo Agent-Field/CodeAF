@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Factory tool logs show one tool name and portable paths
-pr: 0
+pr: 2254
 surface: [engine]
 invalidates:
   - "Tool log captions repeated the tool name and exposed absolute home paths. Tool captions now carry an optional kind and use portable paths."
