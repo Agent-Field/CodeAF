@@ -31,8 +31,9 @@ func TestAppFactoryCapQuestionHasOneAmount(t *testing.T) {
 		{.01, 5.25, 10, "budget of $0.01 reached · $5.25 spent · raise it to $10, or stop?"},
 		{5, 10, 20, "budget of $5 reached · $10 spent · raise it to $20, or stop?"},
 		{10, 20, 30, "budget of $10 reached · $20 spent · raise it to $30, or stop?"},
-		{20, 30, 0, "budget of $20 reached · $30 spent · no higher budget is available; stop this job."},
-		{30, 31, 0, "budget of $30 reached · $31 spent · no higher budget is available; stop this job."},
+		{20, 30, 40, "budget of $20 reached · $30 spent · raise it to $40, or stop?"},
+		{30, 31, 60, "budget of $30 reached · $31 spent · raise it to $60, or stop?"},
+		{30, 125, 240, "budget of $30 reached · $125 spent · raise it to $240, or stop?"},
 	} {
 		t.Run(fmt.Sprintf("cap=%g/spent=%g", tc.cap, tc.spent), func(t *testing.T) {
 			it := factory.Item{State: factory.StateNeedsYou, Starter: "alice", Cap: tc.cap, QKind: "cap", Stream: &factory.Stream{Spent: tc.spent}}
@@ -40,7 +41,7 @@ func TestAppFactoryCapQuestionHasOneAmount(t *testing.T) {
 			if question != tc.question {
 				t.Errorf("question = %q, want %q", question, tc.question)
 			}
-			// Old saved words must not preserve the old doubling behavior.
+			// Old saved words must use the current next-cap rule.
 			it.Question = "budget reached · more, or stop?"
 			saved := f.create(t, it)
 			job := alice.job(t, saved.ID)
@@ -68,22 +69,13 @@ func TestAppFactoryCapQuestionHasOneAmount(t *testing.T) {
 			answered := alice.job(t, saved.ID)
 			continued := it
 			changed := factoryrun.NoteContinue(&continued, time.Now())
-			if tc.next == 0 {
-				if response.StatusCode != 422 || !strings.Contains(string(body), "bad_input") || answered.Budget != tc.cap || answered.State != job.State {
-					t.Errorf("exhausted answer status=%d body=%s budget=%g state=%s", response.StatusCode, body, answered.Budget, answered.State)
-				}
-				if len(job.Questions[0].Options) != 1 || job.Questions[0].Options[0] != "no" {
-					t.Errorf("exhausted options = %v", job.Questions[0].Options)
-				}
-				if changed || continued.Cap != tc.cap {
-					t.Errorf("exhausted yes changed cap to %g", continued.Cap)
-				}
-				return
-			}
 			if response.StatusCode != 200 || answered.Budget != tc.next {
 				t.Errorf("yes status=%d body=%s budget=%g want %g", response.StatusCode, body, answered.Budget, tc.next)
 			}
 			saved = f.create(t, it)
+			if tc.cap == 30 && tc.spent == 31 {
+				alice.w.mustFail("factory.job_set_budget", alice.params(t, saved.ID, map[string]any{"budget": 50}), appwire.CodeBadParams)
+			}
 			alice.act(t, "factory.job_set_budget", saved.ID, map[string]any{"budget": tc.next})
 			raised := alice.job(t, saved.ID)
 			if !changed || continued.Cap != tc.next || raised.Budget != continued.Cap {
