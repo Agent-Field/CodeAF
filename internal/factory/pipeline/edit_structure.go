@@ -475,6 +475,7 @@ func (st *editState) structureFacts(res *Edited) {
 	res.Structural = true
 	res.Order, res.Counts, res.Gates = []OrderChange{}, []KindCount{}, []GateChange{}
 	res.Added = append([]string{}, st.newSteps...)
+	res.Renamed = append([]Rename{}, st.renames...)
 	for _, kind := range sortedKinds(st.out) {
 		before, after := st.base.Pipeline[factory.Kind(kind)], st.out.Pipeline[factory.Kind(kind)]
 		res.Counts = append(res.Counts, KindCount{Pipeline: kind, Steps: len(after)})
@@ -482,7 +483,7 @@ func (st *editState) structureFacts(res *Edited) {
 			continue
 		}
 		res.Order = append(res.Order, OrderChange{Pipeline: kind, Before: append([]string{}, before...), After: append([]string{}, after...)})
-		res.Gates = append(res.Gates, gateChanges(st.out, kind, before, after)...)
+		res.Gates = append(res.Gates, gateChanges(st.out, kind, st.renamedAs(before), after)...)
 	}
 }
 
