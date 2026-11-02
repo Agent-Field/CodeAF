@@ -311,3 +311,18 @@ func TestThePlanStagesVerbsCostNoMoreThanAnyOtherStages(t *testing.T) {
 		t.Fatalf("a plan's verbs are %d bytes, over the other stages' %d", plan, other)
 	}
 }
+
+// ONLY THE STEP FOLLOWING A PULL REQUEST IS OFFERED THE REPAIR REPORT.
+func TestOnlyARepairStageIsOfferedTheRepairReport(t *testing.T) {
+	for _, repair := range []bool{false, true} {
+		a := stageAgent(t, &fakeStageDoor{})
+		a.config.RepairStage = repair
+		schema := string(stageToolNamed(t, a, "stage_result").Schema)
+		if !json.Valid([]byte(schema)) {
+			t.Fatalf("schema is not JSON: %s", schema)
+		}
+		if got := strings.Contains(schema, `"repair":`); got != repair {
+			t.Errorf("repair stage %v: schema offers repair = %v", repair, got)
+		}
+	}
+}
