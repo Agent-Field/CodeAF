@@ -368,6 +368,7 @@ func (b *appBackend) FactoryJobSetModel(ctx context.Context, p appwire.FactoryJo
 	if err == nil {
 		// The job's agent reads the job's model too (appfactory_chats.go).
 		b.jobAgentModel(p.Factory, p.Job)
+		b.briefEdited(p.Factory, p.Job)
 	}
 	return acted, err
 }
