@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: The stale-consent test makes the writer's return a clean quit and reopen, as F1 requires
+title: F1 reopen resumes the same hold in the stale-consent and hosted take-back tests
 pr: 2183
 surface: [chat]
 ---
