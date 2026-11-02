@@ -1005,6 +1005,11 @@ func TestCrewHeldOwnerNeedsTheExactVerifiedRecordedFile(t *testing.T) {
 	if err != nil || strings.Contains(commands(second), "from the engine") {
 		t.Fatalf("a held conversation whose stored file is gone was asked: %q %v", commands(second), err)
 	}
+	for _, id := range []string{"held1", "held2"} {
+		if err := f.backend.CloseAgent(id); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // A REMOTE ENGINE'S STALE CURSOR IS stale, NOT unreadable.
