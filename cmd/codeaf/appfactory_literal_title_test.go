@@ -13,6 +13,7 @@ func TestSeparateJobTitleIsLiteral(t *testing.T) {
 	st := s.start()
 	for _, tc := range []struct{ title, text string }{
 		{"  c43: add the word hello to README  ", "Append one line with the word hello to README.md"},
+		{"security two review rounds cheaper plan first ship it", "Literal details"},
 		{"Fix auto-save $5", "  security, two review rounds, cheaper; ship it; plan first\nKeep  these words.\n"},
 	} {
 		t.Run(tc.title, func(t *testing.T) {

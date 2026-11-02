@@ -60,3 +60,35 @@ func TestSeparateJobTitleIsLiteral(t *testing.T) {
 		})
 	}
 }
+
+func TestSeparateJobTitleIsLiteralWithoutDetails(t *testing.T) {
+	for _, source := range []string{"app", "hand-off", "", "tui"} {
+		t.Run(source, func(t *testing.T) {
+			f := newV2Jobs(t)
+			f.h.Close()
+			f.seam = factory.LocalSeam(f.st, time.Now())
+			f.h = serve.New(f.seam, f.cfg)
+			body := api.NewJob{Repo: "acme/api", Title: "Fix auto-save $5", Source: source}
+			if source == "hand-off" {
+				body.FromRef = &factory.SourceRef{Kind: "agent", ID: "a1", Title: "Source"}
+			}
+			raw, _ := json.Marshal(body)
+			w := verbRequest(f.h, "POST", "/v1/jobs", string(raw))
+			checkJSON(t, w, 201)
+			var made struct {
+				ID int `json:"id"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &made); err != nil {
+				t.Fatal(err)
+			}
+			got := f.read(t, factory.Item{ID: made.ID})
+			title, budget := "Fix auto-save $5", float64(0)
+			if source == "" || source == "tui" {
+				title, budget = "Fix -save", 5
+			}
+			if got.Title != title || got.Budget != budget {
+				t.Fatalf("title = %q budget %v; want %q budget %v", got.Title, got.Budget, title, budget)
+			}
+		})
+	}
+}
