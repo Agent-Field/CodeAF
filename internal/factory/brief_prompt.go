@@ -93,15 +93,12 @@ func briefAfterStep(it Item) string {
 	return step
 }
 
-// EndBrief ends a write: the writer's cost is the job's, whatever came of it;
-// a draft whose verdict passes is kept with what survived the check; anything
+// EndBrief ends a write. The session already charged the job for the call;
+// the version keeps its cost for the brief guard without charging it again.
+// A draft whose verdict passes is kept with what survived the check; anything
 // else leaves the versions as they were and the write failed. It answers the
 // version kept (false when none), and the parts dropped.
 func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDrop, bool) {
-	AddChatSpend(it, w.CostUSD)
-	// THE WRITER IS ONE CALL. Its model is known here; a write with no model
-	// still spends, and that spend stays untied.
-	AddModelUse(it, w.Model, w.CostUSD, 1, 0, 0)
 	after := briefAfterStep(*it)
 	if it.BriefWriting != nil && it.BriefWriting.AfterStep != "" {
 		after = it.BriefWriting.AfterStep
