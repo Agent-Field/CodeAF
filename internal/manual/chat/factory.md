@@ -207,6 +207,10 @@ The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
 
+## which model a cheap or strong step runs on — small work, checks model, effort models
+
+A factory step marked `cheap` opens on the **small work** model, and a step marked `strong` on the **checks** model: the same two rows the settings sheet already shows, so changing either changes the factory's cheap or strong steps from their next run. A model picked for the step, or for the whole job, wins over its effort. A step with no effort word runs on the job's model or the factory's default. With one model for every task, every step runs on that one model, whatever its effort.
+
 ## answer the factory_item card in the terminal — yes, keep it, say what to change, esc, the card never appeared
 
 In the terminal chat a `factory_item` call puts its card above the message box: a head that asks the question (`#12 · think strong?`), one row for each thing that would change (`thinking  write — → strong`, `budget  $5 → $8`, `note:`, `why:`), and two answers.
