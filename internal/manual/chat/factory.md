@@ -299,7 +299,7 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 ## comment on a job's issue — teammates' comments, does the manager read GitHub comments, write access
 
-A comment typed on a job's Issue tab is posted to the job's GitHub issue as you, with your own GitHub sign-in; a solo factory uses its host's sign-in. Only a job from a GitHub issue takes one, up to 8000 characters. A sign-in GitHub will not let comment there is refused with "Your GitHub sign-in can't comment on owner/repo", and nothing is posted. If GitHub's answer is lost, the comment may have posted: read the issue before posting again.
+A comment typed on a job's Issue tab is posted to the job's GitHub issue as you, with your own GitHub sign-in; a solo factory uses its host's sign-in. Only a job from a GitHub issue takes one, up to 8000 characters. A sign-in GitHub will not let comment there is refused with "Your GitHub sign-in can't comment on owner/repo", and nothing is posted. If GitHub's answer is lost, the comment may have posted: read the issue before posting again. A second comment on the same job while one is still being posted is refused, and nothing more is posted. A job of a repository that is turned off takes no comment.
 
 The job's manager reads every new comment on the issue once the factory's next GitHub read brings it, about a minute. Comments already there when the job first read the issue are its context. Under each comment it read, one line says what it did:
 
@@ -337,18 +337,32 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
-## how big is a job — size of a job, the size: filter, why there is no size, risky
+## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
 
 1. **A size label** on the item (`size:S`, `size/s`, XS to XL). It wins.
-2. **The completed issue read**, shown as `read says M`.
+2. **The completed issue read**, shown as `read says M`. The read scores five factors 0, 1 or 2, each with a why of at most six words: scope (one spot, one area, several areas), clarity (is the wanted result stated), coupling (shared code, data, migrations, public API), proof (how a finished change is checked) and novelty (follows existing code or new design). Their sum is the complexity, 0 to 10: 0–3 is small (S), 4–6 medium (M), 7–10 large (L). The read sees only the item's text, not the repository, so its scope and coupling are marked low confidence.
 
-The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
+The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `cheap` matches items the read scored small; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
 
 Only a size label decides whether a job starts on its own. A size from a read never starts, holds or orders a job; with no label the factory asks instead, saying "no size label".
 
+The read never guesses a price: a model cannot know what the factory's agent spends, so no read, card or chat guess writes dollars on a job. The floor tool's `cheapest` lists the least complex first and each row says `complexity 4/10, medium (read)`.
+
 Limits: items read before this change show no size until their text changes or someone labels them. Older items are not reread just to fill this gap; editing the title or body allows one fresh read through the normal worker. There is no "read again" action yet.
+
+## what will a job cost — estimate, cost range, from N jobs, no cost history yet, max_cost
+
+A job's cost and time are measured from the factory's own finished jobs, never guessed by a model. An open job's range is the 10th to the 90th percentile of up to 12 finished jobs nearest to it, so about eight in ten similar jobs spent inside it: the same repository first, then every repository; near means close on the five complexity factors and the same kind of work. The app shows it with its basis, as `$0.40–1.10 · from 12 jobs in api`, and minutes the same way. A dropped job is not counted, because it spent only what it spent before it was dropped; a job run again counts once, with its latest run.
+
+A running job also has what is likely left: what similar finished jobs spent past this job's spend so far, over those that got that far (`about $4 more to finish`).
+
+With fewer than five similar finished jobs there is no figure: the job shows its band and `no cost history yet`.
+
+Each finished job is checked against the range the jobs before it would have given; the factory shows how many landed inside (`8 of 10 inside the range`). When fewer than 6 in 10 land inside, ranges are widened by how far real spend strayed from the median.
+
+Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs like it cost up to $3 · over $2`). An unknown cost asks first only when the repository's file writes `max_cost` (`no cost history yet · max_cost $2 asks first`); under the default ceiling an unknown cost starts, because the job's budget still stops a running job.
 
 ## which model runs factory jobs — Task models and one model
 
