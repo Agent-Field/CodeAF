@@ -247,17 +247,21 @@ type StepDef struct {
 	Until string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
-	UntilSentence string   `json:"until_sentence,omitempty"`
-	Max           int      `json:"max,omitempty"`
-	Fixed         bool     `json:"fixed,omitempty"`
-	Custom        bool     `json:"custom,omitempty"`
-	Off           bool     `json:"off,omitempty"`
-	When          string   `json:"when,omitempty"`   // desk
-	Effort        string   `json:"effort,omitempty"` // desk
-	Fanout        string   `json:"fanout,omitempty"` // desk
-	Proof         []string `json:"proof,omitempty"`  // desk
-	Why           string   `json:"why,omitempty"`    // desk
-	By            string   `json:"by,omitempty"`     // desk
+	UntilSentence string `json:"until_sentence,omitempty"`
+	Max           int    `json:"max,omitempty"`
+	Fixed         bool   `json:"fixed,omitempty"`
+	Custom        bool   `json:"custom,omitempty"`
+	Off           bool   `json:"off,omitempty"`
+	When          string `json:"when,omitempty"`   // desk
+	Effort        string `json:"effort,omitempty"` // desk
+	// UseModel is the model the job's person picked for this step on this
+	// job (factory.Stage.Model), absent for the job's own model. It is the
+	// step's next run; Step.Model is the model it ran on.
+	UseModel string   `json:"use_model,omitempty"`
+	Fanout   string   `json:"fanout,omitempty"` // desk
+	Proof    []string `json:"proof,omitempty"`  // desk
+	Why      string   `json:"why,omitempty"`    // desk
+	By       string   `json:"by,omitempty"`     // desk
 	// Who is who an approve step waits on: absent for the job's person,
 	// "@handle" for a named person, operator for any of the factory's
 	// operators (factory.ApproverWord).
@@ -414,10 +418,16 @@ type Job struct {
 	// (factory.RuleChecks), for its two ◆ rows; absent before either was
 	// judged.
 	RuleChecks *RuleChecks `json:"rule_checks,omitempty"`
-	AssignedTo string      `json:"assigned_to,omitempty"`
-	Step       *StepAt     `json:"step,omitempty"`
-	Steps      []Step      `json:"steps"`
-	Claims     []Claim     `json:"claims,omitempty"`
+	// Brief is the job's brief mark: the rev of its newest kept version and
+	// the brief's status, so a reader that polls the job reads the brief
+	// itself (GET /v1/jobs/{id}/brief) only when one of them moves. Absent
+	// while the job has only its stub, and from a factory older than the
+	// brief.
+	Brief      *BriefMark `json:"brief,omitempty"`
+	AssignedTo string     `json:"assigned_to,omitempty"`
+	Step       *StepAt    `json:"step,omitempty"`
+	Steps      []Step     `json:"steps"`
+	Claims     []Claim    `json:"claims,omitempty"`
 	// PlannedFiles are the paths the current plan's explicit Files declaration
 	// named, so the brief can say how many it planned against how many the
 	// change touched. Unknown is omitted: no declaration, an ambiguous one, or
@@ -1014,3 +1024,9 @@ type PublishedEvent = live.PublishedPayload
 
 // PublishFailedEvent names the failure code or the report's reason.
 type PublishFailedEvent = live.FailedPayload
+
+// BriefMark says which brief a job has now ([Job.Brief]).
+type BriefMark struct {
+	Rev    int    `json:"rev"`
+	Status string `json:"status"`
+}

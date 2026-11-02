@@ -235,6 +235,8 @@ var (
 	ErrThinking = errors.New("thinking is cheap, strong, or nothing")
 	// ErrStepTries is a step's tries outside 1 to [StepTriesMost].
 	ErrStepTries = errors.New("a step gets 1 to 3 tries")
+	// ErrModelID is a step's model that is not one model id ([ModelID]).
+	ErrModelID = errors.New("a model is a model id of at most 200 characters, with no spaces")
 )
 
 // StageWord is name as a stage's one word, lowercased, or the sentence that
@@ -276,3 +278,13 @@ func askCells(ask string) int { return utf8.RuneCountInString(ask) }
 // StepTriesMost is the most tries a person may give one conversation step of
 // one job ([RunEdit.Max]). [ErrStepTries] says it in words.
 const StepTriesMost = 3
+
+// ModelIDMost is the longest model id a step or a job may name.
+const ModelIDMost = 200
+
+// ModelID says whether id can be one model id: empty (the job's model), or at
+// most [ModelIDMost] characters with no space or control character. Which
+// models exist is the engine's to say, not the factory's.
+func ModelID(id string) bool {
+	return utf8.RuneCountInString(id) <= ModelIDMost && !strings.ContainsFunc(id, func(r rune) bool { return r <= ' ' || r == 0x7f })
+}

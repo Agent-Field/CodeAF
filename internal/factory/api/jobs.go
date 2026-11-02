@@ -60,13 +60,16 @@ type StepEditsRequest struct {
 	Thinking map[string]string `json:"thinking,omitempty"`
 	// Max maps a conversation step's name to how many tries it gets, 1 to 3.
 	// Only the job's person sends it.
-	Max    map[string]int `json:"max,omitempty"`
-	On     []string       `json:"on,omitempty"`
-	Skip   []string       `json:"skip,omitempty"`
-	Remove []string       `json:"remove,omitempty"`
-	Move   []StepMove     `json:"move,omitempty"`
-	Why    string         `json:"why,omitempty"`
-	Expect *Expect        `json:"expect,omitempty"`
+	Max map[string]int `json:"max,omitempty"`
+	// Model maps a step name to the model it runs on for this job; "" gives
+	// it back to the job's model. Only the job's person sends it.
+	Model  map[string]string `json:"model,omitempty"`
+	On     []string          `json:"on,omitempty"`
+	Skip   []string          `json:"skip,omitempty"`
+	Remove []string          `json:"remove,omitempty"`
+	Move   []StepMove        `json:"move,omitempty"`
+	Why    string            `json:"why,omitempty"`
+	Expect *Expect           `json:"expect,omitempty"`
 }
 
 // StepMove is one step moved in one job: Step is its name, and After the step
@@ -231,6 +234,7 @@ var ServiceRoutes = []ServiceRoute{
 	{"GET", "/v1/jobs/{id}/step-edits", nil, StepEdits{}},
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
+	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
@@ -243,4 +247,21 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs", NewJob{}, JobCreated{}},
 	{"DELETE", "/v1/auth/device", DevicePoll{}, ActionResult{}},
 	{"POST", "/v1/github/poll", nil, ActionResult{}},
+}
+
+// JobBrief is GET /v1/jobs/{id}/brief: the job's newest brief version (its
+// stub, made from engine data alone, before any is kept), the reader's status
+// of it, and the keys that changed since the rev the caller saw (`?since=`),
+// or since the version before when the caller names none. Failure and
+// FailedAfter say why and after which step the last write failed, while
+// Status is failed.
+type JobBrief struct {
+	Factory          Factory              `json:"factory"`
+	Job              int                  `json:"job"`
+	Status           string               `json:"status"`
+	Failure          string               `json:"failure,omitempty"`
+	FailedAfter      string               `json:"failed_after,omitempty"`
+	Since            int                  `json:"since,omitempty"`
+	Brief            factory.BriefVersion `json:"brief"`
+	ChangedSinceSeen []string             `json:"changed_since_seen"`
 }
