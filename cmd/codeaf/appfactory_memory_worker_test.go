@@ -23,10 +23,19 @@ import (
 )
 
 func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, false)
+}
+
+func TestMemoryLateReceiptReachesFactoryHeaderAfterStop(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, true)
+}
+
+func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
 	s := newLocalSetup(t)
 	release := make(chan struct{})
 	releaseReceipt := sync.OnceFunc(func() { close(release) })
 	cancelled := make(chan struct{}, 1)
+	started := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			select {
@@ -53,6 +62,10 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) 
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		if payload["messages"] != nil {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
 			fmt.Fprintf(w, "data: {\"id\":\"gen-late-memory\",\"model\":%q,\"choices\":[{\"delta\":{\"content\":\"{\\\"claims\\\":[]}\"}}]}\n\n", knowledge.Model)
 			w.(http.Flusher).Flush()
 			<-r.Context().Done()
@@ -132,8 +145,17 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) 
 	s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 	var acted appwire.FactoryJobActed
 	s.must("factory.job_start", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
+	if stop {
+		select {
+		case <-started:
+		case <-time.After(10 * time.Second):
+			t.Fatal("memory did not start")
+		}
+		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+		s.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
+	}
 	deadline := time.Now().Add(10 * time.Second)
-	for {
+	for !stop {
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 		if job.Ready {
 			break
