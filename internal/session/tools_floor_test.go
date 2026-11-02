@@ -62,17 +62,28 @@ func floorLab() *fakeFloorDoor {
 	return &fakeFloorDoor{snap: factory.Snapshot{Now: now, Items: []factory.Item{
 		{ID: 1, Num: 1, Repo: "acme/api", Kind: factory.KindIssue, Title: "ledger counts twice", State: factory.StateNew, Created: now.Add(-9 * day),
 			Body: strings.Repeat("x", 3000), Author: "alice",
-			Triage: factory.Triage{Type: "bug", Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now, Priority: 1, Reason: "money is wrong", Risk: []string{"touches money"}, Read: "A double count in the ledger."}},
+			Triage: factory.Triage{Type: "bug", Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now, Rubric: floorRubric(3), Priority: 1, Reason: "money is wrong", Risk: []string{"touches money"}, Read: "A double count in the ledger."}},
 		{ID: 2, Num: 4, Repo: "acme/api", Kind: factory.KindIssue, Title: "typo on the login page", State: factory.StateNew, Created: now.Add(-2 * day),
-			Triage: factory.Triage{Type: "bug", Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now}},
+			Triage: factory.Triage{Type: "bug", Size: "S", SizeFrom: factory.SizeFromRead, TriagedAt: now, Rubric: floorRubric(1)}},
 		{ID: 3, Num: 6, Repo: "acme/api", Kind: factory.KindIssue, Title: "meter rounds wrong", State: factory.StateNew, Created: now.Add(-5 * day),
-			Triage: factory.Triage{Type: "bug", Size: "M", SizeFrom: factory.SizeFromRead, TriagedAt: now}},
+			Triage: factory.Triage{Type: "bug", Size: "M", SizeFrom: factory.SizeFromRead, TriagedAt: now, Rubric: floorRubric(5)}},
 		{ID: 4, Num: 7, Repo: "acme/api", Kind: factory.KindIssue, Title: "new auth flow", State: factory.StateNew, Created: now.Add(-1 * day),
-			Triage: factory.Triage{Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: now}},
+			Triage: factory.Triage{Type: "feat", Size: "L", SizeFrom: factory.SizeFromRead, TriagedAt: now, Rubric: floorRubric(8)}},
 		{ID: 5, Num: 3, Repo: "acme/api", Kind: factory.KindPR, Title: "bump the parser", State: factory.StateNeedsYou, Question: "ship it with one red check?", Created: now.Add(-3 * time.Hour)},
 		{ID: 6, Num: 9, Repo: "acme/api", Kind: factory.KindIssue, Title: "cache warmup", State: factory.StateRunning, Created: now.Add(-40 * time.Minute)},
 		{ID: 7, Num: 2, Repo: "acme/api", Kind: factory.KindIssue, Title: "hidden thing", State: factory.StateDismissed},
 	}}}
+}
+
+// floorRubric is a read's rubric whose complexity is sum, spread over the
+// factors in order.
+func floorRubric(sum int) *factory.Rubric {
+	r := &factory.Rubric{From: factory.RubricFromRead}
+	for _, f := range r.Factors() {
+		f.Score = min(sum, factory.FactorMost)
+		sum -= f.Score
+	}
+	return r
 }
 
 func floorCall(t *testing.T, door *fakeFloorDoor, args string) (string, bool) {
@@ -129,7 +140,7 @@ func TestFactoryFloorEachAskShapesItsTable(t *testing.T) {
 	}{
 		{"waiting", []string{"waiting on the person", "#3 bump the parser"}, []string{"#1 ", "#9 "}, nil},
 		{"risky", []string{"#1 ledger counts twice", "#7 new auth flow", "risk: touches money"}, []string{"#4 ", "#3 "}, []string{"#1 ", "#7 "}},
-		{"cheapest", []string{"cheapest first"}, []string{"#3 ", "#9 "}, []string{"#4 ", "#1 ", "#6 ", "#7 "}},
+		{"cheapest", []string{"least complex first"}, []string{"#3 ", "#9 "}, []string{"#4 ", "#1 ", "#6 ", "#7 "}},
 		{"oldest", []string{"oldest first", "9d old"}, []string{"#2 "}, []string{"#1 ", "#6 ", "#4 ", "#7 ", "#3 ", "#9 "}},
 		{"all", []string{"every open item", "6 items", "4 new in the factory", "1 waiting on the person", "#9 cache warmup", "40m old"}, []string{"hidden thing", "$0.00", "est $0.0000"}, nil},
 	} {
@@ -165,7 +176,7 @@ func TestFactoryFloorItemAskIsTheItemInFull(t *testing.T) {
 	if isErr {
 		t.Fatal(text)
 	}
-	for _, want := range []string{"#1 ledger counts twice", "est $0.40", "p1 money is wrong", "read: A double count in the ledger.", "author alice", "body:"} {
+	for _, want := range []string{"#1 ledger counts twice", "complexity 3/10", "p1 money is wrong", "read: A double count in the ledger.", "author alice", "body:"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the item lacks %q:\n%s", want, text)
 		}
@@ -206,7 +217,7 @@ func TestFactoryFloorMarksThroughTheDoor(t *testing.T) {
 		t.Errorf("the door was asked %q, want the three new items by their floor ids", got)
 	}
 	table, _ := floorCall(t, door, `{"ask":"all"}`)
-	if !strings.Contains(table, "3 selected") || !strings.Contains(table, "#4 typo on the login page · issue · acme/api · read says S · est $0.10 · new, selected") {
+	if !strings.Contains(table, "3 selected") || !strings.Contains(table, "#4 typo on the login page · issue · acme/api · read says S · complexity 1/10, small (read) · new, selected") {
 		t.Errorf("the next read does not show the marks:\n%s", table)
 	}
 	text, _ = floorCall(t, door, `{"unmark":[4],"ask":"all"}`)
