@@ -88,6 +88,16 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			if before.Stream == nil || before.Stream.Cur != 1 || before.Stream.Phases[1].Result == nil || before.Stream.Phases[1].Result.Exit == 0 {
 				t.Fatalf("did not reproduce a failed command: %+v", before.Stream)
 			}
+			initialWaiting := false
+			for _, e := range entries() {
+				t.Logf("initial manager entry: kind=%s text=%q progress=%+v", e.Kind, e.Text, e.Progress)
+				if e.Progress != nil && e.Progress.Event == "waiting" {
+					initialWaiting = true
+				}
+			}
+			if !initialWaiting {
+				t.Fatal("job page manager does not show the failed step waiting")
+			}
 			if action == "give back" {
 				act("factory.job_control", map[string]any{"mode": "take_over"})
 				// Takeover is a separate action; wait for the withdrawn worker before
