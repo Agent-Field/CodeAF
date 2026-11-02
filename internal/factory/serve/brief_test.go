@@ -135,3 +135,25 @@ func TestJobBriefBeginAndKeep(t *testing.T) {
 	f.person = "mei"
 	f.briefPost(t, it, "begin", `{"trigger":"retry"}`, 403, nil)
 }
+
+// A SPOT OF THE BRIEF OPENS ON ITS HUNKS from the job's change, with the
+// writer's notes; a spot the newest version lacks is not found.
+func TestJobBriefSpotReadsItsHunks(t *testing.T) {
+	f := newV2Jobs(t)
+	it := factory.Item{State: factory.StateRunning, Assignee: "sam", Change: &factory.Change{
+		Patch: "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,2 +1,3 @@ func Send() {\n x\n+y\n",
+	}}
+	it.KeepBrief(factory.BriefVersion{Verdict: "Fixed.", Blocks: []factory.BriefBlock{{Kind: factory.BlockWhereToLook, Heading: "Where to look", Rest: "nothing else",
+		Spots: []factory.BriefSpot{{ID: "1", File: "a.go", Symbol: "Send", Lines: 1, Why: "the send", Notes: []factory.BriefNote{{Hunk: "a.go:1", Text: "adds y"}}}}}}})
+	it = f.create(t, it)
+	w := verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d/brief/spots/1", it.ID), "")
+	checkJSON(t, w, 200)
+	var got api.JobBriefSpot
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Rev != 1 || got.File != "a.go" || len(got.Hunks) != 1 || got.Hunks[0].Added != 1 || len(got.Annotations) != 1 || got.Annotations[0].Text != "adds y" {
+		t.Fatalf("spot = %+v", got)
+	}
+	checkJSON(t, verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d/brief/spots/2", it.ID), ""), 404)
+}
