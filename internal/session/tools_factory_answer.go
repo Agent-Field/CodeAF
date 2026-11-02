@@ -50,17 +50,18 @@ type InboxDoor interface {
 // The words `factory_answer` hands back when nothing waits on the manager or
 // the call says neither or both.
 const (
-	answerNothingWaits = "nothing changed: no step's question is waiting on you on this turn"
-	answerNeedsOne     = "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
+	answerNothingWaits = factoryAnswerRefused + "nothing changed: no step's question is waiting on you on this turn"
+	answerNeedsOne     = factoryAnswerRefused + "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
 )
 
-const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. A failed tool call means nothing was saved; never claim a decision advanced the run unless the tool confirms it. " +
+const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
 	"answer is your answer in words, and the step goes on with it at once: answer yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. " +
 	"ask_person is one line of why, and sends the question to the person in this conversation; the step waits for their answer. " +
 	"Send it to the person when it turns on taste, scope, risk, credentials or access, money, or anything the issue and the recipe do not say. Never guess an answer to spare them."
 
 const factoryAnswerSchemaJSON = `{"type":"object","properties":{` +
-	`"question_id":{"type":"string","description":"The exact pending question_id returned by factory_status, required when answering a persisted step question outside its temporary inbox turn."},` +
+	`"action":{"type":"string","enum":["answer","reject_plan"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it."},` +
+	`"question_id":{"type":"string","description":"The exact pending question_id returned by factory_status, required for a persisted step reply or a plan send-back outside a temporary inbox turn."},` +
 	`"answer":{"type":"string","description":"Your answer in words, for the step."},` +
 	`"ask_person":{"type":"string","description":"One line of why the person decides it."}` +
 	`},"additionalProperties":false}`
@@ -76,6 +77,7 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 		Schema:      json.RawMessage(factoryAnswerSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
+				Action     string `json:"action"`
 				QuestionID string `json:"question_id"`
 				Answer     string `json:"answer"`
 				AskPerson  string `json:"ask_person"`
@@ -90,13 +92,27 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 			if (answer == "") == (why == "") {
 				return answerNeedsOne, true, nil
 			}
+			if parsed.Action == "reject_plan" {
+				d, ok := a.runDoorForTurn().(ManagerPlanRejecter)
+				if !ok || answer == "" || why != "" {
+					return factoryAnswerFailure("Nothing changed: sending a plan back requires requested changes on an ordinary manager turn."), true, nil
+				}
+				line, err := d.RejectPendingPlan(ctx, a.config.SessionFile, parsed.QuestionID, strings.TrimSpace(parsed.Answer))
+				if err != nil {
+					return factoryAnswerFailure(err.Error()), true, nil
+				}
+				return line, false, nil
+			}
+			if parsed.Action != "" && parsed.Action != "answer" {
+				return factoryAnswerFailure("Nothing changed: unknown action."), true, nil
+			}
 			if d, ok := a.runDoorForTurn().(ManagerStatusDoor); ok {
 				if answer == "" {
-					return "The persisted question is already with the person; nothing changed.", true, nil
+					return factoryAnswerFailure("Nothing changed: the persisted question is already with the person."), true, nil
 				}
 				line, err := d.AnswerPending(ctx, a.config.SessionFile, parsed.QuestionID, answer)
 				if err != nil {
-					return "nothing changed: " + err.Error(), true, nil
+					return factoryAnswerFailure(err.Error()), true, nil
 				}
 				return line, false, nil
 			}
@@ -112,11 +128,21 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 				line, err = door.SendOn(ctx, a.config.SessionFile, why)
 			}
 			if err != nil {
-				return "nothing changed: " + strings.Join(strings.Fields(err.Error()), " "), true, nil
+				return factoryAnswerFailure(err.Error()), true, nil
 			}
 			return line, false, nil
 		},
 	}
+}
+
+const factoryAnswerRefused = "Nothing changed. Tell the person plainly that the requested action did not happen and the job has not advanced; do not promise work has started or repeat tool names or internal identifiers. Read factory_status on an ordinary manager turn before retrying; during a temporary inbox turn use the supplied question. Recovery detail: "
+
+// factoryAnswerFailure distinguishes an explicit refusal from an uncertain write.
+func factoryAnswerFailure(detail string) string {
+	if strings.HasPrefix(strings.ToLower(detail), "nothing changed") {
+		return factoryAnswerRefused + detail
+	}
+	return "Action not confirmed. Read factory_status before retrying and use its current question_id and supported action. Tell the person plainly that the requested action was not confirmed; do not promise work has started or repeat tool names or internal identifiers. Recovery detail: " + detail
 }
 
 // askInbox is `ask`'s road in a stage conversation: the question goes to the

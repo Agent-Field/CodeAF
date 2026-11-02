@@ -1,18 +1,18 @@
 package run
 
-// ── PUBLISHING: A PERSON'S APPROVAL, CARRIED OUT ──────────────────────────
+// ── PUBLISHING: RECORDED APPROVAL, CARRIED OUT ──────────────────────────
 //
-// PUBLISH IS A PERSON. Approving at the proof gate is a server-side event in
+// Approving at the proof gate is a server-side event in
 // the factory's record (`evt_…`, internal/factory/record); the factory turns
-// it into the trailer `Factory-Approval: evt_… @handle <commit>` and hands the trailer
+// it into the trailer `Factory-Approval: evt_… @handle <commit>` (or `factory`
+// in place of `@handle` for an automatic approval) and hands the trailer
 // to the worker that publishes. AGENTS NEVER ATTEST: nothing here publishes
 // without a trailer in that exact shape, and the trailer never comes from a
 // model's words.
 //
 // For an issue (or any job that is not a pull request) the worker commits the
 // job's worktree before the proof gate opens, reports its head, then pushes
-// its branch with the person's token (never with force) and opens the pull
-// request through the job's source, its body the proof summary, the claims
+// its branch with the person's token and opens the pull request through the job's source, its body the proof summary, the claims
 // and the trailer as its last line. When there are no commits beyond the default
 // branch, it posts that body as an issue comment without pushing. For a pull
 // request job the approval is a
@@ -34,9 +34,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
-// trailerShape carries the record's approval id, its person and the exact
+// trailerShape carries the record's approval id, its actor and the exact
 // approved head. An older receipt remains valid only for an unreported head.
-var trailerShape = regexp.MustCompile(`^Factory-Approval: evt_[0-9a-f]{8} @[a-z0-9-]+(?: (?:[0-9a-f]{40}|[0-9a-f]{64}))?$`)
+var trailerShape = regexp.MustCompile(`^Factory-Approval: evt_[0-9a-f]{8} (?:@[a-z0-9-]+|factory)(?: (?:[0-9a-f]{40}|[0-9a-f]{64}))?$`)
 
 // ErrNoApproval is a publish asked for without a recorded approval.
 var ErrNoApproval = errors.New("job requires a recorded approval before publishing")
@@ -175,8 +175,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			if detail == "" {
 				detail = "could not publish"
 			}
-			it.PublishError = detail
-			it.MarkPublishing("failed", publish.ErrorCode(err), strings.TrimSpace(publish.ErrorDetail(err)), now)
+			code := publish.ErrorCode(err)
+			it.PublishError = publish.Reason(code, detail)
+			it.MarkPublishing("failed", code, strings.TrimSpace(publish.ErrorDetail(err)), now)
 			loopSay(it, now, "fail", "could not publish: "+detail)
 			return nil
 		})
@@ -216,6 +217,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			factory.WatchPublishedPR(it)
 		}
 		it.MarkPublishing("opened", "", "", now)
+		if receipt.note != "" {
+			loopSay(it, now, "said", receipt.note)
+		}
 		loopSay(it, now, "ok", "published · "+url)
 		return nil
 	}) == nil {
@@ -232,6 +236,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			if it.PullRequest != nil && it.PullRequest.Number == receipt.pr.Number {
 				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The verified local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
 			} else {
+				if receipt.note != "" {
+					lp.tell(c.id, receipt.note+".")
+				}
 				lp.tell(c.id, "PR available: "+receipt.pr.URL+". Follow PR watches CI, reviews and conflicts. "+mode+" Merge remains your decision.")
 			}
 		} else {
@@ -244,18 +251,21 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 type published struct {
 	pr      *factory.PullRequest
 	comment string
+	// note is a line for the job about where the work went, "" when as expected.
+	note string
 }
 
 // publish writes the approved job to its source and answers its receipt.
 func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (published, error) {
 	var src factory.Source
+	var remote Git
 	pushBranch := r.opts.Push
 	if r.opts.Publisher != nil {
 		target, err := r.opts.Publisher(ctx, it)
 		if err != nil {
 			return published{}, publish.Wrap(err, "push")
 		}
-		src, pushBranch = target.Source, target.Push
+		src, pushBranch, remote = target.Source, target.Push, target.Git
 	} else if r.opts.Source != nil {
 		src = r.opts.Source(it.Repo)
 	}
@@ -359,12 +369,15 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if pushBranch == nil {
 		return published{}, publish.Wrap(errors.New("this machine cannot push"), "push")
 	}
-	branch := branchFor(it)
-	ref := branch
-	if it.HeadCommit != "" {
-		ref = it.HeadCommit + ":refs/heads/" + branch
+	if remote == nil {
+		remote = git
 	}
-	if err := push(pushBranch, dir, it, ref); err != nil {
+	branch := branchFor(it)
+	if existingPR != nil && existingPR.HeadBranch != "" {
+		branch = existingPR.HeadBranch
+	}
+	pushed, moved, err := pushApproved(remote, pushBranch, dir, it, branch, existingPR != nil)
+	if err != nil {
 		return published{}, publish.Wrap(err, "push")
 	}
 	if it.FollowUp != nil && it.FollowUp.State == "waiting_approval" && it.PullRequest != nil {
@@ -387,7 +400,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		pr.ReadinessKey, pr.ReadinessContext = "", ""
 		return published{pr: &pr}, nil
 	}
-	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: branch, Body: body, Draft: true})
+	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: pushed, Body: body, Draft: true})
 	if err != nil {
 		return published{}, publish.Wrap(err, "pr")
 	}
@@ -402,7 +415,35 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if it.PullRequest != nil {
 		draft = it.PullRequest.Draft
 	}
-	return published{pr: &factory.PullRequest{Number: n, URL: rcpt.URL, Draft: draft, State: factory.PROpen}}, nil
+	return published{note: moved, pr: &factory.PullRequest{Number: n, URL: rcpt.URL, Draft: draft, State: factory.PROpen, HeadBranch: pushed}}, nil
+}
+
+// pushApproved pushes the approved head to branch and answers the branch it
+// ended up on, with a line for the job when that is another name. A push a
+// remote refused as behind goes to [placeRejected], except a repair: the PR's own
+// branch moved, so the person reads what landed there first.
+func pushApproved(git Git, pushBranch func(dir, ref string) error, dir string, it factory.Item, branch string, repair bool) (pushed, moved string, err error) {
+	head := it.HeadCommit
+	if head == "" {
+		out, err := git.Run(dir, "rev-parse", "HEAD")
+		if err != nil {
+			return "", "", publish.Wrap(err, "worktree")
+		}
+		head = strings.TrimSpace(out)
+	}
+	pushed = branch
+	err = push(pushBranch, dir, it, head+":refs/heads/"+branch)
+	if err != nil && !repair && publish.ErrorCode(publish.Wrap(err, "push")) == publish.CodePushRejected {
+		pushed, err = placeRejected(git, pushBranch, dir, it, branch, head)
+	}
+	if err != nil {
+		return "", "", err
+	}
+	notePushed(git, dir, pushed, head)
+	if pushed != branch {
+		moved = besideWords(branch, pushed)
+	}
+	return pushed, moved, nil
 }
 
 // commitApproved commits everything the job left in its worktree as one
