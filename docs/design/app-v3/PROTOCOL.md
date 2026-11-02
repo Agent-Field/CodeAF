@@ -321,7 +321,9 @@ with a complexity rubric and measures cost from its own finished jobs; a model
 never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
 proof, novelty}`, each `{score 0..2, why?, low?}` (`low`: judged without the
 repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
-(`small` 0–3, `medium` 4–6, `large` 7–10); `triage.est` is gone. An open job
+(`small` 0–3, `medium` 4–6, `large` 7–10), with `band_near` naming the
+neighbouring band when the sum sits on an edge (3 or 4, 6 or 7) so the desk
+shows both; `triage.est` is gone. An open job
 carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?}`: the
 10th to the 90th percentile of the `n` nearest finished jobs (about eight in
 ten land inside), in `repo`
