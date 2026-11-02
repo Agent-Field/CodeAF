@@ -665,13 +665,13 @@ func (j *job) settleAccounting(ctx context.Context) {
 	if j.spendReport == nil {
 		return
 	}
-	if ctx.Err() != nil {
-		// Quit cancels execution, but the existing accounting receipt still
-		// needs a live context before cleanup removes the paid job's mirror.
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), StopWait)
-		defer cancel()
-	}
+	// Quit can arrive before or during settlement. Keep its existing receipt
+	// door alive for five seconds after cancellation, before mirror cleanup.
+	parent := ctx
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancel()
+	stop := context.AfterFunc(parent, func() { time.AfterFunc(StopWait, cancel) })
+	defer stop()
 	deadline := time.Now().Add(provider.ReceiptWait + time.Second)
 	for j.o.Runner.Running(j.id) && time.Now().Before(deadline) {
 		if !pause(ctx, 20*time.Millisecond) {

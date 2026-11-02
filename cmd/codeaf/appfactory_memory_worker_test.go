@@ -225,8 +225,8 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	if settlingQuit {
 		// Stop has revoked the lease and the worker's five-second drop wait
 		// has elapsed. Quit now interrupts its already-running settlement.
+		local.host.cancel()
 		go func() { s.backend.closeLocalFactory(); close(quitDone) }()
-		time.Sleep(100 * time.Millisecond)
 	}
 	releaseReceipt()
 	if quit {
