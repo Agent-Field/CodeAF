@@ -57,9 +57,11 @@ const stageResultDescription = "This IS one stage of a factory item. Follow its 
 const planEditDescription = "Propose stage changes: add sentences, skip or on named stages. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
 
 func stageResultSchemaJSON(plan bool) string {
-	required := `["done"]`
+	// A plan names its files and publishes nothing; every other stage does the
+	// reverse. Words here cost money on every call, so each carries only its own.
+	required, ownField := `["done"]`, stagePublishSummaryField
 	if plan {
-		required = `["done","files"]`
+		required, ownField = `["done","files"]`, stageFilesField()
 	}
 	return `{"type":"object","properties":{` +
 		`"final":{"type":"boolean","description":"Defaults to done; false keeps working."},` +
@@ -69,12 +71,17 @@ func stageResultSchemaJSON(plan bool) string {
 		`"text":{"type":"string"},"ok":{"type":"boolean"},"evidence":{"type":"string"},` +
 		`"medium":{"type":"string","description":"test, screenshot, transcript, benchmark or policy."}` +
 		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
-		`"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},` +
-		`"files":{"type":"array","maxItems":` + strconv.Itoa(factory.PlanFilesMost) + `,"items":{"type":"string","maxLength":` + strconv.Itoa(factory.PlanPathMost) + `},"description":"Required for a plan: every repository-relative file to touch or add; no folders or globs. Never infer this from prose."},` +
+		ownField +
 		`"notes":{"type":"array","items":{"type":"string"},"description":"Sentences for the stages after this one."},` +
 		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},` +
 		`"output":{"type":"string","description":"What changed and what was verified; omit guessed test totals."}` +
 		`},"required":` + required + `,"additionalProperties":false}`
+}
+
+const stagePublishSummaryField = `"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},`
+
+func stageFilesField() string {
+	return `"files":{"type":"array","maxItems":` + strconv.Itoa(factory.PlanFilesMost) + `,"items":{"type":"string","maxLength":` + strconv.Itoa(factory.PlanPathMost) + `},"description":"Every repo-relative file to touch or add; no folders or globs."},`
 }
 
 func planEditSchemaJSON() string {
