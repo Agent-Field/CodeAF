@@ -492,6 +492,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		if err != nil || it.Stream == nil {
 			return
 		}
+		if !lp.stopSpending(c, it) {
+			return
+		}
 		i := nextPhase(it.Stream.Phases)
 		if i >= 0 && it.Stream.Phases[i].Name == factory.FollowPRStep && it.PullRequest == nil {
 			lp.land(c)
@@ -696,7 +699,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
 	}
-	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)
+	question := factory.ApproveQuestion(prevName)
+	if hold != "" && it.StartRules != nil && it.StartRules.UnreadWhy != "" {
+		question += " · " + it.StartRules.UnreadWhy
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, question, factory.PhaseWaiting, "", said)
 	if !ok {
 		return false
 	}
@@ -1940,6 +1947,9 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	var cut *factory.StepProgress
 	it.Failure = why
+	if why == nil {
+		it.StopAfterStep = false
+	}
 	it.Recovery = nil
 	it.Approval = nil
 	it.PublishError = ""
@@ -2203,6 +2213,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		it, err := r.opts.Store.Get(id)
 		if err != nil {
 			return err
+		}
+		if c == nil && it.QKind == factory.QKindSpendStopped {
+			return r.answerStoppedSpending(id, yes, words)
 		}
 		// A STEP'S QUESTION THE PERSON HOLDS outlives the round that asked
 		// it (a pause, a restart): the answer is kept for the step's next

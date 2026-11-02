@@ -107,6 +107,8 @@ func (d *Doors) Launch(id int) error {
 	var file *pipeline.File
 	var copied *factory.PipelineCopy
 	unread, decide := false, false
+	var unreadWhy, unreadFile string
+	var unreadLine int
 	if d.read != nil {
 		f, err := d.read(context.Background(), it)
 		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
@@ -116,6 +118,7 @@ func (d *Doors) Launch(id int) error {
 			file = &f
 		}
 		unread = err != nil
+		unreadWhy, unreadFile, unreadLine = pipeline.UnreadDiagnostic(err)
 		copied, decide = f.Copy, true
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
@@ -156,12 +159,15 @@ func (d *Doors) Launch(id int) error {
 			case file != nil:
 				it.StartRules = pipeline.StartRulesOf(*file)
 			case unread:
-				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true}
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true, UnreadWhy: unreadWhy, UnreadFile: unreadFile, UnreadLine: unreadLine}
 				it.Note(now, "Started with the repository's rules unread; its plan will wait for you")
 			default:
 				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
 			}
 			it.RuleHold = ""
+		}
+		if unread && it.Cap <= 0 {
+			it.Cap = factory.DefaultJobBudget
 		}
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
@@ -554,4 +560,30 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 		return dirty, nil
 	})
 	return saved, err
+}
+
+// SpendAnswer answers only the spending question on the locked revision.
+// Refusals leave both the item and its worker signal unchanged.
+func (d *Doors) SpendAnswer(id, revision int, yes bool, may func(factory.Item) error) (factory.Item, error) {
+	var before factory.Item
+	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.SpendingAnswer(*it); err != nil {
+			return false, err
+		}
+		if may != nil {
+			if err := may(*it); err != nil {
+				return false, err
+			}
+		}
+		var err error
+		before, err = copyItem(*it)
+		if err != nil {
+			return false, err
+		}
+		return answerLocked(doc, held, id, it, yes, "", now)
+	})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	return before, nil
 }

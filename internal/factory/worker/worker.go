@@ -330,6 +330,15 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		j.converse(ctx)
 		return
 	}
+	// Older factories omit this capability and have no boundary read door.
+	if pulled.Job.Can.StopAfterStep || it.StopAfterStep {
+		o.Runner.SetStopAfterStepReader(it.ID, func(ctx context.Context) (bool, error) {
+			readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+			defer cancel()
+			return w.StopAfterStep(readCtx, pulled.Lease.ID)
+		})
+		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
+	}
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
