@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,10 +14,16 @@ import (
 type errandAgent struct {
 	*fakeAgent
 	asked []session.ErrandAsk
+	took  time.Duration
+	fail  error
 }
 
 func (a *errandAgent) RunErrand(_ context.Context, ask session.ErrandAsk) (session.ErrandAnswer, error) {
 	a.asked = append(a.asked, ask)
+	time.Sleep(a.took)
+	if a.fail != nil {
+		return session.ErrandAnswer{}, a.fail
+	}
 	if ask.Model == "vendor/refused" {
 		return session.ErrandAnswer{}, fmt.Errorf("%w: one-model mode", session.ErrErrandRoute)
 	}
@@ -41,10 +48,38 @@ func TestAnErrandRunsOnTheOwningEngine(t *testing.T) {
 	}
 }
 
-func TestAnOwnerWithoutErrandsAnswersUnavailable(t *testing.T) {
+// AN OWNER WITHOUT ERRANDS SAYS SO IN WORDS, so the app's log can tell it
+// apart from a link that gave up; the app still answers unavailable.
+func TestAnOwnerWithoutErrandsSaysSo(t *testing.T) {
 	loop := askLoop(t, &fakeAgent{model: "m"})
-	got, err := loop.Client.Agent().RunErrand(t.Context(), session.ErrandAsk{Purpose: "status"})
-	if err != nil || got.Reason != "unavailable" {
-		t.Fatalf("%+v %v", got, err)
+	_, err := loop.Client.Agent().RunErrand(t.Context(), session.ErrandAsk{Purpose: "status"})
+	if err == nil || !strings.Contains(err.Error(), "does not run errands") {
+		t.Fatalf("an owner without errands answered %v", err)
+	}
+}
+
+// AN ERRAND WAITS AS LONG AS IT ASKED TO, NOT A GETTER'S TEN SECONDS. A brief
+// is a model call of up to its own deadline; a near end that gave up at
+// [callDeadline] turned every slow answer into "unavailable".
+func TestAnErrandWaitsOutItsOwnDeadlineAcrossTheHop(t *testing.T) {
+	t.Parallel()
+	far := &errandAgent{fakeAgent: &fakeAgent{model: "m"}, took: callDeadline + time.Second}
+	loop := askLoop(t, far)
+	ask := session.ErrandAsk{Purpose: "brief", Deadline: 3 * callDeadline, Messages: []session.ErrandMessage{{Role: "user", Text: "x"}}}
+	got, err := loop.Client.Agent().RunErrand(t.Context(), ask)
+	if err != nil || got.Text != "done" {
+		t.Fatalf("a slow errand inside its deadline was not waited for: %+v %v", got, err)
+	}
+}
+
+// A FAR END'S REFUSAL OF THE ASK KEEPS ITS KIND AND ITS WORDS over the hop,
+// the way a route refusal does, so the caller is told why and not "unavailable".
+func TestAnErrandAskRefusalCrossesTheHopWithItsReason(t *testing.T) {
+	far := &errandAgent{fakeAgent: &fakeAgent{model: "m"}, fail: fmt.Errorf("%w: messages[0].text is empty", session.ErrErrandAsk)}
+	loop := askLoop(t, far)
+	ask := session.ErrandAsk{Purpose: "brief", Messages: []session.ErrandMessage{{Role: "user", Text: "x"}}}
+	_, err := loop.Client.Agent().RunErrand(t.Context(), ask)
+	if !errors.Is(err, session.ErrErrandAsk) || !strings.Contains(err.Error(), "messages[0].text is empty") {
+		t.Fatalf("the far end's refusal lost its kind or its words: %v", err)
 	}
 }
