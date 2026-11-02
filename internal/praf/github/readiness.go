@@ -128,6 +128,25 @@ func (c *client) ReadinessMaterial(ctx context.Context, owner, repo, base string
 // The caller rechecks the complete readiness snapshot first and observes the
 // result afterward. GitHub supplies no expected-head field for this mutation.
 func (c *client) MarkPullReady(ctx context.Context, owner, repo string, n int, head string) error {
+	return c.markPullReady(ctx, owner, repo, n, head, false)
+}
+
+// ReadyRefusal is a definitive refusal before any ready transition was confirmed.
+// Permission distinguishes a caller's lack of access from a conflicting PR state.
+type ReadyRefusal struct {
+	Permission bool
+	Message    string
+}
+
+func (e *ReadyRefusal) Error() string { return e.Message }
+
+// MarkDraftPullReady is the person's explicit action: an already ready PR is
+// a conflict, rather than the idempotent success of automatic publication.
+func (c *client) MarkDraftPullReady(ctx context.Context, owner, repo string, n int, head string) error {
+	return c.markPullReady(ctx, owner, repo, n, head, true)
+}
+
+func (c *client) markPullReady(ctx context.Context, owner, repo string, n int, head string, requireDraft bool) error {
 	raw, _, err := c.read(ctx, c.repoURL(owner, repo, "/pulls/"+strconv.Itoa(n)), "")
 	if err != nil {
 		return err
@@ -144,9 +163,12 @@ func (c *client) MarkPullReady(ctx context.Context, owner, repo string, n int, h
 		return err
 	}
 	if p.State != "open" || p.Head.SHA != head || p.Draft == nil {
-		return fmt.Errorf("PR closed, head moved or draft state is unknown before marking ready")
+		return &ReadyRefusal{Message: "PR closed, head moved or draft state is unknown before marking ready"}
 	}
 	if !*p.Draft {
+		if requireDraft {
+			return &ReadyRefusal{Message: "the pull request is already ready for review"}
+		}
 		return nil
 	}
 	if p.NodeID == "" {
@@ -164,6 +186,7 @@ func (c *client) MarkPullReady(ctx context.Context, owner, repo string, n int, h
 	var v struct {
 		Errors []struct {
 			Message string `json:"message"`
+			Type    string `json:"type"`
 		} `json:"errors"`
 		Data struct {
 			Ready struct {
@@ -176,6 +199,13 @@ func (c *client) MarkPullReady(ctx context.Context, owner, repo string, n int, h
 	}
 	if err = json.Unmarshal(raw, &v); err != nil {
 		return err
+	}
+	if len(v.Errors) > 0 && v.Data.Ready.PR == nil {
+		permission := false
+		for _, failure := range v.Errors {
+			permission = permission || failure.Type == "FORBIDDEN" || failure.Type == "UNAUTHORIZED"
+		}
+		return &ReadyRefusal{Permission: permission, Message: "GitHub refused ready for review: " + v.Errors[0].Message}
 	}
 	if len(v.Errors) > 0 {
 		return fmt.Errorf("GitHub refused ready for review: %s", v.Errors[0].Message)

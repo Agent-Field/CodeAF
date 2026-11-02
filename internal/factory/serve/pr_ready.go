@@ -73,6 +73,15 @@ func (h *Handler) prReady(w http.ResponseWriter, r *http.Request, it factory.Ite
 }
 
 func (h *Handler) prReadyFailed(w http.ResponseWriter, err error) {
+	var refusal *forge.ReadyRefusal
+	if errors.As(err, &refusal) {
+		status := http.StatusConflict
+		if refusal.Permission {
+			status = http.StatusForbidden
+		}
+		h.fail(w, status, refusal.Error())
+		return
+	}
 	var apiErr *forge.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
 		if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden || apiErr.StatusCode == http.StatusNotFound {
