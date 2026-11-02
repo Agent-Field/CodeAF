@@ -936,6 +936,11 @@ func localRunner(seam *Seam, o localOptions) {
 		seam.Hold = h.Hold
 	}
 	seam.Answer = r.Answer
+	if s, ok := r.(interface {
+		SpendAnswer(int, int, bool, func(Item) error) (Item, error)
+	}); ok {
+		seam.SpendAnswer = s.SpendAnswer
+	}
 	seam.Steer = r.Steer
 	seam.SignOff = r.SignOff
 	seam.SendBack = r.SendBack
