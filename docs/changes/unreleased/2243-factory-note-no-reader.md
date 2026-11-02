@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf job notes say when no remaining step will read them
-pr: 0
+pr: 2243
 surface: [engine, chat]
 invalidates:
   - "A saved job note was described as being for its stages even after every step had finished. The answer now names its next reader or says no remaining step will read it."
