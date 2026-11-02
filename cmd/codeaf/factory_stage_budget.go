@@ -31,12 +31,22 @@ func (b *stageBudget) FactoryAuto() bool {
 // FactoryJob names the job on the ledger rows of every call this step makes.
 func (b *stageBudget) FactoryJob() string { return factory.LedgerName(b.item) }
 
-func (b *stageBudget) Spend(usd float64) { b.spend(usd, false) }
+func (b *stageBudget) Spend(usd float64) { b.book(usd, false, "", 0, 0, 0) }
+
+// SpendModel books one priced call and the model that answered it.
+func (b *stageBudget) SpendModel(usd float64, model string, calls, input, output int) {
+	b.book(usd, false, model, calls, input, output)
+}
 
 // SpendMemory records optional learning separately inside the same job total.
-func (b *stageBudget) SpendMemory(usd float64) { b.spend(usd, true) }
+func (b *stageBudget) SpendMemory(usd float64) { b.book(usd, true, "", 0, 0, 0) }
 
-func (b *stageBudget) spend(usd float64, memory bool) {
+// SpendMemoryModel is SpendMemory with the model that answered the call.
+func (b *stageBudget) SpendMemoryModel(usd float64, model string, calls, input, output int) {
+	b.book(usd, true, model, calls, input, output)
+}
+
+func (b *stageBudget) book(usd float64, memory bool, model string, calls, input, output int) {
 	if usd <= 0 {
 		return
 	}
@@ -56,6 +66,7 @@ func (b *stageBudget) spend(usd float64, memory bool) {
 		} else {
 			factory.AddChatSpend(it, usd)
 		}
+		factory.AddModelUse(it, model, usd, calls, int64(input), int64(output))
 		return nil
 	}); err != nil {
 		b.failed = true

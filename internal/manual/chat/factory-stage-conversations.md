@@ -246,6 +246,14 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `trying test again` after **Try again**, or `trying write again` after **Send back to Write**;
 - `stopped` after **Stop job** or **Stop step**, and `paused` or `resumed` when pausing or continuing.
 
+Pause and Resume still apply if the job progressed after the page was read.
+Stop wins if it finishes before Resume arrives: Resume says the job “is not paused”,
+and Pause says it “is not running”. Neither refusal changes the job, adds an
+activity receipt or starts spending. Pause also refuses a finished job.
+An explicit Resume writes one `resumed` line here, including while the cancelled
+worker drains; pressing Resume again adds none. Automatic continuation adds no
+extra explicit Resume note.
+
 Retry and giving the job back to the pipeline withdraw the previous execution. They do
 not report that you stopped it. Taking over automatic work keeps its results for the
 working chat; giving it back checks those changes before continuing.

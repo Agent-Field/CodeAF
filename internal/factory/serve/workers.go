@@ -674,7 +674,11 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if it.PullRequest != nil {
 			detail = "pr · " + it.PullRequest.URL
 		}
-		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: requestWorker(r).Handle, Cost: jobCost(*it), Detail: detail})
+		handle := requestWorker(r).Handle
+		if it.Approval != nil && it.Approval.Automatic {
+			handle = ""
+		}
+		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: jobCost(*it), Detail: detail})
 		return nil
 	})
 }

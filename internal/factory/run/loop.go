@@ -1986,7 +1986,10 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	it.Question, it.QKind = "", ""
 	s := it.Stream
 	if s == nil {
-		return nil
+		// A stop at the start gate still needs an end record, even though
+		// no step began and there is no step failure to keep.
+		s = &factory.Stream{}
+		it.Stream = s
 	}
 	if s.Cur >= 0 && s.Cur < len(s.Phases) {
 		ph := &s.Phases[s.Cur]
@@ -2183,6 +2186,9 @@ func (r *Runner) revive(it factory.Item) error {
 		}
 	}
 	lp.mu.Unlock()
+	// The lease door already said an explicit Resume before queueing this run.
+	log := it.Stream.Log
+	resumeSaid := len(log) > 0 && log[len(log)-1].Text == sayResumed
 	line := sayResumed
 	if i := nextPhase(it.Stream.Phases); i >= 0 {
 		ph := it.Stream.Phases[i]
@@ -2199,14 +2205,18 @@ func (r *Runner) revive(it factory.Item) error {
 			return fmt.Errorf("%s is not paused", it.Ref())
 		}
 		it.Stream.Paused = false
-		loopSay(it, now, "said", line)
+		if !resumeSaid {
+			loopSay(it, now, "said", line)
+		}
 		return nil
 	})
 	if err != nil {
 		lp.forget(c)
 		return err
 	}
-	lp.tell(id, line)
+	if !resumeSaid {
+		lp.tell(id, line)
+	}
 	lp.enqueue(c)
 	return nil
 }

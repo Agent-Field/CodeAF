@@ -207,9 +207,9 @@ func (b *memoryDelayedJobBudget) Spend(usd float64) {
 	b.stageBudget.Spend(usd)
 }
 
-func (b *memoryDelayedJobBudget) SpendMemory(usd float64) {
+func (b *memoryDelayedJobBudget) SpendMemoryModel(usd float64, model string, calls, input, output int) {
 	if usd == .02 {
 		time.Sleep(100 * time.Millisecond)
 	}
-	b.stageBudget.SpendMemory(usd)
+	b.stageBudget.SpendMemoryModel(usd, model, calls, input, output)
 }

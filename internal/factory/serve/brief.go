@@ -35,7 +35,7 @@ func (h *Handler) readJobBrief(w http.ResponseWriter, r *http.Request) {
 func jobBrief(f api.Factory, it factory.Item, since int) api.JobBrief {
 	out := api.JobBrief{
 		Factory: f, Job: it.ID, Status: factory.BriefStatusOf(it), Since: since,
-		Brief: factory.LatestBrief(it), ChangedSinceSeen: factory.BriefChangedSince(it.Briefs, since),
+		Brief: factory.LatestBrief(it), VerdictBehind: factory.BriefVerdictBehind(it), ChangedSinceSeen: factory.BriefChangedSince(it.Briefs, since),
 	}
 	if w := it.BriefWriting; out.Status == factory.BriefStatusFailed && w != nil {
 		out.Failure, out.FailedAfter = w.Failure, w.AfterStep

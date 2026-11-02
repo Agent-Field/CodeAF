@@ -2513,6 +2513,9 @@ type Config struct {
 
 	// PlanStage requires the plan file list in the stage_result answer schema.
 	PlanStage bool
+	// RepairStage offers the PR repair report in the stage_result answer schema;
+	// only the step that follows a pull request can write one.
+	RepairStage bool
 
 	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
 	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
