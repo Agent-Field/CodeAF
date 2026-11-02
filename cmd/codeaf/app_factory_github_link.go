@@ -119,14 +119,18 @@ func (l *githubLink) forget() {
 // kept: the person connected or disconnected, and no wait for an old answer
 // stands. Another provider's key changes nothing.
 func (l *githubLink) noticeKey() {
-	handed := githubKeyHanded()
-	l.mu.Lock()
-	same := handed == l.handed
-	l.handed = handed
-	l.mu.Unlock()
-	if !same {
+	if l.swapHanded(githubKeyHanded()) {
 		l.forget()
 	}
+}
+
+// swapHanded keeps the key's state and says whether it changed.
+func (l *githubLink) swapHanded(handed uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	changed := handed != l.handed
+	l.handed = handed
+	return changed
 }
 
 // refresh starts an ask unless one is out or the last one says to wait, and
