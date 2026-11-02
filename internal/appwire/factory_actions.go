@@ -43,7 +43,8 @@ import (
 // bound these methods end to end.
 
 // FeatureFactoryJobActions is announced in hello when the engine serves
-// factory.job_*.
+// factory.job_*. Job creation keeps separate title and details literal;
+// neither field sets budget or edits the pipeline.
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
@@ -554,7 +555,7 @@ func prepCreate(p *FactoryJobCreateParams) error {
 	if p.Title, err = words("title", p.Title, MaxFactoryJobTitle, true); err != nil {
 		return err
 	}
-	if p.Text, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
+	if _, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
 		return err
 	}
 	if p.Assignee != nil {

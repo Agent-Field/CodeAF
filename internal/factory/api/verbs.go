@@ -51,6 +51,7 @@ var Verbs = []Verb{
 // it is attached to a factory rather than serving one. EVERY SEAM FIELD IS IN
 // [Verbs] OR HERE; the structural test fails on one that is in neither.
 var TUIOnly = map[string]string{
+	"NewJob": "local structured creation used by POST /v1/jobs; the client seam exposes terminal New",
 	"ForJob": "selects the local doors for a job held by a worker on this machine",
 	// Doors that answer a chat session file: a session lives on the machine
 	// that made it, so its id means nothing to another machine. The thread

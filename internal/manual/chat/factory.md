@@ -463,3 +463,18 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 ## runner recovery window — running time versus waiting for reconnect
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+
+## App job title and details — literal words, auto-save, budgets and hand-off
+
+Creating a job with a separate title in the app, or handing off an agent,
+keeps the title as written with outer whitespace removed. Details keep their
+spacing and line breaks in the job's ask and body; empty details stay empty.
+Words in either field,
+including `auto`, `ship it`, `plan first`, `$5`, `security`, `two review rounds`
+and `cheaper`, do not set a budget or change approval steps, review rounds,
+effort or security. The repository's pipeline remains in effect. A draft pull
+request takes its title from the job title alone.
+
+Terminal factory sentences still read those words as chips. Existing jobs are
+not rewritten; this applies when a new job is created. Factories without the
+separate-title creation capability retain their existing creation behavior.
