@@ -55,11 +55,15 @@ process compiler excludes owned sources. Persisted factory team memberships
 also identify older job journals, including closed teams, so existing pending
 sources are reclassified without model calls. Delegated `task:<owner>:...`
 reports keep their source identities and compile with the owner’s finished turn,
-charged to that job. Each finished owned turn scans its
-journal and runs one compilation under that turn's cancellation context before
-the event stream closes. The compiler checks owner admission before requests
-and retries. Pause and Close therefore cannot leave an independent worker
-spending on a job. Pending sources remain for a later active turn.
+charged to that job. Each finished owned turn can start one compilation. `jobKnowledgeWait` caps its
+stage-end wait at two seconds; unfinished compilation continues under the job's
+lifetime across stage conversation closes. Only one compiler per job runs at a
+time, and later finished turns do not queue compilers. The runner cancels that
+lifetime on termination. Owner admission is checked before requests and retries;
+Pause and Stop cancel the active call, and no new call starts for a paused or
+ended job. Quit drops compilation, retaining source journals and checkpoints for
+the next finished owned turn. The process worker never takes over owned sources.
+A standalone owned conversation cancels its compilation on Close.
 
 One compilation can need several dependent requests: extraction and discovery
 already require two for a small new concept; guide writing and evidence review

@@ -36,6 +36,8 @@ func (a *Agent) KnowledgeCaptureError() string {
 }
 
 type knowledgeJournal struct {
+	ctx       context.Context
+	compile   *jobKnowledgeCompile
 	vault     *knowledge.Vault
 	project   string
 	scope     string
@@ -67,7 +69,7 @@ func (a *Agent) startKnowledge() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &knowledgeJournal{cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
+	j := &knowledgeJournal{ctx: ctx, cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
 	a.knowledgeMu.Lock()
 	a.knowledgeJournal = j
 	a.knowledgeMu.Unlock()
@@ -125,6 +127,9 @@ func (a *Agent) stopKnowledge() {
 	a.knowledgeMu.RUnlock()
 	for _, j := range workers {
 		j.cancel()
+		if a.config.JobContext == nil {
+			a.cancelJobKnowledge()
+		}
 	}
 	timer := time.NewTimer(closeGrace)
 	defer timer.Stop()

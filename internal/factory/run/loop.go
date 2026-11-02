@@ -468,6 +468,7 @@ func (lp *floorLoop) say(c *loopCtl, tone, text string) {
 // drive is the item's goroutine: it takes the bench, runs each phase in
 // order, and lands the item.
 func (lp *floorLoop) drive(c *loopCtl) {
+	defer c.cancel()
 	defer lp.release(c)
 	if c.reverify {
 		lp.reverifyRun(c)
@@ -1502,6 +1503,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	return Job{
+		Lifetime:        c.ctx,
 		Item:            it,
 		Stage:           st,
 		Index:           index,

@@ -9,8 +9,10 @@ invalidates:
 ---
 
 Saved knowledge, citations, search and page organization remain available.
-A finished job turn runs one compilation before its event stream closes; Pause
-cancels that work. Compilation can require multiple dependent model requests
+A finished job turn waits at most two seconds for optional memory. Unfinished
+compilation continues with its job across steps. Pause, Stop and job end cancel
+it, while paid receipts still charge that job. Later turns do not stack compilers.
+Quit leaves unfinished sources pending for the next finished owned turn. Compilation can require multiple dependent model requests
 for extraction, organization and evidence review. Unchanged input reuses validated
 receipts. Large finished turns drain their finite captured snapshot before
 publication. Older job sources are reclassified from their persisted ownership.

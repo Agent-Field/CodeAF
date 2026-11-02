@@ -48,6 +48,8 @@ type ModelSelection struct {
 }
 
 type Job struct {
+	// Lifetime ends with the job, rather than with one stage round.
+	Lifetime context.Context
 	// Item is the item as it stands when the round starts.
 	Item factory.Item
 	// Stage is the stage being run and Index its place in Item.Stages.

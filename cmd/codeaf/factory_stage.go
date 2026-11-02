@@ -152,6 +152,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	budget := &stageBudget{floor: jobs, item: spec.Item}
 	cfg.JobBudget = budget
+	cfg.JobContext = spec.JobContext
 	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture

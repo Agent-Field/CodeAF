@@ -106,7 +106,7 @@ func TestMemoryCapKeepsFinishedPhase(t *testing.T) {
 			if got.Stream == nil || got.Stream.Phases[0].State != factory.PhaseDone || got.Stream.Phases[0].Result == nil || !got.Stream.Phases[0].Result.Done {
 				t.Fatalf("memory cap parked completed work instead of next-stage admission: %+v", got.Stream)
 			}
-			if got.Stream.Cur != 1 || rounds.Load() != 1 {
+			if got.Stream.Phases[1].State != factory.PhaseWaiting || rounds.Load() != 1 {
 				t.Fatalf("cap retried successful work: cur=%d rounds=%d", got.Stream.Cur, rounds.Load())
 			}
 			return

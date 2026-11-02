@@ -59,6 +59,8 @@ type StageDoor interface {
 
 // ConversationSpec is everything the maker needs to open one stage round.
 type ConversationSpec struct {
+	// JobContext owns optional work that may outlive this stage conversation.
+	JobContext context.Context
 	// VerifyRepair makes successful PR-repair reports pass the concrete receipt guard.
 	// Read-only readiness reviews retain their separate current-PR snapshot contract.
 	VerifyRepair      bool
@@ -252,6 +254,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
+		JobContext:        job.Lifetime,
 		Item:              job.Item,
 		Team:              itemTeam(job.Item),
 		Name:              stageChatName(job),

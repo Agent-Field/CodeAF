@@ -5,8 +5,10 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -26,7 +28,8 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 	a.mu.Lock()
 	closed, stopped := a.closed, a.workStopped
 	a.mu.Unlock()
-	if closed || stopped {
+	continuing, _ := ctx.Value(jobKnowledgeContextKey{}).(bool)
+	if stopped || (closed && (!continuing || a.config.JobContext == nil)) {
 		return nil, context.Canceled
 	}
 	if owner, ok := a.jobBudgetOf().(interface{ MemoryRefusal() string }); ok {
@@ -37,7 +40,11 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 	if err := a.admitJobCall(ctx); err != nil {
 		return nil, err
 	}
+	if a.config.JobContext != nil && a.config.JobContext.Err() != nil {
+		return nil, context.Canceled
+	}
 	ctx = provider.WithSession(ctx, a.id)
+	ctx = provider.WithCallNode(ctx, a.id)
 	bill := func(b provider.Billed) {
 		used := Usage{Input: b.PromptTokens, Output: b.CompletionTokens, CacheRead: b.CachedTokens, CostUSD: b.Cost, Calls: 1}
 		a.bank(bankedCall{used: used, model: b.Model, role: string(lane.RoleMemory), ledger: true, late: true, billing: b.Billing, price: usagePriceProvider})
@@ -55,8 +62,22 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 	return provider.WithUnmeteredReceipts(ctx), nil
 }
 
-// Job compilation finishes before the stage stream closes. Pause cancels this
-// same turn, so the process worker cannot continue spending on its behalf.
+// jobKnowledgeWait limits the part of optional learning a stage waits for.
+const jobKnowledgeWait = 2 * time.Second
+
+type jobKnowledgeContextKey struct{}
+type jobKnowledgeCompile struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+var jobKnowledgeCompilers = struct {
+	sync.Mutex
+	active map[string]bool
+}{active: make(map[string]bool)}
+
+// A later finished turn leaves its durable journal for the next pass instead
+// of stacking another compiler behind the current one.
 func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	if a.jobBudgetOf() == nil || ctx.Err() != nil {
 		return
@@ -67,6 +88,82 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	if j == nil || !j.vault.Enabled() {
 		return
 	}
+	owner := a.id
+	if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+		owner = named.FactoryJob()
+	}
+	key := config.ProfilePath(a.config.ProfileDir, "") + ":" + owner
+	jobKnowledgeCompilers.Lock()
+	if jobKnowledgeCompilers.active[key] {
+		jobKnowledgeCompilers.Unlock()
+		return
+	}
+	jobKnowledgeCompilers.active[key] = true
+	jobKnowledgeCompilers.Unlock()
+	parent := j.ctx
+	if a.config.JobContext != nil {
+		parent = a.config.JobContext
+	}
+	compileCtx, cancel := context.WithCancel(context.WithValue(context.WithoutCancel(ctx), jobKnowledgeContextKey{}, true))
+	detach := context.AfterFunc(parent, cancel)
+	work := &jobKnowledgeCompile{cancel: cancel, done: make(chan struct{})}
+	j.mu.Lock()
+	j.compile = work
+	j.mu.Unlock()
+	go func() {
+		defer close(work.done)
+		defer cancel()
+		defer detach()
+		defer func() {
+			jobKnowledgeCompilers.Lock()
+			delete(jobKnowledgeCompilers.active, key)
+			jobKnowledgeCompilers.Unlock()
+		}()
+		a.compileJobKnowledge(compileCtx, j)
+	}()
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-work.done:
+				return
+			case <-compileCtx.Done():
+				return
+			case <-ticker.C:
+				if owner, ok := a.jobBudgetOf().(interface{ MemoryRefusal() string }); ok && owner.MemoryRefusal() != "" {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	timer := time.NewTimer(jobKnowledgeWait)
+	defer timer.Stop()
+	select {
+	case <-work.done:
+	case <-timer.C:
+	case <-ctx.Done():
+		cancel()
+	}
+}
+
+func (a *Agent) cancelJobKnowledge() {
+	a.knowledgeMu.RLock()
+	j := a.knowledgeJournal
+	a.knowledgeMu.RUnlock()
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	work := j.compile
+	j.mu.Unlock()
+	if work != nil {
+		work.cancel()
+	}
+}
+
+func (a *Agent) compileJobKnowledge(ctx context.Context, j *knowledgeJournal) {
 	for {
 		j.mu.Lock()
 		before := j.offset

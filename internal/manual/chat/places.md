@@ -753,9 +753,12 @@ its own step and source-reading budget, so total work grows with the evidence.
 A final pass keeps the core overview concise by selecting reviewed paragraphs;
 the complete source detail stays in linked evidence rather than expanding the
 overview after every update.
-Factory job conversations use their own turn lifetime instead: one compilation
-runs after a finished turn, before its stream closes. Pause cancels that work;
-completed jobs do not launch background memory requests. Unchanged source input
+Factory jobs wait at most two seconds for memory after a finished turn. An
+unfinished pass continues with that job while the next step works. A job has at
+most one pass running; later turns do not queue more. Pause, Stop and the job's
+end cancel it, including a request in flight. Paid receipts still charge the job.
+Quit drops the pass; saved sources stay pending for its next finished turn, and
+idle learning never takes over a job's sources. Unchanged source input
 reuses completed receipts. Extraction, page organization and evidence review can
 require separate model requests in that compilation. Sources and completed
 progress survive cancellation for a later active turn.

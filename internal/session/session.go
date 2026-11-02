@@ -2498,6 +2498,11 @@ type Config struct {
 	// Children inherit it without inheriting manager or stage authority.
 	JobBudget JobChat
 
+	// JobContext is the owning pipeline's lifetime across stage conversations.
+	// Optional knowledge may finish after a stage closes, but never after this
+	// context ends. A standalone job conversation uses its own close lifetime.
+	JobContext context.Context
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
