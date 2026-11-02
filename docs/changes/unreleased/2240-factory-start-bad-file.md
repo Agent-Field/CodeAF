@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf starts jobs safely when repository rules cannot be read
-pr: 0
+pr: 2240
 surface: [engine]
 invalidates:
   - "Was true: Start on a new job without a budget failed with the raw repository YAML error and an uncertain outcome, while a chat start could leave it without a budget. Is true now: both starts use the default job budget when the repository file is unread, record a safe explanation, and hold the plan for a person."
