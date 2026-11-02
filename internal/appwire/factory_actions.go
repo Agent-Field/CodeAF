@@ -355,6 +355,7 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 		}
 		if _, ok := e.(FactoryJobHolder); ok {
 			hello = withFeature(hello, FeatureFactoryJobHold)
+			hello = withFeature(hello, FeatureFactoryJobPause)
 		}
 	}
 	return hello
