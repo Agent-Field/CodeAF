@@ -233,6 +233,8 @@ var (
 	ErrAskTooLong = errors.New("an ask is at most 240 cells")
 	// ErrThinking is a thinking word that is not one of [EffortWords].
 	ErrThinking = errors.New("thinking is cheap, strong, or nothing")
+	// ErrModelID is a step's model that is not one model id ([ModelID]).
+	ErrModelID = errors.New("a model is a model id of at most 200 characters, with no spaces")
 )
 
 // StageWord is name as a stage's one word, lowercased, or the sentence that
@@ -270,3 +272,13 @@ func countWord(n int) string {
 
 // askCells is how many cells an ask takes on one line.
 func askCells(ask string) int { return utf8.RuneCountInString(ask) }
+
+// ModelIDMost is the longest model id a step or a job may name.
+const ModelIDMost = 200
+
+// ModelID says whether id can be one model id: empty (the job's model), or at
+// most [ModelIDMost] characters with no space or control character. Which
+// models exist is the engine's to say, not the factory's.
+func ModelID(id string) bool {
+	return utf8.RuneCountInString(id) <= ModelIDMost && !strings.ContainsFunc(id, func(r rune) bool { return r <= ' ' || r == 0x7f })
+}

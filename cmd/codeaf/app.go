@@ -598,6 +598,9 @@ type appBackend struct {
 	crewRun    *appCrewRun
 	emit       appwire.Emitter
 	open       appOpener
+	// listModels answers models.list for checks that must agree with it (a
+	// factory step's model); nil is [appBackend.ListModels]. Tests set it.
+	listModels func() ([]appwire.Model, error)
 	now        func() time.Time
 	// after is the claim-expiry clock, replaceable without sleeping in tests.
 	after         func(time.Duration, func()) func()
