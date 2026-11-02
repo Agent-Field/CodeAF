@@ -135,8 +135,12 @@ type FactoryCapabilities struct {
 	// from the shipped defaults (feature factory.pipeline_edit_rules). True
 	// only for an engine that implements [FactoryPipelineRulesEditor].
 	PipelineEditRules bool `json:"pipeline_edit_rules"`
-	MaxConnections    int  `json:"max_connections"`
-	MaxFlows          int  `json:"max_flows"`
+	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
+	// only for an engine that implements [FactoryRepoReader]; whether the
+	// factory has a checkout of a repository is answered by the call.
+	RepoRead       bool `json:"repo_read"`
+	MaxConnections int  `json:"max_connections"`
+	MaxFlows       int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,
