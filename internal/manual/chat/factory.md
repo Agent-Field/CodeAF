@@ -364,9 +364,13 @@ A job's cost and time are measured from the factory's own finished jobs, never g
 
 A running job also has what is likely left: what similar finished jobs spent past this job's spend so far, over those that got that far (`about $4 more to finish`).
 
-With fewer than five similar finished jobs there is no figure: the job shows its band and `no cost history yet`.
+Every finished job counts, read or not. A job with no read, or a read with fewer than five similar read jobs, is measured on its kind instead: the latest 12 finished jobs of the same kind of work, in its repository first and then in every repository. The app says so: `$0.30–0.90 · from 12 jobs in api, not read`.
 
-Each finished job is checked against the range the jobs before it would have given; the factory shows how many landed inside (`8 of 10 inside the range`). When fewer than 6 in 10 land inside, ranges are widened by how far real spend strayed from the median.
+New job shows the same figure before the job exists: what a job of that kind in that repository is likely to cost, next to Start now.
+
+With fewer than five finished jobs on both bases there is no figure: the job shows its band and `no cost history yet`.
+
+Each finished job is checked against the range the jobs before it would have given; the factory shows how many landed inside (`8 of 10 inside the range`), for figures matched on a read and figures by kind apart. When fewer than 6 in 10 of one kind of figure land inside, those ranges are widened by how far real spend strayed from the median.
 
 Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs like it cost up to $3 · over $2`). An unknown cost asks first only when the repository's file writes `max_cost` (`no cost history yet · max_cost $2 asks first`); under the default ceiling an unknown cost starts, because the job's budget still stops a running job.
 

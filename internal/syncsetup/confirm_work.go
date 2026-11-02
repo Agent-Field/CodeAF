@@ -49,7 +49,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		d.mu.Lock()
-		d.viewer = Viewer{}
+		d.viewer, d.lost = Viewer{}, false
 		d.mu.Unlock()
 		if err := d.recordSendLease(); err != nil {
 			d.available()
