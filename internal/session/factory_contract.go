@@ -49,9 +49,6 @@ type FactoryNotice struct {
 	Repo  string
 	Kind  string
 	Size  string
-	// Estimate is the model's guess at what the work will cost, in dollars.
-	// ZERO IS NO GUESS and draws nothing (the emptiness law).
-	Estimate float64
 	// Item is the floor's own id, set on EventFactoryAdded and zero on a
 	// proposal.
 	Item int
