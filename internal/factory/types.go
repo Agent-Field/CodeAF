@@ -181,8 +181,11 @@ type Triage struct {
 	SizeFrom  string `json:",omitempty"`
 	Area      string
 	Readiness int // 0..100; under 55 the item is thin and wants questions
-	Est       float64
-	DupOf     int
+	// Rubric is how complex the job is ([Rubric]), from the read or from
+	// Look closer, and nil when nobody scored it. A model never writes a
+	// price: an older document's model-written estimate is not read.
+	Rubric *Rubric `json:",omitempty"`
+	DupOf  int
 	// Risk is what the work touches that a person would want to know before it
 	// runs, in short phrases: `touches money`, `touches auth`, `has ui`,
 	// `migration`. Empty is "nothing said", never "safe".
