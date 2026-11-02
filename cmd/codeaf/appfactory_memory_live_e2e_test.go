@@ -202,7 +202,9 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memoryMeasureTable(t, callPath, it)
+	var header api.Job
+	w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &header)
+	memoryMeasureTable(t, callPath, it, header.Cost)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	t.Logf("models requested=%v answered=%v provider_total=%.8f problems=%v", recorder.requests, recorder.replies, recorder.cost, recorder.problems)
@@ -213,7 +215,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 
 // Tables come from the shipped call log, ledger and stage records. They are
 // printed only; no measurement artifact becomes part of the repository.
-func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
+func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD float64) {
 	t.Helper()
 	if !session.FlushUsage() {
 		t.Error("usage ledger did not flush")
@@ -363,13 +365,13 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 		t.Logf("memory-only median_ms=%d max_ms=%d", memoryDelays[len(memoryDelays)/2], memoryDelays[len(memoryDelays)-1])
 		t.Logf("step-end median_ms=%d max_ms=%d", delays[len(delays)/2], delays[len(delays)-1])
 	}
-	t.Logf("TOTAL calls=%d memory_calls=%d provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, providerUSD, ledgerUSD, factory.JobSpent(it))
+	t.Logf("TOTAL calls=%d memory_calls=%d provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, providerUSD, ledgerUSD, headerUSD)
 	t.Logf("ledger_minus_terminal_call_log_USD=%.8f (late receipts are ledger rows)", ledgerUSD-providerUSD)
 	if ledgerUSD+0.000001 < providerUSD {
 		t.Errorf("ledger lost provider-reported cost: %.8f vs %.8f", ledgerUSD, providerUSD)
 	}
-	if math.Abs(factory.JobSpent(it)-ledgerUSD) > 0.000001 {
-		t.Errorf("job header differs from ledger: %.8f vs %.8f", factory.JobSpent(it), ledgerUSD)
+	if math.Abs(headerUSD-ledgerUSD) > 0.000001 {
+		t.Errorf("job header differs from ledger: %.8f vs %.8f", headerUSD, ledgerUSD)
 	}
 	if providerUSD >= 1 {
 		t.Error("live run reached $1")
