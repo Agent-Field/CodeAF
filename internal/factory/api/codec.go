@@ -795,7 +795,7 @@ func estimateOf(book estimate.Book, it factory.Item) *Estimate {
 	}
 	var e Estimate
 	if r, ok := book.For(it); ok {
-		e = Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened}
+		e = *FromRange(r)
 	}
 	if factory.JobState(it) == "running" && it.Stream != nil {
 		if l, ok := book.Left(it); ok {
@@ -808,9 +808,23 @@ func estimateOf(book estimate.Book, it factory.Item) *Estimate {
 	return &e
 }
 
+// FromRange is a measured range on the wire.
+func FromRange(r estimate.Range) *Estimate {
+	return &Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened, Basis: r.Basis}
+}
+
 func calibrationOf(book estimate.Book) *Calibration {
 	c := book.Calibration()
-	return &Calibration{Jobs: book.Jobs(), Hit: c.Hit, Of: c.Of}
+	out := &Calibration{Jobs: book.Jobs(), Hit: c.Hit, Of: c.Of}
+	for _, basis := range []string{estimate.BasisRead, estimate.BasisKind} {
+		if b := book.CalibrationBy(basis); b.Of > 0 {
+			if out.Basis == nil {
+				out.Basis = map[string]HitRate{}
+			}
+			out.Basis[basis] = HitRate{Hit: b.Hit, Of: b.Of}
+		}
+	}
+	return out
 }
 
 // fromScout is a job's Look closer on the wire, stale when the issue's text
