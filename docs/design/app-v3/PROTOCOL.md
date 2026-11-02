@@ -314,6 +314,28 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries the feature `factory.pipeline_pr_update` (and
+capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
+the number of an open pull request from a branch of the same repository into
+its default branch, and optionally `expected_head_sha`. The file is committed
+onto that pull request's head branch: `outcome` is `updated` (`pr.head_sha` is
+the new commit) or `unchanged` (`pr` is the pull request as it stands), and a
+refusal before any write names stage `head`. `branch`, `body` and
+`expected_base_sha` are refused with `pr`. An engine without the feature refuses
+`pr` as an unknown field.
+
+An engine whose hello carries the feature `factory.pipeline_source_ref` (and
+capabilities `pipeline_source_ref: true`) lets `factory.pipeline_source` take
+`ref`, one string: an open pull request's number in decimal (`"42"`), resolved
+to its head when the read is made, or the 40-hex commit at its head. The pull
+request must be open, from a branch of the same repository into its default
+branch, and change only the pipeline file; anything else is `conflict`. The
+answer is that file at that head, with `base_sha` the head and `ref` and `pr`
+saying what was read; `factory.pipeline_preview` takes that `base_sha`, and
+`factory.pipeline_pr` takes it as `expected_head_sha` with `pr`. A read without
+`ref` answers no `ref` or `pr`. An engine without the feature refuses `ref` as
+an unknown field; a factory older than the read refuses it, and the engine says
+the factory cannot read a pull request.
 An engine whose hello carries the feature `factory.repo_read` (and
 `FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
 path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
