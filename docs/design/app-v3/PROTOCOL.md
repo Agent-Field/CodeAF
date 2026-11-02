@@ -474,7 +474,9 @@ outcome to the person without internal identifiers.
 required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
 $30. Raising the cap above recorded spend resolves a `cap` question and resumes
 the interrupted step in the same conversation and round, with spend retained,
-in Auto or Manual on local and leased runners. Chat records one
+in Auto or Manual on local and leased runners. Manual still asks before its next
+step. Take over and publishing jobs do not resume through a budget change.
+Chat records one
 `budget raised to $10 · carrying on` line for a $10 cap. An increase at or below
 spend updates the question and keeps work waiting. A decrease below spend is
 still refused (`bad_params`). Other questions and publication approvals are

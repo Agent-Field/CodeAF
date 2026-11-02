@@ -507,6 +507,19 @@ A pick is refused when the step has already run (`you may not change review, whi
 
 A step that has run takes another model only through Run again from here: that step and every step after it run again (an approval after it asks again), and that step runs on the model you named, in a fresh conversation. The job's log says `Rerun from <step> on <model>`. A check, an approval and a fixed step take no model there either.
 
+## raise a job budget and continue without a runner
+
+Raising Budget above recorded spend answers the open budget question in Auto
+or Manual, unless Take over has kept the job in your hands or publication is in
+progress. Manual still asks before the next step. Its runner receives the chosen
+cap before Continue. Activity records the budget change followed by the answer.
+The timeline says "budget raised to $10 · carrying on" for a $10 choice only
+after the answer succeeds. If no runner holds the job, Continue takes down the
+budget question and puts the job back in the queue.
+
+Raising Budget does not answer another open question or undo Stop spending after
+this step. A raise that does not clear recorded spend keeps the budget question.
+
 ## budget recovery and external PR commits
 
 Spending-owned Follow PR stops keep a durable budget cause. In Auto, raising
