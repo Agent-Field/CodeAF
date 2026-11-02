@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Stopped and interrupted factory rounds keep their own outcome
-pr: 0
+pr: 2233
 surface: [engine]
 invalidates:
   - "Carrying on after Stop or a lost runner marked the earlier round as rejected, making chat say it didn't pass and was fixing failures."
