@@ -15,6 +15,7 @@ import (
 	"time"
 
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 var installNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -165,6 +166,7 @@ func (c *Client) httpClient() *http.Client {
 func (c *Client) requestClient() *http.Client {
 	base := c.httpClient()
 	client := *base
+	client.Transport = githubcalls.Transport(client.Transport)
 	// EVERY CALL GETS ITS DEADLINE FROM ITS CONTEXT. An injected or reused
 	// client must not smuggle a whole-body Client.Timeout back into downloads.
 	client.Timeout = 0

@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // The four answers, and the one for a line the file already had.
@@ -157,6 +159,7 @@ func BankRecipeChange(ctx context.Context, dir, sentence, why, line string, writ
 			body = "Taught in conversation."
 		}
 		body += "\n\nAdds to `.codeaf/factory.yaml`:\n\n    " + oneLine(line)
+		githubcalls.NoteGH(ctx, "pr create")
 		cmd := exec.CommandContext(ctx, gh, "pr", "create", "--title", sentence, "--body", body, "--head", branch, "--base", defName)
 		cmd.Dir = top
 		var out bytes.Buffer

@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // Target is the pull request a brief names.
@@ -240,6 +242,7 @@ func ghPullRequest(ctx context.Context, dir string) (Target, bool) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	githubcalls.NoteGH(ctx, "pr view")
 	cmd := exec.CommandContext(ctx, gh, "pr", "view", "--json", "url,state")
 	cmd.Dir = dir
 	out, err := cmd.Output()

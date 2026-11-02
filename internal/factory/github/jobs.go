@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // JobWrites is the GitHub write a job decision owns: the assignee. A DROP
@@ -88,6 +89,7 @@ func (j JobWrites) write(ctx context.Context, method, path string, body any) err
 		client.Timeout = 30 * time.Second
 	}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client.Transport = githubcalls.Transport(client.Transport)
 	response, err := client.Do(r)
 	if err != nil {
 		return errors.New("GitHub isn't answering; retry this job change")
