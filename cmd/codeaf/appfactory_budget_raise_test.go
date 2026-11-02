@@ -46,7 +46,7 @@ func (m *budgetModel) Open(ctx context.Context, spec factoryrun.ConversationSpec
 func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 	for _, leased := range []bool{false, true} {
 		for _, mode := range []string{factory.AutonomyAuto, factory.AutonomyManual} {
-			for _, budget := range []float64{10, 5, 20} {
+			for _, budget := range []float64{10, 5, 20, 0} {
 				t.Run(fmt.Sprintf("leased=%v/%s/budget=%g", leased, mode, budget), func(t *testing.T) {
 					s := newLocalSetup(t)
 					t.Setenv("OPENROUTER_API_KEY", "test-key")
@@ -112,9 +112,13 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 						}
 						return seam
 					}
+					cap := .01
+					if budget == 0 {
+						cap = 5
+					}
 					status := s.start()
 					it, err := st.Create(factory.Item{Title: "Resume capped write", Repo: "acme/api", Num: 99, Kind: factory.KindIssue,
-						State: factory.StateNew, Cap: .01, Autonomy: mode, Talk: transcript,
+						State: factory.StateNew, Cap: cap, Autonomy: mode, Talk: transcript,
 						Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write it", Until: "done", Max: 1, On: true}}})
 					if err != nil {
 						t.Fatal(err)
@@ -174,8 +178,14 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 					}
 					act("factory.job_start", nil)
 					wait("cap ask", func(j api.Job) bool { return j.SpendingLimit != nil })
-					act("factory.job_set_budget", map[string]any{"budget": budget})
-					if budget <= spent {
+					if budget == 0 {
+						if err := client.Open(status.URL, s.backend.local.host.token).Seam().Answer(it.ID, true, factory.ChoiceContinue); err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						act("factory.job_set_budget", map[string]any{"budget": budget})
+					}
+					if budget > 0 && budget <= spent {
 						held := read()
 						if held.Budget != budget || held.SpendingLimit == nil || calls.Load() != 1 {
 							t.Fatalf("exhausted edit released work: %+v", held)
@@ -194,9 +204,19 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 						j := read()
 						t.Fatalf("budget raised but write did not resume: state=%s budget=%g questions=%+v calls=%d", j.State, j.Budget, j.Questions, calls.Load())
 					}
-					wait("cap ask cleared", func(j api.Job) bool { return j.SpendingLimit == nil && len(j.Questions) == 0 })
+					wait("cap ask cleared", func(j api.Job) bool {
+						if j.SpendingLimit != nil {
+							return false
+						}
+						for _, q := range j.Questions {
+							if q.State == "open" {
+								return false
+							}
+						}
+						return true
+					})
 					close(finish)
-					wait("write finished", func(j api.Job) bool { return len(j.Steps) == 1 && j.Steps[0].State == "done" })
+					finished := wait("write finished", func(j api.Job) bool { return len(j.Steps) == 1 && j.Steps[0].State == "done" })
 					entries, _, err := s.backend.Entries(appAgentID(transcript), "", 100)
 					if err != nil {
 						t.Fatal(err)
@@ -210,9 +230,19 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 					if raised != 1 {
 						t.Fatalf("budget continuation chat lines=%d, want 1", raised)
 					}
-					got, err := mirror.Get(it.ID)
-					if err != nil || factory.JobSpent(got) != spent+.25 || calls.Load() != 2 {
-						t.Fatalf("spend=%g calls=%d err=%v", factory.JobSpent(got), calls.Load(), err)
+					if finished.Cost != spent+.25 || calls.Load() != 2 {
+						t.Fatalf("spend=%g calls=%d", finished.Cost, calls.Load())
+					}
+					logged := 0
+					if finished.Desk != nil && finished.Desk.Run != nil {
+						for _, line := range finished.Desk.Run.Log {
+							if line.Text == "budget raised to $10 · carrying on" {
+								logged++
+							}
+						}
+					}
+					if (!leased || budget != 0) && logged != 1 {
+						t.Fatalf("budget continuation activity lines=%d, want 1", logged)
 					}
 				})
 			}
