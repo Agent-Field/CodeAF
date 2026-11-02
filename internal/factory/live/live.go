@@ -16,6 +16,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
+// File is the record's document under the factory root.
+const File = "live-events.json"
+
 // Limit is the replay window shared by the record and the event stream.
 const Limit = 200
 
@@ -90,7 +93,7 @@ func save(root string, d *document) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(root, "live-events.json"))
+	return os.Rename(f.Name(), filepath.Join(root, File))
 }
 
 // Read returns append order and the latest cursor even when the record is empty.
@@ -119,7 +122,7 @@ func locked(root string, exclusive bool, fn func(*document) error) error {
 	}
 	defer filelock.Unlock(f)
 	var d document
-	data, err := os.ReadFile(filepath.Join(root, "live-events.json"))
+	data, err := os.ReadFile(filepath.Join(root, File))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -102,6 +103,55 @@ func TestThePlanStepIsToldToWriteThePlanInOutput(t *testing.T) {
 	write := Job{Item: factory.Item{ID: 1, Num: 4}, Stage: factory.Stage{Name: "write", Ask: "make the change"}, Round: 1}
 	if brief := stageBrief(write); strings.Contains(brief, briefPlanWrite) {
 		t.Fatalf("a step that is not the plan is told to write one:\n%s", brief)
+	}
+}
+
+// The 2026-10-28 job named every file, under a heading the factory does not
+// read, and Auto paused it as a plan that named none. Every plan step, the
+// shipped one and one a pipeline file writes itself, is told the one shape
+// the factory reads, and a plan written that way clears a path rule its files
+// do not touch.
+func TestEveryPlanStepIsToldTheFileListShapeTheFactoryReads(t *testing.T) {
+	shipped, _ := factory.ShippedStage("plan")
+	own := factory.Stage{Name: "Plan", Kind: factory.StageChat, Ask: "work out the change with the team's checklist"}
+	for _, st := range []factory.Stage{shipped, own} {
+		job := Job{Item: factory.Item{ID: 1, Num: 4}, Stage: st, Round: 1}
+		if brief := stageBrief(job); !strings.Contains(brief, briefPlanFiles) {
+			t.Fatalf("plan step %q is not told the shape of its file list:\n%s", st.Ask, brief)
+		}
+		if brief := resumedStageBrief(job); !strings.Contains(brief, briefPlanFiles) {
+			t.Fatalf("plan step %q carried on is not told the shape of its file list:\n%s", st.Ask, brief)
+		}
+	}
+	write := Job{Item: factory.Item{ID: 1, Num: 4}, Stage: factory.Stage{Name: "write", Ask: "make the change"}, Round: 1}
+	if strings.Contains(stageBrief(write), "Files:") {
+		t.Fatal("a step that is not the plan is told how to list a plan's files")
+	}
+
+	if got := factory.ParsePlanFiles(briefPlanFiles); !slices.Equal(got, []string{"cmd/app/main.go", "docs/usage.md"}) {
+		t.Fatalf("the brief's own example reads as %q", got)
+	}
+	asked := "Add Session.Working and show it on the status line.\n\n" +
+		"CHANGE, PER FILE\n" +
+		"1. internal/remote/server.go — add Session.Working.\n" +
+		"2. cmd/codeaf/engine.go — print the working line.\n\n" +
+		"Verify with go test ./internal/remote.\n\n" +
+		"Files:\n" +
+		"- internal/remote/server.go\n" +
+		"- cmd/codeaf/engine.go\n"
+	files := factory.ParsePlanFiles(asked)
+	if !slices.Equal(files, []string{"internal/remote/server.go", "cmd/codeaf/engine.go"}) {
+		t.Fatalf("a plan written as the brief asks reads as %q", files)
+	}
+	auth := &factory.StartRules{AskFirst: []string{"touch auth/"}, Never: []string{}}
+	if hold := pipeline.PlanHold(auth, files); hold != "" {
+		t.Fatalf("a plan that lists only unprotected files is held: %q", hold)
+	}
+	// THE PARSER STAYS STRICT: the same plan without its Files: list names no
+	// files, however plainly its prose names them.
+	prose, _, _ := strings.Cut(asked, "Files:\n")
+	if got := factory.ParsePlanFiles(prose); got != nil {
+		t.Fatalf("prose was read as a file list: %q", got)
 	}
 }
 

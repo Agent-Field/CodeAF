@@ -17,7 +17,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
@@ -49,6 +51,11 @@ const (
 	// memory budget. It is additive: an app that does not know the word treats
 	// it as any failure, and one that does reads Error.Detail.
 	CodeTooLarge = "too_large"
+	// CodeUnreadable refuses a read of a store this engine cannot read: one a
+	// newer build wrote, or a file that is not the store. Trying again does not
+	// help; the app says so instead of offering it. It is additive like
+	// CodeTooLarge: an app that does not know the word treats it as any failure.
+	CodeUnreadable = "unreadable"
 	// CodeUncertain answers a mutation whose effect the engine itself cannot
 	// confirm: it may have happened. A caller MUST NOT retry it blind, which
 	// could do it twice; it looks at the state again first. It is the same word
@@ -150,10 +157,12 @@ func Errorf(code, format string, args ...any) *Error {
 type Hello struct {
 	// Features are additive request extensions; absent means unsupported.
 	Features []string `json:"features,omitempty"`
-	Contract int      `json:"contract"`
-	Version  string   `json:"version"`
-	PID      int      `json:"pid"`
-	Home     string   `json:"home"`
+	// Errand is what agents.errand accepts, present with that feature.
+	Errand   *ErrandCaps `json:"errand,omitempty"`
+	Contract int         `json:"contract"`
+	Version  string      `json:"version"`
+	PID      int         `json:"pid"`
+	Home     string      `json:"home"`
 }
 
 // Agent is one conversation as the app sees it. ID is the conversation's
@@ -170,9 +179,14 @@ type Agent struct {
 	Retryable    bool   `json:"retryable"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Workspace    string `json:"workspace"`
-	Model        string `json:"model,omitempty"`
+	// DID is the agent's identity: what its commands carry as
+	// $CODEAF_AGENT_DID and a worker's `<did>#w<n>` hangs from. It never
+	// changes once written, and is absent for a conversation that has not
+	// taken a turn since agents were given one.
+	DID       string `json:"did,omitempty"`
+	Title     string `json:"title"`
+	Workspace string `json:"workspace"`
+	Model     string `json:"model,omitempty"`
 	// Effort is the conversation override: low, medium, high, xhigh or max.
 	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`
@@ -191,13 +205,52 @@ type Agent struct {
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at,omitzero"`
 	SpentUSD     float64    `json:"spent_usd,omitempty"`
+	// Unread says it has said something new to the person since they last saw
+	// it (agents.mark_seen): an answer, a question waiting on them, or a run's
+	// result. Tool steps and thinking alone never set it (unread.go).
+	Unread bool `json:"unread"`
 	// Context is what the conversation weighs against its window
 	// (compaction.go); absent when nothing holds the conversation.
 	Context *AgentContext `json:"context,omitempty"`
 	// Budget is this agent's own spend limit (budget.go), which is never
 	// settings.budget_usd; absent from an engine that does not say.
 	Budget *AgentBudget `json:"budget,omitempty"`
+	// Approval is what this conversation does before it acts, as of the last
+	// time it was held; absent before then, or where its engine has no gate.
+	Approval *AgentApproval `json:"approval,omitempty"`
+	// CreatedBy is who started it: "person", or the id of the agent or app
+	// that did. Absent for an agent made before this was kept.
+	CreatedBy string `json:"created_by,omitempty"`
 }
+
+// AgentApproval is the gate a conversation stands at. Posture is the resolved
+// word (internal/session's approvalposture.go): ask, guardian, allow, or deny.
+// Source says who decided it: "settings" when the conversation follows
+// Settings, "chat" when it was set in this conversation.
+type AgentApproval struct {
+	Posture string `json:"posture" enum:"ask,guardian,allow,deny"`
+	Source  string `json:"source" enum:"settings,chat"`
+	// Follows is what this chat stands at when it follows (auto): its
+	// repository's approval mode where one is set, else Settings. A pick equal
+	// to it is auto; any other is the chat's own.
+	Follows string `json:"follows,omitempty" enum:"ask,guardian,allow,deny"`
+}
+
+// AppApprovalPosture is a posture the app may set on a conversation, spelled
+// the engine's way: ask, guardian, allow, or auto. deny is refused.
+func AppApprovalPosture(word string) (string, bool) {
+	switch posture := strings.ToLower(strings.TrimSpace(word)); posture {
+	case session.PostureAsk, session.PostureGuardian, session.PostureAllow, session.PostureAuto:
+		return posture, true
+	}
+	return "", false
+}
+
+// The two answers to who decided a conversation's posture.
+const (
+	ApprovalFromSettings = "settings"
+	ApprovalFromChat     = "chat"
+)
 
 // Task is one node of an agent's task graph.
 type Task struct {
@@ -361,6 +414,10 @@ type Ask struct {
 	// exact command and folder, its one check, the proposed policy, and the
 	// fixed timings it will run under.
 	KeepRunning *KeepRunning `json:"keep_running,omitempty"`
+	// Asked is when the question was first put, by its own record (a
+	// proposal's, a run's), so an ask said again after a restart keeps its
+	// time for unread. It is the engine's own and never on the wire.
+	Asked time.Time `json:"-"`
 }
 
 // AskSubject is the thing an ask is about: its kind and the id the app knows
@@ -457,7 +514,8 @@ type Entry struct {
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
-	// note was read at; a note's direction; a footer's kind and figures; the
+	// note was read at; a note's direction, or on a user entry who sent it on
+	// the person's behalf (agents.send's from); a footer's kind and figures; the
 	// files and links a message of the person's carried (convo.go).
 	State       string       `json:"state,omitempty"`
 	Step        *int         `json:"step,omitempty"`
@@ -577,6 +635,15 @@ type Model struct {
 	Provider string `json:"provider"`
 	// ListedAt is the provider catalog listing time in Unix seconds; absent is unknown.
 	ListedAt int64 `json:"listed_at,omitempty"`
+	// PriceInPerM and PriceOutPerM are the catalog's input and output prices in
+	// US dollars per million tokens. Absent is unknown and never $0; a present
+	// zero is a model the catalog says is free.
+	PriceInPerM  *float64 `json:"price_in_per_m,omitempty"`
+	PriceOutPerM *float64 `json:"price_out_per_m,omitempty"`
+	// ContextLength is how many tokens the model accepts; absent is unknown.
+	ContextLength int `json:"context_length,omitempty"`
+	// ArenaElo is the best Design Arena Elo the catalog carries; absent is unknown.
+	ArenaElo float64 `json:"arena_elo,omitempty"`
 	// ProviderName is the provider's own name, as the picker heads its group.
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.
@@ -620,6 +687,10 @@ type Settings struct {
 	ChecksModel   string   `json:"checks_model"`
 	PlannerModel  string   `json:"planner_model"`
 	FallbackModel string   `json:"fallback_model"`
+	// ApprovalPosture is what asks_before and the guardian row amount to in
+	// the posture ladder: the gate a conversation that follows Settings
+	// stands at. Read only; settings.set changes it through asks_before.
+	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,deny"`
 }
 
 // SettingsPatch is settings.set's params: only the fields present change. A
@@ -1017,6 +1088,36 @@ type CreateAsk struct {
 	// Said is the person's own words for the first message: what its entry and
 	// the record show in place of Text, as agents.send's said does. Absent is Text.
 	Said *string `json:"said,omitempty"`
+	// Effort is the new conversation's own thinking rung, set as
+	// agents.set_effort sets it before the first turn runs. Absent (or auto)
+	// leaves the conversation on the scopes above it.
+	Effort string `json:"effort,omitempty" enum:"auto,low,medium,high,xhigh,max"`
+	// ApprovalPosture is the new conversation's own gate, set as
+	// agents.set_approval_posture sets it before the first turn runs. Absent
+	// (or auto) follows Settings.
+	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,auto"`
+	// CreatedBy says who started the agent: absent is the person, and an app
+	// acting for the person names itself, such as "afi:<agent id>"
+	// ([CheckCreatedBy]).
+	CreatedBy string `json:"created_by,omitempty"`
+}
+
+// CreatedByPerson is the origin of work the person started themselves.
+const CreatedByPerson = "person"
+
+// MaxCreatedByBytes bounds an origin, which is a name and never a message.
+const MaxCreatedByBytes = 128
+
+// CheckCreatedBy is an origin as it is kept: trimmed, one line, bounded.
+func CheckCreatedBy(word string) (string, error) {
+	word = strings.TrimSpace(word)
+	if len(word) > MaxCreatedByBytes {
+		return "", Errorf(CodeBadParams, "created_by is at most %d bytes", MaxCreatedByBytes)
+	}
+	if strings.ContainsFunc(word, unicode.IsControl) {
+		return "", Errorf(CodeBadParams, "created_by is one line of text")
+	}
+	return word, nil
 }
 
 // Warmer is an engine with something slow it can start on before anything is

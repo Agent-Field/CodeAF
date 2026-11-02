@@ -53,7 +53,7 @@ func TestHomeRowsFromOtherMachines(t *testing.T) {
 	a := machinesHome(t, otherMachines, 200)
 	text := homeText(a)
 	for _, want := range []string{
-		"Nightly index rebuild", "running on host-a",
+		"Nightly index rebuild", "held on host-a",
 		"Port the picker", "host-a offline",
 		"Fix the flaky test", "2 turns from laptop: merge / discard",
 		"Notes on the migration",
@@ -105,7 +105,7 @@ func TestUnreachableKeepsLastListing(t *testing.T) {
 	if !strings.Contains(text, chatlist.Unreachable) {
 		t.Fatalf("no unreachable line:\n%s", text)
 	}
-	if !strings.Contains(text, "Nightly index rebuild") || !strings.Contains(text, "running on host-a") {
+	if !strings.Contains(text, "Nightly index rebuild") || !strings.Contains(text, "held on host-a") {
 		t.Fatalf("the last listing was dropped:\n%s", text)
 	}
 }
@@ -115,13 +115,13 @@ func TestUnreachableKeepsLastListing(t *testing.T) {
 func TestHomeMachineRowsGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
-			"   Nightly index rebuild  running on host-a                                   2m",
+			"   Nightly index rebuild  held on host-a                                      2m",
 			"   Port the picker  host-a offline                                            3h",
 			"   Fix the flaky test  2 turns from laptop: merge / discard                   5h",
 			"   Notes on the migration                                                     1d",
 		},
 		40: {
-			"  Nightly index...  running on host-a 2m",
+			"  Nightly index re...  held on host-a 2m",
 			"  Port the picker  host-a offline     3h",
 			"  Fix the flaky ...  2 turns · laptop 5h",
 			"  Notes on the migration              1d",
@@ -228,7 +228,7 @@ func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: []string{"dev_host-a"}}}
 	a.dirFeed = feed
 	a.rebuildMachines()
-	if got := linesWith(a, "running on host-a"); len(got) != 1 {
+	if got := linesWith(a, "held on host-a"); len(got) != 1 {
 		t.Fatalf("an online device's chat should say running:\n%s", homeText(a))
 	}
 	feed.state.Online = nil

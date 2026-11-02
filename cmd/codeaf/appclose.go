@@ -328,9 +328,13 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 		if p.State == session.PresenceWaiting {
 			state = appwire.StateNeedsYou
 		}
+		// What it said over there rides with its state, so a question put
+		// or answered elsewhere reads here as agents.list reads it.
+		b.noteElsewhere(a)
 		var view appwire.Agent
 		changed := false
 		b.locked(func() {
+			view = a.view
 			if a.live == nil && a.view.State != state {
 				a.view.State = state
 				view, changed = a.view, true
@@ -338,6 +342,8 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 		})
 		if changed {
 			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		} else {
+			b.restateUnread(view.ID)
 		}
 		return
 	}
@@ -349,6 +355,9 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 }
 
 func (b *appBackend) correctCloseState(a *appAgent, stamp time.Time) {
+	// A turn that sealed on an answer elsewhere is said with the idle it
+	// ended in, never a stale read beside it.
+	b.noteElsewhere(a)
 	r := &b.closeRecovery
 	var view appwire.Agent
 	emit := false
@@ -372,7 +381,11 @@ func (b *appBackend) correctCloseState(a *appAgent, stamp time.Time) {
 	})
 	if emit {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		return
 	}
+	var id string
+	b.locked(func() { id = a.view.ID })
+	b.restateUnread(id)
 }
 
 // locked scopes a registry operation so an absorbed panic cannot strand it.
@@ -465,8 +478,15 @@ func (b *appBackend) carryCloseWork(a *appAgent, work appCloseWork) {
 	r.attempted["pending/"+id] = true
 	tasks := b.closeRunningTasks(a, work.presence)
 	if resume {
-		_, _, err = b.ensure(a)
+		_, _, err = b.keepOpen(a)
 		live := b.liveOf(a)
+		if errors.Is(err, errAppKeptClosed) {
+			// Closed by the person since: the work waits for their own open.
+			undo()
+			delete(r.attempted, attempt)
+			r.attempted["pending/"+id] = alreadyHandled
+			return
+		}
 		if appCloseOwnershipConflict(err) || (live != nil && !live.conn.Assembled) {
 			undo()
 			delete(r.attempted, attempt)

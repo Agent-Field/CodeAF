@@ -232,10 +232,13 @@ func joiningAt(home string) Joining { return Joining{Home: home, Label: "laptop"
 
 // A COMPUTER THAT HAS CHATS OF ITS OWN KEEPS THEM. Without --replace the pairing
 // says so and changes not one byte; with it, this computer takes the other's.
-func TestJoinRefusesDifferentIdentity(t *testing.T) {
+func TestM7JoinRefusesDifferentIdentity(t *testing.T) {
 	r := newChatRig(t)
 	mine, err := identity.Ensure(r.homeB)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.homeB, "own-chat"), []byte("kept"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	before := filesIn(t, r.homeB)
@@ -261,7 +264,7 @@ func TestJoinRefusesDifferentIdentity(t *testing.T) {
 }
 
 // A COMPUTER THAT ALREADY HOLDS THESE CHATS IS LEFT ALONE, certificate and all.
-func TestJoinSameIdentityIsNoop(t *testing.T) {
+func TestM6JoinSameIdentityIsNoop(t *testing.T) {
 	r := newChatRig(t)
 	if _, err := identity.Adopt(r.homeB, r.a, false); err != nil {
 		t.Fatal(err)

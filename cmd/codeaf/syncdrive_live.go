@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // liveDrive is the drive side of one chat, started when it can be. A chat opens
@@ -27,6 +28,7 @@ type liveDrive struct {
 
 	mu        sync.Mutex
 	drive     *syncsetup.Drive
+	parked    bool // Startup awaits a journal owner.
 	waiting   bool // sync is on and only an identity, or the end of solo, is missing
 	ready     chan struct{}
 	attempted bool
@@ -40,9 +42,15 @@ type liveDrive struct {
 // newLiveDrive starts the drive side behind the first paint. Local startup
 // screening stays off the surface loop; saving and new tools wait for ownership.
 func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
-	l := &liveDrive{changes: make(chan struct{}, 1)}
+	l := newPendingLiveDrive(start)
+	l.begin()
+	return l
+}
+
+// newPendingLiveDrive reserves the startup boundary before journal ownership is known.
+func newPendingLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
+	l := &liveDrive{changes: make(chan struct{}, 1), parked: true, ready: make(chan struct{})}
 	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
-	l.try()
 	return l
 }
 
@@ -52,11 +60,52 @@ func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
 func (l *liveDrive) try() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
+	if l.parked || l.closed || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
 	l.ready = make(chan struct{})
-	ready := l.ready
+	l.launch(l.ready)
+}
+
+// begin spends the reserved startup exactly once after the journal opens.
+func (l *liveDrive) begin() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.parked {
+		return
+	}
+	l.parked = false
+	l.launch(l.ready)
+}
+
+// isParked says the startup is still waiting for a journal owner, so an opener
+// of the same chat in this process shares that wait rather than starting it.
+func (l *liveDrive) isParked() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.parked
+}
+
+// abandon releases parked waiters without ever opening the drive side.
+func (l *liveDrive) abandon() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.abandonLocked()
+}
+
+func (l *liveDrive) abandonLocked() bool {
+	if !l.parked {
+		return false
+	}
+	l.parked, l.closed = false, true
+	close(l.ready)
+	l.ready = nil
+	return true
+}
+
+// launch shares startup and panic cleanup between immediate and reserved starts.
+// The caller holds mu, so closing cannot slip between reserving and launching.
+func (l *liveDrive) launch(ready chan struct{}) {
 	guard.Go("chat sync startup", func() {
 		var d *syncsetup.Drive
 		var err error
@@ -80,7 +129,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	defer l.mu.Unlock()
 	defer close(ready)
 	l.ready = nil
-	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet), true
+	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
 	if d != nil {
 		d.CatchUp()
 		l.retryWait = 0
@@ -169,12 +218,10 @@ func (l *liveDrive) current() *syncsetup.Drive {
 
 // Gate is the drive side's gate: nothing is refused until a drive side exists.
 func (l *liveDrive) Gate() error {
-	for {
-		l.try()
-		ready := l.pending()
-		if ready == nil {
-			break
-		}
+	// A failed service startup falls back to this call's local writer. Retrying
+	// belongs to the next call, or an outage would trap this one in a retry loop.
+	l.try()
+	if ready := l.pending(); ready != nil {
 		<-ready
 	}
 	if d := l.started(); d != nil {
@@ -207,6 +254,7 @@ func (l *liveDrive) Close(ctx context.Context) error {
 	ready := func() <-chan struct{} {
 		l.mu.Lock()
 		defer l.mu.Unlock()
+		l.abandonLocked()
 		l.closed = true
 		if l.retry != nil {
 			l.retry.Stop()

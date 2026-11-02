@@ -20,6 +20,13 @@ func (a *app) standingStrip(width, room int) []placeRow {
 		return nil
 	}
 	ctx := bandContext{width: inner, pal: a.pal, now: a.now()}
+	if a.pair.open {
+		// The modal card must remain visible even when other standing bands fill
+		// the small terminal. Its keys belong to the same visible surface.
+		lines := a.pair.draw(inner, max(1, room-3), a.now(), a.pal)
+		lines = append(lines, a.pal.dim(a.pair.hint()))
+		return standingRows(lines)
+	}
 	var lines []string
 	var targets []addMachineTarget
 	for _, band := range standingBands() {
@@ -29,7 +36,7 @@ func (a *app) standingStrip(width, room int) []placeRow {
 		}
 		limit := room / 2
 		// An opened form needs its input on screen even in a short terminal.
-		if band.name == "addmachine" && a.addMachine.open {
+		if band.name == "addmachine" && (a.addMachine.open || a.pair.open) {
 			limit = room
 		}
 		if len(lines)+len(card)+2 > limit {
@@ -37,7 +44,7 @@ func (a *app) standingStrip(width, room int) []placeRow {
 		}
 		for i := range card {
 			target := addMachineNone
-			if band.name == "addmachine" {
+			if band.name == "addmachine" && !a.pair.open {
 				target = addMachineToggle
 				if a.addMachine.open && i == len(card)-2 {
 					target = addMachineInput

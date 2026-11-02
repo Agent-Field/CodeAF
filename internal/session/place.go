@@ -238,7 +238,11 @@ type Meta struct {
 	// carries, and the folder's name.
 	ID string `json:"id"`
 	// ChatURI is stable conversation identity carried in the sealed truth.
-	ChatURI         string           `json:"chat_uri,omitempty"`
+	ChatURI string `json:"chat_uri,omitempty"`
+	// AgentIdentity is the agent's DID (agent_identity.go): written with the
+	// conversation's first identity write after it opens, and never replaced.
+	// It is bound to ID, so a copy or branch that takes a new id mints its own.
+	AgentIdentity   *AgentIdentity   `json:"agent_identity,omitempty"`
 	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
@@ -299,6 +303,14 @@ type Meta struct {
 	// file is not a person returning to a conversation
 	// (internal/store/session_rooms.go holds the original of this law).
 	LastUserAt time.Time `json:"lastUserAt,omitempty"`
+	// LastReplyAt is when the conversation last FINISHED SPEAKING TO THE
+	// PERSON: a turn that sealed on an answer, a harness run's report among
+	// them. A turn that ended on tool steps or thinking alone does not move it.
+	// It is stamped beside the spend at the seal (placemeta.go's
+	// [Agent.stampSealed]) so a surface can say "something new here" without
+	// opening the journal. Zero is a conversation that has not answered since
+	// the field arrived.
+	LastReplyAt time.Time `json:"lastReplyAt,omitempty"`
 	// SpentUSD and Tokens are WHAT THE TALKING HAS COST — this conversation's
 	// own running total, every turn and every auxiliary call beside it, as
 	// [Usage] holds it while the session is open.
@@ -500,6 +512,7 @@ func saveMetaLocked(dir string, meta Meta) error {
 		}
 		meta.ChatURI = current.ChatURI
 	}
+	meta.AgentIdentity = keptAgentIdentity(current, meta)
 	// K3: schema paths use slashes even when their source machine is Windows.
 	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
 		if windowsSource(*field) {

@@ -188,14 +188,16 @@ func classify(method string) callClass {
 		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
 		MethodAutomationsClaim:
 		return classAct
-	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodOpenPlanTaskWork, MethodCompact,
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodOpenPlanTaskWork, MethodCompact, MethodTaskRunHere,
 		// A side ask is a model call of up to two minutes that writes nothing
 		// into the conversation, so it owes a turn no order and a turn owes it
 		// none (sideask.go).
 		MethodSideAsk, MethodSideAskStream,
 		// Reply suggestions are also independent model work. A draft writes
 		// no turn, so a person's send must not queue behind its response.
-		methodReplySuggestion:
+		methodReplySuggestion,
+		// An errand is the same: detached model work that writes no turn.
+		methodErrand:
 		return classWork
 	default:
 		return classOrdered

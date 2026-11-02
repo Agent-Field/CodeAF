@@ -98,6 +98,15 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 		config.ConversationModels = &pair
 	}
 	config.JobBudget = a.jobBudgetOf()
+	// THE CHILD ACTS FOR THE SAME AGENT. A task worker hangs its own fragment
+	// off the agent's DID (agent_identity.go); any other child acts as its
+	// builder does.
+	if config.agentDID == "" {
+		config.agentDID = a.config.agentDID
+	}
+	if config.actorDID == "" && config.taskID == 0 {
+		config.actorDID = a.config.actorDID
+	}
 	config.knowledgeReadVault = a.Knowledge()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
@@ -128,6 +137,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if err := configureOwnedChat(&config); err != nil {
 		return nil, fmt.Errorf("prepare conversation storage: %w", err)
 	}
+	configureAgentIdentity(&config)
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
@@ -153,8 +163,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		config: config,
-		system: system,
+		taskComputerPrompt: config.mayNameTaskComputer(),
+		config:             config,
+		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
 		// file deciding what another door's worker is told.
@@ -2871,6 +2882,7 @@ func (a *Agent) Close() (saveErr error) {
 	// cancellations were cut above; join their accepted lifetimes before any
 	// store is closed. Setup may have created the graph since the first snapshot.
 	a.waitOrchestrations()
+	a.waitEndingBeltRun(beltDone, closeGrace)
 	a.mu.Lock()
 	tasks = a.tasks
 	a.mu.Unlock()
@@ -2976,10 +2988,16 @@ func (a *Agent) Close() (saveErr error) {
 		}
 		return err
 	}
-	if file == nil {
-		return nil
+	var localErr error
+	if file != nil {
+		localErr = file.Close()
 	}
-	return file.Close()
+	if localErr == nil {
+		a.mu.Lock()
+		a.localDurable = true
+		a.mu.Unlock()
+	}
+	return localErr
 }
 
 // ── transcript ──────────────────────────────────────────────────────────────
@@ -2994,6 +3012,7 @@ func (a *Agent) recordLocked(message ai.Message) {
 	}
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.answeredSinceSeal = a.answeredSinceSeal || isAnswer(message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	if a.file != nil {
 		a.file.appendMessage(message)
@@ -5360,6 +5379,9 @@ type PersonMark struct {
 	// record accepted it ([Submission.ClientID]), and empty on every line whose
 	// door named none. It is never guessed for a legacy line.
 	ClientID string
+	// From is who sent the message on the person's behalf, as the record kept
+	// it ([Submission.From]); empty for the person's own.
+	From string
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5530,7 +5552,7 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 			// on it and the reads its words were written from. A line with no
 			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID, From: mark.From}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}

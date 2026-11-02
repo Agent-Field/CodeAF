@@ -55,7 +55,7 @@ func addedSaying(t *testing.T, rec *appRecorder, text string) appwire.Entry {
 func TestAJobsProgressLineReachesTheAppAsItIsWritten(t *testing.T) {
 	backend, rec := heldOverFakes(t)
 	transcript, id := jobConversation(t)
-	if err := backend.holdJobChat(id); err != nil {
+	if _, err := backend.holdJobChat(id); err != nil {
 		t.Fatal(err)
 	}
 	review := &factory.StepProgress{Step: "review", Round: 2, Event: factory.ProgressDone}
@@ -102,7 +102,7 @@ func TestAProgressLineInAConversationTheAppDoesNotHoldIsReadWhenItOpens(t *testi
 	backend, rec := heldOverFakes(t)
 	transcript, id := jobConversation(t)
 	held, heldID := jobConversation(t)
-	if err := backend.holdJobChat(heldID); err != nil {
+	if _, err := backend.holdJobChat(heldID); err != nil {
 		t.Fatal(err)
 	}
 	started := &factory.StepProgress{Step: "plan", Round: 1, Event: factory.ProgressStarted}
@@ -135,7 +135,7 @@ func TestAProgressLineInAConversationTheAppDoesNotHoldIsReadWhenItOpens(t *testi
 func TestRecordedFactorySteerEchoStaysHiddenLiveAndAfterReload(t *testing.T) {
 	backend, rec := heldOverFakes(t)
 	transcript, id := jobConversation(t)
-	if err := backend.holdJobChat(id); err != nil {
+	if _, err := backend.holdJobChat(id); err != nil {
 		t.Fatal(err)
 	}
 	const echo = "steer: Everything ok here?"

@@ -77,7 +77,7 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 	// carry one, and it must still refuse a red predecessor.
 	for job, want := range map[string]string{
 		"build":   "    if: always() && needs.prepare.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')",
-		"publish": "    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success'",
+		"publish": "    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success' && needs.relay.result == 'success'",
 	} {
 		block := regexp.MustCompile(`(?ms)^  ` + job + `:\n    needs: [^\n]+\n(    if: [^\n]+)`).FindStringSubmatch(workflow)
 		if block == nil || block[1] != want {
@@ -106,7 +106,7 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 		`if [ -s .github/known-red.txt ]; then`,
 		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"`,
 		`test_args=()`,
-		`go test "${test_args[@]}"`,
+		`go test ${test_args[@]+"${test_args[@]}"}`,
 	} {
 		if !strings.Contains(workflow, source) {
 			t.Errorf("the release-surface test is not safe for an empty or absent known-red ledger: missing %q", source)
@@ -183,7 +183,7 @@ func releaseSurfacePrologue(t *testing.T) string {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "go test ") {
-			script = append(script, `printf 'ARG:%s\n' "${test_args[@]}"`)
+			script = append(script, `printf 'ARG:%s\n' ${test_args[@]+"${test_args[@]}"}`)
 			return strings.Join(script, "\n") + "\n"
 		}
 		script = append(script, trimmed)
@@ -265,6 +265,216 @@ func TestPublishedPinExamplesGiveVersionToBash(t *testing.T) {
 		}
 		if broken.Match(raw) || !strings.Contains(string(raw), "| VERSION=") {
 			t.Errorf("%s does not give VERSION to bash", path)
+		}
+	}
+}
+
+func TestRelayJobRunsAfterPrepareAndBlocksPublish(t *testing.T) {
+	root := repositoryRoot(t)
+	rawWorkflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowText := string(rawWorkflow)
+
+	doc := workflowDocument(t, "release.yml")
+	jobs := obj(t, doc["jobs"])
+	relay := obj(t, jobs["relay"])
+	if relay["needs"] != "prepare" {
+		t.Fatalf("relay needs = %v, want prepare", relay["needs"])
+	}
+	perms := obj(t, relay["permissions"])
+	if len(perms) != 1 || perms["contents"] != "read" {
+		t.Fatalf("relay permissions = %v, want only contents: read", perms)
+	}
+	concurrency := obj(t, relay["concurrency"])
+	wantGroup := "relay-${{ (needs.prepare.outputs.channel == 'stable' || needs.prepare.outputs.channel == 'rc') && 'production' || needs.prepare.outputs.channel }}"
+	if concurrency["group"] != wantGroup || concurrency["cancel-in-progress"] != false {
+		t.Fatalf("relay concurrency = %v, want group %q and cancel-in-progress false", concurrency, wantGroup)
+	}
+
+	publish := obj(t, jobs["publish"])
+	publishNeeds := list(t, publish["needs"])
+	for _, want := range []string{"prepare", "build", "relay"} {
+		if !containsNeed(publishNeeds, want) {
+			t.Errorf("publish needs %v lacks %s", publishNeeds, want)
+		}
+	}
+	if !strings.Contains(stringField(t, publish["if"]), "needs.relay.result == 'success'") {
+		t.Fatalf("publish condition does not block on relay success: %v", publish["if"])
+	}
+
+	steps := list(t, relay["steps"])
+	checkedOut := false
+	pinnedAction := regexp.MustCompile(`^actions/[a-z0-9-]+@v[0-9]+$`)
+	for i, rawStep := range steps {
+		step := obj(t, rawStep)
+		if i > 0 && step["if"] != "steps.gate.outputs.deploy == 'true'" {
+			t.Errorf("relay step %d lacks gate condition: %v", i, step["if"])
+		}
+		if uses, ok := step["uses"].(string); ok {
+			if !pinnedAction.MatchString(uses) {
+				t.Errorf("relay step %d uses unpinned action %q", i, uses)
+			}
+			if strings.HasPrefix(uses, "actions/checkout@") {
+				checkedOut = true
+				if obj(t, step["with"])["ref"] != "${{ needs.prepare.outputs.sha }}" {
+					t.Errorf("relay checkout does not check out needs.prepare.outputs.sha: %v", step["with"])
+				}
+			}
+		}
+		if run, ok := step["run"].(string); ok && strings.Contains(run, "scripts/") && !checkedOut {
+			t.Errorf("relay step %d runs a repository script before checkout", i)
+		}
+	}
+
+	deployStep := obj(t, steps[len(steps)-1])
+	deployEnv := obj(t, deployStep["env"])
+	if deployEnv["CLOUDFLARE_ACCOUNT_ID"] != "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ||
+		deployEnv["CLOUDFLARE_API_TOKEN"] != "${{ secrets.CLOUDFLARE_API_TOKEN }}" {
+		t.Fatalf("relay deploy step does not read Cloudflare secrets through env: %v", deployEnv)
+	}
+	if deployEnv["CODEAF_TELEMETRY"] != "off" || deployEnv["DO_NOT_TRACK"] != "1" {
+		t.Fatalf("relay deploy step must disable telemetry: %v", deployEnv)
+	}
+
+	// Neither the workflow nor the relay scripts may trace commands or echo secrets.
+	secretLeak := regexp.MustCompile(`(?m)(^\s*set\s+-[A-Za-z]*x|echo\s+.*\$\{?CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID))`)
+	for _, rel := range []string{
+		".github/workflows/release.yml",
+		"scripts/relay-deploy.sh",
+		"scripts/relay-wrangler-config.sh",
+		"scripts/relay-fingerprint.sh",
+	} {
+		raw, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if secretLeak.Match(raw) {
+			t.Errorf("%s traces commands or echoes Cloudflare secrets", rel)
+		}
+	}
+
+	// Both the workflow comment and the deploy script warn that a rollback
+	// cannot undo a one-way storage upgrade.
+	rawDeploy, err := os.ReadFile(filepath.Join(root, "scripts", "relay-deploy.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"release.yml":     workflowText,
+		"relay-deploy.sh": string(rawDeploy),
+	} {
+		flat := strings.Join(strings.Fields(strings.ReplaceAll(content, "#", " ")), " ")
+		if !strings.Contains(flat, "rollback cannot undo a one-way storage upgrade") {
+			t.Errorf("%s lacks the one-way storage upgrade rollback explanation", name)
+		}
+	}
+}
+
+func TestRelayProductionSwitchDefaultsOffAndDevStagingHaveNoSwitch(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not on PATH")
+	}
+	doc := workflowDocument(t, "release.yml")
+	relay := obj(t, obj(t, doc["jobs"])["relay"])
+	gateStep := obj(t, list(t, relay["steps"])[0])
+	gateEnv := obj(t, gateStep["env"])
+	if gateEnv["CHANNEL"] != "${{ needs.prepare.outputs.channel }}" ||
+		gateEnv["RELAY_DEPLOY_PRODUCTION"] != "${{ vars.RELAY_DEPLOY_PRODUCTION }}" {
+		t.Fatalf("gate env = %v", gateEnv)
+	}
+	gateScript := stringField(t, gateStep["run"])
+
+	for _, channel := range []string{"stable", "rc", "staging", "dev"} {
+		for _, variable := range []string{"", "false", "TRUE", "0", "1", "true"} {
+			t.Run(channel+"/"+variable, func(t *testing.T) {
+				outFile := filepath.Join(t.TempDir(), "github_output")
+				cmd := exec.Command("bash", "-c", gateScript)
+				cmd.Env = append(os.Environ(),
+					"CHANNEL="+channel,
+					"RELAY_DEPLOY_PRODUCTION="+variable,
+					"GITHUB_OUTPUT="+outFile,
+				)
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("gate failed for %s/%q: %v\n%s", channel, variable, err, out)
+				}
+				rawOut, err := os.ReadFile(outFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				productionChannel := channel == "stable" || channel == "rc"
+				wantDeploy := !productionChannel || variable == "true"
+				if wantDeploy {
+					if strings.TrimSpace(string(rawOut)) != "deploy=true" {
+						t.Fatalf("output = %q, want deploy=true", rawOut)
+					}
+					if strings.TrimSpace(string(out)) != "" {
+						t.Fatalf("deploy-enabled gate printed unexpected output: %q", out)
+					}
+					return
+				}
+				if strings.TrimSpace(string(rawOut)) != "deploy=false" {
+					t.Fatalf("output = %q, want deploy=false", rawOut)
+				}
+				lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+				if len(lines) != 1 || !strings.Contains(lines[0], "RELAY_DEPLOY_PRODUCTION=true") {
+					t.Fatalf("production-off gate must print one line explaining how to enable it, got %q", out)
+				}
+			})
+		}
+	}
+}
+
+func TestRelayPipelineTouchesOnlyChannelFabricWorkers(t *testing.T) {
+	root := repositoryRoot(t)
+	forbidden := []string{"caf-relay-staging", "caf-relay-a", "caf-relay-c", "codeaf-pool"}
+	checked := []string{
+		".github/workflows/release.yml",
+		"scripts/relay-wrangler-config.sh",
+		"scripts/relay-deploy.sh",
+		"scripts/relay-fingerprint.sh",
+	}
+	for _, rel := range checked {
+		raw, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(raw)
+		for _, bad := range forbidden {
+			if strings.Contains(text, bad) {
+				t.Errorf("%s names forbidden Worker %q", rel, bad)
+			}
+		}
+	}
+
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not on PATH")
+	}
+	gen := filepath.Join(root, "scripts", "relay-wrangler-config.sh")
+	wantWorker := map[string]string{
+		"stable":  "caf-fabric",
+		"rc":      "caf-fabric",
+		"staging": "caf-fabric-staging",
+		"dev":     "caf-fabric-dev",
+	}
+	nameLine := regexp.MustCompile(`(?m)^name = "([^"]+)"$`)
+	for channel, want := range wantWorker {
+		cmd := exec.Command("bash", gen, channel)
+		cmd.Env = append(os.Environ(), "CLOUDFLARE_ACCOUNT_ID=acct_test_0123456789")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("relay-wrangler-config.sh %s: %v\n%s", channel, err, out)
+		}
+		match := nameLine.FindSubmatch(out)
+		if match == nil || string(match[1]) != want {
+			t.Fatalf("channel %s generated name %q, want %q", channel, match, want)
+		}
+		for _, bad := range forbidden {
+			if strings.Contains(string(out), bad) {
+				t.Errorf("generated config for %s names forbidden Worker %q", channel, bad)
+			}
 		}
 	}
 }

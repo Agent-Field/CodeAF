@@ -91,11 +91,16 @@ computers share a name.
 Cancel takes back the waiting code or ends the request. A wrong code shows the
 engine's sentence and does not add a computer.
 
-A computer that already has chats asks before replacing them. Choose the option
-Not now to cancel without changing them, or Replace this computer's chats to
-continue. Finish any live work before
-joining another computer. After joining changes what this computer shares, the
-desktop restarts its engine and reads setup, devices and sync again.
+Pairing a computer that has never shared keeps its chats, full history, saved
+keys, memory and preferences without a replacement question. Existing chats
+appear on both computers as sharing finishes in the background. Each computer's
+own chats stay here; use Continue here to move another computer's chat. A failed
+upload stays saved locally and is retried while codeaf is open or on the next
+start. Sync status says `Sharing this computer's chats.` during the pass and
+`Some chats could not be shared yet. They are still saved here; codeaf will try
+again.` on failure, including for unopened chats. A used computer already sharing another set refuses and changes nothing.
+Finish any live work before joining another computer. After joining, the desktop
+restarts its engine and reads setup, devices, sync and the shared chat list again.
 These actions appear only when the engine advertises pairing support.
 
 ## When does a paired computer appear and when is its new name shared

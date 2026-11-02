@@ -74,6 +74,7 @@ var ErrNotFound = errors.New("keys: no such secret")
 // Vault is the local secret store rooted at a codeaf home.
 type Vault struct {
 	mu   sync.Mutex
+	home string
 	path string
 	key  []byte
 }
@@ -81,11 +82,16 @@ type Vault struct {
 // Open prepares the vault under home, creating the home and the identity on
 // first use. The vault seals under the identity's cell key: one root secret.
 func Open(home string) (*Vault, error) {
+	unlock, err := LockHome(home)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	id, err := identity.EnsureSolo(home)
 	if err != nil {
 		return nil, err
 	}
-	return &Vault{path: filepath.Join(home, "vault.enc"), key: id.CellKey()}, nil
+	return &Vault{home: home, path: filepath.Join(home, "vault.enc"), key: id.CellKey()}, nil
 }
 
 // Exists reports whether a vault has been written under home. Asking does not
@@ -137,9 +143,12 @@ func (v *Vault) PutMetadataAt(id string, e Entry, at time.Time, metadata string)
 // The expected value prevents an upgrade from describing a different choice
 // that arrived from another computer while the profile was being read.
 func (v *Vault) Annotate(id string, expected Entry, metadata string) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	d, err := v.read()
+	unlock, err := v.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	d, err := v.readLocked()
 	if err != nil {
 		return err
 	}
@@ -319,6 +328,15 @@ func idFor(d *vaultDoc, name, project string) (string, error) {
 }
 
 func (v *Vault) read() (*vaultDoc, error) {
+	unlock, err := v.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return v.readLocked()
+}
+
+func (v *Vault) readLocked() (*vaultDoc, error) {
 	blob, err := os.ReadFile(v.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return &vaultDoc{V: 1, Secrets: map[string]record{}}, nil
@@ -328,7 +346,7 @@ func (v *Vault) read() (*vaultDoc, error) {
 	}
 	d, err := openDoc(v.key, blob)
 	if errors.Is(err, ErrOtherKey) && v.adoptStaged() {
-		return v.read()
+		return v.readLocked()
 	}
 	return d, err
 }
@@ -371,9 +389,12 @@ var errUnchanged = errors.New("keys: nothing to write")
 
 // update applies fn to the stored document and writes it back atomically.
 func (v *Vault) update(fn func(*vaultDoc) error) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	d, err := v.read()
+	unlock, err := v.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	d, err := v.readLocked()
 	if err != nil {
 		return err
 	}

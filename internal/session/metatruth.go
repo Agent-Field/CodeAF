@@ -28,6 +28,7 @@ import (
 type SessionTruth struct {
 	V               uint16           `json:"V"`
 	ChatURI         string           `json:"chat_uri,omitempty"`
+	AgentIdentity   *AgentIdentity   `json:"agent_identity,omitempty"`
 	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
 	Model           string           `json:"model,omitempty"`
 	ModelProvider   string           `json:"model_provider,omitempty"`
@@ -45,11 +46,11 @@ type SessionTruth struct {
 const truthVersion = 1
 
 func (m Meta) truth() SessionTruth {
-	return SessionTruth{V: truthVersion, ChatURI: m.ChatURI, WorkspacePolicy: m.WorkspacePolicy, Model: m.Model, ModelProvider: m.ModelProvider, ModelIdentity: m.ModelIdentity, LaunchDir: m.LaunchDir, Owned: m.Owned, Effort: m.Effort, Approval: m.Approval, Places: m.Places, Trees: m.Trees, Archived: m.Archived, ArchivedTasks: m.ArchivedTasks}
+	return SessionTruth{V: truthVersion, ChatURI: m.ChatURI, AgentIdentity: m.AgentIdentity, WorkspacePolicy: m.WorkspacePolicy, Model: m.Model, ModelProvider: m.ModelProvider, ModelIdentity: m.ModelIdentity, LaunchDir: m.LaunchDir, Owned: m.Owned, Effort: m.Effort, Approval: m.Approval, Places: m.Places, Trees: m.Trees, Archived: m.Archived, ArchivedTasks: m.ArchivedTasks}
 }
 
 func (m *Meta) setTruth(t SessionTruth) {
-	m.ChatURI = t.ChatURI
+	m.ChatURI, m.AgentIdentity = t.ChatURI, t.AgentIdentity
 	m.WorkspacePolicy = t.WorkspacePolicy
 	m.Model, m.ModelProvider, m.ModelIdentity = t.Model, t.ModelProvider, t.ModelIdentity
 	m.LaunchDir, m.Owned, m.Effort, m.Approval = t.LaunchDir, t.Owned, t.Effort, t.Approval

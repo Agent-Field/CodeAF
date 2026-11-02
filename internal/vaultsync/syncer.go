@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -82,6 +83,17 @@ func (s Syncer) publish(ctx context.Context, old string) error {
 	enc, err := s.Vault.Export()
 	if err != nil {
 		return err
+	}
+	// Pairing may switch the home after the pull. Never send the new set's
+	// saved keys through clients still bound to the old set.
+	var envelope struct {
+		CellKeyID string `json:"cell_key_id"`
+	}
+	if err := json.Unmarshal(enc, &envelope); err != nil {
+		return err
+	}
+	if envelope.CellKeyID != s.CellKeyID {
+		return keys.ErrOtherKey
 	}
 	return s.PushSealed(ctx, enc, old)
 }

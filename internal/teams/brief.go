@@ -93,11 +93,11 @@ func ReviseBrief(profileDir, team, key string, c BriefChange) (BriefRevision, er
 	}
 	var rev BriefRevision
 	err := withLock(profileDir, lockWait, func() error {
-		f, _, _, err := read(profileDir)
+		f, exists, err := lookTeams(profileDir, "", team)
 		if err != nil {
 			return err
 		}
-		if f == nil {
+		if !exists {
 			return errors.New("there are no teams")
 		}
 		t, ok := f.Team(team)
@@ -113,6 +113,9 @@ func ReviseBrief(profileDir, team, key string, c BriefChange) (BriefRevision, er
 		}
 		if m.FactoryStage {
 			return ErrBriefFactoryStage
+		}
+		if m, err = WithBriefs(profileDir, team, m); err != nil {
+			return err
 		}
 		cur, changed := m.CurrentBrief()
 		if c.Base != nil && *c.Base != cur.Entry {
@@ -130,27 +133,29 @@ func ReviseBrief(profileDir, team, key string, c BriefChange) (BriefRevision, er
 			return err
 		}
 		rev = BriefRevision{Entry: id, Text: text, Before: before, By: c.By, ByKey: c.ByKey, At: at.UTC()}
-		_, err = updateLocked(profileDir, func(f *File) error {
+		// The revisions are their own rows, which a load leaves out: the
+		// membership is handed the whole kept list, read above under this lock,
+		// and the store replaces that member's revisions with it.
+		stored := rev
+		if len(m.Briefs) > 0 {
+			stored.Before = ""
+		}
+		briefs := append(append([]BriefRevision(nil), m.Briefs...), stored)
+		if over := len(briefs) - BriefRevisionsKept; over > 0 {
+			kept := append([]BriefRevision(nil), briefs[over:]...)
+			kept[0].Before = briefs[over-1].Text
+			briefs = kept
+		}
+		_, err = updateOpenLocked(profileDir, func(f *File) error {
 			for i := range f.Teams {
 				if f.Teams[i].ID != team {
 					continue
 				}
 				for j := range f.Teams[i].Members {
-					mm := &f.Teams[i].Members[j]
-					if mm.Key != key {
-						continue
+					if mm := &f.Teams[i].Members[j]; mm.Key == key {
+						mm.Briefs = briefs
+						return nil
 					}
-					stored := rev
-					if len(mm.Briefs) > 0 {
-						stored.Before = ""
-					}
-					mm.Briefs = append(mm.Briefs, stored)
-					if over := len(mm.Briefs) - BriefRevisionsKept; over > 0 {
-						kept := append([]BriefRevision(nil), mm.Briefs[over:]...)
-						kept[0].Before = mm.Briefs[over-1].Text
-						mm.Briefs = kept
-					}
-					return nil
 				}
 			}
 			return ErrBriefNoMember

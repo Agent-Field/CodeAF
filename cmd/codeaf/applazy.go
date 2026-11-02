@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,30 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// recoveringAgents is every agent a close recovery or a quit still owes work.
+// Recovery admits paid-capable work before opening its checkpoint; these
+// records stay on that road even if its timer and the crew look overlap.
+func (b *appBackend) recoveringAgents() map[string]bool {
+	recovering := map[string]bool{}
+	r := &b.closeRecovery
+	r.locked(func() {
+		for path, claim := range r.claims {
+			if !claim.presence.Fresh(b.now()) || !session.InUse(session.Place{Dir: path}.Transcript()) {
+				recovering[filepath.Base(path)] = true
+			}
+		}
+	})
+	_ = b.state.read(func(f *appStateFile) {
+		for id := range f.ClosePending {
+			recovering[id] = true
+		}
+		for _, id := range f.ResumeAfterQuit {
+			recovering[id] = true
+		}
+	})
+	return recovering
+}
+
 // subscribeCrewTraffic installs the shared watch before the first pending-work
 // check. Directory watches survive log replacement; the existing crew beat
 // remains the fallback after an overflow or a watch that could not be opened.
@@ -23,27 +48,7 @@ func (b *appBackend) subscribeCrewTraffic(run *appCrewRun) {
 	defer run.tick.Unlock()
 	run.since = b.now()
 	run.wakeStamps = map[string]string{}
-	run.mu.Lock()
-	run.recovering = map[string]bool{}
-	// Recovery admits paid-capable work before opening its checkpoint. These
-	// records stay on that road even if its timer and the crew look overlap.
-	r := &b.closeRecovery
-	r.mu.Lock()
-	for path, claim := range r.claims {
-		if !claim.presence.Fresh(b.now()) || !session.InUse(session.Place{Dir: path}.Transcript()) {
-			run.recovering[filepath.Base(path)] = true
-		}
-	}
-	r.mu.Unlock()
-	_ = b.state.read(func(f *appStateFile) {
-		for id := range f.ClosePending {
-			run.recovering[id] = true
-		}
-		for _, id := range f.ResumeAfterQuit {
-			run.recovering[id] = true
-		}
-	})
-	run.mu.Unlock()
+	run.locked(func() { run.recovering = b.recoveringAgents() })
 	run.watcher, _ = fsnotify.NewWatcher()
 	if run.watcher != nil {
 		_ = run.watcher.Add(filepath.Dir(teamstore.Path(b.crewProfile())))
@@ -136,11 +141,9 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 	run.lazyStarted = true
 	now := b.now()
 	hot := map[string]bool{}
-	stageLends.mu.Lock()
-	for agent := range stageLends.agents {
+	for _, agent := range stageAgentsWhere(func(*session.Agent) bool { return true }) {
 		hot[appAgentID(agent.SessionPath())] = true
 	}
-	stageLends.mu.Unlock()
 	if svc, err := b.servicesOf(); err == nil {
 		for _, row := range svc.sup.All() {
 			if row.Running || row.Stopping || row.State == service.StateStarting || row.State == service.StateRestarting {
@@ -278,8 +281,12 @@ func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
 	// open holds the agent's gate for as long as it takes, and a caller that
 	// only reads or stops answers from what is there instead of queueing.
 	// At quit nothing is opened again either, and the gates are the wrap-up's.
+	// A member the person closed is answered from what is there too: opening
+	// it would take it out of Closed.
 	if b.crewKeeps(id) && !b.held(id) && !b.isClosing() {
-		_, _, err = b.heldLive(id)
+		if _, _, err = b.keptLive(id); errors.Is(err, errAppKeptClosed) {
+			err = nil
+		}
 	}
 	return a, err
 }

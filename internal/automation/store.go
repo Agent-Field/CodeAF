@@ -153,6 +153,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		if err := ensureOriginRevision(ctx, tx); err != nil {
 			return err
 		}
+		if err := ensureRunAsked(ctx, tx); err != nil {
+			return err
+		}
 		return tx.Commit()
 	case app != 0 || version != 0:
 		return fmt.Errorf("automations: %s is not an automations database this build can read (application %d, version %d)", filepath.Join(s.root, DatabaseName), app, version)
@@ -207,6 +210,9 @@ CREATE INDEX runs_by_seq ON runs(seq);
 		return fmt.Errorf("automations: %w", err)
 	}
 	if err := ensureOriginRevision(ctx, tx); err != nil {
+		return err
+	}
+	if err := ensureRunAsked(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -707,6 +713,10 @@ func (s *Store) queueNow(id string, phase Phase) (Run, error) {
 			return err
 		}
 		run.ID, _ = res.LastInsertId()
+		if phase == PhaseAsking {
+			run.Asked = now
+			return noteAsked(tx, run.ID, now)
+		}
 		return nil
 	})
 	return run, err
@@ -932,7 +942,8 @@ func (s *Store) Cursor() (int64, error) {
 }
 
 func (s *Store) queryRuns(where string, args ...any) ([]Run, error) {
-	rows, err := s.db.Query(`SELECT id, automation_id, due_ms, why, phase, started_ms, finished_ms, outcome, line, detail, usd, transcript FROM runs `+where, args...)
+	// When a run asked rides along in the same read (store_asked.go).
+	rows, err := s.db.Query(`SELECT runs.id, runs.automation_id, runs.due_ms, runs.why, runs.phase, runs.started_ms, runs.finished_ms, runs.outcome, runs.line, runs.detail, runs.usd, runs.transcript, COALESCE(run_asked.asked_ms, 0) FROM runs LEFT JOIN run_asked ON run_asked.run_id = runs.id `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -940,12 +951,12 @@ func (s *Store) queryRuns(where string, args ...any) ([]Run, error) {
 	var runs []Run
 	for rows.Next() {
 		var r Run
-		var due, started, finished int64
+		var due, started, finished, asked int64
 		var why, phase, outcome string
-		if err := rows.Scan(&r.ID, &r.AutomationID, &due, &why, &phase, &started, &finished, &outcome, &r.Line, &r.Detail, &r.USD, &r.Transcript); err != nil {
+		if err := rows.Scan(&r.ID, &r.AutomationID, &due, &why, &phase, &started, &finished, &outcome, &r.Line, &r.Detail, &r.USD, &r.Transcript, &asked); err != nil {
 			return nil, err
 		}
-		r.Due, r.Started, r.Finished = fromMS(due), fromMS(started), fromMS(finished)
+		r.Due, r.Started, r.Finished, r.Asked = fromMS(due), fromMS(started), fromMS(finished), fromMS(asked)
 		r.Why, r.Phase, r.Outcome = Why(why), Phase(phase), Outcome(outcome)
 		runs = append(runs, r)
 	}

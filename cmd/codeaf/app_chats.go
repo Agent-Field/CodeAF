@@ -12,33 +12,32 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
-	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 type appChats struct {
-	start   sync.Once
-	byAgent map[string]appwire.ChatRow
-	take    sync.Mutex
-	op      sync.Mutex
-	// Offered is guarded by op and records an attempted startup pass.
-	offered bool
-	mu      sync.Mutex
-	rows    []appwire.ChatRow
-	facts   map[string]chatlist.Row
-	sent    []appwire.ChatRow
-	version uint64
-	source  *syncsetup.Sync
-	feed    dirwatch.Follower
-	cancel  context.CancelFunc
-	done    chan struct{}
-	closed  bool
+	start           sync.Once
+	byAgent         map[string]appwire.ChatRow
+	take            sync.Mutex
+	op              sync.Mutex
+	mu              sync.Mutex
+	rows            []appwire.ChatRow
+	facts           map[string]chatlist.Row
+	sent            []appwire.ChatRow
+	version         uint64
+	source          *syncsetup.Sync
+	feed            dirwatch.Follower
+	cancel          context.CancelFunc
+	done            chan struct{}
+	closed          bool
+	publicationDone chan struct{}
+	publicationWake chan struct{}
 }
 type appLocalChat struct {
 	agent    string
@@ -48,18 +47,107 @@ type appLocalChat struct {
 // Startup offers local cells without starting a chat-inventory subscriber.
 // Device publication owns the paired engine's shared directory follower.
 func (b *appBackend) startLocalChatPublication() {
+	c := &b.chats
+	c.publicationDone = make(chan struct{})
+	c.publicationWake = make(chan struct{}, 1)
 	guard.Go("app/existing-chats", func() {
-		c := &b.chats
-		c.op.Lock()
-		defer c.op.Unlock()
-		if c.isClosed() || c.offered {
-			return
-		}
-		if s, ok, err := syncsetup.Open(b.relayHome()); err == nil && ok && syncsetup.MayTalk(b.relayHome()) {
-			b.publishLocalChats(s)
-			c.offered = true
-		}
+		defer close(c.publicationDone)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		guard.Go("app/existing-chats-stop", func() {
+			select {
+			case <-b.left:
+				cancel()
+			case <-ctx.Done():
+			}
+		})
+		ticker := time.NewTicker(syncsetup.DefaultInterval)
+		defer ticker.Stop()
+		b.runLocalChatPublication(ctx, time.Now, ticker.C, nil)
 	})
+}
+
+func (c *appChats) wakePublication() {
+	select {
+	case c.publicationWake <- struct{}{}:
+	default:
+	}
+}
+
+// runLocalChatPublication samples host ticks; settled acknowledges completed
+// rounds when a caller needs to observe deterministic request counts.
+func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() time.Time, ticks <-chan time.Time, settled chan<- struct{}) {
+	c := &b.chats
+	var source *syncsetup.Sync
+	offered := false
+	refresh := false
+	var stateRetry time.Time
+	var stateBackoff time.Duration
+	for {
+		if b.pairingWorkRefusal() == nil {
+			ready, shared := false, false
+			func() {
+				if c.isClosed() || ctx.Err() != nil {
+					return
+				}
+				next, ok, err := syncsetup.Open(b.relayHome())
+				if err != nil {
+					b.sharingStatus("Sharing could not finish yet. Your chats are still saved here; codeaf will try again.")
+					return
+				}
+				if !ok || !syncsetup.MayTalk(b.relayHome()) {
+					return
+				}
+				if source == nil || source.Identity.ID() != next.Identity.ID() || source.Device.ID() != next.Device.ID() || source.Relay != next.Relay {
+					source, offered = next, false
+					stateRetry, stateBackoff = time.Time{}, 0
+				}
+				if refresh {
+					if err := source.RefreshLocalChats(); err != nil {
+						b.sharingStatus("Sharing could not finish yet. Your chats are still saved here; codeaf will try again.")
+						return
+					}
+					refresh, offered = false, false
+				}
+				if !offered {
+					offered = b.publishLocalChats(source, now) == nil
+				}
+				ready, shared = true, offered
+			}()
+			// Home state has its own lock. Network work here must not hold up
+			// inventory reads or Continue here after the startup chat pass.
+			if ready && ctx.Err() == nil && pair.SharingPending(source.Home, source.Identity.ID()) && !now().Before(stateRetry) {
+				err := source.SyncState(ctx)
+				if err != nil {
+					if stateBackoff == 0 {
+						stateBackoff = syncsetup.DefaultInterval
+					} else {
+						stateBackoff = min(2*stateBackoff, syncsetup.SharingRetryMax)
+					}
+					stateRetry = now().Add(stateBackoff)
+					b.sharingStatus("Saved keys, memory and preferences could not be shared yet; codeaf will try again.")
+				} else if shared {
+					b.sharingStatus("")
+				}
+			}
+		}
+		if settled != nil {
+			select {
+			case settled <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+		case <-c.publicationWake:
+			// Pairing may follow chats made after the startup scan without
+			// changing the binding. Keep its publication progress when scanning.
+			refresh = true
+		}
+	}
 }
 
 // localChats relates physical chat folders to directory ids. Older chats may
@@ -137,10 +225,6 @@ func (c *appChats) inventoryActive() bool {
 }
 
 func (b *appBackend) ListChats() (appwire.ChatsResult, error) {
-	return b.listChats(false)
-}
-
-func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error) {
 	c := &b.chats
 	c.op.Lock()
 	defer c.op.Unlock()
@@ -165,10 +249,6 @@ func (b *appBackend) listChats(publishExisting bool) (appwire.ChatsResult, error
 		return appwire.ChatsResult{Chats: []appwire.ChatRow{}, Version: version}, nil
 	}
 	feed := b.startChatFeed(s)
-	if !c.offered || publishExisting {
-		b.publishLocalChats(s)
-		c.offered = true
-	}
 	return b.readChats(context.Background(), s, feed, false)
 }
 
@@ -193,7 +273,7 @@ func (b *appBackend) startChatFeed(s *syncsetup.Sync) dirwatch.Follower {
 // PublishCopy is also the terminal's background publication door. One finite,
 // sequential pass offers existing cell chats without opening or resealing them.
 // Older chats are left to the terminal's separate conversion policy.
-func (b *appBackend) publishLocalChats(s *syncsetup.Sync) {
+func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	guard.Go("app/existing-chats-cancel", func() {
@@ -203,38 +283,29 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync) {
 		case <-ctx.Done():
 		}
 	})
-	// ReadWorld resolves older originals to conversion copies. Enumerate direct
-	// cells instead so this pass never offers a legacy home-folder conversion.
-	roots, _ := filepath.Glob(filepath.Join(s.Home, "v3", "projects", "*", "*"))
-	name := devname.Name(s.Home)
-	for _, root := range roots {
-		if ctx.Err() != nil {
-			return
+	b.sharingStatus("Sharing this computer's chats.")
+	err := s.PublishLocalChats(ctx, now, func(c cell.Cell, line string) {
+		// Unopened chats use the global sync reason. Queueing one identical
+		// per-chat fact on every outage retry would grow without a reader.
+		known := false
+		b.locked(func() {
+			for _, a := range b.agents {
+				if session.DirOf(a.transcript) == c.Root {
+					known = true
+					break
+				}
+			}
+		})
+		if known {
+			b.syncFact(c, appSyncFact{line: line})
 		}
-		if !cell.ValidID(filepath.Base(root)) {
-			continue
-		}
-		c, err := cell.OpenAt(root, filepath.Base(root))
-		if err != nil {
-			continue
-		}
-		// An unopened shell has nothing to share and needs no relay request.
-		if head, err := cellstore.Head(c); err != nil || head == nil {
-			continue
-		}
-		meta, err := session.LoadMeta(root)
-		if err != nil {
-			continue
-		}
-		e := cellstore.EngineFor(meta.Workspace)
-		e.DataRoot = filepath.Join(s.Home, "v3", "stores")
-		if meta.Owned {
-			e.Workspace = filepath.Join(root, "work")
-		}
-		one, stop := context.WithTimeout(ctx, cellstore.SealWithin)
-		_ = s.PublishCopy(one, e, c, name, meta.Title)
-		stop()
+	})
+	if err != nil {
+		b.sharingStatus("Some chats could not be shared yet. They are still saved here; codeaf will try again.")
+	} else {
+		b.sharingStatus("")
 	}
+	return err
 }
 func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
@@ -445,6 +516,9 @@ func (b *appBackend) closeChats() {
 	}
 	if done != nil {
 		<-done
+	}
+	if c.publicationDone != nil {
+		<-c.publicationDone
 	}
 	// Join foreground continuations and inventory reads before the remaining teardown.
 	c.take.Lock()

@@ -91,15 +91,17 @@ func TestOnlyThisDevicesRowCanBeNamed(t *testing.T) {
 func TestRenameFieldGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
-			"› ● this mac  Mac    this device",
+			"▸ ● this mac  Mac    this device",
 			"  ○ desk      Mac    seen 3h ago",
 			"  ○ tower     Linux  offline",
+			"  Add another device",
 			"name this device: this mac▏",
 		},
 		40: {
-			"› ● this mac  Mac    this device",
+			"▸ ● this mac  Mac    this device",
 			"  ○ desk      Mac    seen 3h ago",
 			"  ○ tower     Linux  offline",
+			"  Add another device",
 			"name this device: this mac▏",
 		},
 	}

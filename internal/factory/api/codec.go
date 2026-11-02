@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 )
 
 // FromSnapshot is the floor as `GET /v1/queue` says it to me.
@@ -18,6 +19,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 	}
 	people := map[string]factory.PersonSummary{}
 	jobs := make([]Job, len(s.Items))
+	book := estimate.Open(s.Items)
 	// Only two running jobs can overlap ([factory.Overlaps]), so each running
 	// job is compared with the running ones alone. Comparing every job with
 	// every other was the queue's one quadratic step: 640,000 comparisons,
@@ -35,8 +37,10 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 			}
 		}
 		jobs[i] = FromItem(it)
+		AreaIn(&jobs[i], s.Repos)
 		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
+		jobs[i].Estimate = estimateOf(book, it)
 		ForViewer(&jobs[i], it, me)
 		if factory.JobState(it) == "running" {
 			for _, k := range running {
@@ -57,7 +61,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 		NeedsYou: groupNeedsYou(jobs),
 		Desk: &QueueDesk{
 			Now: s.Now, Sources: mapList(s.Sources, fromSource), Busy: s.Busy, BusyAll: s.BusyAll,
-			LastReadCost: s.LastReadCost, Marked: s.Marked, Checkouts: s.Checkouts,
+			LastReadCost: s.LastReadCost, ScoutPrice: s.ScoutPrice, Estimates: calibrationOf(book), Marked: s.Marked, Checkouts: s.Checkouts,
 		},
 	}
 }
@@ -97,7 +101,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 		Now:    d.Now, Repos: toRepos(q.Repos), Items: mapList(jobs, ToItem),
 		Benches: q.Capacity.Benches, Daily: q.Capacity.Daily, Rail: q.Capacity.Rail,
 		Shift: toShift(q.Since), Sources: mapList(d.Sources, toSource),
-		Busy: d.Busy, BusyAll: d.BusyAll, LastReadCost: d.LastReadCost,
+		Busy: d.Busy, BusyAll: d.BusyAll, LastReadCost: d.LastReadCost, ScoutPrice: d.ScoutPrice,
 		Marked: d.Marked, Checkouts: d.Checkouts,
 	}
 }
@@ -107,6 +111,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 var Lost = map[string]string{
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
+	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
@@ -123,6 +128,10 @@ var Lost = map[string]string{
 	"Item.ReportReceipts": "known gap: the service's own acknowledgments of retained worker results, kept with the item so a lost reply never charges twice; no reader needs them",
 	"Item.ReportRetryAt":  "known gap: a person's retry grant, read by the service that holds the item; not carried to readers yet",
 	"Item.ManagerAnswer":  "known gap: the service's idempotency receipt for the manager's last decision; not carried to readers yet",
+	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief",
+	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
+	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
+	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
 
@@ -145,6 +154,8 @@ func FromItem(it factory.Item) Job {
 		PipelineDecided:  it.PipelineDecided,
 		StartRules:       cloneStartRules(it.StartRules),
 		RuleHold:         it.RuleHold,
+		RuleChecks:       fromRuleChecks(it.RuleChecks),
+		Brief:            briefMark(it),
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
 		PlannedFiles:     factory.PlanFilesOf(it),
@@ -158,6 +169,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
+	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)
@@ -171,6 +183,7 @@ func FromItem(it factory.Item) Job {
 	// THE JOB'S COST IS EVERYTHING DONE FOR IT: its run's, or before any run
 	// what its chat spent ([factory.JobSpent]).
 	j.Cost = factory.JobSpent(it)
+	j.Scout = fromScout(it)
 	if st := it.Stream; st != nil {
 		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
 		if st.Cur >= 0 && st.Cur < len(st.Phases) {
@@ -461,7 +474,7 @@ func ToItem(j Job) factory.Item {
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
 		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard, Thread: d.Thread,
-		Comments: mapList(d.Comments, toComment), Files: mapList(d.Files, toFile),
+		Comments: mapList(d.Comments, toComment), CommentReads: slices.Clone(d.CommentReads), Files: mapList(d.Files, toFile),
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
 		Activity: mapList(d.Activity, toActivity),
 	}
@@ -476,6 +489,7 @@ func ToItem(j Job) factory.Item {
 	it.PipelineDecided = j.PipelineDecided
 	it.StartRules = cloneStartRules(j.StartRules)
 	it.RuleHold = j.RuleHold
+	it.RuleChecks = toRuleChecks(j.RuleChecks)
 	it.PublishError = j.PublishError
 	if a := j.Ask; a != nil && a.Issue == nil {
 		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
@@ -487,6 +501,7 @@ func ToItem(j Job) factory.Item {
 		it.Failure = failureItem(f)
 	}
 	it.Stages, it.Stream = unsteps(j)
+	it.Scout = toScout(j.Scout)
 	unquestions(&it, j.Questions)
 	return it
 }
@@ -698,12 +713,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 
 func fromStage(s factory.Stage) StepDef {
 	return StepDef{Name: s.Name, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
-		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
+		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
 	return factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
-		On: !d.Off, When: d.When, Effort: d.Effort, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
+		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 
 // stockNames are the step names the default pipeline spells for any kind; a
@@ -751,7 +766,7 @@ func fromDesk(it factory.Item) *JobDesk {
 		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
 		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,
-		Comments: mapList(it.Comments, fromComment), Files: mapList(it.Files, fromFile),
+		Comments: mapList(it.Comments, FromComment), CommentReads: slices.Clone(it.CommentReads), Files: mapList(it.Files, fromFile),
 		CheckRuns: mapList(it.CheckRuns, fromCheckRun), Base: it.Base, Head: it.Head, HeadSHA: it.HeadSHA,
 		Activity: mapList(it.Activity, fromActivity),
 	}
@@ -763,13 +778,103 @@ func fromDesk(it factory.Item) *JobDesk {
 }
 
 func fromTriage(t factory.Triage) Triage {
-	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: fromRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func toTriage(t Triage) factory.Triage {
-	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: toRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
+}
+
+// estimateOf is an open job's measured range, nil for a finished job or one
+// with no figure.
+func estimateOf(book estimate.Book, it factory.Item) *Estimate {
+	if factory.JobState(it) == "done" || (it.Stream != nil && !it.Stream.Ended.IsZero()) {
+		return nil
+	}
+	var e Estimate
+	if r, ok := book.For(it); ok {
+		e = *FromRange(r)
+	}
+	if factory.JobState(it) == "running" && it.Stream != nil {
+		if l, ok := book.Left(it); ok {
+			e.Left = &Left{USDLo: l.USDLo, USDHi: l.USDHi, N: l.N}
+		}
+	}
+	if e.N == 0 && e.Left == nil {
+		return nil
+	}
+	return &e
+}
+
+// FromRange is a measured range on the wire.
+func FromRange(r estimate.Range) *Estimate {
+	return &Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened, Basis: r.Basis}
+}
+
+func calibrationOf(book estimate.Book) *Calibration {
+	c := book.Calibration()
+	out := &Calibration{Jobs: book.Jobs(), Hit: c.Hit, Of: c.Of}
+	for _, basis := range []string{estimate.BasisRead, estimate.BasisKind} {
+		if b := book.CalibrationBy(basis); b.Of > 0 {
+			if out.Basis == nil {
+				out.Basis = map[string]HitRate{}
+			}
+			out.Basis[basis] = HitRate{Hit: b.Hit, Of: b.Of}
+		}
+	}
+	return out
+}
+
+// fromScout is a job's Look closer on the wire, stale when the issue's text
+// moved on since.
+func fromScout(it factory.Item) *Scout {
+	s := it.Scout
+	if s == nil {
+		return nil
+	}
+	files := make([]ScoutFile, len(s.Files))
+	for i, f := range s.Files {
+		files[i] = ScoutFile{Path: f.Path, Why: f.Why}
+	}
+	return &Scout{Files: files, Plan: s.Plan, Unknowns: s.Unknowns, Tests: s.Tests, Rubric: fromRubric(s.Rubric),
+		Cited: s.Cited, Dropped: s.Dropped, Calls: s.Calls, USD: s.USD, Model: s.Model, TookMS: s.Took.Milliseconds(),
+		Body: s.Body, Head: s.Head, At: s.At, Stale: s.Stale(it)}
+}
+
+func toScout(s *Scout) *factory.Scout {
+	if s == nil {
+		return nil
+	}
+	files := make([]factory.ScoutFile, len(s.Files))
+	for i, f := range s.Files {
+		files[i] = factory.ScoutFile{Path: f.Path, Why: f.Why}
+	}
+	return &factory.Scout{Files: files, Plan: s.Plan, Unknowns: s.Unknowns, Tests: s.Tests, Rubric: toRubric(s.Rubric),
+		Cited: s.Cited, Dropped: s.Dropped, Calls: s.Calls, USD: s.USD, Model: s.Model, Took: time.Duration(s.TookMS) * time.Millisecond,
+		Body: s.Body, Head: s.Head, At: s.At}
+}
+
+// fromRubric is a rubric on the wire, with its sum and band said, so the
+// desk never adds factors itself.
+func fromRubric(r *factory.Rubric) *Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x factory.Factor) Factor { return Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite} }
+	return &Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty),
+		From: r.From, Complexity: r.Complexity(), Band: r.Band(), BandNear: factory.BandNear(r.Complexity())}
+}
+
+func toRubric(r *Rubric) *factory.Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x Factor) factory.Factor {
+		return factory.Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite}
+	}
+	return &factory.Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty), From: r.From}
 }
 
 func fromLog(l factory.LogLine) LogLine {
@@ -780,9 +885,12 @@ func toLog(l LogLine) factory.LogLine {
 	return factory.LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
 }
 
-func fromComment(c factory.Comment) Comment { return Comment{Author: c.Author, Body: c.Body, At: c.At} }
+// FromComment is one comment as the wire carries it.
+func FromComment(c factory.Comment) Comment {
+	return Comment{Author: c.Author, Body: c.Body, At: c.At, ID: c.ID, URL: c.URL, Tier: string(c.Tier), ByFactory: c.ByFactory}
+}
 func toComment(c Comment) factory.Comment {
-	return factory.Comment{Author: c.Author, Body: c.Body, At: c.At}
+	return factory.Comment{Author: c.Author, Body: c.Body, At: c.At, ID: c.ID, URL: c.URL, Tier: factory.Tier(c.Tier), ByFactory: c.ByFactory}
 }
 
 func fromFile(f factory.FileChange) File {
@@ -976,9 +1084,29 @@ func roundsWire(lines []factory.RoundLine) []RoundLine {
 	}
 	out := make([]RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat}
+		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
 	}
 	return out
+}
+
+// withoutTryResults takes how each try ended out of steps a worker reports
+// (its steps' rounds and a reshaped pipeline's). The factory judges that
+// itself from the result it folds (run.foldResult), and a factory older than
+// the fields decodes a worker's report strictly, so sending them would cost
+// the whole report.
+func withoutTryResults(steps []Step, reports []StepReport) {
+	for i := range steps {
+		clearTryResults(steps[i].Rounds)
+	}
+	for i := range reports {
+		clearTryResults(reports[i].Rounds)
+	}
+}
+
+func clearTryResults(lines []RoundLine) {
+	for i := range lines {
+		lines[i].Result, lines[i].Reason = "", ""
+	}
 }
 
 // roundsItem is the wire's finished tries as the item keeps them.
@@ -988,7 +1116,7 @@ func roundsItem(lines []RoundLine) []factory.RoundLine {
 	}
 	out := make([]factory.RoundLine, len(lines))
 	for i, line := range lines {
-		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat}
+		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
 	}
 	return out
 }
@@ -1108,4 +1236,32 @@ func cloneStartRules(r *factory.StartRules) *factory.StartRules {
 		return nil
 	}
 	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread}
+}
+
+func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {
+	if c == nil {
+		return nil
+	}
+	return &RuleChecks{Start: c.Start, Publish: c.Publish, PublishHead: c.PublishHead}
+}
+
+func toRuleChecks(c *RuleChecks) *factory.RuleChecks {
+	if c == nil {
+		return nil
+	}
+	return &factory.RuleChecks{Start: c.Start, Publish: c.Publish, PublishHead: c.PublishHead}
+}
+
+// briefMark is the job's brief rev and status, nil while the job has only
+// its stub: a reader reads the stub's facts from the job's own steps.
+func briefMark(it factory.Item) *BriefMark {
+	status := factory.BriefStatusOf(it)
+	if status == factory.BriefStatusStub {
+		return nil
+	}
+	rev := 0
+	if n := len(it.Briefs); n > 0 {
+		rev = it.Briefs[n-1].Rev
+	}
+	return &BriefMark{Rev: rev, Status: status}
 }

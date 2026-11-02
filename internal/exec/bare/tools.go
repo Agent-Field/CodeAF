@@ -790,13 +790,14 @@ func exitCodeFromWait(err error) int {
 // getShellConfig mirrors pi's shell.js:getShellConfig on Unix: /bin/bash if
 // it exists, then bash on PATH, then fallback to sh. Windows instead uses the
 // engine's native bash, and refuses before a command can reach a WSL launcher.
-// Bash pipelines preserve a failing check's status on every supported platform.
-func getShellConfig() (string, []string, error) {
-	program, args, err := shell.Preferred()
-	if err == nil && program != "sh" {
-		args = append([]string{"-o", "pipefail"}, args...)
+// Its arguments end with command, run under [shell.PipefailArgs] like every
+// other bash door.
+func getShellConfig(command string) (string, []string, error) {
+	program, flags, err := shell.Preferred()
+	if err != nil {
+		return "", nil, err
 	}
-	return program, args, err
+	return program, shell.PipefailArgs(program, flags, command), nil
 }
 
 // killProcessGroup sends SIGKILL to the process group, mirroring pi's
@@ -970,11 +971,15 @@ func newWriteTool(cwd string) Tool {
 		Schema:      json.RawMessage(writeSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
-				Path    string `json:"path"`
-				Content string `json:"content"`
+				Path    string  `json:"path"`
+				Content *string `json:"content"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
 				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
+			}
+
+			if p.Content == nil {
+				return "Invalid arguments: content is required and must be a string", true, nil
 			}
 
 			absPath := resolveToCwd(p.Path, cwd)
@@ -990,7 +995,7 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				written, err := writeFileObserved(absPath, []byte(p.Content))
+				written, err := writeFileObserved(absPath, []byte(*p.Content))
 				if err != nil {
 					return err.Error(), true, nil
 				}
@@ -1005,7 +1010,7 @@ func newWriteTool(cwd string) Tool {
 				}
 				// pi uses content.length which is the JS string char length
 				// (UTF-16 code units), NOT the byte length.
-				return fmt.Sprintf("Successfully wrote %d bytes to %s", utf16Length(p.Content), p.Path), false, nil
+				return fmt.Sprintf("Successfully wrote %d bytes to %s", utf16Length(*p.Content), p.Path), false, nil
 			})
 		},
 	}

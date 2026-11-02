@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 type sendLease struct {
@@ -55,7 +56,7 @@ func (d *Drive) recordSendLease() error {
 	fence := d.batcher.Fence()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.viewer.Line != "" || fence == 0 || fence == d.recordedFence {
+	if d.lost || d.viewer.Line != "" || fence == 0 || fence == d.recordedFence {
 		return nil
 	}
 	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
@@ -83,7 +84,7 @@ func (s *Sync) reconcileSendLease(id, remoteID string, view directory.CellView) 
 }
 
 func (s *Sync) recordSendLease(id string, held sendLease) error {
-	lock, err := s.lockSendLease(id)
+	lock, err := s.lockChat(id, "")
 	if err != nil {
 		return err
 	}
@@ -96,7 +97,7 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".hold-*")
@@ -120,7 +121,7 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 
 // forgetSendLease retires only this writer's fence, preserving a newer local owner.
 func (s *Sync) forgetSendLease(id string, expected sendLease) error {
-	lock, err := s.lockSendLease(id)
+	lock, err := s.lockChat(id, "")
 	if err != nil {
 		return err
 	}
@@ -150,15 +151,15 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 	return err
 }
 
-func (s *Sync) lockSendLease(id string) (*os.File, error) {
+func (s *Sync) lockChat(id, suffix string) (*os.File, error) {
 	path, err := s.sendLeasePath(id)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(path+suffix+".lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}

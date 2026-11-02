@@ -76,14 +76,21 @@ type TeamsUpdateArgs struct {
 // TeamsTrafficArgs is one team's log after a cursor: After "" is the tail,
 // the last Limit entries; an id pages forward from it.
 type TeamsTrafficArgs struct {
-	Team  string `json:"team"`
-	After string `json:"after,omitempty"`
-	Limit int    `json:"limit,omitempty"`
+	// History requests display-only mirrors as well as the local log.
+	History bool   `json:"history,omitempty"`
+	Mirror  string `json:"mirror,omitempty"`
+	Team    string `json:"team"`
+	After   string `json:"after,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
 }
 
 // TeamsTraffic is what came after the cursor, oldest first, and the log's
 // stamp when it was read.
 type TeamsTraffic struct {
+	// Cursor remains local; Reset replaces a pane tail when the mirror moves.
+	Mirror  string            `json:"mirror,omitempty"`
+	Cursor  string            `json:"cursor,omitempty"`
+	Reset   bool              `json:"reset,omitempty"`
 	Entries []teamstore.Entry `json:"entries,omitempty"`
 	Stamp   string            `json:"stamp,omitempty"`
 }

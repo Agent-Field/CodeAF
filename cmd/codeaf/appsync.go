@@ -19,9 +19,10 @@ import (
 const appWindowConflict = "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window"
 
 type appSync struct {
-	mu   sync.Mutex
-	owed *syncsetup.Sync
-	last appwire.Sync
+	mu      sync.Mutex
+	owed    *syncsetup.Sync
+	last    appwire.Sync
+	sharing string
 }
 
 type appSyncFact struct {
@@ -174,6 +175,7 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 		state.Mode, state.Reason = appwire.SyncUnavailable, cell.UnavailableReason()
 	case syncsetup.MayTalk(b.relayHome()):
 		state.Mode = appwire.SyncOn
+		state.Reason = b.sync.sharing
 	}
 	if b.sync.owed != nil {
 		if line, owed := b.sync.owed.PeekFirstRun(); owed {
@@ -183,6 +185,15 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 		}
 	}
 	return state
+}
+
+// sharingStatus uses the existing sync event so background progress and errors
+// are visible even when none of the chats being shared has been opened.
+func (b *appBackend) sharingStatus(line string) {
+	b.sync.mu.Lock()
+	defer b.sync.mu.Unlock()
+	b.sync.sharing = line
+	b.syncChangedLocked()
 }
 
 func (b *appBackend) SyncStatus() (appwire.Sync, error) {
@@ -294,10 +305,7 @@ func (b *appBackend) workAllowed(a *appAgent) error {
 	b.locked(func() { transcript, drives = a.transcript, b.drives })
 	dir, folder := session.FolderOf(transcript)
 	if drives != nil && folder {
-		drives.mu.Lock()
-		d := drives.drive[filepath.Base(dir)]
-		drives.mu.Unlock()
-		if gate := driveWorkGate(d); gate != nil {
+		if gate := driveWorkGate(drives.renewalsOf(filepath.Base(dir))); gate != nil {
 			if err := gate(); err != nil {
 				return appEngineError(err)
 			}
@@ -345,6 +353,9 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 		}
 		a.live, a.windowMoved = nil, true
 		a.lastLive = b.now()
+		// Its conversation's open questions go with the window; the new
+		// holder's presence says them now.
+		b.dropAsksLocked(a.view.ID, live.asks)
 		a.view.State = appwire.StateIdle
 		live.stopping, mine = true, true
 	})
@@ -364,6 +375,7 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 		}
 	}
 	b.finish(live)
+	b.forgetAsksOf(id, live)
 }
 
 func (b *appBackend) windowMoved(id string, live *appLive, takeover bool, line string) {

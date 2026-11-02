@@ -56,8 +56,21 @@ func runOlderChats(ctx context.Context) {
 	case <-ticker.C:
 	}
 	chats := olderChats{copy: copyOlderChat}
+	offered := ""
+	var source *syncsetup.Sync
 	for {
 		if syncsetup.MayTalk(home.Dir()) {
+			if s, ok, err := syncsetup.Open(home.Dir()); err == nil && ok {
+				binding := s.Ledger + "/" + s.Device.ID()
+				if source == nil || source.Ledger+"/"+source.Device.ID() != binding {
+					source, offered = s, ""
+				}
+				if offered != binding {
+					if err := source.PublishLocalChats(ctx, time.Now, func(_ cell.Cell, line string) { surfaceNotices.SayHomeOnce(line) }); err == nil {
+						offered = binding
+					}
+				}
+			}
 			dirs, _ := filepath.Glob(home.Join("v3", "projects", "*", "*"))
 			for _, dir := range dirs {
 				if ctx.Err() != nil {
@@ -164,8 +177,11 @@ func olderChatCopyable(meta session.Meta) bool {
 
 // movablePlace resolves a completed copy or prepares one when the person opens
 // an older chat. Selection runs on the existing asynchronous opening door.
+// Sync off means not talking to the service, never forgetting a completed copy
+// already on this computer, so an existing `.moving` copy is opened even when
+// sync is quiet or off.
 func movablePlace(ctx context.Context, place session.Place) (session.Place, error) {
-	if place.Dir == "" || !cell.Available() || !syncsetup.MayTalk(home.Dir()) {
+	if place.Dir == "" {
 		return place, nil
 	}
 	if _, err := cell.OpenAt(place.Dir, place.ID()); err == nil {
@@ -174,6 +190,9 @@ func movablePlace(ctx context.Context, place session.Place) (session.Place, erro
 	original := place.Dir
 	copied := cell.Copied(original)
 	if copied == original {
+		if !cell.Available() || !syncsetup.MayTalk(home.Dir()) {
+			return place, nil
+		}
 		if _, err := os.Stat(filepath.Join(original, "transcript.jsonl")); os.IsNotExist(err) {
 			return place, nil
 		}

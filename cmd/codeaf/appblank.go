@@ -64,48 +64,44 @@ func appSpokenIn(transcript string) bool {
 	return spoken || !sure
 }
 
-// memberNames is the word each crew calls a member by, keyed by agent id: the
-// first words of its brief for a member a manager started, the agent's own
-// name for one that was added. Every crew is read, open or finished, and a
-// former member is named too, because removing a member never deletes it; a
-// crew it is in now outranks one it left.
-func (b *appBackend) memberNames() map[string]string {
-	f, err := teamstore.Snapshot(b.crewProfile())
+// memberName is the word a crew calls agent by: the first words of its brief
+// for a member a manager started, the agent's own name for one that was
+// added. Every crew it is or was in is read, open or finished, through the
+// store's index of who is in which crew, and a former member is named too,
+// because removing a member never deletes it; a crew it is in now outranks
+// one it left.
+func (b *appBackend) memberName(agent string) string {
+	f, err := teamstore.LoadTeamsOf(b.crewProfile(), agent, true)
 	if err != nil || f == nil {
-		return nil
+		return ""
 	}
-	names := map[string]string{}
-	for _, t := range f.Teams {
-		for _, m := range t.FormerMembers {
-			if word := strings.TrimSpace(m.Word); word != "" {
-				names[appMemberAgent(m)] = word
+	name := ""
+	for _, current := range []bool{false, true} {
+		for _, t := range f.Teams {
+			list := t.FormerMembers
+			if current {
+				list = t.Members
+			}
+			for _, m := range list {
+				if word := strings.TrimSpace(m.Word); word != "" && appMemberAgent(m) == agent {
+					name = word
+				}
 			}
 		}
 	}
-	for _, t := range f.Teams {
-		for _, m := range t.Members {
-			if word := strings.TrimSpace(m.Word); word != "" {
-				names[appMemberAgent(m)] = word
-			}
-		}
-	}
-	return names
+	return name
 }
 
 // nameUntitled gives each listed agent with no name of its own the word its
 // crew calls it by, and keeps that name on the agent's record so every later
-// agent.changed says it too. The crews are read only when a row needs a name.
+// agent.changed says it too. A crew is read only when a row needs a name, and
+// only the crews that row's agent is or was in.
 func (b *appBackend) nameUntitled(agents []appwire.Agent) {
-	var names map[string]string
-	read := false
 	for i := range agents {
 		if strings.TrimSpace(agents[i].Title) != "" {
 			continue
 		}
-		if !read {
-			names, read = b.memberNames(), true
-		}
-		name := names[agents[i].ID]
+		name := b.memberName(agents[i].ID)
 		if name == "" {
 			continue
 		}
@@ -142,8 +138,8 @@ func (b *appBackend) reapBlank(a *appAgent) bool {
 		return false
 	}
 	gone := false
-	_ = teamstore.Inspect(b.crewProfile(), func(f *teamstore.File) error {
-		if f.ReferencedConversations()[teamstore.ConversationIdentity(transcript)] || session.InUse(transcript) || !v3EmptyUnassignedSession(dir) {
+	_ = teamstore.InspectConversation(b.crewProfile(), transcript, func(referenced bool) error {
+		if referenced || session.InUse(transcript) || !v3EmptyUnassignedSession(dir) {
 			return nil
 		}
 		gone = os.RemoveAll(dir) == nil
@@ -162,8 +158,8 @@ func (b *appBackend) reapBlank(a *appAgent) bool {
 }
 
 // forgetMarks drops what the app's own file kept about an agent that is gone:
-// its budget, a raise of it, and when it was closed or put away. The file is
-// written only when it named the agent.
+// its budget, a raise of it, when it was closed or put away, and when it was
+// last seen. The file is written only when it named the agent.
 func (b *appBackend) forgetMarks(id string) {
 	named := false
 	_ = b.state.read(func(f *appStateFile) {
@@ -171,7 +167,8 @@ func (b *appBackend) forgetMarks(id string) {
 		_, raise := f.Raises["agent:"+id]
 		_, closed := f.Closed[id]
 		_, archived := f.Archived[id]
-		named = budget || raise || closed || archived
+		_, seen := f.Seen[id]
+		named = budget || raise || closed || archived || seen
 	})
 	if !named {
 		return
@@ -181,6 +178,8 @@ func (b *appBackend) forgetMarks(id string) {
 		delete(f.Raises, "agent:"+id)
 		delete(f.Closed, id)
 		delete(f.Archived, id)
+		delete(f.Seen, id)
+		delete(f.SeenAhead, id)
 		return nil
 	})
 }

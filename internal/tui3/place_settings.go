@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -43,7 +44,7 @@ func (placeSettings) open(a *app) tea.Cmd {
 	//
 	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
 	// local launch asks for nothing.
-	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults())
+	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults(), a.ensureSheetDevices())
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
@@ -125,6 +126,11 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		rows = append(rows, placeRow{text: sheetTabBar(width, displayTab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	}
 	rows = append(rows, placeRow{})
+	if s.onDevices() && s.dev != nil && s.dev.service != "" {
+		for _, line := range wrap(syncwords.ServiceLine(s.dev.service), max(width-2, 4)) {
+			rows = append(rows, placeRow{text: "  " + pal.dim(line)})
+		}
+	}
 	if s.choice != nil {
 		rows = append(rows, s.choiceRows(width, room-len(rows), pal, a.hoveredSheetRow())...)
 		for len(rows) < room {
@@ -135,7 +141,7 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	if s.edit != nil {
 		return settingsEditorBody(a, width, room, rows)
 	}
-	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
+	if s.sel == nil && s.edit == nil && s.conn.entry == nil && !s.devTyping() {
 		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
@@ -370,6 +376,9 @@ func (placeSettings) note(a *app, width int) []string {
 		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
 
 	}
+	if lines, ok := a.sheet.devicesNote(pal, width); ok {
+		return lines
+	}
 	item, ok := settingsFocused(a)
 	scope := a.sheet.footNote()
 	if ok && (item.memoryDoor || item.advancedDoor) {
@@ -397,6 +406,15 @@ func settingsFocused(a *app) (sheetItem, bool) {
 }
 
 func settingsDetails(a *app, width int) []string {
+	if a.sheet.onDevices() && !a.sheet.searching() {
+		frameW, _ := a.size()
+		lines := a.sheet.devicesDetails(frameW, width)
+		if len(lines) > 5 {
+			lines = lines[:5]
+			lines[4] = fit(lines[4]+glyphMore, max(1, width-4))
+		}
+		return lines
+	}
 	item, ok := settingsFocused(a)
 	if !ok {
 		return nil
@@ -451,6 +469,8 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.sheetSelectKey(msg)
 	case s.conn.entry != nil:
 		return a.connEntryKey(msg), true
+	case s.devTyping():
+		cmd = s.dev.typed(a, msg)
 	default:
 		return nil, false
 	}
@@ -485,6 +505,16 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 	}
 	content := func(text string) string { return ansi.Strip(ansi.Cut(text, offset, offset+width)) }
 	if entry == nil {
+		if a.sheet.devTyping() {
+			line, column := a.sheet.devNamingLine(width, a.pal)
+			want := ansi.Strip(line)
+			for j, row := range rows {
+				if content(row.text) == want {
+					return j, column + offset, true
+				}
+			}
+			return -1, 0, true
+		}
 		if a.sheet.edit != nil {
 			block, column, at := a.sheet.editBlock(width, a.pal)
 			if at >= 0 && at < len(block) {

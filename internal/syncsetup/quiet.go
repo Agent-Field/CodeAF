@@ -74,9 +74,16 @@ func (s *Sync) list(ctx context.Context) (directory.Listing, error) {
 		return directory.Listing{}, nil
 	}
 	if l, local, err := s.displayListing(ctx); local || err != nil {
+		if s.teamsSharing() {
+			s.rememberTeamDirectory(l, err)
+		}
 		return l, err
 	}
-	return s.Dir.List(ctx)
+	l, err := s.Dir.List(ctx)
+	if s.teamsSharing() {
+		s.rememberTeamDirectory(l, err)
+	}
+	return l, err
 }
 
 // ClusterHTTP supplies the same use-time quiet gate for enrollment, discovery,

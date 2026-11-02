@@ -58,6 +58,14 @@ type Tidier interface {
 	SearchAll(query string, perGroup int) ([]HitGroup, error)
 }
 
+// WarmOpener opens an agent for a window's guess at a view (agents.open with
+// warm, a hover's prefetch). A warm open never takes an agent out of Closed
+// or the archive: it refuses one there, and only a person's own open or
+// Reopen brings it back.
+type WarmOpener interface {
+	WarmAgent(id string) (Agent, error)
+}
+
 func init() {
 	for name, m := range tidyMethods {
 		methods[name] = m

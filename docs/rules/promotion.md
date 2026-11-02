@@ -62,3 +62,19 @@ make changelog VERSION=v0.2.0
 Promote that commit through staging to main. Never write a release-only commit
 directly onto either pointer. To roll back, publish a forward repair or select
 an earlier stable release as Latest; do not rewrite branch history.
+
+## Channel relays
+
+Each release channel syncs through its own hosted relay Worker, deployed
+automatically by `Release`'s `relay` job after `prepare` and before `publish`:
+
+- `dev` deploys `caf-fabric-dev` (`https://caf-fabric-dev.instrument-santosh.workers.dev`).
+- `staging` deploys `caf-fabric-staging` (`https://caf-fabric-staging.instrument-santosh.workers.dev`).
+- `main` (`rc`) and `stable` dispatch deploy `caf-fabric` (`https://codeaf.agentfield.ai/fabric`) only when the repository variable `RELAY_DEPLOY_PRODUCTION` is `true`; while unset or anything else, the `relay` job logs that production relay deploys are off and how to enable them, contacts nothing, and lets `publish` proceed against the currently live relay.
+
+Each deploy is gated by `scripts/relay-fingerprint.sh` (`--tag <first 16 hex>`
+and `--message <commit sha>`), verified live with `internal/relay/hosted_test.go`
+and `codeaf-release service --url`, and rolled back with `wrangler rollback` if
+verification fails, blocking `publish`. Because a Worker code rollback cannot
+undo a one-way Durable Object or storage upgrade, every relay change lands on
+`dev` first and soaks on `staging` for a week before reaching `main`.

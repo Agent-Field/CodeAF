@@ -8,12 +8,14 @@ package main
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -54,7 +56,11 @@ func (e toldLine) Unwrap() error { return e.err }
 // Anything that is not a refusal is returned as it came.
 func told(err error) error {
 	if refusal, ok := cellsync.RefusalOf(err); ok {
-		return toldLine{line: refusal.Say(err), err: err}
+		line := refusal.Say(err)
+		if line == chatlist.Removed {
+			line = chatlist.RemovedChat
+		}
+		return toldLine{line: line, err: err}
 	}
 	return err
 }
@@ -80,11 +86,11 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 	if err != nil {
 		return tui3.PendingDevice{}, err
 	}
-	// A pasted self-hosted link must never send its code to the current
-	// service when the two differ. The terminal's printed command names it.
-	if via := pair.LinkRelay(typed); via != "" && strings.TrimRight(via, "/") != strings.TrimRight(route.URL, "/") {
-		return tui3.PendingDevice{}, errors.New("this pairing link uses another sync address — approve it in a terminal with the command shown on the new device")
+	// Refuse before a code or its key can reach another sync service.
+	if err := pair.CheckLinkService(typed, route.URL); err != nil {
+		return tui3.PendingDevice{}, err
 	}
+
 	who, err := d.approver(route)
 	if err != nil {
 		return tui3.PendingDevice{}, err
@@ -115,7 +121,7 @@ func (d *approvalsDoor) recall(p tui3.PendingDevice) (pair.Asking, error) {
 	defer d.mu.Unlock()
 	as, ok := d.asking[p.Code]
 	if !ok {
-		return pair.Asking{}, pair.ErrLinkGone
+		return pair.Asking{}, errors.New("open that pairing link again before approving")
 	}
 	return as, nil
 }
@@ -172,7 +178,7 @@ func (d *approvalsDoor) home() (directory.Client, identity.Identity, string, err
 
 func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 	if syncsetup.Quiet(d.dir) {
-		return nil, nil
+		return []tui3.DeviceRow{d.ownRow()}, nil
 	}
 	client, id, self, err := d.home()
 	if err != nil {
@@ -183,6 +189,13 @@ func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 		return nil, told(err)
 	}
 	rows := rowsOf(listing, directory.MetadataKey(id.CellKey()), self)
+	foundSelf := false
+	for _, row := range rows {
+		foundSelf = foundSelf || row.Self
+	}
+	if !foundSelf {
+		rows = append(rows, d.ownRow())
+	}
 	if own, named := devname.Chosen(d.dir); named {
 		rows = withOwnName(rows, own)
 	}
@@ -250,3 +263,16 @@ func (d *approvalsDoor) DeviceName(sealed string) string {
 func (d *approvalsDoor) Rename(ctx context.Context, typed string) (string, error) {
 	return renameThisDevice(ctx, d.dir, typed)
 }
+
+// ownRow keeps an unpaired computer nameable without waking the sync service.
+func (d *approvalsDoor) ownRow() tui3.DeviceRow {
+	dev, err := identity.LoadDevice(d.dir)
+	id := ""
+	if err == nil {
+		id = dev.ID()
+	}
+	return tui3.DeviceRow{ID: id, Name: devname.Name(d.dir), Platform: runtime.GOOS, Self: true}
+}
+
+// SyncService names the local pairing service even when the chat runs elsewhere.
+func (d *approvalsDoor) SyncService() string { return syncsetup.Resolve(d.dir).URL }

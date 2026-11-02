@@ -73,6 +73,9 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if keeper, ok := st.(ReadCoster); ok && err == nil {
 				snap.LastReadCost, _, _ = keeper.ReadCost()
 			}
+			if keeper, ok := st.(ScoutCoster); ok && err == nil {
+				snap.ScoutPrice, _ = keeper.ScoutPrice()
+			}
 			// WHERE EACH REPOSITORY IS CHECKED OUT is read with the floor, so
 			// `r` can see an item has nowhere to run before it starts one
 			// ([Snapshot.Checkouts]). Only a seam told where repositories are
@@ -332,6 +335,11 @@ type ReadCoster interface {
 	ReadCost() (last, avg float64, err error)
 }
 
+// ScoutCoster is a store that keeps what Look closer costs.
+type ScoutCoster interface {
+	ScoutPrice() (float64, error)
+}
+
 // annotator is a store that can write an item without stamping Changed,
 // which is how a read taken off for a refresh leaves the row's age alone.
 type annotator interface {
@@ -571,7 +579,6 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	}
 	seen := map[string]bool{}
 	var names []string
-	y, m, d := now.Date()
 	for _, it := range items {
 		if it.Repo != "" && !seen[it.Repo] {
 			seen[it.Repo] = true
@@ -580,12 +587,8 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 		if it.State == StateRunning {
 			snap.Benches++
 		}
-		if it.Stream != nil {
-			if sy, sm, sd := it.Changed.In(now.Location()).Date(); sy == y && sm == m && sd == d {
-				snap.Daily += it.Stream.Spent
-			}
-		}
 	}
+	snap.Daily = DailySpent(items, now)
 	sort.Strings(names)
 	for _, name := range names {
 		r := recipe(name)

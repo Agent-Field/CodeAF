@@ -154,11 +154,6 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		return appFactoryProxy(target), nil
 	}
 	locked := time.Now()
-	if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
-		release()
-		return nil, err
-	}
-	forgot := time.Now()
 	history, err := record.Open(h.floor, record.Options{})
 	if err != nil {
 		release()
@@ -168,8 +163,10 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.seamHook != nil {
 		seam = h.seamHook(seam)
 	}
+	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
@@ -202,14 +199,46 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		release()
 		return nil, err
 	}
-	traceStartup(trace, "factory: ready in %d ms (discovery %d, lock %d, forget PR jobs %d, serve %d)", ms(time.Since(began)), ms(discovered.Sub(began)), ms(locked.Sub(discovered)), ms(forgot.Sub(locked)), ms(time.Since(forgot)))
+	traceStartup(trace, "factory: ready in %d ms (discovery %d, lock %d, serve %d)", ms(time.Since(began)), ms(discovered.Sub(began)), ms(locked.Sub(discovered)), ms(time.Since(locked)))
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
+	h.tidy(trace)
 	if h.quiet {
 		return handler, nil
 	}
 	h.readLoops()
 	return handler, nil
+}
+
+// tidy forgets the old standalone PR jobs behind the serving factory. THE
+// FACTORY NEVER WAITS ON IT: it once ran before the service started, and one
+// job it could not clean failed every launch, so the factory on that Mac never
+// came up. It runs once per host while serve.lock is held, under the host's
+// context. A job it cannot clean now stays as it is and is tried again at the
+// next launch; the trace says what happened, and nothing reaches the person.
+func (h *appFactoryHost) tidy(trace string) {
+	h.chore("app/factory tidy", func() {
+		began := time.Now()
+		if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
+			traceStartup(trace, "factory: old PR jobs kept for the next launch after %d ms: %v", ms(time.Since(began)), err)
+			return
+		}
+		traceStartup(trace, "factory: old PR jobs forgotten in %d ms", ms(time.Since(began)))
+	})
+}
+
+// chore runs fn in the background under the host, and answers whether it
+// started: none starts once close has begun, and close waits for every one
+// that did before the floor is let go, so no chore writes after close.
+func (h *appFactoryHost) chore(name string, fn func()) bool {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.loopsClosed || h.ctx.Err() != nil {
+		return false
+	}
+	h.loops.Add(1)
+	guard.Go(name, func() { defer h.loops.Done(); fn() })
+	return true
 }
 
 // stopLoops forbids any later start and waits for the loops that began.
@@ -312,12 +341,16 @@ func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {
 	// THE PERSON THIS FACTORY KNOWS IS ITS OPERATOR: a job a start rule
 	// starts here is theirs.
 	return factoryIntakeOwned(st, func(ctx context.Context) string {
-		h.mu.Lock()
-		seam := h.seam
-		h.mu.Unlock()
-		handle, _ := seam.PersonHandle(ctx)
+		handle, _ := h.currentSeam().PersonHandle(ctx)
 		return handle
 	})
+}
+
+// currentSeam is the floor's door the service serves now.
+func (h *appFactoryHost) currentSeam() factory.Seam {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seam
 }
 
 // waitForPollSource is [waitForFactoryGitHub] over the test seam.
@@ -366,7 +399,17 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	} else if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/jobs/"); ok && rest != "" && !strings.Contains(rest, "/") {
 		kinds = append(kinds, "job")
 	}
+	for _, k := range h.firstAnswers(kinds) {
+		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
+		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
+	}
+}
+
+// firstAnswers marks kinds as answered and returns the ones answered for the
+// first time.
+func (h *appFactoryHost) firstAnswers(kinds []string) []string {
 	h.answeredMu.Lock()
+	defer h.answeredMu.Unlock()
 	var fresh []string
 	for _, k := range kinds {
 		if !h.answered[k] {
@@ -380,12 +423,9 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	if len(h.answered) == 3 {
 		h.allAnswered.Store(true)
 	}
-	h.answeredMu.Unlock()
-	for _, k := range fresh {
-		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
-		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
-	}
+	return fresh
 }
+
 func appFactoryProxy(target factoryTarget) http.Handler {
 	address, _ := url.Parse(target.url)
 	proxy := httputil.NewSingleHostReverseProxy(address)
@@ -514,7 +554,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current).withRefusal(source.Refusal), turns)
+	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
 	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
@@ -555,6 +595,14 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})
+}
+
+// stepMaker opens this worker's step conversations. A step's money is the
+// leased job's, so its meter reads and books it on mirror, the copy of the job
+// the factory handed over; the report carries what it booked back. A runner
+// whose home holds no factory of its own has no other record of the budget.
+func (h *appFactoryHost) stepMaker(mirror *store.Store, source *factoryParentSource) stageMaker {
+	return factoryStageMakerFrom(h.floor, h.workspace, h.profile, source.Config).withRefusal(source.Refusal).withJobs(mirror)
 }
 
 // parentSource is the parent every conversation of this host opens from: the
