@@ -38,14 +38,10 @@ func (b *appBackend) FactoryJobControl(ctx context.Context, p appwire.FactoryJob
 		Expect *api.Expect `json:"expect"`
 	}{p.Mode, p.Words, p.Expect})
 	if err == nil && p.Mode == "take_over" {
-		var working []*session.Agent
-		stageLends.mu.Lock()
-		for agent := range stageLends.agents {
-			if owner, ok := readFactoryOwner(agent.SessionPath()); ok && owner.Job == p.Job && owner.Root == chatKey(host.floor.Root()) {
-				working = append(working, agent)
-			}
-		}
-		stageLends.mu.Unlock()
+		working := stageAgentsWhere(func(agent *session.Agent) bool {
+			owner, ok := readFactoryOwner(agent.SessionPath())
+			return ok && owner.Job == p.Job && owner.Root == chatKey(host.floor.Root())
+		})
 		for _, agent := range working {
 			file := agent.SessionPath()
 			owner, _ := readFactoryOwner(file)
