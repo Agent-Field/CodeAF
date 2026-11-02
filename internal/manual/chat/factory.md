@@ -289,6 +289,27 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
 
+## pause a running job — Pause, Hold, Resume, paused step, keep the conversation
+
+**Pause** (the app wire's Hold action) cuts the running step's current model
+round. The job reads **Paused**, with no question to answer. Its work, step
+conversation and spending stay. No further model round starts while it is
+paused; costs already incurred by the cancelled call still count.
+
+**Resume** continues the step and round where they paused, in the same
+conversation when it can be reopened. It takes a free Jobs at once slot, or
+waits in the ordinary queue until a slot is available. No model round starts
+while it waits. Completed steps are kept and are not run again. The activity
+says `paused`, then `resumed`; both actions record who made them.
+
+Only the job's person may pause or resume it. A job waiting for you, finished
+or publishing cannot be paused. Pause releases its Jobs at once slot after
+the cancelled round's work and spending are saved, so another job can run.
+The app wire keeps the paused job's `state` as `running`, with the Paused
+presentation and Resume available. Resume changes `state` to `queued` until a
+worker takes it. A queued job's **Hold** still keeps it from starting and uses
+no running slot.
+
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
 **Stop** ends a running, queued or waiting job at once. When it cut a step that was running or waiting, the job says so and waits for you: `Step stopped`, `Stopped by you`. That step reads failed with the same words, so no step reads running, and what the run spent stays on the job. A job stopped before any step began, or after its last step ended, lost nothing: it simply goes back to Backlog with no mark, ready to start. Either way the job's log says `stopped · branch kept`. A no to a step that ran out of rounds, to the budget, or to an approve step with nothing before it is the same stop. A job whose run already ended on a failure or a stop has nothing to stop and refuses with `#12 is not running`.
@@ -298,6 +319,15 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 **Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
+
+## Stop after the job moves on or starts publishing
+
+Stop still works when the job has moved on since you opened its page. Stopping
+the current running step follows the same rule; a step that already ended
+cannot stop the next one, and Step Stop refuses during publishing. Job Stop
+also stops a job that is publishing: its worker loses permission to report and
+is asked to cancel when it next contacts the factory. Publishing can still finish before the worker learns of Stop; Stop does not
+undo a push or pull request.
 
 ## drop a job — Drop, delete a job's branch, uncommitted work, throw away a job's work and its conversations
 

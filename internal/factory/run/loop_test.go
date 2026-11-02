@@ -1165,8 +1165,10 @@ func TestAPausedItemStaysPausedAcrossARestartAndRunsInTheSameChat(t *testing.T) 
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
 	// The process dies: its control goes, the document stays.
-	old := g.r.loop().ctl(id)
-	old.cancel()
+	// A pause ends the drive and frees its slot; it may already have gone.
+	if old := g.r.loop().ctl(id); old != nil {
+		old.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 	it, _ := g.st.Get(id)
 	if it.State != factory.StateRunning || !it.Stream.Paused || it.Stream.Phases[0].Chat != "chat-x" {
@@ -1209,7 +1211,9 @@ func TestAResumedStepAfterARestartStillReadsTheStepsBefore(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
-	g.r.loop().ctl(id).cancel()
+	if c := g.r.loop().ctl(id); c != nil {
+		c.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 	if it, _ := g.st.Get(id); it.Stream.Phases[0].Result == nil || it.Stream.Phases[0].Result.Output != "three files" {
 		t.Fatalf("the plan's result is not kept on its step: %+v", it.Stream.Phases[0])
