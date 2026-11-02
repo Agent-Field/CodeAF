@@ -39,7 +39,7 @@ func PRWaitingWords(pr *PullRequest) string {
 		return NoChecksWords + " Watching review feedback and conflicts."
 	}
 	if pr.NoWorkflows {
-		return "No GitHub checks are configured in this repo. Waiting for the push to settle, then the final review runs without CI."
+		return NoChecksSettlingWords
 	}
 	if len(pr.CheckRuns) == 0 {
 		return "No GitHub checks reported. Watching review feedback and conflicts."

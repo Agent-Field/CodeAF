@@ -65,6 +65,9 @@ const NoChecksSettle = 3 * time.Minute
 // NoChecksWords is what the job says when it was reviewed without CI.
 const NoChecksWords = "No GitHub checks in this repo; reviewed without CI."
 
+// NoChecksSettlingWords is what the job says while that fact settles.
+const NoChecksSettlingWords = "No GitHub checks are configured in this repo. Waiting for the push to settle, then the final review runs without CI."
+
 // readinessChecks is the CI half of [ReadinessGate]. A repository with no
 // checks configured is a stated condition once settled; pending or failing
 // checks are never that.

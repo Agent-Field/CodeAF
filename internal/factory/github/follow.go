@@ -288,9 +288,6 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			continue
 		}
 		fresh, err := f.FollowPR(ctx, owner, name, it.PullRequest.Number)
-		if err == nil {
-			factory.SettleNoChecks(it.PullRequest, &fresh, f.now())
-		}
 		if err != nil {
 			// A failed feedback read must not leave an old all-clear on screen.
 			// Do not replace an active repair or facts for a newer head.
@@ -319,6 +316,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
+		factory.SettleNoChecks(it.PullRequest, &fresh, f.now())
 		checkpointRecovered := false
 		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
 			checkpointRecovered = f.verificationRecovered(it)
