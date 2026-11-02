@@ -916,7 +916,7 @@ type Triage struct {
 }
 
 // Rubric is how complex a job is (desk): five factors scored 0..2, their sum
-// and its band, and who scored it: "read" (the arrival read, text only) or
+// and its band (with the neighbouring band when the sum sits on an edge), and who scored it: "read" (the arrival read, text only) or
 // "scout" (Look closer, with the repository). A factor marked low was judged
 // without seeing what it is about. A model never writes a price.
 type Rubric struct {
@@ -928,6 +928,9 @@ type Rubric struct {
 	From       string `json:"from"`
 	Complexity int    `json:"complexity"`
 	Band       string `json:"band"`
+	// BandNear is the band one point away when the sum sits on an edge
+	// (3 or 4, 6 or 7): the desk shows "small–medium" there, not one band.
+	BandNear string `json:"band_near,omitempty"`
 }
 
 // Factor is one rubric factor (desk).

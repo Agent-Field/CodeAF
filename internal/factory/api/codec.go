@@ -848,7 +848,7 @@ func fromRubric(r *factory.Rubric) *Rubric {
 	}
 	f := func(x factory.Factor) Factor { return Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite} }
 	return &Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty),
-		From: r.From, Complexity: r.Complexity(), Band: r.Band()}
+		From: r.From, Complexity: r.Complexity(), Band: r.Band(), BandNear: factory.BandNear(r.Complexity())}
 }
 
 func toRubric(r *Rubric) *factory.Rubric {
