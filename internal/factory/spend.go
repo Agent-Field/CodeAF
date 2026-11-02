@@ -1,6 +1,8 @@
 package factory
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -69,7 +71,7 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 			sh.noteHour(it.Created, now)
 		}
 		if it.State == StateShipped {
-			if at := shippedAt(it); at.After(started) {
+			if at := ShippedAt(it); at.After(started) {
 				sh.Shipped++
 				sh.Shipping = append(sh.Shipping, it.Ref())
 				sh.noteHour(at, now)
@@ -127,7 +129,9 @@ func (sh *Shift) noteHour(t, now time.Time) {
 	sh.Hours[t.In(now.Location()).Hour()]++
 }
 
-func shippedAt(it Item) time.Time {
+// ShippedAt is when a shipped job finished: its run's end, or its last
+// change when the run kept no end.
+func ShippedAt(it Item) time.Time {
 	if it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended
 	}
@@ -180,4 +184,46 @@ func handledSince(it Item, started time.Time) (int, time.Time) {
 		}
 	}
 	return n, at
+}
+
+// SpendDaysMax is the most calendar days one spend read may span.
+const SpendDaysMax = 366
+
+// SpendRange reads from and to, both YYYY-MM-DD and inclusive, as days in loc:
+// start is from's midnight and end the midnight after to. A missing or
+// malformed day, to before from, or more than [SpendDaysMax] days is refused
+// in words a person can act on.
+func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err error) {
+	start, err = time.ParseInLocation(time.DateOnly, from, loc)
+	if err != nil {
+		return start, end, errors.New("from is a day, as 2026-10-01")
+	}
+	last, err := time.ParseInLocation(time.DateOnly, to, loc)
+	if err != nil {
+		return start, end, errors.New("to is a day, as 2026-10-31")
+	}
+	if last.Before(start) {
+		return start, end, errors.New("to is before from")
+	}
+	if start.AddDate(0, 0, SpendDaysMax).Before(last.AddDate(0, 0, 1)) {
+		return start, end, fmt.Errorf("a spend read covers at most %d days", SpendDaysMax)
+	}
+	return start, last.AddDate(0, 0, 1), nil
+}
+
+// SpentIn is the job's whole spend ([JobSpent]) when it is placed ([SpentAt])
+// in [start, end), and false when it spent nothing or is placed outside. It is
+// the one placement rule every spend-by-day read counts by.
+func SpentIn(it Item, start, end time.Time) (float64, bool) {
+	usd, at := JobSpent(it), SpentAt(it)
+	return usd, usd > 0 && !at.Before(start) && at.Before(end)
+}
+
+// SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
+// run's start, or its creation when it has no run that started.
+func SpentAt(it Item) time.Time {
+	if it.Stream != nil && !it.Stream.Started.IsZero() {
+		return it.Stream.Started
+	}
+	return it.Created
 }

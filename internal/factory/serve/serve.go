@@ -170,6 +170,7 @@ type Handler struct {
 	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
+	areas   repoAreas
 	config  Config
 	factory api.Factory
 	mux     *http.ServeMux
@@ -196,8 +197,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
-	h := &Handler{seam: seam, config: config,
+	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
@@ -221,6 +223,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
+	h.read("/v1/repos/{owner}/{repo}/facts", h.repoFacts)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
 	h.route("/v1/github/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollGitHub})
@@ -241,6 +244,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/factory-setup", map[string]http.HandlerFunc{http.MethodPost: h.factorySetup})
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
+	h.read("/v1/spend/repos", h.spendRepos)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
