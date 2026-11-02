@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: stopped factory write steps keep their earlier change on retry
-pr: 0
+pr: 2158
 surface: [engine, factory]
 invalidates:
   - "Was true: stopping Write before its first progress report could make a retry call its earlier committed change empty. Is true now: the job branch keeps its original comparison base, so restarting the stopped step counts that change."
