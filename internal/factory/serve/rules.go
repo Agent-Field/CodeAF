@@ -123,9 +123,10 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	h.write(w, 200, factory.KeptRules{HouseRules: saved, RulesChange: by})
 }
 
-// rulesChange is the change a write of the rules records: the person who sent
-// it, or the factory's operator when the request names nobody (a script's
-// credential), and the time of the write to the second.
+// rulesChange is the change a write of the rules records: the factory's
+// operator, the only one who may write them, whichever credential they used and
+// whoever the host is signed in to GitHub as, and the time of the write to the
+// second.
 func (h *Handler) rulesChange(r *http.Request) factory.RulesChange {
 	at := h.clock().UTC().Truncate(time.Second)
 	return factory.RulesChange{ChangedBy: factory.NormalizeHandle(h.operatorLogin(r)), ChangedAt: &at}
