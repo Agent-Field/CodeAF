@@ -753,6 +753,8 @@ its own step and source-reading budget, so total work grows with the evidence.
 A final pass keeps the core overview concise by selecting reviewed paragraphs;
 the complete source detail stays in linked evidence rather than expanding the
 overview after every update.
+## Factory job memory waits, pauses and skipped steps
+
 Factory jobs wait at most two seconds for memory after a finished turn. An
 unfinished pass continues with that job while the next step works. A job has at
 most one pass running; later turns do not queue more. Pause, Stop and the job's
@@ -763,6 +765,8 @@ includes earlier steps skipped while another pass was running. Unchanged source 
 reuses completed receipts. Extraction, page organization and evidence review can
 require separate model requests in that compilation. Sources and completed
 progress survive cancellation for a later active turn.
+
+## Ordinary saved chat memory batching
 
 Later updates to ordinary saved chats combine turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible

@@ -225,7 +225,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 	var calls []calllog.Record
 	starts := map[string]time.Time{}
 	var providerUSD, ledgerUSD float64
-	total, memory := 0, 0
+	total, memory, afterEnd := 0, 0, 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
 	for scanner.Scan() {
@@ -241,6 +241,9 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 			t.Fatal(err)
 		}
 		if row.Phase == "start" {
+			if row.Tag == "memory" && it.Stream != nil && !it.Stream.Ended.IsZero() && at.After(it.Stream.Ended) {
+				afterEnd++
+			}
 			starts[row.ID] = at
 			continue
 		}
@@ -259,6 +262,10 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 			t.Errorf("ledger model=%s", row.Model)
 		}
 		ledgerUSD += row.USD
+	}
+	t.Logf("memory calls started after job end=%d", afterEnd)
+	if afterEnd != 0 {
+		t.Error("memory started after the job ended")
 	}
 	t.Log("stage turn | memory calls | memory USD | step-end ms | memory-only ms")
 	var delays, memoryDelays []int64
