@@ -199,13 +199,10 @@ func callWebSearchProvider(
 		endpoint = defaultExaWebSearchURL
 	}
 	if key := os.Getenv("EXA_API_KEY"); provider == "exa" && key != "" {
-		// An Exa key, when present, goes in the query string; otherwise the
-		// public endpoint is called unchanged.
-		separator := "?"
-		if strings.Contains(endpoint, "?") {
-			separator = "&"
-		}
-		endpoint += separator + "exaApiKey=" + encodeURIComponent(key)
+		// THE KEY NEVER GOES IN THE URL: a failed call names its URL in an error,
+		// and an error reaches the model, the conversation and the logs. Without
+		// a key the public endpoint is called unchanged.
+		headers["Authorization"] = "Bearer " + key
 	}
 	if provider == "parallel" {
 		endpoint = options.parallelURL
@@ -370,21 +367,4 @@ func nonzeroOr(value *float64, fallback float64) float64 {
 		return fallback
 	}
 	return *value
-}
-
-func encodeURIComponent(value string) string {
-	const hexadecimal = "0123456789ABCDEF"
-	var output strings.Builder
-	for index := 0; index < len(value); index++ {
-		character := value[index]
-		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
-			character >= '0' && character <= '9' || strings.ContainsRune("-_.!~*'()", rune(character)) {
-			output.WriteByte(character)
-			continue
-		}
-		output.WriteByte('%')
-		output.WriteByte(hexadecimal[character>>4])
-		output.WriteByte(hexadecimal[character&15])
-	}
-	return output.String()
 }

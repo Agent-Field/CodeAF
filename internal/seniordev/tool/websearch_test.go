@@ -8,13 +8,22 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestWebSearchFullExecutionWithoutAPIKey(t *testing.T) {
-	t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+// searchEnv pins the provider and clears both providers' keys, so no case reads
+// a key from the machine running it and no failure prints one.
+func searchEnv(t *testing.T, provider string) {
+	t.Helper()
+	t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", provider)
 	t.Setenv("EXA_API_KEY", "")
+	t.Setenv("PARALLEL_API_KEY", "")
+}
+
+func TestWebSearchFullExecutionWithoutAPIKey(t *testing.T) {
+	searchEnv(t, "exa")
 	server := newLocalWebServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.RawQuery != "" {
 			t.Errorf("unexpected API key query: %q", request.URL.RawQuery)
@@ -59,7 +68,7 @@ func TestWebSearchFullExecutionWithoutAPIKey(t *testing.T) {
 }
 
 func TestWebSearchFullExecutionWithoutSocket(t *testing.T) {
-	t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+	searchEnv(t, "exa")
 	client := &http.Client{Transport: webRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Method != http.MethodPost || request.Header.Get("Accept") != "application/json, text/event-stream" {
 			t.Errorf("request = %s, Accept = %q", request.Method, request.Header.Get("Accept"))
@@ -83,7 +92,7 @@ func TestWebSearchFullExecutionWithoutSocket(t *testing.T) {
 }
 
 func TestParallelWebSearchSendsModelNameAndFinalMetadata(t *testing.T) {
-	t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "parallel")
+	searchEnv(t, "parallel")
 	client := &http.Client{Transport: webRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		var payload struct {
 			Params struct {
@@ -115,7 +124,7 @@ func TestParallelWebSearchSendsModelNameAndFinalMetadata(t *testing.T) {
 }
 
 func TestWebSearchResponseIsCappedAtFiveMiB(t *testing.T) {
-	t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+	searchEnv(t, "exa")
 	client := &http.Client{Transport: webRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -193,14 +202,8 @@ func TestCurrentWebSearchFlags(t *testing.T) {
 }
 
 func TestWebSearchProviderAndResponse(t *testing.T) {
-	t.Run("encodeURIComponent API key", func(t *testing.T) {
-		input := "a b!~*'()+/?=:&"
-		if got, want := encodeURIComponent(input), "a%20b!~*'()%2B%2F%3F%3D%3A%26"; got != want {
-			t.Fatalf("encoded = %q, want %q", got, want)
-		}
-	})
 	t.Run("provider priority", func(t *testing.T) {
-		t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "")
+		searchEnv(t, "")
 		if got := selectWebSearchProvider("session", WebSearchFlags{Exa: true, Parallel: true}); got != "parallel" {
 			t.Fatalf("provider = %q", got)
 		}
@@ -212,7 +215,7 @@ func TestWebSearchProviderAndResponse(t *testing.T) {
 		}
 	})
 	t.Run("empty fallback", func(t *testing.T) {
-		t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+		searchEnv(t, "exa")
 		server := newLocalWebServer(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			_, _ = io.WriteString(writer, `{"result":{"content":[]}}`)
 		}))
@@ -224,7 +227,7 @@ func TestWebSearchProviderAndResponse(t *testing.T) {
 		}
 	})
 	t.Run("non-2xx", func(t *testing.T) {
-		t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+		searchEnv(t, "exa")
 		server := newLocalWebServer(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.WriteHeader(http.StatusUnauthorized)
 		}))
@@ -237,7 +240,7 @@ func TestWebSearchProviderAndResponse(t *testing.T) {
 		}
 	})
 	t.Run("connection refused shape", func(t *testing.T) {
-		t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+		searchEnv(t, "exa")
 		client := &http.Client{Transport: webRoundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("dial tcp: connection refused")
 		})}
@@ -249,7 +252,7 @@ func TestWebSearchProviderAndResponse(t *testing.T) {
 		}
 	})
 	t.Run("non-2xx without socket", func(t *testing.T) {
-		t.Setenv("SENIOR_DEV_WEBSEARCH_PROVIDER", "exa")
+		searchEnv(t, "exa")
 		client := &http.Client{Transport: webRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusForbidden, Header: http.Header{},
@@ -269,4 +272,49 @@ func TestWebSearchProviderAndResponse(t *testing.T) {
 			t.Fatalf("error = %v", err)
 		}
 	})
+}
+
+// A KEY TRAVELS IN A HEADER, never in the URL: a failed search names its URL in an
+// error, and an error reaches the model, the conversation and the logs.
+func TestAWebSearchKeyStaysOutOfTheURLAndEveryError(t *testing.T) {
+	const key = "test-key-not-real"
+	for _, provider := range []string{"exa", "parallel"} {
+		t.Run(provider, func(t *testing.T) {
+			searchEnv(t, provider)
+			t.Setenv("EXA_API_KEY", key)
+			t.Setenv("PARALLEL_API_KEY", key)
+			search := func(server *httptest.Server) error {
+				ctx := WithWebHTTPClient(context.Background(), server.Client())
+				ctx = WithWebSearchEndpoints(ctx, server.URL, server.URL)
+				ctx = WithWebOutputDir(ctx, t.TempDir())
+				_, err := executeWebTest(t, New(t.TempDir()), ctx, "websearch", map[string]any{"query": "q"})
+				return err
+			}
+			refused := newLocalWebServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if strings.Contains(request.URL.String(), key) {
+					t.Errorf("the key is in the request URL")
+				}
+				if got := request.Header.Get("Authorization"); got != "Bearer "+key {
+					t.Errorf("the key is not in the Authorization header")
+				}
+				writer.WriteHeader(http.StatusForbidden)
+			}))
+			err := search(refused)
+			if err == nil {
+				t.Fatal("a refused search reported no error")
+			}
+			if strings.Contains(err.Error(), key) {
+				t.Errorf("a refused search's error holds the key")
+			}
+			gone := newLocalWebServer(t, http.NotFoundHandler())
+			gone.Close()
+			err = search(gone)
+			if err == nil {
+				t.Fatal("an unreachable search reported no error")
+			}
+			if strings.Contains(err.Error(), key) {
+				t.Errorf("an unreachable search's error holds the key")
+			}
+		})
+	}
 }
