@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"testing"
+	"time"
 )
 
 func TestPRFeedbackTrackingAndCheckSourcesRoundTrip(t *testing.T) {
@@ -18,5 +19,15 @@ func TestVerificationPausePresentationNamesItsActualRecovery(t *testing.T) {
 	PresentJob(&j)
 	if j.StatePresentation.Title != "Verification needs retry" {
 		t.Fatal("verification problem labelled as a generic stuck job")
+	}
+}
+
+// THE NO-CHECKS FACT CROSSES THE WIRE WHOLE, so a worker or an app reading the
+// job judges readiness on the same settled fact the floor recorded.
+func TestPRNoChecksFactRoundTrips(t *testing.T) {
+	since := time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)
+	got := toPR(fromPR(&factory.PullRequest{NoWorkflows: true, NoChecksSince: since, NoChecks: true}))
+	if !got.NoWorkflows || !got.NoChecksSince.Equal(since) || !got.NoChecks {
+		t.Fatalf("the no-checks fact was lost on the wire: %+v", got)
 	}
 }
