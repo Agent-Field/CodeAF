@@ -895,6 +895,11 @@ type PR struct {
 	Mergeable   string `json:"mergeable,omitempty"`
 	ChecksRead  bool   `json:"checks_read,omitempty"`
 	ReviewsRead bool   `json:"reviews_read,omitempty"`
+	// NoWorkflows, NoChecksSince and NoChecks are the no-checks fact as
+	// factory.SettleNoChecks keeps it; NoChecks is the settled one.
+	NoWorkflows   bool       `json:"no_workflows,omitempty"`
+	NoChecksSince *time.Time `json:"no_checks_since,omitempty"`
+	NoChecks      bool       `json:"no_checks,omitempty"`
 	// HeadBranch is the branch the pull request comes from.
 	HeadBranch string `json:"head_branch,omitempty"`
 }

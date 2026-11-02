@@ -609,6 +609,11 @@ func fromPR(pr *factory.PullRequest) *PR {
 		at := pr.MergedAt
 		out.MergedAt = &at
 	}
+	out.NoWorkflows, out.NoChecks = pr.NoWorkflows, pr.NoChecks
+	if !pr.NoChecksSince.IsZero() {
+		since := pr.NoChecksSince
+		out.NoChecksSince = &since
+	}
 	if pr.Checks != (factory.PRChecks{}) {
 		c := pr.Checks
 		out.Checks = &PRChecks{Passed: c.Passed, Failed: c.Failed, Pending: c.Pending}
@@ -631,6 +636,10 @@ func toPR(pr *PR) *factory.PullRequest {
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt
+	}
+	out.NoWorkflows, out.NoChecks = pr.NoWorkflows, pr.NoChecks
+	if pr.NoChecksSince != nil {
+		out.NoChecksSince = *pr.NoChecksSince
 	}
 	if pr.Checks != nil {
 		out.Checks = factory.PRChecks{Passed: pr.Checks.Passed, Failed: pr.Checks.Failed, Pending: pr.Checks.Pending}

@@ -744,9 +744,11 @@ approval waits, the approval kind and state, the PR number and state, publicatio
 attempt and outcome, comment receipt and how the job ended. These facts enter the
 input hash, so a lifecycle change cannot skip as unchanged. Evidence kind `pr`
 refers to the published PR with no step and supports its number; an unrelated or
-unsupported number is still rejected. It keeps what passes and books the call's
-cost to the job's spend. A
-failing verdict keeps the previous version and marks the brief `failed`. Without
+unsupported number is still rejected. The session books each provider call to the ledger and job's spend
+once, including rejected drafts and calls whose keep request fails. Keeping a
+version records its cost for the brief guard without charging the job again.
+An app-side brief's charge remains on the factory when a remote worker reports
+its additional spending. A failing verdict keeps the previous version and marks the brief `failed`. Without
 a person's ask, a version is written only when the last one cost at most $0.03
 and the brief's spend stays within 5% of the job's; an ask opening, the job's
 end and a retry are written regardless, and unchanged inputs are never written
