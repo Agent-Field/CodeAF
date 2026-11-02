@@ -273,3 +273,12 @@ func SpentAt(it Item) time.Time {
 	}
 	return it.Created
 }
+
+// AddMemorySpend books optional learning in the total and identifies its share.
+func AddMemorySpend(it *Item, usd float64) {
+	if it == nil || usd <= 0 {
+		return
+	}
+	AddChatSpend(it, usd)
+	it.MemorySpent += usd
+}

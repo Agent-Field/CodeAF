@@ -614,7 +614,7 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 		defer c.mu.Unlock()
 		if c.budget != nil {
 			if why := c.budget.Refusal(); why != "" {
-				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Said: why}
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Memory: c.budget.memoryCap(), Said: why}
 			}
 		}
 		return c.failure

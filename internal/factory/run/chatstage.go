@@ -486,7 +486,7 @@ loop:
 	}
 	// A final successful result survives optional work charged as the turn
 	// settles. The next stage still reads the complete live job spend.
-	if stop, ok := spendStopOf(waitErr); ok && !res.Done {
+	if stop, ok := spendStopOf(waitErr); ok && !(stop.Job && stop.Memory && !stop.Daily && res.Done) {
 		res.JobBudgetStopped = stop.Job
 		res.Reports, res.Inferred = 0, false
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()

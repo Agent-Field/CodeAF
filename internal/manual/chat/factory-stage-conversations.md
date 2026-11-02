@@ -821,3 +821,11 @@ recovery does not apply them to different work or bypass a real user decision.
 An accepted “no code change needed” assessment (`repair.decision: no_change`) is a
 successful outcome: Follow PR returns to
 watching GitHub for new activity. No code change does not require a new approval.
+
+## Memory charges after a finished step reaches its budget
+
+Model and tool spending that reaches the job cap still asks for more budget,
+including when a step reports completion early. If the step finishes under its
+cap and only optional memory crosses it, the finished step stays done. The next
+step asks before starting, using the full job spend. On the last step, the job
+finishes with its true spend shown and no question for work it will not run.

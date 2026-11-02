@@ -877,7 +877,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.held(c) {
 			return false
 		}
-		if !lp.capCheck(c, i, name) {
+		if !lp.capCheck(c, i, name, -1) {
 			return false
 		}
 		if factory.IsCIRepairStage(st) && !lp.refreshPRRound(c, i) {
@@ -1002,7 +1002,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		lp.fold(c, it, st, i, res)
 		// Completed work is recorded before the next step asks for admission.
 		// Optional memory charges cannot turn this phase back into waiting.
-		if !factory.Met(st, res) && !lp.capCheck(c, i, name) {
+		memoryBefore := -1.0
+		if factory.Met(st, res) {
+			memoryBefore = job.Item.MemorySpent
+		}
+		if !lp.capCheck(c, i, name, memoryBefore) {
 			return false
 		}
 		if res.JobBudgetStopped {
@@ -1054,7 +1058,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		if readiness {
 			if res.Repair != nil && res.Repair.Decision == "needs_repair" && strings.TrimSpace(res.Repair.Reason) != "" {
-				if !lp.capCheck(c, i, name) {
+				if !lp.capCheck(c, i, name, -1) {
 					return false
 				}
 				if e := lp.write(c, func(cur *factory.Item) error {
@@ -1552,10 +1556,15 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 
 // capCheck parks the item when its budget is reached after a round: yes raises
 // the budget by as much again, no stops it. It answers false when it stopped.
-func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
+func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float64) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
+	}
+	if memoryBefore >= 0 && it.Stream != nil {
+		stream := *it.Stream
+		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
+		it.Stream = &stream
 	}
 	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
 	q, kind := "budget of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"

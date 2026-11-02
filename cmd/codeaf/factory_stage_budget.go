@@ -31,7 +31,12 @@ func (b *stageBudget) FactoryAuto() bool {
 // FactoryJob names the job on the ledger rows of every call this step makes.
 func (b *stageBudget) FactoryJob() string { return factory.LedgerName(b.item) }
 
-func (b *stageBudget) Spend(usd float64) {
+func (b *stageBudget) Spend(usd float64) { b.spend(usd, false) }
+
+// SpendMemory records optional learning separately inside the same job total.
+func (b *stageBudget) SpendMemory(usd float64) { b.spend(usd, true) }
+
+func (b *stageBudget) spend(usd float64, memory bool) {
 	if usd <= 0 {
 		return
 	}
@@ -46,7 +51,11 @@ func (b *stageBudget) Spend(usd float64) {
 		if it.Repo != b.item.Repo {
 			return errNotThisChat
 		}
-		factory.AddChatSpend(it, usd)
+		if memory {
+			factory.AddMemorySpend(it, usd)
+		} else {
+			factory.AddChatSpend(it, usd)
+		}
 		return nil
 	}); err != nil {
 		b.failed = true
@@ -100,4 +109,16 @@ func jobMemoryRefusal(it factory.Item) string {
 		return "job has ended; memory stopped"
 	}
 	return ""
+}
+
+// memoryCap reports a crossing caused only by memory since this round began.
+func (b *stageBudget) memoryCap() bool {
+	if b.floor == nil {
+		return false
+	}
+	it, err := b.floor.Get(b.item.ID)
+	if err != nil || it.Repo != b.item.Repo || it.Cap <= 0 {
+		return false
+	}
+	return factory.JobSpent(it) >= it.Cap && factory.JobSpent(it)-max(0, it.MemorySpent-b.item.MemorySpent) < it.Cap
 }

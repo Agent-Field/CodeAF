@@ -690,6 +690,8 @@ type Item struct {
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
 	ChatSpent float64 `json:",omitempty"`
+	// MemorySpent is the memory portion already included in the job total.
+	MemorySpent float64 `json:",omitempty"`
 	// Thread is replicated from the worker so every machine reads the same
 	// conversation. AnsweredQuestions keeps asks after the open gate clears.
 	Thread            []Message  `json:",omitempty"`

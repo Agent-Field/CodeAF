@@ -117,9 +117,9 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		if remaining == 0 {
 			break
 		}
-		// One trigger drains a finite forced snapshot. Debounced background passes
-		// keep their existing single-batch admission when no progress is due yet.
-		if !force || remaining >= before {
+		// Only an owned turn drains its finite snapshot. Ordinary Flush keeps
+		// its bounded single-batch admission even when forced.
+		if !force || provider.SessionFrom(ctx) == "" || remaining >= before {
 			return nil
 		}
 		before = remaining

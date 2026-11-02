@@ -52,8 +52,8 @@ func TestMemoryChargeCannotUndoSuccessfulStage(t *testing.T) {
 		}
 		// The successful work is already reported. Its deferred memory receipt
 		// arrives before Wait returns, taking this job from $0.99 to $1.01.
-		meter.Spend(.02)
-		c.Fail(factoryrun.SpendStop{Job: true, Said: meter.Refusal()})
+		meter.SpendMemory(.02)
+		c.Fail(factoryrun.SpendStop{Job: true, Memory: true, Said: meter.Refusal()})
 	}}
 	stage := factory.Stage{Name: "write", Kind: factory.StageChat, On: true, Until: "done"}
 	result, err := factoryrun.NewChatExecutor(maker).Run(context.Background(), factoryrun.Job{Item: item, Stage: stage, Round: 1})
@@ -77,43 +77,61 @@ func TestMemoryChargeCannotUndoSuccessfulStage(t *testing.T) {
 }
 
 func TestMemoryCapKeepsFinishedPhase(t *testing.T) {
-	floor, _ := chatSpendFloor(t)
-	item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, ChatSpent: .99, State: factory.StateNew,
-		Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Until: "done"}, {Name: "review", Kind: factory.StageChat, On: true, Until: "done"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rounds atomic.Int64
-	runner := factoryrun.New(factoryrun.Options{Store: floor, Exec: map[factory.StageKind]factoryrun.Executor{
-		factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
-			rounds.Add(1)
-			meter := &stageBudget{floor: floor, item: job.Item}
-			meter.Spend(.02)
-			return factory.StageResult{Done: true, Output: "completed work", Spent: .02, SpendRecorded: true}, nil
-		}),
-	}})
-	t.Cleanup(func() { _ = runner.Stop(item.ID) })
-	if err := runner.Launch(item.ID); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		got, err := floor.Get(item.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got.QKind == "cap" {
-			if got.Stream == nil || got.Stream.Phases[0].State != factory.PhaseDone || got.Stream.Phases[0].Result == nil || !got.Stream.Phases[0].Result.Done {
-				t.Fatalf("memory cap parked completed work instead of next-stage admission: %+v", got.Stream)
+	for _, last := range []bool{false, true} {
+		t.Run(map[bool]string{false: "next admission", true: "last step"}[last], func(t *testing.T) {
+			floor, _ := chatSpendFloor(t)
+			item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, ChatSpent: .99, State: factory.StateNew,
+				Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Until: "done"}, {Name: "review", Kind: factory.StageChat, On: true, Until: "done"}}})
+			if err != nil {
+				t.Fatal(err)
 			}
-			if got.Stream.Phases[1].State != factory.PhaseWaiting || rounds.Load() != 1 {
-				t.Fatalf("cap retried successful work: cur=%d rounds=%d", got.Stream.Cur, rounds.Load())
+			if last {
+				if err := floor.Annotate(item.ID, func(it *factory.Item) error { it.Stages = it.Stages[:1]; return nil }); err != nil {
+					t.Fatal(err)
+				}
 			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("next stage did not observe memory charge: %+v", got)
-		}
-		time.Sleep(10 * time.Millisecond)
+			var rounds atomic.Int64
+			runner := factoryrun.New(factoryrun.Options{Store: floor, Exec: map[factory.StageKind]factoryrun.Executor{
+				factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+					rounds.Add(1)
+					meter := &stageBudget{floor: floor, item: job.Item}
+					meter.SpendMemory(.02)
+					return factory.StageResult{Done: true, Output: "completed work", Spent: .02, SpendRecorded: true}, nil
+				}),
+			}})
+			t.Cleanup(func() { _ = runner.Stop(item.ID) })
+			if err := runner.Launch(item.ID); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for {
+				got, err := floor.Get(item.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if last && got.State == factory.StateLanded {
+					if got.QKind != "" || got.Stream.Phases[0].State != factory.PhaseDone || math.Abs(factory.JobSpent(got)-1.01) > .000001 {
+						t.Fatalf("last step lost completion or true spend: %+v", got)
+					}
+					return
+				}
+				if got.QKind == "cap" {
+					if last {
+						t.Fatal("last step asked for unused budget")
+					}
+					if got.Stream == nil || got.Stream.Phases[0].State != factory.PhaseDone || got.Stream.Phases[0].Result == nil || !got.Stream.Phases[0].Result.Done {
+						t.Fatalf("memory cap parked completed work instead of next-stage admission: %+v", got.Stream)
+					}
+					if got.Stream.Phases[1].State != factory.PhaseWaiting || rounds.Load() != 1 {
+						t.Fatalf("cap retried successful work: cur=%d rounds=%d", got.Stream.Cur, rounds.Load())
+					}
+					return
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("next stage did not observe memory charge: %+v", got)
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		})
 	}
 }
