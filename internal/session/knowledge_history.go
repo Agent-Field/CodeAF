@@ -118,11 +118,14 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			return nil
 		}
 		job := owned[filepath.Clean(path)]
-		if _, err := os.Stat(path + ".knowledge-job"); err == nil {
-			job = true
-		} else if !os.IsNotExist(err) {
-			return err
+		for _, marker := range []string{path + ".knowledge-job", filepath.Join(filepath.Dir(path), "factory-owner.json")} {
+			if _, err := os.Stat(marker); err == nil {
+				job = true
+			} else if !os.IsNotExist(err) {
+				return err
+			}
 		}
+		owned[filepath.Clean(path)] = job
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			return nil

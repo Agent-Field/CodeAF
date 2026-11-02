@@ -15,3 +15,6 @@ for extraction, organization and evidence review. Unchanged input reuses validat
 receipts. Large finished turns drain their finite captured snapshot before
 publication. Older job sources are reclassified from their persisted ownership.
 Existing historical ledger gaps are not reconstructed.
+
+Old job chats with factory-owner.json remain owned even after their roster
+entry disappears, so background memory does not spend for them.
