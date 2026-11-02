@@ -24,7 +24,7 @@ func (h *Handler) judgeProtected(ctx context.Context, items []factory.Item, jobs
 	ctx = factorygithub.ShowOnly(ctx)
 	rules := map[string]*pipeline.File{}
 	for i, it := range factory.IssueJobs(items) {
-		if it.State != factory.StateNew {
+		if factory.JobState(it) != "backlog" {
 			continue
 		}
 		repo := factory.RepoOf(it)

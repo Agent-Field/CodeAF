@@ -31,6 +31,7 @@ func TestTheQueueSaysWhichProtectedPathsABacklogJobNames(t *testing.T) {
 			{ID: 6, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue, Title: "CI", Comments: []factory.Comment{{Body: "see .github/workflows/ci.yml"}}},
 			{ID: 4, Repo: "acme/web", State: factory.StateRunning, Kind: factory.KindIssue, Body: "infra/x.tf"},
 			{ID: 5, Repo: "acme/api", State: factory.StateNew, Kind: factory.KindIssue, Body: "infra/x.tf"},
+			{ID: 7, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue, Body: "infra/x.tf", PublishError: "push refused"},
 		}}, nil
 	}
 	cfg := config
@@ -52,7 +53,7 @@ func TestTheQueueSaysWhichProtectedPathsABacklogJobNames(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &q); err != nil {
 		t.Fatal(err)
 	}
-	if len(q.Jobs) != 5 {
+	if len(q.Jobs) != 6 {
 		t.Fatalf("jobs = %d", len(q.Jobs))
 	}
 	got := map[string]*api.JobProtected{}
@@ -66,7 +67,7 @@ func TestTheQueueSaysWhichProtectedPathsABacklogJobNames(t *testing.T) {
 			t.Errorf("job %s protected = %+v, want %v", id, p, paths)
 		}
 	}
-	for _, id := range []string{"web#4", "api#5"} {
+	for _, id := range []string{"web#4", "api#5", "web#7"} {
 		if got[id] != nil {
 			t.Errorf("job %s was judged: %+v", id, got[id])
 		}
