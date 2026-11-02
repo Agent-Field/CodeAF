@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io/fs"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 // ErrCommitChanged refuses consent after the approved object moved.
@@ -45,7 +47,7 @@ func Known(code string) bool {
 // Failure classifies the forge's message at the operation that failed.
 // Permission to push and permission to open a PR are different remedies.
 func Failure(err error, operation string) string {
-	msg := strings.ToLower(err.Error())
+	msg := strings.ToLower(withoutURL(err))
 	switch {
 	case errors.Is(err, fs.ErrNotExist), operation == "worktree":
 		return "worktree_missing"
@@ -67,6 +69,17 @@ func Failure(err error, operation string) string {
 	default:
 		return "unknown"
 	}
+}
+
+// withoutURL is the message with the address of a GitHub reply taken out.
+// An address can hold a port such as 35021, and those digits must not read
+// as a 502 that GitHub never sent.
+func withoutURL(err error) string {
+	var api *github.APIError
+	if errors.As(err, &api) && api.URL != "" {
+		return strings.ReplaceAll(err.Error(), api.URL, "")
+	}
+	return err.Error()
 }
 
 // Error preserves the message while carrying its classified wire code.
