@@ -243,6 +243,7 @@ decides which combinations are accepted.
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
+| `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
@@ -262,6 +263,7 @@ decides which combinations are accepted.
 | `factory.job_step_stop` | `in.FactoryJobStepParams` | `FactoryJobActed` |
 | `factory.job_stop` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_unassign` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommented` |
 | `factory.job_undo` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.link_copy` | `in.FactoryLinkCopyParams` | `FactoryLinkMade` |
 | `factory.link_create` | `in.FactoryLinkCreateParams` | `FactoryLinkMade` |

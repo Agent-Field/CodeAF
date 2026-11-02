@@ -126,6 +126,8 @@ var Lost = map[string]string{
 	"Item.ManagerAnswer":  "known gap: the service's idempotency receipt for the manager's last decision; not carried to readers yet",
 	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief",
 	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
+	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
+	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
 
@@ -466,7 +468,7 @@ func ToItem(j Job) factory.Item {
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
 		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard, Thread: d.Thread,
-		Comments: mapList(d.Comments, toComment), Files: mapList(d.Files, toFile),
+		Comments: mapList(d.Comments, toComment), CommentReads: slices.Clone(d.CommentReads), Files: mapList(d.Files, toFile),
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
 		Activity: mapList(d.Activity, toActivity),
 	}
@@ -757,7 +759,7 @@ func fromDesk(it factory.Item) *JobDesk {
 		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
 		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,
-		Comments: mapList(it.Comments, fromComment), Files: mapList(it.Files, fromFile),
+		Comments: mapList(it.Comments, FromComment), CommentReads: slices.Clone(it.CommentReads), Files: mapList(it.Files, fromFile),
 		CheckRuns: mapList(it.CheckRuns, fromCheckRun), Base: it.Base, Head: it.Head, HeadSHA: it.HeadSHA,
 		Activity: mapList(it.Activity, fromActivity),
 	}
@@ -786,9 +788,12 @@ func toLog(l LogLine) factory.LogLine {
 	return factory.LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
 }
 
-func fromComment(c factory.Comment) Comment { return Comment{Author: c.Author, Body: c.Body, At: c.At} }
+// FromComment is one comment as the wire carries it.
+func FromComment(c factory.Comment) Comment {
+	return Comment{Author: c.Author, Body: c.Body, At: c.At, ID: c.ID, URL: c.URL, Tier: string(c.Tier), ByFactory: c.ByFactory}
+}
 func toComment(c Comment) factory.Comment {
-	return factory.Comment{Author: c.Author, Body: c.Body, At: c.At}
+	return factory.Comment{Author: c.Author, Body: c.Body, At: c.At, ID: c.ID, URL: c.URL, Tier: factory.Tier(c.Tier), ByFactory: c.ByFactory}
 }
 
 func fromFile(f factory.FileChange) File {
