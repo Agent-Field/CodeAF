@@ -27,6 +27,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	t.Run("funnel law", checkMemoryFunnel)
 	var calls atomic.Int64
 	var blockNext atomic.Bool
+	var failUpdates atomic.Bool
 	entered := make(chan struct{})
 	model := knowledge.Model
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +66,9 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			}
 			content, _ := json.Marshal(map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": "Cedar queues jobs.", "topic": "Queues", "scope": "Cedar", "kind": "fact", "evidence": []any{map[string]any{"source": sources[0].ID, "quote": "Cedar queues jobs."}}}}})
 			result = string(content)
+			if failUpdates.Load() {
+				result = "{broken"
+			}
 		}
 		if len(body.ResponseFormat) == 0 {
 			result = "Cedar queues jobs."
@@ -379,6 +383,23 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		<-done
 		if calls.Load() != before {
 			t.Errorf("already captured ended job still spent: %d provider calls", calls.Load()-before)
+		}
+	})
+	t.Run("unchanged failed input", func(t *testing.T) {
+		v := knowledge.Open(t.TempDir())
+		if err := v.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		source := knowledge.Source{ID: "failed", Session: "ordinary-chat", Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: "Cedar queues jobs."}
+		history := memoryFixtureHistory{source: source, journal: knowledge.Journal{ID: "failed-journal", Session: source.Session, Size: 1}}
+		failUpdates.Store(true)
+		defer failUpdates.Store(false)
+		before := calls.Load()
+		ctx, cancel := context.WithTimeout(context.Background(), 6500*time.Millisecond)
+		defer cancel()
+		_ = v.Run(ctx, history, func() string { return "fixture" })
+		if got := calls.Load() - before; got != 1 {
+			t.Errorf("unchanged failed input spent %d model calls, want 1", got)
 		}
 	})
 }

@@ -352,3 +352,19 @@ func ownsStageChat(it factory.Item, talk talkKey) bool {
 	}
 	return false
 }
+
+func (c *jobChat) MemoryRefusal() string {
+	for _, st := range c.holders() {
+		if it, err := st.Get(c.id); err == nil && (c.talk.is(it.Talk) || ownsStageChat(it, c.talk)) {
+			return jobMemoryRefusal(it)
+		}
+	}
+	return "job could not be read; memory stopped"
+}
+
+func (c ownedStageBudget) MemoryRefusal() string {
+	if owner, ok := c.JobChat.(interface{ MemoryRefusal() string }); ok {
+		return owner.MemoryRefusal()
+	}
+	return "job could not be read; memory stopped"
+}

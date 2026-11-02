@@ -75,3 +75,26 @@ func (b *stageBudget) total() float64 {
 }
 
 func (b *stageBudget) reachedCap() bool { b.mu.Lock(); defer b.mu.Unlock(); return b.reached }
+
+// MemoryRefusal keeps optional learning inside the job's active work, even if
+// a foreground conversation is still open after its job published or paused.
+func (b *stageBudget) MemoryRefusal() string {
+	if b.floor == nil {
+		return "job could not be read; memory stopped"
+	}
+	it, err := b.floor.Get(b.item.ID)
+	if err != nil {
+		return "job could not be read; memory stopped"
+	}
+	return jobMemoryRefusal(it)
+}
+
+func jobMemoryRefusal(it factory.Item) string {
+	if it.Stream != nil && it.Stream.Paused {
+		return "job is paused; memory stopped"
+	}
+	if it.State == factory.StateShipped || factory.JobState(it) == "done" || (it.Stream != nil && !it.Stream.Ended.IsZero()) {
+		return "job has ended; memory stopped"
+	}
+	return ""
+}

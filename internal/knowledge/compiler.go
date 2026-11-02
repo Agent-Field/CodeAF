@@ -91,7 +91,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	through := int64(number(boundary["through"]))
-	if through == 0 {
+	if through == 0 || provider.SessionFrom(ctx) != "" {
 		if err = db.QueryRow("SELECT coalesce(max(rowid),0) FROM events WHERE partition='profile'").Scan(&through); err != nil {
 			return err
 		}
@@ -99,30 +99,29 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 			return err
 		}
 	}
-	projectionBefore, err := stateDocument(db, "projection")
+	before, err := pendingCompilerSources(db, provider.SessionFrom(ctx), through)
 	if err != nil {
 		return err
 	}
-	var eligible int
-	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND json_extract(payload,'$.session')=?))", provider.SessionFrom(ctx), provider.SessionFrom(ctx), provider.SessionFrom(ctx)).Scan(&eligible); err != nil {
-		return err
-	}
-	if eligible == 0 && projectionBefore["version"] == knowledgeProjectionVersion {
-		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
-		return err
-	}
-	vault, err := v.compilePending(db, "profile", model, force, through)
-	if err != nil {
-		return err
-	}
-	// First-build organization needs the complete admitted history, rather than
-	// a tree whose page boundaries reflect extraction batches.
-	var pending int
-	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND json_extract(payload,'$.session')=?))", through, provider.SessionFrom(ctx), provider.SessionFrom(ctx), provider.SessionFrom(ctx)).Scan(&pending); err != nil {
-		return err
-	}
-	if pending > 0 {
-		return nil
+	var vault document
+	for {
+		vault, err = v.compilePending(db, "profile", model, force, through)
+		if err != nil {
+			return err
+		}
+		remaining, err := pendingCompilerSources(db, provider.SessionFrom(ctx), through)
+		if err != nil {
+			return err
+		}
+		if remaining == 0 {
+			break
+		}
+		// One trigger drains a finite forced snapshot. Debounced background passes
+		// keep their existing single-batch admission when no progress is due yet.
+		if !force || remaining >= before {
+			return nil
+		}
+		before = remaining
 	}
 	projection, err := stateDocument(db, "projection")
 	if err != nil {
@@ -289,4 +288,10 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 		return nil, fmt.Errorf("knowledge capture publication: %w", err)
 	}
 	return vault, nil
+}
+
+func pendingCompilerSources(db *sql.DB, owner string, through int64) (int, error) {
+	var pending int
+	err := db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND json_extract(payload,'$.session')=?))", through, owner, owner, owner).Scan(&pending)
+	return pending, err
 }

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/knowledge"
@@ -25,6 +26,11 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 	a.mu.Unlock()
 	if closed || stopped {
 		return nil, context.Canceled
+	}
+	if owner, ok := a.jobBudgetOf().(interface{ MemoryRefusal() string }); ok {
+		if why := owner.MemoryRefusal(); why != "" {
+			return nil, errors.New(why)
+		}
 	}
 	if err := a.admitJobCall(ctx); err != nil {
 		return nil, err

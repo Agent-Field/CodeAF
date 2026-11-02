@@ -722,12 +722,16 @@ updates the same page, while a distinct concept can receive a new page. Issue
 and work-session details remain linked evidence. Organization follows the actual
 subjects in your chats, without fixed project categories.
 
+## Memory spending and factory job pauses
+
 Memory model requests appear in Spending under the `memory` role. Requests
 owned by a factory job also count toward that job's spending and budget.
 
 The application process owns the background worker for ordinary saved chats.
 Closing Memory or changing chats does not stop it. When codeaf stops, captured sources and checkpoints stay
 in the database; the next running codeaf process resumes unfinished work.
+
+## Memory background compiler batching and retries
 
 The initial build processes a fixed collection of admitted history before
 organizing it. Independent page drafts and refreshes can run two at a time;
@@ -755,7 +759,8 @@ characters.
 
 Search runs against the database index. Idle background checks do not launch
 refinement without pending sources. Failed ordinary-chat requests retain pending
-work and retry with backoff up to 120 seconds. Unreadable chats do not prevent other chats
+work. The same failed input does not spend again automatically; choose Build
+to retry or add new saved sources. Unreadable chats do not prevent other chats
 from being processed; their incomplete status remains visible. The Knowledge
 view over `--host` is not supported.
 
@@ -763,9 +768,8 @@ Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
 The compiler checks the returned model ID and rejects substitutions.
 
-Failures retain pending work and retry automatically, with backoff up to 120
-seconds. Stable source IDs prevent duplicate records during retry or journal
-recovery. A failed or interrupted provider request can still incur charges;
+Stable source IDs prevent duplicate records during an explicit retry or
+journal recovery. A failed or interrupted provider request can still incur charges;
 retry safety does not mean every network request is billed only once.
 
 ## Updating existing knowledge pages and sections

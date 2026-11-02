@@ -63,7 +63,8 @@ already require two for a small new concept; guide writing and evidence review
 add their existing bounded stages. Their output and the 8,000-token response
 ceiling are preserved. The process worker does not launch another refinement
 pass merely because the previous pass left editorial work pending. New source
-input or an explicit build can advance that work. Historical unrecorded costs
+input or an explicit build can advance that work. Failed input is attempted once;
+new sources or an explicit Build permit another attempt. Historical unrecorded costs
 are not backfilled.
 
 ## Storage authority

@@ -77,6 +77,7 @@ func (v *Vault) StartBuild() error {
 		return nil
 	}
 	job["backfill"] = true
+	job["request"] = time.Now().UTC().Format(time.RFC3339Nano)
 	job["phase"] = string(BuildRunning)
 	job["error"] = ""
 	if err = saveState(tx, "job", job); err != nil {
@@ -135,7 +136,7 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return loadErr
 			}
 			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; retrying automatically."
+			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; use Build to retry or add new sources."
 			saveErr := saveState(db, "job", job)
 			db.Close()
 			if saveErr != nil {
@@ -170,6 +171,13 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		return err
 	}
 	defer db.Close()
+	for _, journal := range journals {
+		if journal.Job {
+			if _, err = db.Exec("UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0", journal.Session); err != nil {
+				return err
+			}
+		}
+	}
 	settings, err := stateDocument(db, "config")
 	if err != nil {
 		return err
@@ -313,6 +321,16 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile'").Scan(&total); err != nil {
 		return err
 	}
+	var latest int64
+	var admitted int
+	var arrived float64
+	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
+		return err
+	}
+	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+	if job["failed_input"] == attemptInput {
+		return nil
+	}
 	job["problems"] = problems
 	job["sources"] = total
 	job["chats"] = len(journals)
@@ -339,6 +357,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		if err = v.Flush(ctx, key(), flag(job["backfill"])); err != nil {
+			job["failed_input"] = attemptInput
+			if saveErr := saveState(db, "job", job); saveErr != nil {
+				return saveErr
+			}
 			return err
 		}
 		var remaining int
