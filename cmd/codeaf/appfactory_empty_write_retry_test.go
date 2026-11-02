@@ -152,7 +152,7 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			} else {
 				first := wait("first attempt finishes", waiting)
 				if action == "base unavailable" {
-					if first.Steps[0].State != "waiting" || !strings.Contains(first.Steps[0].Result, "could not preserve the job's change base") || first.Change != nil && len(first.Change.Files) > 0 {
+					if first.Steps[0].State != "failed" || first.Steps[0].Failure == nil || !strings.Contains(first.Steps[0].Failure.Detail, "could not preserve the job's change base") || first.Change != nil && len(first.Change.Files) > 0 {
 						t.Fatalf("write ran without preserving its base: %+v", first)
 					}
 					return
