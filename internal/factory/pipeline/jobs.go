@@ -5,7 +5,7 @@ import (
 )
 
 // Measured is what jobs like this one cost, measured from the factory's own
-// finished jobs (the 80th percentile of the nearest ones), and Known false
+// finished jobs (the 90th percentile of the nearest ones), and Known false
 // when there are too few of them to say. It is never a model's guess.
 type Measured struct {
 	USD   float64

@@ -3,8 +3,8 @@
 //
 // A model judges what a model can judge (the complexity rubric, from the
 // read or from Look closer); the dollars and minutes come from the jobs this
-// factory already ran. An item's figure is the median to the 80th percentile
-// of its nearest finished jobs: the same repository first, then every
+// factory already ran. An item's figure is the 10th to the 90th percentile of
+// its nearest finished jobs, where about eight in ten of them landed: the same repository first, then every
 // repository, near on the rubric's factors and the kind. Fewer than [MinJobs]
 // similar jobs is no figure at all, and the page says "no cost history yet".
 //
@@ -39,6 +39,9 @@ const (
 	// Coverage is the share of backtested jobs that must land inside their
 	// range before ranges stop being widened.
 	Coverage = 0.6
+	// Low and High are the percentiles a range runs between: about eight in
+	// ten similar jobs spent inside it.
+	Low, High = 0.1, 0.9
 )
 
 // Done is one finished job as the ledger reads it.
@@ -116,8 +119,8 @@ func bandOf(t factory.Triage) string {
 	return ""
 }
 
-// Range is one item's measured figure: dollars and minutes from the median to
-// the 80th percentile of N similar finished jobs, in Repo ("" is every
+// Range is one item's measured figure: dollars and minutes from the 10th to
+// the 90th percentile of N similar finished jobs, in Repo ("" is every
 // repository). Widened says calibration widened it.
 type Range struct {
 	USDLo, USDHi float64
@@ -125,6 +128,8 @@ type Range struct {
 	N            int
 	Repo         string
 	Widened      bool
+	// mid is the median spend, which calibration measures strays from.
+	mid float64
 }
 
 // Calibration is the backtest's hit rate: Hit of Of finished jobs spent
@@ -186,7 +191,7 @@ func (b Book) For(it factory.Item) (Range, bool) {
 }
 
 // Left is what a running job will likely spend from here to its end: the
-// median to the 80th percentile of what similar finished jobs spent past the
+// 10th to the 90th percentile of what similar finished jobs spent past the
 // job's spend so far, over the jobs that spent at least that much. False
 // while fewer than [MinJobs] such jobs finished.
 func (b Book) Left(it factory.Item) (Range, bool) {
@@ -240,8 +245,8 @@ func rangeOf(p point, done []Done) (Range, bool) {
 	for i, d := range near {
 		usd[i], minutes[i] = d.Spent, math.Round(d.Wall.Minutes())
 	}
-	return Range{USDLo: quantile(usd, 0.5), USDHi: quantile(usd, 0.8),
-		MinLo: quantile(minutes, 0.5), MinHi: quantile(minutes, 0.8), N: len(near), Repo: repo}, true
+	return Range{USDLo: quantile(usd, Low), USDHi: quantile(usd, High), mid: quantile(usd, 0.5),
+		MinLo: quantile(minutes, Low), MinHi: quantile(minutes, High), N: len(near), Repo: repo}, true
 }
 
 // nearest is the [Nearest] closest similar jobs in the probe's repository and
@@ -321,8 +326,8 @@ func backtest(done []Done) Calibration {
 		if d.Spent >= r.USDLo && d.Spent <= r.USDHi {
 			c.Hit++
 		}
-		if r.USDLo > 0 {
-			ratios = append(ratios, d.Spent/r.USDLo)
+		if r.mid > 0 {
+			ratios = append(ratios, d.Spent/r.mid)
 		}
 	}
 	if len(ratios) > 0 {
@@ -337,7 +342,7 @@ func (c Calibration) widen(r Range) Range {
 	if c.high == 0 {
 		return r
 	}
-	mid := r.USDLo
+	mid := r.mid
 	r.USDLo = min(r.USDLo, mid*c.low)
 	r.USDHi = max(r.USDHi, mid*c.high)
 	r.Widened = true

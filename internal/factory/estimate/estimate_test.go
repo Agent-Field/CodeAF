@@ -52,7 +52,7 @@ func TestFewerThanFiveSimilarJobsGiveNoFigure(t *testing.T) {
 	}
 }
 
-func TestTheRangeIsTheMedianToThe80thPercentileOfTheNearestJobsInTheRepo(t *testing.T) {
+func TestTheRangeIsThe10thToThe90thPercentileOfTheNearestJobsInTheRepo(t *testing.T) {
 	var items []factory.Item
 	for i, usd := range []float64{0.2, 0.4, 0.5, 0.6, 0.9, 1.1, 2.0, 0.3, 0.7, 1.0} {
 		items = append(items, finished(i+1, "acme/api", rubric(1, 0, 1, 0, 0), usd, t0, 10*(i+1)))
@@ -66,13 +66,14 @@ func TestTheRangeIsTheMedianToThe80thPercentileOfTheNearestJobsInTheRepo(t *test
 	if !ok {
 		t.Fatal("ten similar jobs gave no figure")
 	}
-	// Sorted spends: 0.2 0.3 0.4 0.5 0.6 0.7 0.9 1.0 1.1 2.0 → median 0.6, p80 1.0.
-	if r.N != 10 || r.Repo != "acme/api" || r.USDLo != 0.6 || r.USDHi != 1.0 {
-		t.Fatalf("range = %+v, want $0.60–1.00 from 10 jobs in acme/api", r)
+	// Sorted spends: 0.2 0.3 0.4 0.5 0.6 0.7 0.9 1.0 1.1 2.0 → p10 0.2, p90
+	// 1.1: about eight in ten similar jobs spent inside it.
+	if r.N != 10 || r.Repo != "acme/api" || r.USDLo != 0.2 || r.USDHi != 1.1 {
+		t.Fatalf("range = %+v, want $0.20–1.10 from 10 jobs in acme/api", r)
 	}
-	// Minutes 10..100 → median 50, p80 80.
-	if r.MinLo != 50 || r.MinHi != 80 {
-		t.Fatalf("minutes = %v–%v, want 50–80", r.MinLo, r.MinHi)
+	// Minutes 10..100 → p10 10, p90 90.
+	if r.MinLo != 10 || r.MinHi != 90 {
+		t.Fatalf("minutes = %v–%v, want 10–90", r.MinLo, r.MinHi)
 	}
 }
 
@@ -130,9 +131,14 @@ func TestPoorCoverageWidensTheRange(t *testing.T) {
 	if !ok || !r.Widened {
 		t.Fatalf("range = %+v, want widened", r)
 	}
+	// Widening stretches the same jobs' range by how far real spend strayed
+	// from the median: the unwidened p90 of these eleven jobs is $5.
+	if r.USDHi <= 5 {
+		t.Fatalf("widened hi %v is not above the unwidened $5", r.USDHi)
+	}
 	plain, _ := estimate.Open(items[:5]).For(open("acme/api", rubric(1, 0, 1, 0, 0)))
-	if r.USDHi <= plain.USDHi {
-		t.Fatalf("widened hi %v is not above %v", r.USDHi, plain.USDHi)
+	if plain.Widened {
+		t.Fatalf("five agreeing jobs were widened: %+v", plain)
 	}
 }
 
@@ -158,9 +164,9 @@ func TestARunningJobsLeftIsWhatSimilarJobsSpentPastItsSpendSoFar(t *testing.T) {
 	running.State = factory.StateRunning
 	running.Stream = &factory.Stream{Spent: 2, Started: t0}
 	left, ok := estimate.Open(items).Left(running)
-	// Past $2 they spent 1, 2, 3, 4, 5 more: median 3, p80 4.
-	if !ok || left.N != 5 || left.USDLo != 3 || left.USDHi != 4 {
-		t.Fatalf("left = %+v %v, want $3–4 from 5 jobs", left, ok)
+	// Past $2 they spent 1, 2, 3, 4, 5 more: p10 1, p90 5.
+	if !ok || left.N != 5 || left.USDLo != 1 || left.USDHi != 5 {
+		t.Fatalf("left = %+v %v, want $1–5 from 5 jobs", left, ok)
 	}
 	running.Stream.Spent = 5
 	if _, ok := estimate.Open(items).Left(running); ok {

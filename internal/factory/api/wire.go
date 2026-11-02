@@ -106,7 +106,7 @@ type QueueDesk struct {
 }
 
 // Estimate is one job's measured range (desk): dollars and minutes from the
-// median to the 80th percentile of N similar finished jobs, in Repo (absent:
+// 10th to the 90th percentile of N similar finished jobs, in Repo (absent:
 // every repository). Widened says misses widened it.
 type Estimate struct {
 	USDLo   float64 `json:"usd_lo"`
