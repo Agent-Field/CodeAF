@@ -318,6 +318,7 @@ func TestOnlyARepairStageIsOfferedTheRepairReport(t *testing.T) {
 	for _, repair := range []bool{false, true} {
 		a := stageAgent(t, &fakeStageDoor{})
 		a.config.RepairStage = repair
+		a.tools = a.belt()
 		schema := string(stageToolNamed(t, a, "stage_result").Schema)
 		if !json.Valid([]byte(schema)) {
 			t.Fatalf("schema is not JSON: %s", schema)
