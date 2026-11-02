@@ -1,5 +1,20 @@
 # The factory
 
+## save a job note after steps finish — who reads it and PR comments
+
+A `factory_item` note asks `save a note on the job?`. After your yes, it stays
+on the job even when all steps have finished. The tool's answer names the next
+remaining step that reads it when it runs. Done and failed steps are finished;
+deterministic checks, publish steps and approval gates do not read notes. A running round already has its
+brief, so its next round can read a newly saved note if it runs again.
+
+With no remaining reader, the answer says `no remaining step will read it` and
+`It is not in the pull request.` Saving a note neither edits the PR body nor
+posts a comment. You can comment on the pull request in GitHub; the answer gives
+the saved PR link, or says to wait until a PR exists. The note tool does not post
+PR comments. The app's `factory.issue_comment` posts on the job's source issue,
+which can be different from the PR created for the job.
+
 ## what is the factory — jobs, runners and a pull request at the end
 
 The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own.
@@ -130,7 +145,7 @@ On a machine with a factory set up, a conversation can hand work over. Every one
 
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
-The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question or save an answer to the exact persisted step question; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
@@ -188,7 +203,11 @@ no budget of its own.
 
 ## a rule asks first — protected paths, Auto paused at the plan, a plan that touches auth, why a job waits on a rule
 
-Ask-first paths and never paths are one kind of rule, **protected paths**. When a job starts, the protected paths it starts under (the repository's and the factory's) go with it, and every step is told them on one line, "ask before touching: auth/, infra/". A job is held at its start, after its plan and before its change is published whenever a file it names or changes is under one (`touch auth/`, or a bare `auth`, covers everything under `auth/`). The approval is never routine, even in Auto: the job waits with `protected · auth/ · auth/login.go`, shown as "A protected path: auth/ · auth/login.go". A plan step is told to end its plan with its file list in the one shape the factory reads, a line that says only `Files:` and then a `- path` line per file, outside any code block; nothing else in a plan is read as its files. A plan without that list waits with `protected · auth/ · the plan names no files` (every protected path in force), shown as "The plan didn't list its files, so the factory couldn't check them against auth/. Approve, or send it back to list them." Answering it clears the hold. The job keeps what each check found: on its Steps panel, **Before it starts** and **Before publishing** show a green ◆ and "passed" when nothing a rule guards was touched, and stay amber with "asked" when a rule made the job wait for you. A job a person started was not checked at its start, so that row shows no finding. Ask-first sentences, which nothing can check against files, are told on their own line, "ask before you: …", and hold a job before it starts with "ask first ·" and the sentence.
+Ask-first paths and never paths are one kind of rule, **protected paths**. When a job starts, the protected paths it starts under (the repository's and the factory's) go with it, and every step is told them on one line, "ask before touching: auth/, infra/". A job is held at its start, after its plan and before its change is published whenever a file it names or changes is under one (`touch auth/`, or a bare `auth`, covers everything under `auth/`). The approval is never routine, even in Auto: the job waits with `protected · auth/ · auth/login.go`, shown as "A protected path: auth/ · auth/login.go". A plan step reports its file list in the structured `files` field of `stage_result`; prose naming files does not fill it. Older plans with a strict `Files:` declaration remain readable. Invalid lists or disagreement between the structured list and a declaration make the list unknown. A plan without a checkable list waits with `protected · auth/ · the plan names no files` (the stored hold stays compatible), shown as "This plan didn't give the factory a file list it can check against auth/. Read the plan, then approve it or send it back." Answering it clears the hold.
+
+## rule checks before starting and publishing
+
+The job keeps what each check found: on its Steps panel, **Before it starts** and **Before publishing** show a green ◆ and "passed" when nothing a rule guards was touched, and stay amber with "asked" when a rule made the job wait for you. A job a person started was not checked at its start, so that row shows no finding. Ask-first sentences, which nothing can check against files, are told on their own line, "ask before you: …", and hold a job before it starts with "ask first ·" and the sentence.
 
 ## pick up issues — labelled work starts by itself, its labels, who owns those jobs
 
