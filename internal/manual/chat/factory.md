@@ -364,6 +364,24 @@ Each finished job is checked against the range the jobs before it would have giv
 
 Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs like it cost up to $3 · over $2`). An unknown cost asks first only when the repository's file writes `max_cost` (`no cost history yet · max_cost $2 asks first`); under the default ceiling an unknown cost starts, because the job's budget still stops a running job.
 
+## look closer — scout a job, files it will change, plan, unknowns, tests, about 2¢, monthly limit for AI reached
+
+Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. A look never writes a price.
+
+A look stops at 12 tool calls, one minute or $0.10, whichever comes first. The button shows what a typical look costs on this factory (`about 2¢`) once one has run; its cost goes on Spending as `factory scout`. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
+
+Its complexity replaces the read's, and its questions become the job's when the job has none. Credential-looking files (`.env`, keys, `.ssh/`) are never listed or read, and the repository's text is treated as data, so an instruction inside a file or the issue is not followed.
+
+Limits: $10 of looks a month per factory (`Monthly limit for AI reached`) and 20 looks a day per repository (`Daily limit for this repo reached`). A repository that is not checked out cannot be looked at.
+
+## read new issues as they arrive — automatic issue read, Read N new issues, read one issue, look before an automatic start
+
+Off by default: the factory's AI runs only when you click or on your schedule. With it off, new issues arrive unread. Backlog offers `Read N new issues · about $X` (the last read's cost times N), and each row has Read and Look closer. A click reads exactly the issues chosen, at most 20 at a time; an issue whose read failed stays unread so you can try again.
+
+Turned on, each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start.
+
+Reading never changes which jobs start on their own: only a size label decides that, read or not. Only the factory's operator can change this setting.
+
 ## which model runs factory jobs — Task models and one model
 
 Factory reads, manager turns and step conversations follow Task models. With one model selected, every text role uses that exact model on its selected connection. A missing, unreachable or mismatched choice refuses the turn; it does not choose a fallback. The daily crew cap also refuses new factory admission when reached. A job's own spending ceiling remains separate.

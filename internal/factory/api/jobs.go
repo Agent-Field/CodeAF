@@ -241,6 +241,7 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
+	{"GET", "/v1/repos/{owner}/{repo}/read", nil, RepoRead{}},
 	{"POST", "/v1/repos/{owner}/{repo}/pipeline/open-pr", PipelinePRRequest{}, PipelinePRResponse{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", nil, PipelineCopyAnswer{}},
 	{"PUT", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", PipelineCopyRequest{}, PipelineCopyAnswer{}},

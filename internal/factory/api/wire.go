@@ -93,7 +93,9 @@ type QueueDesk struct {
 	Busy         map[int]string `json:"busy,omitempty"`
 	BusyAll      string         `json:"busy_all,omitempty"`
 	LastReadCost float64        `json:"last_read_cost,omitempty"`
-	Marked       []int          `json:"marked,omitempty"`
+	// ScoutPrice is what one Look closer typically costs, for its button.
+	ScoutPrice float64 `json:"scout_price,omitempty"`
+	Marked     []int   `json:"marked,omitempty"`
 	// Checkouts has no omitempty ON PURPOSE: null is a seam that does not
 	// say, and {} is a seam that knows no checkout ([factory.Snapshot]).
 	Checkouts map[string]string `json:"checkouts"`
@@ -406,6 +408,8 @@ type Job struct {
 	// factory's finished jobs; absent on a finished job, on one nobody
 	// scored, and while too few similar jobs finished ("no cost history yet").
 	Estimate *Estimate `json:"estimate,omitempty"`
+	// Scout is the job's last Look closer; absent when nobody looked.
+	Scout *Scout `json:"scout,omitempty"`
 
 	// BriefSeen is the Brief revision the CALLER last saw on this job, absent
 	// for none ([ForViewer]). Nobody else's is ever answered.
@@ -931,6 +935,66 @@ type Factor struct {
 	Score int    `json:"score"`
 	Why   string `json:"why,omitempty"`
 	Low   bool   `json:"low,omitempty"`
+	// Cite is a scout's evidence, `path:line`, checked to exist.
+	Cite string `json:"cite,omitempty"`
+}
+
+// Scout is a job's Look closer (desk): what a model with read-only tools on
+// the repository found. Every path in it exists at head; dropped counts the
+// paths the answer named that did not (cited is all it named). stale says the
+// issue's text changed since. usd, calls, model and took_ms are the look's own
+// receipt; at is when it was written.
+type Scout struct {
+	Files    []ScoutFile `json:"files,omitempty"`
+	Plan     []string    `json:"plan,omitempty"`
+	Unknowns []string    `json:"unknowns,omitempty"`
+	Tests    []string    `json:"tests,omitempty"`
+	Rubric   *Rubric     `json:"rubric,omitempty"`
+	Cited    int         `json:"cited,omitempty"`
+	Dropped  int         `json:"dropped,omitempty"`
+	Calls    int         `json:"calls,omitempty"`
+	USD      float64     `json:"usd,omitempty"`
+	Model    string      `json:"model,omitempty"`
+	TookMS   int64       `json:"took_ms,omitempty"`
+	Body     string      `json:"body"`
+	Head     string      `json:"head"`
+	At       time.Time   `json:"at"`
+	Stale    bool        `json:"stale,omitempty"`
+}
+
+// ReadResult is POST /v1/read's answer, a person's Read of chosen jobs: the
+// jobs read now, those skipped (already read, not an issue job, not visible,
+// or over the most one read takes) and those whose model call failed, left
+// unread to try again.
+type ReadResult struct {
+	Read    []int `json:"read"`
+	Skipped []int `json:"skipped"`
+	Failed  []int `json:"failed"`
+}
+
+// ScoutLook is POST /v1/jobs/{id}/scout's answer: the job's scout, and
+// cached when it is the kept look of the same issue text at the same head,
+// which cost nothing.
+type ScoutLook struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Cached  bool    `json:"cached"`
+	Scout   Scout   `json:"scout"`
+}
+
+// The reasons Look closer refuses with.
+const (
+	// ReasonLimit (429): the month's AI limit or the repository's daily
+	// scout limit is reached; the error says which.
+	ReasonLimit = "limit"
+	// ReasonNoAnswer (502): the scout spent its budget without an answer.
+	ReasonNoAnswer = "no_answer"
+)
+
+// ScoutFile is one file or folder a scout expects the work to change.
+type ScoutFile struct {
+	Path string `json:"path"`
+	Why  string `json:"why,omitempty"`
 }
 
 // LogLine is one line of a run's grain (desk).

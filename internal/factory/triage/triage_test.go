@@ -237,3 +237,55 @@ func TestWorkerGivesAFailingCallItsTriesThenStamps(t *testing.T) {
 		t.Fatal("an item whose call always fails was never stamped")
 	}
 }
+
+// READ NEW ISSUES AS THEY ARRIVE, TURNED OFF, reads nothing: no call and no
+// stamp, and the item is read the first tick after it is turned on again.
+func TestAWorkerWhoseArrivalReadIsOffReadsNothing(t *testing.T) {
+	st := openStore(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "x", State: factory.StateNew, Kind: factory.KindIssue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{asked: make(chan struct{}, 8), answer: func(int) (string, error) { return clean, nil }}
+	off := true
+	opts := Options{Off: func() bool { return off }}
+	ReadOne(context.Background(), st, r.call, opts)
+	if got, _ := st.Get(it.ID); len(r.prompts) != 0 || !got.Triage.TriagedAt.IsZero() {
+		t.Fatalf("read while off: %d calls, %+v", len(r.prompts), got.Triage)
+	}
+	off = false
+	ReadOne(context.Background(), st, r.call, opts)
+	if got, _ := st.Get(it.ID); got.Triage.TriagedAt.IsZero() {
+		t.Fatal("not read once turned on")
+	}
+}
+
+// A PERSON'S CLICK READS EXACTLY THE CHOSEN ITEMS, even with Read new issues
+// as they arrive off: each chosen unread issue once, an already-read or
+// unknown one skipped, and nothing that was not chosen.
+func TestAClickReadsExactlyTheChosenItems(t *testing.T) {
+	st := openStore(t)
+	var ids []int
+	for _, title := range []string{"one", "two", "three"} {
+		it, err := st.Create(factory.Item{Repo: "acme/api", Title: title, State: factory.StateNew, Kind: factory.KindIssue})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, it.ID)
+	}
+	read, err := st.Create(factory.Item{Repo: "acme/api", Title: "read", State: factory.StateNew, Kind: factory.KindIssue, Triage: factory.Triage{Read: "kept"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{asked: make(chan struct{}, 8), answer: func(int) (string, error) { return clean, nil }}
+	got := ReadThese(context.Background(), st, r.call, []int{ids[0], ids[2], read.ID, 999}, Options{Off: func() bool { return true }})
+	if !reflect.DeepEqual(got.Read, []int{ids[0], ids[2]}) || !reflect.DeepEqual(got.Skipped, []int{read.ID, 999}) || len(r.prompts) != 2 {
+		t.Fatalf("read %v skipped %v with %d calls", got.Read, got.Skipped, len(r.prompts))
+	}
+	for i, id := range ids {
+		it, _ := st.Get(id)
+		if chosen := i != 1; it.Triage.TriagedAt.IsZero() == chosen {
+			t.Errorf("#%d chosen %v, read %v", id, chosen, !it.Triage.TriagedAt.IsZero())
+		}
+	}
+}

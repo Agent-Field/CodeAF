@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
@@ -78,9 +79,19 @@ func factoryIntake(st *store.Store) *intake.Intake {
 // owner: the factory's operator, as the host that runs the intake knows them.
 func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
+	look := factoryScoutLook(st, config.Load)
 	return intake.New(st, intake.Options{
 		Owner:  owner,
 		Record: history,
+		// An automatic start is looked at closer first, while Read new issues
+		// as they arrive is on.
+		Scout: func(ctx context.Context, id int) error {
+			if !factoryReadsOnArrival(st) {
+				return errors.New("read on arrival is off")
+			}
+			_, _, err := look(ctx, id, false)
+			return err
+		},
 		Refresh: func(ctx context.Context) error {
 			repos, err := st.Repos()
 			if err != nil {

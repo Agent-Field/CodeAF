@@ -536,6 +536,12 @@ func appFactoryFailure(r appFactoryReply) error {
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:
 		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+	case r.status == http.StatusConflict && body.Reason == api.ReasonNotCloned:
+		return appwire.Errorf(appwire.CodeNotCloned, "%s", words)
+	case r.status == http.StatusForbidden && body.Reason == api.ReasonDenied:
+		return appwire.Errorf(appwire.CodeForbidden, "denied")
+	case r.status == http.StatusUnprocessableEntity && body.Reason == api.ReasonBinary:
+		return appwire.Errorf(appwire.CodeUnreadable, "binary")
 	case r.status == http.StatusNotFound:
 		if words == "" {
 			words = "the factory has no such thing"
@@ -793,7 +799,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
 		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 

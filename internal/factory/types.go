@@ -500,9 +500,11 @@ type Item struct {
 	Priority    *JobPriority `json:",omitempty"`
 	DismissedBy []string     `json:",omitempty"`
 	DoneHow     string       `json:",omitempty"`
-	DoneAt      time.Time    `json:",omitempty"`
-	Approval    *Approval    `json:",omitempty"`
-	StopUndo    *StopUndo    `json:",omitempty"`
+	// Scout is the last Look closer on this job ([Scout]); nil is never.
+	Scout    *Scout    `json:",omitempty"`
+	DoneAt   time.Time `json:",omitempty"`
+	Approval *Approval `json:",omitempty"`
+	StopUndo *StopUndo `json:",omitempty"`
 
 	// BriefSeen is the Brief revision each person last saw, by normalised
 	// handle (brief_seen.go). It is private to each person: it never crosses
@@ -920,6 +922,9 @@ type Snapshot struct {
 	// LastReadCost is what the last triage read cost in dollars, the figure
 	// the floor's `~$0.0004` note quotes; 0 is not known, and draws nothing.
 	LastReadCost float64
+	// ScoutPrice is what one Look closer typically costs (the median of the
+	// floor's scouts), the figure its button quotes; 0 is none ran yet.
+	ScoutPrice float64
 	// Marked is the floor's own marks, by item id: the new items the foreman
 	// (or anything else behind [Seam.Mark]) proposed for the next launch,
 	// kept by the store so every window reads the same ones. Each is also

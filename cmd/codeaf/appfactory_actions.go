@@ -99,6 +99,17 @@ func (h *appFactoryHub) write(ctx context.Context, id, path string, body any) (a
 // post is the one send behind every job write: it returns the body of a
 // factory's yes, and a refusal or an unconfirmed outcome as the wire error.
 func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]byte, error) {
+	return h.sendWrite(ctx, h.client, http.MethodPost, id, path, body)
+}
+
+// postWith is [appFactoryHub.post] on another client, for the one write
+// that may take longer than the hub's own timeout (Look closer).
+func (h *appFactoryHub) postWith(ctx context.Context, client *http.Client, id, path string, body any) ([]byte, error) {
+	return h.sendWrite(ctx, client, http.MethodPost, id, path, body)
+}
+
+// sendWrite is the one write: method (POST or PATCH) with body to path.
+func (h *appFactoryHub) sendWrite(ctx context.Context, client *http.Client, method, id, path string, body any) ([]byte, error) {
 	row, token, err := h.credentialed(ctx, id)
 	if err != nil {
 		return nil, err
@@ -107,7 +118,7 @@ func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]
 	if err != nil {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, row.URL+path, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, method, row.URL+path, bytes.NewReader(raw))
 	if err != nil {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
 	}
@@ -117,7 +128,7 @@ func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := h.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, appFactoryWriteError(err)
 	}
