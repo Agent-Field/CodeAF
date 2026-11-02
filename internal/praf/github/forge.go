@@ -132,6 +132,9 @@ type RepoInfo struct {
 	// Open is the API's open_issues_count, which counts open issues and open
 	// pull requests together, and -1 when the API left it out.
 	Open int
+	// OpenIssues is how many issues are open, WITHOUT pull requests, and nil
+	// when GitHub did not say: never 0 in place of an answer.
+	OpenIssues *int
 }
 
 // CheckState is what the checks on one commit add up to.
@@ -613,7 +616,53 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 		}
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Pushed.After(out[b].Pushed) })
+	c.fillOpenIssues(ctx, out)
 	return out, nil
+}
+
+// openIssuesBatch is how many repositories one GraphQL request counts, so a
+// list costs one more request per REST page it took.
+const openIssuesBatch = 100
+
+// fillOpenIssues sets each repository's OpenIssues from GraphQL, which counts
+// issues apart from pull requests where REST's open_issues_count cannot. A
+// batch GitHub refuses, or a repository it does not answer, stays nil: the
+// count is an extra, and the list never fails or guesses for want of it.
+func (c *client) fillOpenIssues(ctx context.Context, repos []RepoInfo) {
+	if c.token == "" {
+		return
+	}
+	headers, _ := c.headersForRepo(ctx, "", "")
+	for start := 0; start < len(repos); start += openIssuesBatch {
+		batch := repos[start:min(start+openIssuesBatch, len(repos))]
+		params := make([]string, len(batch))
+		fields := make([]string, len(batch))
+		vars := make(map[string]any, 2*len(batch))
+		for i, r := range batch {
+			k := strconv.Itoa(i)
+			params[i] = "$o" + k + ":String!,$n" + k + ":String!"
+			fields[i] = "r" + k + ":repository(owner:$o" + k + ",name:$n" + k + "){issues(states:OPEN){totalCount}}"
+			vars["o"+k], vars["n"+k] = r.Owner, r.Name
+		}
+		query := "query(" + strings.Join(params, ",") + "){" + strings.Join(fields, " ") + "}"
+		raw, err := c.request(ctx, http.MethodPost, c.baseURL+"/graphql", headers, map[string]any{"query": query, "variables": vars}, 30*time.Second)
+		var reply struct {
+			Data map[string]*struct {
+				Issues struct {
+					TotalCount int `json:"totalCount"`
+				} `json:"issues"`
+			} `json:"data"`
+		}
+		if err != nil || json.Unmarshal(raw, &reply) != nil {
+			continue
+		}
+		for i := range batch {
+			if r := reply.Data["r"+strconv.Itoa(i)]; r != nil {
+				n := r.Issues.TotalCount
+				batch[i].OpenIssues = &n
+			}
+		}
+	}
 }
 
 // Comment posts body as a comment on issue or pull request number.
