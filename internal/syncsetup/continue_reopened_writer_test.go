@@ -22,6 +22,10 @@ func TestAReturnAfterTheWriterReopensIsNotALostRace(t *testing.T) {
 	moved, err := h.continuerB().Take(ctx, h.cell.ID)
 	mustNil(t, err)
 	stale := &directory.LeaseExpectation{Device: h.b.Device.ID(), Fence: moved.Taken.Driving.Fence}
+	// Opening an installed copy resumes the same hold (F1, #2009); a clean
+	// quit releases it, so the writer's return is a new ownership.
+	first := h.openOn(h.b, h.engB, moved.Taken.Cell, workspaceOf(moved.Taken.Cell.Root), nameB)
+	mustNil(t, first.drive.Close(ctx))
 	h.openOn(h.b, h.engB, moved.Taken.Cell, workspaceOf(moved.Taken.Cell.Root), nameB)
 	current, err := h.a.Dir.Cell(ctx, h.cell.ID)
 	mustNil(t, err)
