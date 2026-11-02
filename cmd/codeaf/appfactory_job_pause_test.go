@@ -278,6 +278,9 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 			started := make(chan *factoryrun.FakeConversation, 4)
 			finishB := make(chan struct{})
 			finishA := make(chan struct{})
+			cancelledA := make(chan struct{})
+			drainA := make(chan struct{})
+			releaseDrain := sync.OnceFunc(func() { close(drainA) })
 			var calls, prepared atomic.Int32
 			maker := &factoryrun.FakeMaker{Script: func(ctx context.Context, c *factoryrun.FakeConversation) {
 				calls.Add(1)
@@ -301,10 +304,18 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 						return factory.StageResult{Done: true, Notes: []string{"prepared once"}}, nil
 					}
 					job.Spend(0.125)
-					return chat.Run(ctx, job)
+					result, err := chat.Run(ctx, job)
+					if !busy && ctx.Err() != nil {
+						// Keep the cancelled executor in flight until Resume has
+						// queued the job, before its final report and lease release.
+						close(cancelledA)
+						<-drainA
+					}
+					return result, err
 				}),
 			}})
 			startPauseWorker(t, s, status, runner, mirror)
+			t.Cleanup(releaseDrain)
 			create := func(title string, prepare bool) int {
 				t.Helper()
 				stages := []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: factory.UntilDone, On: true}}
@@ -392,8 +403,22 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 					t.Fatalf("A lost its pause while B runs: %+v", j)
 				}
 			}
+			if !busy {
+				select {
+				case <-cancelledA:
+				case <-time.After(10 * time.Second):
+					t.Fatal("pause did not cancel A's executor")
+				}
+			}
 			time.Sleep(100 * time.Millisecond)
 			before := calls.Load()
+			wantCalls := int32(1)
+			if busy {
+				wantCalls++
+			}
+			if before != wantCalls {
+				t.Fatalf("model calls while A is paused: got %d, want %d", before, wantCalls)
+			}
 			act(a, "factory.job_resume")
 			if busy {
 				queued := wait(a, "waiting for the occupied slot", func(j api.Job) bool { return j.State == api.StateQueued && j.StatePresentation.Kind == waiting.Kind })
@@ -405,6 +430,12 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 					t.Fatal("resumed job made a model call without a free slot")
 				}
 				close(finishB)
+			} else {
+				queued := read(a)
+				if queued.State != api.StateQueued || queued.Desk.Run.Paused || queued.Cost != paused.Cost || calls.Load() != before {
+					t.Fatalf("resume while cancellation drains: %+v", queued)
+				}
+				releaseDrain()
 			}
 			second := next("A")
 			if second.Spec.Resume != first.ID() || second.Spec.Item.Stream.Phases[1].Round != 1 {
