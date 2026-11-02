@@ -260,6 +260,153 @@ func TestFactoryRunningJobPause(t *testing.T) {
 	})
 }
 
+// A paused job gives the only slot to another job and rejoins the ordinary
+// queue on resume, keeping completed work and the interrupted conversation.
+func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
+	for _, busy := range []bool{true, false} {
+		name := "free slot"
+		if busy {
+			name = "occupied slot"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, status := newPauseSetup(t)
+			floor := s.backend.local.host.floor
+			mirror, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			started := make(chan *factoryrun.FakeConversation, 4)
+			finishB := make(chan struct{})
+			finishA := make(chan struct{})
+			var calls, prepared atomic.Int32
+			maker := &factoryrun.FakeMaker{Script: func(ctx context.Context, c *factoryrun.FakeConversation) {
+				calls.Add(1)
+				started <- c
+				finish := finishA
+				if c.Spec.Item.Title == "B" {
+					finish = finishB
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-finish:
+				}
+				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+			}}
+			chat := factoryrun.NewChatExecutor(maker)
+			runner := factoryrun.New(factoryrun.Options{Store: mirror, Benches: 1, Exec: map[factory.StageKind]factoryrun.Executor{
+				factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+					if job.Stage.Name == "prepare" {
+						prepared.Add(1)
+						return factory.StageResult{Done: true, Notes: []string{"prepared once"}}, nil
+					}
+					job.Spend(0.125)
+					return chat.Run(ctx, job)
+				}),
+			}})
+			startPauseWorker(t, s, status, runner, mirror)
+			create := func(title string, prepare bool) int {
+				t.Helper()
+				stages := []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: factory.UntilDone, On: true}}
+				if prepare {
+					stages = append([]factory.Stage{{Name: "prepare", Kind: factory.StageChat, Ask: "prepare", Until: factory.UntilDone, On: true}}, stages...)
+				}
+				it, err := floor.Create(factory.Item{Repo: "acme/api", Title: title, Kind: factory.KindIssue, Assignee: "owner", Autonomy: factory.AutonomyManual, Stages: stages})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return it.ID
+			}
+			read := func(id int) api.Job {
+				var j api.Job
+				s.must("factory.job", map[string]any{"factory": status.Factory, "job": id}, &j)
+				return j
+			}
+			act := func(id int, method string) {
+				t.Helper()
+				j := read(id)
+				s.must(method, map[string]any{"factory": status.Factory, "job": id, "expect": map[string]any{"version": j.Version}}, &appwire.FactoryJobActed{})
+			}
+			wait := func(id int, what string, predicate func(api.Job) bool) api.Job {
+				t.Helper()
+				deadline := time.Now().Add(10 * time.Second)
+				for {
+					j := read(id)
+					if predicate(j) {
+						return j
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("job %d never %s: state=%s presentation=%+v", id, what, j.State, j.StatePresentation)
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+			}
+			next := func(title string) *factoryrun.FakeConversation {
+				t.Helper()
+				select {
+				case c := <-started:
+					if c.Spec.Item.Title != title {
+						t.Fatalf("started %s, want %s", c.Spec.Item.Title, title)
+					}
+					return c
+				case <-time.After(10 * time.Second):
+					t.Fatalf("job %s never started its model round", title)
+					return nil
+				}
+			}
+			a := create("A", true)
+			act(a, "factory.job_start")
+			first := next("A")
+			wait(a, "running", func(j api.Job) bool {
+				return j.State == api.StateRunning && j.Cost == 0.125 && len(j.Steps) == 2 && j.Steps[0].State == api.StepDone
+			})
+			var b int
+			var waiting api.StatePresentation
+			if busy {
+				b = create("B", false)
+				act(b, "factory.job_start")
+				queued := wait(b, "waiting for capacity", func(j api.Job) bool { return j.StatePresentation.Kind == "waiting_for_capacity" })
+				waiting = queued.StatePresentation
+			}
+			act(a, "factory.job_hold")
+			paused := wait(a, "paused", func(j api.Job) bool { return j.StatePresentation.Kind == "paused" && j.Can.Resume })
+			if paused.State != api.StateRunning || paused.Cost != 0.125 || paused.Can.Hold {
+				t.Fatalf("paused job: %+v", paused)
+			}
+			if busy {
+				next("B")
+				wait(b, "running while A is paused", func(j api.Job) bool { return j.State == api.StateRunning })
+				if j := read(a); j.StatePresentation.Kind != "paused" || !j.Can.Resume || j.Cost != paused.Cost {
+					t.Fatalf("A lost its pause while B runs: %+v", j)
+				}
+			}
+			time.Sleep(100 * time.Millisecond)
+			before := calls.Load()
+			act(a, "factory.job_resume")
+			if busy {
+				queued := wait(a, "waiting for the occupied slot", func(j api.Job) bool { return j.State == api.StateQueued && j.StatePresentation.Kind == waiting.Kind })
+				if queued.StatePresentation.Title != waiting.Title || queued.StatePresentation.Detail != waiting.Detail || queued.Cost != paused.Cost || queued.Desk.Run.Paused {
+					t.Fatalf("resumed job is not an ordinary queued job: %+v", queued)
+				}
+				time.Sleep(100 * time.Millisecond)
+				if calls.Load() != before {
+					t.Fatal("resumed job made a model call without a free slot")
+				}
+				close(finishB)
+			}
+			second := next("A")
+			if second.Spec.Resume != first.ID() || second.Spec.Item.Stream.Phases[1].Round != 1 {
+				t.Fatalf("resume lost conversation or round: resume=%q want=%q", second.Spec.Resume, first.ID())
+			}
+			close(finishA)
+			wait(a, "finished with spending kept", func(j api.Job) bool { return j.Cost == 0.25 && len(j.Steps) == 2 && j.Steps[1].State == api.StepDone })
+			if prepared.Load() != 1 {
+				t.Fatalf("finished preparation ran %d times", prepared.Load())
+			}
+		})
+	}
+}
+
 func startPauseWorker(t *testing.T, s *localSetup, status appwire.FactoryLocalStatus, runner *factoryrun.Runner, mirror *store.Store) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
