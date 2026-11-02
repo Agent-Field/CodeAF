@@ -228,6 +228,21 @@ type JobChat interface {
 	Refusal() string
 }
 
+// JobLedgerName is the optional half of a [JobChat] that names the job its
+// calls are spent for, as `owner/name#number`, so every ledger row of the
+// job's family carries it ([UsageLine.FactoryJob]).
+type JobLedgerName interface {
+	FactoryJob() string
+}
+
+// factoryJobName is the job this agent's calls are spent for, "" for none.
+func (a *Agent) factoryJobName() string {
+	if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+		return strings.TrimSpace(named.FactoryJob())
+	}
+	return ""
+}
+
 // jobChatOf is the job this conversation is the own chat of, asked of the
 // door ONCE PER AGENT: a conversation is made a job's before anything opens
 // it, and is never made another job's while it is open.

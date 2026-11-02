@@ -268,6 +268,12 @@ type UsageLine struct {
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
+	// FactoryJob is the factory job this call was spent for, as
+	// `owner/name#number` ([JobLedgerName]), on every row of a job's family:
+	// its steps, its own chat and their children. It is what lets the factory
+	// say which models its jobs used without opening a transcript, and it is
+	// empty on every other row and on every row written before it existed.
+	FactoryJob string `json:"factory_job,omitempty"`
 
 	// ── what the lane that served it did (docs/ARCHITECTURE.md, Decision 10)
 	//
@@ -1016,6 +1022,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		Root:       strings.TrimSpace(a.config.rootSession),
 		Automation: strings.TrimSpace(a.config.automationID),
 		Workspace:  strings.TrimSpace(a.config.Workspace),
+		FactoryJob: a.factoryJobName(),
 	}
 
 	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat

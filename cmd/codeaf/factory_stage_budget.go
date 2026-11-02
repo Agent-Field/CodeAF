@@ -28,6 +28,9 @@ func (b *stageBudget) FactoryAuto() bool {
 	return err == nil && factory.Automatic(it)
 }
 
+// FactoryJob names the job on the ledger rows of every call this step makes.
+func (b *stageBudget) FactoryJob() string { return factory.LedgerName(b.item) }
+
 func (b *stageBudget) Spend(usd float64) {
 	if usd <= 0 {
 		return

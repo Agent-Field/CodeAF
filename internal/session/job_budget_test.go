@@ -113,3 +113,35 @@ func TestJobBudgetManagerChangesCannotGoBelowSpend(t *testing.T) {
 		t.Fatalf("equal cap refused: %v %+v", err, next)
 	}
 }
+
+type namedBudgetStub struct {
+	liveBudgetStub
+	job string
+}
+
+func (b *namedBudgetStub) FactoryJob() string { return b.job }
+
+// A factory job's family writes its job on every ledger row, priced or not, so
+// the factory can say which models its jobs used.
+func TestJobBudgetNamesTheFactoryJobOnLedgerRows(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	a := &Agent{config: Config{JobBudget: &namedBudgetStub{liveBudgetStub: liveBudgetStub{cap: 5}, job: "acme/api#7"}, usageLedger: ledger}}
+	a.bank(bankedCall{model: "m-priced", used: Usage{Input: 10, Output: 4, CostUSD: 0.5, Calls: 1}, ledger: true})
+	a.bank(bankedCall{model: "m-plan", used: Usage{Input: 3, Output: 2, Calls: 1}, ledger: true})
+	plain := &Agent{config: Config{usageLedger: ledger}}
+	plain.bank(bankedCall{model: "m-chat", used: Usage{Input: 1, Output: 1, CostUSD: 0.1, Calls: 1}, ledger: true})
+	if !StopUsageWriter(ledger) {
+		t.Fatal("usage writer did not stop")
+	}
+	lines, err := ReadUsage(ledger, time.Time{})
+	if err != nil || len(lines) != 3 {
+		t.Fatalf("lines = %d, %v", len(lines), err)
+	}
+	got := map[string]string{}
+	for _, l := range lines {
+		got[l.Model] = l.FactoryJob
+	}
+	if got["m-priced"] != "acme/api#7" || got["m-plan"] != "acme/api#7" || got["m-chat"] != "" {
+		t.Fatalf("factory jobs on rows = %v", got)
+	}
+}

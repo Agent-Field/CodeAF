@@ -181,3 +181,10 @@ func handledSince(it Item, started time.Time) (int, time.Time) {
 	}
 	return n, at
 }
+
+// LedgerName is how the spend ledger names the job a call was spent for:
+// `owner/name#number`, lower-cased like every repository key, the same on
+// this machine's floor and on a worker's mirror of the job.
+func LedgerName(it Item) string {
+	return strings.ToLower(RepoOf(it)) + it.Ref()
+}
