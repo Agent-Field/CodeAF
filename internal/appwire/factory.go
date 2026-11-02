@@ -123,6 +123,10 @@ type FactoryCapabilities struct {
 	// open pull request (feature factory.pipeline_pr_update). True only for an
 	// engine that implements [FactoryPipelinePRUpdater].
 	PipelinePRUpdate bool `json:"pipeline_pr_update"`
+	// PipelineSourceRef: factory.pipeline_source takes ref and reads an open
+	// pipeline pull request's head (feature factory.pipeline_source_ref). True
+	// only for an engine that implements [FactoryPipelineSourceRefReader].
+	PipelineSourceRef bool `json:"pipeline_source_ref"`
 	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
 	// served (feature factory.pipeline_edit). True only for an engine that
 	// implements [FactoryPipelineEditor]. Neither writes anything.

@@ -120,14 +120,7 @@ func (b *appBackend) FactoryPipelinePR(ctx context.Context, p appwire.FactoryPip
 	}
 	// TEXT THAT SPELLS A RUNTIME KEY goes only to a commit the factory attested,
 	// and only after the file is read again (appfactory_pipeline_runtime.go).
-	// An update names no base commit: the file is read again and must still be
-	// the one attested, as the factory copy's seal does.
-	if p.PR != 0 {
-		err = b.checkPipelineCopyRuntimeText(ctx, who, p.Factory, p.Repo, p.Text)
-	} else {
-		err = b.checkPipelineRuntimeText(ctx, who, p)
-	}
-	if err != nil {
+	if err := b.checkPipelineRuntimeText(ctx, who, p); err != nil {
 		return appwire.FactoryPipelinePRDone{}, err
 	}
 	owner, name, _ := strings.Cut(p.Repo, "/")

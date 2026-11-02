@@ -60,6 +60,11 @@ type prPull struct {
 	number           int
 	state            string
 	headRef, headSHA string
+	// refSHA is what the head branch's ref says, when GitHub's pull request
+	// read lags behind it; "" means the two agree.
+	refSHA string
+	// files are the paths the pull request changes; nil is the pipeline file.
+	files            []string
 	headRepo         string // "" answers a null head repository (a deleted fork)
 	baseRef, baseSHA string
 	baseRepo         string
@@ -86,6 +91,10 @@ func (g *prGitHub) stage(r *http.Request) string {
 		return "commit"
 	case r.Method == "POST" && p == "/repos/acme/api/pulls":
 		return "pull_request"
+	case r.Method == "GET" && strings.HasPrefix(p, "/repos/acme/api/pulls/") && strings.HasSuffix(p, "/files"):
+		return "pull_files"
+	case r.Method == "GET" && strings.HasPrefix(p, "/repos/acme/api/commits/") && strings.HasSuffix(p, "/pulls"):
+		return "commit_pulls"
 	case r.Method == "GET" && strings.HasPrefix(p, "/repos/acme/api/pulls/"):
 		return "pull"
 	}
@@ -165,6 +174,9 @@ func (g *prGitHub) transport(next http.RoundTripper) http.RoundTripper {
 			}
 			return reply(200, fmt.Sprintf(`{"type":"file","encoding":"base64","sha":%q,"content":%q}`, prBlob, base64.StdEncoding.EncodeToString(g.file))), nil
 		case "exists":
+			if g.pull != nil && r.URL.Path == "/repos/acme/api/git/ref/heads/"+g.pull.headRef {
+				return reply(200, fmt.Sprintf(`{"object":{"type":"commit","sha":%q}}`, g.fileRef())), nil
+			}
 			if g.branchExists {
 				return reply(200, `{}`), nil
 			}
@@ -177,6 +189,10 @@ func (g *prGitHub) transport(next http.RoundTripper) http.RoundTripper {
 			return reply(201, fmt.Sprintf(`{"commit":{"sha":%q}}`, prHead)), nil
 		case "pull":
 			return g.pullReply(r.URL.Path), nil
+		case "pull_files":
+			return g.filesReply(r.URL.Path), nil
+		case "commit_pulls":
+			return g.commitPullsReply(r.URL.Path), nil
 		case "pull_request":
 			g.posts["pulls"] = in
 			return reply(201, `{"number":820,"html_url":"https://github.com/acme/api/pull/820"}`), nil
@@ -188,16 +204,47 @@ func (g *prGitHub) transport(next http.RoundTripper) http.RoundTripper {
 // fileRef is the commit the flow must read the file at: the pull request's
 // head when one is being updated, else the default branch's tip.
 func (g *prGitHub) fileRef() string {
+	if g.pull != nil && g.pull.refSHA != "" {
+		return g.pull.refSHA
+	}
 	if g.pull != nil {
 		return g.pull.headSHA
 	}
 	return prTip
 }
 
+func (g *prGitHub) filesReply(path string) *http.Response {
+	if g.pull == nil || path != fmt.Sprintf("/repos/acme/api/pulls/%d/files", g.pull.number) {
+		return reply(404, `{}`)
+	}
+	files := g.pull.files
+	if files == nil {
+		files = []string{factory.PipelineFile}
+	}
+	var out []map[string]string
+	for _, f := range files {
+		out = append(out, map[string]string{"filename": f, "status": "modified"})
+	}
+	data, _ := json.Marshal(out)
+	return reply(200, string(data))
+}
+
+// commitPullsReply lists the pull request whose branch holds the commit.
+func (g *prGitHub) commitPullsReply(path string) *http.Response {
+	if g.pull == nil || (path != "/repos/acme/api/commits/"+g.pull.headSHA+"/pulls" && path != "/repos/acme/api/commits/"+g.fileRef()+"/pulls") {
+		return reply(200, `[]`)
+	}
+	return reply(200, "["+g.pullJSON()+"]")
+}
+
 func (g *prGitHub) pullReply(path string) *http.Response {
 	if g.pull == nil || path != fmt.Sprintf("/repos/acme/api/pulls/%d", g.pull.number) {
 		return reply(404, `{}`)
 	}
+	return reply(200, g.pullJSON())
+}
+
+func (g *prGitHub) pullJSON() string {
 	repo := func(name string) any {
 		if name == "" {
 			return nil
@@ -209,7 +256,7 @@ func (g *prGitHub) pullReply(path string) *http.Response {
 		"head": map[string]any{"ref": g.pull.headRef, "sha": g.pull.headSHA, "repo": repo(g.pull.headRepo)},
 		"base": map[string]any{"ref": g.pull.baseRef, "sha": g.pull.baseSHA, "repo": repo(g.pull.baseRepo)},
 	})
-	return reply(200, string(data))
+	return string(data)
 }
 
 func reply(status int, body string) *http.Response {

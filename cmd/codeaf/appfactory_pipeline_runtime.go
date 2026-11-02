@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,19 +126,25 @@ func (b *appBackend) checkPipelineRuntimeText(ctx context.Context, who adminWho,
 	if !pipeline.RuntimeKeysIn(p.Text) {
 		return nil
 	}
+	// An update of an open pull request is sealed at its head, read again by
+	// its number; anything else at the default branch's commit.
+	pin, read := p.ExpectedBaseSHA, appwire.FactoryPipelineSourceParams{Factory: p.Factory, Repo: p.Repo}
+	if p.PR != 0 {
+		pin, read.Ref = p.ExpectedHeadSHA, strconv.Itoa(p.PR)
+	}
 	h := b.factoryHub()
-	rec, ok := h.runtimeRecord(p.Factory, who.row.URL, who.token, p.Repo, p.ExpectedBaseSHA)
-	if !ok {
+	rec, ok := h.runtimeRecord(p.Factory, who.row.URL, who.token, p.Repo, pin)
+	if pin == "" || !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s Nothing was sent.", pipelineRuntimeReread)
 	}
-	fresh, err := b.readPipelineSource(ctx, who, appwire.FactoryPipelineSourceParams{Factory: p.Factory, Repo: p.Repo})
+	fresh, err := b.readPipelineSource(ctx, who, read)
 	if err != nil {
 		return err
 	}
 	// A file read as missing was attested as text "", so a later file at the
 	// same commit can never match it, nor a missing read a file's record.
 	if !fresh.RuntimeFields || (fresh.State != api.PipelineEditFile && fresh.State != api.PipelineEditMissing) || !fresh.Editable ||
-		fresh.BaseSHA != p.ExpectedBaseSHA || sha256.Sum256([]byte(fresh.Text)) != rec.raw {
+		fresh.BaseSHA != pin || sha256.Sum256([]byte(fresh.Text)) != rec.raw {
 		return appwire.Errorf(appwire.CodeConflict, "The file or the factory changed since it was read. Read the file again and redo the edit. Nothing was sent.")
 	}
 	return nil

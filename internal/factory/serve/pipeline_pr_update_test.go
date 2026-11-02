@@ -41,6 +41,7 @@ func TestPipelinePRUpdateCommitsOntoTheOpenPullRequestsHeadBranch(t *testing.T) 
 	want := []string{
 		"GET /repos/acme/api",
 		"GET /repos/acme/api/pulls/820",
+		"GET /repos/acme/api/git/ref/heads/codeaf/pipeline-abc",
 		"GET /repos/acme/api/contents/.codeaf/factory.yaml",
 		"PUT /repos/acme/api/contents/.codeaf/factory.yaml",
 	}
@@ -97,7 +98,7 @@ func TestPipelinePRUpdateRefusesAPullRequestItMustNotWriteTo(t *testing.T) {
 		"other base":   {func(p *prPull) { p.baseRef = "release" }, `,"pr":820`, 409},
 		"other repo":   {func(p *prPull) { p.baseRepo = "other/api" }, `,"pr":820`, 409},
 		"head moved":   {func(*prPull) {}, `,"pr":820,"expected_head_sha":"` + strings.Repeat("a", 40) + `"`, 409},
-		"bad head":     {func(p *prPull) { p.headSHA = "main" }, `,"pr":820`, 502},
+		"bad head":     {func(p *prPull) { p.refSHA = "main" }, `,"pr":820`, 502},
 		"head is base": {func(p *prPull) { p.headRef = "main" }, `,"pr":820`, 409},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -182,5 +183,30 @@ func TestPipelinePRUpdateRefusesMixedOrBadFieldsBeforeAnyGitHubCall(t *testing.T
 				t.Fatalf("%d %s %v", w.Code, w.Body, g.calls)
 			}
 		})
+	}
+}
+
+// GITHUB'S PULL REQUEST READ LAGS BEHIND A PUSH for a few seconds: the head is
+// the head branch's own ref, so a caller pinning the commit it was just given
+// is not refused, and the file is read at that commit.
+func TestPipelinePRUpdateTakesTheHeadFromTheBranchRefNotTheLaggingPullRead(t *testing.T) {
+	const fresh = "6666666666666666666666666666666666666666"
+	g := newPRGitHub(t)
+	g.file = []byte("old: file\n")
+	g.pull = openPull()
+	g.pull.refSHA = fresh
+	w := prRequest(soloPR(t, g, factory.Seam{}), t.Context(), "", prBody(`,"pr":820,"expected_head_sha":"`+fresh+`"`))
+	var out api.PipelinePRResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil || out.Outcome != api.PipelinePRUpdated || out.PR.HeadSHA != prHead {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	// The pull read's stale head is now the moved one.
+	g = newPRGitHub(t)
+	g.file = []byte("old: file\n")
+	g.pull = openPull()
+	g.pull.refSHA = fresh
+	w = prRequest(soloPR(t, g, factory.Seam{}), t.Context(), "", prBody(`,"pr":820,"expected_head_sha":"`+prPullHead+`"`))
+	if f := decodeFailure(t, w); w.Code != 409 || f.Stage != "head" || len(g.writes()) != 0 {
+		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }

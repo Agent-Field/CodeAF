@@ -199,6 +199,8 @@ func TestPipelinePRUpdateWireAgainstTheRealFactoryHandler(t *testing.T) {
 						state = "closed"
 					}
 					body = `{"number":42,"state":"` + state + `","head":{"ref":"codeaf/pipeline-open","sha":"` + head + `","repo":{"full_name":"acme/api"}},"base":{"ref":"main","sha":"` + base + `","repo":{"full_name":"acme/api"}}}`
+				case r.Method == "GET" && path == "/repos/acme/api/git/ref/heads/codeaf/pipeline-open":
+					body = `{"object":{"type":"commit","sha":"` + head + `"}}`
 				case r.Method == "GET" && path == "/repos/acme/api/contents/"+factory.PipelineFile:
 					if r.URL.Query().Get("ref") != head {
 						t.Error("file was not read at the pull request's head")

@@ -52,8 +52,13 @@ import (
 //
 //	GET  /repos/{o}/{r}                       default branch and push permission
 //	GET  /repos/{o}/{r}/pulls/{n}             open, into the default branch, from a branch of THIS repository
-//	GET  /repos/{o}/{r}/contents/{file}?ref=<head sha>   the file at the pull request's head
+//	GET  /repos/{o}/{r}/git/ref/heads/{head}  the head branch's tip, pinned as a commit SHA
+//	GET  /repos/{o}/{r}/contents/{file}?ref=<head sha>   the file at that commit
 //	PUT  /repos/{o}/{r}/contents/{file}       commit the file on the head branch, naming the blob read
+//
+// THE HEAD IS THE BRANCH'S OWN REF, never the pull request read's head.sha:
+// GitHub answers that a few seconds late after a push, so a caller pinning the
+// commit an update just answered would be refused as "moved".
 //
 // The pull request's head branch was there before the call, so a failure never
 // leaves a branch. GitHub's contents API guards the FILE (the blob sha), not
@@ -96,6 +101,9 @@ type pipelinePRFlow struct {
 	// update is true when the call adds a commit to an existing pull request:
 	// its branch was never this call's to leave.
 	update bool
+	// source is true on the edit-source read, which answers a failure in its
+	// own shape (sourceFail) from the same steps.
+	source bool
 }
 
 func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
@@ -429,9 +437,9 @@ func (f *pipelinePRFlow) openPull(number int, def, wantedHead string) (api.Pipel
 		return api.PipelinePRResult{}, false
 	}
 	here := func(s side) bool { return s.Repo != nil && strings.EqualFold(s.Repo.FullName, f.owner+"/"+f.repo) }
-	head, base := strings.ToLower(pull.Head.SHA), strings.ToLower(pull.Base.SHA)
+	base := strings.ToLower(pull.Base.SHA)
 	switch {
-	case pull.Number != number || !gitCommitSHA.MatchString(head) || !gitCommitSHA.MatchString(base):
+	case pull.Number != number || !gitCommitSHA.MatchString(base):
 		f.fail(502, api.PipelinePRNotOpened, "head", 0, "GitHub returned an unreadable pull request; nothing was written")
 	case pull.State != "open":
 		f.refuse(409, "head", fmt.Sprintf("Pull request #%d is not open; nothing was written", number))
@@ -439,13 +447,37 @@ func (f *pipelinePRFlow) openPull(number int, def, wantedHead string) (api.Pipel
 		f.refuse(409, "head", fmt.Sprintf("Pull request #%d does not merge into this repository's default branch; nothing was written", number))
 	case !here(pull.Head) || pull.Head.Ref == def || !validPipelineBranch(pull.Head.Ref):
 		f.refuse(409, "head", fmt.Sprintf("Pull request #%d is not from a branch of this repository; nothing was written", number))
-	case wantedHead != "" && wantedHead != head:
-		f.refuse(409, "head", fmt.Sprintf("Pull request #%d has new commits since this draft started; nothing was written", number))
 	default:
-		return api.PipelinePRResult{Number: number, URL: "https://github.com/" + f.owner + "/" + f.repo + "/pull/" + strconv.Itoa(number),
-			Branch: pull.Head.Ref, Base: def, BaseSHA: base, HeadSHA: head}, true
+		head, ok := f.headTip(pull.Head.Ref)
+		switch {
+		case !ok:
+		case wantedHead != "" && wantedHead != head:
+			f.refuse(409, "head", fmt.Sprintf("Pull request #%d has new commits since this draft started; nothing was written", number))
+		default:
+			return api.PipelinePRResult{Number: number, URL: "https://github.com/" + f.owner + "/" + f.repo + "/pull/" + strconv.Itoa(number),
+				Branch: pull.Head.Ref, Base: def, BaseSHA: base, HeadSHA: head}, true
+		}
 	}
 	return api.PipelinePRResult{}, false
+}
+
+// headTip pins the head branch's tip as a commit SHA, or ends the call.
+func (f *pipelinePRFlow) headTip(branch string) (string, bool) {
+	var tip struct {
+		Object struct {
+			Type string `json:"type"`
+			SHA  string `json:"sha"`
+		} `json:"object"`
+	}
+	if !f.read("head", f.repoAt+"/git/ref/heads/"+escapeRef(branch), &tip) {
+		return "", false
+	}
+	head := strings.ToLower(tip.Object.SHA)
+	if tip.Object.Type != "commit" || !gitCommitSHA.MatchString(head) {
+		f.fail(502, api.PipelinePRNotOpened, "head", 0, "GitHub did not return a commit for the pull request's branch; nothing was written")
+		return "", false
+	}
+	return head, true
 }
 
 // fileAt reads the pipeline file at commit ref. It answers the blob to name
@@ -654,6 +686,10 @@ func (f *pipelinePRFlow) refuse(status int, stage, words string) {
 }
 
 func (f *pipelinePRFlow) fail(status int, outcome, stage string, github int, words string) {
+	if f.source {
+		f.sourceFail(status, stage, github, words)
+		return
+	}
 	if status == 401 && f.viaSes {
 		f.h.endGitHub(f.r, f.token)
 	}
