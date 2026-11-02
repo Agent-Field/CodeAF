@@ -341,8 +341,13 @@ func factoryIsParent(f *teams.File, id string) bool {
 // teams.Update, so finding and making are one read-modify-write.
 func itemTeamIn(f *teams.File, name string, now time.Time) string {
 	parent := factoryParentTeam(f, now)
+	// A job with no issue was once named #N. Its saved team keeps that name.
+	saved := name
+	if rest, ok := strings.CutPrefix(name, "job "); ok {
+		saved = "#" + rest
+	}
 	for i, t := range f.Teams {
-		if t.Parent == parent && t.Name == name && !t.Closed() {
+		if t.Parent == parent && (t.Name == name || t.Name == saved) && !t.Closed() {
 			f.Teams[i].FactoryManaged = true
 			return t.ID
 		}
