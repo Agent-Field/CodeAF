@@ -403,6 +403,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	}
 	if f.Kind == "readiness" {
 		f.Reason = "Final review: checking the current PR diff, description and outstanding feedback before marking it ready for review."
+		if pr.NoChecks {
+			f.Reason = NoChecksWords + " " + f.Reason
+		}
 		if !pr.Draft {
 			f.Reason = "Checking the changed PR head, diff, description and feedback before resuming monitoring."
 		}

@@ -439,6 +439,14 @@ type PullRequest struct {
 	Mergeable   string `json:",omitempty"`
 	ChecksRead  bool   `json:",omitempty"`
 	ReviewsRead bool   `json:",omitempty"`
+	// NoWorkflows is what one read found: no workflow files on the head and
+	// no statuses or check runs reported for it. NoChecksSince is the first
+	// read on this head that found it, and NoChecks is the settled fact
+	// ([SettleNoChecks]): the repository has no checks configured, which the
+	// readiness gate counts as a stated condition rather than a failure.
+	NoWorkflows   bool      `json:",omitempty"`
+	NoChecksSince time.Time `json:",omitempty"`
+	NoChecks      bool      `json:",omitempty"`
 }
 
 // Item is one row on the floor.

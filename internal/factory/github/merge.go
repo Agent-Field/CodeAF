@@ -69,5 +69,6 @@ func (s *Source) Follow(ctx context.Context, it factory.Item) (factory.PullReque
 	if fresh.URL == "" {
 		fresh.URL = it.PullRequest.URL
 	}
+	factory.SettleNoChecks(it.PullRequest, &fresh, s.now())
 	return fresh, nil
 }

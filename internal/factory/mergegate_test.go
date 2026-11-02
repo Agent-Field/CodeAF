@@ -75,7 +75,7 @@ func TestMergeGateRefusesEveryUnsafeOrUnknownFact(t *testing.T) {
 		{"no approved commit", func(it *Item) { it.HeadCommit = "" }, MergeAsk{By: "jm"}, "no approved commit is recorded for this job"},
 		{"head unread", func(it *Item) { it.PullRequest.HeadSHA = "" }, MergeAsk{By: "jm"}, "cannot read the pull request's head commit"},
 		{"head moved", func(it *Item) { it.PullRequest.HeadSHA = strings.Repeat("2", 40) }, MergeAsk{By: "jm"}, "the pull request has commits you did not approve"},
-		{"draft", func(it *Item) { it.PullRequest.Draft = true }, MergeAsk{By: "jm"}, "the pull request is a draft"},
+		{"draft", func(it *Item) { it.PullRequest.Draft = true }, MergeAsk{By: "jm"}, "the pull request is a draft: the final readiness review marks it ready, and that review waits because current-head CI must pass with no pending checks"},
 		{"conflict", func(it *Item) { it.PullRequest.Mergeable = MergeableNo }, MergeAsk{By: "jm"}, "the pull request has conflicts"},
 		{"mergeability unknown", func(it *Item) { it.PullRequest.Mergeable = "" }, MergeAsk{By: "jm"}, "the forge has not said whether it can merge yet"},
 		{"checks unread", func(it *Item) { it.PullRequest.ChecksRead = false }, MergeAsk{By: "jm"}, "cannot read the pull request's checks"},
@@ -116,6 +116,37 @@ func TestMergeGateIsDeterministic(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		if got := MergeGate(it, MergeAsk{Auto: true}); got != first {
 			t.Fatalf("run %d = %+v, first = %+v", i, got, first)
+		}
+	}
+}
+
+// A DRAFT'S REFUSAL SAYS WHY IT IS STILL A DRAFT AND WHAT WILL MOVE IT: the
+// readiness review marks it ready, and the refusal names what that review is
+// waiting on, or that it has passed and the ready mark is next.
+func TestMergeGateSaysWhyAPullRequestIsStillADraft(t *testing.T) {
+	waiting := mergeable()
+	waiting.PullRequest.Draft, waiting.Cap = true, 10
+	waiting.PullRequest.Checks = PRChecks{Pending: 1}
+	waiting.PullRequest.ChecksRead = true
+	settling := mergeable()
+	settling.PullRequest.Draft, settling.Cap = true, 10
+	settling.PullRequest.Checks, settling.PullRequest.NoWorkflows = PRChecks{}, true
+	reviewed := mergeable()
+	reviewed.PullRequest.Draft = true
+	reviewed.FollowUp = &PRFollowUp{Kind: "readiness", State: "ready_approval", Readiness: &PRReadiness{Key: "k", State: "reviewed"}}
+	for name, tc := range map[string]struct {
+		it   Item
+		want []string
+	}{
+		"checks pending": {waiting, []string{"the pull request is a draft", "final readiness review marks it ready", "current-head CI must pass"}},
+		"no checks yet":  {settling, []string{"the pull request is a draft", "no GitHub checks are configured"}},
+		"reviewed":       {reviewed, []string{"the pull request is a draft", "final readiness review passed", "marked ready for review next"}},
+	} {
+		v := MergeGate(tc.it, MergeAsk{By: "jm"})
+		for _, want := range tc.want {
+			if v.OK || !strings.Contains(v.Why, want) {
+				t.Errorf("%s: refusal %q does not say %q", name, v.Why, want)
+			}
 		}
 	}
 }

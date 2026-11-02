@@ -159,3 +159,32 @@ func TestPartialRepairNeverMeetsAStageEvenWhenDoneWasReported(t *testing.T) {
 		}
 	}
 }
+
+// THE NO-CI FACT IS A STATED CONDITION ONLY WHEN SETTLED, and never over
+// checks that are pending or failing.
+func TestReadinessCountsASettledNoChecksRepoAsAStatedCondition(t *testing.T) {
+	noCI := func() Item {
+		it := readyItem()
+		p := it.PullRequest
+		p.CI, p.Checks, p.CheckRuns, p.NoWorkflows, p.NoChecks = "", PRChecks{}, nil, true, true
+		return it
+	}
+	it := noCI()
+	if err := ReadinessGate(it); err != nil {
+		t.Fatalf("a settled no-CI repo is refused: %v", err)
+	}
+	if !QueueCIFollowUp(&it, time.Now()) || it.FollowUp.Kind != "readiness" || !strings.Contains(it.FollowUp.Reason, "No GitHub checks in this repo; reviewed without CI") {
+		t.Fatalf("no readiness review, or the job does not say why: %+v", it.FollowUp)
+	}
+	for name, change := range map[string]func(*PullRequest){
+		"not settled": func(p *PullRequest) { p.NoChecks = false },
+		"pending":     func(p *PullRequest) { p.Checks.Pending = 1 },
+		"failing":     func(p *PullRequest) { p.Checks.Failed = 1 },
+	} {
+		it := noCI()
+		change(it.PullRequest)
+		if ReadinessGate(it) == nil {
+			t.Errorf("%s: an unsettled or red repo passed readiness", name)
+		}
+	}
+}
