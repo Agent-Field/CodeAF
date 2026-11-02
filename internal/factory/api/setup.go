@@ -107,3 +107,30 @@ type FactoryDay struct {
 type JobDisplay struct {
 	RunningVisible bool `json:"running_visible"`
 }
+
+// SpendByRepo is GET /v1/spend/repos: what each repository's jobs spent over
+// a range of the factory's own calendar days, from and to inclusive, for the
+// repositories the caller can read. A JOB'S WHOLE SPEND IS PLACED ON ONE DAY:
+// the day its run started, or, for a job that never ran, the day it was
+// created (its chat's spend). The job document keeps one running figure, not
+// spend by day, so a run that crosses midnight or a month counts entirely on
+// its start day. A job that runs again starts its spend from nothing, so an
+// earlier run's spend is not counted. Only jobs that spent something are
+// counted, and only jobs with an owner/name repository. Repos is sorted by
+// name and is [] when nothing was spent; total_usd is their sum.
+type SpendByRepo struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// TimeZone is the IANA name of the zone the days are read in, such as
+	// "Europe/London". It is absent when the factory cannot name its zone.
+	TimeZone string      `json:"time_zone,omitempty"`
+	Repos    []RepoSpend `json:"repos"`
+	TotalUSD float64     `json:"total_usd"`
+}
+
+// RepoSpend is one repository's line: dollars spent and how many jobs spent it.
+type RepoSpend struct {
+	Repo     string  `json:"repo"`
+	SpentUSD float64 `json:"spent_usd"`
+	Jobs     int     `json:"jobs"`
+}

@@ -334,7 +334,6 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	out := s
 	items := make([]factory.Item, 0, len(s.Items))
 	ids := map[int]bool{}
-	var daily float64
 	for _, it := range s.Items {
 		key := itemRepo(it)
 		if key == "" || !allow[key] {
@@ -342,9 +341,6 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 		}
 		items = append(items, it)
 		ids[it.ID] = true
-		if it.Stream != nil {
-			daily += it.Stream.Spent
-		}
 	}
 	repos := make([]factory.Repo, 0, len(s.Repos))
 	for _, repo := range s.Repos {
@@ -354,7 +350,7 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	}
 	out.Items = items
 	out.Repos = repos
-	out.Daily = daily
+	out.Daily = factory.DailySpent(items, s.Now)
 	out.Shift = factory.Shift{Since: s.Shift.Since}
 	today, week := factory.MergedCounts(items, s.Now)
 	out.Shift.MergedToday, out.Shift.MergedWeek = today, week

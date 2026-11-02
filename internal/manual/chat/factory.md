@@ -129,7 +129,7 @@ A step that falls short goes round again until its rounds run out, and only then
 
 ## the factory's own rules — rules for every repository, instructions, protected paths, ask first, never, "don't touch auth without checking with me"
 
-A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. **Use on this factory** runs the edit at once instead (see the next section). The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
+A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. A change to a file the repository already has reaches the next start; a file added where there was none (the first `factory.yaml`, or a `CODEOWNERS`) is read within five minutes of its merge. **Use on this factory** runs the edit at once instead (see the next section). The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
 
 They hold three lists:
 
@@ -299,7 +299,7 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 ## comment on a job's issue — teammates' comments, does the manager read GitHub comments, write access
 
-A comment typed on a job's Issue tab is posted to the job's GitHub issue as you, with your own GitHub sign-in; a solo factory uses its host's sign-in. Only a job from a GitHub issue takes one, up to 8000 characters. A sign-in GitHub will not let comment there is refused with "Your GitHub sign-in can't comment on owner/repo", and nothing is posted. If GitHub's answer is lost, the comment may have posted: read the issue before posting again.
+A comment typed on a job's Issue tab is posted to the job's GitHub issue as you, with your own GitHub sign-in; a solo factory uses its host's sign-in. Only a job from a GitHub issue takes one, up to 8000 characters. A sign-in GitHub will not let comment there is refused with "Your GitHub sign-in can't comment on owner/repo", and nothing is posted. If GitHub's answer is lost, the comment may have posted: read the issue before posting again. A second comment on the same job while one is still being posted is refused, and nothing more is posted. A job of a repository that is turned off takes no comment.
 
 The job's manager reads every new comment on the issue once the factory's next GitHub read brings it, about a minute. Comments already there when the job first read the issue are its context. Under each comment it read, one line says what it did:
 
