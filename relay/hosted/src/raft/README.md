@@ -249,6 +249,14 @@ requires fresh confirmation. Failed confirmation never serves a stale certificat
 Recent read activity renews confirmation during maintenance; idle groups still sleep.
 The shared Go core keeps ReadOnlySafe and its minority-read contract unchanged.
 
+When member traffic interrupts a cached read, the request restarts authorization
+and row selection with a fresh SafeReadIndex rather than recertifying another
+lease. This request pins the member activation and actual applied index across
+identity, device and listing pages, including a final view after storage sync.
+Changed applied state restarts the whole read; bounded retries still fail closed
+without a coherent confirmed view or quorum. Blob I/O stays outside retries, and
+its completion rechecks the applied index before deciding whether to authorize again.
+
 Directory reads do not propose AdvanceTime. Their observed wall-clock floor is
 durable in the router's local metadata and never moves backward after recovery;
 subsequent v1 mutation translation includes that floor. Directory GET signatures

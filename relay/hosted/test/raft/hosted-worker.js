@@ -35,16 +35,20 @@ export class IdentityDO extends Source {
     ctx.storage.sql.exec=(query,...args)=>{if(!/^\s*(SELECT|PRAGMA)/i.test(query))measurements.writes++;return exec(query,...args);};
   }
   interruptNextRead(mode){
-    const host=this.current.host;let pending=true;
+    const host=this.current.host;let pending=true,views=0;
     for(const [id,member] of host.members){
       host.members.set(id,new Proxy(member,{get(target,name){
         const call=Reflect.get(target,name,target);
         if(name==='hostView')return async(...args)=>{
           const result=await Reflect.apply(call,target,args);
           if(pending){
-            pending=mode==='always';const leader=host.leader()??host.replica();
-            await host.members.get(leader).scheduled();
-            if(mode==='no-quorum'){for(const node of [...host.members.keys()])if(node!==leader){host.members.delete(node);host.states.delete(node);}host.queue=[];}
+            pending=false;views++;const leader=host.leader()??host.replica();
+            try{
+              await host.members.get(leader).scheduled();
+              if(mode==='advance')await host.commitEffect({device_seen:{device:host.seen.keys().next().value}});
+              if(mode?.command&&views>=mode.after)await host.commit(unb64(mode.command));
+              if(mode==='no-quorum'){for(const node of [...host.members.keys()])if(node!==leader){host.members.delete(node);host.states.delete(node);}host.queue=[];}
+            }finally{pending=mode==='always'||mode==='advance'||!!mode?.command&&views<mode.after;}
           }
           return result;
         };

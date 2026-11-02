@@ -131,16 +131,19 @@ export class HostedIdentity {
     // before delivery. The deadline additionally bounds idle reuse.
     return this.readLease={node:b.node,index:BigInt(selected.index),term:selected.term,activation:selected.activation,generation,until:started+this.policy.tick_every*2};
   }
-  async readAuthority(){
+  async readAuthority(fresh=false){
     this.lastReadAt=Math.max(this.elapsed,performance.now()-this.started);
-    if(this.leaseCurrent())return this.readLease;
-    const b=await this.barrier();return await this.confirmRead(b)??b;
+    if(!fresh&&this.leaseCurrent())return this.readLease;
+    const b=await this.barrier(),lease=!fresh&&await this.confirmRead(b);
+    if(lease)return lease;
+    const evidence=await this.members.get(b.node).readEvidence();
+    return {...b,activation:evidence.activation};
   }
   checkRead(b){if(b.generation!==undefined&&!this.leaseCurrent(b))throw interruptedRead();}
   async retryRead(read){
     const deadline=Date.now()+(this.peers?.limits.ForwardTimeout??this.policy.tick_every);
     for(let attempt=0;;attempt++){
-      try{return await read();}
+      try{return await read(attempt>0);}
       catch(error){
         if(!error.readInterrupted||attempt+1>=READ_ATTEMPTS||Date.now()>=deadline)throw error;
         this.invalidateRead();
@@ -150,6 +153,10 @@ export class HostedIdentity {
   async readView(b,namespace,key,after=null){
     this.checkRead(b);
     let row;try{row=await this.members.get(b.node).hostView(b.index,namespace,key,after,b.activation??null);}catch(error){this.invalidateRead();throw unavailable();}
+    if(b.generation===undefined){
+      b.applied??=String(row.app.applied);
+      if(b.applied!==String(row.app.applied))throw interruptedRead();
+    }
     this.checkRead(b);return row;
   }
   readNow(committed=0){
@@ -158,6 +165,7 @@ export class HostedIdentity {
   }
   async finishRead(b,reply){
     await this.ctx.storage.sync();
+    if(b.generation===undefined)await this.readView(b,'state','identity');
     this.checkRead(b);return reply;
   }
   config(id){
@@ -442,10 +450,17 @@ export class HostedIdentity {
   async barrierOutbox(after,limit){const b=await this.barrier();return (await this.members.get(b.node).hostView(b.index,'outbox','',after)).rows.slice(0,limit);}
   projectJSON(kind,raw){return projectRecord(this.runtime,kind,raw);}
   project(kind,raw){return JSON.parse(this.projectJSON(kind,raw));}
-  async authorize(device,certificate,write=false){
+  async authorize(device,certificate,write=false,fresh=false){
     await this.wakeMaintenance();
-    const b=await this.readAuthority(),root=await this.readView(b,'state','identity'),actor=await this.readView(b,'state','device/'+segment(device));
+    const b=await this.readAuthority(fresh),root=await this.readView(b,'state','identity'),actor=await this.readView(b,'state','device/'+segment(device));
     const r=response(this.runtime.call(frame(32).blob(root.raw).blob(actor.raw??new Uint8Array()).str(device).str(certificate).u32(write?1:0).finish()));requireOK(r.str());r.end();this.noteSeen(device);return {barrier:b,app:root.app,identity:this.project('identity',root.raw)};
+  }
+  async recheckAuthority(previous,device,certificate,write,fresh){
+    const current=await this.readAuthority(fresh);
+    const applied=current.generation===undefined?(await this.readView(current,'state','identity')).app.applied:current.index;
+    const changed=current.node!==previous.barrier.node||BigInt(applied)!==BigInt(previous.app.applied);
+    const authority=changed?await this.authorize(device,certificate,write,fresh):null;
+    await this.finishRead(authority?.barrier??current,null);
   }
   // Presence is advisory, like unflushed store statistics. It may be lost on
   // eviction, but never delays authority checks or grows with request volume.
@@ -817,11 +832,11 @@ export class HostedIdentity {
     }
   }
   async dispatch(c,route){
-    if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(()=>this.serve(c,route)):this.serve(c,route));
+    if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(fresh=>this.serve(c,route,fresh)):this.serve(c,route));
     const cert=c.request.headers.get('codeaf-cert');
-    const ticket=await this.operation(()=>this.retryRead(async()=>{
+    const ticket=await this.operation(()=>this.retryRead(async fresh=>{
       await this.ensure(fromBase64Url(c.request.headers.get('codeaf-identity')));
-      const authority=await this.authorize(c.device,cert,route.write);
+      const authority=await this.authorize(c.device,cert,route.write,fresh);
       return {authority,io:this.waitIO(c.device,route.write)};
     }));
     // Blob waits cannot hold the coordination queue: revoke/rotation must be
@@ -831,29 +846,32 @@ export class HostedIdentity {
       const work=Promise.resolve().then(()=>route.handler(c,route.args));
       c.retainPut?.(work);
       const result=await Promise.race([work,ticket.io.stopped]);await this.ctx.storage.sync();
-      await this.operation(()=>this.retryRead(async()=>{
-        const current=await this.readAuthority();
-        const changed=current.node!==ticket.authority.barrier.node||current.index!==ticket.authority.barrier.index;
-        const authority=changed?await this.authorize(c.device,cert,route.write):null;
-        this.checkRead(authority?.barrier??current);
-      }));return result;
+      await this.operation(()=>this.retryRead(fresh=>this.recheckAuthority(ticket.authority,c.device,cert,route.write,fresh)));return result;
     }finally{ticket.io.close();}
   }
-  async serve(c,route){
+  async serve(c,route,fresh=false){
     const {request,device,body}=c,url=new URL(request.url),path=url.pathname,cert=request.headers.get('codeaf-cert');
     await this.ensure(fromBase64Url(request.headers.get('codeaf-identity')));
     await this.wakeMaintenance();
     if(path==='/v1/dir/watch'){
       if(request.headers.get('upgrade')?.toLowerCase()!=='websocket')throw new Wire('upgrade_required',426);
       const holds=parseHolds(url.searchParams.getAll('hold'),this.tenant.limits.maxHolds),beat=parseBeat(url.searchParams.getAll('beat'));
-      const a=await this.authorize(device,cert,true);
+      const a=await this.authorize(device,cert,true,fresh);
+      await this.finishRead(a.barrier,null);
       const reply=this.watchers.accept(device,Number(a.app.version),Date.now(),{holds,beat,events:url.searchParams.get('events')==='1',receipts:url.searchParams.get('receipts')==='1',certificate:cert});
-      this.holds.opened(Date.now(),holds.length>0);
-      if(holds.length)await this.holds.renew(Date.now(),this.watchers.holdEvidence(Date.now()));
-      if(this.holds.next!==null)await this.armAlarm(this.holds.next);return reply;
+      try{
+        this.holds.opened(Date.now(),holds.length>0);
+        if(holds.length)await this.holds.renew(Date.now(),this.watchers.holdEvidence(Date.now()));
+        if(this.holds.next!==null)await this.armAlarm(this.holds.next);
+        await this.retryRead(fresh=>this.recheckAuthority(a,device,cert,true,fresh));return reply;
+      }catch(error){
+        const code=error.code==='revoked'?CLOSE_REVOKED:error.code==='rotated'?CLOSE_ROTATED:1012;
+        this.watchers.closeDevice(device,code,error.code??'reconnecting');
+        throw error.readInterrupted?unavailable():error;
+      }
     }
     if(request.method==='GET'){
-      const authority=await this.authorize(device,cert,false),b=authority.barrier;
+      const authority=await this.authorize(device,cert,false,fresh),b=authority.barrier;
       const now=this.readNow(authority.app.now),app={...authority.app,now:String(now)};
       checkTime(request.headers.get('codeaf-time'),now);
       if(path==='/v1/identity/rotation')return this.finishRead(b,json(rotationView(authority.identity.rotation,now,this.tenant.limits)));
@@ -867,7 +885,7 @@ export class HostedIdentity {
     const join=/^\/v1\/dir\/requests\/([^/]+)\/(approve|deny)$/.exec(path);
     let joinCode,joinBox;
     if(join){
-      const authority=await this.authorize(device,cert,true);joinCode=decodeURIComponent(join[1]).trim().toLowerCase();joinBox=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(joinCode));
+      const authority=await this.authorize(device,cert,true,fresh);joinCode=decodeURIComponent(join[1]).trim().toLowerCase();joinBox=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(joinCode));
       // Invalid approvals cannot reserve a request for this cluster. The Go
       // command still checks authority and revocation at its committed index.
       const pending=unwrap(await joinBox.read(0));
