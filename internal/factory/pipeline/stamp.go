@@ -13,9 +13,10 @@ import (
 // and the file may name others. Only a job still on those arrival steps is
 // stamped. One that ran, one whose steps were changed for it
 // ([factory.Item.Adapted]) and one made with steps of its own keep theirs. It
-// reports whether it changed the steps.
+// reports whether it changed the steps. A run-as-new copy keeps its source's
+// steps even when they happen to match the built-in defaults.
 func StampSteps(it *factory.Item, f File) bool {
-	if it.Stream != nil || len(it.Adapted) > 0 || !sameSteps(it.Stages, factory.DefaultRecipe().For(it.Kind)) {
+	if it.FromJob > 0 || it.Stream != nil || len(it.Adapted) > 0 || !sameSteps(it.Stages, factory.DefaultRecipe().For(it.Kind)) {
 		return false
 	}
 	want := f.Recipe().For(it.Kind)
