@@ -30,7 +30,11 @@ func startIdleClient(t *testing.T, socket, binary string, app bool) *idleClient 
 	t.Helper()
 	fixture := os.Getenv("CODEAF_TEST_IDLE_CLIENT")
 	if fixture == "" {
-		t.Fatal("build ./internal/cellstore/testdata/daemon-lifetime and set CODEAF_TEST_IDLE_CLIENT")
+		fixture = filepath.Join(t.TempDir(), "idle-client")
+		build := exec.Command("go", "build", "-o", fixture, "./testdata/daemon-lifetime")
+		if out, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build lifetime client: %v\n%s", err, out)
+		}
 	}
 	cmd := exec.Command(fixture, fmt.Sprintf("-app=%v", app))
 	cmd.Env = append(os.Environ(), "CODEAF_TEST_IDLE_SOCKET="+socket, "CODEAF_TEST_IDLE_BINARY="+binary)
