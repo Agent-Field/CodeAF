@@ -410,7 +410,8 @@ An engine whose hello carries the feature `factory.estimate_new` serves
 `factory.estimate_new {factory, repo, kind}` (`GET
 /v1/repos/{owner}/{repo}/estimate?kind=K`): what a job of that kind will
 likely cost before it exists, for New job's Start now. It answers
-`NewEstimate {factory, repo, kind, estimate?}`, where `estimate` is the kind
+`NewEstimate {factory, repo, kind, estimate?}`, where `factory` is the
+factory itself (`{name, address, version}`, as in a queue) and `estimate` is the kind
 pool's figure (basis `kind`, the repository first, then every repository),
 from the finished jobs the caller can see, and is absent below five. The
 repository dry run adds `cost_jobs`, that repository's finished jobs.
