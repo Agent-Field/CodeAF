@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -250,6 +251,7 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	if recorder.cost > liveFactoryBudget {
 		t.Fatalf("cost $%.4f exceeds the $%.2f budget", recorder.cost, liveFactoryBudget)
 	}
+	readsSurviveAStop(t, local, id)
 	// The key never reached a file: not the profile, not the app home.
 	for _, dir := range []string{ambient, appHome, userHome} {
 		for path, data := range snapshotTree(t, dir) {
@@ -258,4 +260,46 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 			}
 		}
 	}
+}
+
+// readsSurviveAStop is a second app that reaches the solo factory by its address
+// and holds no credential for it, as after a restart. While the factory's
+// service is stopped, queue and job answer unreachable, the word the list
+// uses, never signed_out, which would make the desktop drop its kept rows.
+// Served again on the same address, the rows come back.
+func readsSurviveAStop(t *testing.T, local *appLocalFactory, id int) {
+	t.Helper()
+	other := newFactoryWire(t, testFactoryHub(t))
+	var conn appwire.FactoryConnection
+	other.must("factory.attach", map[string]any{"url": local.host.address}, &conn)
+	at := map[string]any{"factory": conn.ID, "job": id}
+	other.must("factory.job", at, nil)
+
+	stopped := local.server
+	if err := stopped.Close(); err != nil {
+		t.Fatal(err)
+	}
+	other.mustFail("factory.queue", at, appwire.CodeUnreachable)
+	other.mustFail("factory.job", at, appwire.CodeUnreachable)
+	var list appwire.FactoryList
+	other.must("factory.list", map[string]any{}, &list)
+	if len(list.Factories) != 1 || list.Factories[0].State != appwire.FactoryUnreachable {
+		t.Fatalf("list while stopped: %+v", list.Factories)
+	}
+
+	listener, err := net.Listen("tcp", strings.TrimPrefix(local.host.address, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := &http.Server{Handler: stopped.Handler, BaseContext: stopped.BaseContext}
+	go func() { _ = again.Serve(listener) }()
+	t.Cleanup(func() { again.Close() })
+	var q api.Queue
+	other.must("factory.queue", at, &q)
+	var job api.Job
+	other.must("factory.job", at, &job)
+	if job.ID != id {
+		t.Fatalf("job after restart: %+v", job)
+	}
+	t.Logf("solo factory stopped: queue and job unreachable; served again: job %d reads", job.ID)
 }
