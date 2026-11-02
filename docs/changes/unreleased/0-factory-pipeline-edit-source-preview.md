@@ -1,6 +1,6 @@
 ---
 kind: added
-title: The engine can read a repository's pipeline file at a pinned commit and preview a structured edit of it
+title: The engine reads a repository's pipeline file at a pinned commit and previews a structured edit
 pr: 0
 surface: [engine]
 invalidates:
