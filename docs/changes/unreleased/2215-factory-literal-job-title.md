@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf keeps separate job titles and details as written
-pr: 0
+pr: 2215
 surface: [engine]
 invalidates:
   - "App job titles and details were joined and parsed as terminal chips, changing the title, budget and pipeline. Separate titles and details now stay literal."
