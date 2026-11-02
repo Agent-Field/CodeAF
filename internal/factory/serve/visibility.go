@@ -235,10 +235,13 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 // the returned snapshot is still the whole floor.
 func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
 	// Watched repositories belong in the picker before their first job exists.
-	// Preserve existing recipe facts and add only missing watched names.
+	// Preserve existing recipe facts and add only missing watched names, each
+	// with what its own pipeline says, so a first job can state its budget.
 	if h.config.Store != nil {
 		if watched, err := h.config.Store.Repos(); err == nil {
+			known := len(s.Repos)
 			s = withWatchedRepos(s, watched)
+			h.readRecipes(s.Repos[known:])
 		}
 	}
 	allow, filter := h.repoAccess(r, repoKeys(s))
@@ -268,6 +271,20 @@ func withWatchedRepos(s factory.Snapshot, watched []string) factory.Snapshot {
 		}
 	}
 	return s
+}
+
+// readRecipes fills in each repository's recipe, the same read a repository
+// with jobs gets on the floor. A read that fails leaves the repository listed
+// with no recipe: a figure nobody chose is never shown.
+func (h *Handler) readRecipes(repos []factory.Repo) {
+	if h.seam.RecipeAt == nil {
+		return
+	}
+	for i := range repos {
+		if recipe, _, _, err := h.seam.RecipeAt(repos[i].Name); err == nil {
+			repos[i].Recipe, repos[i].Habits = recipe, recipe.Habits
+		}
+	}
 }
 
 func anyAllowed(allow map[string]bool) bool {
@@ -334,7 +351,6 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	out := s
 	items := make([]factory.Item, 0, len(s.Items))
 	ids := map[int]bool{}
-	var daily float64
 	for _, it := range s.Items {
 		key := itemRepo(it)
 		if key == "" || !allow[key] {
@@ -342,9 +358,6 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 		}
 		items = append(items, it)
 		ids[it.ID] = true
-		if it.Stream != nil {
-			daily += it.Stream.Spent
-		}
 	}
 	repos := make([]factory.Repo, 0, len(s.Repos))
 	for _, repo := range s.Repos {
@@ -354,7 +367,7 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	}
 	out.Items = items
 	out.Repos = repos
-	out.Daily = daily
+	out.Daily = factory.DailySpent(items, s.Now)
 	out.Shift = factory.Shift{Since: s.Shift.Since}
 	today, week := factory.MergedCounts(items, s.Now)
 	out.Shift.MergedToday, out.Shift.MergedWeek = today, week

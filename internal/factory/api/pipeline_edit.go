@@ -10,8 +10,16 @@ import (
 // pipeline file exactly as the DEFAULT BRANCH holds it at one pinned commit, read
 // with the caller's own GitHub credential, so a person can edit it and open a
 // pull request (POST .../pipeline/open-pr) from the very bytes they saw. It reads
-// nothing from the host's checkout or personal file, takes no query, and writes
-// nothing to GitHub or to disk.
+// nothing from the host's checkout or personal file and writes nothing to
+// GitHub or to disk.
+//
+// Its one query, ?ref=, reads an OPEN PIPELINE PULL REQUEST instead: ref is
+// the pull request's number in decimal, or the 40-hex commit at its head. The
+// pull request must be open, from a branch of this repository into its default
+// branch, and change only the pipeline file. The file is read at the head
+// branch's tip (for a number, the tip at the time of the read), BaseSHA is that
+// head commit, and Ref and PR say what was read. Anything else is refused at
+// stage "head". A factory older than the query refuses it at stage "request".
 
 // Pipeline edit-source states. Only "file" is editable.
 const (
@@ -32,6 +40,10 @@ type PipelineEditSource struct {
 	Path          string  `json:"path"`
 	DefaultBranch string  `json:"default_branch"`
 	BaseSHA       string  `json:"base_sha"`
+	// Ref is the ref asked for, as asked, and PR the pull request it named;
+	// both are absent from a read of the default branch.
+	Ref string `json:"ref,omitempty"`
+	PR  int    `json:"pr,omitempty"`
 	// CanPush is GitHub's answer for the caller's credential. A pull request
 	// needs it; reading does not.
 	CanPush bool `json:"can_push"`
@@ -161,6 +173,7 @@ const (
 	PipelineEditStageRequest    = "request"
 	PipelineEditStageRepository = "repository"
 	PipelineEditStageBase       = "base"
+	PipelineEditStageHead       = "head" // a ref that is not an open pipeline pull request
 	PipelineEditStageFile       = "file"
 )
 

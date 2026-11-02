@@ -100,7 +100,7 @@ func detachedCommand(
 		return nil, err
 	}
 	cmd, err := seat.In(dir).Command(ctx, executor.ExecRequest{
-		Argv: []string{bash, "-o", "pipefail", "-lc", command}, Env: environment,
+		Argv: append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...), Env: environment,
 		Group: executor.GroupSession, WaitDelay: wait,
 	})
 	if err != nil {

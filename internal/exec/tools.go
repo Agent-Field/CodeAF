@@ -1646,7 +1646,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
 	res, err := executor.For(runCtx).In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
-		Argv: []string{bash, "-o", "pipefail", "-lc", command}, Env: environment,
+		Argv: append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...), Env: environment,
 		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })
 	if res.Status != "" {

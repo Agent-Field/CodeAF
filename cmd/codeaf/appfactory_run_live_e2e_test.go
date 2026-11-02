@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -29,7 +31,8 @@ import (
 // factory.local_run turns the engine's runner on, factory.job_start starts the
 // job, and a real worker leases it, a real chat stage writes a file with the
 // real `write` tool in a worktree, a check reads it, and the job stops at its
-// approve gate. NO LAUNCH STUB: nothing here calls the seam's Launch directly.
+// approve gate. The queue and the job's own read then name the area the
+// change touched (greet/) and the model its step ran on. NO LAUNCH STUB: nothing here calls the seam's Launch directly.
 //
 // ONE MODEL, ALL ROLES. The runner's parent config is the one-model launch
 // ([assertFactoryPin] walks every role it resolves), and every request goes
@@ -129,9 +132,11 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	}
 
 	var st appwire.FactoryLocalStatus
+	// factory.local_start turns the runner on itself (ensureLocalRunner); a
+	// job still runs only once a person presses Start.
 	w.must("factory.local_start", map[string]any{"caller": "live"}, &st)
-	if st.Runner {
-		t.Fatalf("start turned the runner on: %+v", st)
+	if !st.Runner {
+		t.Fatalf("start left the runner off: %+v", st)
 	}
 	floor := local.host.floor
 	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
@@ -143,8 +148,8 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 		Title: "write the greeting", Repo: "acme/api", Tier: factory.TierOwner, Cap: liveFactoryBudget,
 		Stages: []factory.Stage{
 			{Name: "write", Kind: factory.StageChat, On: true, Until: "done",
-				Ask: "Create the file HELLO.txt in the current directory with the write tool, its content exactly `" + want + "` and a trailing newline. Then call stage_result with done true, findings 0 and a one-line output. Do nothing else."},
-			{Name: "verify", Kind: factory.StageCheck, On: true, Ask: "grep -qx '" + want + "' HELLO.txt"},
+				Ask: "Create the file greet/HELLO.txt (under the current directory) with the write tool, its content exactly `" + want + "` and a trailing newline. Then call stage_result with done true, findings 0 and a one-line output. Do nothing else."},
+			{Name: "verify", Kind: factory.StageCheck, On: true, Ask: "grep -qx '" + want + "' greet/HELLO.txt"},
 			{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
 		},
 	})
@@ -152,14 +157,17 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// BEFORE ANY RUN: the job waits in Backlog, no runner, no model call.
+	// BEFORE ANY START: the job waits in Backlog, and no model was called.
 	var job api.Job
 	w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 	if job.State != api.StateBacklog {
 		t.Fatalf("the job is %q before any start", job.State)
 	}
-	if recorder.calls != 0 || local.runner {
-		t.Fatalf("something ran before the explicit run: calls %d runner %v", recorder.calls, local.runner)
+	recorder.mu.Lock()
+	early := recorder.calls
+	recorder.mu.Unlock()
+	if early != 0 {
+		t.Fatalf("something ran before the explicit start: calls %d", early)
 	}
 
 	// THE EXPLICIT RUN, THEN THE EXPLICIT START: the two doors a person uses.
@@ -184,6 +192,22 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 
 	var runners api.Runners
 	w.must("factory.runners", map[string]any{"factory": st.Factory}, &runners)
+	// WHERE THE JOB WORKED AND ON WHICH MODEL, from the job's own record: the
+	// queue a desk counts areas across, and the job's read with its steps.
+	var queue api.Queue
+	w.must("factory.queue", map[string]any{"factory": st.Factory}, &queue)
+	queueArea := "absent from the queue"
+	for _, j := range queue.Jobs {
+		if j.ID == id {
+			queueArea = j.Area
+		}
+	}
+	var landed api.Job
+	w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &landed)
+	stepModels := map[string]string{}
+	for _, s := range landed.Steps {
+		stepModels[s.Name] = s.Model
+	}
 	recorder.mu.Lock()
 	summary := map[string]any{
 		"requested_model":  liveFactoryModel,
@@ -201,6 +225,9 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 		"registered_runs":  len(runners.Runners),
 		"stopped_at_gate":  it.State == factory.StateLanded,
 		"item_has_failure": it.Failure != nil,
+		"queue_area":       queueArea,
+		"job_area":         landed.Area,
+		"step_models":      stepModels,
 	}
 	if it.Stream != nil {
 		summary["item_spent_usd"] = it.Stream.Spent
@@ -222,7 +249,7 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	if len(runners.Runners) == 0 {
 		t.Error("no runner registered with the factory: the job did not run on the engine's own runner")
 	}
-	found, _ := filepath.Glob(filepath.Join(floor.Root(), "work", "*-"+strconv.Itoa(id), "HELLO.txt"))
+	found, _ := filepath.Glob(filepath.Join(floor.Root(), "work", "*-"+strconv.Itoa(id), "greet", "HELLO.txt"))
 	if len(found) != 1 {
 		t.Fatalf("HELLO.txt in the item's worktree: found %v", found)
 	}
@@ -231,6 +258,12 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	}
 	if n := gh.count(); n != 0 {
 		t.Fatalf("%d GitHub requests were attempted", n)
+	}
+	if queueArea != "greet/" || landed.Area != "greet/" {
+		t.Fatalf("area: queue %q, job %q; want greet/ from the change %+v", queueArea, landed.Area, landed.Change)
+	}
+	if stepModels["write"] != liveFactoryModel {
+		t.Fatalf("the write step's recorded model is %q, want %s", stepModels["write"], liveFactoryModel)
 	}
 
 	recorder.mu.Lock()
@@ -250,6 +283,7 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	if recorder.cost > liveFactoryBudget {
 		t.Fatalf("cost $%.4f exceeds the $%.2f budget", recorder.cost, liveFactoryBudget)
 	}
+	readsSurviveAStop(t, floor, id)
 	// The key never reached a file: not the profile, not the app home.
 	for _, dir := range []string{ambient, appHome, userHome} {
 		for path, data := range snapshotTree(t, dir) {
@@ -258,4 +292,50 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 			}
 		}
 	}
+}
+
+// readsSurviveAStop serves the floor the job ran on as a terminal window does,
+// solo on loopback with no token, to a second app that holds no credential for
+// it, as after a restart. While that service is stopped, queue and job answer
+// unreachable, the word the list uses, never signed_out, which would make the
+// desktop drop its kept rows. Served again on the same address, the rows come
+// back.
+func readsSurviveAStop(t *testing.T, floor *store.Store, id int) {
+	t.Helper()
+	serve := func(address string) *factoryService {
+		l, err := net.Listen("tcp", address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := startFactoryService(context.Background(), floor, factory.LocalSeam(floor, time.Now()), l, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(s.close)
+		return s
+	}
+	window := serve("127.0.0.1:0")
+	other := newFactoryWire(t, testFactoryHub(t))
+	var conn appwire.FactoryConnection
+	other.must("factory.attach", map[string]any{"url": window.url}, &conn)
+	at := map[string]any{"factory": conn.ID, "job": id}
+	other.must("factory.job", at, nil)
+
+	window.close()
+	other.mustFail("factory.queue", at, appwire.CodeUnreachable)
+	other.mustFail("factory.job", at, appwire.CodeUnreachable)
+	var list appwire.FactoryList
+	other.must("factory.list", map[string]any{}, &list)
+	if len(list.Factories) != 1 || list.Factories[0].State != appwire.FactoryUnreachable {
+		t.Fatalf("list while stopped: %+v", list.Factories)
+	}
+
+	serve(strings.TrimPrefix(window.url, "http://"))
+	other.must("factory.queue", at, nil)
+	var job api.Job
+	other.must("factory.job", at, &job)
+	if job.ID != id {
+		t.Fatalf("job after restart: %+v", job)
+	}
+	t.Logf("solo factory stopped: queue and job unreachable; served again: job %d %q reads", job.ID, job.Title)
 }

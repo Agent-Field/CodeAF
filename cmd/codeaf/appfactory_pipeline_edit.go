@@ -46,6 +46,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -56,7 +57,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
-var _ appwire.FactoryPipelineEditor = (*appBackend)(nil)
+var (
+	_ appwire.FactoryPipelineEditor          = (*appBackend)(nil)
+	_ appwire.FactoryPipelineSourceRefReader = (*appBackend)(nil)
+)
+
+// PipelineSourceRefs marks this backend as one whose source reads an open
+// pipeline pull request by ref, which lets hello announce
+// factory.pipeline_source_ref.
+func (b *appBackend) PipelineSourceRefs() {}
 
 const (
 	appFactoryPipelineSourceSuffix = "/pipeline/edit-source"
@@ -103,6 +112,9 @@ func (b *appBackend) readPipelineSource(ctx context.Context, who adminWho, p app
 	}
 	owner, name, _ := strings.Cut(p.Repo, "/")
 	path := appFactoryRepoRoute + url.PathEscape(owner) + "/" + url.PathEscape(name) + appFactoryPipelineSourceSuffix
+	if p.Ref != "" {
+		path += "?ref=" + url.QueryEscape(p.Ref)
+	}
 	client := *h.client
 	client.Timeout = appFactoryPipelineSourceTimeout
 	r, err := h.linkDoWith(ctx, &client, who, http.MethodGet, path, nil, appFactoryPipelineSourceLimit)
@@ -180,7 +192,7 @@ func classifyPipelineSourceReply(r linkReply, p appwire.FactoryPipelineSourcePar
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
 	if r.status != http.StatusOK {
-		return appwire.FactoryPipelineSource{}, pipelineSourceFailure(r)
+		return appwire.FactoryPipelineSource{}, pipelineSourceFailure(r, p)
 	}
 	var got api.PipelineEditSource
 	if json.Unmarshal(r.body, &got) != nil {
@@ -203,17 +215,19 @@ func classifyPipelineSourceReply(r linkReply, p appwire.FactoryPipelineSourcePar
 	case string(rf) != "false":
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
-	if got.Repo != p.Repo || got.Path != factory.PipelineFile || !appwire.ValidPipelinePRCommit(got.BaseSHA) || !plainBranchName(got.DefaultBranch) {
+	if got.Repo != p.Repo || got.Path != factory.PipelineFile || !appwire.ValidPipelinePRCommit(got.BaseSHA) || !plainBranchName(got.DefaultBranch) ||
+		!pipelineSourceReadAsked(got, p) {
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
 	out := appwire.FactoryPipelineSource{Factory: p.Factory, Repo: p.Repo, Path: got.Path, DefaultBranch: got.DefaultBranch,
-		BaseSHA: got.BaseSHA, CanPush: got.CanPush, Archived: got.Archived, RuntimeFields: runtimeClaim, State: got.State}
+		BaseSHA: got.BaseSHA, Ref: got.Ref, PR: got.PR, CanPush: got.CanPush, Archived: got.Archived, RuntimeFields: runtimeClaim, State: got.State}
 
 	// What a state may carry. A field of another state is a contradiction.
 	parsed := func(s api.PipelineEditSource) []byte {
 		s.Factory, s.Repo, s.Path, s.DefaultBranch, s.BaseSHA, s.CanPush, s.Archived, s.RuntimeFields, s.State, s.Editable, s.Text, s.Problems = api.Factory{}, "", "", "", "", false, false, false, "", false, "", nil
-		// The factory's own copy is read on its own (pipelineSourceCopy).
-		s.FactoryCopy, s.CopyVersion, s.Can = nil, 0, nil
+		// The factory's own copy is read on its own (pipelineSourceCopy), and
+		// what a ref read names by pipelineSourceReadAsked.
+		s.FactoryCopy, s.CopyVersion, s.Can, s.Ref, s.PR = nil, 0, nil, "", 0
 		raw, _ := json.Marshal(s)
 		return raw
 	}
@@ -283,6 +297,23 @@ func classifyPipelineSourceReply(r linkReply, p appwire.FactoryPipelineSourcePar
 	return out, nil
 }
 
+// pipelineSourceReadAsked is true when the answer is the read that was asked
+// for: a default-branch read names no ref or pull request; a ref read echoes
+// the ref, names the pull request (the one a number asked for) and the head
+// a commit asked for, and never carries the factory's copy, which is main's.
+func pipelineSourceReadAsked(got api.PipelineEditSource, p appwire.FactoryPipelineSourceParams) bool {
+	if p.Ref == "" {
+		return got.Ref == "" && got.PR == 0
+	}
+	if got.Ref != p.Ref || got.PR <= 0 || got.FactoryCopy != nil || got.CopyVersion != 0 {
+		return false
+	}
+	if appwire.ValidPipelinePRCommit(p.Ref) {
+		return got.BaseSHA == p.Ref
+	}
+	return strconv.Itoa(got.PR) == p.Ref
+}
+
 // cleanPipelineProblems words the engine's own reading of a file that does not
 // read cleanly: one line each, bounded.
 func cleanPipelineProblems(in []string) []string {
@@ -301,7 +332,7 @@ func cleanPipelineProblems(in []string) []string {
 func knownPipelineSourceStage(stage string) bool {
 	switch stage {
 	case api.PipelineEditStageCredential, api.PipelineEditStageRequest, api.PipelineEditStageRepository,
-		api.PipelineEditStageBase, api.PipelineEditStageFile:
+		api.PipelineEditStageBase, api.PipelineEditStageHead, api.PipelineEditStageFile:
 		return true
 	}
 	return false
@@ -311,7 +342,7 @@ func knownPipelineSourceStage(stage string) bool {
 // words are fixed here: the factory's own may echo a path or a token. A reply
 // that is not the route's typed failure (a proxy, the shared gate) goes through
 // the same fixed-words mapper the other factory doors use.
-func pipelineSourceFailure(r linkReply) error {
+func pipelineSourceFailure(r linkReply, p appwire.FactoryPipelineSourceParams) error {
 	var f api.PipelineEditSourceFailure
 	typed := json.Unmarshal(r.body, &f) == nil && pipelinePRRequestID.MatchString(f.RequestID) && knownPipelineSourceStage(f.Stage) &&
 		(f.GitHubStatus == 0 || (f.GitHubStatus >= 100 && f.GitHubStatus <= 599)) && r.status >= 400 && r.status < 600
@@ -321,6 +352,10 @@ func pipelineSourceFailure(r linkReply) error {
 	switch {
 	case r.status == http.StatusUnauthorized || f.Stage == api.PipelineEditStageCredential:
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access for this sign-in is missing or expired; reconnect GitHub.")
+	case f.Stage == api.PipelineEditStageHead:
+		return appwire.Errorf(appwire.CodeConflict, "that is not an open pull request of this repository that changes only its pipeline, or its head has moved; read it again.")
+	case f.Stage == api.PipelineEditStageRequest && p.Ref != "":
+		return appwire.Errorf(appwire.CodeBadParams, "this factory cannot read a pull request's pipeline; update the factory.")
 	case f.Stage == api.PipelineEditStageRequest:
 		return appwire.Errorf(appwire.CodeBadParams, "the factory would not take that request as it is.")
 	case r.status == http.StatusNotFound:

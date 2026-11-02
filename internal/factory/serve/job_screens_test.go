@@ -98,13 +98,13 @@ func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 409)
 	f.person = "mei"
 	f.post(t, it, "steps/write/stop", "{}", 403)
 	f.person = "sam"
 	f.post(t, it, "steps/missing/stop", "{}", 404)
 	f.post(t, it, "steps/plan/stop", "{}", 409)
-	f.post(t, it, "steps/write/stop", "{}", 200)
+	// Stop is the same wish after any progress: a stale read doesn't refuse it.
+	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 200)
 	if _, err := desk.Heartbeat(held.Job, worker.ID); err == nil {
 		t.Fatal("old lease still accepts a heartbeat")
 	}
@@ -300,7 +300,7 @@ func TestJobScreensStatePresentationOnQueueAndJobReads(t *testing.T) {
 func TestJobScreensPublishedRoutesAreRegistered(t *testing.T) {
 	f := newV2Jobs(t)
 	for _, route := range api.ServiceRoutes {
-		path := strings.NewReplacer("{id}", "999", "{sid}", "write", "{card}", "missing", "{owner}", "acme", "{repo}", "api").Replace(route.Path)
+		path := strings.NewReplacer("{id}", "999", "{sid}", "write", "{card}", "missing", "{spot}", "1", "{owner}", "acme", "{repo}", "api").Replace(route.Path)
 		w := verbRequest(f.h, route.Method, path, "{}")
 		if w.Code == 405 || strings.Contains(w.Body.String(), "factory endpoint not found") {
 			t.Fatalf("unregistered %s %s: %s", route.Method, route.Path, w.Body.String())
