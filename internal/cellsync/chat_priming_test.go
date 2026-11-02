@@ -13,7 +13,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 type chatFetchCounts struct {
@@ -65,10 +64,7 @@ func newUsedStoreRig(t *testing.T) *usedStoreRig {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_TELEMETRY", "off")
 	celltest.RequireEngine(t)
-	binary, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skip(err)
-	}
+	binary := celltest.Engine(t)
 	t.Cleanup(cellstore.StopSpawned)
 	sender := cellstore.Engine{Binary: binary, DataRoot: t.TempDir(), Transport: cellstore.Spawn{Binary: binary}}
 	receiver := cellstore.Engine{Binary: binary, DataRoot: t.TempDir(), Transport: cellstore.Spawn{Binary: binary}}
