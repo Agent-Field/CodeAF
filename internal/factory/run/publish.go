@@ -397,6 +397,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		pr.CI = ""
 		pr.CheckRuns = nil
 		pr.Checks = factory.PRChecks{}
+		pr.NoWorkflows, pr.NoChecksSince, pr.NoChecks = false, time.Time{}, false
 		pr.ReadinessKey, pr.ReadinessContext = "", ""
 		return published{pr: &pr}, nil
 	}
