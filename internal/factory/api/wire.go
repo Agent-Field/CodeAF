@@ -247,17 +247,21 @@ type StepDef struct {
 	Until string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
-	UntilSentence string   `json:"until_sentence,omitempty"`
-	Max           int      `json:"max,omitempty"`
-	Fixed         bool     `json:"fixed,omitempty"`
-	Custom        bool     `json:"custom,omitempty"`
-	Off           bool     `json:"off,omitempty"`
-	When          string   `json:"when,omitempty"`   // desk
-	Effort        string   `json:"effort,omitempty"` // desk
-	Fanout        string   `json:"fanout,omitempty"` // desk
-	Proof         []string `json:"proof,omitempty"`  // desk
-	Why           string   `json:"why,omitempty"`    // desk
-	By            string   `json:"by,omitempty"`     // desk
+	UntilSentence string `json:"until_sentence,omitempty"`
+	Max           int    `json:"max,omitempty"`
+	Fixed         bool   `json:"fixed,omitempty"`
+	Custom        bool   `json:"custom,omitempty"`
+	Off           bool   `json:"off,omitempty"`
+	When          string `json:"when,omitempty"`   // desk
+	Effort        string `json:"effort,omitempty"` // desk
+	// UseModel is the model the job's person picked for this step on this
+	// job (factory.Stage.Model), absent for the job's own model. It is the
+	// step's next run; Step.Model is the model it ran on.
+	UseModel string   `json:"use_model,omitempty"`
+	Fanout   string   `json:"fanout,omitempty"` // desk
+	Proof    []string `json:"proof,omitempty"`  // desk
+	Why      string   `json:"why,omitempty"`    // desk
+	By       string   `json:"by,omitempty"`     // desk
 	// Who is who an approve step waits on: absent for the job's person,
 	// "@handle" for a named person, operator for any of the factory's
 	// operators (factory.ApproverWord).
