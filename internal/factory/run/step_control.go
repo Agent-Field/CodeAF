@@ -7,6 +7,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// stepRerunLog is the saved action a resumed runner reports to the manager.
+const stepRerunLog = "Rerun from "
+
 // StepControlRefusal identifies a state conflict without changing its person-facing words.
 type StepControlRefusal string
 
@@ -98,7 +101,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 	s.Cur, s.Paused = index, false
 	it.Question, it.QKind, it.Asking = "", "", nil
 	it.Approval, it.StopUndo = nil, nil
-	said := map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun]
+	said := map[bool]string{true: stepRerunLog + name, false: "Stopped step " + name}[rerun]
 	if model != "" {
 		said += " on " + model
 	}

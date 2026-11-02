@@ -25,9 +25,8 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			t.Setenv("OPENROUTER_API_KEY", "test-key")
 			t.Setenv("CODEAF_BASE_URL", model.server.URL)
 			g := newRunRig(t)
-			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
-				return &appConn{Conv: &fakeConversation{model: "test/model"}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
-			}
+			freshEngineProcess(t)
+			s.backend.open = appOpenInProcess
 			s.backend.local.parent = func() session.Config {
 				return session.Config{Workspace: g.workspace, Model: "test/model", OneModel: true, APIKey: "test-key", BaseURL: model.server.URL}
 			}
@@ -99,6 +98,25 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			if !initialWaiting {
 				t.Fatal("job page manager does not show the failed step waiting")
 			}
+			var turn appwire.TurnResult
+			s.must("agents.send", map[string]any{"id": chats.Agent, "text": "Say ready in one word."}, &turn)
+			wait("real manager turn finishes", func(api.Job) bool {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				for _, line := range s.lines {
+					var ev struct {
+						Event string           `json:"event"`
+						Data  appwire.TurnDone `json:"data"`
+					}
+					if json.Unmarshal([]byte(line), &ev) == nil && ev.Event == appwire.EventTurnDone && ev.Data.Agent == chats.Agent && ev.Data.Turn == turn.Turn {
+						if !ev.Data.OK {
+							t.Fatalf("manager turn failed: %+v", ev.Data)
+						}
+						return true
+					}
+				}
+				return false
+			})
 			if action == "give back" {
 				act("factory.job_control", map[string]any{"mode": "take_over"})
 				// Takeover is a separate action; wait for the withdrawn worker before

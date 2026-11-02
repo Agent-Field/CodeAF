@@ -2138,7 +2138,10 @@ func (r *Runner) revive(it factory.Item) error {
 	line := sayResumed
 	if i := nextPhase(it.Stream.Phases); i >= 0 {
 		ph := it.Stream.Phases[i]
-		if ph.State == factory.PhasePending && ph.Round > 0 {
+		// The saved action also identifies retries that retain a running
+		// Plan chat. Ordinary continuation keeps its resumed wording.
+		log := it.Stream.Log
+		if len(log) > 0 && strings.HasPrefix(log[len(log)-1].Text, stepRerunLog) {
 			line = fmt.Sprintf(sayTrying, ph.Name)
 		}
 	}
