@@ -1569,10 +1569,16 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 		return false
 	}
 	now := lp.r.now()
-	return lp.write(c, func(it *factory.Item) error {
+	line := ""
+	if err := lp.write(c, func(it *factory.Item) error {
 		NoteContinue(it, now)
+		line = "budget raised to " + loopUSD(it.Cap) + " · carrying on"
 		return nil
-	}) == nil
+	}); err != nil {
+		return false
+	}
+	lp.tell(c.id, line)
+	return true
 }
 
 // NoteContinue raises this job's cap when the spend has reached it, and says
@@ -1582,8 +1588,14 @@ func NoteContinue(it *factory.Item, now time.Time) bool {
 	if !factory.ContinueJob(it) {
 		return false
 	}
-	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
+	NoteBudgetRaised(it, now)
 	return true
+}
+
+// NoteBudgetRaised records the selected cap at the door that changes it.
+// The waiting runner separately says this confirmation into the conversation.
+func NoteBudgetRaised(it *factory.Item, now time.Time) {
+	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 }
 
 // failStop records a step that errored and stops the job. The failure is not
