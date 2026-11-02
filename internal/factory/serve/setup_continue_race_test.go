@@ -8,16 +8,21 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 )
 
 // midReadSetup is a team factory whose setup has read acme/api whole and is
-// reading acme/big, held on its second page until the read is stopped.
-func midReadSetup(t *testing.T) *peopleV2Fixture {
+// reading acme/big, held on its second page until the read is stopped. When a
+// read of that page is stopped, cancelled is closed and the reader returns
+// only once release is closed.
+func midReadSetup(t *testing.T) (f *peopleV2Fixture, cancelled, release chan struct{}) {
 	t.Helper()
-	f := peopleV2Setup(t, api.FactoryTeam)
+	f = peopleV2Setup(t, api.FactoryTeam)
+	cancelled, release = make(chan struct{}), make(chan struct{})
+	var once sync.Once
 	if err := factorygithub.SaveReadGrant(factorygithub.GrantPath(f.cfg.TokensPath), factorygithub.ReadGrant{Token: "read-only", Login: "owner", GrantedAt: f.now}); err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +40,8 @@ func midReadSetup(t *testing.T) *peopleV2Fixture {
 			body = string(page)
 		case r.URL.Path == "/repos/acme/big/issues":
 			<-r.Context().Done()
+			once.Do(func() { close(cancelled) })
+			<-release
 			return nil, r.Context().Err()
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
@@ -50,7 +57,7 @@ func midReadSetup(t *testing.T) *peopleV2Fixture {
 	untilSetup(t, f.h, "the big repo mid-read", func(s setupState) bool {
 		return setupRead(s, "acme/api") == "done" && setupRead(s, "acme/big") == "reading" && s.Pages["acme/big"] == 2
 	})
-	return f
+	return f, cancelled, release
 }
 
 // assertContinued checks that reading ended for good: no reader runs, setup
@@ -70,30 +77,31 @@ func assertContinued(t *testing.T, f *peopleV2Fixture) {
 }
 
 // A window reading setup while Continue stops the reader cannot start the
-// reader again: Continue answers 200 and reading ends.
+// reader again: Continue answers 200 and reading ends. The read is made to
+// arrive in the gap between the stopped reader letting go and Continue
+// taking its step: the reader and then the read queue on the setup lock
+// while the test holds it, and a lock waited on this long is handed to its
+// waiters in order, ahead of Continue.
 func TestFactorySetupContinueHoldsAgainstAConcurrentRead(t *testing.T) {
-	f := midReadSetup(t)
-	stop := make(chan struct{})
-	var reads sync.WaitGroup
-	for range 4 {
-		reads.Add(1)
-		go func() {
-			defer reads.Done()
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-					identityRequest(f.h, "GET", "/v1/factory-setup/local", "", "operator-secret", nil)
-				}
-			}
-		}()
-	}
-	w := identityRequest(f.h, "POST", "/v1/factory-setup/local", `{"verb":"continue"}`, "operator-secret", nil)
-	close(stop)
-	reads.Wait()
-	if w.Code != 200 {
-		t.Fatalf("Continue with a window reading setup: %d %s", w.Code, w.Body)
+	f, cancelled, release := midReadSetup(t)
+	answer := make(chan int, 1)
+	go func() {
+		answer <- identityRequest(f.h, "POST", "/v1/factory-setup/local", `{"verb":"continue"}`, "operator-secret", nil).Code
+	}()
+	<-cancelled
+	f.h.setupMu.Lock()
+	close(release)
+	time.Sleep(20 * time.Millisecond)
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		identityRequest(f.h, "GET", "/v1/factory-setup/local", "", "operator-secret", nil)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	f.h.setupMu.Unlock()
+	<-read
+	if code := <-answer; code != 200 {
+		t.Fatalf("Continue with a window reading setup answered %d", code)
 	}
 	assertContinued(t, f)
 }
@@ -101,7 +109,8 @@ func TestFactorySetupContinueHoldsAgainstAConcurrentRead(t *testing.T) {
 // Two Continues at once end reading once: one is taken, the other is told
 // setup is no longer reading, and no reader is left running.
 func TestFactorySetupDoubleContinueEndsReadingOnce(t *testing.T) {
-	f := midReadSetup(t)
+	f, _, release := midReadSetup(t)
+	close(release)
 	codes := make(chan int, 2)
 	for range 2 {
 		go func() {
