@@ -97,3 +97,17 @@ func TestThreadOnlyHoldIsNotTheStepRunning(t *testing.T) {
 		t.Fatalf("queued with a thread-only hold: %q", got)
 	}
 }
+
+// The manager says the same reason the job's page says, not a slot it does
+// not wait for.
+func TestManagerStatusNamesWhatAQueuedJobWaitsFor(t *testing.T) {
+	it := Item{State: StateQueued, OverLimit: true}
+	got := StatusForManagerWaiting(it, false, false, "Waiting for mbp (asleep for 3 min).", time.Now()).Text
+	if !strings.Contains(got, "Waiting for mbp (asleep for 3 min).") || strings.Contains(got, "slot") || strings.Contains(got, "Jobs at once") {
+		t.Fatalf("status: %q", got)
+	}
+	got = StatusForManagerWaiting(it, false, false, "", time.Now()).Text
+	if strings.Contains(got, "waiting for an available execution slot") {
+		t.Fatalf("a started-now job does not wait for a slot: %q", got)
+	}
+}
