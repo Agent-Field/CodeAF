@@ -34,6 +34,18 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 	before := len(appModelRequests(model))
 	appTurnDoneFor(t, rec, appSendMessageWhenIdle(t, first, agent.ID, appwire.AgentMessage{Text: "named words", ClientID: "p-1"}))
 	appTurnDoneFor(t, rec, appSendMessageWhenIdle(t, first, agent.ID, appwire.AgentMessage{Text: "anonymous words"}))
+	named, anonymous := false, false
+	for _, request := range appModelRequests(model)[before:] {
+		joined := strings.Join(request.texts(), "\n")
+		named = named || strings.Contains(joined, "named words")
+		anonymous = anonymous || strings.Contains(joined, "anonymous words")
+		if strings.Contains(joined, "p-1") {
+			t.Fatalf("the client id reached the model: %q", joined)
+		}
+	}
+	if !named || !anonymous {
+		t.Fatal("the model was not sent both messages' words")
+	}
 	// An id the record would not keep refuses the message before the model or
 	// the record hears of it.
 	// A memory request for the preceding accepted exchange may arrive while
@@ -51,21 +63,11 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	closed = true
-	named, anonymous := false, false
 	refused := 0
 	for _, request := range appModelRequests(model)[before:] {
-		joined := strings.Join(request.texts(), "\n")
-		named = named || strings.Contains(joined, "named words")
-		anonymous = anonymous || strings.Contains(joined, "anonymous words")
-		if strings.Contains(joined, "too named") {
+		if strings.Contains(strings.Join(request.texts(), "\n"), "too named") {
 			refused++
 		}
-		if strings.Contains(joined, "p-1") {
-			t.Fatalf("the client id reached the model: %q", joined)
-		}
-	}
-	if !named || !anonymous {
-		t.Fatal("the model was not sent both messages' words")
 	}
 	if refused != 0 {
 		t.Fatalf("a refused message asked the model %d times", refused)
