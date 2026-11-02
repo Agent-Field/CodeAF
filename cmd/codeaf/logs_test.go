@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
 // TestMain switches the model-call log OFF for this package and gives the
@@ -40,6 +41,10 @@ func TestMain(m *testing.M) {
 	// environment is the parent's, already isolated below.
 	if code, child := runAsCarriedChild(); child {
 		os.Exit(code)
+	}
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	// C27.7 keeps unrelated CLI fixtures on host execution. Cell wiring tests
 	// declare availability, and engine-backed tests require the real engine;

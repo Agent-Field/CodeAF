@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 )
 
 // FromSnapshot is the floor as `GET /v1/queue` says it to me.
@@ -18,6 +19,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 	}
 	people := map[string]factory.PersonSummary{}
 	jobs := make([]Job, len(s.Items))
+	book := estimate.Open(s.Items)
 	// Only two running jobs can overlap ([factory.Overlaps]), so each running
 	// job is compared with the running ones alone. Comparing every job with
 	// every other was the queue's one quadratic step: 640,000 comparisons,
@@ -35,8 +37,10 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 			}
 		}
 		jobs[i] = FromItem(it)
+		AreaIn(&jobs[i], s.Repos)
 		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
+		jobs[i].Estimate = estimateOf(book, it)
 		ForViewer(&jobs[i], it, me)
 		if factory.JobState(it) == "running" {
 			for _, k := range running {
@@ -57,7 +61,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 		NeedsYou: groupNeedsYou(jobs),
 		Desk: &QueueDesk{
 			Now: s.Now, Sources: mapList(s.Sources, fromSource), Busy: s.Busy, BusyAll: s.BusyAll,
-			LastReadCost: s.LastReadCost, Marked: s.Marked, Checkouts: s.Checkouts,
+			LastReadCost: s.LastReadCost, ScoutPrice: s.ScoutPrice, Estimates: calibrationOf(book), Marked: s.Marked, Checkouts: s.Checkouts,
 		},
 	}
 }
@@ -97,7 +101,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 		Now:    d.Now, Repos: toRepos(q.Repos), Items: mapList(jobs, ToItem),
 		Benches: q.Capacity.Benches, Daily: q.Capacity.Daily, Rail: q.Capacity.Rail,
 		Shift: toShift(q.Since), Sources: mapList(d.Sources, toSource),
-		Busy: d.Busy, BusyAll: d.BusyAll, LastReadCost: d.LastReadCost,
+		Busy: d.Busy, BusyAll: d.BusyAll, LastReadCost: d.LastReadCost, ScoutPrice: d.ScoutPrice,
 		Marked: d.Marked, Checkouts: d.Checkouts,
 	}
 }
@@ -112,7 +116,7 @@ var Lost = map[string]string{
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
 	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
-	"Phase.Result":                 "a reader's job carries Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
+	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
 	"Phase.Left":                   "crosses in whole milliseconds",
 	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
@@ -134,12 +138,13 @@ var Lost = map[string]string{
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	j := Job{
+		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, Model: it.Model, AutomaticModels: it.AutomaticModels,
+		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
 		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
@@ -165,6 +170,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
+	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)
@@ -178,6 +184,7 @@ func FromItem(it factory.Item) Job {
 	// THE JOB'S COST IS EVERYTHING DONE FOR IT: its run's, or before any run
 	// what its chat spent ([factory.JobSpent]).
 	j.Cost = factory.JobSpent(it)
+	j.Scout = fromScout(it)
 	if st := it.Stream; st != nil {
 		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
 		if st.Cur >= 0 && st.Cur < len(st.Phases) {
@@ -205,6 +212,9 @@ func needsYou(it factory.Item) *NeedsYou {
 		return nil
 	}
 	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
+	if it.QKind == factory.QKindSpendStopped {
+		ny.WhoCanAnswer = factory.WhoJobPerson
+	}
 	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
 		ny.WhoCanAnswer, ny.Approver = factory.WhoApprover, who
 	}
@@ -310,23 +320,25 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	// job offers no Stop beside its Run again ([factory.UnderWay]).
 	active := factory.UnderWay(it)
 	if it.DoneHow == "closed_locally" {
-		return Can{Reopen: owner}
+		return Can{Reopen: owner, RunAsNew: owner}
 	}
-	held := heldInQueue(it)
 	// START NOW ON A QUEUED JOB IS THE ONE PASS ABOVE JOBS AT ONCE, so a job
 	// already given it is not offered it again.
 	queued := state == StateQueued && it.State == factory.StateQueued
+	running := state == StateRunning && it.State == factory.StateRunning && !it.Publishing
+	held := (queued || running) && it.Stream != nil && it.Stream.Paused
 	return Can{
 		Run: owner && state == StateBacklog, StartNow: owner && (state == StateBacklog || queued && !it.OverLimit),
-		Hold: owner && queued && !held, Resume: owner && held,
+		Hold: owner && (queued || running) && !held, Resume: owner && held,
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
-		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner,
+		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner, StopAfterStep: owner && factory.MayStopAfterStep(it),
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
-		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
+		Approve: approve, RunAgain: a.RunAgain, RunAsNew: owner && factory.CanRunAsNew(it), CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
-		RejectPlan: answer && planSendsBack(it),
-		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
-		Restore:    owner && factory.JobDoneHow(it) == "dropped",
+		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
+		RejectPlan:  answer && planSendsBack(it),
+		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
+		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}
 }
 
@@ -451,10 +463,11 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
+		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
-		SetupHeld: j.SetupHeld,
-		Owners:    append([]string(nil), j.Owners...),
-		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels,
+		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
+		Owners: append([]string(nil), j.Owners...),
+		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,
@@ -495,6 +508,7 @@ func ToItem(j Job) factory.Item {
 		it.Failure = failureItem(f)
 	}
 	it.Stages, it.Stream = unsteps(j)
+	it.Scout = toScout(j.Scout)
 	unquestions(&it, j.Questions)
 	return it
 }
@@ -587,7 +601,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
 			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
-		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -611,7 +625,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
 			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
-		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt
@@ -771,13 +785,103 @@ func fromDesk(it factory.Item) *JobDesk {
 }
 
 func fromTriage(t factory.Triage) Triage {
-	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: fromRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func toTriage(t Triage) factory.Triage {
-	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
+	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: toRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
+}
+
+// estimateOf is an open job's measured range, nil for a finished job or one
+// with no figure.
+func estimateOf(book estimate.Book, it factory.Item) *Estimate {
+	if factory.JobState(it) == "done" || (it.Stream != nil && !it.Stream.Ended.IsZero()) {
+		return nil
+	}
+	var e Estimate
+	if r, ok := book.For(it); ok {
+		e = *FromRange(r)
+	}
+	if factory.JobState(it) == "running" && it.Stream != nil {
+		if l, ok := book.Left(it); ok {
+			e.Left = &Left{USDLo: l.USDLo, USDHi: l.USDHi, N: l.N}
+		}
+	}
+	if e.N == 0 && e.Left == nil {
+		return nil
+	}
+	return &e
+}
+
+// FromRange is a measured range on the wire.
+func FromRange(r estimate.Range) *Estimate {
+	return &Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened, Basis: r.Basis}
+}
+
+func calibrationOf(book estimate.Book) *Calibration {
+	c := book.Calibration()
+	out := &Calibration{Jobs: book.Jobs(), Hit: c.Hit, Of: c.Of}
+	for _, basis := range []string{estimate.BasisRead, estimate.BasisKind} {
+		if b := book.CalibrationBy(basis); b.Of > 0 {
+			if out.Basis == nil {
+				out.Basis = map[string]HitRate{}
+			}
+			out.Basis[basis] = HitRate{Hit: b.Hit, Of: b.Of}
+		}
+	}
+	return out
+}
+
+// fromScout is a job's Look closer on the wire, stale when the issue's text
+// moved on since.
+func fromScout(it factory.Item) *Scout {
+	s := it.Scout
+	if s == nil {
+		return nil
+	}
+	files := make([]ScoutFile, len(s.Files))
+	for i, f := range s.Files {
+		files[i] = ScoutFile{Path: f.Path, Why: f.Why}
+	}
+	return &Scout{Files: files, Plan: s.Plan, Unknowns: s.Unknowns, Tests: s.Tests, Rubric: fromRubric(s.Rubric),
+		Cited: s.Cited, Dropped: s.Dropped, Calls: s.Calls, USD: s.USD, Model: s.Model, TookMS: s.Took.Milliseconds(),
+		Body: s.Body, Head: s.Head, At: s.At, Stale: s.Stale(it)}
+}
+
+func toScout(s *Scout) *factory.Scout {
+	if s == nil {
+		return nil
+	}
+	files := make([]factory.ScoutFile, len(s.Files))
+	for i, f := range s.Files {
+		files[i] = factory.ScoutFile{Path: f.Path, Why: f.Why}
+	}
+	return &factory.Scout{Files: files, Plan: s.Plan, Unknowns: s.Unknowns, Tests: s.Tests, Rubric: toRubric(s.Rubric),
+		Cited: s.Cited, Dropped: s.Dropped, Calls: s.Calls, USD: s.USD, Model: s.Model, Took: time.Duration(s.TookMS) * time.Millisecond,
+		Body: s.Body, Head: s.Head, At: s.At}
+}
+
+// fromRubric is a rubric on the wire, with its sum and band said, so the
+// desk never adds factors itself.
+func fromRubric(r *factory.Rubric) *Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x factory.Factor) Factor { return Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite} }
+	return &Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty),
+		From: r.From, Complexity: r.Complexity(), Band: r.Band(), BandNear: factory.BandNear(r.Complexity())}
+}
+
+func toRubric(r *Rubric) *factory.Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x Factor) factory.Factor {
+		return factory.Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite}
+	}
+	return &factory.Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty), From: r.From}
 }
 
 func fromLog(l factory.LogLine) LogLine {
@@ -963,6 +1067,7 @@ func runStep(s Step, p factory.Phase) Step {
 		s.RunKind = string(p.Kind)
 	}
 	if r := p.Result; r != nil {
+		s.Files = r.Files
 		s.Result, s.Cost, s.Tests, s.Model = r.Output, r.Spent, r.Tests, r.Model
 	}
 	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
@@ -1070,8 +1175,8 @@ func toPhase(s Step) factory.Phase {
 		res := stageResultItem(*r)
 		res.Model = s.Model
 		p.Result = &res
-	} else if s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
-		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
+	} else if s.Files != nil || s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
+		p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
 	}
 	if s.At != nil {
 		p.At = *s.At
@@ -1138,7 +1243,7 @@ func cloneStartRules(r *factory.StartRules) *factory.StartRules {
 	if r == nil {
 		return nil
 	}
-	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine}
 }
 
 func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {

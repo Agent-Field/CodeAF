@@ -42,9 +42,7 @@ func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive 
 	d := newPendingLiveDrive(func(changed func()) (*syncsetup.Drive, error) {
 		drive, err := start(changed)
 		if err == nil && drive != nil && drive.Gate() == nil {
-			check.mu.Lock()
-			check.fresh = time.Now().Add(driveWorkFreshFor)
-			check.mu.Unlock()
+			check.freshFor(driveWorkFreshFor)
 		}
 		return drive, err
 	})
@@ -60,25 +58,52 @@ func (w *workAdmission) admit(d *syncsetup.Drive) error {
 	defer cancel()
 	// Concurrent doors share the read and its result, including a failure.
 	// Waiting for another door consumes this caller's budget too.
-	w.mu.Lock()
-	if time.Now().Before(w.fresh) {
-		w.mu.Unlock()
-		return d.Gate()
-	}
-	if done := w.checking; done != nil {
-		w.mu.Unlock()
+	done, mine := w.join()
+	switch {
+	case mine:
+		confirmed, err := d.ConfirmWork(ctx)
+		w.settle(done, confirmed, err)
+		if err != nil {
+			log.Print("sync: checking chat ownership; admitting work: ", err)
+		}
+	case done != nil:
 		select {
 		case <-done:
 		case <-ctx.Done():
 			log.Print("sync: checking chat ownership; admitting work: ", ctx.Err())
 		}
-		return d.Gate()
 	}
-	done := make(chan struct{})
-	w.checking = done
-	w.mu.Unlock()
-	confirmed, err := d.ConfirmWork(ctx)
+	return d.Gate()
+}
+
+// freshFor lets admission skip the relay for the next span.
+func (w *workAdmission) freshFor(span time.Duration) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.fresh = time.Now().Add(span)
+}
+
+// join decides who asks the relay. A fresh confirmation answers nil: nobody
+// needs to ask. A read already in flight answers its done channel to wait on.
+// Otherwise this caller becomes the reader: join answers a new done channel
+// and mine, and the caller must settle it.
+func (w *workAdmission) join() (done chan struct{}, mine bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if time.Now().Before(w.fresh) {
+		return nil, false
+	}
+	if w.checking != nil {
+		return w.checking, false
+	}
+	w.checking = make(chan struct{})
+	return w.checking, true
+}
+
+// settle records the reader's result and releases every door waiting on it.
+func (w *workAdmission) settle(done chan struct{}, confirmed bool, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	switch {
 	case confirmed:
 		w.fresh = time.Now().Add(driveWorkFreshFor)
@@ -87,9 +112,4 @@ func (w *workAdmission) admit(d *syncsetup.Drive) error {
 	}
 	w.checking = nil
 	close(done)
-	w.mu.Unlock()
-	if err != nil {
-		log.Print("sync: checking chat ownership; admitting work: ", err)
-	}
-	return d.Gate()
 }

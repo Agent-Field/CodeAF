@@ -92,12 +92,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -644,7 +647,7 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 	}
 	req := api.FactorySetupRequest{Verb: act.Verb}
 	switch act.Verb {
-	case appwire.SetupVerbDiscover, appwire.SetupVerbBack, appwire.SetupVerbDone:
+	case appwire.SetupVerbDiscover, appwire.SetupVerbBack, appwire.SetupVerbDone, appwire.SetupVerbContinue:
 	case appwire.SetupVerbConnect:
 		req.Source = act.Source
 		if act.Source == appwire.SetupSourceToken {
@@ -727,12 +730,12 @@ func setupWithin(p, root string) bool {
 // takes, or why it may not be used.
 func (b *appBackend) setupFolder(raw string) (string, error) {
 	path := strings.TrimSpace(raw)
-	if path == "~" || strings.HasPrefix(path, "~/") {
+	if path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(filepath.Separator)) {
 		base, err := os.UserHomeDir()
 		if err != nil {
 			return "", appwire.Errorf(appwire.CodeEngine, "this machine has no home folder to put that in")
 		}
-		path = filepath.Join(base, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
+		path = filepath.Join(base, path[1:])
 	}
 	if !filepath.IsAbs(path) {
 		return "", appwire.Errorf(appwire.CodeBadParams, "folder must be a full path or start with ~/")
@@ -748,6 +751,58 @@ func (b *appBackend) setupFolder(raw string) (string, error) {
 		}
 	}
 	return path, nil
+}
+
+// FactorySetupFolderCheck measures the folder a person chose on this machine,
+// where the clone would be made, before anything is cloned. It needs no
+// started factory. It makes no folder; on Windows it makes and removes one
+// temporary probe file ([folderRoom]).
+func (b *appBackend) FactorySetupFolderCheck(_ context.Context, _ string, folder string) (appwire.FactorySetupFolder, error) {
+	path, err := b.setupFolder(folder)
+	if err != nil {
+		return appwire.FactorySetupFolder{}, err
+	}
+	checked, blocked := nearestFolder(path)
+	out := appwire.FactorySetupFolder{Folder: b.shownFolder(path), Exists: checked == path && blocked == nil, Checked: b.shownFolder(checked)}
+	switch {
+	case errors.Is(blocked, errNotAFolder):
+		out.Problem = out.Checked + " is a file, not a folder"
+	case blocked != nil:
+		out.Problem = "codeaf cannot look inside " + out.Checked
+	default:
+		out.Writable, out.FreeBytes, err = folderRoom(checked)
+		if err != nil {
+			out.Problem = err.Error()
+		}
+	}
+	return out, nil
+}
+
+var errNotAFolder = errors.New("not a folder")
+
+// nearestFolder is path when it is a folder, else the nearest folder above it
+// that exists. A file in the way (a path that is missing, or runs through a
+// file, climbs on to it) stops the climb there with errNotAFolder,
+// and any other failure to look stops it at the folder that could not be
+// looked into, because the room of a folder further up says nothing about
+// whether this one can be used.
+func nearestFolder(path string) (string, error) {
+	for {
+		info, err := os.Stat(path)
+		switch {
+		case err == nil && info.IsDir():
+			return path, nil
+		case err == nil:
+			return path, errNotAFolder
+		case !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR):
+			return filepath.Dir(path), err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path, err
+		}
+		path = parent
+	}
 }
 
 // shownFolder is path as a person is shown it: "~/…" under their home, only
@@ -786,7 +841,7 @@ func (b *appBackend) setupView(in api.FactorySetup) appwire.FactorySetupView {
 		out.GitHub.Error = trimWords(*in.GitHub.Error)
 	}
 	for _, r := range in.Repos {
-		repo := appwire.FactorySetupRepo{ID: r.ID, OpenIssues: r.OpenIssues, Archived: r.Archived, Selected: r.Selected, Read: r.Read, ReadCount: r.ReadCount, WaitingS: r.WaitingS, ResumesAt: r.ResumesAt, Clone: r.Clone, CloneMB: r.CloneMB, SuggestedFolder: b.shownFolder(r.SuggestedCheckout)}
+		repo := appwire.FactorySetupRepo{ID: r.ID, OpenIssues: r.OpenIssues, OpenIssuesExact: r.OpenIssuesExact, Archived: r.Archived, Selected: r.Selected, Read: r.Read, ReadCount: r.ReadCount, WaitingS: r.WaitingS, ResumesAt: r.ResumesAt, Clone: r.Clone, CloneMB: r.CloneMB, SuggestedFolder: b.shownFolder(r.SuggestedCheckout)}
 		if r.Pipeline != nil {
 			repo.Pipeline = *r.Pipeline
 		}

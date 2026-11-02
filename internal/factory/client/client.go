@@ -135,7 +135,7 @@ func (c *Client) repos(ctx context.Context) ([]string, []factory.RepoInfo, error
 	for i, r := range body.Available {
 		available[i] = factory.RepoInfo{
 			Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private,
-			Pushed: r.Pushed, Open: r.Open, Dir: r.Checkout,
+			Pushed: r.Pushed, Open: r.Open, OpenIssues: r.OpenIssues, Dir: r.Checkout,
 		}
 	}
 	return body.Watched, available, nil
@@ -144,13 +144,14 @@ func (c *Client) repos(ctx context.Context) ([]string, []factory.RepoInfo, error
 // repoWire is the repository list as /v1/repos says it. Checkout is the
 // directory the seam calls Dir.
 type repoWire struct {
-	Full     string    `json:"full"`
-	Name     string    `json:"name"`
-	Owner    string    `json:"owner"`
-	Private  bool      `json:"private"`
-	Pushed   time.Time `json:"pushed"`
-	Open     int       `json:"open"`
-	Checkout string    `json:"checkout,omitempty"`
+	Full       string    `json:"full"`
+	Name       string    `json:"name"`
+	Owner      string    `json:"owner"`
+	Private    bool      `json:"private"`
+	Pushed     time.Time `json:"pushed"`
+	Open       int       `json:"open"`
+	OpenIssues *int      `json:"open_issues,omitempty"`
+	Checkout   string    `json:"checkout,omitempty"`
 }
 
 func (c *Client) github(ctx context.Context) (factory.GitHubLink, error) {

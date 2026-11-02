@@ -41,7 +41,11 @@ var _ appwire.FactoryJobBriefWriter = (*appBackend)(nil)
 const briefPurpose = "factory_brief"
 
 // briefMaxTokens bounds the writer's answer: four blocks of short claims.
-const briefMaxTokens = 2000
+// MEASURED, NOT GUESSED: ten live briefs on deepseek/deepseek-v4.1-flash with
+// the bound at 4096 wrote 1189 to 2860 tokens (median 2036, p95 about 2830),
+// and at the old 2000 about half were cut, which read as invalid JSON or as
+// an empty answer the adapter asked again for. The p95 and a quarter's margin.
+const briefMaxTokens = 3600
 
 func (b *appBackend) FactoryJobBriefWrite(ctx context.Context, p appwire.FactoryJobBriefWriteParams) (appwire.FactoryJobBriefWritten, error) {
 	if _, err := b.localHostOf(p.Factory); err != nil {
@@ -105,6 +109,9 @@ func (b *appBackend) briefErrand(ctx context.Context, factoryID string, job int,
 	}
 	answer, err := b.Errand(ctx, chats.Agent, ask)
 	if err != nil && answer.Reason == "" {
+		// A refused ask or route is the writer's own fault; its words go to
+		// the log beside the reason the brief keeps.
+		fmt.Fprintf(errandLog, "codeaf app: job %d brief errand refused: %v\n", job, err)
 		answer.Reason = session.ErrandModelFailed
 	}
 	if answer.Reason != "" {
@@ -182,14 +189,20 @@ func (d *briefDebounce) note(job int, trigger string) {
 }
 
 func (d *briefDebounce) take(job int) {
+	if trigger := d.claim(job); trigger != "" {
+		d.fire(job, trigger)
+	}
+}
+
+// claim takes a job's waiting trigger off the debounce, so the write fires
+// outside the lock.
+func (d *briefDebounce) claim(job int) string {
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	trigger := d.pending[job]
 	delete(d.pending, job)
 	delete(d.timers, job)
-	d.mu.Unlock()
-	if trigger != "" {
-		d.fire(job, trigger)
-	}
+	return trigger
 }
 
 // stop drops every trigger still waiting.

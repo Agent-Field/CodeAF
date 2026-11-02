@@ -49,9 +49,6 @@ type FactoryNotice struct {
 	Repo  string
 	Kind  string
 	Size  string
-	// Estimate is the model's guess at what the work will cost, in dollars.
-	// ZERO IS NO GUESS and draws nothing (the emptiness law).
-	Estimate float64
 	// Item is the floor's own id, set on EventFactoryAdded and zero on a
 	// proposal.
 	Item int
@@ -226,6 +223,21 @@ type JobChat interface {
 	// Refusal is the sentence a turn is refused with once the job's budget is
 	// spent, and "" while the turn may start.
 	Refusal() string
+}
+
+// JobLedgerName is the optional half of a [JobChat] that names the job its
+// calls are spent for, as `owner/name#number`, so every ledger row of the
+// job's family carries it ([UsageLine.FactoryJob]).
+type JobLedgerName interface {
+	FactoryJob() string
+}
+
+// factoryJobName is the job this agent's calls are spent for, "" for none.
+func (a *Agent) factoryJobName() string {
+	if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+		return strings.TrimSpace(named.FactoryJob())
+	}
+	return ""
 }
 
 // jobChatOf is the job this conversation is the own chat of, asked of the

@@ -265,8 +265,8 @@ func TestFactoryPipelineEditPassesTheEnginesErrorAndAsksOnce(t *testing.T) {
 // the capability.
 func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing.T) {
 	for ty, want := range map[reflect.Type][]string{
-		reflect.TypeFor[FactoryPipelineSourceParams](): {"factory", "repo"},
-		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
+		reflect.TypeFor[FactoryPipelineSourceParams](): {"factory", "repo", "ref"},
+		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "ref", "pr", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
 			"default_budget", "budget_in_file", "pipelines", "steps", "fixed", "rules", "ask_first", "never", "adapt", "labels", "max_size", "max_cost",
 			"factory_copy", "copy_version", "can"},
 		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "pipeline", "after", "kind", "prompt", "until", "max", "when", "effort", "fanout", "value", "list", "lines", "adapt", "fixed", "max_size", "max_cost", "who"},

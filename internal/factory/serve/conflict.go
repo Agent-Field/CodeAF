@@ -49,6 +49,7 @@ func (h *Handler) retention() time.Duration {
 
 // withVersionKept is [Handler.withVersion] with the retention already read.
 func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
+	api.AreaIn(&job, h.areas.declared())
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
@@ -64,7 +65,8 @@ func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job 
 // fresh is true when expect is absent or still matches the job. A mismatch
 // is the page the person was looking at, not the job as it is now.
 func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item, verb string, exp *api.Expect) bool {
-	if exp == nil {
+	// Stop expresses the same intent after any progress on an active run.
+	if exp == nil || ((verb == "stop" || verb == "step_stop") && factory.UnderWay(it)) {
 		return true
 	}
 	job := h.withVersion(api.FromItem(it))
@@ -164,7 +166,9 @@ type refusalBody struct {
 	CurrentCommit string      `json:"current_commit,omitempty"`
 	HeadCommit    string      `json:"head_commit,omitempty"`
 	JobPerson     string      `json:"job_person,omitempty"`
-	RequestID     string      `json:"request_id"`
+	// Outcome is set only by the issue comment route ([api.CommentRefused]).
+	Outcome   string `json:"outcome,omitempty"`
+	RequestID string `json:"request_id"`
 }
 
 func (h *Handler) refuse(w http.ResponseWriter, status int, words, reason, by string, at *time.Time, nowState string) {

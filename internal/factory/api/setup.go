@@ -27,16 +27,20 @@ type SetupGH struct {
 	Path  string `json:"path"`
 }
 type SetupRepo struct {
-	ID                string     `json:"id"`
-	FullName          string     `json:"full_name"`
-	OpenIssues        int        `json:"open_issues"`
+	ID         string `json:"id"`
+	FullName   string `json:"full_name"`
+	OpenIssues int    `json:"open_issues"`
+	// OpenIssuesExact is true when OpenIssues counts issues alone. False is
+	// GitHub's open_issues_count, issues and pull requests together, kept
+	// when GraphQL did not count the repository.
+	OpenIssuesExact   bool       `json:"open_issues_exact"`
 	Pipeline          *string    `json:"pipeline" jsonschema:"enum=file,enum=defaults"`
 	Archived          bool       `json:"archived"`
 	Selected          bool       `json:"selected"`
 	Checkout          *string    `json:"checkout"`
 	SuggestedCheckout string     `json:"suggested_checkout"`
 	CloneMB           int        `json:"clone_mb"`
-	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited"`
+	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited,enum=skipped"`
 	ReadCount         int        `json:"read_count"`
 	WaitingS          int        `json:"waiting_s"`
 	ResumesAt         *time.Time `json:"resumes_at"`
@@ -45,7 +49,7 @@ type SetupRepo struct {
 }
 type FactorySetupRequest struct {
 	ID      string   `json:"id,omitempty"`
-	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done"`
+	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done,enum=continue"`
 	Source  string   `json:"source,omitempty" jsonschema:"enum=gh,enum=token"`
 	Token   string   `json:"token,omitempty"`
 	RepoIDs []string `json:"repo_ids,omitempty"`
@@ -106,4 +110,31 @@ type FactoryDay struct {
 // JobDisplay is a binary-owned presentation rule, evaluated against the host clock.
 type JobDisplay struct {
 	RunningVisible bool `json:"running_visible"`
+}
+
+// SpendByRepo is GET /v1/spend/repos: what each repository's jobs spent over
+// a range of the factory's own calendar days, from and to inclusive, for the
+// repositories the caller can read. A JOB'S WHOLE SPEND IS PLACED ON ONE DAY:
+// the day its run started, or, for a job that never ran, the day it was
+// created (its chat's spend). The job document keeps one running figure, not
+// spend by day, so a run that crosses midnight or a month counts entirely on
+// its start day. A job that runs again starts its spend from nothing, so an
+// earlier run's spend is not counted. Only jobs that spent something are
+// counted, and only jobs with an owner/name repository. Repos is sorted by
+// name and is [] when nothing was spent; total_usd is their sum.
+type SpendByRepo struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// TimeZone is the IANA name of the zone the days are read in, such as
+	// "Europe/London". It is absent when the factory cannot name its zone.
+	TimeZone string      `json:"time_zone,omitempty"`
+	Repos    []RepoSpend `json:"repos"`
+	TotalUSD float64     `json:"total_usd"`
+}
+
+// RepoSpend is one repository's line: dollars spent and how many jobs spent it.
+type RepoSpend struct {
+	Repo     string  `json:"repo"`
+	SpentUSD float64 `json:"spent_usd"`
+	Jobs     int     `json:"jobs"`
 }

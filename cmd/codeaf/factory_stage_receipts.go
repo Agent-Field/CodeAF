@@ -333,6 +333,13 @@ type receiptStageDoor struct {
 	recoveryFinal   bool
 }
 
+// halted reports whether verification recovery has stopped or the stage closed.
+func (d *receiptStageDoor) halted() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stopped || d.closed
+}
+
 func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
 	// A newer refused attempt withdraws any older terminal candidate. Keeping
 	// the old candidate would let an invalid revision silently fall back to it.
@@ -342,10 +349,7 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 			d.RejectReport()
 		}
 	}()
-	d.mu.Lock()
-	stopped := d.stopped || d.closed
-	d.mu.Unlock()
-	if stopped {
+	if d.halted() {
 		return errors.New("verification recovery stopped; local changes are retained; retry the step after correcting its check or environment")
 	}
 	if r.Checkpoint {
@@ -467,15 +471,7 @@ func (d *receiptStageDoor) rejectVerification(notes []string, reason string) err
 	}
 	sort.Strings(evidence)
 	key := strings.Join(evidence, "\n")
-	d.mu.Lock()
-	if key != d.last {
-		d.last, d.repeats = key, 0
-	}
-	d.repeats++
-	d.refused++
-	d.reason = reason
-	repeated, refused := d.repeats >= stageVerificationRejectLimit, d.refused >= stageVerificationReportLimit
-	d.mu.Unlock()
+	repeated, refused := d.countRefusal(key, reason)
 	switch {
 	case repeated:
 		d.stopVerification(fmt.Sprintf("%d completion reports repeated the same unresolved evidence", stageVerificationRejectLimit))
@@ -485,20 +481,47 @@ func (d *receiptStageDoor) rejectVerification(notes []string, reason string) err
 	return fmt.Errorf("repair is incomplete: %s. The completion guard only reads saved results; it does not run tests. Reuse current passing evidence. Correct only the unresolved check or report done:false with the remaining blocker (PR repairs use repair.decision needs_repair); do not repeat the whole suite without a coverage reason", reason)
 }
 
+// countRefusal records one refused completion report with its evidence key and
+// reports whether the same evidence has now repeated, or reports in all have
+// been refused, too many times.
+func (d *receiptStageDoor) countRefusal(key, reason string) (repeated, refused bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if key != d.last {
+		d.last, d.repeats = key, 0
+	}
+	d.repeats++
+	d.refused++
+	d.reason = reason
+	return d.repeats >= stageVerificationRejectLimit, d.refused >= stageVerificationReportLimit
+}
+
 func (d *receiptStageDoor) stopVerification(why string) {
 	// The lifecycle owner, not nullable receipt exits, knows whether physical
 	// owned work is still running. Its absolute stage and money bounds remain.
 	if d.workRunning != nil && d.workRunning() {
-		d.mu.Lock()
-		if !d.closed && !d.stopped {
-			d.timer = time.AfterFunc(stageVerificationRecheck, func() { d.stopVerification(why) })
-		}
-		d.mu.Unlock()
+		d.recheckLater(why)
 		return
 	}
+	d.stopNow(why)
+}
+
+// recheckLater looks at the stop again after stageVerificationRecheck, unless
+// the stage has closed or stopped meanwhile.
+func (d *receiptStageDoor) recheckLater(why string) {
 	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.closed && !d.stopped {
+		d.timer = time.AfterFunc(stageVerificationRecheck, func() { d.stopVerification(why) })
+	}
+}
+
+// stopNow stops verification recovery: the runner gets an honest incomplete
+// result and then the stop signal.
+func (d *receiptStageDoor) stopNow(why string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.closed || d.stopped || d.reason == "" {
-		d.mu.Unlock()
 		return
 	}
 	d.stopped = true
@@ -511,7 +534,6 @@ func (d *receiptStageDoor) stopVerification(why string) {
 	// needs_you parks Follow PR instead of starting another paid repair round.
 	d.recoveryFinal = d.StageDoor.Report(context.Background(), factory.StageResult{Done: false, Exit: 1, Output: reason, Repair: &factory.CIRepairResult{Decision: "needs_you", Reason: reason}}) == nil
 	stop <- reason
-	d.mu.Unlock()
 }
 
 func (d *receiptStageDoor) closeRecovery() {
@@ -524,8 +546,12 @@ func (d *receiptStageDoor) closeRecovery() {
 }
 
 func (d *receiptStageDoor) closeVerification() {
-	d.mu.Lock()
-	d.closed = true
-	d.mu.Unlock()
+	d.markClosed()
 	d.closeRecovery()
+}
+
+func (d *receiptStageDoor) markClosed() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closed = true
 }

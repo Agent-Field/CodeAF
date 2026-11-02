@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -144,9 +145,19 @@ const (
 )
 
 // FactoryPipelineSourceParams names the repository whose file is read.
+//
+// Ref, behind feature factory.pipeline_source_ref, reads an OPEN PIPELINE PULL
+// REQUEST of that repository instead of its default branch: the pull request's
+// number in decimal ("42"), resolved to its head when the read is made, or the
+// 40-hex commit at its head. The pull request must be open, from a branch of
+// the same repository into its default branch, and change only the pipeline
+// file; anything else is refused (conflict). The answer's base_sha is then that
+// head, which factory.pipeline_preview takes as base_sha and
+// factory.pipeline_pr takes as expected_head_sha with pr.
 type FactoryPipelineSourceParams struct {
 	Factory string `json:"factory"`
 	Repo    string `json:"repo"`
+	Ref     string `json:"ref,omitempty"`
 }
 
 // FactoryPipelineSource is the pinned file. It repeats the connection and the
@@ -169,8 +180,15 @@ type FactoryPipelineSource struct {
 	Path          string `json:"path"`
 	DefaultBranch string `json:"default_branch"`
 	BaseSHA       string `json:"base_sha"`
-	CanPush       bool   `json:"can_push"`
-	Archived      bool   `json:"archived"` // always present; an archived repository refuses a pull request whatever can_push says
+	// Ref and PR, behind feature factory.pipeline_source_ref, are the ref
+	// asked for and the pull request it named; with them BaseSHA is that pull
+	// request's head. Both are absent from a read of the default branch, and
+	// an engine without the feature refuses ref, so an answer without them is
+	// never a read of a pull request.
+	Ref      string `json:"ref,omitempty"`
+	PR       int    `json:"pr,omitempty"`
+	CanPush  bool   `json:"can_push"`
+	Archived bool   `json:"archived"` // always present; an archived repository refuses a pull request whatever can_push says
 	// RuntimeFields is true only when the factory itself said so in this read:
 	// its parser reads a step's kind, when, effort and fanout and its runner
 	// obeys them. Always present. The steps carry those words only then.
@@ -534,11 +552,44 @@ func checkPipelineRepo(factory, repo string) (string, string, error) {
 	return id, owner + "/" + name, nil
 }
 
-// CheckPipelineSource bounds the read without asking anyone.
+var pipelineSourcePRNumber = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
+
+// CheckPipelineSource bounds the read without asking anyone. Ref is trimmed
+// and folded to lower case, and must be a pull request number or a commit.
 func CheckPipelineSource(p FactoryPipelineSourceParams) (FactoryPipelineSourceParams, error) {
 	var err error
-	p.Factory, p.Repo, err = checkPipelineRepo(p.Factory, p.Repo)
-	return p, err
+	if p.Factory, p.Repo, err = checkPipelineRepo(p.Factory, p.Repo); err != nil {
+		return p, err
+	}
+	p.Ref = strings.ToLower(strings.TrimSpace(p.Ref))
+	if p.Ref != "" && !pipelineSourcePRNumber.MatchString(p.Ref) && !ValidPipelinePRCommit(p.Ref) {
+		return p, Errorf(CodeBadParams, "ref must be a pull request number such as \"42\" or a 40-character commit SHA")
+	}
+	return p, nil
+}
+
+// FeatureFactoryPipelineSourceRef is announced in hello when
+// factory.pipeline_source takes ref.
+const FeatureFactoryPipelineSourceRef = "factory.pipeline_source_ref"
+
+// FactoryPipelineSourceRefReader marks a [FactoryPipelineEditor] whose
+// FactoryPipelineSource also reads a pipeline pull request by ref.
+type FactoryPipelineSourceRefReader interface {
+	PipelineSourceRefs()
+}
+
+func servesPipelineSourceRef(e Engine) bool {
+	_, editor := e.(FactoryPipelineEditor)
+	_, factory := e.(Factory)
+	_, reader := e.(FactoryPipelineSourceRefReader)
+	return editor && factory && reader
+}
+
+func withFactoryPipelineSourceRefFeature(hello Hello, e Engine) Hello {
+	if servesPipelineSourceRef(e) {
+		hello = withFeature(hello, FeatureFactoryPipelineSourceRef)
+	}
+	return hello
 }
 
 // CheckPipelinePreview bounds the preview without asking anyone: the base, the
@@ -603,6 +654,10 @@ func pipelineSourceMethod(name string) method {
 		var p FactoryPipelineSourceParams
 		if err := decodeStrict(name, raw, &p); err != nil {
 			return nil, err
+		}
+		// An engine without the word keeps the field it never had.
+		if p.Ref != "" && !servesPipelineSourceRef(e) {
+			return nil, Errorf(CodeBadParams, "%s: unknown field \"ref\"", name)
 		}
 		if p, err = CheckPipelineSource(p); err != nil {
 			return nil, err

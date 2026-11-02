@@ -1,15 +1,18 @@
 package factory
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
 
 // DaySpend is the runner's figure for today. paid is what this process
 // recorded today, by item id. An item in paid counts that figure instead of
-// its whole stream, even when the figure is zero. A nil map means the caller
-// has no ledger of its own, so an item that moved, started or ended today
-// counts its whole stream spend. Triage reads are not added.
+// its whole stream, even when the figure is zero. Any other item that moved,
+// started or ended today counts its whole stream spend, which can be more than
+// today's: the rail would rather stop early than miss money a restart forgot.
+// Triage reads are not added.
 func DaySpend(items []Item, paid map[int]float64, now time.Time) float64 {
 	y, mo, d := now.Date()
 	isToday := func(t time.Time) bool {
@@ -58,18 +61,17 @@ func AddChatSpend(it *Item, usd float64) {
 }
 
 // shiftSince is the handover a real floor can fill from its items. Spent is
-// only streams that started after the window opened. SpentToday is [DaySpend]
-// with no process ledger, so a stream that started earlier still counts today
-// when the item moved today.
+// only streams that started after the window opened. SpentToday is
+// [placedToday].
 func shiftSince(items []Item, started, now time.Time) Shift {
-	sh := Shift{Since: started, SpentToday: DaySpend(items, nil, now)}
+	sh := Shift{Since: started, SpentToday: placedToday(items, now)}
 	for _, it := range items {
 		if it.Created.After(started) {
 			sh.Arrived++
 			sh.noteHour(it.Created, now)
 		}
 		if it.State == StateShipped {
-			if at := shippedAt(it); at.After(started) {
+			if at := ShippedAt(it); at.After(started) {
 				sh.Shipped++
 				sh.Shipping = append(sh.Shipping, it.Ref())
 				sh.noteHour(at, now)
@@ -89,6 +91,23 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 	}
 	sh.MergedToday, sh.MergedWeek = MergedCounts(items, now)
 	return sh
+}
+
+// placedToday is the spend placed ([SpentIn]) on now's calendar day, in now's
+// location. A job keeps one total, so a job that began on an earlier day counts
+// nothing today, even if it spent today: this figure can be low but never claims
+// more than today's spend. Triage reads are not added.
+func placedToday(items []Item, now time.Time) float64 {
+	y, m, d := now.Date()
+	start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+	end := start.AddDate(0, 0, 1)
+	var sum float64
+	for _, it := range items {
+		if usd, in := SpentIn(it, start, end); in {
+			sum += usd
+		}
+	}
+	return sum
 }
 
 // DailySpent is what items spent on runs whose job last changed today, in
@@ -143,7 +162,9 @@ func (sh *Shift) noteHour(t, now time.Time) {
 	sh.Hours[t.In(now.Location()).Hour()]++
 }
 
-func shippedAt(it Item) time.Time {
+// ShippedAt is when a shipped job finished: its run's end, or its last
+// change when the run kept no end.
+func ShippedAt(it Item) time.Time {
 	if it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended
 	}
@@ -196,4 +217,59 @@ func handledSince(it Item, started time.Time) (int, time.Time) {
 		}
 	}
 	return n, at
+}
+
+// LedgerName is how the spend ledger names the job a call was spent for:
+// `owner/name#number`, lower-cased like every repository key, the same on
+// this machine's floor and on a worker's mirror of the job. A CI item's
+// reference is the bare word "ci", so it is named by its floor id as well
+// (`owner/name#ci-<id>`): two CI jobs of one repository are two jobs.
+func LedgerName(it Item) string {
+	ref := it.Ref()
+	if it.Kind == KindCI {
+		ref = "#ci-" + itoa(it.ID)
+	}
+	return strings.ToLower(RepoOf(it)) + ref
+}
+
+// SpendDaysMax is the most calendar days one spend read may span.
+const SpendDaysMax = 366
+
+// SpendRange reads from and to, both YYYY-MM-DD and inclusive, as days in loc:
+// start is from's midnight and end the midnight after to. A missing or
+// malformed day, to before from, or more than [SpendDaysMax] days is refused
+// in words a person can act on.
+func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err error) {
+	start, err = time.ParseInLocation(time.DateOnly, from, loc)
+	if err != nil {
+		return start, end, errors.New("from is a day, as 2026-10-01")
+	}
+	last, err := time.ParseInLocation(time.DateOnly, to, loc)
+	if err != nil {
+		return start, end, errors.New("to is a day, as 2026-10-31")
+	}
+	if last.Before(start) {
+		return start, end, errors.New("to is before from")
+	}
+	if start.AddDate(0, 0, SpendDaysMax).Before(last.AddDate(0, 0, 1)) {
+		return start, end, fmt.Errorf("a spend read covers at most %d days", SpendDaysMax)
+	}
+	return start, last.AddDate(0, 0, 1), nil
+}
+
+// SpentIn is the job's whole spend ([JobSpent]) when it is placed ([SpentAt])
+// in [start, end), and false when it spent nothing or is placed outside. It is
+// the one placement rule every spend-by-day read counts by.
+func SpentIn(it Item, start, end time.Time) (float64, bool) {
+	usd, at := JobSpent(it), SpentAt(it)
+	return usd, usd > 0 && !at.Before(start) && at.Before(end)
+}
+
+// SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
+// run's start, or its creation when it has no run that started.
+func SpentAt(it Item) time.Time {
+	if it.Stream != nil && !it.Stream.Started.IsZero() {
+		return it.Stream.Started
+	}
+	return it.Created
 }

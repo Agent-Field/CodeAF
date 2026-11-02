@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -18,7 +19,11 @@ func TestDryRunIgnoresEveryNonLabelSize(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(dryRunYAML), 0o644); err != nil {
+	// No written max_cost: an unknown cost then starts, so only sizes are
+	// under test here (a written cap holds an unmeasured job; see
+	// pipeline's measured tests).
+	noCost := strings.Replace(dryRunYAML, "  max_cost: 2\n", "", 1)
+	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(noCost), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	floor := func(tr factory.Triage) []factory.Item {

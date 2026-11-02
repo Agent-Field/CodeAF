@@ -63,6 +63,21 @@ func setupGitHub(t *testing.T, f *peopleV2Fixture, fail *bool) {
 			body = `{"login":"owner"}`
 		case "/user/repos":
 			body = `[{"full_name":"acme/api","open_issues_count":3},{"full_name":"acme/old","archived":true}]`
+		case "/graphql":
+			// Issues alone: acme/api has 2 open issues (and 1 open pull
+			// request, which open_issues_count adds); acme/old is not answered.
+			var ask struct {
+				Variables map[string]string `json:"variables"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&ask)
+			data := map[string]any{}
+			for key, name := range ask.Variables {
+				if strings.HasPrefix(key, "n") && name == "api" {
+					data["r"+key[1:]] = map[string]any{"issues": map[string]int{"totalCount": 2}}
+				}
+			}
+			raw, _ := json.Marshal(map[string]any{"data": data})
+			body = string(raw)
 		case "/repos/acme/api/issues":
 			if *fail {
 				status, body = 503, `{}`
@@ -764,5 +779,35 @@ func TestFactorySetupDoneGoesBackToGitHubOnlyWhenTheTokenIsRefused(t *testing.T)
 	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
 	if out.State != "github" || out.GitHub.Connected {
 		t.Fatalf("a refused token left setup done: %+v", out)
+	}
+}
+
+// DISCOVERY'S open_issues IS ISSUES ALONE, from one batched GraphQL request per
+// page, and says so (open_issues_exact). A repository GraphQL does not answer
+// keeps GitHub's combined count, marked not exact, because older desks need the
+// number. The read's own count is issues alone too.
+func TestFactorySetupOpenIssuesAreIssuesAloneAndSayWhenTheyAreNot(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var setup api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &setup)
+	byID := map[string]api.SetupRepo{}
+	for _, r := range setup.Repos {
+		byID[r.ID] = r
+	}
+	if r := byID["acme/api"]; r.OpenIssues != 2 || !r.OpenIssuesExact {
+		t.Fatalf("acme/api: open_issues %d exact %v, want 2 and true", r.OpenIssues, r.OpenIssuesExact)
+	}
+	if r := byID["acme/old"]; r.OpenIssues != 0 || r.OpenIssuesExact {
+		t.Fatalf("acme/old: open_issues %d exact %v, want the combined 0 and false", r.OpenIssues, r.OpenIssuesExact)
+	}
+	f.request(t, "POST", "/v1/factory-setup", "operator-secret", api.FactorySetupRequest{ID: "local", Verb: "select_repos", RepoIDs: []string{"acme/api"}}, 200, &setup)
+	waitSetup(t, f.h)
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &setup)
+	for _, r := range setup.Repos {
+		if r.ID == "acme/api" && (r.OpenIssues != 5 || !r.OpenIssuesExact) {
+			t.Fatalf("after the read: open_issues %d exact %v, want 5 and true", r.OpenIssues, r.OpenIssuesExact)
+		}
 	}
 }
