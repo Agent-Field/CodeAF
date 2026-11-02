@@ -1174,7 +1174,7 @@ are ignored):
 Response: `{text, model, provider, role, usage: {in, out, cost_usd?}, ms,
 cached?}`. `model` is the model that answered, as the provider named it. When
 `text` is `""`, `reason` says why: `closed`, `stopped`, `over_budget`, `busy`,
-`deadline`, `cancelled`, `model_failed`, `invalid_json`, `not_open` or
+`deadline`, `cancelled`, `model_failed`, `invalid_json`, `no_answer` (the call was made and billed and said nothing; its usage is kept and it is not cached), `not_open` or
 `unavailable` (an owner without the errand door). One errand per (agent,
 purpose) runs at a time; a second answers `busy` at once and never queues.
 Closing or stopping the agent, or its job running out of money, cancels one in

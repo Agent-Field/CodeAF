@@ -45,8 +45,10 @@ const (
 	ErrandMaxSchemaBytes = 8 << 10
 	ErrandMaxCacheKey    = 128
 	ErrandDefaultTokens  = 400
-	ErrandMaxTokens      = 4096
-	ErrandMinDeadline    = time.Second
+	// ErrandMaxTokens bounds the answer. The wire ceiling adds the thinking
+	// share on top ([provider.reasoningCeiling]): 10240 at low effort.
+	ErrandMaxTokens   = 8192
+	ErrandMinDeadline = time.Second
 	// ErrandDefaultDeadline is the whole errand's wall, admission to answer.
 	ErrandDefaultDeadline = 10 * time.Second
 	ErrandMaxDeadline     = 60 * time.Second
@@ -382,6 +384,10 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	}
 	answer.Provider = a.errandProvider(model)
 	if answer.Reason = a.errandFailure(ctx, err, response); answer.Reason != "" {
+		return answer
+	}
+	if strings.TrimSpace(response.Text()) == "" {
+		answer.Reason = ErrandNoAnswer
 		return answer
 	}
 	answer.Text, answer.Reason = ask.shape(response.Text(), check)
