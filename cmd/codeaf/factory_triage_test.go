@@ -35,7 +35,7 @@ func TestFactoryServerTriageRequestsItsOneModelPin(t *testing.T) {
 		}
 		requested <- req.Model
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"Fix the launch pin\",\"size\":\"S\",\"est_usd\":1}"},"finish_reason":"stop"}]}`)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"Fix the launch pin\",\"rubric\":{\"scope\":{\"score\":0},\"clarity\":{\"score\":0},\"coupling\":{\"score\":0},\"proof\":{\"score\":1},\"novelty\":{\"score\":0}}}"},"finish_reason":"stop"}]}`)
 	}))
 	defer endpoint.Close()
 	settings := config.Config{APIKey: "sk-test", BaseURL: endpoint.URL, Model: "profile/default", ProfileDir: oneModelProfile(t)}
@@ -83,8 +83,8 @@ func TestFactoryServerTriageRequestsItsOneModelPin(t *testing.T) {
 			t.Fatal("triage made no request")
 		}
 		read, err := st.Get(it.ID)
-		if err != nil || read.Triage.Read != "Fix the launch pin" || read.Triage.Size != "S" || read.Triage.Est != 1 {
-			t.Fatalf("triage did not record its read, size and estimate: %+v, %v", read.Triage, err)
+		if err != nil || read.Triage.Read != "Fix the launch pin" || read.Triage.Size != "S" || read.Triage.Rubric == nil {
+			t.Fatalf("triage did not record its read, size and rubric: %+v, %v", read.Triage, err)
 		}
 	}
 	cancel()

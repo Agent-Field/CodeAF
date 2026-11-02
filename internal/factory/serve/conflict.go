@@ -49,6 +49,7 @@ func (h *Handler) retention() time.Duration {
 
 // withVersionKept is [Handler.withVersion] with the retention already read.
 func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
+	api.AreaIn(&job, h.areas.declared())
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
@@ -164,7 +165,9 @@ type refusalBody struct {
 	CurrentCommit string      `json:"current_commit,omitempty"`
 	HeadCommit    string      `json:"head_commit,omitempty"`
 	JobPerson     string      `json:"job_person,omitempty"`
-	RequestID     string      `json:"request_id"`
+	// Outcome is set only by the issue comment route ([api.CommentRefused]).
+	Outcome   string `json:"outcome,omitempty"`
+	RequestID string `json:"request_id"`
 }
 
 func (h *Handler) refuse(w http.ResponseWriter, status int, words, reason, by string, at *time.Time, nowState string) {
