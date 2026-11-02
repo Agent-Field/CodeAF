@@ -12,13 +12,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // Earlier committed work belongs to the job even when its replacement attempt
 // makes no new edit. An empty branch still needs the person's decision.
 func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
-	for _, action := range []string{"rerun", "try again", "resume after stop", "resume after reported stop", "empty rerun"} {
+	for _, action := range []string{"rerun", "try again", "resume after stop", "resume after reported stop", "empty rerun", "base unavailable"} {
 		t.Run(action, func(t *testing.T) {
 			s := newLocalSetup(t)
 			s.backend.emit = s.server
@@ -33,7 +37,15 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			s.backend.local.parent = func() session.Config {
 				return session.Config{Workspace: g.workspace, Model: "test/model", OneModel: true, APIKey: "test-key", BaseURL: model.server.URL}
 			}
-			st := s.start()
+			var st appwire.FactoryLocalStatus
+			if action == "resume after stop" {
+				if err := s.backend.startLocal(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				st = s.backend.localStatus()
+			} else {
+				st = s.start()
+			}
 			floor := s.backend.local.host.floor
 			if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 				t.Fatal(err)
@@ -60,6 +72,31 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if action == "base unavailable" {
+				if err := os.WriteFile(filepath.Join(g.workspace, ".git", "config.lock"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stopUnreported := func() {}
+			if action == "resume after stop" {
+				mirror, err := store.Open(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				runner := buildFactoryRunner(mirror, floor, g.workspace, t.TempDir(), nil, nil)
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					worker.Run(ctx, worker.Options{
+						Dial:   func(int) *client.WorkerClient { return client.Open(st.URL, s.backend.local.host.token).Worker("") },
+						Attach: api.WorkerAttach{Machine: "unreported-write", Name: "unreported write", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+						Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: time.Hour, BeatEvery: 20 * time.Millisecond,
+					})
+				}()
+				stopUnreported = func() { cancel(); <-done }
+				t.Cleanup(stopUnreported)
 			}
 			read := func() api.Job {
 				var job api.Job
@@ -98,11 +135,28 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 				if action == "resume after reported stop" {
 					wait("first attempt is reported before Stop", func(job api.Job) bool { return job.Steps[0].State == "running" && job.Steps[0].Round > 0 })
 				}
+				if action == "resume after stop" && read().Steps[0].Round != 0 {
+					t.Fatal("unreported worker sent its first round before Stop")
+				}
 				t.Logf("before Stop: write=%s round=%d", read().Steps[0].State, read().Steps[0].Round)
 				act("factory.job_step_stop", map[string]any{"step": "write"})
 				wait("Stop ends the earlier attempt", func(job api.Job) bool { return job.Failure != nil && job.Failure.Code == factory.CodeStopped })
+				if action == "resume after stop" {
+					stopUnreported()
+					mirror, err := store.Open(t.TempDir())
+					if err != nil {
+						t.Fatal(err)
+					}
+					startPauseWorker(t, s, st, buildFactoryRunner(mirror, floor, g.workspace, t.TempDir(), nil, nil), mirror)
+				}
 			} else {
 				first := wait("first attempt finishes", waiting)
+				if action == "base unavailable" {
+					if first.Steps[0].State != "waiting" || !strings.Contains(first.Steps[0].Result, "could not preserve the job's change base") || first.Change != nil && len(first.Change.Files) > 0 {
+						t.Fatalf("write ran without preserving its base: %+v", first)
+					}
+					return
+				}
 				if action == "try again" && (first.NeedsYou == nil || first.NeedsYou.Kind != factory.NeedsOutOfAttempts || first.Steps[0].State != "waiting") {
 					t.Fatalf("first write did not reproduce a failed command: %+v", first)
 				}
