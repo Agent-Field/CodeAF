@@ -44,6 +44,12 @@ func newFactoryWire(t *testing.T, hub *appFactoryHub) *factoryWire {
 	t.Helper()
 	backend := newFakeBackend(newAppRecorder(), nil)
 	backend.factoryOnce.Do(func() { backend.factories = hub; hub.resume = backend.resumeLocal })
+	return wireOver(t, backend)
+}
+
+// wireOver serves backend behind the real appwire server and reads its lines.
+func wireOver(t *testing.T, backend *appBackend) *factoryWire {
+	t.Helper()
 	t.Cleanup(func() { backend.Close() })
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
