@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
@@ -36,7 +35,7 @@ func RequireEngine(t *testing.T) {
 // targets stage the pinned engine first, so the gate never takes this skip.
 func Engine(t testing.TB) string {
 	t.Helper()
-	binary, err := furrow.ResolveOwned()
+	binary, err := furrowbin.OwnedBinary()
 	if err != nil {
 		t.Skipf("no furrow seal engine: %v (run `make furrow` to embed the pinned engine in test builds, or set %s to a furrow binary)", err, furrowbin.BinaryEnvVar)
 	}
