@@ -49,6 +49,7 @@ func (h *Handler) retention() time.Duration {
 
 // withVersionKept is [Handler.withVersion] with the retention already read.
 func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
+	api.AreaIn(&job, h.areas.declared())
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
