@@ -25,6 +25,7 @@ import (
 // The desk's real wire, factory and runner share only the public job doors.
 // A held fake model round makes the person's toggle precede the step boundary.
 func TestFactoryStopAfterStep(t *testing.T) {
+	t.Run("spending answer guards", testSpendAnswerGuards)
 	t.Run("saved questions", testSavedSpendingQuestions)
 	t.Run("unfinished step resumes", testUnfinishedSpendingStep)
 	t.Run("owner and guard", testSpendingStopOwnerAndGuard)
@@ -82,7 +83,7 @@ func TestFactoryStopAfterStep(t *testing.T) {
 				id := appFactoryID(srv.URL)
 				attached(t, hub, appFactoryRow{ID: id, URL: srv.URL, Mode: api.FactorySolo})
 				wire := newFactoryWire(t, hub)
-				if !strings.Contains(wire.hello, "factory.job_stop_after_step") {
+				if !strings.Contains(wire.hello, "factory.job_stop_after_step") || !strings.Contains(wire.hello, "factory.job_spend_answer") {
 					t.Fatal("hello omits spending hold")
 				}
 				if leased {
@@ -152,8 +153,12 @@ func TestFactoryStopAfterStep(t *testing.T) {
 					if calls.Load() != holdAt {
 						t.Fatalf("model crossed boundary: %d calls", calls.Load())
 					}
-					if err := client.Open(srv.URL, "").Seam().Answer(job.ID, choice != "no", ""); err != nil {
-						t.Fatal(err)
+					if read()["can"].(map[string]any)["spend_answer"] != true {
+						t.Fatal("spending answer unavailable")
+					}
+					out := act("factory.job_spend_answer", map[string]any{"carry_on": choice != "no", "expect": map[string]any{"version": read()["version"]}})
+					if out.Action != "spend_answer" {
+						t.Fatalf("answer receipt: %+v", out)
 					}
 				}
 				eventually(t, "run ends", func() bool { return !runner.Running(job.ID) })
@@ -309,5 +314,52 @@ func testSpendingStopOwnerAndGuard(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("record omits the person's spending choice")
+	}
+}
+
+func testSpendAnswerGuards(t *testing.T) {
+	f := startActionFactory(t)
+	alice := signedIn(t, f, 1, "alice")
+	bob := signedIn(t, f, 2, "bob")
+	method := "factory.job_spend_answer"
+	for _, kind := range []string{"", "cap", factory.QKindAskFirst, factory.QKindSpendStopped} {
+		it := savedSpendingItem()
+		it.Assignee, it.QKind, it.Question = "alice", kind, "Carry on?"
+		it.State = factory.StateNeedsYou
+		if kind == "" {
+			it.State, it.Question = factory.StateRunning, ""
+		}
+		job := f.create(t, it)
+		was := f.hold(t, job.ID)
+		can := alice.job(t, job.ID).Can
+		raw, _ := json.Marshal(can)
+		var flags map[string]any
+		_ = json.Unmarshal(raw, &flags)
+		if flags["spend_answer"] != (kind == factory.QKindSpendStopped) {
+			t.Fatalf("can for %q: %s", kind, raw)
+		}
+		for _, value := range []any{nil, "yes", 1} {
+			params := alice.params(t, job.ID, map[string]any{"carry_on": value})
+			if value == nil {
+				delete(params, "carry_on")
+			}
+			alice.w.mustFail(method, params, appwire.CodeBadParams)
+		}
+		alice.w.mustFail(method, map[string]any{"factory": alice.conn.ID, "job": job.ID, "carry_on": true}, appwire.CodeBadParams)
+		if kind != factory.QKindSpendStopped {
+			alice.refused(t, method, alice.params(t, job.ID, map[string]any{"carry_on": false}), appwire.CodeConflict)
+		} else {
+			bob.refused(t, method, bob.params(t, job.ID, map[string]any{"carry_on": false}), appwire.CodeForbidden)
+			var other map[string]any
+			b, _ := json.Marshal(bob.job(t, job.ID).Can)
+			_ = json.Unmarshal(b, &other)
+			if other["spend_answer"] != false {
+				t.Fatal("another owner can answer")
+			}
+			stale := alice.params(t, job.ID, map[string]any{"carry_on": true})
+			stale["expect"] = map[string]any{"version": 99999}
+			alice.w.mustFail(method, stale, appwire.CodeStale)
+		}
+		f.same(t, job.ID, was, "refused spending answer")
 	}
 }
