@@ -18,21 +18,21 @@ func TestAutoStopsAtAnApprovalARuleHolds(t *testing.T) {
 	}
 }
 
-// A PLAN THAT LISTED NO FILES IS SAID AS WHAT HAPPENED: the factory could not
+// A plan without a checkable file list says what is missing: the factory cannot
 // check it, against the paths in force, and the person may approve it or send
 // it back. A hold saved before the paths were kept still reads as a sentence.
 func TestAutoSaysAPlanWithNoFileListCouldNotBeChecked(t *testing.T) {
 	it := Item{Autonomy: AutonomyAuto, Assignee: "assignee-1", Cap: 5, State: StateNeedsYou, QKind: QKindApprove, RuleHold: "protected · auth/ · " + PlanNoFiles}
-	want := "The plan didn't list its files, so the factory couldn't check them against auth/. Approve, or send it back to list them."
+	want := "This plan didn't give the factory a file list it can check against auth/. Read the plan, then approve it or send it back."
 	if why := AutonomyBlockReason(it); why != want {
 		t.Fatalf("Auto says %q, want %q", why, want)
 	}
 	it.RuleHold = "protected · auth/, infra/ · " + PlanNoFiles
-	if why := AutonomyBlockReason(it); !strings.Contains(why, "couldn't check them against auth/, infra/.") {
+	if why := AutonomyBlockReason(it); !strings.Contains(why, "can check against auth/, infra/.") {
 		t.Fatalf("two paths said as %q", why)
 	}
 	it.RuleHold = "protected · " + PlanNoFiles
-	if why := AutonomyBlockReason(it); why != "The plan didn't list its files, so the factory couldn't check them against its protected paths. Approve, or send it back to list them." {
+	if why := AutonomyBlockReason(it); why != "This plan didn't give the factory a file list it can check against its protected paths. Read the plan, then approve it or send it back." {
 		t.Fatalf("an older hold said as %q", why)
 	}
 	it.RuleHold = "protected · auth/ · auth/login.go"

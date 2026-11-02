@@ -24,6 +24,65 @@ import (
 )
 
 func TestAppFactoryPlanFilesAnswer(t *testing.T) {
+	t.Run("saved results and worker reports", func(t *testing.T) {
+		for _, files := range []string{`["README.md"]`, `[]`, `["../bad"]`, `["README.md","auth/login.go"]`} {
+			var result factory.StageResult
+			if err := json.Unmarshal([]byte(`{"Done":true,"Files":`+files+`,"Output":"Files I will touch: only README.md."}`), &result); err != nil {
+				t.Fatal(err)
+			}
+			report := factory.RunReport{Stages: []factory.StageReport{{Name: "plan", State: factory.PhaseDone, Round: 1, Result: &result}}}
+			wire := api.FromRunReport(report)
+			raw, err := json.Marshal(wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(raw, &wire); err != nil {
+				t.Fatal(err)
+			}
+			back := api.ToWorkerReport(wire)
+			if !reflect.DeepEqual(back.Stages[0].Result.Files, result.Files) {
+				t.Errorf("worker report lost files: %s", raw)
+			}
+			item := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone, Round: 1, Result: &result}}}}
+			raw, err = json.Marshal(item)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(raw, &item); err != nil {
+				t.Fatal(err)
+			}
+			pull := api.WorkerJob(item)
+			if got := api.ToItem(pull).Stream.Phases[0].Result.Files; !reflect.DeepEqual(got, result.Files) {
+				t.Errorf("worker pull lost files: %v", got)
+			}
+		}
+		legacy := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone, Result: &factory.StageResult{Done: true, Output: "Files: README.md"}}}}}
+		if got := factory.PlanFilesOf(legacy); !reflect.DeepEqual(got, []string{"README.md"}) {
+			t.Errorf("saved legacy plan = %v", got)
+		}
+	})
+	t.Run("structured path limits", func(t *testing.T) {
+		for _, files := range [][]string{
+			{"README.md", "../auth/login.go"}, {"/README.md"}, {"auth/**"}, {"auth/"}, {"C:\u003aREADME.md"}, {"docs/\u202efile.md"},
+			{strings.Repeat("x", factory.PlanPathMost+1)}, make([]string, factory.PlanFilesMost+1),
+		} {
+			if got := (factory.StageResult{Files: files, Output: "Files: README.md"}).PlanFiles(); got != nil {
+				t.Errorf("invalid list returned files: %v", got)
+			}
+		}
+		files := make([]string, factory.PlanFilesMost)
+		for i := range files {
+			files[i] = fmt.Sprintf("docs/%d.md", i)
+		}
+		if got := (factory.StageResult{Files: files}).PlanFiles(); len(got) != factory.PlanFilesMost {
+			t.Errorf("maximum list = %d files", len(got))
+		}
+		path := strings.Repeat("x", factory.PlanPathMost)
+		if got := (factory.StageResult{Files: []string{path}}).PlanFiles(); !reflect.DeepEqual(got, []string{path}) {
+			t.Error("maximum path rejected")
+		}
+	})
+
 	const prose = "Files I will touch: only README.md. I will not touch auth/** or anything under cmd/."
 	for _, tc := range []struct {
 		name, fields, output, hold string
@@ -36,6 +95,7 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 		{name: "invalid list", fields: `,"files":["../README.md"]`, output: prose, hold: "protected · auth/** · " + factory.PlanNoFiles},
 		{name: "conflicting declaration", fields: `,"files":["README.md"]`, output: "Files: auth/login.go", hold: "protected · auth/** · " + factory.PlanNoFiles},
 		{name: "legacy declaration", output: "Files: README.md", files: []string{"README.md"}},
+		{name: "null list cannot fall back", fields: `,"files":null`, output: "Files: README.md", hold: "protected · auth/** · " + factory.PlanNoFiles},
 		{name: "empty list cannot fall back", fields: `,"files":[]`, output: "Files: README.md", hold: "protected · auth/** · " + factory.PlanNoFiles},
 		{name: "repair missing list", output: prose, files: []string{"README.md"}, repair: true},
 	} {
@@ -96,6 +156,12 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 			stageSettle = 20 * time.Millisecond
 			t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
 			st := s.start()
+			s.mu.Lock()
+			hello := s.lines[0]
+			s.mu.Unlock()
+			if !strings.Contains(hello, appwire.FeatureFactoryPlanFilesAnswer) {
+				t.Errorf("hello lacks structured plan feature: %s", hello)
+			}
 			floor := s.backend.local.host.floor
 			if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 				t.Fatal(err)
@@ -137,6 +203,30 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 			defer mu.Unlock()
 			if len(requests) == 0 || !strings.Contains(requests[0], "End the plan with its file list") {
 				t.Errorf("plan request did not carry briefPlanFiles")
+			}
+			var first struct {
+				Tools []struct {
+					Function struct {
+						Name       string `json:"name"`
+						Parameters struct {
+							Required []string `json:"required"`
+						} `json:"parameters"`
+					} `json:"function"`
+				} `json:"tools"`
+			}
+			if len(requests) > 0 {
+				_ = json.Unmarshal([]byte(requests[0]), &first)
+			}
+			required := false
+			for _, tool := range first.Tools {
+				if tool.Function.Name == "stage_result" {
+					for _, field := range tool.Function.Parameters.Required {
+						required = required || field == "files"
+					}
+				}
+			}
+			if !required {
+				t.Error("plan answer schema does not require files")
 			}
 			if tc.repair && reports != 2 {
 				t.Errorf("repair reports = %d; want 2", reports)

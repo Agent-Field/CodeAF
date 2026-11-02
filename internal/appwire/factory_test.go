@@ -134,7 +134,7 @@ func TestFactoryAbsentWithoutCapability(t *testing.T) {
 	if got := withFactoryFeature(Hello{}, &fakeEngine{}); len(got.Features) != 0 {
 		t.Fatalf("a plain engine announced %v", got.Features)
 	}
-	if got := withFactoryFeature(Hello{}, &factoryEngine{}); len(got.Features) != 1 || got.Features[0] != FeatureFactory {
+	if got := withFactoryFeature(Hello{}, &factoryEngine{}); len(got.Features) != 2 || got.Features[0] != FeatureFactory || got.Features[1] != FeatureFactoryPlanFilesAnswer {
 		t.Fatalf("a factory engine announced %v", got.Features)
 	}
 }

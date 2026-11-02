@@ -41,6 +41,25 @@ It is given two tools that no other conversation has:
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## plan file list — structured files, unknown paths and Auto approval
+
+A plan's `stage_result` answer includes `files`, an array of every file it will
+change or add, relative to the repository root. `output` carries the plan's prose.
+The plan schema requires `files`; code validates the paths before using them.
+The list allows at most 200 entries and each path at most 512 bytes. Absolute
+paths, traversal, folders, globs and any other invalid entry make the whole list
+unknown. An empty list is unknown too; the model must not guess.
+
+One existing correction attempt asks a completed plan without a checkable list
+to report again. It shares the existing correction budget and step limits. If
+no valid list arrives, protected-path rules still pause Auto for your approval;
+prose alone never supplies the safety list. A provider can ignore the schema,
+so a required field does not guarantee a valid list or bypass the pause.
+
+Older saved plans still read strict `Files:` declarations outside code blocks.
+When a structured list exists, any conflicting or invalid declaration makes the
+list unknown. The current-round, finished-plan rules still apply.
+
 ## how a step is judged — until done, clean, proven, green, what findings count, claims need evidence
 
 Whether a factory step is finished is decided by code, not by the step's conversation, from

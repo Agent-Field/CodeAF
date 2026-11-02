@@ -34,6 +34,9 @@ import (
 // FeatureFactory is announced in hello when the engine serves factory.*.
 const FeatureFactory = "factory.remote"
 
+// FeatureFactoryPlanFilesAnswer announces structured plan files on step reads.
+const FeatureFactoryPlanFilesAnswer = "factory.plan_files_answer"
+
 // The states a connection is seen in.
 const (
 	FactoryOK            = "ok"
@@ -387,6 +390,7 @@ type Factory interface {
 func withFactoryFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); ok {
 		hello = withFeature(hello, FeatureFactory)
+		hello = withFeature(hello, FeatureFactoryPlanFilesAnswer)
 	}
 	return hello
 }

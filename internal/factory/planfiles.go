@@ -51,7 +51,45 @@ func PlanFilesOf(it Item) []string {
 	if plan == nil || !planFinished(it, k) {
 		return nil
 	}
-	return ParsePlanFiles(plan.Result.Output)
+	return plan.Result.PlanFiles()
+}
+
+// PlanFiles reads a report's structured file list, falling back to declarations
+// only when the field is absent. Conflicting declarations make the whole list
+// unknown, including a malformed declaration beside an otherwise valid list.
+func (r StageResult) PlanFiles() []string {
+	legacy, declared := parsePlanFiles(r.Output)
+	if r.Files == nil {
+		return legacy
+	}
+	files := validatePlanFiles(r.Files)
+	if files == nil || (declared && !reflect.DeepEqual(files, legacy)) {
+		return nil
+	}
+	return files
+}
+
+// validatePlanFiles applies the declaration's path and size rules to a model's
+// structured list. One invalid entry makes the whole list unknown.
+func validatePlanFiles(files []string) []string {
+	if len(files) == 0 || len(files) > PlanFilesMost {
+		return nil
+	}
+	paths := make([]string, 0, len(files))
+	for _, path := range files {
+		path = strings.TrimPrefix(path, "./")
+		if !ValidPlanPath(path) {
+			return nil
+		}
+		paths = append(paths, path)
+	}
+	if len(paths) == 1 {
+		switch strings.ToLower(paths[0]) {
+		case "none", "n/a", "tbd":
+			return nil
+		}
+	}
+	return finishPaths(paths)
 }
 
 // planFinished says the plan step's saved result is a finished plan of record,
@@ -98,6 +136,11 @@ func resultIsThisRound(p Phase) bool {
 // declarations disagree, the WHOLE list is unknown (nil): a guess at which was
 // meant is a wrong count on a person's screen.
 func ParsePlanFiles(output string) []string {
+	files, _ := parsePlanFiles(output)
+	return files
+}
+
+func parsePlanFiles(output string) ([]string, bool) {
 	lines := strings.Split(output, "\n")
 	var found []string
 	declared := false
@@ -120,11 +163,11 @@ func ParsePlanFiles(output string) []string {
 		}
 		got := declaration(m[1], lines[i+1:])
 		if got == nil || (declared && !reflect.DeepEqual(got, found)) {
-			return nil
+			return nil, true
 		}
 		found, declared = got, true
 	}
-	return found
+	return found, declared
 }
 
 // opensFence returns the fence marker ("```" or "~~~", at its full length) a

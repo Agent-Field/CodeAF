@@ -320,6 +320,24 @@ decides which combinations are accepted.
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
+An engine whose hello carries `factory.plan_files_answer` reads structured plan
+files. `factory.job` keeps its existing `{factory, job}` request and `Job` reply;
+`steps[].files` carries the plan step's answer (`null` for an absent field, `[]`
+for an explicit unknown list). Worker step reports and pulls carry the same
+`files` array in `StepResult`. `planned_files` is derived from the current finished
+plan, never from prose or a cache. No method or error code changes.
+
+The plan's model fills `stage_result.files` as part of its answer, alongside
+`output`; the plan schema requires the field. At most 200 entries, 512 bytes per
+path, with the strict repository-relative declaration path rules. Any invalid
+entry, empty list or disagreement with a `Files:` declaration makes the list
+unknown. An absent field falls back to the strict declaration for older plans.
+One existing correction attempt asks for a missing or invalid list within the
+existing step budget. A provider that ignores the schema can still omit it;
+the protected-path gate then pauses safely. The stored unknown-list hold suffix
+remains `the plan names no files`; visible words describe the missing checkable
+list rather than claiming the plan names no files in prose.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET

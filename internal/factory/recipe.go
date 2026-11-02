@@ -369,8 +369,11 @@ type StageResult struct {
 	Done     bool
 	Findings int
 	Claims   []Claim
-	Output   string
-	Exit     int
+	// Files is the plan model's repository-relative file list. Nil means the
+	// answer predates the field or omitted it; an empty list stays unknown.
+	Files  []string
+	Output string
+	Exit   int
 	// Notes are sentences the stage leaves for the stages after it; the
 	// runner folds them into the next job's Notes.
 	Notes []string
