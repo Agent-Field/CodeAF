@@ -22,6 +22,10 @@ const StepModelsHeader = "X-Codeaf-Step-Models"
 // StepChatsHeader publishes live chat identities without breaking older strict servers.
 const StepChatsHeader = "X-Codeaf-Step-Chats"
 
+// LeaseWithdrawnHeader marks a rejected lease as replaced by retry or manual
+// control, so its worker cancels execution without reporting a person's Stop.
+const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
+
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {

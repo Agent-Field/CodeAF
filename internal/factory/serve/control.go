@@ -44,7 +44,13 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 			h.fail(w, 422, "This runner cannot stop automatic work.")
 			return
 		}
-		if err := h.seam.Stop(it.ID); h.failed(w, err) {
+		var err error
+		if h.workers != nil && h.workers.desk != nil {
+			err = lease.NewDoors(h.workers.desk).Withdraw(it.ID)
+		} else {
+			err = h.seam.Stop(it.ID)
+		}
+		if h.failed(w, err) {
 			return
 		}
 	}

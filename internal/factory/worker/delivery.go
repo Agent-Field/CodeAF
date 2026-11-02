@@ -157,7 +157,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	}
 	if p.Room != nil && !p.RoomSettled {
 		err := j.sendRequest(ctx, *p.Room)
-		if gone(err) {
+		if j.lostLease(err) {
 			return false
 		}
 		if err != nil && reportRetryable(err) {
@@ -171,7 +171,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	}
 	if !p.Empty {
 		err := j.sendRequest(ctx, p.Request)
-		if gone(err) {
+		if j.lostLease(err) {
 			return false
 		}
 		if err != nil {
@@ -285,7 +285,7 @@ func (j *job) reportBlocked(ctx context.Context) bool {
 	}
 	j.controlTries++
 	err := j.sendRequest(ctx, *j.control)
-	if gone(err) {
+	if j.lostLease(err) {
 		return false
 	}
 	j.controlSent = err == nil

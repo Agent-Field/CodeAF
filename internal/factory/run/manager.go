@@ -63,6 +63,7 @@ const (
 	sayStopped   = "stopped"
 	sayPaused    = "paused"
 	sayResumed   = "resumed"
+	sayTrying    = "trying %s again"
 	saySteer     = "steer: %s"       // what the person typed during a run
 	sayBack      = "sent back to %s" // sent back to plan: <the person's words>, from an approve step
 	saySep       = " · "

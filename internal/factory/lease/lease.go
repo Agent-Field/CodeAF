@@ -47,6 +47,9 @@ var (
 	ErrNotTaken = errors.New("factory lease: job is not taken")
 )
 
+// ErrWithdrawn is a replaced lease, still refused as no longer live.
+var ErrWithdrawn = fmt.Errorf("factory lease: execution withdrawn: %w", ErrNoLease)
+
 // Lease is the persisted and wire shape, so the worker and person survive a
 // server restart without a second registry becoming the ownership authority.
 type Lease struct {
@@ -259,6 +262,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
+		delete(doc.Withdrawn, worker.ID)
 		doc.Leases = append(doc.Leases, taken)
 		if err := d.write(*doc); err != nil {
 			return err

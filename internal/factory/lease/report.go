@@ -80,5 +80,8 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 		}
 		return held, nil
 	}
+	if id != "" && doc.Withdrawn[worker] == id {
+		return nil, ErrWithdrawn
+	}
 	return nil, ErrNoLease
 }

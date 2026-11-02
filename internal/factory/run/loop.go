@@ -1847,6 +1847,26 @@ func (lp *floorLoop) stop(c *loopCtl) {
 	}
 }
 
+// Withdraw cancels execution whose lease was replaced, without recording a
+// person's Stop or changing the replacement's state. Cleanup keeps its bench
+// until the executor has finished, just as Stop does.
+func (r *Runner) Withdraw(id int) {
+	lp := r.loop()
+	c := lp.ctl(id)
+	if c == nil {
+		return
+	}
+	c.wmu.Lock()
+	c.cancel()
+	c.wmu.Unlock()
+	lp.mu.Lock()
+	queued := c.benchNo == 0 && !c.reverify
+	lp.mu.Unlock()
+	if queued {
+		lp.release(c)
+	}
+}
+
 // Stop ends a stream and keeps its branch; the item returns to new.
 func (r *Runner) Stop(id int) error {
 	lp := r.loop()
@@ -2115,20 +2135,27 @@ func (r *Runner) revive(it factory.Item) error {
 		}
 	}
 	lp.mu.Unlock()
+	line := sayResumed
+	if i := nextPhase(it.Stream.Phases); i >= 0 {
+		ph := it.Stream.Phases[i]
+		if ph.State == factory.PhasePending && ph.Round > 0 {
+			line = fmt.Sprintf(sayTrying, ph.Name)
+		}
+	}
 	now := r.now()
-	err := lp.move(c, "", EventResumed, sayResumed, func(it *factory.Item) error {
+	err := lp.move(c, "", EventResumed, line, func(it *factory.Item) error {
 		if !storedPaused(*it) {
 			return fmt.Errorf("%s is not paused", it.Ref())
 		}
 		it.Stream.Paused = false
-		loopSay(it, now, "said", sayResumed)
+		loopSay(it, now, "said", line)
 		return nil
 	})
 	if err != nil {
 		lp.forget(c)
 		return err
 	}
-	lp.tell(id, sayResumed)
+	lp.tell(id, line)
 	lp.enqueue(c)
 	return nil
 }

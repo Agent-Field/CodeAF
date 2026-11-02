@@ -20,6 +20,9 @@ type document struct {
 	// collected, keyed by job id. They live beside the leases, under the same
 	// lock, so a verb and the hold it is meant for can never disagree.
 	Signals map[int][]Signal `json:"signals,omitempty"`
+	// Withdrawn keeps the last replaced lease for each worker until its next
+	// pull. Losing execution authority is different from a person's Stop.
+	Withdrawn map[string]string `json:"withdrawn,omitempty"`
 }
 
 // Path names the shared document beside the factory's numbered job files.
