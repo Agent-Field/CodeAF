@@ -638,6 +638,11 @@ type Item struct {
 	Asking *Asked
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
+	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at
+	// most [BriefKeep]; nil before the first is written. BriefWriting is the
+	// next version on its way, or the last write that failed.
+	Briefs       []BriefVersion `json:",omitempty"`
+	BriefWriting *BriefWriting  `json:",omitempty"`
 	// Adapted is what was changed about the item's stages, one line each in
 	// the order it changed them, each starting with who changed them
 	// (`manager set review: …`, `plan added arch`), `why: …` last: the record
