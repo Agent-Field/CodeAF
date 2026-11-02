@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -645,5 +646,61 @@ func TestFactoryResumeChat(t *testing.T) {
 				t.Fatalf("manager chat has %d resumed lines, want 1", count)
 			}
 		})
+	}
+}
+
+// The journal is the external failure seam; a refused append must stay owed.
+type retryResumeTalk struct {
+	sessionTalk
+	failed atomic.Bool
+}
+
+func (talk *retryResumeTalk) Say(path, line string, step *factory.StepProgress) error {
+	if line == "resumed" && !talk.failed.Swap(true) {
+		return errors.New("journal temporarily unavailable")
+	}
+	return talk.sessionTalk.Say(path, line, step)
+}
+
+func TestFactoryResumeChatRetries(t *testing.T) {
+	s, status := newPauseSetup(t)
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	floor := s.backend.local.host.floor
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning, Stream: &factory.Stream{Paused: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chats appwire.FactoryJobChats
+	s.must("factory.job_chats", map[string]any{"factory": status.Factory, "job": it.ID}, &chats)
+	desk, err := lease.Open(floor, lease.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doors := lease.NewDoors(desk).WithTalk(&retryResumeTalk{})
+	if err := doors.Hold(it.ID, false); err != nil {
+		t.Fatalf("Resume failed after queueing: %v", err)
+	}
+	if err := doors.Hold(it.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var page appwire.EntriesResult
+		s.must("agents.entries", map[string]any{"id": chats.Agent, "limit": 200}, &page)
+		count := 0
+		for _, e := range page.Entries {
+			if e.Text == "resumed" {
+				count++
+			}
+		}
+		if count == 1 {
+			break
+		}
+		if count > 1 || time.Now().After(deadline) {
+			t.Fatalf("retry wrote %d resumed lines, want 1", count)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
