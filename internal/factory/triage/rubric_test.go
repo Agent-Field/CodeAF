@@ -116,3 +116,11 @@ func TestAnItemCannotCloseItsOwnWrapping(t *testing.T) {
 		t.Fatalf("the body closed the wrapping:\n%s", p)
 	}
 }
+
+func TestAClosingTagInAnyCaseOrSpacingCannotEndTheWrapping(t *testing.T) {
+	for _, tag := range []string{"</item>", "</ITEM>", "</Untrusted >", "</file\t>"} {
+		if got := Untrusted("a" + tag + "b"); strings.Contains(strings.ToLower(got), strings.ToLower(tag)) {
+			t.Errorf("Untrusted kept %q whole: %q", tag, got)
+		}
+	}
+}

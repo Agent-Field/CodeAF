@@ -281,6 +281,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// on GitHub, so the team server does it too.
 		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
+		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryPipelineRead(ctx, st, repo, dir)

@@ -43,9 +43,7 @@ func factoryPublisherWith(profileDir string, client func(string) factorygithub.A
 		}
 		// ONE ATTEMPT, ONE TOKEN. Reconnecting while a push is underway must
 		// not open its pull request as a different GitHub account.
-		return factoryrun.PublishTarget{
-			Source: factorygithub.New(api, []string{repo}, nil),
-			Push:   factoryrun.GitPush(factoryrun.ExecGit{Token: func() string { return token }}),
-		}, nil
+		git := factoryrun.ExecGit{Token: func() string { return token }}
+		return factoryrun.PublishTarget{Source: factorygithub.New(api, []string{repo}, nil), Push: factoryrun.GitPush(git), Git: git}, nil
 	}
 }

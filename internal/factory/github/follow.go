@@ -52,7 +52,7 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
 		Conflict: p.Mergeable != nil && !*p.Mergeable,
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
-		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, Mergeable: mergeableWord(p.Mergeable),
+		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
 	}
 	// Terminal metadata is authoritative even when optional APIs are unavailable.
 	if out.State != factory.PROpen {

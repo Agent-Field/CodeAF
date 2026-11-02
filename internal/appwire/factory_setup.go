@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -79,12 +80,17 @@ const (
 	SetupVerbSkip       = "skip"
 	SetupVerbBack       = "back"
 	SetupVerbDone       = "done"
+	SetupVerbContinue   = "continue"
 	SetupSourceGH       = "gh"
 	SetupSourceToken    = "token"
 	MaxFactorySetupRepo = 100
 	MaxSetupFolder      = 1024
 	MaxSetupToken       = 512
 )
+
+// FeatureFactorySetupContinue is announced in hello when factory.setup_continue
+// ends reading before every selected repository is read.
+const FeatureFactorySetupContinue = "factory.setup_continue"
 
 // FactoryLocalParams is the whole request of the local methods that take no
 // more than who is asking.
@@ -137,12 +143,15 @@ type FactorySetupGitHub struct {
 // checkout is chosen or found. Read counts issues read so far; Clone has no
 // percentage because the factory reports none.
 type FactorySetupRepo struct {
-	ID              string     `json:"id"`
-	OpenIssues      int        `json:"open_issues"`
+	ID         string `json:"id"`
+	OpenIssues int    `json:"open_issues"`
+	// OpenIssuesExact is true when OpenIssues counts issues alone; false is
+	// GitHub's count of issues and pull requests together.
+	OpenIssuesExact bool       `json:"open_issues_exact"`
 	Pipeline        string     `json:"pipeline,omitempty" enum:"file,defaults"`
 	Archived        bool       `json:"archived"`
 	Selected        bool       `json:"selected"`
-	Read            string     `json:"read" enum:"next,reading,done,empty,waiting,rate_limited"`
+	Read            string     `json:"read" enum:"next,reading,done,empty,waiting,rate_limited,skipped"`
 	ReadCount       int        `json:"read_count"`
 	WaitingS        int        `json:"waiting_s,omitempty"`
 	ResumesAt       *time.Time `json:"resumes_at,omitempty"`
@@ -232,6 +241,13 @@ func withFactoryLocalFeature(hello Hello, e Engine) Hello {
 	return hello
 }
 
+func withFactorySetupContinueFeature(hello Hello, e Engine) Hello {
+	if _, err := factoryLocalOf(e, "factory.setup_continue"); err == nil {
+		hello = withFeature(hello, FeatureFactorySetupContinue)
+	}
+	return hello
+}
+
 func factoryLocalOf(e Engine, name string) (FactoryLocal, error) {
 	l, ok := e.(FactoryLocal)
 	if _, isFactory := e.(Factory); !ok || !isFactory {
@@ -240,13 +256,19 @@ func factoryLocalOf(e Engine, name string) (FactoryLocal, error) {
 	return l, nil
 }
 
-// setupFolder is a folder the person chose: absolute or "~/…", one line.
+// windowsFullPath is a Windows drive path from its root (C:\ or C:/) or a
+// share (\\server\share). A drive letter with no separator after it is
+// relative to that drive's current folder, so it is not a full path.
+var windowsFullPath = regexp.MustCompile(`^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)`)
+
+// setupFolder is a folder the person chose, one line: a full path of any
+// platform, or one under their home ("~/…", or "~\…" on Windows).
 func setupFolder(folder string) (string, error) {
 	folder = strings.TrimSpace(folder)
 	if folder == "" || len(folder) > MaxSetupFolder || strings.IndexFunc(folder, unicode.IsControl) >= 0 {
 		return "", Errorf(CodeBadParams, "folder is required, one line, at most %d characters", MaxSetupFolder)
 	}
-	if !strings.HasPrefix(folder, "/") && !strings.HasPrefix(folder, "~/") && !(len(folder) > 2 && folder[1] == ':') {
+	if !strings.HasPrefix(folder, "/") && !strings.HasPrefix(folder, "~/") && !strings.HasPrefix(folder, `~\`) && !windowsFullPath.MatchString(folder) {
 		return "", Errorf(CodeBadParams, "folder must be a full path or start with ~/")
 	}
 	return folder, nil
@@ -378,6 +400,7 @@ func init() {
 		"factory.setup_discover": factorySetupCall("factory.setup_discover", plainSetup(SetupVerbDiscover)),
 		"factory.setup_back":     factorySetupCall("factory.setup_back", plainSetup(SetupVerbBack)),
 		"factory.setup_done":     factorySetupCall("factory.setup_done", plainSetup(SetupVerbDone)),
+		"factory.setup_continue": factorySetupCall("factory.setup_continue", plainSetup(SetupVerbContinue)),
 		"factory.setup_connect": factorySetupCall("factory.setup_connect", func(p FactorySetupConnectParams) (string, FactorySetupAct, error) {
 			caller, err := factoryCaller(p.Caller)
 			if err != nil {

@@ -41,7 +41,7 @@ func TestTheShownSizeNeverGrantsAStart(t *testing.T) {
 			if got := intake.Job(it).Size; got != factory.JobSize(it) {
 				t.Fatalf("intake sized the job %q, the label says %q", got, factory.JobSize(it))
 			}
-			d := f.DecideJob(it, intake.Job(it).Paths)
+			d := f.DecideJob(it, intake.Job(it).Paths, pipeline.Measured{})
 			if d.Start != tc.start || d.Ask == tc.start || (tc.reason != "" && !strings.Contains(strings.Join(d.Reasons, "; "), tc.reason)) {
 				t.Fatalf("decision %+v", d)
 			}
