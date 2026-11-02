@@ -41,9 +41,11 @@ func TestAppSearchJobs(t *testing.T) {
 	t.Run("local queue before any desk read", func(t *testing.T) {
 		s := newLocalSetup(t)
 		st := s.start()
+		var resumes atomic.Int32
+		s.backend.factories.resume = func(context.Context) { resumes.Add(1) }
 		var jobs []factory.Item
 		for _, it := range []factory.Item{
-			{Repo: "acme/api", Num: 12, Kind: factory.KindIssue, Title: "Repair Webhook delivery", Body: "Handle the kumquat header", State: factory.StateNew},
+			{Repo: "acme/api", Num: 12, Kind: factory.KindIssue, Title: "Repair Webhook delivery", Ask: &factory.JobAsk{Text: "Handle the kumquat header"}, State: factory.StateNew},
 			{Repo: "acme/api", Num: 13, Kind: factory.KindIssue, Title: "Webhook retries", State: factory.StateNew},
 			{Repo: "acme/api", Num: 14, Kind: factory.KindIssue, Title: "Webhook abandoned", State: factory.StateShipped, DoneHow: "dropped", DoneAt: time.Now()},
 		} {
@@ -53,9 +55,6 @@ func TestAppSearchJobs(t *testing.T) {
 			}
 			jobs = append(jobs, kept)
 		}
-		// Read the public queue to establish exactly which detail text it carries.
-		var q api.Queue
-		s.must("factory.queue", map[string]any{"factory": st.Factory}, &q)
 		for _, query := range []string{"DELIVERY", "12", "#12", "api#12", "ACME/API#12"} {
 			hits := search(t, s.factoryWire, query, 8)
 			if len(hits) != 1 {
@@ -69,18 +68,17 @@ func TestAppSearchJobs(t *testing.T) {
 				t.Fatalf("job has agent: %v", h)
 			}
 		}
-		for _, j := range q.Jobs {
-			if j.ID == jobs[0].ID && j.Ask != nil && strings.Contains(j.Ask.Text, "kumquat") {
-				if hits := search(t, s.factoryWire, "KUMQUAT", 8); len(hits) != 1 {
-					t.Fatalf("detail: %v", hits)
-				}
-			}
+		if hits := search(t, s.factoryWire, "KUMQUAT", 8); len(hits) != 1 {
+			t.Fatalf("detail: %v", hits)
 		}
 		if hits := search(t, s.factoryWire, "webhook", 1); len(hits) != 1 {
 			t.Fatalf("limit: %v", hits)
 		}
 		if hits := search(t, s.factoryWire, "abandoned", 8); len(hits) != 0 {
 			t.Fatalf("dropped job: %v", hits)
+		}
+		if resumes.Load() != 0 {
+			t.Fatal("search tried to resume the running factory")
 		}
 		if !strings.Contains(s.hello, `"search.jobs"`) {
 			t.Fatal("hello omitted search.jobs")
@@ -151,6 +149,39 @@ func TestAppSearchJobs(t *testing.T) {
 		p := signedIn(t, f, 1, "alice")
 		if hits := search(t, p.w, "kumquat", 8); len(hits) != 0 {
 			t.Fatalf("private job leaked: %v", hits)
+		}
+	})
+	t.Run("schema names job fields and keeps agent optional", func(t *testing.T) {
+		raw, err := appwire.SchemaJSON()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema struct {
+			Defs map[string]struct {
+				Properties map[string]struct {
+					Type string
+					Enum []string
+				}
+				Required []string
+			} `json:"$defs"`
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"Hit", "HitGroup"} {
+			kinds := schema.Defs[name].Properties["kind"].Enum
+			if strings.Join(kinds, ",") != "agent,crew,task,message,job" {
+				t.Fatalf("%s kind enum: %v", name, kinds)
+			}
+		}
+		hit := schema.Defs["Hit"]
+		if strings.Join(hit.Required, ",") != "kind,id,title" {
+			t.Fatalf("required hit fields: %v", hit.Required)
+		}
+		for name, typ := range map[string]string{"factory": "string", "document_id": "integer", "repo": "string", "number": "integer", "state": "string"} {
+			if hit.Properties[name].Type != typ {
+				t.Fatalf("%s schema: %+v", name, hit.Properties[name])
+			}
 		}
 	})
 	t.Run("older hit JSON stays identical", func(t *testing.T) {

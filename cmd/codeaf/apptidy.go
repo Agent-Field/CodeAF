@@ -314,7 +314,7 @@ func (b *appBackend) sayAgent(a *appAgent) appwire.Agent {
 	return view
 }
 
-// SearchAll finds the query among agents, crews, tasks and what was said.
+// SearchAll finds the query among agents, crews, tasks, messages and factory jobs.
 func (b *appBackend) SearchAll(query string, perGroup int) ([]appwire.HitGroup, error) {
 	needle := strings.ToLower(query)
 	agents, err := b.ListAgents("")
@@ -350,7 +350,7 @@ func (b *appBackend) SearchAll(query string, perGroup int) ([]appwire.HitGroup, 
 			}
 		}
 	}
-	return []appwire.HitGroup{agentHits, crewHits, taskHits, messageHits}, nil
+	return []appwire.HitGroup{agentHits, crewHits, taskHits, messageHits, {Kind: appwire.HitJob, Hits: b.SearchJobs(query, perGroup)}}, nil
 }
 
 // appKnownTime is a time to put on the wire, and nil for the zero time, which
