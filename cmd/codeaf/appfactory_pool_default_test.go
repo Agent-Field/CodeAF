@@ -55,7 +55,7 @@ func TestAppFactoryModelPoolRequiresOptIn(t *testing.T) {
 		s := newLocalSetup(t)
 		t.Setenv("CODEAF_MODEL_POOL", "")
 		t.Setenv("CI", "")
-		const model = "chosen-vendor/chosen-model"
+		const model = "deepseek/deepseek-v4.1-flash"
 		var calls atomic.Int64
 		endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -76,17 +76,22 @@ func TestAppFactoryModelPoolRequiresOptIn(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"model": model, "choices": []any{map[string]any{"message": map[string]any{"content": briefDraft}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 20, "completion_tokens": 5, "cost": .01}})
 		}))
 		t.Cleanup(endpoint.Close)
-		profile := filepath.Join(s.home, "chosen-profile")
-		s.backend.open = func(ask appOpenAsk) (*appConn, error) {
-			agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: profile, Model: model, APIKey: "fixture", BaseURL: endpoint.URL, JobChat: jobChatDoorOf(s.backend.local.host.floor), Unattended: true, DeterministicNames: true})
-			if err != nil {
-				return nil, err
-			}
-			return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
-		}
+		profile := v3Profile(t, map[string]any{
+			"model.talk": model, "models.tiers.low": model,
+			"models.tiers.reflex": model, "models.tiers.worker": model,
+			"models.tiers.high": model, "models.tiers.mastermind": model,
+		})
+		t.Setenv(config.ProfileDirEnv, profile)
+		t.Setenv("OPENROUTER_API_KEY", "fixture")
+		t.Setenv("CODEAF_BASE_URL", endpoint.URL)
+		t.Setenv("CODEAF_MODEL_POOL_URL", endpoint.URL+"/index.json")
+		t.Setenv("CODEAF_MODEL_POOL_MIRROR_URL", "")
+		t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", endpoint.URL+"/rows")
+		freshEngineProcess(t)
+		s.backend.open = appOpenInProcess
 		st := s.start()
 		floor := s.backend.local.host.floor
-		it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
+		it, err := floor.Create(factory.Item{Model: model, Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,6 +119,8 @@ func TestAppFactoryModelPoolRequiresOptIn(t *testing.T) {
 		if recorded != 1 {
 			t.Fatalf("recorded calls=%d, want 1", recorded)
 		}
+		// Join the production startup sweep before checking that it wrote nothing.
+		closeEngineProcess()
 		if _, err := os.Stat(config.ProfilePath(profile, "pool")); !os.IsNotExist(err) {
 			t.Fatalf("off pool created records: %v", err)
 		}

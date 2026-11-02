@@ -113,12 +113,12 @@ func TestResolveModeFromCI(t *testing.T) {
 		{"ci zero is not an answer", "", envOf(map[string]string{"CI": "0"}), Off, "default"},
 		{"ci no is not an answer", "", envOf(map[string]string{"CI": "no"}), Off, "default"},
 		{"ci set and empty is not an answer", "", envOf(map[string]string{"CI": ""}), Off, "default"},
-		{"ci reads when the setting is unknown", "maybe", envOf(map[string]string{"CI": "true"}), Off, "default"},
-		{"ci reads when the setting is blank", "  ", envOf(map[string]string{"CI": "1"}), Off, "default"},
+		{"ci stays off when the setting is unknown", "maybe", envOf(map[string]string{"CI": "true"}), Off, "default"},
+		{"ci stays off when the setting is blank", "  ", envOf(map[string]string{"CI": "1"}), Off, "default"},
 		{"setting beats ci", "off", envOf(map[string]string{"CI": "true"}), Off, "setting"},
 		{"env on beats ci", "off", envOf(map[string]string{"CI": "true", "CODEAF_MODEL_POOL": "on"}), On, "env"},
 		{"env off beats ci", "on", envOf(map[string]string{"CI": "true", "CODEAF_MODEL_POOL": "off"}), Off, "env"},
-		{"env unknown and setting unknown leave ci", "maybe", envOf(map[string]string{"CI": "true", "CODEAF_MODEL_POOL": "maybe"}), Off, "default"},
+		{"unknown words stay off in ci", "maybe", envOf(map[string]string{"CI": "true", "CODEAF_MODEL_POOL": "maybe"}), Off, "default"},
 	}
 	for _, c := range cases {
 		got := Resolve(c.setting, "", c.lookup)
@@ -130,8 +130,7 @@ func TestResolveModeFromCI(t *testing.T) {
 
 // TestResolveModeUnderTheTelemetryOffSwitch is the law the notice rests on:
 // "Turn off: CODEAF_TELEMETRY=off" is true of everything that leaves, so the
-// switch caps the pool at Read for an
-// explicit `on` from the setting or the environment — and leaves Read and Off
+// switch caps the pool at Read for an explicit `on` from the setting or the environment — and leaves Read and Off
 // as they were, because they already send nothing.
 func TestResolveModeUnderTheTelemetryOffSwitch(t *testing.T) {
 	cases := []struct {
@@ -141,19 +140,19 @@ func TestResolveModeUnderTheTelemetryOffSwitch(t *testing.T) {
 		want    Mode
 		wantSrc string
 	}{
-		{"telemetry off caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Off, "default"},
-		{"telemetry 0 caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY": "0"}), Off, "default"},
+		{"telemetry off leaves the default off", "", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Off, "default"},
+		{"telemetry 0 leaves the default off", "", envOf(map[string]string{"CODEAF_TELEMETRY": "0"}), Off, "default"},
 		{"telemetry false, padded and mixed case", "", envOf(map[string]string{"CODEAF_TELEMETRY": "  False "}), Off, "default"},
-		{"do not track 1 caps the default", "", envOf(map[string]string{"DO_NOT_TRACK": "1"}), Off, "default"},
-		{"do not track true caps the default", "", envOf(map[string]string{"DO_NOT_TRACK": "true"}), Off, "default"},
-		{"an empty endpoint caps the default", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": ""}), Off, "default"},
+		{"do not track 1 leaves the default off", "", envOf(map[string]string{"DO_NOT_TRACK": "1"}), Off, "default"},
+		{"do not track true leaves the default off", "", envOf(map[string]string{"DO_NOT_TRACK": "true"}), Off, "default"},
+		{"an empty endpoint leaves the default off", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": ""}), Off, "default"},
 		{"a blank endpoint caps an explicit env on", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": "   ", "CODEAF_MODEL_POOL": "on"}), Read, "telemetry"},
 		{"a set endpoint does not cap", "", envOf(map[string]string{"CODEAF_TELEMETRY_ENDPOINT": "https://example.test/t"}), Off, "default"},
 		{"telemetry off caps an explicit setting on", "on", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "telemetry"},
 		{"telemetry off caps an explicit env on", "off", envOf(map[string]string{"CODEAF_TELEMETRY": "off", "CODEAF_MODEL_POOL": "on"}), Read, "telemetry"},
 		{"telemetry off leaves read as read", "read", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Read, "setting"},
 		{"telemetry off leaves off as off", "off", envOf(map[string]string{"CODEAF_TELEMETRY": "off"}), Off, "setting"},
-		{"telemetry off leaves ci as ci", "", envOf(map[string]string{"CODEAF_TELEMETRY": "off", "CI": "true"}), Off, "default"},
+		{"telemetry off leaves ci off", "", envOf(map[string]string{"CODEAF_TELEMETRY": "off", "CI": "true"}), Off, "default"},
 		{"telemetry on is not an answer", "", envOf(map[string]string{"CODEAF_TELEMETRY": "on"}), Off, "default"},
 		{"telemetry set and empty is not an answer", "", envOf(map[string]string{"CODEAF_TELEMETRY": ""}), Off, "default"},
 		{"do not track 0 is not an answer", "", envOf(map[string]string{"DO_NOT_TRACK": "0"}), Off, "default"},
