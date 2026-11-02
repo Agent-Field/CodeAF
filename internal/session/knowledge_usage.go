@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/knowledge"
@@ -79,10 +81,57 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 			break
 		}
 	}
+	if err := a.captureJobKnowledgeTasks(ctx, j); err != nil {
+		return
+	}
 	key := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).Default().Key
 	if err := j.vault.Flush(provider.WithSession(ctx, a.id), key, true); err != nil && ctx.Err() == nil {
 		j.mu.Lock()
 		j.lastError = err.Error()
 		j.mu.Unlock()
 	}
+}
+
+// Task source identities remain intact so saved citations still name the report.
+// The owning turn admits them; idle compilation must never buy work for a job.
+func (a *Agent) captureJobKnowledgeTasks(ctx context.Context, j *knowledgeJournal) error {
+	if a.config.Place.Dir == "" {
+		return nil
+	}
+	history := KnowledgeHistory(filepath.Dir(filepath.Dir(a.config.Place.Dir)), a.config.ProfileDir)
+	journals, err := history.Inventory(ctx)
+	if err != nil {
+		return err
+	}
+	_, since := j.vault.ConfirmConsent()
+	for _, journal := range journals {
+		if !strings.HasPrefix(journal.Session, "task:"+a.id+":") {
+			continue
+		}
+		cursor := knowledge.JournalCursor{Scope: journal.Project}
+		for cursor.Offset < journal.Size {
+			batch, err := history.Read(ctx, journal, cursor)
+			if err != nil {
+				return err
+			}
+			for _, source := range batch.Sources {
+				stamp, err := time.Parse(time.RFC3339Nano, source.TS)
+				if err != nil {
+					return err
+				}
+				if stamp.Before(since) {
+					continue
+				}
+				source.Job = true
+				if err := j.vault.Capture(source); err != nil {
+					return err
+				}
+			}
+			if batch.Cursor.Offset <= cursor.Offset {
+				break
+			}
+			cursor = batch.Cursor
+		}
+	}
+	return nil
 }

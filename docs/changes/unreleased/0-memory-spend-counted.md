@@ -18,3 +18,6 @@ Existing historical ledger gaps are not reconstructed.
 
 Old job chats with factory-owner.json remain owned even after their roster
 entry disappears, so background memory does not spend for them.
+
+Delegated task reports compile with their owning job turn, keep their citation
+identities, and charge the same job instead of remaining pending indefinitely.

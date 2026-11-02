@@ -211,7 +211,7 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 		previous = repaired
 		revision++
 	}
-	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(e.payload,'$.job'),0)=0) OR (?<>'' AND json_extract(e.payload,'$.session')=?)) ORDER BY e.arrived,e.id LIMIT 64", partition, through, provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx))
+	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(e.payload,'$.job'),0)=0) OR (?<>'' AND (json_extract(e.payload,'$.session')=? OR substr(json_extract(e.payload,'$.session'),1,length(?))=?))) ORDER BY e.arrived,e.id LIMIT 64", partition, through, provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx), "task:"+provider.SessionFrom(model.ctx)+":", "task:"+provider.SessionFrom(model.ctx)+":")
 	if err != nil {
 		return nil, err
 	}
@@ -307,6 +307,6 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 
 func pendingCompilerSources(db *sql.DB, owner string, through int64) (int, error) {
 	var pending int
-	err := db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND json_extract(payload,'$.session')=?))", through, owner, owner, owner).Scan(&pending)
+	err := db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND (json_extract(payload,'$.session')=? OR substr(json_extract(payload,'$.session'),1,length(?))=?)))", through, owner, owner, owner, "task:"+owner+":", "task:"+owner+":").Scan(&pending)
 	return pending, err
 }
