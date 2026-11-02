@@ -303,6 +303,10 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	// Following is whether the CALLER follows this job ([ForViewer]); absent
+	// is not following. Nobody else's following is ever answered.
+	Following bool `json:"following,omitempty"`
+
 	AutonomyWhy    string              `json:"autonomy_why,omitempty"`
 	Autonomy       string              `json:"autonomy,omitempty"`
 	FollowPR       bool                `json:"follow_pr,omitempty"`

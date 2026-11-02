@@ -478,6 +478,10 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// Followers are the people who follow this job, by normalised handle
+	// (followers.go). Each person reads only whether they follow it.
+	Followers []string `json:",omitempty"`
+
 	// Autonomy is explicit on new jobs. Missing on older jobs means manual.
 	Autonomy string      `json:",omitempty"`
 	Manual   bool        `json:",omitempty"`
