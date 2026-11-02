@@ -1561,8 +1561,14 @@ func NoteContinue(it *factory.Item, now time.Time) bool {
 	if !factory.ContinueJob(it) {
 		return false
 	}
-	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
+	NoteRaised(it, now)
 	return true
+}
+
+// NoteRaised says on the job's timeline that its budget now stands at its
+// cap and the job carries on.
+func NoteRaised(it *factory.Item, now time.Time) {
+	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 }
 
 // failStop records a step that errored and stops the job. The failure is not

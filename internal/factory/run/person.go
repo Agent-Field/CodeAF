@@ -157,9 +157,14 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // loop.go): the step before the gate runs again in a new round, the gate waits
 // again after it, and the words are kept on the item's notes so that round's
 // brief carries them. A yes never passes more than the one gate it answers, and
-// nothing here starts a run: the job is queued for a worker to pull. Every
+// nothing here starts a run: the job is queued for a worker to pull. A
+// continue at the budget queues the job the same way ([ReleaseCap]). Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if it.QKind == "cap" && factory.IsContinue(yes, words) {
+		ReleaseCap(it, now)
+		return nil
+	}
 	if it.QKind == factory.QKindOutOfAttempts && it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 		i := it.Stream.Cur
 		ph := &it.Stream.Phases[i]
@@ -249,6 +254,16 @@ func repairMisfiledGate(s *factory.Stream) {
 	// State only: the step's finish time is kept, and its result and rounds stay.
 	ph.State = factory.PhaseDone
 	s.Cur++
+}
+
+// ReleaseCap takes down the budget question of a job no runner waits on and
+// queues it again: its step carries on from where the cap stopped it.
+func ReleaseCap(it *factory.Item, now time.Time) {
+	it.Question, it.QKind, it.Asking = "", "", nil
+	it.State = factory.StateQueued
+	if s := it.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		setPhaseState(&s.Phases[s.Cur], factory.PhaseRunning, now)
+	}
 }
 
 // KeepAnswer is an answer to a job no worker holds any more: it is kept for

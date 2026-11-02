@@ -492,11 +492,10 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			if s.Budget <= 0 {
 				continue
 			}
+			// The cap only: a raise that lets the job carry on arrives as
+			// the person's answer, after this.
 			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Cap = s.Budget; return nil }); err != nil {
 				return false
-			}
-			if it, err := j.o.Mirror.Get(j.id); s.Yes && err == nil && it.QKind == "cap" && s.Budget > factory.JobSpent(it) && factory.Automatic(it) && !it.Publishing {
-				_ = r.Answer(j.id, true, factory.ChoiceContinue)
 			}
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)

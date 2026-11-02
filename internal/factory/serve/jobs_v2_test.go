@@ -1089,7 +1089,7 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 }
 
 func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
-	for _, mode := range []string{"auto", "manual", "takeover", "critical"} {
+	for _, mode := range []string{"auto", "auto asked", "manual", "takeover", "critical", "other ask"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newV2Jobs(t)
 			it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
@@ -1102,6 +1102,10 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				case "critical":
 					cur.QKind = "scope"
 					cur.Question = "Choose the public API"
+				case "auto asked":
+					cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+				case "other ask":
+					cur.Asking = &factory.Asked{Question: "Choose the public API", With: factory.AskedYou}
 				}
 				return nil
 			})
@@ -1110,8 +1114,8 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 			if got.Cap != 10 || got.Stream.Spent != 5 || f.st.PollNudged().IsZero() {
 				t.Fatal("cap did not persist or wake observation")
 			}
-			if mode == "auto" {
-				if got.State != factory.StateQueued || got.Question != "" {
+			if strings.HasPrefix(mode, "auto") {
+				if got.State != factory.StateQueued || got.Question != "" || got.Asking != nil {
 					t.Fatal("automatic cap recovery stranded")
 				}
 			} else if got.State != factory.StateNeedsYou || got.Question == "" {

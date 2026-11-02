@@ -667,9 +667,8 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 		h.fail(w, 422, "choose a budget: 5, 10, 20 or 30 USD")
 		return
 	}
-	_, held := h.holdOf(it.ID)
 	var budgetRefused error
-	resumeCap := false
+	var parked *factory.Item
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if body.Budget < factory.JobSpent(*cur) {
@@ -677,17 +676,10 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && body.Budget > factory.JobSpent(*cur) && factory.Automatic(*cur) && !cur.Publishing && cur.Asking == nil {
-				resumeCap = true
-				cur.State = factory.StateQueued
-				if held {
-					cur.State = factory.StateRunning
-				}
-				cur.Question = ""
-				cur.QKind = ""
-				if cur.Stream != nil && cur.Stream.Cur >= 0 && cur.Stream.Cur < len(cur.Stream.Phases) && cur.Stream.Phases[cur.Stream.Cur].State == factory.PhaseWaiting {
-					cur.Stream.Phases[cur.Stream.Cur].State = factory.PhaseRunning
-				}
+			if capResumes(*cur) {
+				asked := *cur
+				parked = &asked
+				run.NoteRaised(cur, h.now())
 			}
 			return nil
 		})
@@ -702,10 +694,25 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	// A budget edit does not queue a published PR from stale observations.
 	// Wake the read-only poll; its fresh snapshot releases spending-owned work.
 	_ = h.config.Store.NudgePoll()
+	// The runner hears the new cap before the continue, so it carries on
+	// under the cap the person chose and never doubles the old one.
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: resumeCap})
+		if _, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget}); h.failed(w, err) {
+			return
+		}
+	}
+	if parked != nil {
+		err = h.continueCap(r, *parked, factory.ChoiceContinue)
 	}
 	h.finish(w, err)
+}
+
+// capResumes is a raise that lets an Auto job parked at its budget carry on:
+// the one open ask is the cap question, and the new cap clears the spend. A
+// Manual job, any other ask, and a cap at or under the spend stay parked.
+func capResumes(it factory.Item) bool {
+	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
+	return asksCap && it.Cap > factory.JobSpent(it) && factory.Automatic(it) && !it.Publishing
 }
 
 // jobModelMost is the longest model id a job keeps.
