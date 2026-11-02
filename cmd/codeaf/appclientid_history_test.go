@@ -36,7 +36,6 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 	appTurnDoneFor(t, rec, appSendMessageWhenIdle(t, first, agent.ID, appwire.AgentMessage{Text: "anonymous words"}))
 	// An id the record would not keep refuses the message before the model or
 	// the record hears of it.
-	asked := len(appModelRequests(model))
 	// A memory request for the preceding accepted exchange may arrive while
 	// the next message is being refused. Replay it at that exact boundary.
 	response, err := http.Post(model.server.URL+"/chat/completions", "application/json", strings.NewReader(`{"messages":[{"role":"system","content":"You read one exchange between a person and an assistant."},{"role":"user","content":"USER:\nanonymous words\n\nASSISTANT:\ndone\n\nKEPT:\n(nothing yet)"}]}`))
@@ -48,14 +47,19 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 	if wireCode(err) != appwire.CodeBadParams {
 		t.Fatalf("an oversize client id answered %v", err)
 	}
-	if got := len(appModelRequests(model)); got != asked {
-		t.Fatalf("a refused message asked the model %d times", got-asked)
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
 	}
+	closed = true
 	named, anonymous := false, false
+	refused := 0
 	for _, request := range appModelRequests(model)[before:] {
 		joined := strings.Join(request.texts(), "\n")
 		named = named || strings.Contains(joined, "named words")
 		anonymous = anonymous || strings.Contains(joined, "anonymous words")
+		if strings.Contains(joined, "too named") {
+			refused++
+		}
 		if strings.Contains(joined, "p-1") {
 			t.Fatalf("the client id reached the model: %q", joined)
 		}
@@ -63,10 +67,9 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 	if !named || !anonymous {
 		t.Fatal("the model was not sent both messages' words")
 	}
-	if err := first.Close(); err != nil {
-		t.Fatal(err)
+	if refused != 0 {
+		t.Fatalf("a refused message asked the model %d times", refused)
 	}
-	closed = true
 
 	second := newAppBackend(newAppRecorder(), appOpenInProcess)
 	defer second.Close()
