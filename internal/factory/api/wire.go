@@ -97,6 +97,43 @@ type QueueDesk struct {
 	// Checkouts has no omitempty ON PURPOSE: null is a seam that does not
 	// say, and {} is a seam that knows no checkout ([factory.Snapshot]).
 	Checkouts map[string]string `json:"checkouts"`
+	// Estimates is how good the measured ranges are: how many finished jobs
+	// the factory can see, and how many backtested ones spent inside their
+	// range ("8 of 10 inside the range").
+	Estimates *Calibration `json:"estimates,omitempty"`
+}
+
+// Estimate is one job's measured range (desk): dollars and minutes from the
+// median to the 80th percentile of N similar finished jobs, in Repo (absent:
+// every repository). Widened says misses widened it.
+type Estimate struct {
+	USDLo   float64 `json:"usd_lo"`
+	USDHi   float64 `json:"usd_hi"`
+	MinLo   int     `json:"min_lo"`
+	MinHi   int     `json:"min_hi"`
+	N       int     `json:"n"`
+	Repo    string  `json:"repo,omitempty"`
+	Widened bool    `json:"widened,omitempty"`
+	// Left is a running job's likely spend from here to its end, from the
+	// similar finished jobs that spent at least what it has so far; absent
+	// below five such jobs. A running job with Left but no whole figure has
+	// n 0 and no usd_lo or usd_hi to read.
+	Left *Left `json:"left,omitempty"`
+}
+
+// Left is what a running job will likely spend from now (desk).
+type Left struct {
+	USDLo float64 `json:"usd_lo"`
+	USDHi float64 `json:"usd_hi"`
+	N     int     `json:"n"`
+}
+
+// Calibration is the measured ranges' record (desk): Jobs finished jobs
+// seen, Hit of Of backtested ones inside their range.
+type Calibration struct {
+	Jobs int `json:"jobs"`
+	Hit  int `json:"hit"`
+	Of   int `json:"of"`
 }
 
 // Since is the handover: what happened since the person last looked.
@@ -365,6 +402,10 @@ type Job struct {
 	WaitingFor      string            `json:"waiting_for,omitempty"`
 	Overlap         []string          `json:"overlap,omitempty"`
 	Approval        *factory.Approval `json:"approval,omitempty"`
+	// Estimate is what jobs like this one cost and took, measured from the
+	// factory's finished jobs; absent on a finished job, on one nobody
+	// scored, and while too few similar jobs finished ("no cost history yet").
+	Estimate *Estimate `json:"estimate,omitempty"`
 
 	// BriefSeen is the Brief revision the CALLER last saw on this job, absent
 	// for none ([ForViewer]). Nobody else's is ever answered.
@@ -1004,6 +1045,9 @@ type DryRun struct {
 	WouldStart []int `json:"would_start"`
 	WouldAsk   []Ask `json:"would_ask"`
 	WouldWait  []Ask `json:"would_wait"`
+	// CostJobs is how many finished jobs of this repository the measured
+	// cost can see; under five, the page says "no cost history yet".
+	CostJobs int `json:"cost_jobs"`
 }
 
 // Ask is one job the pipeline would ask about first, and why.

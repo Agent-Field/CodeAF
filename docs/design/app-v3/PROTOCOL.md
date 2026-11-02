@@ -312,6 +312,22 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries the feature `factory.estimate` reads an issue
+with a complexity rubric and measures cost from its own finished jobs; a model
+never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
+proof, novelty}`, each `{score 0..2, why?, low?}` (`low`: judged without the
+repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
+(`small` 0–3, `medium` 4–6, `large` 7–10); `triage.est` is gone. An open job
+carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?}`: the
+median to the 80th percentile of the `n` nearest finished jobs, in `repo`
+(absent: every repository), and is absent while fewer than five similar jobs
+finished. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
+finished jobs spent past this job's spend so far, over the `n` that spent at
+least that much (absent below five; a running job with `left` alone has `n` 0).
+`queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
+figures see and how many of `of` backtested jobs spent inside their range. The
+repository dry run adds `cost_jobs`, that repository's finished jobs.
+
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
 its factory keeps it (`GET /v1/jobs/{id}/brief`). `status` is `ready`,

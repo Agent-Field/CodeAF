@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 )
 
 // FromSnapshot is the floor as `GET /v1/queue` says it to me.
@@ -18,6 +19,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 	}
 	people := map[string]factory.PersonSummary{}
 	jobs := make([]Job, len(s.Items))
+	book := estimate.Open(s.Items)
 	// Only two running jobs can overlap ([factory.Overlaps]), so each running
 	// job is compared with the running ones alone. Comparing every job with
 	// every other was the queue's one quadratic step: 640,000 comparisons,
@@ -37,6 +39,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 		jobs[i] = FromItem(it)
 		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
+		jobs[i].Estimate = estimateOf(book, it)
 		ForViewer(&jobs[i], it, me)
 		if factory.JobState(it) == "running" {
 			for _, k := range running {
@@ -57,7 +60,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 		NeedsYou: groupNeedsYou(jobs),
 		Desk: &QueueDesk{
 			Now: s.Now, Sources: mapList(s.Sources, fromSource), Busy: s.Busy, BusyAll: s.BusyAll,
-			LastReadCost: s.LastReadCost, Marked: s.Marked, Checkouts: s.Checkouts,
+			LastReadCost: s.LastReadCost, Estimates: calibrationOf(book), Marked: s.Marked, Checkouts: s.Checkouts,
 		},
 	}
 }
@@ -778,6 +781,32 @@ func fromTriage(t factory.Triage) Triage {
 func toTriage(t Triage) factory.Triage {
 	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: toRubric(t.Rubric), DupOf: t.DupOf,
 		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
+}
+
+// estimateOf is an open job's measured range, nil for a finished job or one
+// with no figure.
+func estimateOf(book estimate.Book, it factory.Item) *Estimate {
+	if factory.JobState(it) == "done" || (it.Stream != nil && !it.Stream.Ended.IsZero()) {
+		return nil
+	}
+	var e Estimate
+	if r, ok := book.For(it); ok {
+		e = Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened}
+	}
+	if factory.JobState(it) == "running" && it.Stream != nil {
+		if l, ok := book.Left(it); ok {
+			e.Left = &Left{USDLo: l.USDLo, USDHi: l.USDHi, N: l.N}
+		}
+	}
+	if e.N == 0 && e.Left == nil {
+		return nil
+	}
+	return &e
+}
+
+func calibrationOf(book estimate.Book) *Calibration {
+	c := book.Calibration()
+	return &Calibration{Jobs: book.Jobs(), Hit: c.Hit, Of: c.Of}
 }
 
 // fromRubric is a rubric on the wire, with its sum and band said, so the

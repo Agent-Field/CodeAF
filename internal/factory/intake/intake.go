@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -81,6 +82,9 @@ func (in *Intake) Once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The ledger is read once a pass, from the same list: what jobs like
+	// each one cost is measured from the floor's finished jobs.
+	book := estimate.Open(items)
 	var errs []error
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
@@ -89,7 +93,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
 			continue
 		}
-		if err := in.decide(ctx, it); err != nil {
+		if err := in.decide(ctx, it, Cost(book, it)); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -105,13 +109,21 @@ func (in *Intake) load(it factory.Item) (pipeline.File, error) {
 	return in.opts.Load(it.Repo)
 }
 
-func (in *Intake) decide(ctx context.Context, it factory.Item) error {
+// Cost is what jobs like it cost, as the start rules read it: the high end
+// of its measured range, and unknown when the ledger has too few similar
+// jobs.
+func Cost(book estimate.Book, it factory.Item) pipeline.Measured {
+	r, ok := book.For(it)
+	return pipeline.Measured{USD: r.USDHi, Known: ok}
+}
+
+func (in *Intake) decide(ctx context.Context, it factory.Item, cost pipeline.Measured) error {
 	f, err := in.load(it)
 	if err != nil {
 		return err
 	}
 	job := Job(it)
-	decision := f.DecideJob(it, job.Paths)
+	decision := f.DecideJob(it, job.Paths, cost)
 	if !decision.Start && !decision.Ask {
 		return nil
 	}
