@@ -49,3 +49,30 @@ func IsTransportError(err error) bool {
 	var transport *transportError
 	return errors.As(err, &transport)
 }
+
+// WorkflowFiles counts the GitHub Actions workflow files at ref. A repository
+// with no .github/workflows folder at that commit has none.
+func (c *client) WorkflowFiles(ctx context.Context, owner, repo, ref string) (int, error) {
+	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/contents/.github/workflows?ref="+url.QueryEscape(ref)), "")
+	var missing *APIError
+	if errors.As(err, &missing) && missing.StatusCode == 404 {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var entries []struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &entries); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Type == "file" && (strings.HasSuffix(e.Name, ".yml") || strings.HasSuffix(e.Name, ".yaml")) {
+			n++
+		}
+	}
+	return n, nil
+}
