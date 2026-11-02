@@ -443,7 +443,7 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
 
 
-## Job Brief after proof, publishing and an out of date verdict
+## Job Brief after proof, publishing and an out of date line
 
 The job's Brief refreshes when proof waits for your publication approval and
 after publication opens or updates a pull request or posts a comment. It also
@@ -459,7 +459,7 @@ model cost still counts toward the job's spend. A normal manual job gets two
 additional writes: at proof approval and after publication. Ordinary step
 updates remain subject to the $0.03 per-version and 5% spend-share guard.
 
-If a refresh fails, the previous verdict stays visible. The engine marks it out
+If a refresh fails, the Brief's previous top line stays visible. The engine marks it out
 of date when its saved inputs differ from the job's current inputs, including a
 changed state or newer step. The desk uses `verdict_behind` to show this. Retry
 asks for a fresh Brief. The writer receives the approval, PR and outcome facts;
