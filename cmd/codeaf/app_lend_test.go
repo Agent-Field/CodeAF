@@ -202,6 +202,20 @@ func TestTheAppLendsItsOwnLiveFactoryStageInsteadOfRefusingIt(t *testing.T) {
 	backend.state = &appState{path: filepath.Join(root, "app", appStateName)}
 	backend.profileDir = profile
 	t.Cleanup(func() { backend.Close() })
+	// The card is parked before the app holds the stage, as it is whenever the app
+	// reaches a stage after the stage has asked its question.
+	lendWaitFor(t, "the stage to park its proposal", func() bool {
+		views, err := live.AppTasks()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, view := range views {
+			if view.State == "proposed" && strings.Contains(view.Title, "read the ledger") {
+				return true
+			}
+		}
+		return false
+	})
 	agent := appAgentID(transcript)
 	run := backend.crews()
 	lendWaitFor(t, "the crew to hold the live stage", func() bool {
