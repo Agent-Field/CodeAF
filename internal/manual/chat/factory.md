@@ -505,7 +505,9 @@ A step that has run takes another model only through Run again from here: that s
 
 ## raise a job budget and continue without a runner
 
-When a budget raise lets a stopped job carry on, its runner receives the chosen
+Raising Budget above recorded spend answers the open budget question in Auto
+or Manual, unless Take over has kept the job in your hands or publication is in
+progress. Manual still asks before the next step. Its runner receives the chosen
 cap before Continue. Activity records the budget change followed by the answer.
 The timeline says "budget raised to $10 · carrying on" for a $10 choice only
 after the answer succeeds. If no runner holds the job, Continue takes down the
