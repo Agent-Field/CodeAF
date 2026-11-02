@@ -48,7 +48,7 @@ func TestRepoFactsCountFinishedMergedSpendAreasAndStuckStepsForOneRepo(t *testin
 			Stream: &factory.Stream{Started: day(time.November, 1, 10), Ended: day(time.November, 1, 12), Spent: 9}},
 	}
 	now := day(time.November, 20, 12)
-	got := RepoFactsOf(items, "ACME/api", []string{"webhooks"}, now, 30, 2)
+	got := RepoFactsOf(items, []factory.Repo{{Name: "acme/api", Areas: []string{"webhooks"}}}, "ACME/api", now, 30, 2)
 	want := RepoFacts{Repo: "acme/api", AsOf: now, Days: 30, Months: 2, Facts: []Fact{
 		{ID: "n.finished.30d", Kind: "count", Value: 2, Phrase: "2 jobs finished in the last 30 days", About: "jobs shipped, by the day their run ended, 2026-10-22 to 2026-11-20", Source: "engine:repo_facts.finished"},
 		{ID: "n.finished.month", Kind: "count", Value: 1, Phrase: "1 job finished in November 2026", About: "jobs shipped, by the day their run ended, 2026-11-01 to 2026-11-20", Source: "engine:repo_facts.finished"},
@@ -85,7 +85,7 @@ func TestRepoFactsCountFinishedMergedSpendAreasAndStuckStepsForOneRepo(t *testin
 // there as zero, and no area or stuck step is invented.
 func TestRepoFactsOfAnEmptyRepoAreZeroWithTheirNouns(t *testing.T) {
 	now := time.Date(2026, time.November, 20, 12, 0, 0, 0, time.UTC)
-	got := RepoFactsOf(nil, "acme/api", nil, now, 1, 1)
+	got := RepoFactsOf(nil, nil, "acme/api", now, 1, 1)
 	var phrases []string
 	for _, f := range got.Facts {
 		phrases = append(phrases, f.Phrase)
@@ -115,7 +115,7 @@ func TestRepoFactsKeepTheBusiestAreasAndSayHowManyWereLeftOut(t *testing.T) {
 				Change: &factory.Change{Files: []factory.ChangedFile{{Path: string(rune('a'+i)) + "/x.go"}}}})
 		}
 	}
-	got := RepoFactsOf(items, "acme/api", nil, now, 30, 1)
+	got := RepoFactsOf(items, nil, "acme/api", now, 30, 1)
 	areas := 0
 	for _, f := range got.Facts {
 		if f.Kind == "area" {

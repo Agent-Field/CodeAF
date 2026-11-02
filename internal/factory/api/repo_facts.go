@@ -65,9 +65,10 @@ func (w window) about(what string) string {
 	return what + ", " + w.start.Format(time.DateOnly) + " to " + w.end.Format(time.DateOnly)
 }
 
-// RepoFactsOf counts repo's facts from items as of now, in now's zone. areas
-// are what the repository declares, for each job's area ([factory.JobArea]).
-func RepoFactsOf(items []factory.Item, repo string, areas []string, now time.Time, days, months int) RepoFacts {
+// RepoFactsOf counts repo's facts from items as of now, in now's zone. repos
+// are the floor's repositories, whose declared areas say each job's area
+// ([factory.JobArea]) as job.area says it.
+func RepoFactsOf(items []factory.Item, repos []factory.Repo, repo string, now time.Time, days, months int) RepoFacts {
 	repo = strings.ToLower(strings.TrimSpace(repo))
 	var mine []factory.Item
 	for _, it := range items {
@@ -88,7 +89,7 @@ func RepoFactsOf(items []factory.Item, repo string, areas []string, now time.Tim
 	out.Facts = append(out.Facts, spendFacts(mine, month.start, months)...)
 	stuck, cut := stuckFacts(mine, now)
 	out.Facts = append(out.Facts, stuck...)
-	area, cutAreas := areaFacts(mine, areas, recent)
+	area, cutAreas := areaFacts(mine, declaredAreas(repos, repo), recent)
 	out.Facts = append(out.Facts, area...)
 	out.Truncated = cut + cutAreas
 	return out
@@ -187,7 +188,7 @@ func areaFacts(items []factory.Item, areas []string, w window) ([]Fact, int) {
 	tally := map[string]areaTally{}
 	jobs := map[string]int{}
 	for _, it := range items {
-		area := jobArea(it, areas)
+		area := changeArea(it.Change, areas)
 		if area == "" || !factory.IsIssueJob(it) || !w.holds(factory.SpentAt(it)) {
 			continue
 		}

@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -35,15 +34,8 @@ func (h *Handler) repoFacts(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	repo := owner + "/" + name
-	var areas []string
-	for _, known := range snap.Repos {
-		if strings.EqualFold(known.Name, repo) {
-			areas = known.Areas
-		}
-	}
 	now := h.clock()
-	out := api.RepoFactsOf(snap.Items, repo, areas, now, days, months)
+	out := api.RepoFactsOf(snap.Items, snap.Repos, owner+"/"+name, now, days, months)
 	out.TimeZone = zoneName(now.Location(), os.LookupEnv, os.Readlink)
 	h.write(w, http.StatusOK, out)
 }
