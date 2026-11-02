@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf factory Pause and Resume accept progress since the last read
-pr: 0
+pr: 2250
 surface: [engine]
 invalidates:
   - "Was true: progress could refuse Pause or Resume as stale, and Resume could leave no chat line. Is true now: progress alone never refuses these actions, Stop wins over a later Resume, and explicit Resume writes one matching chat line."
