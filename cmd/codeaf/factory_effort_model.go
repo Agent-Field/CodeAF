@@ -33,8 +33,14 @@ func factoryStepModel(profile string, spec factoryrun.ConversationSpec, oneModel
 	return strings.TrimSpace(config.TierSeatAt(profile, tier).Model)
 }
 
-// factoryOpenModel is the model a step opens on. This first version ignores the
-// step's effort word.
+// factoryOpenModel is the model a step opens on: the one a person picked for the
+// step or the job, else the one its effort word runs on, else the factory's
+// default, else the launch's. The step's word is the more specific of the last
+// two. A launch on one model for every task keeps that model unless a person
+// picked one.
 func factoryOpenModel(profile string, cfg session.Config, spec factoryrun.ConversationSpec) string {
+	if model := factoryStepModel(profile, spec, cfg.OneModel); model != "" {
+		return model
+	}
 	return stageOpenModel(cfg, spec)
 }
