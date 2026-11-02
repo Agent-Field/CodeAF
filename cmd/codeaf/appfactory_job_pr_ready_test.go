@@ -19,6 +19,7 @@ func TestAppFactoryJobPRReady(t *testing.T) {
 	bob := signedIn(t, f, 2, "bob")
 	var mu sync.Mutex
 	calls, status := 0, http.StatusOK
+	remoteReady, graphRefusal := false, false
 	f.github.mu.Lock()
 	f.github.rest = func(r *http.Request) (int, string, bool) {
 		if r.URL.Path != "/repos/acme/api/pulls/42" && r.URL.Path != "/graphql" {
@@ -28,7 +29,10 @@ func TestAppFactoryJobPRReady(t *testing.T) {
 			t.Error("ready did not use the caller's credential")
 		}
 		if r.Method == http.MethodGet {
-			return 200, fmt.Sprintf(`{"node_id":"PR_42","state":"open","draft":true,"head":{"sha":%q}}`, actionHead), true
+			mu.Lock()
+			draft := !remoteReady
+			mu.Unlock()
+			return 200, fmt.Sprintf(`{"node_id":"PR_42","state":"open","draft":%t,"head":{"sha":%q}}`, draft, actionHead), true
 		}
 		var body struct {
 			Query string `json:"query"`
@@ -40,6 +44,9 @@ func TestAppFactoryJobPRReady(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		calls++
+		if graphRefusal {
+			return 200, `{"errors":[{"type":"FORBIDDEN","message":"not permitted"}]}`, true
+		}
 		return status, fmt.Sprintf(`{"data":{"markPullRequestReadyForReview":{"pullRequest":{"isDraft":false,"headRefOid":%q}}}}`, actionHead), true
 	}
 	f.github.mu.Unlock()
@@ -120,6 +127,30 @@ func TestAppFactoryJobPRReady(t *testing.T) {
 		alice.refused(t, "factory.job_pr_ready", params, appwire.CodeStale)
 		if sent() != n {
 			t.Fatal("stale reached GitHub")
+		}
+	})
+	t.Run("already ready on GitHub conflicts without a mutation", func(t *testing.T) {
+		job := f.create(t, draft())
+		n := sent()
+		mu.Lock()
+		remoteReady = true
+		mu.Unlock()
+		defer func() { mu.Lock(); remoteReady = false; mu.Unlock() }()
+		alice.refused(t, "factory.job_pr_ready", alice.params(t, job.ID, nil), appwire.CodeConflict)
+		if sent() != n {
+			t.Fatal("already ready reached GitHub mutation")
+		}
+	})
+	t.Run("GraphQL permission refusal is forbidden and never retried", func(t *testing.T) {
+		job := f.create(t, draft())
+		n := sent()
+		mu.Lock()
+		graphRefusal = true
+		mu.Unlock()
+		defer func() { mu.Lock(); graphRefusal = false; mu.Unlock() }()
+		alice.refused(t, "factory.job_pr_ready", alice.params(t, job.ID, nil), appwire.CodeForbidden)
+		if sent() != n+1 {
+			t.Fatal("GraphQL refusal was retried")
 		}
 	})
 	t.Run("uncertain is never retried", func(t *testing.T) {
