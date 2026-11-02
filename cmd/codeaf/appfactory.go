@@ -413,6 +413,11 @@ func (h *appFactoryHub) target(id string) (appFactoryRow, string, error) {
 	if id == appLocalID && h.resume != nil {
 		h.resume(context.Background())
 	}
+	return h.lookup(id)
+}
+
+// lookup reads a connection without resuming a local service.
+func (h *appFactoryHub) lookup(id string) (appFactoryRow, string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -576,7 +581,11 @@ func appFactoryFailure(r appFactoryReply) error {
 // before anything private is sent, unless a fresh probe finds the factory solo.
 // A saved mode is never trusted for that, because an address can change hands.
 func (h *appFactoryHub) credentialed(ctx context.Context, id string) (appFactoryRow, string, error) {
-	row, token, err := h.target(id)
+	target := h.target
+	if passive, _ := ctx.Value(appFactoryPassiveRead{}).(bool); passive {
+		target = h.lookup
+	}
+	row, token, err := target(id)
 	if err != nil || token != "" {
 		return row, token, err
 	}

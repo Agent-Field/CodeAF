@@ -224,7 +224,15 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `changes requested: <words>`;
 - the final approval message explains pushing the branch and creating a draft pull request;
 - the publication receipt links the draft PR or issue comment; publication does not mean merged;
-- `stopped`, `paused`, `resumed`.
+- `trying test again` after **Try again**, or `trying write again` after **Send back to Write**;
+- `stopped` after **Stop job** or **Stop step**, and `paused` or `resumed` when pausing or continuing.
+
+Retry and giving the job back to the pipeline withdraw the previous execution. They do
+not report that you stopped it. Taking over automatic work keeps its results for the
+working chat; giving it back checks those changes before continuing.
+
+With several worker slots, a retry waits for the previous worker's local cleanup
+before starting its selected round. Other jobs can keep running during that handover.
 
 A line about one step's round (`started`, `done`, an `asking you:` it waits on, the `stopped`
 that cut it) also names that step and round beside its words, so a surface that draws each round
@@ -232,6 +240,20 @@ as a frame can fold the line into it; the words are the same either way.
 
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
+
+## Stopped and interrupted rounds after Carry on or retry
+
+After you Stop a running step or job and carry on from that step, its earlier
+round says `stopped`. A round cut by a lost runner, including an engine
+restart, says `interrupted` when retried. Neither means the work failed its
+completion rule, so neither says "didn't pass" or "fixing them". A real step
+error remains a failed round and says `failed` when retried. Reported results
+still use their rule's words, such as `clean`, `not clean` or `green`.
+
+The words do not change attempt counting. An explicit retry advances the
+round number and grants that step its configured rounds again. Automatic
+recovery keeps its separate limit of three retries. Saved history from older
+runs keeps its recorded words; there is no history migration.
 
 ## pressing run goes straight to the first step — does the manager reshape the run, manager set, shape steps
 
@@ -330,8 +352,17 @@ passing proof as a draft PR through the same recorded, exact-commit approval doo
 It repairs and updates that same PR within the job's budget and retry limits. The
 service records each approved publication; a worker cannot manufacture consent.
 Neither explicit Auto nor Manual grants automatic merging, even when a recipe permits it. **Merge remains
-your decision.** Manual asks at enabled plan gates and before publication or repair
-pushes. Optional per-step skips remain available; neither mode resets retry limits.
+your decision.** Optional per-step skips remain available; neither mode resets retry limits.
+
+## Manual asks before every step
+
+Manual asks before each step's first round, and before publication or repair pushes:
+**Write is next · continue, or send back the step before?** Approve runs the step. Request
+changes sends the finished step before it back with your words, and the ask comes again
+when that finishes. Start answers for the first step and an approve step answers for the
+step after it, so neither asks twice. Retries and send-backs of a step that already ran do
+not ask. Switching to Manual applies from the next step not yet run; switching to Auto passes
+an ask that is standing. Older jobs with no saved mode keep only their approve steps.
 
 ## Retry a failed step or a failed message
 
@@ -397,6 +428,17 @@ A repository's CONTRIBUTING ban on AI attribution is respected on both paths.
 The app shows GitHub check totals and failed check names separately from local
 proof, records check changes in Timeline, and offers Open PR and View GitHub checks. A draft
 needs to be marked ready on GitHub before merging; failing checks still block Merge.
+
+## Publishing when the branch already exists on GitHub
+
+A job's branch name comes from its issue, so an earlier run on another machine or home can
+already hold it. The factory never overwrites commits it cannot show are its own. It leaves that
+branch as it is, pushes the approved commit to the same name with `-2` (up to `-9`), and opens
+the draft PR from there; the job's log names both branches. An older open PR stays open for you
+to close. A branch still at the commit this checkout last pushed is replaced, under a lease on
+that commit, so a re-run of the same job updates its own PR. When every name holds other commits,
+**Publishing failed** says so and Retry publish works once you delete one. A repair push goes to the
+branch its PR comes from, and is refused if that branch moved.
 
 
 ## the factory manager does not poll or judge background completion
@@ -725,7 +767,12 @@ even when no step chat is open. The service retains that sleeping runner's lease
 for 24 hours at most after the computer went to sleep; wake refreshes its silence
 deadline. A computer that never wakes no longer holds its job for good: after
 that day the job is queued again like any silent hold. A failed presence request remains an error,
-not confirmation that remote ownership was retained. This does not change how
+not confirmation that remote ownership was retained.
+
+A computer marked asleep is handed no job, so a lost wake must not last. An app
+that starts and attaches clears the mark, and a running runner not told to sleep
+reads the mark and clears it within about five seconds, without another sleep.
+Clearing it starts only queued jobs, within Jobs at once; Backlog stays put. This does not change how
 ordinary conversation processes stop for sleep or turn an interrupted check green.
 
 Worker result delivery retains one exact per-lease request and retry identity

@@ -95,6 +95,12 @@ func (d *Doors) Launch(id int) error {
 	if err != nil {
 		return err
 	}
+	// THE FACTORY'S DEFAULT MODEL GOES WITH THE JOB on the same terms, and a
+	// spending file that cannot be read refuses the start the same way.
+	spending, err := d.desk.store.Spending()
+	if err != nil {
+		return err
+	}
 	// THE REPOSITORY IS READ AS A PERSON'S START READS IT: with the factory's
 	// rules unread nothing starts; with only the repository's file unread the
 	// job keeps the steps it has and is marked so its plan waits for a person.
@@ -161,6 +167,7 @@ func (d *Doors) Launch(id int) error {
 			return false, err
 		}
 		it.House = &house
+		it.FactoryModel = spending.DefaultModel
 		_, stale := doc.Signals[id]
 		delete(doc.Signals, id)
 		return stale, nil
@@ -224,6 +231,9 @@ func (d *Doors) Pause(id int) error {
 // person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if on && it.State != factory.StateQueued && (it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing) {
+			return false, fmt.Errorf("%s is not running", it.Ref())
+		}
 		paused := run.StoredPaused(*it)
 		switch {
 		case paused == on:
@@ -231,8 +241,10 @@ func (d *Doors) Hold(id int, on bool) error {
 		case held == nil && on && it.State == factory.StateQueued:
 			return false, run.HoldQueued(it, now)
 		case held == nil && on:
-			return false, fmt.Errorf("%s is not running", it.Ref())
-		case held == nil:
+			return false, run.PauseItem(it, now)
+		case !on:
+			// Resume queues even while the old worker drains its cancelled
+			// round. It must take capacity through Pull again.
 			return false, run.ResumeItem(it, now)
 		}
 		it.Stream.Paused = on

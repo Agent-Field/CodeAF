@@ -22,6 +22,9 @@ var ErrNotAttached = errors.New("factory worker: credential not known; attach ag
 // job was stopped, or the lease expired. The worker lets the job go.
 var ErrLeaseGone = errors.New("factory worker: the lease is gone")
 
+// ErrLeaseWithdrawn is a retry or manual handover, rather than a person's Stop.
+var ErrLeaseWithdrawn = fmt.Errorf("factory worker: execution withdrawn: %w", ErrLeaseGone)
+
 // Refusal is a request the factory read and refused, in its own sentence, as
 // opposed to one that never reached it.
 type Refusal struct {
@@ -84,6 +87,12 @@ func (w *WorkerClient) Self(ctx context.Context) (api.RunnerSelf, error) {
 		return api.RunnerSelf{}, ErrSelfUnsupported
 	}
 	return out, err
+}
+
+// Presence says whether this runner's computer is asleep.
+func (w *WorkerClient) Presence(ctx context.Context, asleep bool) error {
+	_, err := w.send(ctx, http.MethodPost, "/v1/runners/presence", w.credential, api.RunnerPresence{Asleep: asleep}, nil)
+	return err
 }
 
 // Pull waits up to the factory's long-poll bound for a job. ok is false when
@@ -254,6 +263,9 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 	case resp.StatusCode == http.StatusUnauthorized && path != "/v1/workers/attach":
 		return resp.StatusCode, ErrNotAttached
 	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
+		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
+			return resp.StatusCode, ErrLeaseWithdrawn
+		}
 		return resp.StatusCode, ErrLeaseGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}

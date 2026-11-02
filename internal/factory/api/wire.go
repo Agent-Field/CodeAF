@@ -383,6 +383,9 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	FromJob     int    `json:"from_job,omitempty"`
+	SourceIssue string `json:"source_issue,omitempty"`
+
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
 	Following bool `json:"following,omitempty"`
@@ -431,16 +434,20 @@ type Job struct {
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
-	Model           string            `json:"model,omitempty"`
-	AutomaticModels *bool             `json:"automatic_models,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	DoneHow         string            `json:"done_how,omitempty"`
-	DoneAt          time.Time         `json:"done_at"`
-	Dismissed       bool              `json:"dismissed"`
-	DismissedBy     []string          `json:"dismissed_by,omitempty"`
-	WaitingFor      string            `json:"waiting_for,omitempty"`
-	Overlap         []string          `json:"overlap,omitempty"`
-	Approval        *factory.Approval `json:"approval,omitempty"`
+	Model           string `json:"model,omitempty"`
+	AutomaticModels *bool  `json:"automatic_models,omitempty"`
+	// FactoryModel is the factory's default model the job was last queued
+	// under (factory.Spending), which a step that names no model, on a job
+	// that names none, runs on; absent when the factory sets none.
+	FactoryModel string            `json:"factory_model,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	DoneHow      string            `json:"done_how,omitempty"`
+	DoneAt       time.Time         `json:"done_at"`
+	Dismissed    bool              `json:"dismissed"`
+	DismissedBy  []string          `json:"dismissed_by,omitempty"`
+	WaitingFor   string            `json:"waiting_for,omitempty"`
+	Overlap      []string          `json:"overlap,omitempty"`
+	Approval     *factory.Approval `json:"approval,omitempty"`
 	// Estimate is what jobs like this one cost and took, measured from the
 	// factory's finished jobs; absent on a finished job, on one nobody
 	// scored, and while too few similar jobs finished ("no cost history yet").
@@ -620,9 +627,9 @@ type RoundLine struct {
 	// Result and Reason are how the try ended (factory.TryResult): its
 	// rule's word (clean, not clean, green, not green, proven, not proven,
 	// done, not done, blocked) and a counted reason ("2 findings", "12
-	// passed", "1 of 2 claims shown"). Both are absent on a try recorded
-	// before they were and on one that ended without a report; a surface
-	// shows the try's number alone then, and never guesses from summary.
+	// passed", "1 of 2 claims shown"). A failure closed on retry says stopped,
+	// interrupted or failed from its failure code. Older tries may omit both;
+	// a surface never guesses their outcome from summary.
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
@@ -647,6 +654,7 @@ type Can struct {
 
 	Approve      bool `json:"approve"`
 	RunAgain     bool `json:"run_again"`
+	RunAsNew     bool `json:"run_as_new"`
 	CancelJob    bool `json:"cancel_job"`
 	RetryPublish bool `json:"retry_publish"`
 	Answer       bool `json:"answer"`
@@ -880,6 +888,8 @@ type PR struct {
 	Mergeable   string `json:"mergeable,omitempty"`
 	ChecksRead  bool   `json:"checks_read,omitempty"`
 	ReviewsRead bool   `json:"reviews_read,omitempty"`
+	// HeadBranch is the branch the pull request comes from.
+	HeadBranch string `json:"head_branch,omitempty"`
 }
 
 // JobMerge is a job's merging: the pipeline's settings pinned when its proof

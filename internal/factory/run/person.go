@@ -77,6 +77,20 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 	return nil
 }
 
+// PauseItem holds a running job that no worker holds. Its work, step and
+// conversation stay in place until ResumeItem queues that same step again.
+func PauseItem(it *factory.Item, now time.Time) error {
+	if it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing {
+		return fmt.Errorf("%s is not running", it.Ref())
+	}
+	if it.Stream == nil {
+		it.Stream = freshStream(it, now)
+	}
+	it.Stream.Paused = true
+	loopSay(it, now, "said", sayPaused)
+	return nil
+}
+
 // HoldQueued holds a queued job that no worker holds yet where it is: it
 // keeps its place, and no worker takes it until [ResumeItem] lets it go on.
 // A Start now waiting on it is withdrawn, because the hold is the later word.
@@ -119,7 +133,7 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	}
 	ph := &s.Phases[s.Cur]
 	switch {
-	case ph.Kind != factory.StageGate:
+	case ph.Kind != factory.StageGate && (yes || qkind != factory.QKindApprove || !factory.WaitingToStart(*ph)):
 		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
 		setPhaseState(ph, factory.PhaseDone, now)
