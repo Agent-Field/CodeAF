@@ -629,8 +629,11 @@ on the job's agent under the `brief` role (the small-work tier the small-jobs
 model pins). The factory checks the answer against the job (`POST
 /v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
 that names a step and try the job has, and every number in a claim found in its
-evidence. It keeps what passes and books the call's cost to the job's spend. A
-failing verdict keeps the previous version and marks the brief `failed`. Without
+evidence. The session books each provider call to the ledger and job's spend
+once, including rejected drafts and calls whose keep request fails. Keeping a
+version records its cost for the brief guard without charging the job again.
+An app-side brief's charge remains on the factory when a remote worker reports
+its additional spending. A failing verdict keeps the previous version and marks the brief `failed`. Without
 a person's ask, a version is written only when the last one cost at most $0.03
 and the brief's spend stays within 5% of the job's; an ask opening, the job's
 end and a retry are written regardless, and unchanged inputs are never written

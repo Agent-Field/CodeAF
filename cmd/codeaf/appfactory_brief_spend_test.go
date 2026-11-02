@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,13 +17,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A provider receipt is the independent total: keeping, rejecting or losing
 // the brief must leave exactly that amount on both Spending and the job.
 func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
-	for _, outcome := range []string{"kept with dropped claim", "rejected draft", "keep unavailable"} {
+	for _, outcome := range []string{"kept with dropped claim", "rejected draft", "keep unavailable", "remote worker"} {
 		t.Run(outcome, func(t *testing.T) {
 			s := newLocalSetup(t)
 			var calls atomic.Int64
@@ -55,6 +59,33 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			var worker *client.WorkerClient
+			var held api.WorkerPull
+			var baseline factory.Item
+			if outcome == "remote worker" {
+				var chats appwire.FactoryJobChats
+				s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
+				if err := floor.Annotate(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; cur.Assignee = "owner"; return nil }); err != nil {
+					t.Fatal(err)
+				}
+				service := httptest.NewServer(s.backend.local.host.handler)
+				t.Cleanup(service.Close)
+				worker = client.Open(service.URL, s.backend.local.host.token).Worker("")
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if _, err := worker.Attach(ctx, api.WorkerAttach{Machine: "remote-fixture", Name: "Remote worker", Handle: "owner", Slots: 1}); err != nil {
+					t.Fatal(err)
+				}
+				var ok bool
+				held, ok, err = worker.Pull(ctx)
+				if err != nil || !ok || held.Job.ID != it.ID {
+					t.Fatalf("pull: %+v ok=%v err=%v", held, ok, err)
+				}
+				baseline, err = floor.Get(it.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			if outcome == "keep unavailable" {
 				hub := s.backend.factoryHub()
 				original := hub.client.Transport
@@ -76,11 +107,40 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 				}
 			} else {
 				s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &got)
-				if got.Kept != (outcome == "kept with dropped claim") {
+				if got.Kept != (outcome == "kept with dropped claim" || outcome == "remote worker") {
 					t.Fatalf("write: %+v", got)
 				}
 				if got.Kept && len(got.Drops) != 1 {
 					t.Fatalf("drops: %+v", got.Drops)
+				}
+			}
+			if worker != nil {
+				mirror, err := store.Open(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := mirror.Save(baseline); err != nil {
+					t.Fatal(err)
+				}
+				remote, err := session.New(session.Config{Workspace: t.TempDir(), SessionFile: filepath.Join(t.TempDir(), "worker.jsonl"), ProfileDir: filepath.Join(s.home, "worker-profile"), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobBudget: &stageBudget{floor: mirror, item: baseline}, Unattended: true, DeterministicNames: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = remote.Close() })
+				answer, err := remote.RunErrand(context.Background(), session.ErrandAsk{Purpose: "worker_fixture", Role: "brief", System: "Return a brief.", Messages: []session.ErrandMessage{{Role: "user", Text: "Write it."}}, MaxTokens: 100, Deadline: time.Second})
+				if err != nil || answer.Usage.CostUSD != .01 {
+					t.Fatalf("worker receipt: %+v %v", answer, err)
+				}
+				current, err := mirror.Get(it.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				report, ok := factoryrun.Diff(baseline, current)
+				if !ok || math.Abs(report.Cost-.01) > 1e-9 {
+					t.Fatalf("worker delta: %+v", report)
+				}
+				if err := worker.Report(context.Background(), held.Lease.ID, api.FromRunReport(report)); err != nil {
+					t.Fatal(err)
 				}
 			}
 			if !session.FlushUsage() {
@@ -100,8 +160,12 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			s.must("factory.job", map[string]any{"factory": st.Factory, "job": it.ID}, &header)
 			provider := float64(calls.Load()) * .01
 			t.Logf("calls=%d provider=%.4f ledger=%.4f header=%.4f", calls.Load(), provider, ledger, header.Cost)
-			if calls.Load() != 1 || math.Abs(ledger-.01) > 1e-9 || math.Abs(header.Cost-.01) > 1e-9 {
-				t.Errorf("one call must charge once: provider=%.4f ledger=%.4f header=%.4f; want 0.0100 each", provider, ledger, header.Cost)
+			wantCalls, wantCost := int64(1), .01
+			if worker != nil {
+				wantCalls, wantCost = 2, .02
+			}
+			if calls.Load() != wantCalls || math.Abs(ledger-wantCost) > 1e-9 || math.Abs(header.Cost-wantCost) > 1e-9 {
+				t.Errorf("one call must charge once: provider=%.4f ledger=%.4f header=%.4f; want %.4f each", provider, ledger, header.Cost, wantCost)
 			}
 		})
 	}

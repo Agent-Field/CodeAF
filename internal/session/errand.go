@@ -364,8 +364,8 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	go a.watchErrand(ctx, cancel)
 	pick := errandPick{model: ask.Model, effort: ask.Effort}
 	// EVERY CALL THE ERRAND MADE IS ITS COST, the answers the adapter asked
-	// again for included: those were paid for, and the caller books this
-	// answer's usage to its job.
+	// again for included: those were paid for. Session billing charges the
+	// job once; the returned usage describes those charges.
 	var superseded ErrandUsage
 	callCtx := provider.WithDiscardedUsage(withErrandPick(withFirstRungOnly(withDetachedUsage(ctx)), pick),
 		func(_, _ string, r *ai.Response) { superseded = superseded.plus(errandUsage(r)) })
