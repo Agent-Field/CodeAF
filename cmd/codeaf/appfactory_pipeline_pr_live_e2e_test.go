@@ -104,7 +104,7 @@ func (g *livePRGuard) client() *http.Client {
 }
 
 func (g *livePRGuard) roundTrip(r *http.Request) (*http.Response, error) {
-	if r.Method == http.MethodGet {
+	if r.Method == http.MethodGet || graphQLRead(r) {
 		g.mu.Lock()
 		g.reads++
 		g.mu.Unlock()

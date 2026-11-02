@@ -58,6 +58,9 @@ func TestAppTakeC1bSavedModelTravelsBack(t *testing.T) {
 			created := machineCall[struct{ Agent appwire.Agent }](t, a.w, "agents.create", map[string]any{"workspace": workspace, "model": x}).Agent
 			e2Turn(t, a, created.ID, "A on X")
 			row := outageChatRow(t, b, "", func(r appwire.ChatRow) bool { return r.Title != "" && r.CanTake && r.Seen.Head != "" })
+			// A saves its turn in several publications too, and a take of a
+			// head A has since moved on from is refused as a lost race.
+			row = c1bSettledRow(t, "C1b B sees A's last save", b, a, row.Cell, func(r appwire.ChatRow) bool { return r.Seen.Head != "" })
 			fresh := machineCall[appwire.TakeResult](t, b.w, "agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}).Agent
 			if fresh.Model != x {
 				t.Fatalf("C1b fresh receiver used %q, want %q", fresh.Model, x)
@@ -68,22 +71,7 @@ func TestAppTakeC1bSavedModelTravelsBack(t *testing.T) {
 			e2Turn(t, b, fresh.ID, "B on Y")
 			// B saves a turn in several publications. Take back only what A has
 			// seen of B's last one: a head that both computers report, twice.
-			var back appwire.ChatRow
-			settled := ""
-			outageWait(t, "C1b A sees B's last save", func() bool {
-				mine := outageChatRow(t, b, row.Cell, func(r appwire.ChatRow) bool { return r.Seen.Head != row.Seen.Head })
-				back = outageChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool { return r.CanTake && r.Seen.Head != row.Seen.Head })
-				if back.Seen.Head != mine.Seen.Head {
-					settled = ""
-					return false
-				}
-				if settled != back.Seen.Head {
-					settled = back.Seen.Head
-					time.Sleep(time.Second)
-					return false
-				}
-				return true
-			})
+			back := c1bSettledRow(t, "C1b A sees B's last save", a, b, row.Cell, func(r appwire.ChatRow) bool { return r.Seen.Head != row.Seen.Head })
 			cursor := func() int {
 				a.mu.Lock()
 				defer a.mu.Unlock()
@@ -120,6 +108,30 @@ func TestAppTakeC1bSavedModelTravelsBack(t *testing.T) {
 			assertC1bNotices(t, a, taken.ID, cursor, line, notices)
 		})
 	}
+}
+
+// c1bSettledRow is viewer's takeable row for cell once it reports the head
+// holder reports for its own copy, twice a second apart: the last save of a
+// turn that was published in several pieces.
+func c1bSettledRow(t *testing.T, what string, viewer, holder *e2App, cell string, ready func(appwire.ChatRow) bool) appwire.ChatRow {
+	t.Helper()
+	var row appwire.ChatRow
+	settled := ""
+	outageWait(t, what, func() bool {
+		mine := outageChatRow(t, holder, cell, ready)
+		row = outageChatRow(t, viewer, cell, func(r appwire.ChatRow) bool { return r.CanTake && ready(r) })
+		if row.Seen.Head != mine.Seen.Head {
+			settled = ""
+			return false
+		}
+		if settled != row.Seen.Head {
+			settled = row.Seen.Head
+			time.Sleep(time.Second)
+			return false
+		}
+		return true
+	})
+	return row
 }
 
 func assertC1bNotices(t *testing.T, a *e2App, id string, cursor int, line string, counts ...int) {
