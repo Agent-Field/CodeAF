@@ -1,0 +1,186 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/worker"
+)
+
+func TestFactoryStartBadRepositoryFile(t *testing.T) {
+	for _, road := range []string{"app", "chat", "house rules unread", "clean file without budget"} {
+		t.Run(road, func(t *testing.T) {
+			s := newLocalSetup(t)
+			config.AppCredentialSource().Set("openrouter", "test-key-no-network")
+			dir := t.TempDir()
+			gitCheckout(t, dir, "acme/api")
+			path := filepath.Join(dir, pipeline.RepoFile)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			text := "rules:\n  - keep tests\nstart: bad: yaml\n"
+			if road == "clean file without budget" {
+				text = "default_budget: 0\n"
+			}
+			if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"add", ".codeaf/factory.yaml"}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "repository rules"}} {
+				if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+					t.Fatalf("git fixture: %v: %s", err, out)
+				}
+			}
+			read := func(context.Context, string, string) (pipeline.File, error) {
+				b, err := os.ReadFile(path)
+				if err != nil {
+					return pipeline.Defaults(), err
+				}
+				f, err := pipeline.Parse(string(b))
+				if road == "clean file without budget" {
+					f.DefaultBudget = 0
+				}
+				if road == "house rules unread" {
+					return f, pipeline.ErrHouseRulesUnread
+				}
+				return f, err
+			}
+			s.backend.local.rules = read
+			var launch func(int) error
+			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
+				// Keep the automatic model worker off; below, a real worker uses a scripted plan.
+				seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{}, nil }
+				st, err := store.Open(v3FactoryRoot())
+				if err != nil {
+					t.Fatal(err)
+				}
+				desk, err := lease.Open(st, lease.Options{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				launch = lease.NewDoors(desk).WithStartRead(func(ctx context.Context, it factory.Item) (pipeline.File, error) { return read(ctx, it.Repo, dir) }).Launch
+				seam.Launch = launch
+				return seam
+			}
+			status := s.start()
+			floor := s.backend.local.host.floor
+			if err := floor.SetCheckout("acme/api", dir); err != nil {
+				t.Fatal(err)
+			}
+			id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Plan safely", Autonomy: factory.AutonomyAuto, Stages: []factory.Stage{
+				{Name: "plan", Kind: factory.StageChat, On: true, Until: factory.UntilDone},
+				{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
+				{Name: "write", Kind: factory.StageChat, On: true, Until: factory.UntilDone},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			params := map[string]any{"factory": status.Factory, "job": id}
+			var before api.Job
+			s.must("factory.job", params, &before)
+			params["expect"] = map[string]any{"version": before.Version}
+			if road == "house rules unread" || road == "clean file without budget" {
+				_, code, msg := s.call("factory.job_start", params)
+				if code == "" {
+					t.Fatal("unsafe start succeeded")
+				}
+				want := "factory's own rules could not be read"
+				if road == "clean file without budget" {
+					want = "default_budget must be positive"
+				}
+				if !strings.Contains(msg, want) {
+					t.Fatalf("refusal: %s: %s", code, msg)
+				}
+				var after api.Job
+				s.must("factory.job", params, &after)
+				if after.State != api.StateBacklog || after.Version != before.Version {
+					t.Fatalf("refused start changed job: %+v", after)
+				}
+				return
+			}
+			if road == "chat" {
+				if err := launch(id); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				var acted appwire.FactoryJobActed
+				s.must("factory.job_start", params, &acted)
+				if acted.Job != id {
+					t.Fatalf("start receipt: %+v", acted)
+				}
+			}
+			var got struct {
+				api.Job
+				StartRules struct {
+					Unread bool   `json:"unread"`
+					Why    string `json:"unread_why"`
+				} `json:"start_rules"`
+			}
+			s.must("factory.job", params, &got)
+			if !got.StartRules.Unread || got.StartRules.Why != ".codeaf/factory.yaml line 3: mapping values are not allowed in this context" {
+				t.Errorf("start rules: %+v", got.StartRules)
+			}
+			if got.Desk == nil || got.Desk.Cap != factory.DefaultJobBudget || got.Desk.Cap <= 0 {
+				t.Fatalf("budget: %+v", got.Desk)
+			}
+			noted := false
+			for _, a := range got.Desk.Activity {
+				noted = noted || a.What == "Started with the repository's rules unread; its plan will wait for you"
+			}
+			if !noted {
+				t.Errorf("Activity: %+v", got.Desk.Activity)
+			}
+
+			mirror, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var writes atomic.Int32
+			runner := factoryrun.New(factoryrun.Options{Store: mirror, RepoDir: func(string) string { return dir }, Exec: map[factory.StageKind]factoryrun.Executor{
+				factory.StageChat: factoryrun.ExecutorFunc(func(_ context.Context, job factoryrun.Job) (factory.StageResult, error) {
+					if job.Stage.Name != "plan" {
+						writes.Add(1)
+					}
+					return factory.StageResult{Done: true, Output: "files:\n- README.md\n"}, nil
+				}),
+			}})
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				worker.Run(ctx, worker.Options{Dial: func(int) *client.WorkerClient { return client.Open(status.URL, s.backend.local.host.token).Worker("") },
+					Attach: api.WorkerAttach{Machine: "test-runner", Name: "test-runner", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+					Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 10 * time.Millisecond, BeatEvery: 20 * time.Millisecond})
+			}()
+			t.Cleanup(func() { cancel(); <-done })
+			eventually(t, "the plan holds for a person", func() bool {
+				var job api.Job
+				s.must("factory.job", params, &job)
+				return job.State == api.StateNeedsYou && job.RuleHold == factory.StartRulesUnreadHold
+			})
+			if writes.Load() != 0 {
+				t.Fatal("work continued past the unread rules plan hold")
+			}
+			// The read must survive the worker's report and its API round trip.
+			raw, code, msg := s.call("factory.job", params)
+			if code != "" || json.Unmarshal(raw, &got) != nil || got.StartRules.Why == "" {
+				t.Fatalf("read after plan: %s %s %s", code, msg, raw)
+			}
+		})
+	}
+}
