@@ -38,10 +38,20 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		if err := r.Launch(id); err != nil {
 			t.Fatal(err)
 		}
-		select {
-		case <-proof:
-		case <-time.After(5 * time.Second):
-			t.Fatal("runner never reached proof")
+		// Manual asks before proof; only the answer lets the runner reach it.
+		reached := time.After(5 * time.Second)
+	toProof:
+		for {
+			select {
+			case <-proof:
+				break toProof
+			case <-reached:
+				t.Fatal("runner never reached proof")
+			case <-time.After(5 * time.Millisecond):
+				if cur, _ := s.backend.local.host.floor.Get(id); cur.QKind == factory.QKindApprove {
+					_ = r.Answer(id, true, "")
+				}
+			}
 		}
 		var written appwire.FactoryJobBriefWritten
 		s.must("factory.job_brief_write", params, &written)
