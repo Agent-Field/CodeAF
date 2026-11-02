@@ -133,6 +133,9 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	// factory.local_start turns the runner on itself (ensureLocalRunner); a
 	// job still runs only once a person presses Start.
 	w.must("factory.local_start", map[string]any{"caller": "live"}, &st)
+	if !st.Runner {
+		t.Fatalf("start left the runner off: %+v", st)
+	}
 	floor := local.host.floor
 	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 		t.Fatal(err)
@@ -158,8 +161,11 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	if job.State != api.StateBacklog {
 		t.Fatalf("the job is %q before any start", job.State)
 	}
-	if recorder.calls != 0 {
-		t.Fatalf("something ran before the explicit start: calls %d", recorder.calls)
+	recorder.mu.Lock()
+	early := recorder.calls
+	recorder.mu.Unlock()
+	if early != 0 {
+		t.Fatalf("something ran before the explicit start: calls %d", early)
 	}
 
 	// THE EXPLICIT RUN, THEN THE EXPLICIT START: the two doors a person uses.
