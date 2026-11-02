@@ -309,7 +309,16 @@ func (h *Handler) Close() {
 		if h.setupCancel != nil {
 			h.setupCancel()
 		}
+		var setupDone chan struct{}
+		if h.setupBusy {
+			setupDone = h.setupDone
+		}
 		h.setupMu.Unlock()
+		// A cancelled setup worker still finishes its last write; nothing may
+		// write into the factory's folder once Close has returned.
+		if setupDone != nil {
+			<-setupDone
+		}
 	}
 	if h != nil {
 		h.jobsMu.Lock()
