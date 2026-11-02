@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"math"
 	"sync/atomic"
@@ -133,5 +134,46 @@ func TestMemoryCapKeepsFinishedPhase(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 			}
 		})
+	}
+}
+
+// A daily refusal is not a memory charge: memory crossing the job cap at the
+// same time must not let an early report hide that the day's limit stopped it.
+func TestMemoryCapDoesNotHideADailyRefusal(t *testing.T) {
+	floor, _ := chatSpendFloor(t)
+	item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, ChatSpent: .99})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meter := &stageBudget{floor: floor, item: item}
+	meter.SpendMemory(.02)
+	done := make(chan struct{})
+	close(done)
+	daily := factoryrun.SpendStop{Daily: true, Said: "daily limit reached"}
+	conv := &stageConversation{budget: meter, done: done, failure: daily}
+	var stop factoryrun.SpendStop
+	if err := conv.Wait(context.Background()); !errors.As(err, &stop) {
+		t.Fatalf("Wait = %v, want a spend stop", err)
+	}
+	if stop.Memory {
+		t.Fatalf("a daily refusal reads as memory: %+v", stop)
+	}
+}
+
+// With no other refusal, memory crossing the cap still reads as memory.
+func TestMemoryCapReadsAsMemoryWithoutADailyRefusal(t *testing.T) {
+	floor, _ := chatSpendFloor(t)
+	item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, ChatSpent: .99})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meter := &stageBudget{floor: floor, item: item}
+	meter.SpendMemory(.02)
+	done := make(chan struct{})
+	close(done)
+	conv := &stageConversation{budget: meter, done: done}
+	var stop factoryrun.SpendStop
+	if err := conv.Wait(context.Background()); !errors.As(err, &stop) || !stop.Memory {
+		t.Fatalf("Wait = %v (%+v), want a memory stop", err, stop)
 	}
 }
