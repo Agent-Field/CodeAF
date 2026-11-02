@@ -149,6 +149,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		s, _, id, params := briefAfterProofSetup(t, factory.StateRunning)
 		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
 			it.Autonomy = factory.AutonomyAuto
+			it.Assignee = "owner"
 			it.Cap = 5
 			it.Proof = []factory.Claim{{Text: "checked", OK: true}}
 			return nil
@@ -157,7 +158,13 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		}
 		var first appwire.FactoryJobBriefWritten
 		s.must("factory.job_brief_write", params, &first)
-		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error { it.State = factory.StateLanded; return nil }); err != nil {
+		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
+			it.State = factory.StateLanded
+			if why := factory.AutonomyBlockReason(*it); why != "" {
+				t.Fatalf("Auto fixture is blocked: %s", why)
+			}
+			return nil
+		}); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -242,6 +249,31 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 			t.Fatalf("stop cut a step unexpectedly: %+v", cur.Failure)
 		}
 		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+	})
+
+	t.Run("stop before a run starts refreshes", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateNeedsYou)
+		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
+			it.Stream = nil
+			it.QKind = factory.QKindAskFirst
+			it.Question = "Start this job?"
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
+		if err := r.Stop(id); err != nil {
+			t.Fatal(err)
+		}
+		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+		door.mu.Lock()
+		input := door.asks[len(door.asks)-1].Messages[0].Text
+		door.mu.Unlock()
+		if !strings.Contains(input, `"end":"stopped"`) {
+			t.Fatalf("writer lacks stopped outcome: %s", input)
+		}
 	})
 	t.Run("plain step still costs too much", func(t *testing.T) {
 		it := factory.Item{Stream: &factory.Stream{Spent: 0.01}, Briefs: []factory.BriefVersion{{CostUSD: 0.02, InputHash: "old"}}}
