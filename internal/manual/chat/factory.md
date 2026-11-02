@@ -56,6 +56,12 @@ that computer is offline or asleep, the job says **Waiting for <computer>
 starts it. Only that computer's own person sees its name; anyone else reads
 **Waiting for its computer**.
 
+A queued job with no computer yet says the same when every computer that could
+take it is offline or asleep: **Waiting for <computer> (asleep for 5 min)**. This
+wins over **Starting now**, because Start now gives a slot and nothing takes the
+job until a computer is back. A team's unassigned job reads **Waiting to start**,
+since it can go to anyone. The manager says the job is waiting for its computer.
+
 Two overrides act on one queued job, and only its person may use them:
 
 - **Start now** lets that job take one slot above Jobs at once, this one time,
@@ -351,6 +357,12 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
+## first-run setup in the app — Continue before every repository is read, skipped, checkout folder room
+
+**Continue ends reading early.** While setup reads open issues into Backlog, Continue stops the read in progress once at least one chosen repository is read, and moves on to checkouts, or straight to done when every chosen repository already has a checkout; before then it is refused with `Wait until one repo is read`. Repositories already read stay read and are watched. Each one still reading or waiting says skipped: the issues it already brought stay in Backlog, held until you start them, and it is not watched, so it is off until you turn it on in Repos. Back from checkouts reads every chosen repository again.
+
+**Setup shows each repository's size** in megabytes, as GitHub quotes it, and checks a checkout folder before cloning: whether you can write there and how much free space its disk has, measured at the nearest folder that already exists. A file in the way says `~/notes.txt is a file, not a folder`, and a folder you may not open says `codeaf cannot look inside ~/private`. Checking makes no folder; on Windows it makes and removes one small check file to learn whether you can write there.
+
 ## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
@@ -410,6 +422,16 @@ An explicit `--one-model` launch keeps its pin. Interactive chats keep their own
 
 
 
+## the factory's spending defaults — default budget per job, the most an automatic job may cost before it asks, the factory's default model for steps
+
+A factory can keep three settings for every repository it watches, said once instead of in each repository's `.codeaf/factory.yaml`. In the app they are on the Spending page. Everyone signed in can read them; only the factory's operator can change them, and on a team they live on the shared server.
+
+- **Default budget per job**: the budget a job gets when it has none and its repository's file names no `default_budget`. Without it the built-in $5 applies. A job always has a budget, so it is a positive amount; clearing it gives the $5 back. A repository's own `default_budget` stands.
+- **Most a job may cost to start on its own**: a job whose budget is above it asks you before it starts by itself (with Start on its own on); a job you start is not held by it. Without it the built-in $5 applies. Where a repository sets `start.max_cost`, the stricter of the two holds. Zero makes every such job ask first.
+- **Default model**: the model a step runs on when neither the step nor its job names one; without it steps run on the runner's own default. The app offers only models it lists. With Task models on one model, steps keep that one model. A job carries the default that stood when it was queued, so a runner on another machine uses it too.
+
+Each figure is at most $10,000. A change applies to jobs queued after it; a job already queued keeps its budget and model. A settings file the factory cannot read refuses to start jobs rather than starting them on figures nobody chose.
+
 ## pick one step's model for one job — a step's own model, the job's model, use_model
 
 On the app's job page, the job's person can pick the model one conversation step of that job runs on, before the step runs. The step then opens on that model and does not choose models automatically; a model chosen for the whole job does not move it. Choosing the job's model again gives the step back. The pick changes only this job, never the repository's steps.
@@ -455,3 +477,18 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 ## runner recovery window — running time versus waiting for reconnect
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+
+## App job title and details — literal words, auto-save, budgets and hand-off
+
+Creating a job with a separate title in the app, or handing off an agent,
+keeps the title as written with outer whitespace removed. Details keep their
+spacing and line breaks in the job's ask and body; empty details stay empty.
+Words in either field,
+including `auto`, `ship it`, `plan first`, `$5`, `security`, `two review rounds`
+and `cheaper`, do not set a budget or change approval steps, review rounds,
+effort or security. The repository's pipeline remains in effect. A draft pull
+request takes its title from the job title alone.
+
+Terminal factory sentences still read those words as chips. Existing jobs are
+not rewritten; this applies when a new job is created. Factories without the
+separate-title creation capability retain their existing creation behavior.
