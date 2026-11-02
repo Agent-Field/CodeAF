@@ -613,23 +613,33 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		if v.Cell.Lease.Device != d.sync.Device.ID() {
-			// Another computer holds the chat. Retire the hold at once so no
-			// new seal starts, wait for any seal already past Gate, and let the
-			// batcher keep unsent turns as a branch before the window names the
-			// new holder (#2091). The hold is retired quietly: becomeViewer
-			// announces the change once, with the viewer line already set.
-			d.mu.Lock()
-			d.lost = true
-			d.mu.Unlock()
-			d.sealMu.Lock()
-			d.sealMu.Unlock()
-			d.batcher.Displaced(ctx)
+			d.retireForAnotherHolder(ctx, held)
 		}
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
 	} else if err == nil {
 		d.resumeViewer()
 	}
 	return nil
+}
+
+// retireForAnotherHolder retires this writer's hold when CheckLease finds
+// another computer holding the chat. It retires the hold at once so no new
+// seal starts, waits for any seal already past Gate, and lets the batcher keep
+// unsent turns as a branch before the window names the new holder (#2091).
+// The send receipt goes before the
+// batcher marks itself stale, because that mark already wakes renewal readers
+// and none of them may still find a receipt for a hold another computer has.
+// The hold is retired quietly: becomeViewer announces the change once.
+func (d *Drive) retireForAnotherHolder(ctx context.Context, held sendLease) {
+	d.mu.Lock()
+	d.lost = true
+	d.mu.Unlock()
+	d.sealMu.Lock()
+	d.sealMu.Unlock()
+	if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
+		d.notice(err.Error())
+	}
+	d.batcher.Displaced(ctx)
 }
 
 // sendLeaseSnapshot binds retirement to the receipt held before a relay reading,

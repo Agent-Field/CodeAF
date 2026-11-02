@@ -147,6 +147,14 @@ type FactoryCapabilities struct {
 	// from the shipped defaults (feature factory.pipeline_edit_rules). True
 	// only for an engine that implements [FactoryPipelineRulesEditor].
 	PipelineEditRules bool `json:"pipeline_edit_rules"`
+	// SpendByRepo: factory.spend_by_repo is served (feature
+	// factory.spend_by_repo). True only for an engine that implements
+	// [FactorySpender]; a factory older than the route answers not found.
+	SpendByRepo bool `json:"spend_by_repo"`
+	// RepoFacts: factory.repo_facts is served (feature factory.repo_facts).
+	// True only for an engine that implements [FactoryRepoFactsReader]; a
+	// factory older than the route answers not found.
+	RepoFacts bool `json:"repo_facts"`
 	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
 	// only for an engine that implements [FactoryRepoReader]; whether the
 	// factory has a checkout of a repository is answered by the call.
@@ -219,7 +227,11 @@ type FactoryRepo struct {
 	Owner   string    `json:"owner"`
 	Private bool      `json:"private"`
 	Pushed  time.Time `json:"pushed"`
-	Open    int       `json:"open"`
+	// Open is GitHub's open_issues_count: open issues AND pull requests.
+	Open int `json:"open"`
+	// OpenIssues is open issues without pull requests, absent when the
+	// factory did not say (an older factory, or GitHub would not count them).
+	OpenIssues *int `json:"open_issues,omitempty"`
 }
 
 // FactoryRepos is factory.repos' answer.
