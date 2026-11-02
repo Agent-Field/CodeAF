@@ -384,9 +384,19 @@ func matchOne(it Item, t term, viewer string, now time.Time) bool {
 	return matchTerm(it, t.text, viewer)
 }
 
-// ThinReadiness is the readiness under which an item is thin and wants
-// questions before it is worth running.
+// ThinReadiness is the readiness under which an older read, with no rubric,
+// is thin.
 const ThinReadiness = 55
+
+// Thin says the item wants questions before it is worth running: its rubric
+// scored the wanted result unclear. The read no longer writes a readiness, so
+// only a read with no rubric falls back to that number.
+func (t Triage) Thin() bool {
+	if t.Rubric != nil {
+		return t.Rubric.Clarity.Score == FactorMost
+	}
+	return t.Readiness < ThinReadiness
+}
 
 func matchTerm(it Item, t, viewer string) bool {
 	area := strings.ToLower(it.Triage.Area)
@@ -421,7 +431,7 @@ func matchTerm(it Item, t, viewer string) bool {
 	case "bugs":
 		return it.Triage.Type == "bug"
 	case "thin":
-		return it.Triage.Readiness < ThinReadiness
+		return it.Triage.Thin()
 	case "mine":
 		return viewer != "" && (it.Person() == viewer || NormalizeHandle(it.Author) == viewer)
 	}

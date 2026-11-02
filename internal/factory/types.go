@@ -180,7 +180,7 @@ type Triage struct {
 	// be trusted: [ShownSize] draws nothing for it.
 	SizeFrom  string `json:",omitempty"`
 	Area      string
-	Readiness int // 0..100; under 55 the item is thin and wants questions
+	Readiness int // 0..100, from older reads only; see [Triage.Thin]
 	// Rubric is how complex the job is ([Rubric]), from the read or from
 	// Look closer, and nil when nobody scored it. A model never writes a
 	// price: an older document's model-written estimate is not read.
