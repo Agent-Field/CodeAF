@@ -22,13 +22,13 @@ import (
 // pipeline, waiting on whom its who names ("@handle", operator, or "" for the
 // job's person), with an optional prompt the person reads. A gate is a person,
 // so it takes no until, rounds, effort or fanout, and once in the file it is
-// locked like every other person. A CHECK IS NOT ONE OF THEM: its prompt is a shell command whose exit
-// code is the evidence, and add_step may add one (kind check) as it adds a
-// chat, through the same reviewed pull request that would add it by hand. A
-// check takes no effort or fanout (no model reads it) and stops only on done,
-// clean, green or proven, the words its runner checks. That is this editor's
-// policy, matching the board's fixed rows; a reviewed pull request to the file
-// is the file changing, which is how the law changes.
+// locked like every other person. A CHECK IS NOT ONE OF THEM: its prompt is a
+// shell command whose exit code is the evidence, and add_step may add one
+// (kind check) as it adds a chat, through the same reviewed pull request that
+// would add it by hand. A check takes no effort or fanout (no model reads it)
+// and stops only on done, clean, green or proven, the words its runner checks.
+// That is this editor's policy, matching the board's fixed rows; a reviewed
+// pull request to the file is the file changing, which is how the law changes.
 //
 // A CHAT STEP MAY CROSS A PERSON, AND THE PREVIEW SAYS SO. Moving, adding or
 // removing a chat step before a gate changes what runs unattended before that
@@ -285,9 +285,6 @@ func (st *editState) addStep(i int, list []string, op EditOp) ([]string, *EditEr
 func (st *editState) define(i int, op EditOp) *EditError {
 	have, exists := st.out.Steps[op.Name]
 	want := have
-	if !exists {
-		want = Step{}
-	}
 	if op.Prompt != nil {
 		want.Prompt, want.wrotePrompt = *op.Prompt, true
 	}
