@@ -884,6 +884,8 @@ type PR struct {
 	Mergeable   string `json:"mergeable,omitempty"`
 	ChecksRead  bool   `json:"checks_read,omitempty"`
 	ReviewsRead bool   `json:"reviews_read,omitempty"`
+	// HeadBranch is the branch the pull request comes from.
+	HeadBranch string `json:"head_branch,omitempty"`
 }
 
 // JobMerge is a job's merging: the pipeline's settings pinned when its proof

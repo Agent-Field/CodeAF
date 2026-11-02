@@ -594,7 +594,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
 			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
-		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -618,7 +618,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
 			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
-		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt

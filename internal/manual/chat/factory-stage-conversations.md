@@ -407,6 +407,17 @@ The app shows GitHub check totals and failed check names separately from local
 proof, records check changes in Timeline, and offers Open PR and View GitHub checks. A draft
 needs to be marked ready on GitHub before merging; failing checks still block Merge.
 
+## Publishing when the branch already exists on GitHub
+
+A job's branch name comes from its issue, so an earlier run on another machine or home can
+already hold it. The factory never overwrites commits it cannot show are its own. It leaves that
+branch as it is, pushes the approved commit to the same name with `-2` (up to `-9`), and opens
+the draft PR from there; the job's log names both branches. An older open PR stays open for you
+to close. A branch still at the commit this checkout last pushed is replaced, under a lease on
+that commit, so a re-run of the same job updates its own PR. When every name holds other commits,
+**Publishing failed** says so and Retry publish works once you delete one. A repair push goes to the
+branch its PR comes from, and is refused if that branch moved.
+
 
 ## the factory manager does not poll or judge background completion
 
