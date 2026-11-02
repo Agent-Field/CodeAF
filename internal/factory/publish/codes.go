@@ -11,6 +11,12 @@ import (
 // ErrCommitChanged refuses consent after the approved object moved.
 var ErrCommitChanged = errors.New("job changed since approval; approve again")
 
+// The codes publishing itself decides on, not only reads from the forge.
+const (
+	CodePushRejected     = "push_rejected"
+	CodeBranchNamesTaken = "branch_names_taken"
+)
+
 // Code is a stable wire identifier and the next action a person can take.
 type Code struct {
 	Code string `json:"code"`
@@ -20,7 +26,8 @@ type Code struct {
 var codes = []Code{
 	{"branch_protected", "Ask a repo admin to allow codeaf, or open the PR yourself from the branch."},
 	{"no_push_permission", "Ask for write access to this repo, then Retry publishing."},
-	{"push_rejected", "The branch moved on GitHub. Run the job again to rebase, then approve again."},
+	{CodePushRejected, "This pull request's branch moved on GitHub, and nothing was overwritten. Follow PR reads what landed there; approve again after that."},
+	{CodeBranchNamesTaken, "This job's branch name and its spare names on GitHub hold other commits, and nothing was overwritten. Delete a branch nobody needs, then Retry publishing."},
 	{"pr_create_forbidden", "Open the PR yourself from the branch; this account cannot open PRs here."},
 	{"repo_archived", "The repo is archived. Cancel job."},
 	{"github_unreachable", "Check the connection to GitHub, then Retry publishing."},
@@ -42,6 +49,20 @@ func Known(code string) bool {
 	return false
 }
 
+// Reason is the failure in a person's words: what to do about a code that names
+// its remedy, else the first line of what the forge said.
+func Reason(code, detail string) string {
+	if code != "unknown" {
+		for _, row := range codes {
+			if row.Code == code {
+				return row.Next
+			}
+		}
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(detail), "\n")
+	return strings.TrimSpace(line)
+}
+
 // Failure classifies the forge's message at the operation that failed.
 // Permission to push and permission to open a PR are different remedies.
 func Failure(err error, operation string) string {
@@ -54,7 +75,7 @@ func Failure(err error, operation string) string {
 	case strings.Contains(msg, "protected branch"), strings.Contains(msg, "gh006"), strings.Contains(msg, "gh013"), strings.Contains(msg, "repository rule"):
 		return "branch_protected"
 	case strings.Contains(msg, "non-fast-forward"), strings.Contains(msg, "fetch first"):
-		return "push_rejected"
+		return CodePushRejected
 	case strings.Contains(msg, "rate limit"), strings.Contains(msg, "429"):
 		return "rate_limited"
 	case strings.Contains(msg, "could not resolve"), strings.Contains(msg, "connection refused"), strings.Contains(msg, "timeout"), strings.Contains(msg, "network is unreachable"), strings.Contains(msg, "502"), strings.Contains(msg, "503"):
