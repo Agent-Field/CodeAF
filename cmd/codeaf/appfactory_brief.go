@@ -9,7 +9,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -38,12 +37,4 @@ func (b *appBackend) FactoryJobBrief(ctx context.Context, p appwire.FactoryJobBr
 		Factory: p.Factory, Job: p.Job, Status: got.Status, Failure: got.Failure, FailedAfter: got.FailedAfter,
 		Since: got.Since, Brief: got.Brief, ChangedSinceSeen: changed,
 	}, nil
-}
-
-// routeMissing says whether err is a factory's not found for the route
-// itself rather than for the job: how a factory older than the brief
-// answers its routes.
-func routeMissing(err error) bool {
-	var e *appwire.Error
-	return errors.As(err, &e) && e.Code == appwire.CodeNotFound && e.Message == api.EndpointNotFound
 }
