@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,10 +13,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -32,9 +31,7 @@ import (
 func doorChat(t *testing.T) (session.Config, cell.Cell) {
 	t.Helper()
 	celltest.RequireEngine(t)
-	if _, err := furrow.ResolveOwned(); err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	celltest.Engine(t)
 	// The engine daemon has no sync verbs until its own lane lands, so the
 	// door's sync runs over the spawn transport, which has them.
 	t.Setenv("CODEAF_ENGINE_DAEMON", "0")
