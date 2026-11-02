@@ -390,8 +390,16 @@ func (h *Handler) stopSetupReader(id string) bool {
 	}
 	cancel()
 	<-done
+	if continueGapHook != nil {
+		continueGapHook()
+	}
 	return true
 }
+
+// continueGapHook runs in tests only, after a stopped reader has let go and
+// before its Continue takes the setup lock, so a test can place a request in
+// that gap without depending on the scheduler. It is nil in production.
+var continueGapHook func()
 
 // setupReader is the running reader's stop and finish, or nothing when no
 // reader is reading issues, another Continue is already stopping it, or

@@ -5,27 +5,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"runtime"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
-	"unsafe"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 )
 
 // midReadSetup is a team factory whose setup has read acme/api whole and is
-// reading acme/big, held on its second page until the read is stopped. When a
-// read of that page is stopped, cancelled is closed and the reader returns
-// only once release is closed.
-func midReadSetup(t *testing.T) (f *peopleV2Fixture, cancelled, release chan struct{}) {
+// reading acme/big, held on its second page until the read is stopped.
+func midReadSetup(t *testing.T) *peopleV2Fixture {
 	t.Helper()
-	f = peopleV2Setup(t, api.FactoryTeam)
-	cancelled, release = make(chan struct{}), make(chan struct{})
-	var once sync.Once
+	f := peopleV2Setup(t, api.FactoryTeam)
 	if err := factorygithub.SaveReadGrant(factorygithub.GrantPath(f.cfg.TokensPath), factorygithub.ReadGrant{Token: "read-only", Login: "owner", GrantedAt: f.now}); err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +34,6 @@ func midReadSetup(t *testing.T) (f *peopleV2Fixture, cancelled, release chan str
 			body = string(page)
 		case r.URL.Path == "/repos/acme/big/issues":
 			<-r.Context().Done()
-			once.Do(func() { close(cancelled) })
-			<-release
 			return nil, r.Context().Err()
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
@@ -60,7 +49,7 @@ func midReadSetup(t *testing.T) (f *peopleV2Fixture, cancelled, release chan str
 	untilSetup(t, f.h, "the big repo mid-read", func(s setupState) bool {
 		return setupRead(s, "acme/api") == "done" && setupRead(s, "acme/big") == "reading" && s.Pages["acme/big"] == 2
 	})
-	return f, cancelled, release
+	return f
 }
 
 // assertContinued checks that reading ended for good: no reader runs, setup
@@ -79,49 +68,21 @@ func assertContinued(t *testing.T, f *peopleV2Fixture) {
 	}
 }
 
-// lockWaiters is how many goroutines wait on mu. sync.Mutex keeps its state
-// word first, with the waiter count above its three flag bits.
-func lockWaiters(mu *sync.Mutex) int32 {
-	return atomic.LoadInt32((*int32)(unsafe.Pointer(mu))) >> 3
-}
-
-func untilLockWaiters(t *testing.T, mu *sync.Mutex, n int32) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for lockWaiters(mu) < n {
-		if time.Now().After(deadline) {
-			t.Fatalf("waiters on the setup lock never reached %d", n)
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
 // A window reading setup while Continue stops the reader cannot start the
-// reader again: Continue answers 200 and reading ends. The read is made to
-// arrive in the gap between the stopped reader letting go and Continue
-// taking its step: with one processor, the stopped reader and then the read
-// queue on the setup lock while the test holds it, and the read, woken last
-// by the reader's unlock, runs before Continue, which the reader woke first.
+// reader again: the read arrives after the stopped reader has let go and before
+// Continue takes its step, Continue still answers 200 and reading ends.
 func TestFactorySetupContinueHoldsAgainstAConcurrentRead(t *testing.T) {
-	f, cancelled, release := midReadSetup(t)
-	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
-	answer := make(chan int, 1)
-	go func() {
-		answer <- identityRequest(f.h, "POST", "/v1/factory-setup/local", `{"verb":"continue"}`, "operator-secret", nil).Code
-	}()
-	<-cancelled
-	f.h.setupMu.Lock()
-	close(release)
-	untilLockWaiters(t, &f.h.setupMu, 1)
-	read := make(chan struct{})
-	go func() {
-		defer close(read)
-		identityRequest(f.h, "GET", "/v1/factory-setup/local", "", "operator-secret", nil)
-	}()
-	untilLockWaiters(t, &f.h.setupMu, 2)
-	f.h.setupMu.Unlock()
-	<-read
-	if code := <-answer; code != 200 {
+	f := midReadSetup(t)
+	read := 0
+	continueGapHook = func() {
+		read = identityRequest(f.h, "GET", "/v1/factory-setup/local", "", "operator-secret", nil).Code
+	}
+	t.Cleanup(func() { continueGapHook = nil })
+	code := identityRequest(f.h, "POST", "/v1/factory-setup/local", `{"verb":"continue"}`, "operator-secret", nil).Code
+	if read != 200 {
+		t.Fatalf("the read in the gap answered %d; the gap was not reached", read)
+	}
+	if code != 200 {
 		t.Fatalf("Continue with a window reading setup answered %d", code)
 	}
 	assertContinued(t, f)
@@ -130,8 +91,7 @@ func TestFactorySetupContinueHoldsAgainstAConcurrentRead(t *testing.T) {
 // Two Continues at once end reading once: one is taken, the other is told
 // setup is no longer reading, and no reader is left running.
 func TestFactorySetupDoubleContinueEndsReadingOnce(t *testing.T) {
-	f, _, release := midReadSetup(t)
-	close(release)
+	f := midReadSetup(t)
 	codes := make(chan int, 2)
 	for range 2 {
 		go func() {
