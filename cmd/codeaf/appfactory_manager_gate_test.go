@@ -113,6 +113,7 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 				return &appConn{Conv: loop.Client.Agent(), Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { loop.Close(); engine.Close() }}, nil
 			}
 			item := planJob("owner")
+			item.WorktreeMachine = "test-worker"
 			item.Repo, item.Num, item.Kind, item.Title = "acme/api", 7, factory.KindIssue, "Revise the plan"
 			item.Asking = &factory.Asked{Stage: "approve", With: factory.AskedYou, Question: item.Question, At: time.Now()}
 			item.Stages = []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true, Until: factory.UntilDone}, {Name: "approve", Kind: factory.StageGate, On: true}, {Name: "build", Kind: factory.StageChat, On: true, Until: factory.UntilDone}}
@@ -134,7 +135,7 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			gotStatus, gotResult := status, result
 			mu.Unlock()
 			if wrong {
-				if !strings.Contains(gotResult, "factory_status") || !strings.Contains(gotResult, "Nothing changed") || !strings.Contains(gotResult, "Tell the person") {
+				if !strings.Contains(gotResult, "factory_status") || !strings.Contains(gotResult, "Nothing changed") || !strings.Contains(gotResult, "requested action did not happen") || strings.Contains(gotResult, "Action not confirmed") {
 					t.Fatalf("refusal lacks recovery and honest outcome: %s", gotResult)
 				}
 				after, _ := json.Marshal(read())

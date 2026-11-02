@@ -50,8 +50,8 @@ type InboxDoor interface {
 // The words `factory_answer` hands back when nothing waits on the manager or
 // the call says neither or both.
 const (
-	answerNothingWaits = "nothing changed: no step's question is waiting on you on this turn"
-	answerNeedsOne     = "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
+	answerNothingWaits = factoryAnswerRefused + "nothing changed: no step's question is waiting on you on this turn"
+	answerNeedsOne     = factoryAnswerRefused + "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
 )
 
 const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
@@ -90,7 +90,7 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 			answer := strings.Join(strings.Fields(parsed.Answer), " ")
 			why := strings.Join(strings.Fields(parsed.AskPerson), " ")
 			if (answer == "") == (why == "") {
-				return factoryAnswerFailure(answerNeedsOne), true, nil
+				return answerNeedsOne, true, nil
 			}
 			if parsed.Action == "reject_plan" {
 				d, ok := a.runDoorForTurn().(ManagerPlanRejecter)
@@ -118,7 +118,7 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 			}
 			door, ok := a.runDoorForTurn().(InboxDoor)
 			if !ok || door == nil {
-				return factoryAnswerFailure(answerNothingWaits), true, nil
+				return answerNothingWaits, true, nil
 			}
 			var line string
 			var err error
@@ -135,8 +135,13 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 	}
 }
 
-// factoryAnswerFailure keeps recovery instructions separate from the person's reply.
+const factoryAnswerRefused = "Nothing changed. Tell the person plainly that the requested action did not happen and the job has not advanced; do not promise work has started or repeat tool names or internal identifiers. Read factory_status on an ordinary manager turn before retrying; during a temporary inbox turn use the supplied question. Recovery detail: "
+
+// factoryAnswerFailure distinguishes an explicit refusal from an uncertain write.
 func factoryAnswerFailure(detail string) string {
+	if strings.HasPrefix(strings.ToLower(detail), "nothing changed") {
+		return factoryAnswerRefused + detail
+	}
 	return "Action not confirmed. Read factory_status before retrying and use its current question_id and supported action. Tell the person plainly that the requested action was not confirmed; do not promise work has started or repeat tool names or internal identifiers. Recovery detail: " + detail
 }
 

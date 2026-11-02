@@ -31,7 +31,7 @@ func PendingQuestionID(it Item) string {
 		if it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 			ph := it.Stream.Phases[it.Stream.Cur]
 			round = ph.Round
-			if stage == "" {
+			if stage == "" && it.QKind != "step" {
 				stage = ph.Name
 			}
 		}
@@ -121,7 +121,7 @@ func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) Manager
 		out.Text += "\nLast recorded step progress: " + current.At.UTC().Format(time.RFC3339) + "."
 	}
 	if out.QuestionID != "" {
-		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. A tool failure means the decision was not saved; never describe it as answered."
+		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. Report only the saved outcome the tool confirms. On refusal, explain that the action did not happen. If the outcome is unconfirmed, read status before retrying."
 	}
 	if back, ok := PlanSendsBack(it); ok && out.QuestionID != "" {
 		out.Text += " To request changes, call factory_answer with action=reject_plan, this question_id and the person's words in answer. This sends the plan back to " + back + "; that step runs again with the words and approval is requested again afterward. Report only the outcome the tool confirms."
