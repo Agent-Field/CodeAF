@@ -180,6 +180,12 @@ Proof is the step named proof, a send-back's prove step, or any step that runs u
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
 
+## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs
+
+On the app's job page, the job's person can set how many tries one conversation step of that job gets, from 1 to 3, before the step runs. A try that does not meet the step's rule (until clean, until proven) goes again until the step runs out of tries, then the job asks you. The change is for this job only, never the repository's steps.
+
+It is refused above three or below one (`a step gets 1 to 3 tries`), for a check or an approval (`test is a check or an approval; only a conversation step's tries change here`; a check says its rounds when it is added), for a step that has run, a fixed step or a step after proof, and from anyone but the job's person (`only the person sets how many tries a step gets`). A factory older than the change answers that it doesn't support that yet.
+
 ## remove or move a step of one job — delete a step, reorder, run it after, skip versus remove
 
 Skipping a step leaves it in the job, switched off. Removing it takes it out of the job's steps altogether; moving it puts it after another step, or first. Both change this job only, never the repository's pipeline, and both go through the same edit and bounds as every other change: tell the job's manager (`remove pretest`, `run docs after write`), or use the step's menu on the job's tab.

@@ -571,6 +571,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// briefs takes the progress news of this machine's factory's jobs as
+	// writes of their briefs (appfactory_brief_writer.go).
+	briefs *briefDebounce
 	// factories is the attached-factory registry (appfactory.go), made by the
 	// first factory.* call.
 	factories   *appFactoryHub
@@ -1020,6 +1023,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
+	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
@@ -4478,6 +4482,9 @@ func (b *appBackend) Close() error {
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()
+	}
+	if b.briefs != nil {
+		b.briefs.stop()
 	}
 	if warmed != nil {
 		<-warmed
