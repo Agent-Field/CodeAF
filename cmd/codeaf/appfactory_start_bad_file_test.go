@@ -22,6 +22,7 @@ import (
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/worker"
+	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
 func TestFactoryStartBadRepositoryFile(t *testing.T) {
@@ -84,9 +85,15 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			}
 			s.backend.local.rules = read
 			var launch func(int) error
+			var signedIn atomic.Bool
 			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
 				// Keep the automatic model worker off; below, a real worker uses a scripted plan.
-				seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{}, nil }
+				seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+					if signedIn.Load() {
+						return factory.GitHubLink{Login: "owner"}, nil
+					}
+					return factory.GitHubLink{}, nil
+				}
 				st, err := store.Open(v3FactoryRoot())
 				if err != nil {
 					t.Fatal(err)
@@ -104,7 +111,7 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			if err := floor.SetCheckout("acme/api", dir); err != nil {
 				t.Fatal(err)
 			}
-			id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Plan safely", Autonomy: factory.AutonomyAuto, Stages: []factory.Stage{
+			id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Plan safely", Model: "openai/gpt-4.1", Tier: factory.TierOwner, Autonomy: factory.AutonomyAuto, Stages: []factory.Stage{
 				{Name: "plan", Kind: factory.StageChat, On: true, Until: factory.UntilDone},
 				{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
 				{Name: "write", Kind: factory.StageChat, On: true, Until: factory.UntilDone},
@@ -181,13 +188,30 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			model := newStageModel(t)
+			t.Setenv("CODEAF_BASE_URL", model.server.URL)
+			t.Setenv("OPENROUTER_API_KEY", "test-key-no-network")
+			t.Chdir(dir)
+			freshEngineProcess(t)
+			oldSettle := stageSettle
+			stageSettle = 20 * time.Millisecond
+			t.Cleanup(func() { stageSettle = oldSettle })
+			process, err := openEngineProcess()
+			if err != nil {
+				t.Fatal(err)
+			}
+			launchConfig, err := openV3Launch(process, engineLaunchOptions(remote.Hello{Version: remote.Version, Workspace: dir}, dir, ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			chat := factoryrun.NewChatExecutor(factoryStageMaker(mirror, dir, "", launchConfig.Config))
 			var writes atomic.Int32
 			runner := factoryrun.New(factoryrun.Options{Store: mirror, RepoDir: func(string) string { return dir }, Exec: map[factory.StageKind]factoryrun.Executor{
-				factory.StageChat: factoryrun.ExecutorFunc(func(_ context.Context, job factoryrun.Job) (factory.StageResult, error) {
+				factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
 					if job.Stage.Name != "plan" {
 						writes.Add(1)
 					}
-					return factory.StageResult{Done: true, Output: "files:\n- README.md\n"}, nil
+					return chat.Run(ctx, job)
 				}),
 			}})
 			ctx, cancel := context.WithCancel(context.Background())
@@ -204,6 +228,12 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				s.must("factory.job", params, &job)
 				return job.State == api.StateNeedsYou && job.RuleHold == factory.StartRulesUnreadHold
 			})
+			model.mu.Lock()
+			callsAtHold := len(model.models)
+			model.mu.Unlock()
+			if callsAtHold == 0 {
+				t.Fatal("plan never called the fake model")
+			}
 			for until := time.Now().Add(time.Second); time.Now().Before(until); {
 				var held api.Job
 				s.must("factory.job", params, &held)
@@ -214,6 +244,12 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				if len(held.Steps) != 3 || held.Steps[0].State != string(factory.PhaseDone) || held.Steps[2].StartedAt != nil || writes.Load() != 0 {
 					t.Fatal("later step started before consent")
 				}
+				model.mu.Lock()
+				calls := len(model.models)
+				model.mu.Unlock()
+				if calls != callsAtHold {
+					t.Fatal("fake model called while plan waits for consent")
+				}
 				time.Sleep(20 * time.Millisecond)
 			}
 			if writes.Load() != 0 {
@@ -221,19 +257,23 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			}
 			// The read must survive the worker's report and its API round trip.
 			raw, code, msg := s.call("factory.job", params)
-			if code != "" || json.Unmarshal(raw, &got) != nil || got.StartRules.Why == "" {
+			if code != "" || json.Unmarshal(raw, &got) != nil || got.StartRules.Why != wantWhy || got.StartRules.File != pipeline.RepoFile || (road == "no line" && got.StartRules.Line != nil) || (road != "no line" && (got.StartRules.Line == nil || *got.StartRules.Line != 3)) {
 				t.Fatalf("read after plan: %s %s %s", code, msg, raw)
 			}
 			var held api.Job
 			s.must("factory.job", params, &held)
 			params["expect"] = map[string]any{"version": held.Version}
 			params["commit"] = held.HeadCommit
+			signedIn.Store(true)
 			var approved appwire.FactoryJobActed
 			s.must("factory.job_approve", params, &approved)
-			for deadline := time.Now().Add(factory.ApprovalUndo + 5*time.Second); writes.Load() == 0 && time.Now().Before(deadline); {
+			for deadline := time.Now().Add(factory.ApprovalUndo + 5*time.Second); func() bool { model.mu.Lock(); defer model.mu.Unlock(); return len(model.models) == callsAtHold }() && time.Now().Before(deadline); {
 				time.Sleep(20 * time.Millisecond)
 			}
-			if writes.Load() == 0 {
+			model.mu.Lock()
+			callsAfterApproval := len(model.models)
+			model.mu.Unlock()
+			if writes.Load() == 0 || callsAfterApproval <= callsAtHold {
 				t.Fatal("approval did not release the next step")
 			}
 		})
