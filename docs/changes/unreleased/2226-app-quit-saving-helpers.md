@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf desktop saving helpers expire after quit
-pr: 0
+pr: 2226
 surface: [engine]
 invalidates:
   - "Desktop saving helpers used the same ten-minute idle limit as terminal helpers. Helpers the desktop engine starts now use one minute, with health requests keeping them ready while the engine is alive."
