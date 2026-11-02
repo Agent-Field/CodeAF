@@ -13,6 +13,11 @@ watches and held store polls immediately. Authorization is checked once before
 blob work and repeated after I/O only when the applied index changed. Advisory
 presence is coalesced outside the request path.
 
+Internal quorum reads preserve an in-progress idle transition; ordinary reads
+still wake the group. Link approvals validate certificates and grants before
+reserving a pairing request. Exact retries of a committed decision remain valid
+after its original pending deadline; expired undecided requests remain refused.
+
 Existing identities retain their voting configuration. New singleton births
 persist immutable provenance that older relay code cannot serve; upgrades must
 preserve compatible recovery rather than restore a local directory writer.

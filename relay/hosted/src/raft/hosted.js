@@ -17,6 +17,8 @@ import { presenceOf, parseBeat } from '../presence.js';
 import { parseHolds } from '../vouch.js';
 import { rotationView } from '../rotation.js';
 import { checkTime } from '../verify.js';
+import { checkApprovalDevice } from '../link/decide.js';
+import { asGrant } from '../link/code.js';
 import { CommittedWatchers, CLOSE_REVOKED, CLOSE_ROTATED } from '../watch.js';
 
 const enc=new TextEncoder(),dec=new TextDecoder('utf-8',{fatal:true});
@@ -848,8 +850,21 @@ export class HostedIdentity {
       const reply=this.jsonBytes('{"now":'+now+',"cell":'+this.projectJSON('cell',row.raw)+'}');reply.headers.set('codeaf-conditional-takes','1');return this.finishRead(b,reply);
     }
     const join=/^\/v1\/dir\/requests\/([^/]+)\/(approve|deny)$/.exec(path);
-    if(join){await this.authorize(device,cert,true);const code=decodeURIComponent(join[1]).trim().toLowerCase();const box=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code));await this.effects.admit(box,code,Date.now());}
+    let joinCode,joinBox;
+    if(join){
+      const authority=await this.authorize(device,cert,true);joinCode=decodeURIComponent(join[1]).trim().toLowerCase();joinBox=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(joinCode));
+      // Invalid approvals cannot reserve a request for this cluster. The Go
+      // command still checks authority and revocation at its committed index.
+      const pending=unwrap(await joinBox.read(0));
+      if(join[2]==='approve'){
+        const approval=JSON.parse(dec.decode(body));await checkApprovalDevice(c,approval,pending);
+        const target=await this.readView(authority.barrier,'state','device/'+segment(pending.device));
+        if(target.raw&&this.project('device',target.raw).revoked)throw new Wire('bad_request',400);
+        asGrant(approval.grant,this.tenant.limits.linkMaxGrant);
+      }
+    }
     let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,this.readNow(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
+    if(join)await this.effects.admit(joinBox,joinCode,Date.now());
     const result=await this.commitV1(raw);
     const b=await this.appliedReplica(result.index),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw),version=snapshot.app.version;
     await this.rememberRetirement(identity);
