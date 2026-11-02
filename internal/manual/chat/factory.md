@@ -134,7 +134,7 @@ A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {a
 They hold three lists:
 
 - **rules**: sentences every step of every job is told, below the repository's own, in a "rules for this work" paragraph. A step that would break one stops and asks instead. A sentence codeaf recognises, such as "never close an issue" or "tests pass before anything posts", is also applied by code, exactly like the repository's.
-- **ask first**: protected paths, written `touch auth/`, and sentences a job asks about before it starts on its own, like `start.ask_first`. In the app the paths are **Protected folders and files**.
+- **ask first**: protected paths, written `touch auth/` or just `auth/` (a line that is one word, or holds a `/` or a `*`, such as `billing/`, `*.lock` or `src/**`, is a path), and sentences a job asks about before it starts on its own, like `start.ask_first`. In the app the paths are **Protected folders and files**.
 - **never**: kept so older files still work. A path listed here is a protected path, exactly like `touch <path>` under ask first; it is not held more strictly or briefed differently. Write new ones under ask first.
 
 The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
