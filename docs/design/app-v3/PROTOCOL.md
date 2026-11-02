@@ -313,6 +313,7 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
 An engine whose hello carries the feature `factory.rules_changed_by` answers
 `factory.rules` and `factory.rules_set` with `changed_by`, the GitHub login of
@@ -365,6 +366,15 @@ instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
 binary file is `unreadable` with `binary`; a repository with no checkout on the
 factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
+
+An engine whose hello carries `factory.job_area` sends `area` on each job of
+`factory.queue` and on `factory.job`: the part of the repository the job's
+change touched most, the repository's declared area or else the top-level
+directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
+`internal`, `pkg`, `lib`, `app`, `apps`, `packages`, `crates`, `cmd`) it is the
+first two segments (`"internal/factory/"`), and a file directly inside one is
+the container (`"internal/"`). Every response that carries the job says the
+same area. It is absent when the job changed no file or only files at the root.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
@@ -671,6 +681,27 @@ a task role and Auto never picks it; a `null` pin gives back the build's own
 small-work model. A pin is checked as the other pins are: a model the provider
 serves, and one the allowed models admit. An engine without the feature leaves
 `roles.auxiliary` out and refuses `pins.auxiliary` as an unknown role.
+
+An engine whose hello carries the feature `settings.models.insight` adds the page
+AI's roles: `insight` and its overrides `insight_notes` (repository notes),
+`insight_ask` (questions about a repository), `insight_themes` (backlog themes),
+`insight_pipeline` (Build with AI on a pipeline), `insight_views` (a factory's
+topic views), `insight_factory_read` (the read of what arrived in a factory) and
+`insight_factory_scout` (a closer look at it). Each is a row under `roles` in
+`settings.models.get` (and `settings.changed`),
+`{pin, warning, eligible_count, default?, follows?, label}`, and
+`settings.models.set` takes the same keys in `pins` as `{id, provider?}` or
+`null`. `label` is the row's name in the person's words (`Page AI`, `Repo notes`,
+`Repo ask`, `Repo themes`, `Build with AI`, `Topic views`, `Factory read`,
+`Factory scout`), so a client can draw a role it does not know yet. They are
+errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
+own pin, then the `insight` pin, then the engine's default for `insight`, then
+the small-work tier. `default` appears on `insight` only while the engine's
+default applies (`deepseek/deepseek-v4.1-flash` on `openrouter`, while OpenRouter
+is connected and the allowed models admit it); it is never written as a pin, and
+its absence means an unpinned `insight` follows its tier. `follows: "insight"`
+marks each override. Pins are stored in the `models.roles` row beside the other
+role pins and checked as the other pins are.
 
 ## setup methods
 
