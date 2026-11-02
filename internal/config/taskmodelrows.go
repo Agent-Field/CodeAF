@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // THE TASK MODELS AS A PERSON CONFIGURES THEM: EVERY MODEL ON EVERY ROUTE.
@@ -93,6 +94,9 @@ type TaskModelRole struct {
 	Pin      *CrewPin
 	Warning  string
 	Eligible int
+	// Default is the model an unpinned role runs on because the engine chose
+	// it ([InsightDefault]); nil when it follows its tier.
+	Default *CrewPin
 }
 
 // TaskModelsState is the whole configuration, read at one moment.
@@ -109,6 +113,9 @@ type TaskModelsState struct {
 	// Auxiliary is the small-jobs model ([TaskAuxiliaryPinAt]): no Pin while
 	// the build's own default answers.
 	Auxiliary TaskModelRole
+	// Insight is the page AI's rows ([InsightRoles]), pinned in the role pins
+	// row.
+	Insight   map[roles.Role]TaskModelRole
 	Providers []TaskModelProvider
 }
 
@@ -332,7 +339,7 @@ func taskModelProviders(profileDir string, rows []TaskModelRow, health crewHealt
 // any of them does. THE CAPS ARE NOT AMONG THEM: they are the Spending
 // settings' rows, and a budget change is not a change to the task models.
 func taskModelsKeys() []string {
-	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne, KeyTierLowModel,
+	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne, KeyTierLowModel, KeyModelRoles,
 		legacyKeyCrew, legacyKeyCrewPick, legacyKeyCrewSource}
 	for _, seat := range crewroute.Seats {
 		keys = append(keys, tierKeyFor(CrewSeatTier(seat)), crewRouteKey(seat))
@@ -439,6 +446,7 @@ func taskModelsOnce(ctx context.Context, profileDir, revision string) (TaskModel
 		state.Roles[seat] = role
 	}
 	state.Auxiliary = taskAuxiliaryRole(profileDir, providers, rows, &rule, health)
+	state.Insight = taskInsightRoles(profileDir, providers, rows, &rule, health)
 	state.Providers = taskModelProviders(profileDir, rows, health)
 	return state, rows, nil
 }
@@ -466,6 +474,17 @@ func TaskAuxiliaryPinAt(profileDir string) (CrewPin, bool) {
 // pin, a warning on the pin as every role pin carries one, and how many
 // available models it could be pinned to.
 func taskAuxiliaryRole(profileDir string, providers []CrewProvider, rows []TaskModelRow, rule *crewroute.Allowed, health crewHealth) TaskModelRole {
+	var pin *CrewPin
+	if held, ok := TaskAuxiliaryPinAt(profileDir); ok {
+		pin = &held
+	}
+	return taskErrandRole(pin, providers, rows, rule, health)
+}
+
+// taskErrandRole is a role no task seat stands behind, as the task models read
+// it: its pin and the warning on it, and how many available models it could
+// be pinned to.
+func taskErrandRole(pin *CrewPin, providers []CrewProvider, rows []TaskModelRow, rule *crewroute.Allowed, health crewHealth) TaskModelRole {
 	role := TaskModelRole{}
 	seen := map[string]bool{}
 	for _, row := range rows {
@@ -474,9 +493,9 @@ func taskAuxiliaryRole(profileDir string, providers []CrewProvider, rows []TaskM
 			role.Eligible++
 		}
 	}
-	if pin, ok := TaskAuxiliaryPinAt(profileDir); ok {
-		role.Pin = &pin
-		role.Warning = taskPinWarning(providers, rows, pin, rule, health)
+	if pin != nil {
+		role.Pin = pin
+		role.Warning = taskPinWarning(providers, rows, *pin, rule, health)
 	}
 	return role
 }
@@ -539,6 +558,10 @@ type TaskModelsChange struct {
 	// the model, or nil for the build's own default.
 	AuxiliarySet bool
 	Auxiliary    *CrewPin
+	// RolePins holds a page-AI role ([InsightRoles]) only when the change
+	// names it; nil gives the role back to its family, or insight back to
+	// its default or tier.
+	RolePins map[roles.Role]*CrewPin
 }
 
 // TaskModelTick is one row ticked or unticked.
@@ -689,6 +712,13 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 			// route that send takes ([TaskAuxiliaryPinAt]).
 			values[KeyTierLowModel] = route.Send
 		}
+	}
+	if len(change.RolePins) > 0 {
+		row, err := insightPinsRow(profileDir, rows, providers, change, rule)
+		if err != nil {
+			return nil, err
+		}
+		values[KeyModelRoles] = row
 	}
 	if pinned || values[KeyCrewAllowed] != nil {
 		// A profile carrying retired crew rows is migrated in the same write,

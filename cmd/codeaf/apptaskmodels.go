@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // taskModelsReadWindow bounds one read of the task models, the competence
@@ -88,11 +90,23 @@ func (b *appBackend) taskModelsWire(profile string, state config.TaskModelsState
 		if r.Pin != nil {
 			view.Pin = &appwire.ModelRef{ID: r.Pin.Model, Provider: r.Pin.Provider}
 		}
+		if r.Default != nil {
+			view.Default = &appwire.ModelRef{ID: r.Default.Model, Provider: r.Default.Provider}
+		}
 		return view
 	}
 	auxiliary := view(state.Auxiliary)
 	out.Roles = appwire.TaskModelRoles{Worker: view(state.Roles[crewroute.Worker]), Planner: view(state.Roles[crewroute.Planner]),
 		Checker: view(state.Roles[crewroute.Checker]), Auxiliary: &auxiliary}
+	insight := func(role roles.Role) *appwire.TaskModelRole {
+		row := view(state.Insight[role])
+		if family, ok := roles.FamilyOf(role); ok {
+			row.Follows = string(family)
+		}
+		return &row
+	}
+	out.Roles.Insight, out.Roles.InsightNotes = insight(roles.RoleInsight), insight(roles.RoleInsightNotes)
+	out.Roles.InsightAsk, out.Roles.InsightThemes = insight(roles.RoleInsightAsk), insight(roles.RoleInsightThemes)
 	sources := config.ResolveSources(profile, config.APIKeyAt(profile), config.DefaultBaseURL)
 	for _, p := range state.Providers {
 		view := appwire.TaskModelsProvider{
@@ -247,6 +261,16 @@ func (b *appBackend) SetTaskModels(p appwire.TaskModelsPatch) (appwire.TaskModel
 	if p.Pins != nil {
 		change.Pins = map[crewroute.Seat]*config.CrewPin{}
 		for role, ref := range p.Pins {
+			if slices.Contains(appwire.InsightRoleKeys, role) {
+				if change.RolePins == nil {
+					change.RolePins = map[roles.Role]*config.CrewPin{}
+				}
+				change.RolePins[roles.Role(role)] = nil
+				if ref != nil {
+					change.RolePins[roles.Role(role)] = &config.CrewPin{Model: ref.ID, Provider: ref.Provider}
+				}
+				continue
+			}
 			if role == appwire.RoleAuxiliary {
 				change.AuxiliarySet = true
 				if ref != nil {

@@ -553,7 +553,8 @@ func Known(name string) bool {
 var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
-	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
+	RoleImageGen, RoleInsight, RoleInsightAsk, RoleInsightNotes,
+	RoleInsightThemes, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
@@ -594,7 +595,9 @@ func TierOf(role Role) (Tier, bool) {
 // The ladder is exact, most specific first:
 //
 //  1. the role's own pin, settings key "roles.<role>" — one call, one model,
-//     set deliberately;
+//     set deliberately; a role registered under a family ([RegisterUnder]) then reads the
+//     family's pin; then the role's own default and its family's
+//     ([DefaultKey]), which an engine supplies and never writes;
 //  2. the model on the role's tier, key "tiers.<tier>" — the setting a person
 //     actually maintains;
 //  3. sessionDefault — the model the session is already talking to.
@@ -666,8 +669,15 @@ func Ladder(src Source, role Role, sessionDefault string) ([]Call, error) {
 		seen[model] = true
 		rungs = append(rungs, candidate)
 	}
-	if value, ok := read(src, PinKey(role)); ok {
-		add(call(value))
+	// The pins of the role and its family, then their defaults: a person's
+	// choice anywhere in the family outranks a default the engine supplies.
+	chain := lineage(role)
+	for _, key := range []func(Role) string{PinKey, DefaultKey} {
+		for _, member := range chain {
+			if value, ok := read(src, key(member)); ok {
+				add(call(value))
+			}
+		}
 	}
 	if value, ok := read(src, TierKey(tier)); ok {
 		add(call(value))

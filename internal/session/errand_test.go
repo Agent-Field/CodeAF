@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 func errandAsk(purpose string) ErrandAsk {
@@ -280,5 +281,44 @@ func TestAnErrandAskIsBoundedAndClamped(t *testing.T) {
 	ask.MaxTokens, ask.Deadline = 0, 0
 	if got, _ := ask.Normalize(); got.MaxTokens != ErrandDefaultTokens || got.Deadline != ErrandDefaultDeadline {
 		t.Fatalf("defaults: %+v", got)
+	}
+}
+
+// THE PAGE AI's ROLES ARE ERRAND ROLES. An errand that names insight_notes is
+// answered by its own pin, else the insight pin, else the engine's default for
+// insight, else the low tier, and says the role it ran as.
+func TestAnInsightErrandClimbsItsFamilyLadder(t *testing.T) {
+	var asked []string
+	c := &replyCompleter{answer: func(_ context.Context, _ []ai.Message, req ai.Request) (*ai.Response, error) {
+		asked = append(asked, req.Model)
+		return textResponse(`{"ok":true}`), nil
+	}}
+	values := map[string]string{}
+	a, _ := newTestAgent(t, c, func(cfg *Config) {
+		cfg.RolesSource = func(key string) (string, bool) { v, ok := values[key]; return v, ok }
+	})
+	for i, step := range []struct {
+		key, value, want string
+	}{
+		{"tiers.low", "vendor/low", "vendor/low"},
+		{"defaults.insight", "vendor/seeded", "vendor/seeded"},
+		{"roles.insight", "vendor/family", "vendor/family"},
+		{"roles.insight_notes", "vendor/own", "vendor/own"},
+	} {
+		values[step.key] = step.value
+		ask := errandAsk("repo_notes")
+		ask.Role = "insight_notes"
+		ask.Cache = ""
+		got, err := a.RunErrand(t.Context(), ask)
+		if err != nil || got.Model != step.want || got.Role != "insight_notes" || asked[i] != step.want {
+			t.Fatalf("with %s set: %+v %v, asked %v", step.key, got, err, asked)
+		}
+	}
+	routes := map[string]string{}
+	for _, route := range ErrandRoutesFrom(roles.Source(func(key string) (string, bool) { v, ok := values[key]; return v, ok }), "floor") {
+		routes[route.Role] = route.Model
+	}
+	if routes["insight"] != "vendor/family" || routes["insight_ask"] != "vendor/family" || routes["insight_themes"] != "vendor/family" || routes["insight_notes"] != "vendor/own" {
+		t.Fatalf("errand routes for the page AI: %v", routes)
 	}
 }

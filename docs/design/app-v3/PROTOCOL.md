@@ -600,6 +600,20 @@ small-work model. A pin is checked as the other pins are: a model the provider
 serves, and one the allowed models admit. An engine without the feature leaves
 `roles.auxiliary` out and refuses `pins.auxiliary` as an unknown role.
 
+An engine whose hello carries the feature `settings.models.insight` adds the page
+AI's four roles: `roles.insight`, `roles.insight_notes`, `roles.insight_ask` and
+`roles.insight_themes` in `settings.models.get` (and `settings.changed`), each
+`{pin, warning, eligible_count, default?, follows?}`, and `settings.models.set`
+takes the same four keys in `pins` as `{id, provider?}` or `null`. They are
+errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
+own pin, then the `insight` pin, then the engine's default for `insight`, then
+the small-work tier. `default` appears on `insight` only while the engine's
+default applies (`deepseek/deepseek-v4.1-flash` on `openrouter`, while OpenRouter
+is connected and the allowed models admit it); it is never written as a pin, and
+its absence means an unpinned `insight` follows its tier. `follows: "insight"`
+marks each override. Pins are stored in the `models.roles` row beside the other
+role pins and checked as the other pins are.
+
 ## setup methods
 
 | method | params | result |
