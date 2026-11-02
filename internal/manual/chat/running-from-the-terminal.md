@@ -1502,9 +1502,11 @@ the copy built into the binary. Your runs can improve the shared measurements. N
 the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
-does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
-from the shell, and on a CI machine with neither set codeaf reads but does
-not send. **The telemetry off switch stops the pool sending too**:
+does neither. It defaults to `off`, including in CI: no pool judge calls,
+pool routing or pool records. Your configured model and provider answer.
+`CODEAF_MODEL_POOL=on` or a saved `model_pool = on` enables it; an earlier
+explicit choice stays honoured. A missing or blank saved word means you never
+chose and stays off. `CODEAF_MODEL_POOL` pins the same word from the shell. **The telemetry off switch stops the pool sending too**:
 `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or the `telemetry` switch in `/settings` caps the
 pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
 then says `mode read · telemetry`.
@@ -1515,7 +1517,7 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+(`default`, `setting`, `env`, or `telemetry` when the telemetry off switch capped
 sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of scored runs, shown until a fresher

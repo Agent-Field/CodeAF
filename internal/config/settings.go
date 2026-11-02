@@ -113,7 +113,7 @@ const (
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
 	// KeyModelPool is the stored word the pool's resolver takes: the same three
-	// answers the CODEAF_MODEL_POOL pin and a CI environment may give it
+	// answers the CODEAF_MODEL_POOL pin may give it
 	// (internal/pool/poolcfg). The resolver beside the search rows is the one
 	// place the process environment is read for the pool.
 	KeyModelPool = "model_pool"
@@ -2023,8 +2023,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelPool, Category: CategoryModels, Kind: SettingChoice,
 			Label: "model pool", Env: "CODEAF_MODEL_POOL", Choices: ModelPoolChoices,
-			Hint: "codeaf picks your models from the public Model Pool, and your runs improve it. " +
-				"On by default: what leaves is computed, text-free numbers under a per-install nonce, " +
+			Hint: "Off by default: keep your configured models without pool judging or sharing. " +
+				"on: use and contribute computed, text-free numbers under a per-install nonce, " +
 				"never code, prompts or paths. read: use the pool, send nothing. off: neither " +
 				"(CODEAF_MODEL_POOL=off for one run).",
 			read:  func() string { return ModelPoolAt(dir).Mode.String() },

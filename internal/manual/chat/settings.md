@@ -160,7 +160,10 @@ renames this device with `n`, removes another with `r`, and starts `/pair` from
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
 and **shared model recommendations** (formerly Model Pool). Recommendations can
-**use and contribute**, **use only**, or remain **off**. Disabling one privacy
+**use and contribute**, **use only**, or remain **off** (the default).
+With no saved choice, the pool makes no judge calls and writes no pool records;
+your configured model and provider answer. A saved **use and contribute** choice
+stays enabled. Disabling one privacy
 control is not a promise that all the others are disabled. Search accepts old
 labels as well as the new organization.
 
