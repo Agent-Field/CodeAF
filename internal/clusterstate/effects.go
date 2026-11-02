@@ -147,7 +147,7 @@ func applyEffect(c Command, now int64, rows map[RecordKey][]byte, put func(Recor
 		return OK
 	case c.Change.AdmitJoin != nil:
 		v := c.Change.AdmitJoin
-		if v.Code == "" || len(v.PublicKey) != ed25519.PublicKeySize || v.Expires <= now || v.Expires > int64(MaxSafeInteger) {
+		if v.Code == "" || len(v.PublicKey) != ed25519.PublicKeySize || v.Expires > int64(MaxSafeInteger) {
 			return BadRequest
 		}
 		k := JoinKey(v.Code)
@@ -156,10 +156,18 @@ func applyEffect(c Command, now int64, rows map[RecordKey][]byte, put func(Recor
 			if Decode(raw, &r) != nil {
 				return BadRequest
 			}
-			if bytes.Equal(r.PublicKey, v.PublicKey) && r.Expires == v.Expires && r.Platform == PlatformOf(v.Platform) {
+			sameAdmission := bytes.Equal(r.PublicKey, v.PublicKey) && r.Expires == v.Expires && r.Platform == PlatformOf(v.Platform)
+			// Pending expiry cannot invalidate an already committed decision replay.
+			if v.Expires <= now && (!sameAdmission || r.Decision == nil) {
+				return BadRequest
+			}
+			if sameAdmission {
 				return OK
 			}
 			return Conflict
+		}
+		if v.Expires <= now {
+			return BadRequest
 		}
 		put(k, JoinRequest{Device: DeviceIDOfKey(v.PublicKey), PublicKey: v.PublicKey, Expires: v.Expires, Platform: PlatformOf(v.Platform)})
 		return OK
