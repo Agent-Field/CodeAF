@@ -1,5 +1,20 @@
 # The factory
 
+## save a job note after steps finish — who reads it and PR comments
+
+A `factory_item` note asks `save a note on the job?`. After your yes, it stays
+on the job even when all steps have finished. The tool's answer names the next
+remaining step that reads it when it runs. Done and failed steps are finished;
+an approval gate does not read a worker brief. A running round already has its
+brief, so its next round can read a newly saved note if it runs again.
+
+With no remaining reader, the answer says `no remaining step will read it` and
+`It is not in the pull request.` Saving a note neither edits the PR body nor
+posts a comment. You can comment on the pull request in GitHub; the answer gives
+the saved PR link, or says to wait until a PR exists. The note tool does not post
+PR comments. The app's `factory.issue_comment` posts on the job's source issue,
+which can be different from the PR created for the job.
+
 ## what is the factory — jobs, runners and a pull request at the end
 
 The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own.

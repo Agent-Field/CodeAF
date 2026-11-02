@@ -1190,3 +1190,17 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Job note receipts and pull request comments
+
+A manager's `factory_item` note remains saved on the job after all steps finish.
+The tool result is computed from the saved job: it names the next remaining
+reader, or says no remaining step will read the note and it is not in the pull
+request. The approval question is `save a note on the job?`. A running round
+already has its brief; a subsequent round can read the note if it runs again.
+
+No app method, parameters, reply fields, hello feature or error codes change.
+`factory.issue_comment` still targets the source issue, not the job's created
+pull request. The note receipt directs the person to comment on the PR in
+GitHub, using its saved URL when present; it does not claim that a manager has
+a PR comment tool. No comment or PR body edit is performed by saving a note.
