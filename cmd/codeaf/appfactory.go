@@ -1036,6 +1036,8 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 			Private bool      `json:"private"`
 			Pushed  time.Time `json:"pushed"`
 			Open    int       `json:"open"`
+			// OpenIssues is believed only as a whole number from 0.
+			OpenIssues *int `json:"open_issues"`
 		} `json:"available"`
 	}
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
@@ -1047,6 +1049,9 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 	}
 	for i, r := range body.Available {
 		out.Available[i] = appwire.FactoryRepo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open}
+		if r.OpenIssues != nil && *r.OpenIssues >= 0 {
+			out.Available[i].OpenIssues = r.OpenIssues
+		}
 	}
 	return out, nil
 }

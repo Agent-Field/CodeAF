@@ -20,7 +20,9 @@ func TestC1C6WorkAdmissionReusesTheViewerGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	viewer = true
-	for _, form := range []Seat{seat, ForSetup(seat)} {
+	// A conversation's seat carries its agent DID in front of the gate (#2027).
+	carried := WithEnvironment(seat, []string{"CODEAF_AGENT_DID=did:key:z6Mk"})
+	for _, form := range []Seat{seat, ForSetup(seat), carried, ForSetup(carried)} {
 		if err := CheckWork(form); !errors.Is(err, refusal) {
 			t.Fatalf("ownership refusal = %v", err)
 		}

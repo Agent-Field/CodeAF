@@ -27,6 +27,9 @@ type RepoInfo struct {
 	// lists it (GitHub's open_issues_count counts both), and -1 when the forge
 	// did not say.
 	Open int
+	// OpenIssues is how many issues alone are open, nil when the forge did
+	// not say; it is never 0 in place of an answer.
+	OpenIssues *int
 	// Dir is where this machine has it checked out, "" when it does not know;
 	// the floor's stages run only where it is known.
 	Dir string
