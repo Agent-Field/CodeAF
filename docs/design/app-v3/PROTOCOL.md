@@ -1195,9 +1195,10 @@ older ones answer `unavailable`.
 
 A manager's `factory_item` note remains saved on the job after all steps finish.
 The tool result is computed from the saved job: it names the next remaining
-reader, or says no remaining step will read the note and it is not in the pull
+conversation step that reads notes, or says no remaining step will read the note and it is not in the pull
 request. The approval question is `save a note on the job?`. A running round
 already has its brief; a subsequent round can read the note if it runs again.
+Deterministic checks, publication steps and approval gates are not note readers.
 
 No app method, parameters, reply fields, hello feature or error codes change.
 `factory.issue_comment` still targets the source issue, not the job's created

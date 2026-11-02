@@ -13,3 +13,5 @@ request and, with no remaining reader, points to commenting on the PR in
 GitHub. Saving a note does not post a comment or change the PR body.
 
 The app's source issue comment method is not presented as a PR comment tool.
+
+Checks, publication steps and approval gates are not counted as note readers.

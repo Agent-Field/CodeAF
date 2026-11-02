@@ -5,7 +5,7 @@
 A `factory_item` note asks `save a note on the job?`. After your yes, it stays
 on the job even when all steps have finished. The tool's answer names the next
 remaining step that reads it when it runs. Done and failed steps are finished;
-an approval gate does not read a worker brief. A running round already has its
+deterministic checks, publish steps and approval gates do not read notes. A running round already has its
 brief, so its next round can read a newly saved note if it runs again.
 
 With no remaining reader, the answer says `no remaining step will read it` and

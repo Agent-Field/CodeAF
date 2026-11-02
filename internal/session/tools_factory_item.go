@@ -740,7 +740,7 @@ func itemNoteReceipt(it *factory.Item) string {
 	}
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
-			if ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || (ph.Kind == factory.StageGate || factory.ApproveWord(ph.Name)) {
+			if ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || !itemNotePhaseIsChat(*it, ph) {
 				continue
 			}
 			if ph.State == factory.PhaseRunning {
@@ -750,7 +750,7 @@ func itemNoteReceipt(it *factory.Item) string {
 		}
 	} else if it.State == factory.StateNew || it.State == factory.StateQueued {
 		for _, st := range it.Stages {
-			if st.On && factory.Fits(st, *it) && st.Kind != factory.StageGate && !factory.ApproveWord(st.Name) {
+			if st.On && factory.Fits(st, *it) && itemChatStage(st) {
 				return saved + st.Name + " reads it next when it runs. It is not in the pull request."
 			}
 		}
@@ -762,6 +762,16 @@ func itemNoteReceipt(it *factory.Item) string {
 		out += " once a pull request exists"
 	}
 	return out + ". This tool does not post PR comments."
+}
+
+// itemNotePhaseIsChat resolves the stage as the runner's stageAt does: the
+// saved stage wins over phase metadata. Checks, posts and gates read no notes.
+func itemNotePhaseIsChat(it factory.Item, ph factory.Phase) bool {
+	st := factory.Stage{Kind: ph.Kind}
+	if i := factory.StageIndex(it.Stages, ph.Name); i >= 0 {
+		st = it.Stages[i]
+	}
+	return itemChatStage(st)
 }
 
 // itemThinkingReceipt is what a yes says about thinking, compared with the item
