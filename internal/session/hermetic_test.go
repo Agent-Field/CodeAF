@@ -43,6 +43,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
 func TestMain(m *testing.M) { os.Exit(runTests(m)) }
@@ -52,6 +53,10 @@ func TestMain(m *testing.M) { os.Exit(runTests(m)) }
 // call, and a package that leaks a directory per run to stop leaking files per
 // run has not fixed anything.
 func runTests(m *testing.M) int {
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintf(os.Stderr, "session tests: %v\n", err)
+		return 1
+	}
 	// The guard watches wherever this machine actually keeps its state: the real
 	// home, or the CODEAF_HOME a developer had already pointed somewhere else.
 	// It asks [home.InheritedDir] rather than [home.Dir] because Dir hands a
