@@ -666,6 +666,11 @@ type Item struct {
 	// (run's SetModel), as a conversation's model does.
 	Model           string `json:",omitempty"`
 	AutomaticModels *bool  `json:",omitempty"`
+	// FactoryModel is the factory's default model ([Spending.DefaultModel])
+	// as it stood when the job was last queued, "" for none. It travels with
+	// the job as House does, so a runner on another machine opens a step that
+	// names no model, on a job that names none, on the factory's choice.
+	FactoryModel string `json:",omitempty"`
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.

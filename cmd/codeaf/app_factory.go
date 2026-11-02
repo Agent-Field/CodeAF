@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -648,14 +649,19 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 }
 
 // defaultModel is the model this machine's runner opens a step on when the job
-// names none: the parent every stage opens from, settled on the saved Task
-// models policy, exactly as the stage maker reads it.
+// names none: the factory's default model, else the parent every stage opens
+// from, settled on the saved Task models policy, exactly as the stage maker
+// reads it.
 func (h *appFactoryHost) defaultModel() string {
 	source, _, ok := h.parentSource()
 	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(source.Config().Model)
+	// The factory's own default stands in for the launch's, as it does when a
+	// step opens ([stageOpenModel]); a spending file that cannot be read says
+	// nothing here, and the start that reads it refuses.
+	spending, _ := h.floor.Spending()
+	return strings.TrimSpace(stageOpenModel(source.Config(), factoryrun.ConversationSpec{FactoryModel: spending.DefaultModel}))
 }
 
 // Power uses the elected runner's saved registration, so a second process
