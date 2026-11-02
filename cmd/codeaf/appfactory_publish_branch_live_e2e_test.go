@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -80,7 +81,8 @@ func TestLivePublishOpensThePRBesideAnOlderBranch(t *testing.T) {
 	w.backend.local.parent = func() session.Config { return launch.Config }
 	s := &localSetup{factoryWire: w, home: appHome, userHm: userHome}
 	st := s.start()
-	if v := s.setup("factory.setup_connect", map[string]any{"source": "gh"}); !v.GitHub.Connected {
+	v := s.setup("factory.setup_connect", map[string]any{"source": "gh"})
+	if !v.GitHub.Connected {
 		t.Fatalf("connect: %q", v.GitHub.Error)
 	}
 	s.setup("factory.setup_select", map[string]any{"repos": []string{repo}})
@@ -101,7 +103,7 @@ func TestLivePublishOpensThePRBesideAnOlderBranch(t *testing.T) {
 		}
 	}
 	if err := floor.Update(id, func(it *factory.Item) error {
-		it.Autonomy, it.Cap = factory.AutonomyManual, 2
+		it.Autonomy, it.Cap, it.Assignee = factory.AutonomyManual, 2, v.GitHub.Handle
 		it.Stages = []factory.Stage{
 			{Name: "write", Kind: factory.StageChat, On: true, Until: "done", Ask: "Create the file c48-note.txt with the write tool, its content exactly `published beside the older branch`. Then call stage_result with done true, findings 0 and a one-line output. Do nothing else."},
 			{Name: "verify", Kind: factory.StageCheck, On: true, Ask: "grep -qx 'published beside the older branch' c48-note.txt"},
@@ -141,6 +143,16 @@ func TestLivePublishOpensThePRBesideAnOlderBranch(t *testing.T) {
 			if time.Now().After(end) {
 				t.Fatalf("never %s: %s %q failure %+v publish %+v", what, it.State, it.Question, it.Failure, it.PublishStatus)
 			}
+		}
+	}
+	// The factory learns who the person is from GitHub behind its first read.
+	for end := time.Now().Add(2 * time.Minute); ; time.Sleep(time.Second) {
+		var me api.Me
+		if err := w.backend.factoryHub().read(context.Background(), st.Factory, "/v1/me", appFactorySmall, &me); err == nil && strings.TrimSpace(me.Handle) != "" {
+			break
+		}
+		if time.Now().After(end) {
+			t.Fatal("the factory never learned who the person is after connecting GitHub")
 		}
 	}
 	var run appwire.FactoryLocalStatus
