@@ -59,8 +59,19 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	if j == nil || !j.vault.Enabled() {
 		return
 	}
-	if err := a.scanKnowledge(ctx, j, a.file.journalName(), a.id); err != nil {
-		return
+	for {
+		j.mu.Lock()
+		before := j.offset
+		j.mu.Unlock()
+		if err := a.scanKnowledge(ctx, j, a.file.journalName(), a.id); err != nil {
+			return
+		}
+		j.mu.Lock()
+		after := j.offset
+		j.mu.Unlock()
+		if after == before {
+			break
+		}
 	}
 	key := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).Default().Key
 	if err := j.vault.Flush(provider.WithSession(ctx, a.id), key, true); err != nil && ctx.Err() == nil {

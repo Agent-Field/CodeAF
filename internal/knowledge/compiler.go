@@ -82,7 +82,11 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err = v.compilerStatus(db, model.model, "", true); err != nil {
 		return err
 	}
-	boundary, err := stateDocument(db, "organization_boundary")
+	boundaryKey := "organization_boundary"
+	if owner := provider.SessionFrom(ctx); owner != "" {
+		boundaryKey += ":" + owner
+	}
+	boundary, err := stateDocument(db, boundaryKey)
 	if err != nil {
 		return err
 	}
@@ -91,9 +95,21 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		if err = db.QueryRow("SELECT coalesce(max(rowid),0) FROM events WHERE partition='profile'").Scan(&through); err != nil {
 			return err
 		}
-		if err = saveState(db, "organization_boundary", document{"through": through}); err != nil {
+		if err = saveState(db, boundaryKey, document{"through": through}); err != nil {
 			return err
 		}
+	}
+	projectionBefore, err := stateDocument(db, "projection")
+	if err != nil {
+		return err
+	}
+	var eligible int
+	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND json_extract(payload,'$.session')=?))", provider.SessionFrom(ctx), provider.SessionFrom(ctx), provider.SessionFrom(ctx)).Scan(&eligible); err != nil {
+		return err
+	}
+	if eligible == 0 && projectionBefore["version"] == knowledgeProjectionVersion {
+		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
+		return err
 	}
 	vault, err := v.compilePending(db, "profile", model, force, through)
 	if err != nil {
@@ -119,7 +135,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	}
 	needsLearning := textValue(projection["input_hash"]) != digest || hasPendingRefinement(learning)
 	if !needsLearning && projection["version"] == knowledgeProjectionVersion {
-		_, err = db.Exec("DELETE FROM state WHERE key='organization_boundary'")
+		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
 		return err
 	}
 	if needsLearning {
@@ -149,7 +165,11 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	return v.commitPublication(published, learning, registry, digest)
+	if err = v.commitPublication(published, learning, registry, digest); err != nil {
+		return err
+	}
+	_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
+	return err
 }
 func (v *Vault) compilerStatus(db *sql.DB, model, message string, needsUpdate bool) error {
 	var cost float64

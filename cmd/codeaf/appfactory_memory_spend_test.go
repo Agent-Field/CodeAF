@@ -26,6 +26,8 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	s := newLocalSetup(t)
 	t.Run("funnel law", checkMemoryFunnel)
 	var calls atomic.Int64
+	var blockNext atomic.Bool
+	entered := make(chan struct{})
 	model := knowledge.Model
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -34,6 +36,11 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			Messages       []struct {
 				Content string `json:"content"`
 			} `json:"messages"`
+		}
+		if r.Method != http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"data":[]}`)
+			return
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
@@ -44,6 +51,11 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		var payload map[string]json.RawMessage
 		if len(body.Messages) > 1 {
 			_ = json.Unmarshal([]byte(body.Messages[1].Content), &payload)
+		}
+		if payload["messages"] != nil && blockNext.CompareAndSwap(true, false) {
+			close(entered)
+			<-r.Context().Done()
+			return
 		}
 		if payload["messages"] != nil {
 			var sources []knowledge.Source
@@ -68,15 +80,19 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	}))
 	defer server.Close()
 	original := http.DefaultTransport
-	http.DefaultTransport = roundTripper(func(r *http.Request) (*http.Response, error) {
+	originalClient := http.DefaultClient
+	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		if !strings.Contains(r.URL.Host, "openrouter.ai") {
+			return original.RoundTrip(r)
+		}
 		copy := r.Clone(r.Context())
 		u := *r.URL
 		copy.URL = &u
 		copy.URL.Scheme = "http"
 		copy.URL.Host = server.Listener.Addr().String()
 		return original.RoundTrip(copy)
-	})
-	t.Cleanup(func() { http.DefaultTransport = original })
+	})}
+	t.Cleanup(func() { http.DefaultClient = originalClient })
 	vault := knowledge.Open(filepath.Join(s.home, "profile"))
 	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
@@ -189,6 +205,33 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			if calls.Load() != before {
 				t.Fatal("unchanged job input spent again")
 			}
+			if n == 2 {
+				blockNext.Store(true)
+				interrupted, err := agent.Submit(context.Background(), "Cedar queues jobs.")
+				if err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-entered:
+				case <-time.After(5 * time.Second):
+					t.Fatal("memory request did not reach pause barrier")
+				}
+				if err := agent.StopWork(); err != nil {
+					t.Fatal(err)
+				}
+				drained := make(chan struct{})
+				go func() {
+					for range interrupted {
+					}
+					close(drained)
+				}()
+				select {
+				case <-drained:
+				case <-time.After(5 * time.Second):
+					t.Fatal("Pause did not cancel the memory request")
+				}
+				before = calls.Load()
+			}
 			if err := agent.StopWork(); err != nil {
 				t.Fatal(err)
 			}
@@ -207,12 +250,38 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			if calls.Load() != before {
 				t.Fatal("memory spent during Pause or after the end")
 			}
+			if n == 2 {
+				history := &memoryObservedHistory{History: session.KnowledgeHistory(workspace, filepath.Join(s.home, "job-profile")), passes: make(chan struct{}, 4)}
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan error, 1)
+				go func() {
+					done <- knowledge.Open(filepath.Join(s.home, "job-profile")).Run(ctx, history, func() string { return "fixture" })
+				}()
+				for pass := 0; pass < 2; pass++ {
+					select {
+					case <-history.passes:
+					case <-time.After(5 * time.Second):
+						cancel()
+						t.Fatal("background inventory did not run")
+					}
+				}
+				cancel()
+				select {
+				case <-done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("background worker did not stop")
+				}
+				if calls.Load() != before {
+					t.Fatal("process worker spent on a finished job")
+				}
+			}
+
 			inventory, err := session.KnowledgeHistory(workspace).Inventory(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, journal := range inventory {
-				if strings.Contains(journal.ID, workspace) {
+				if strings.Contains(journal.ID, workspace) && !journal.Job {
 					t.Fatal("process worker admitted an owned journal")
 				}
 			}
@@ -221,4 +290,20 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Observe the real worker through its exported history interface, without a
+// timer assumption about when its first or second inventory happens.
+type memoryObservedHistory struct {
+	knowledge.History
+	passes chan struct{}
+}
+
+func (h *memoryObservedHistory) Inventory(ctx context.Context) ([]knowledge.Journal, error) {
+	journals, err := h.History.Inventory(ctx)
+	select {
+	case h.passes <- struct{}{}:
+	default:
+	}
+	return journals, err
 }

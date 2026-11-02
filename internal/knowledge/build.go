@@ -36,6 +36,7 @@ type Journal struct {
 	Error                string
 	Size                 int64
 	Modified             time.Time
+	Job                  bool
 }
 type JournalCursor struct {
 	Offset            int64
@@ -265,6 +266,7 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 					return err
 				}
 				for _, source := range batch.Sources {
+					source.Job = journal.Job
 					if err = validateCapture(source); err == nil {
 						err = v.captureTx(tx, source)
 					}
@@ -324,7 +326,13 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		if pending == 0 && !flag(job["backfill"]) {
-			break
+			projection, err := stateDocument(db, "projection")
+			if err != nil {
+				return err
+			}
+			if total == 0 || projection["version"] == knowledgeProjectionVersion {
+				break
+			}
 		}
 		job["phase"] = string(BuildRunning)
 		if err = saveState(db, "job", job); err != nil {

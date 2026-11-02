@@ -39,12 +39,20 @@ func memoryFunnelViolations(root string) ([]string, error) {
 			}
 			var armed token.Pos
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if assignment, ok := n.(*ast.AssignStmt); ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 {
+					lhs, lhsOK := assignment.Lhs[0].(*ast.Ident)
+					call, callOK := assignment.Rhs[0].(*ast.CallExpr)
+					if lhsOK && lhs.Name == "ctx" && callOK {
+						if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "memoryBilling" && len(call.Args) == 1 {
+							if arg, ok := call.Args[0].(*ast.Ident); ok && arg.Name == "ctx" {
+								armed = assignment.Pos()
+							}
+						}
+					}
+				}
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true
-				}
-				if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "memoryBilling" {
-					armed = call.Pos()
 				}
 				selector, ok := call.Fun.(*ast.SelectorExpr)
 				if !ok {
@@ -52,6 +60,15 @@ func memoryFunnelViolations(root string) ([]string, error) {
 				}
 				if strings.HasPrefix(selector.Sel.Name, "Complete") {
 					calls++
+					contextOK := false
+					if len(call.Args) > 0 {
+						if arg, ok := call.Args[0].(*ast.Ident); ok {
+							contextOK = arg.Name == "ctx"
+						}
+					}
+					if !contextOK {
+						violations = append(violations, path+": completion discards the billed context")
+					}
 					if filepath.Base(path) != "compiler_provider.go" || fn.Name.Name != "call" || armed == 0 || armed > call.Pos() {
 						violations = append(violations, path+": completion bypasses the memory billing funnel")
 					}
@@ -97,7 +114,7 @@ func checkMemoryFunnel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	planted := bytes.Replace(original, []byte("ctx = memoryBilling(ctx)"), nil, 1)
+	planted := bytes.Replace(original, []byte("ctx = memoryBilling(ctx)"), []byte("memoryBilling(ctx)"), 1)
 	if bytes.Equal(original, planted) {
 		t.Fatal("billing mutation did not land")
 	}

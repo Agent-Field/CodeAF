@@ -48,9 +48,11 @@ An owned handle binds admission and billing through `Vault.WithCalls`; its sink
 banks each provider receipt through the agent's existing ledger and job meter.
 The standalone application worker uses the same ledger with no invented job.
 
-Job journals carry a durable `.knowledge-job` marker. History inventory excludes
-those journals, and source admission retains a scheduling-only `job` flag. The
-process compiler excludes owned sources. Each finished owned turn scans its
+Job journals carry a durable `.knowledge-job` marker. History inventory marks
+those journals as owned, and source admission retains a scheduling-only `job` flag. The
+process compiler excludes owned sources. Persisted factory team memberships
+also identify older job journals, including closed teams, so existing pending
+sources are reclassified without model calls. Each finished owned turn scans its
 journal and runs one compilation under that turn's cancellation context before
 the event stream closes. The compiler checks owner admission before requests
 and retries. Pause and Close therefore cannot leave an independent worker
