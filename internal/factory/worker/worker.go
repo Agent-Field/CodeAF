@@ -85,6 +85,35 @@ type capacity struct {
 	limit   int
 	running map[int]bool
 	wake    chan struct{}
+	jobs    map[int]chan struct{}
+}
+
+// takeJob keeps successive leases from sharing a mirror and runner control.
+// The old lease owns both until its worker's deferred cleanup has finished.
+func (c *capacity) takeJob(ctx context.Context, id int) bool {
+	for ctx.Err() == nil {
+		c.mu.Lock()
+		done := c.jobs[id]
+		if done == nil {
+			c.jobs[id] = make(chan struct{})
+			c.mu.Unlock()
+			return true
+		}
+		c.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-done:
+		}
+	}
+	return false
+}
+
+func (c *capacity) releaseJob(id int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	close(c.jobs[id])
+	delete(c.jobs, id)
 }
 
 func clampSlots(n int) int {
@@ -134,7 +163,7 @@ func Run(ctx context.Context, opts Options) {
 	opts.Attach.Slots = opts.Slots
 	// Only a worker that reads the saved number may say it follows changes.
 	opts.Attach.LiveCapacity = opts.Desired != nil
-	opts.cap = &capacity{limit: opts.Slots, running: map[int]bool{}, wake: make(chan struct{}, 1)}
+	opts.cap = &capacity{limit: opts.Slots, running: map[int]bool{}, wake: make(chan struct{}, 1), jobs: map[int]chan struct{}{}}
 	tick := opts.CapacityTick
 	if opts.Desired != nil && tick == nil {
 		every := opts.CapacityEvery
@@ -279,6 +308,10 @@ type job struct {
 // work runs one pulled job to its end, or until the lease is gone.
 func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.WorkerPull) {
 	it := api.ToItem(pulled.Job)
+	if !o.cap.takeJob(ctx, it.ID) {
+		return
+	}
+	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}

@@ -403,6 +403,17 @@ manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its ol
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
 
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET
