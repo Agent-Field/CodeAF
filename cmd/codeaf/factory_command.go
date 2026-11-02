@@ -157,22 +157,33 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	defer listener.Close()
 	// The server reads GitHub through its own grant while each caller's
 	// signed-in identity supplies Activity and job ownership.
-	seam := factoryServerSeam(st, factoryTokensPath(configPath))
+	limit := newGitHubLimit(os.Stderr)
+	cfg.githubLimit = limit
+	seam := factoryServerSeam(st, factoryTokensPath(configPath), limit)
 	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken, factoryTokensPath(configPath), cfg)
 	if err != nil {
 		return err
 	}
 	defer service.close()
-	operatorLink := service.operatorLink
 	// THE SERVER HAS NO CONVERSATION, so its launch supplies the model pin
 	// on the same parent the desk's worker uses. Triage reads it for every request.
 	setFactoryModelPin(model, oneModel)
 	// A JOB A START RULE STARTS ON A TEAM SERVER IS ITS OPERATOR'S.
 	operator := factoryOperatorOwner(factoryTokensPath(configPath))
 	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
-	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath))
+	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit)
 	server, done := service.server, service.done
+	// READY MEANS USABLE: the operator link's row is written before the
+	// address is printed; only naming its GitHub login waits on GitHub.
+	operatorRow, err := service.handler.MintOperatorLink(cfg.operatorRecovery)
+	if err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintln(out, service.public); err != nil {
+		return err
+	}
+	operatorLink, err := factoryOperatorLink(ctx, service.handler, operatorRow, limit)
+	if err != nil && ctx.Err() == nil {
 		return err
 	}
 	if operatorLink.URL != "" {
@@ -207,15 +218,14 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 type factoryService struct {
 	// url is the address this machine's own clients dial, which serve.json
 	// names; public is the one a person is given. They differ when TLS is on.
-	url          string
-	public       string
-	notes        []string
-	operatorLink api.AccessLink
-	server       *http.Server
-	door         *http.Server
-	handler      *serve.Handler
-	done         chan error
-	discovery    string
+	url       string
+	public    string
+	notes     []string
+	server    *http.Server
+	door      *http.Server
+	handler   *serve.Handler
+	done      chan error
+	discovery string
 }
 
 // startFactoryService serves seam on listener and writes serve.json, the
@@ -270,7 +280,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
 		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
-		ServedBy: servedBy, PollingEvery: poll,
+		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryPipelineRead(ctx, st, repo, dir)
@@ -284,14 +294,6 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		handlerConfig.ChangeAssignee = nil
 	}
 	handler := serve.New(seam, handlerConfig)
-	var operatorLink api.AccessLink
-	if host.operatorLinks {
-		operatorLink, err = handler.NewOperatorLink(ctx, host.operatorRecovery)
-		if err != nil {
-			handler.Close()
-			return nil, err
-		}
-	}
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
 		// Long polls and change streams must end with the service, otherwise
@@ -300,7 +302,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	// Every listener reports its end here; only the first is read, so the
 	// channel holds one per listener and none of them blocks on the send.
-	s := &factoryService{url: address, public: public, operatorLink: operatorLink, server: server, handler: handler, done: make(chan error, 2),
+	s := &factoryService{url: address, public: public, server: server, handler: handler, done: make(chan error, 2),
 		discovery: filepath.Join(st.Root(), "serve.json")}
 	served := listener
 	if secure.on() {
