@@ -17,7 +17,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -33,31 +35,36 @@ var appFactoryModelKinds = func() map[string]string {
 	if err != nil {
 		return nil
 	}
-	seen := map[string]map[string]bool{}
+	kinds := map[string]string{}
+	mixed := map[string]bool{}
 	for _, row := range rows {
 		for _, id := range []string{row.Model.ID, row.Send} {
-			if id == "" {
-				continue
-			}
-			if seen[id] == nil {
-				seen[id] = map[string]bool{}
-			}
-			seen[id][string(row.Kind)] = true
+			noteModelKind(kinds, mixed, id, string(row.Kind))
 		}
 	}
-	kinds := map[string]string{}
-	for id, set := range seen {
-		if len(set) == 1 {
-			for kind := range set {
-				kinds[id] = kind
-			}
-		}
+	for id := range mixed {
+		delete(kinds, id)
 	}
 	return kinds
 }
 
+// noteModelKind records that id is reached by kind; an id reached by two kinds
+// is marked mixed and later dropped.
+func noteModelKind(kinds map[string]string, mixed map[string]bool, id, kind string) {
+	if id == "" {
+		return
+	}
+	if was, ok := kinds[id]; ok && was != kind {
+		mixed[id] = true
+	}
+	kinds[id] = kind
+}
+
 // appLedgerBilling is a ledger row's billing word in the wire's words.
-var appLedgerBilling = map[string]string{"metered": "metered", "included": "plan"}
+var appLedgerBilling = map[string]string{
+	string(provider.BillingMetered):  string(crewroute.Metered),
+	string(provider.BillingIncluded): string(crewroute.Plan),
+}
 
 // FactoryUsageByModel answers this machine's factory's usage by model.
 func (b *appBackend) FactoryUsageByModel(_ context.Context, p appwire.FactoryUsageParams) (appwire.FactoryUsage, error) {
