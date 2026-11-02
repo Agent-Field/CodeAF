@@ -127,9 +127,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
-	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
+	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default;
+	// else the model the step's effort runs on.
 	cfg.AutomaticModels = spec.AutomaticModels
-	if model := strings.TrimSpace(spec.Model); model != "" {
+	if model := factoryStepModel(m.profileDir, spec, cfg.OneModel); model != "" {
 		cfg.Model = model
 	}
 	fallback := appDefaultFallback(m.profileDir)
