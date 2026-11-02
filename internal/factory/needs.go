@@ -153,20 +153,29 @@ type Acts struct {
 	Reply        bool
 }
 
-// JobBudgetSteps are the allowed absolute job budgets, in ascending US dollars.
+// JobBudgetSteps are the standard absolute job budgets, in ascending US dollars.
 func JobBudgetSteps() []float64 {
 	return []float64{5, 10, 20, 30}
 }
 
-// NextJobCap is the smallest allowed budget strictly above recorded spending.
-// Zero means no higher budget is available.
-func NextJobCap(spent float64) float64 {
-	for _, budget := range JobBudgetSteps() {
+// NextJobCap chooses the smallest standard budget above recorded spending,
+// then doubles the current cap until it covers that spending.
+func NextJobCap(it Item) float64 {
+	spent := JobSpent(it)
+	steps := JobBudgetSteps()
+	for _, budget := range steps {
 		if budget > spent {
 			return budget
 		}
 	}
-	return 0
+	next := it.Cap * 2
+	if next <= 0 {
+		next = steps[len(steps)-1] * 2
+	}
+	for next <= spent {
+		next *= 2
+	}
+	return next
 }
 
 // ContinueJob raises this job's cap to NextJobCap when the spend has already
@@ -176,11 +185,7 @@ func ContinueJob(it *Item) bool {
 	if it == nil || it.Cap <= 0 || it.Stream == nil || it.Stream.Spent < it.Cap {
 		return false
 	}
-	next := NextJobCap(JobSpent(*it))
-	if next == 0 {
-		return false
-	}
-	it.Cap = next
+	it.Cap = NextJobCap(*it)
 	return true
 }
 

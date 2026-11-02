@@ -621,8 +621,10 @@ the desktop's raise button at $5 does the same. It does not add $5 to the cap.
 
 The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
 spending. If a round spent $5.25, the next budget is $10 even when the old cap
-was $0.01. Saved questions on older jobs can keep their old words, but yes now
+was $0.01. Once spending reaches $30, double the current cap, repeatedly if
+needed, until it is above spend. A $30 cap with $31 spent offers $60.
+Saved questions on older jobs can keep their old words, but yes now
 uses this same rule.
 
-At $30 spent or more, the question says `no higher budget is available; stop
-this job.` No larger budget is offered. Stop keeps the recorded spend and work.
+The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
+Other amounts are refused. Stop keeps the recorded spend and work.

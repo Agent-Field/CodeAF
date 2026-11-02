@@ -190,10 +190,7 @@ func (m *Money) CapReached(it factory.Item) bool {
 func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
 	spent := factory.JobSpent(it)
 	q = "budget of " + dollars(it.Cap) + " reached · " + dollars(spent) + " spent · "
-	if next := factory.NextJobCap(spent); next > 0 {
-		return q + "raise it to " + dollars(next) + ", or stop?", "cap"
-	}
-	return q + "no higher budget is available; stop this job.", "cap"
+	return q + "raise it to " + dollars(factory.NextJobCap(it)) + ", or stop?", "cap"
 }
 
 func dollars(usd float64) string {

@@ -1565,7 +1565,7 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	if !ok {
 		return false
 	}
-	if !factory.IsContinue(a.yes, a.words) || factory.NextJobCap(factory.JobSpent(it)) == 0 {
+	if !factory.IsContinue(a.yes, a.words) {
 		lp.stop(c)
 		return false
 	}

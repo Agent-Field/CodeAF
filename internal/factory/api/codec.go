@@ -274,7 +274,7 @@ func spendingLimit(it factory.Item) *SpendingLimit {
 	if it.Stream != nil {
 		spent = it.Stream.Spent
 	}
-	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(factory.JobSpent(it)), Currency: factory.CurrencyUSD}
+	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it), Currency: factory.CurrencyUSD}
 }
 
 func failureOf(it factory.Item) *Failure {
@@ -995,16 +995,13 @@ func annotateQuestion(q *Question, it factory.Item) {
 		if it.Stream != nil {
 			q.Spent = it.Stream.Spent
 		}
-		q.NextLimit = factory.NextJobCap(factory.JobSpent(it))
+		q.NextLimit = factory.NextJobCap(it)
 	}
 	if it.QKind == factory.QKindOutOfAttempts && len(q.Options) == 0 {
 		q.Options = append([]string(nil), factory.OutOfAttemptOptions...)
 	}
 	if len(q.Options) == 0 && it.Asking == nil && (q.Kind == "cap" || q.Kind == "max_rounds") {
 		q.Options = []string{"yes", "no"}
-	}
-	if q.Kind == "cap" && q.NextLimit == 0 {
-		q.Options, q.Pick = []string{"no"}, ""
 	}
 }
 
