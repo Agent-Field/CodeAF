@@ -231,6 +231,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryJobBriefSeenFeature(hello, engine)
 	hello = withFactoryJobChatsFeature(hello, engine)
 	hello = withFactoryJobBriefFeature(hello, engine)
+	hello = withFactoryRepoReadFeature(hello, engine)
 	hello = withFactoryJobBriefWriterFeature(hello, engine)
 	hello = withFactoryJobBriefSpotFeature(hello, engine)
 	hello = withFactoryJobFollowFeature(hello, engine)
@@ -246,8 +247,10 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryRunnerManageFeature(hello, engine)
 	hello = withFactoryRulesFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
+	hello = withFactoryPipelinePRUpdateFeature(hello, engine)
 	hello = withFactoryPipelinePRsFeature(hello, engine)
 	hello = withFactoryPipelineEditFeature(hello, engine)
+	hello = withFactoryPipelineSourceRefFeature(hello, engine)
 	hello = withFactoryPipelineCopyFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {

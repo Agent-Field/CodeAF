@@ -164,7 +164,9 @@ type refusalBody struct {
 	CurrentCommit string      `json:"current_commit,omitempty"`
 	HeadCommit    string      `json:"head_commit,omitempty"`
 	JobPerson     string      `json:"job_person,omitempty"`
-	RequestID     string      `json:"request_id"`
+	// Outcome is set only by the issue comment route ([api.CommentRefused]).
+	Outcome   string `json:"outcome,omitempty"`
+	RequestID string `json:"request_id"`
 }
 
 func (h *Handler) refuse(w http.ResponseWriter, status int, words, reason, by string, at *time.Time, nowState string) {

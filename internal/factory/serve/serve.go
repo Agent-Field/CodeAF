@@ -161,6 +161,9 @@ type Handler struct {
 	setupTimer  *time.Timer
 	accessMu    sync.Mutex
 	accessFlows map[string]accessLinkFlow
+	// commentFlights holds the jobs with a comment on their issue being
+	// posted by this handler (issue_comment.go).
+	commentFlights sync.Map
 
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
@@ -223,6 +226,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
+	h.read("/v1/repos/{owner}/{repo}/read", h.repoRead)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/prs", h.pipelinePRs)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
