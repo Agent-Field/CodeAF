@@ -31,6 +31,9 @@ func (h *Handler) jobScreens() {
 	})
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
 	h.read("/v1/jobs/{id}/brief", h.readJobBrief)
+	h.read("/v1/jobs/{id}/brief/spots/{spot}", h.readBriefSpot)
+	h.postJob("brief/begin", h.config.Store != nil, h.onlyOwner(h.beginBrief))
+	h.postJob("brief/keep", h.config.Store != nil, h.onlyOwner(h.keepBrief))
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{
@@ -50,23 +53,26 @@ func (h *Handler) stepControl(rerun bool) jobAction {
 		var body struct {
 			Expect *api.Expect `json:"expect,omitempty"`
 			Words  string      `json:"words,omitempty"`
+			// Model is the model a rerun's step runs on from now: run again
+			// from here with another model. "" keeps the step's own.
+			Model string `json:"model,omitempty"`
 		}
 		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, verb, body.Expect) {
 			return
 		}
-		if !rerun && strings.TrimSpace(body.Words) != "" {
-			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words")
+		if !rerun && (strings.TrimSpace(body.Words) != "" || strings.TrimSpace(body.Model) != "") {
+			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words or a model")
 			return
 		}
 		var revision *int
 		if body.Expect != nil {
 			revision = body.Expect.Version
 		}
-		h.onlyOwner(h.stepAct(rerun, body.Words, revision))(w, r, it)
+		h.onlyOwner(h.stepAct(rerun, body.Words, body.Model, revision))(w, r, it)
 	}
 }
 
-func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
+func (h *Handler) stepAct(rerun bool, words, model string, revision *int) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		if !h.workerReady(w) {
 			return
@@ -90,7 +96,11 @@ func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
 			verb = record.StepRerun
 		}
 		h.finish(w, h.recordAction(r, it, verb, name, func() error {
-			return lease.NewDoors(h.workers.desk).StepControlExpected(it.ID, name, rerun, words, revision)
+			doors := lease.NewDoors(h.workers.desk)
+			if rerun {
+				return doors.StepRerunExpected(it.ID, name, words, model, revision)
+			}
+			return doors.StepControlExpected(it.ID, name, false, "", revision)
 		}))
 	}
 }
@@ -156,7 +166,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, Max: body.Max, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
 	for _, mv := range body.Move {
 		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
 		// rather than guessed.

@@ -368,6 +368,7 @@ func (b *appBackend) FactoryJobSetModel(ctx context.Context, p appwire.FactoryJo
 	if err == nil {
 		// The job's agent reads the job's model too (appfactory_chats.go).
 		b.jobAgentModel(p.Factory, p.Job)
+		b.briefEdited(p.Factory, p.Job)
 	}
 	return acted, err
 }
@@ -376,11 +377,27 @@ func (b *appBackend) FactoryJobStepStop(ctx context.Context, p appwire.FactoryJo
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStepStop, p.Job, "steps/"+stepSegment(p.Step)+"/stop", guardBody{p.Expect})
 }
 
+// FactoryJobStepRerun is run again from here: the step and every step after it
+// go back to pending on the factory. A model, when named, is one models.list
+// offers, sent in its spelling ([appBackend.offeredStepModels]).
 func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
-	return b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", struct {
+	model := ""
+	if p.Model != "" {
+		offered, err := b.offeredStepModels(map[string]string{p.Step: p.Model})
+		if err != nil {
+			return appwire.FactoryJobActed{}, err
+		}
+		model = offered[p.Step]
+	}
+	acted, err := b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", struct {
 		Expect *api.Expect `json:"expect,omitempty"`
 		Words  string      `json:"words,omitempty"`
-	}{p.Expect, p.Words})
+		Model  string      `json:"model,omitempty"`
+	}{p.Expect, p.Words, model})
+	if model != "" && unknownFactoryField(err, "model") {
+		return appwire.FactoryJobActed{}, factoryTooOld()
+	}
+	return acted, err
 }
 
 // stepSegment is a step name as one path segment. The name was checked to
