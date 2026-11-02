@@ -45,6 +45,14 @@ type JobFolders interface {
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// Scout is Look closer on this factory (scout.Door.Look): nil when the
+	// factory has no model to look with, and the route then says so.
+	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
+	// Read is a person's Read of chosen jobs (triage.ReadThese), whether or
+	// not new issues are read as they arrive: nil when the factory has no
+	// read, and the route then says so.
+	Read func(ctx context.Context, ids []int) api.ReadResult
+
 	// GitHubToken supplies the local profile credential only on a solo host.
 	GitHubToken func(context.Context) string
 
@@ -156,11 +164,18 @@ type Handler struct {
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
-	setupCancel context.CancelFunc
-	setupDone   chan struct{}
-	setupTimer  *time.Timer
-	accessMu    sync.Mutex
-	accessFlows map[string]accessLinkFlow
+	// setupContinuing is held by a Continue from the moment it decides to stop
+	// the reader until it saves its own step, so nothing starts reading again
+	// in between.
+	setupContinuing bool
+	setupCancel     context.CancelFunc
+	setupDone       chan struct{}
+	setupTimer      *time.Timer
+	accessMu        sync.Mutex
+	accessFlows     map[string]accessLinkFlow
+	// commentFlights holds the jobs with a comment on their issue being
+	// posted by this handler (issue_comment.go).
+	commentFlights sync.Map
 
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
@@ -173,6 +188,7 @@ type Handler struct {
 	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
+	areas   repoAreas
 	config  Config
 	factory api.Factory
 	mux     *http.ServeMux
@@ -199,8 +215,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
-	h := &Handler{seam: seam, config: config,
+	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
@@ -223,8 +240,11 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
+	h.read("/v1/repos/{owner}/{repo}/read", h.repoRead)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/prs", h.pipelinePRs)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
+	h.read("/v1/repos/{owner}/{repo}/estimate", h.estimateNew)
+	h.read("/v1/repos/{owner}/{repo}/facts", h.repoFacts)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
 	h.route("/v1/github/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollGitHub})
@@ -239,12 +259,16 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/audit", h.audit)
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
+	h.scoutRoutes()
+	h.readRoutes()
 	h.workerRoutes()
 	h.v2Routes()
 	h.route("/v1/factory-setup/{id}", map[string]http.HandlerFunc{http.MethodGet: h.factorySetup, http.MethodPost: h.factorySetup})
 	h.route("/v1/factory-setup", map[string]http.HandlerFunc{http.MethodPost: h.factorySetup})
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
+	h.read("/v1/spend/repos", h.spendRepos)
+	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
@@ -588,13 +612,15 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 // Repository preserves the picker's facts with product names and JSON keys,
 // rather than exposing the Go fields of factory.RepoInfo directly.
 type Repository struct {
-	Full     string    `json:"full"`
-	Name     string    `json:"name"`
-	Owner    string    `json:"owner"`
-	Private  bool      `json:"private"`
-	Pushed   time.Time `json:"pushed"`
-	Open     int       `json:"open"`
-	Checkout string    `json:"checkout,omitempty"`
+	Full    string    `json:"full"`
+	Name    string    `json:"name"`
+	Owner   string    `json:"owner"`
+	Private bool      `json:"private"`
+	Pushed  time.Time `json:"pushed"`
+	Open    int       `json:"open"`
+	// OpenIssues is open issues without pull requests, absent when unknown.
+	OpenIssues *int   `json:"open_issues,omitempty"`
+	Checkout   string `json:"checkout,omitempty"`
 }
 
 func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
@@ -627,7 +653,8 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 	}
 	repos := make([]Repository, len(available))
 	for i, repo := range available {
-		repos[i] = Repository{repo.Full, repo.Name, repo.Owner, repo.Private, repo.Pushed, repo.Open, repo.Dir}
+		repos[i] = Repository{Full: repo.Full, Name: repo.Name, Owner: repo.Owner, Private: repo.Private, Pushed: repo.Pushed,
+			Open: repo.Open, OpenIssues: repo.OpenIssues, Checkout: repo.Dir}
 	}
 	h.write(w, http.StatusOK, struct {
 		Factory   api.Factory  `json:"factory"`

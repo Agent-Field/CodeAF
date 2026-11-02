@@ -181,8 +181,11 @@ type Triage struct {
 	SizeFrom  string `json:",omitempty"`
 	Area      string
 	Readiness int // 0..100; under 55 the item is thin and wants questions
-	Est       float64
-	DupOf     int
+	// Rubric is how complex the job is ([Rubric]), from the read or from
+	// Look closer, and nil when nobody scored it. A model never writes a
+	// price: an older document's model-written estimate is not read.
+	Rubric *Rubric `json:",omitempty"`
+	DupOf  int
 	// Risk is what the work touches that a person would want to know before it
 	// runs, in short phrases: `touches money`, `touches auth`, `has ui`,
 	// `migration`. Empty is "nothing said", never "safe".
@@ -347,6 +350,9 @@ type Stream struct {
 	Findings int
 	Bench    int
 	Room     string // the item team's id, when known; its Traffic is this log
+	// Models is this run's priced calls by the model that answered. A run
+	// recorded before the field has none; that spend cannot be tied to a model.
+	Models []ModelUse `json:",omitempty"`
 }
 
 // Claim is one row of a proof sheet: what was claimed, whether it was shown,
@@ -436,6 +442,9 @@ type PullRequest struct {
 	Mergeable   string `json:",omitempty"`
 	ChecksRead  bool   `json:",omitempty"`
 	ReviewsRead bool   `json:",omitempty"`
+	// HeadBranch is the branch the pull request comes from, which a repair pushes
+	// to: an older branch can leave it named apart from the job's own.
+	HeadBranch string `json:",omitempty"`
 }
 
 // Item is one row on the floor.
@@ -482,6 +491,11 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// FromJob is the ended job whose request this person started afresh.
+	FromJob int `json:",omitempty"`
+	// SourceIssue is a reference only; it never gives this job a forge identity.
+	SourceIssue string `json:",omitempty"`
+
 	// Followers are the people who follow this job, by normalised handle
 	// (followers.go). Each person reads only whether they follow it.
 	Followers []string `json:",omitempty"`
@@ -497,9 +511,11 @@ type Item struct {
 	Priority    *JobPriority `json:",omitempty"`
 	DismissedBy []string     `json:",omitempty"`
 	DoneHow     string       `json:",omitempty"`
-	DoneAt      time.Time    `json:",omitempty"`
-	Approval    *Approval    `json:",omitempty"`
-	StopUndo    *StopUndo    `json:",omitempty"`
+	// Scout is the last Look closer on this job ([Scout]); nil is never.
+	Scout    *Scout    `json:",omitempty"`
+	DoneAt   time.Time `json:",omitempty"`
+	Approval *Approval `json:",omitempty"`
+	StopUndo *StopUndo `json:",omitempty"`
 
 	// BriefSeen is the Brief revision each person last saw, by normalised
 	// handle (brief_seen.go). It is private to each person: it never crosses
@@ -552,6 +568,7 @@ type Item struct {
 	PublishStatus *Publishing `json:",omitempty"`
 	Triage        Triage
 	Stages        []Stage // the item's copy of the recipe, toggled
+	StopAfterStep bool
 	Cap           float64
 
 	// Assignee is the forge's person; Taker and Starter keep the person who
@@ -661,6 +678,11 @@ type Item struct {
 	// (run's SetModel), as a conversation's model does.
 	Model           string `json:",omitempty"`
 	AutomaticModels *bool  `json:",omitempty"`
+	// FactoryModel is the factory's default model ([Spending.DefaultModel])
+	// as it stood when the job was last queued, "" for none. It travels with
+	// the job as House does, so a runner on another machine opens a step that
+	// names no model, on a job that names none, on the factory's choice.
+	FactoryModel string `json:",omitempty"`
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
@@ -672,6 +694,9 @@ type Item struct {
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
 	ChatSpent float64 `json:",omitempty"`
+	// ChatModels is the model split of ChatSpent. The next start carries it
+	// onto the run with the dollars and clears it (run's freshStream).
+	ChatModels []ModelUse `json:",omitempty"`
 	// Thread is replicated from the worker so every machine reads the same
 	// conversation. AnsweredQuestions keeps asks after the open gate clears.
 	Thread            []Message  `json:",omitempty"`
@@ -877,7 +902,7 @@ func itoa(n int) string {
 }
 
 // Shift is the handover: what happened since the person last looked.
-// SpentToday is the runner's day figure ([DaySpend]), separate from Spent.
+// SpentToday is the spend placed today ([placedToday]), separate from Spent.
 type Shift struct {
 	Since       time.Time
 	Shipped     int
@@ -917,6 +942,9 @@ type Snapshot struct {
 	// LastReadCost is what the last triage read cost in dollars, the figure
 	// the floor's `~$0.0004` note quotes; 0 is not known, and draws nothing.
 	LastReadCost float64
+	// ScoutPrice is what one Look closer typically costs (the median of the
+	// floor's scouts), the figure its button quotes; 0 is none ran yet.
+	ScoutPrice float64
 	// Marked is the floor's own marks, by item id: the new items the foreman
 	// (or anything else behind [Seam.Mark]) proposed for the next launch,
 	// kept by the store so every window reads the same ones. Each is also
