@@ -30,6 +30,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
 	h.postJob("restore", stored, h.guarded("restore", h.onlyOwner(h.restoreJob)))
 	h.postJob("dismiss", stored, h.dismissJob)
+	h.postJob("brief_seen", stored, h.briefSeen)
 	h.postJob("assign_to_me", stored, h.assignToMe)
 	h.postJob("change_assignee", stored, h.changeAssignee)
 	h.postJob("unassign", stored, h.onlyOwner(h.unassignJob))

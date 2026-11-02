@@ -358,6 +358,10 @@ type Job struct {
 	Overlap         []string          `json:"overlap,omitempty"`
 	Approval        *factory.Approval `json:"approval,omitempty"`
 
+	// BriefSeen is the Brief revision the CALLER last saw on this job, absent
+	// for none ([ForViewer]). Nobody else's is ever answered.
+	BriefSeen int `json:"brief_seen,omitempty"`
+
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
