@@ -67,7 +67,7 @@ import (
 // prevent is `bash: python3 -c "import whisper"`, and a model told plainly that
 // read already does this never writes that line.
 //
-// THE PROMPT DIET CUT IT TO A QUARTER (2026-09-10) AND KEPT BOTH RULES. What
+// THE PROMPT DIET CUT IT TO A QUARTER (2026-09-10). What
 // went was the worked example — a paragraph enumerating what a picture, a
 // recording and a video each come back as, which is three tellings of one fact
 // the first clause states. `described, never as bytes` is the whole of the

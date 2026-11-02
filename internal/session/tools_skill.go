@@ -43,7 +43,8 @@ const useSkillToolName = "use_skill"
 // skillShelfLimit bounds one listing, from the one source of truth.
 const skillShelfLimit = store.SkillShelfLimit
 
-// useSkillDescription says what the two modes are for in the model's own terms.
+// useSkillDescription names the shelf and the read that follows `get`; the schema's
+// mode field says what each mode returns.
 // It is bought on every request of every turn on a belt that carries it, so it
 // names the gesture and nothing about the store behind it.
 const useSkillDescription = "Reach the shelf of active skills — procedures this project saved after watching them run. `read` the shelf path `get` returns."
