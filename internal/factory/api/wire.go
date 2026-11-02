@@ -627,9 +627,9 @@ type RoundLine struct {
 	// Result and Reason are how the try ended (factory.TryResult): its
 	// rule's word (clean, not clean, green, not green, proven, not proven,
 	// done, not done, blocked) and a counted reason ("2 findings", "12
-	// passed", "1 of 2 claims shown"). Both are absent on a try recorded
-	// before they were and on one that ended without a report; a surface
-	// shows the try's number alone then, and never guesses from summary.
+	// passed", "1 of 2 claims shown"). A failure closed on retry says stopped,
+	// interrupted or failed from its failure code. Older tries may omit both;
+	// a surface never guesses their outcome from summary.
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
