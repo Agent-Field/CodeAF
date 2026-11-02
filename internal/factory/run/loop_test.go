@@ -381,6 +381,7 @@ func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
 		{"walled", factory.Stage{Name: "write"}, 1, factory.StageResult{Output: stageWalled}, "write ran out of time without reporting", ""},
 		{"one try, could not", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: "the issue names a file that is gone\nmore"}, "plan did not finish", "the issue names a file that is gone"},
 		{"one try, until held back", factory.Stage{Name: "test", Until: factory.UntilProven, Max: 1}, 1, factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "a", OK: true, Evidence: "x"}, {Text: "b"}}}, "test is not proven", "1 of 2 claims shown"},
+		{"a command failed", factory.Stage{Name: "mustfail", Kind: factory.StageCheck, Until: factory.UntilGreen, Max: 1}, 1, factory.StageResult{Exit: 1, Findings: 1, Output: ""}, "mustfail is not green", "exit 1"},
 		{"loops", factory.Stage{Name: "review", Until: factory.UntilClean, Max: 2}, 2, factory.StageResult{Done: true, Findings: 2}, "review is not clean after 2 rounds", "2 findings"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

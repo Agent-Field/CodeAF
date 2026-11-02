@@ -27,6 +27,9 @@ func TestATrysResultWordAndReasonComeFromItsRuleAndReport(t *testing.T) {
 		{"proof with no claims", Stage{Until: UntilProven}, StageResult{Done: true}, "not proven", "no claims"},
 		{"plain step done", Stage{}, StageResult{Done: true, Output: "wrote it"}, "done", ""},
 		{"no report", Stage{Until: UntilClean}, StageResult{}, "not clean", "no result"},
+		{"a command that failed says its exit", Stage{Kind: StageCheck, Until: UntilGreen}, StageResult{Exit: 1, Findings: 1}, "not green", "exit 1"},
+		{"a check that timed out says its exit", Stage{Kind: StageCheck, Until: UntilGreen}, StageResult{Exit: 124}, "not green", "exit 124"},
+		{"a round with findings says them, reported or not", Stage{Until: UntilClean}, StageResult{Findings: 2}, "not clean", "2 findings"},
 		{"blocked is not a failed try", Stage{Until: UntilGreen}, StageResult{ExecutionBlocked: "sandbox"}, "blocked", ""},
 		{"a checkpoint is no finished try", Stage{Until: UntilDone}, StageResult{Checkpoint: true, Done: true}, "", ""},
 	}
