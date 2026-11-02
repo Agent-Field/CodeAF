@@ -3,7 +3,9 @@ package run
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -55,5 +57,72 @@ func TestFollowPRNoChangeFeedbackCorrectsReportWithoutAnotherRound(t *testing.T)
 	}
 	if got := mustGit(t, dir, "rev-parse", "HEAD"); got != head {
 		t.Fatal("no-change review changed HEAD")
+	}
+}
+
+func TestFollowPRNoChangeRefusalDoesNotPayForSameSnapshot(t *testing.T) {
+	dir := gitRig(t)
+	head := mustGit(t, dir, "rev-parse", "HEAD")
+	var calls atomic.Int32
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+		calls.Add(1)
+		return factory.StageResult{Done: true, Spent: .03, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Nothing to change"}}, nil
+	})}, func(o *Options) { o.Workdir = func(factory.Item) (string, error) { return dir, nil } })
+	id := g.add("incomplete feedback review", chat("proof"))
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.Cap = 10
+		it.State, it.Publish, it.HeadCommit = factory.StateRunning, "pr", head
+		it.PullRequest = &factory.PullRequest{Number: 11, State: factory.PROpen, HeadSHA: head, FeedbackTracked: true, Feedback: "Please fix the error", FeedbackItems: []factory.PRFeedback{{ID: "conversation:1", Revision: "v1"}}}
+		it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "queued", HeadSHA: head, Attempt: 1, Limit: 3, Inspecting: map[string]string{"conversation:1": "v1"}}
+		it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}, Paused: true}
+		factory.EnsureFollowPR(it)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateNeedsYou)
+	before := calls.Load()
+	if err := g.r.Answer(id, true, factory.ChoiceTryOnceMore); err == nil || !strings.Contains(err.Error(), "new push or comment") {
+		t.Fatalf("unchanged refusal started paid retry instead of explaining recovery: %v", err)
+	}
+	for _, action := range []struct {
+		name string
+		run  func(*factory.Item) error
+	}{
+		{"held answer", func(i *factory.Item) error { return AnswerHeld(i, true, time.Now(), factory.ChoiceTryOnceMore) }},
+		{"cold answer", func(i *factory.Item) error { return AnswerUnheld(i, true, factory.ChoiceTryOnceMore, time.Now()) }},
+		{"step rerun", func(i *factory.Item) error { return StepControl(i, factory.FollowPRStep, true, "", time.Now()) }},
+	} {
+		t.Run(action.name, func(t *testing.T) {
+			current, _ := g.st.Get(id)
+			if err := action.run(&current); err == nil {
+				t.Fatal("unchanged deterministic refusal allowed retry")
+			}
+			for _, change := range []string{"head", "comment"} {
+				fresh, _ := g.st.Get(id)
+				if change == "head" {
+					fresh.PullRequest.HeadSHA = strings.Repeat("f", 40)
+				} else {
+					fresh.PullRequest.FeedbackItems = append(fresh.PullRequest.FeedbackItems, factory.PRFeedback{ID: "conversation:2", Revision: "v1"})
+					fresh.PullRequest.Feedback += "\nNew comment"
+				}
+				if err := action.run(&fresh); err != nil {
+					t.Fatalf("%s change still refused: %v", change, err)
+				}
+			}
+		})
+	}
+	current, _ := g.st.Get(id)
+	if calls.Load() != before || current.Stream.Spent != it.Stream.Spent || current.Question != it.Question {
+		t.Fatal("refused retry changed spend or question")
+	}
+	if v := factory.MergeGate(current, factory.MergeAsk{By: "sam"}); v.OK {
+		t.Fatal("attempt exhaustion opened Merge with unassessed requested change")
+	}
+	if err := AnswerUnheld(&current, false, factory.ChoiceCancel, time.Now()); err != nil {
+		t.Fatalf("Stop refused: %v", err)
 	}
 }
