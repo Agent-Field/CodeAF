@@ -4,7 +4,9 @@ import (
 	"context"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"math"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -71,5 +73,47 @@ func TestMemoryChargeCannotUndoSuccessfulStage(t *testing.T) {
 	next := &stageBudget{floor: floor, item: charged}
 	if next.Refusal() == "" {
 		t.Fatal("next stage ignored memory spending")
+	}
+}
+
+func TestMemoryCapKeepsFinishedPhase(t *testing.T) {
+	floor, _ := chatSpendFloor(t)
+	item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, ChatSpent: .99, State: factory.StateNew,
+		Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Until: "done"}, {Name: "review", Kind: factory.StageChat, On: true, Until: "done"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rounds atomic.Int64
+	runner := factoryrun.New(factoryrun.Options{Store: floor, Exec: map[factory.StageKind]factoryrun.Executor{
+		factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+			rounds.Add(1)
+			meter := &stageBudget{floor: floor, item: job.Item}
+			meter.Spend(.02)
+			return factory.StageResult{Done: true, Output: "completed work", Spent: .02, SpendRecorded: true}, nil
+		}),
+	}})
+	t.Cleanup(func() { _ = runner.Stop(item.ID) })
+	if err := runner.Launch(item.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got, err := floor.Get(item.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.QKind == "cap" {
+			if got.Stream == nil || got.Stream.Phases[0].State != factory.PhaseDone || got.Stream.Phases[0].Result == nil || !got.Stream.Phases[0].Result.Done {
+				t.Fatalf("memory cap parked completed work instead of next-stage admission: %+v", got.Stream)
+			}
+			if got.Stream.Cur != 1 || rounds.Load() != 1 {
+				t.Fatalf("cap retried successful work: cur=%d rounds=%d", got.Stream.Cur, rounds.Load())
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("next stage did not observe memory charge: %+v", got)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
