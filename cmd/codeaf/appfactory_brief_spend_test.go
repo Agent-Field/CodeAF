@@ -26,7 +26,7 @@ import (
 // A provider receipt is the independent total: keeping, rejecting or losing
 // the brief must leave exactly that amount on both Spending and the job.
 func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
-	for _, outcome := range []string{"kept with dropped claim", "rejected draft", "keep unavailable", "remote worker"} {
+	for _, outcome := range []string{"kept with dropped claim", "rejected draft", "keep unavailable", "remote worker", "manager and title"} {
 		t.Run(outcome, func(t *testing.T) {
 			s := newLocalSetup(t)
 			var calls atomic.Int64
@@ -35,23 +35,44 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 					fmt.Fprint(w, `{"data":[]}`)
 					return
 				}
+				var request struct {
+					Stream   bool `json:"stream"`
+					Messages []struct {
+						Content string `json:"content"`
+					} `json:"messages"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Error(err)
+					return
+				}
 				calls.Add(1)
 				draft := briefDraft
+				for _, message := range request.Messages {
+					if strings.Contains(message.Content, "You name conversations.") {
+						draft = "Retry accounting"
+					}
+				}
 				if outcome == "rejected draft" {
 					draft = `{"verdict":""}`
 				}
 				raw, _ := json.Marshal(map[string]any{"model": "deepseek/deepseek-v4.1-flash", "choices": []any{map[string]any{"delta": map[string]any{"content": draft}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 20, "completion_tokens": 5, "cost": 0.01}})
+				if !request.Stream {
+					_ = json.NewEncoder(w).Encode(map[string]any{"model": "deepseek/deepseek-v4.1-flash", "choices": []any{map[string]any{"message": map[string]any{"content": draft}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 20, "completion_tokens": 5, "cost": .01}})
+					return
+				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
 			}))
 			t.Cleanup(server.Close)
 			st := s.start()
 			floor := s.backend.local.host.floor
+			var manager *session.Agent
 			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
-				agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: filepath.Join(s.home, "job-profile"), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobChat: jobChatDoorOf(floor), Unattended: true, DeterministicNames: true})
+				agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: filepath.Join(s.home, "job-profile"), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobChat: jobChatDoorOf(floor), Unattended: true, DeterministicNames: outcome != "manager and title"})
 				if err != nil {
 					return nil, err
 				}
+				manager = agent
 				return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 			}
 			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1,
@@ -107,11 +128,32 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 				}
 			} else {
 				s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &got)
-				if got.Kept != (outcome == "kept with dropped claim" || outcome == "remote worker") {
+				if got.Kept != (outcome == "kept with dropped claim" || outcome == "remote worker" || outcome == "manager and title") {
 					t.Fatalf("write: %+v", got)
 				}
 				if got.Kept && len(got.Drops) != 1 {
 					t.Fatalf("drops: %+v", got.Drops)
+				}
+			}
+			if outcome == "manager and title" {
+				events, err := manager.Submit(context.Background(), "Repair retry cost accounting in the job header.")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for event := range events {
+					if event.Kind == session.EventError {
+						t.Fatal(event.Err)
+					}
+				}
+				deadline := time.Now().Add(5 * time.Second)
+				for manager.Title() != "Retry accounting" {
+					if time.Now().After(deadline) {
+						t.Fatalf("title did not finish: %q", manager.Title())
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				if err := manager.Close(); err != nil {
+					t.Fatal(err)
 				}
 			}
 			if worker != nil {
@@ -151,9 +193,13 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			ledger := 0.0
+			titleCalls := 0
 			for _, line := range lines {
 				if line.FactoryJob == factory.LedgerName(it) {
 					ledger += line.USD
+					if line.Role == "title" {
+						titleCalls += line.Calls
+					}
 				}
 			}
 			var header api.Job
@@ -163,6 +209,12 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			wantCalls, wantCost := int64(1), .01
 			if worker != nil {
 				wantCalls, wantCost = 2, .02
+			}
+			if outcome == "manager and title" {
+				wantCalls, wantCost = 3, .03
+				if titleCalls != 1 {
+					t.Errorf("title calls=%d, want 1", titleCalls)
+				}
 			}
 			if calls.Load() != wantCalls || math.Abs(ledger-wantCost) > 1e-9 || math.Abs(header.Cost-wantCost) > 1e-9 {
 				t.Errorf("one call must charge once: provider=%.4f ledger=%.4f header=%.4f; want %.4f each", provider, ledger, header.Cost, wantCost)
