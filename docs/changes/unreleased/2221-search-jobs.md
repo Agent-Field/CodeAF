@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Find jobs across connected factories without opening their jobs lists first
-pr: 0
+pr: 2221
 surface: [engine]
 invalidates:
   - "Was true: search.all found conversation tasks but no factory jobs. Is true now: it also returns a separate job group from each connected factory's caller-visible queue."
