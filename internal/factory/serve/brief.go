@@ -72,7 +72,7 @@ func (h *Handler) beginBrief(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 // keepBrief ends a write: the factory checks the writer's draft against the
-// job as it is now, keeps what passes, books the call's cost to the job, and
+// job as it is now, keeps what passes with its already-booked cost, and
 // answers the brief as it then reads.
 func (h *Handler) keepBrief(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body api.BriefKeepRequest
