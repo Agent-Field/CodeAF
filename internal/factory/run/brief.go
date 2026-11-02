@@ -35,8 +35,8 @@ func stageRole(job Job) string {
 		return ""
 	}
 	on := itemNoun(job.Item)
-	if ref := job.Item.Ref(); ref != "" && on != "" {
-		on += " " + ref
+	if ref := job.Item.Ref(); ref != "" {
+		on = strings.TrimSpace(on + " " + ref)
 	}
 	line := "You are the " + name + " step of a codeaf run"
 	if on != "" {
@@ -48,6 +48,9 @@ func stageRole(job Job) string {
 // itemNoun is what the item is, in words: `pull request`, `issue`, "" for
 // work with no forge kind.
 func itemNoun(it factory.Item) string {
+	if it.Num == 0 && factory.IsIssueJob(it) {
+		return ""
+	}
 	switch it.Kind {
 	case factory.KindPR:
 		return "pull request"
@@ -78,7 +81,11 @@ func itemContext(job Job) [][]string {
 	if n := itemNoun(it); n != "" {
 		head = n + " " + head
 	}
-	paras := [][]string{{head, itemFacts(it), itemLinked(it), cutBody(it.Body)}}
+	var issue string
+	if it.Num == 0 && factory.IsIssueJob(it) {
+		issue = "This job has no GitHub issue. Its job id is local to the factory, not an issue number."
+	}
+	paras := [][]string{{head, issue, itemFacts(it), itemLinked(it), cutBody(it.Body)}}
 	if files := changedFiles(it); len(files) > 0 {
 		paras = append(paras, files)
 	}

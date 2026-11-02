@@ -12,6 +12,17 @@ Three things make one factory:
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
 
+## job numbers and GitHub issue numbers — a job with no GitHub issue
+
+A job created without a GitHub issue is labelled `job 21`, where 21 is its
+local factory id. It does not refer to GitHub issue #21. A job from a real
+GitHub issue keeps its repository reference, such as `api#87`.
+
+Plan, Review and Proof are told when a job has no GitHub issue. They work
+from its brief and checkout. Commenting on such a job's GitHub issue is
+refused with "this job has no GitHub issue to comment on"; nothing is posted.
+Existing saved jobs keep their identity and work, without a migration.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.

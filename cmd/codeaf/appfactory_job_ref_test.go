@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -16,6 +17,9 @@ import (
 // GitHub issue. Its saved identity still addresses the same job.
 func TestAppFactoryJobWithoutIssueHasAnHonestReference(t *testing.T) {
 	s := newLocalSetup(t)
+	keys := config.NewAppCredentials()
+	keys.Set("openrouter", "test-key-not-real")
+	t.Cleanup(config.UseAppCredentials(keys))
 	maker := &factoryrun.FakeMaker{Script: func(ctx context.Context, c *factoryrun.FakeConversation) {
 		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "Checked the job."})
 	}}
@@ -62,8 +66,8 @@ func TestAppFactoryJobWithoutIssueHasAnHonestReference(t *testing.T) {
 		t.Errorf("saved identity changed: id=%q job_id=%d", got.JobID, got.ID)
 	}
 	before := len(s.github.seen())
-	msg := s.mustFail("factory.issue_comment", map[string]any{"factory": st.Factory, "job": local.ID, "body": "hello"}, appwire.CodeConflict)
-	if !strings.Contains(msg, "no GitHub issue") || len(s.github.seen()) != before {
+	msg, detail := (&person{w: s.factoryWire}).refused(t, "factory.issue_comment", map[string]any{"factory": st.Factory, "job": local.ID, "body": "hello"}, appwire.CodeConflict)
+	if detail == nil || detail.Outcome != api.CommentRefused || !strings.Contains(msg, "no GitHub issue") || len(s.github.seen()) != before {
 		t.Errorf("comment refusal = %q, GitHub calls = %d", msg, len(s.github.seen())-before)
 	}
 	s.must("factory.job_start", map[string]any{"factory": st.Factory, "job": local.ID, "expect": map[string]any{"version": got.Version}}, &appwire.FactoryJobActed{})

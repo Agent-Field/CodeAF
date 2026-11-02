@@ -503,6 +503,27 @@ twice. `factory.job_brief_write {factory, job}` is the page's Retry: it answers
 `{skip?, kept, drops: [{part, reason}], model?, cost_usd?, current:
 FactoryJobBrief}`, with `skip` `writing` while another write is under way.
 
+### Job references and jobs without a GitHub issue
+
+`factory.job` and `factory.queue` return a job's `ref` as display text:
+`api#87` for GitHub issue 87, or `job 21` when `num` is zero. A local
+job id is never a GitHub issue number. Step briefs for such a job explicitly
+say it has no GitHub issue, including Plan, Review and Proof.
+
+The numeric `job_id` is the factory document id used as the `job` parameter
+in app methods. The string `id` is an opaque compatibility key: it retains
+its previous spelling (including `api#21` for a job with no issue). Use `ref`
+for labels; never parse either identity into a GitHub link. Existing HTTP
+reference lookups, worktree names and saved chat markers remain valid;
+saved jobs need no migration. GitHub links come from the job's `url` and
+actual issue `num`, never the local document id.
+
+`factory.issue_comment {factory, job, body}` refuses a job with `num: 0`
+with wire code `conflict`, typed outcome `refused`, and the message
+"this job has no GitHub issue to comment on". It makes no GitHub call.
+The existing `factory.remote` and `factory.issue_comment` hello features
+continue to apply; no method, parameter or reply field is added.
+
 ## files methods
 
 | method | params | result |

@@ -215,7 +215,7 @@ func floorFind(snap factory.Snapshot, n int) []factory.Item {
 	want := "#" + strconv.Itoa(n)
 	var out []factory.Item
 	for _, it := range snap.Items {
-		if it.State != factory.StateDismissed && it.Ref() == want {
+		if it.State != factory.StateDismissed && it.KeyRef() == want {
 			out = append(out, it)
 		}
 	}

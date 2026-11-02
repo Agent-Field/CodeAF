@@ -45,8 +45,17 @@ type StopUndo struct {
 	Stream   *Stream   `json:"stream,omitempty"`
 }
 
-// JobRef is the stable human reference; the numeric document id remains compatible.
+// JobRef is display text. A local job id is never a GitHub issue number.
 func JobRef(it Item) string {
+	if it.Num == 0 {
+		return fmt.Sprintf("job %d", it.ID)
+	}
+	return JobKey(it)
+}
+
+// JobKey preserves the reference accepted by existing clients and saved links.
+// It is an opaque identity, never display text or a GitHub issue number.
+func JobKey(it Item) string {
 	repo := it.Repo
 	if n := strings.LastIndex(repo, "/"); n >= 0 {
 		repo = repo[n+1:]

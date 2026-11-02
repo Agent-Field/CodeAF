@@ -622,7 +622,7 @@ func (d fileRecipeDoor) Stages(ctx context.Context, repo string, kind factory.Ki
 // carries its floor id after it (`[factory item #1540 · 7]`) so the surface
 // finds the right row whichever repository the number belongs to.
 func talkMarker(it factory.Item) string {
-	ref := it.Ref()
+	ref := it.KeyRef()
 	if ref == "#"+strconv.Itoa(it.ID) || it.ID <= 0 {
 		return "[factory item " + ref + "]"
 	}
