@@ -487,14 +487,36 @@ checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
 `kind/heading`) changed after rev `since`, or by the newest version when
 `since` is absent. A factory older than the route is `conflict`.
 
+With hello feature `factory.job_brief_verdict_behind`, the reply also carries
+`verdict_behind: bool`, including in `factory.job_brief_write.current`. The engine
+compares the newest kept version's input hash with the current job input: a
+changed state, approval, publication receipt or newer step makes it true until a
+new version is kept. A failed write keeps the old verdict and its hash. The desk
+shows that verdict as out of date when this flag is true. A stub is false; a kept
+legacy version without an input hash is true until refreshed. Params and error
+codes are unchanged.
+
 An engine whose hello carries `factory.job_brief_writer` writes the briefs of
-this machine's factory: after a step reports and when a step waits on its
-person, each job's news taken as one after 10 seconds. The write is one errand
+this machine's factory: after a step reports, when a step waits on its person,
+when proof waits for publication approval, and at publication or the job's end.
+Publication includes a PR opened or updated and a comment posted; end outcomes
+include shipped, merged, closed without merge, stopped and failed runs, plus a
+failed publication. Each job's news is taken as one after 10 seconds. Lifecycle
+triggers come from committed store updates, separately from chat step metadata.
+Auto's routine proof approval does not force an intermediate write; an exception
+waiting on a person does. A normal manual job gets two additional forced writes:
+at proof approval and after publication, folded when they share a burst. The write is one errand
 on the job's agent under the `brief` role (the small-work tier the small-jobs
 model pins). The factory checks the answer against the job (`POST
 /v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
 that names a step and try the job has, and every number in a claim found in its
-evidence. It keeps what passes and books the call's cost to the job's spend. A
+evidence. The writer's input includes the job state in words, whether proof
+approval waits, the approval kind and state, the PR number and state, publication
+attempt and outcome, comment receipt and how the job ended. These facts enter the
+input hash, so a lifecycle change cannot skip as unchanged. Evidence kind `pr`
+refers to the published PR with no step and supports its number; an unrelated or
+unsupported number is still rejected. It keeps what passes and books the call's
+cost to the job's spend. A
 failing verdict keeps the previous version and marks the brief `failed`. Without
 a person's ask, a version is written only when the last one cost at most $0.03
 and the brief's spend stays within 5% of the job's; an ask opening, the job's

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -83,7 +84,7 @@ func (b *appBackend) writeBrief(ctx context.Context, factoryID string, job int, 
 		Kept: kept.Kept, Drops: orDrops(kept.Drops), Model: answer.Model, CostUSD: answer.Usage.CostUSD,
 		Current: appwire.FactoryJobBrief{
 			Factory: factoryID, Job: job, Status: kept.Status, Failure: kept.Failure, FailedAfter: kept.FailedAfter,
-			Brief: kept.Brief, ChangedSinceSeen: orKeys(kept.ChangedSinceSeen),
+			Brief: kept.Brief, VerdictBehind: kept.VerdictBehind, ChangedSinceSeen: orKeys(kept.ChangedSinceSeen),
 		},
 	}, nil
 }
@@ -274,5 +275,24 @@ func (b *appBackend) localNow() (*appFactoryHost, string, bool) {
 func (b *appBackend) briefEdited(factoryID string, job int) {
 	if _, id, running := b.localNow(); running && id == factoryID && b.briefs != nil {
 		b.briefs.note(job, factory.BriefTriggerEdit)
+	}
+}
+
+// briefJobChanged hears lifecycle facts at the common committed-write seam,
+// separately from step progress so landing and publish lines keep their shape.
+func (b *appBackend) briefJobChanged(before, after factory.Item) {
+	if b.briefs == nil {
+		return
+	}
+	if end := factory.BriefEndOf(after); end != "" && end != factory.BriefEndOf(before) {
+		b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		return
+	}
+	if p := after.PublishStatus; p != nil && !reflect.DeepEqual(p, before.PublishStatus) && (p.State == "opened" || p.State == "failed") {
+		b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		return
+	}
+	if factory.BriefProofApprovalWaiting(after) && !factory.BriefProofApprovalWaiting(before) {
+		b.briefs.note(after.ID, factory.BriefTriggerAsk)
 	}
 }

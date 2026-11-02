@@ -99,6 +99,103 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 			t.Fatalf("old verdict not marked behind: %+v", read)
 		}
 	})
+
+	t.Run("lifecycle outcomes refresh", func(t *testing.T) {
+		for _, c := range []struct {
+			name   string
+			change func(*factory.Item)
+		}{
+			{"merged", func(it *factory.Item) { it.PullRequest = &factory.PullRequest{Number: 73, State: factory.PRMerged} }},
+			{"closed without merge", func(it *factory.Item) { it.PullRequest = &factory.PullRequest{Number: 73, State: factory.PRClosed} }},
+			{"shipped", func(it *factory.Item) { it.State = factory.StateShipped }},
+			{"stopped", func(it *factory.Item) {
+				it.State = factory.StateNew
+				it.Failure = &factory.Failure{Code: factory.CodeStopped}
+				it.Stream.Ended = time.Now()
+			}},
+			{"failed", func(it *factory.Item) {
+				it.State = factory.StateNew
+				it.Failure = &factory.Failure{Code: factory.CodeToolError, Detail: "check failed"}
+				it.Stream.Ended = time.Now()
+			}},
+			{"comment posted", func(it *factory.Item) {
+				it.State = factory.StateShipped
+				it.CommentURL = "https://github.com/acme/api/issues/7#issuecomment-73"
+			}},
+			{"publish failed", func(it *factory.Item) {
+				it.MarkPublishing("failed", "no_push_permission", "permission refused", time.Now())
+			}},
+			{"PR updated", func(it *factory.Item) {
+				it.MarkPublishing("queued", "", "", time.Now())
+				it.MarkPublishing("opened", "", "", time.Now())
+			}},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				s, _, id, params := briefAfterProofSetup(t, factory.StateLanded)
+				var first appwire.FactoryJobBriefWritten
+				s.must("factory.job_brief_write", params, &first)
+				if !first.Kept {
+					t.Fatalf("seed = %+v", first)
+				}
+				if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error { c.change(it); return nil }); err != nil {
+					t.Fatal(err)
+				}
+				briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+			})
+		}
+	})
+	t.Run("Auto proof passage does not force a write", func(t *testing.T) {
+		s, _, id, params := briefAfterProofSetup(t, factory.StateRunning)
+		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
+			it.Autonomy = factory.AutonomyAuto
+			it.Cap = 5
+			it.Proof = []factory.Claim{{Text: "checked", OK: true}}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error { it.State = factory.StateLanded; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+		var got map[string]any
+		s.must("factory.job_brief", params, &got)
+		if briefRev(got) != 1 {
+			t.Fatalf("Auto forced an unreadable intermediate version: %+v", got)
+		}
+	})
+	t.Run("read freshness follows newer steps and recovers", func(t *testing.T) {
+		s, _, id, params := briefAfterProofSetup(t, factory.StateRunning)
+		var got map[string]any
+		s.must("factory.job_brief", params, &got)
+		if got["verdict_behind"] != false {
+			t.Fatalf("stub freshness = %+v", got)
+		}
+		if !strings.Contains(s.hello, appwire.FeatureFactoryJobBriefVerdictBehind) {
+			t.Fatal("hello lacks brief freshness feature")
+		}
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		if first.Current.VerdictBehind {
+			t.Fatal("fresh write marked behind")
+		}
+		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
+			it.Stream.Phases = append(it.Stream.Phases, factory.Phase{Name: "later", State: factory.PhaseRunning, Round: 1})
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		s.must("factory.job_brief", params, &got)
+		if got["verdict_behind"] != true {
+			t.Fatalf("newer step not marked behind: %+v", got)
+		}
+		s.must("factory.job_brief_write", params, &first)
+		if !first.Kept || first.Current.VerdictBehind {
+			t.Fatalf("refresh = %+v", first)
+		}
+	})
 	t.Run("plain step still costs too much", func(t *testing.T) {
 		it := factory.Item{Stream: &factory.Stream{Spent: 0.01}, Briefs: []factory.BriefVersion{{CostUSD: 0.02, InputHash: "old"}}}
 		if factory.BriefCostAllowed(it) {
