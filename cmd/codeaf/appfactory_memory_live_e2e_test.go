@@ -140,6 +140,13 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	stopJob := func() {
+		var current api.Job
+		w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &current)
+		var stopped appwire.FactoryJobActed
+		w.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": current.Version}}, &stopped)
+	}
+
 	// BEFORE ANY START: the job waits in Backlog, and no model was called.
 	var job api.Job
 	w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
@@ -174,8 +181,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 		over := recorder.cost >= 1
 		recorder.mu.Unlock()
 		if over {
-			var stopped appwire.FactoryJobActed
-			w.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id}, &stopped)
+			stopJob()
 			cancel()
 			t.Fatal("live run reached $1; no further calls authorized")
 		}
@@ -183,8 +189,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	}
 
 	if ctx.Err() != nil {
-		var stopped appwire.FactoryJobActed
-		w.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": id}, &stopped)
+		stopJob()
 	}
 	if it.State != factory.StateLanded {
 		t.Errorf("job state=%s question=%q failure=%+v", it.State, it.Question, it.Failure)
