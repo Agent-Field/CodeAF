@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: App test rigs built without a conversation opener refuse an open instead of panicking the test binary
+title: App test rigs without a conversation opener refuse an open instead of panicking
 pr: 2163
 surface: [app]
 ---
