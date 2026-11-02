@@ -212,6 +212,26 @@ type chatExecutor struct {
 	maker ConversationMaker
 }
 
+// stageModel is the model a round opens on: the step's own pick
+// (factory.Stage.Model), else the job's (Item.Model), else "" for the default
+// the maker's launch already carries.
+func stageModel(job Job) string {
+	if m := strings.TrimSpace(job.Stage.Model); m != "" {
+		return m
+	}
+	return strings.TrimSpace(job.Item.Model)
+}
+
+// stageAutomatic is whether the round may choose models itself: never on a
+// step whose model the person picked, else as the job says.
+func stageAutomatic(job Job) *bool {
+	if strings.TrimSpace(job.Stage.Model) != "" {
+		off := false
+		return &off
+	}
+	return job.Item.AutomaticModels
+}
+
 // Run opens the round's conversation, forwards steering and captions while it
 // works, and answers the last thing it reported, or the report made for it.
 func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, error) {
@@ -234,8 +254,8 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Handle:            stageHandle(job),
 		Dir:               job.Dir,
 		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
-		Model:             strings.TrimSpace(job.Item.Model),
-		AutomaticModels:   job.Item.AutomaticModels,
+		Model:             stageModel(job),
+		AutomaticModels:   stageAutomatic(job),
 		Effort:            job.Item.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
@@ -332,7 +352,9 @@ loop:
 					log("Model policy change not applied: " + oneLine(err.Error()))
 				}
 			}
-			if m, ok := conv.(modeler); ok && strings.TrimSpace(selection.Model) != "" {
+			// A STEP WITH ITS OWN MODEL KEEPS IT: a model chosen for the whole
+			// job is for the steps the person did not pick one for.
+			if m, ok := conv.(modeler); ok && strings.TrimSpace(selection.Model) != "" && strings.TrimSpace(job.Stage.Model) == "" {
 				m.SetModel(strings.TrimSpace(selection.Model))
 			}
 		case line, ok := <-captions:

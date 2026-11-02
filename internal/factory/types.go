@@ -106,9 +106,13 @@ type Stage struct {
 	Ask    string    // the sentence as typed; the brief is compiled from it
 	When   string    // "" or always · thin · large · touches auth · has ui
 	Effort string    // "" (the knee) · cheap · strong — the crew's one word
-	Fanout string    // one · per-file · per-finding · per-claim
-	Until  string    // done · clean · green · proven
-	Max    int       // rounds before it stops and asks; 0 means one
+	// Model is the model a person picked for this stage on this job, "" for
+	// the job's own (Item.Model) or the factory's default. Only a
+	// conversation stage carries one; a check and an approval run no model.
+	Model  string `json:",omitempty"`
+	Fanout string // one · per-file · per-finding · per-claim
+	Until  string // done · clean · green · proven
+	Max    int    // rounds before it stops and asks; 0 means one
 	// Who is who an approve step waits on ([ApproverWord]): "" the job's
 	// person, "@handle" a named person, operator any of the factory's
 	// operators. Only an approve step carries one.

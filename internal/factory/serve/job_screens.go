@@ -156,7 +156,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
 	for _, mv := range body.Move {
 		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
 		// rather than guessed.
@@ -169,7 +169,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	for _, addition := range body.Add {
 		d := addition.Step
 		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
-		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" {
+		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" || d.UseModel != "" {
 			h.fail(w, 422, "new steps accept name, kind, ask, until and effort, and a check its max")
 			return
 		}
