@@ -25,6 +25,9 @@ import (
 // The desk's real wire, factory and runner share only the public job doors.
 // A held fake model round makes the person's toggle precede the step boundary.
 func TestFactoryStopAfterStep(t *testing.T) {
+	t.Run("saved questions", testSavedSpendingQuestions)
+	t.Run("unfinished step resumes", testUnfinishedSpendingStep)
+	t.Run("owner and guard", testSpendingStopOwnerAndGuard)
 	for _, leased := range []bool{false, true} {
 		for _, choice := range []string{"yes", "off", "no", "last"} {
 			t.Run(fmt.Sprintf("leased=%v/%s", leased, choice), func(t *testing.T) {
@@ -79,6 +82,9 @@ func TestFactoryStopAfterStep(t *testing.T) {
 				id := appFactoryID(srv.URL)
 				attached(t, hub, appFactoryRow{ID: id, URL: srv.URL, Mode: api.FactorySolo})
 				wire := newFactoryWire(t, hub)
+				if !strings.Contains(wire.hello, "factory.job_stop_after_step") {
+					t.Fatal("hello omits spending hold")
+				}
 				if leased {
 					ctx, cancel := context.WithCancel(context.Background())
 					done := make(chan struct{})
@@ -119,6 +125,9 @@ func TestFactoryStopAfterStep(t *testing.T) {
 					t.Fatal("model did not start")
 				}
 				toggle := func(on bool) { act("factory.job_stop_after_step", map[string]any{"on": on}) }
+				if can := read()["can"].(map[string]any); can["stop_after_step"] != true {
+					t.Fatalf("running toggle unavailable: %v", can)
+				}
 				toggle(true)
 				got := read()
 				if got["stop_after_step"] != true {
@@ -155,11 +164,150 @@ func TestFactoryStopAfterStep(t *testing.T) {
 				if calls.Load() != wantCalls {
 					t.Fatalf("calls=%d want=%d", calls.Load(), wantCalls)
 				}
-				eventually(t, "final result", func() bool { j := read(); return j["state"] != "running" && j["state"] != "needs_you" })
+				eventually(t, "final result", func() bool {
+					j := read()
+					if choice == "no" {
+						return j["failure"] != nil
+					}
+					ny, _ := j["needs_you"].(map[string]any)
+					return ny["kind"] == "approve_proof" || j["state"] == "done"
+				})
+				if choice == "no" {
+					f, _ := read()["failure"].(map[string]any)
+					if f["code"] != "stopped" {
+						t.Fatalf("no must be a person stop: %v", f)
+					}
+				}
 				if read()["stop_after_step"] == true {
 					t.Fatal("flag survived the answer or off")
 				}
 			})
 		}
+	}
+}
+
+func savedSpendingRunner(t *testing.T, it factory.Item, exec factoryrun.Executor) (*factoryrun.Runner, *store.Store, int) {
+	t.Helper()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.Create(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := factoryrun.New(factoryrun.Options{Store: st, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: exec}})
+	t.Cleanup(func() { _ = r.Stop(job.ID) })
+	return r, st, job.ID
+}
+
+func savedSpendingItem() factory.Item {
+	return factory.Item{Repo: "acme/api", Title: "Saved run", Cap: 5, StopAfterStep: true,
+		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true}, {Name: "write", Kind: factory.StageChat, On: true}},
+		Stream: &factory.Stream{Cur: 0, Spent: .25, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true}},
+			{Name: "write", Kind: factory.StageChat, State: factory.PhasePending},
+		}},
+	}
+}
+
+func testSavedSpendingQuestions(t *testing.T) {
+	for _, yes := range []bool{true, false} {
+		t.Run(fmt.Sprint(yes), func(t *testing.T) {
+			it := savedSpendingItem()
+			it.State, it.QKind, it.Question = factory.StateNeedsYou, "spend_stopped", "Stopped spending after plan as you asked · $0.25 so far. Carry on?"
+			var calls atomic.Int64
+			r, st, id := savedSpendingRunner(t, it, factoryrun.ExecutorFunc(func(context.Context, factoryrun.Job) (factory.StageResult, error) {
+				calls.Add(1)
+				return factory.StageResult{Done: true}, nil
+			}))
+			if err := r.Answer(id, yes, ""); err != nil {
+				t.Fatalf("saved spending answer: %v", err)
+			}
+			eventually(t, "saved answer settles", func() bool { return !r.Running(id) })
+			got, err := st.Get(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := int64(0)
+			if yes {
+				want = 1
+			}
+			if calls.Load() != want || got.StopAfterStep {
+				t.Fatalf("saved answer calls=%d flag=%v", calls.Load(), got.StopAfterStep)
+			}
+			if !yes && (got.Failure == nil || got.Failure.Code != factory.CodeStopped) {
+				t.Fatalf("saved no is not a person stop: %+v", got.Failure)
+			}
+		})
+	}
+}
+
+func testUnfinishedSpendingStep(t *testing.T) {
+	it := savedSpendingItem()
+	it.State = factory.StateRunning
+	it.Stream.Cur, it.Stream.Paused = 1, true
+	it.Stream.Phases[1].State, it.Stream.Phases[1].Round = factory.PhaseRunning, 1
+	entered, release := make(chan struct{}), make(chan struct{})
+	r, st, id := savedSpendingRunner(t, it, factoryrun.ExecutorFunc(func(ctx context.Context, j factoryrun.Job) (factory.StageResult, error) {
+		if j.Stage.Name != "write" {
+			return factory.StageResult{}, fmt.Errorf("resumed wrong step %s", j.Stage.Name)
+		}
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return factory.StageResult{}, ctx.Err()
+		}
+		return factory.StageResult{Done: true, Spent: .25}, nil
+	}))
+	if err := r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("spending hold displaced the unfinished write step")
+	}
+	close(release)
+	eventually(t, "hold follows resumed write", func() bool {
+		got, _ := st.Get(id)
+		return got.QKind == "spend_stopped" && strings.Contains(got.Question, "after write")
+	})
+	if err := r.Answer(id, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "resumed run settles", func() bool { return !r.Running(id) })
+}
+
+func testSpendingStopOwnerAndGuard(t *testing.T) {
+	f := startActionFactory(t)
+	alice := signedIn(t, f, 1, "alice")
+	bob := signedIn(t, f, 2, "bob")
+	it := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "alice"})
+	method := "factory.job_stop_after_step"
+	if !alice.job(t, it.ID).Can.StopAfterStep || bob.job(t, it.ID).Can.StopAfterStep {
+		t.Fatal("toggle does not belong to owner")
+	}
+	alice.w.mustFail(method, map[string]any{"factory": alice.conn.ID, "job": it.ID}, appwire.CodeBadParams)
+	bob.refused(t, method, bob.params(t, it.ID, map[string]any{"on": true}), appwire.CodeForbidden)
+	stale := alice.params(t, it.ID, map[string]any{"on": false})
+	out := alice.act(t, method, it.ID, map[string]any{"on": true})
+	if out.Action != "stop_after_step" || !alice.job(t, it.ID).StopAfterStep {
+		t.Fatalf("toggle reply: %+v", out)
+	}
+	alice.w.mustFail(method, stale, appwire.CodeStale)
+	events, err := f.rec.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range events {
+		if e.Kind == "stop_after_step_changed" && e.Handle == "alice" && e.Detail == "stop_after_step=true" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("record omits the person's spending choice")
 	}
 }
