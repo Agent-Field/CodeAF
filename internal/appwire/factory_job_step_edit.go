@@ -43,7 +43,10 @@ import (
 // step with only a name, kind, ask, until and effort (and a check its max),
 // optionally after another step, remove a step from this job, and move a step
 // after another (or first). It cannot change a step's kind or its max, when,
-// fanout, proof or model, and cannot name a path. A part the language lacks is
+// fanout or proof, and cannot name a path. A conversation step's tries
+// (1 to 3) are in the language only where the engine announces
+// [FeatureFactoryJobStepEditMax], and a step's model only where it announces
+// [FeatureFactoryJobStepEditModel]. A part the language lacks is
 // `bad_params` (a field this wire does not carry is refused, not ignored).
 // Which steps may be removed or moved (never proof, a fixed step, a step a
 // policy names or one that has begun; an approval only by its person) is the
@@ -112,8 +115,16 @@ type FactoryStepEdit struct {
 	Ask map[string]string `json:"ask,omitempty"`
 	// Thinking maps a step name to cheap or strong; "" returns it to the usual.
 	Thinking map[string]string `json:"thinking,omitempty"`
-	On       []string          `json:"on,omitempty"`
-	Skip     []string          `json:"skip,omitempty"`
+	// Max maps a conversation step's name to how many tries it gets for this
+	// job, 1 to 3. Sent only to an engine that announces
+	// [FeatureFactoryJobStepEditMax].
+	Max map[string]int `json:"max,omitempty"`
+	// Model maps a step name to the model it runs on for this job, one of
+	// models.list's ids; "" gives it back to the job's model. Sent only to an
+	// engine that announces [FeatureFactoryJobStepEditModel].
+	Model map[string]string `json:"model,omitempty"`
+	On    []string          `json:"on,omitempty"`
+	Skip  []string          `json:"skip,omitempty"`
 	// Remove takes steps out of this job; skip leaves them in, off.
 	Remove []string          `json:"remove,omitempty"`
 	Move   []FactoryStepMove `json:"move,omitempty"`
@@ -292,7 +303,7 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 	if ed.Why, err = stepWords("why", ed.Why, MaxFactoryJobWords); err != nil {
 		return err
 	}
-	if len(ed.Add) > factory.StageMost || len(ed.Ask) > factory.StageMost || len(ed.Thinking) > factory.StageMost {
+	if len(ed.Add) > factory.StageMost || len(ed.Ask) > factory.StageMost || len(ed.Thinking) > factory.StageMost || len(ed.Max) > factory.StageMost || len(ed.Model) > factory.StageMost {
 		return Errorf(CodeBadParams, "an edit changes at most %d steps in one part", factory.StageMost)
 	}
 	if ed.On, err = stepRefs("on", ed.On); err != nil {
@@ -355,15 +366,66 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 		thinking[name] = word
 	}
 	ed.Thinking = nilIfEmpty(thinking)
+	if ed.Max, err = stepTries(ed.Max); err != nil {
+		return err
+	}
+	if ed.Model, err = stepModels(ed.Model); err != nil {
+		return err
+	}
 	for i := range ed.Add {
 		if err := checkNewStep(&ed.Add[i]); err != nil {
 			return err
 		}
 	}
-	if len(ed.Add) == 0 && len(ed.Ask) == 0 && len(ed.Thinking) == 0 && len(ed.On) == 0 && len(ed.Skip) == 0 && len(ed.Remove) == 0 && len(ed.Move) == 0 {
+	if len(ed.Add) == 0 && len(ed.Ask) == 0 && len(ed.Thinking) == 0 && len(ed.Max) == 0 && len(ed.Model) == 0 && len(ed.On) == 0 && len(ed.Skip) == 0 && len(ed.Remove) == 0 && len(ed.Move) == 0 {
 		return Errorf(CodeBadParams, "the edit changes nothing: name a step to add, reword, set thinking for, switch on, skip, remove or move")
 	}
 	return nil
+}
+
+// stepTries trims each named step and refuses a count outside 1 to
+// [factory.StepTriesMost]. Which steps may take one is the factory's to say.
+func stepTries(in map[string]int) (map[string]int, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]int, len(in))
+	for name, tries := range in {
+		name, err := stepRef("max", name)
+		if err != nil {
+			return nil, err
+		}
+		if tries < 1 || tries > factory.StepTriesMost {
+			return nil, Errorf(CodeBadParams, "%s", factory.ErrStepTries.Error())
+		}
+		if _, duplicate := out[name]; duplicate {
+			return nil, Errorf(CodeBadParams, "%s is named twice", name)
+		}
+		out[name] = tries
+	}
+	return out, nil
+}
+
+// stepModels trims each named step and its model id. Which models exist is the
+// engine's model list's to say (the engine checks it before it sends); here a
+// model is only refused for not being shaped like one id.
+func stepModels(in map[string]string) (map[string]string, error) {
+	out := make(map[string]string, len(in))
+	for name, model := range in {
+		name, err := stepRef("model", name)
+		if err != nil {
+			return nil, err
+		}
+		model = strings.TrimSpace(model)
+		if !factory.ModelID(model) {
+			return nil, Errorf(CodeBadParams, "%s", factory.ErrModelID.Error())
+		}
+		if _, duplicate := out[name]; duplicate {
+			return nil, Errorf(CodeBadParams, "%s is named twice", name)
+		}
+		out[name] = model
+	}
+	return nilIfEmpty(out), nil
 }
 
 func nilIfEmpty(m map[string]string) map[string]string {

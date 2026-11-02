@@ -2480,6 +2480,12 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 			values[roles.PinKey(roles.Role(role))] = model
 		}
 	}
+	// THE PAGE AI's DEFAULT IS ANSWERED, NEVER WRITTEN ([config.InsightDefault]):
+	// it rides the snapshot while its provider is connected and the model is
+	// allowed, below every pin, and a one-model profile drops it with the pins.
+	if send, ok := config.InsightDefaultAt(c.profileDir); ok {
+		values[roles.DefaultKey(roles.RoleInsight)] = send
+	}
 	return v3SettleOneModel(values, c.profileDir), nil
 }
 

@@ -94,11 +94,10 @@ func TailForResultAt(text string, caps Caps) string { return truncateTail(text, 
 // registry in internal/session, which used to keep a hand-copied three-line
 // version of the choice and now asks this instead.
 func StreamingShell(command string) (string, []string, error) {
-	shell, shellArgs, err := getShellConfig()
+	shell, full, err := getShellConfig(command)
 	if err != nil {
 		return "", nil, err
 	}
-	full := append(append([]string{}, shellArgs...), command)
 	if prefix := stdbufPrefix(); len(prefix) > 0 {
 		return prefix[0], append(append(append([]string{}, prefix[1:]...), shell), full...), nil
 	}

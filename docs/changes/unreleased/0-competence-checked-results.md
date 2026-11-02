@@ -1,6 +1,6 @@
 ---
 kind: added
-title: codeaf keeps what each model has proven by declared checks that ran, and serves it as competence.map / competence.evidence and codeaf competence --json
+title: codeaf keeps what each model proved by declared checks that ran, and serves it as competence
 pr: 0
 surface: [engine, chat, docs]
 invalidates:

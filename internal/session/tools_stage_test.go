@@ -288,3 +288,43 @@ func TestFactoryManagerDoesNotOwnOrPollPipelineCompletion(t *testing.T) {
 		t.Fatal("manager completion checker polls the runner")
 	}
 }
+
+// A PLAN'S FILE LIST COSTS NO OTHER STAGE ANYTHING, AND COSTS THE PLAN NO MORE:
+// it takes the place of the publish summary a plan never writes.
+func TestThePlanStagesVerbsCostNoMoreThanAnyOtherStages(t *testing.T) {
+	belt := func(plan bool) int {
+		a := stageAgent(t, &fakeStageDoor{})
+		a.config.PlanStage = plan
+		a.tools = a.belt()
+		total := 0
+		for _, name := range []string{"stage_result", "plan_edit"} {
+			tool := stageToolNamed(t, a, name)
+			total += len(tool.Name) + len(tool.Description) + len(tool.Schema)
+			if !json.Valid(tool.Schema) {
+				t.Errorf("%s's schema is not JSON", name)
+			}
+		}
+		return total
+	}
+	other, plan := belt(false), belt(true)
+	t.Logf("other stages %d bytes, plan %d bytes", other, plan)
+	if plan > other {
+		t.Fatalf("a plan's verbs are %d bytes, over the other stages' %d", plan, other)
+	}
+}
+
+// ONLY THE STEP FOLLOWING A PULL REQUEST IS OFFERED THE REPAIR REPORT.
+func TestOnlyARepairStageIsOfferedTheRepairReport(t *testing.T) {
+	for _, repair := range []bool{false, true} {
+		a := stageAgent(t, &fakeStageDoor{})
+		a.config.RepairStage = repair
+		a.tools = a.belt()
+		schema := string(stageToolNamed(t, a, "stage_result").Schema)
+		if !json.Valid([]byte(schema)) {
+			t.Fatalf("schema is not JSON: %s", schema)
+		}
+		if got := strings.Contains(schema, `"repair":`); got != repair {
+			t.Errorf("repair stage %v: schema offers repair = %v", repair, got)
+		}
+	}
+}

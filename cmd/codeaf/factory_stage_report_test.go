@@ -65,7 +65,7 @@ func TestAStageThatAnswersInProseReportsOnTheTurnThatMust(t *testing.T) {
 		mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
 		if must {
-			args, _ := json.Marshal(`{"done":true,"output":"planned two edits"}`)
+			args, _ := json.Marshal(`{"done":true,"output":"planned two edits","files":["ledger.md"]}`)
 			_, _ = w.Write([]byte(`data: {"id":"s","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"stage_result","arguments":` + string(args) + `}}]},"finish_reason":null}]}` + "\n\n" +
 				`data: {"id":"s","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}` + "\n\ndata: [DONE]\n\n"))
 			return

@@ -1,7 +1,7 @@
 ---
 kind: added
 title: The app can ask an agent for one short metered model call with its own prompt
-pr: 2083
+pr: 2088
 surface: [engine, remote]
 invalidates:
   - "Was true: the only app-wire model errand was agents.suggest_reply, whose system prompt and one-line output were codeaf's own and fixed; nothing on the app wire took a caller's system text. Is true now: agents.errand runs one detached, tool-less completion with the caller's system text and messages on a held agent's metered door, by role or explicit model inside the agent's model policy, as text or one JSON object, and answers the model that answered, its provider, role, usage and time, or an empty text with a machine reason (closed, stopped, over_budget, busy, deadline, cancelled, model_failed, invalid_json, not_open, unavailable)."

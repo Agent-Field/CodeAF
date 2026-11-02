@@ -856,7 +856,9 @@ func (b *appBackend) heldTaskViews(a *appAgent) map[string]appwire.Task {
 			}
 		}
 	})
-	if live != nil && live.conn.Assembled {
+	// A lent stage lives in this process too, and may have parked a card before the
+	// hold began, when no event could carry it here.
+	if live != nil && (live.conn.Assembled || live.conn.Lent) {
 		if tasks, err := live.conn.Conv.AppTasks(); err == nil {
 			for _, view := range tasks {
 				task := appTaskOfView(id, view)
