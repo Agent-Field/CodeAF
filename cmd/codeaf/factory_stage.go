@@ -127,11 +127,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
-	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
 	cfg.AutomaticModels = spec.AutomaticModels
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		cfg.Model = model
-	}
+	cfg.Model = stageOpenModel(cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)
 	if cfg.OneModel || fallback == cfg.Model {
 		fallback = ""
@@ -139,6 +136,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
 	cfg.Stage = verification
+	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
@@ -239,6 +237,20 @@ func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where 
 		return parent, err
 	}
 	return v3PointAt(parent, place)
+}
+
+// stageOpenModel is the model a step opens on: THE STEP'S OR JOB'S OWN, WHEN A
+// PERSON CHOSE ONE, over everything; else the factory's default model; else
+// the launch's. A launch on one model for every task keeps that model rather
+// than the factory's default, which nobody picked for this job.
+func stageOpenModel(cfg session.Config, spec factoryrun.ConversationSpec) string {
+	if model := strings.TrimSpace(spec.Model); model != "" {
+		return model
+	}
+	if model := strings.TrimSpace(spec.FactoryModel); model != "" && !cfg.OneModel {
+		return model
+	}
+	return cfg.Model
 }
 
 // factoryPostureEnv pins the posture a stage conversation runs at, in the

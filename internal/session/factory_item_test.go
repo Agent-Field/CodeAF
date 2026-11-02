@@ -267,7 +267,7 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 		{"cap up", ItemChange{Cap: 12.5}, "", "job 1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
 		{"cap down", ItemChange{Cap: 3}, "", "job 1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
 		{"effort", ItemChange{Effort: "strong"}, "", "job 1 · think strong?", []string{"thinking  plan — → strong · write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong"}},
-		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "job 1 · add a note for the stages?",
+		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "job 1 · save a note on the job?",
 			[]string{"note: the fixture in testdata is flaky"}},
 		{"several", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Note: "keep it small"}, "small change", "job 1 · change the plan?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "budget  $5 → $8", "note: keep it small", "why: small change"}},
@@ -416,7 +416,7 @@ func TestFactoryItemYesAppliesTheChangeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "job 1 now: plan · approve · write · test · proof · budget $8\n" +
-		"The person said yes and the factory has the change; there is nothing left to answer. The note is kept on the item for its stages."
+		"The person said yes and the factory has the change; there is nothing left to answer. The note was saved on the job; plan reads it next when it runs. It is not in the pull request."
 	if out := awaitResult(t, results); out != want {
 		t.Errorf("result = %q, want %q", out, want)
 	}

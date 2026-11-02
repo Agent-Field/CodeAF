@@ -381,6 +381,7 @@ func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
 		{"walled", factory.Stage{Name: "write"}, 1, factory.StageResult{Output: stageWalled}, "write ran out of time without reporting", ""},
 		{"one try, could not", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: "the issue names a file that is gone\nmore"}, "plan did not finish", "the issue names a file that is gone"},
 		{"one try, until held back", factory.Stage{Name: "test", Until: factory.UntilProven, Max: 1}, 1, factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "a", OK: true, Evidence: "x"}, {Text: "b"}}}, "test is not proven", "1 of 2 claims shown"},
+		{"a command failed", factory.Stage{Name: "mustfail", Kind: factory.StageCheck, Until: factory.UntilGreen, Max: 1}, 1, factory.StageResult{Exit: 1, Findings: 1, Output: ""}, "mustfail is not green", "exit 1"},
 		{"loops", factory.Stage{Name: "review", Until: factory.UntilClean, Max: 2}, 2, factory.StageResult{Done: true, Findings: 2}, "review is not clean after 2 rounds", "2 findings"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1164,8 +1165,10 @@ func TestAPausedItemStaysPausedAcrossARestartAndRunsInTheSameChat(t *testing.T) 
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
 	// The process dies: its control goes, the document stays.
-	old := g.r.loop().ctl(id)
-	old.cancel()
+	// A pause ends the drive and frees its slot; it may already have gone.
+	if old := g.r.loop().ctl(id); old != nil {
+		old.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 	it, _ := g.st.Get(id)
 	if it.State != factory.StateRunning || !it.Stream.Paused || it.Stream.Phases[0].Chat != "chat-x" {
@@ -1208,7 +1211,9 @@ func TestAResumedStepAfterARestartStillReadsTheStepsBefore(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
-	g.r.loop().ctl(id).cancel()
+	if c := g.r.loop().ctl(id); c != nil {
+		c.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 	if it, _ := g.st.Get(id); it.Stream.Phases[0].Result == nil || it.Stream.Phases[0].Result.Output != "three files" {
 		t.Fatalf("the plan's result is not kept on its step: %+v", it.Stream.Phases[0])
