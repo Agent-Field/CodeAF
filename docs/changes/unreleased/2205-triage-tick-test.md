@@ -12,6 +12,3 @@ surface: []
 # is the whole point. Leave the list empty if nothing anybody believed changed.
 invalidates: []
 ---
-
-Optional. A paragraph on WHY, if the title does not already carry it. Delete this
-line if it does.
