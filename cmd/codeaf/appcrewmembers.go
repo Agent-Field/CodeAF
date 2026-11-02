@@ -957,7 +957,7 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 				return appwire.Crew{}, appEngineError(err)
 			}
 		} else {
-			if err := b.crewStart(team, manager, entry); err != nil {
+			if err := b.crewStart(team, manager, entry, appwire.CreatedByPerson); err != nil {
 				return appwire.Crew{}, appEngineError(err)
 			}
 		}

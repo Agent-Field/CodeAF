@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -27,6 +28,50 @@ import (
 // no reading of its width, by `/task solo` or by the standing `single` answer.
 type taskCommandAgent interface {
 	StartTask(context.Context, string, bool) (uint64, string, string, error)
+}
+
+type taskCommandOnAgent interface {
+	StartTaskOn(context.Context, string, bool, string, ...string) (uint64, string, string, error)
+}
+
+// Only the computer name is unquoted. The rest is the person's brief, whose
+// punctuation and spacing must reach the worker without shell interpretation.
+func taskComputerArgument(arg string) (name, rest string, ok bool) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", "", false
+	}
+	quote := arg[0]
+	if quote != '"' && quote != '\'' {
+		at := strings.IndexFunc(arg, unicode.IsSpace)
+		if at < 0 {
+			return arg, "", true
+		}
+		return arg[:at], strings.TrimSpace(arg[at:]), true
+	}
+	var word strings.Builder
+	for i := 1; i < len(arg); i++ {
+		if arg[i] == quote {
+			tail := arg[i+1:]
+			if tail != "" && strings.TrimLeftFunc(tail, unicode.IsSpace) == tail {
+				return "", "", false
+			}
+			return word.String(), strings.TrimSpace(tail), word.Len() > 0
+		}
+		if arg[i] == '\\' && quote == '"' && i+1 < len(arg) && (arg[i+1] == quote || arg[i+1] == '\\') {
+			i++
+		}
+		word.WriteByte(arg[i])
+	}
+	return "", "", false
+}
+
+func (a *app) taskCommandUsage() string {
+	usage := "usage: /task <brief> · /task solo <brief> · /task --best <brief> · /task --cheap <brief>"
+	if _, ok := a.agent.(taskCommandOnAgent); ok && a.taskComputersAvailable() {
+		usage += " · /task --on <computer> <brief>"
+	}
+	return usage
 }
 
 // taskCrewEffortAgent is the session's door for a task with a one-task effort
@@ -136,15 +181,29 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 		a.note("could not start the task · this session has no task door")
 		return nil
 	}
-	// THE WHOLE VOCABULARY IS TWO FORMS: a brief, or `solo` and a brief. A first
-	// word that is neither of those is simply the beginning of the brief, so the
-	// split is taken once here and the brief defaults to everything typed.
-	// HOW HARD TO TRY THIS ONE TASK comes first when it is said at all —
-	// `/task --best …`, `/task --cheap …` — and moves this task's crew and
-	// nothing after it (crew.go). A flag that is neither is part of the brief.
-	effort := ""
-	if flag, after, _ := strings.Cut(arg, " "); flag == "--best" || flag == "--cheap" {
-		effort, arg = strings.TrimPrefix(flag, "--"), strings.TrimSpace(after)
+	// Placement and effort are read only from the prefix, so the work's own
+	// words stay intact. Without the placement capability, --on remains part
+	// of the brief just as every unrecognized flag did before it existed.
+	effort, computer := "", ""
+	onDoor, canPlace := a.agent.(taskCommandOnAgent)
+	canPlace = canPlace && a.taskComputersAvailable()
+	for {
+		flag, after, _ := strings.Cut(arg, " ")
+		if effort == "" && (flag == "--best" || flag == "--cheap") {
+			effort, arg = strings.TrimPrefix(flag, "--"), strings.TrimSpace(after)
+			if canPlace {
+				continue
+			}
+		} else if canPlace && computer == "" && flag == "--on" {
+			var valid bool
+			computer, arg, valid = taskComputerArgument(after)
+			if !valid {
+				a.note(a.taskCommandUsage())
+				return nil
+			}
+			continue
+		}
+		break
 	}
 	word, rest, _ := strings.Cut(arg, " ")
 	rest = strings.TrimSpace(rest)
@@ -172,8 +231,26 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 		}
 	}
 	if brief == "" {
-		a.note("usage: /task <brief> · /task solo <brief> · /task --best <brief> · /task --cheap <brief>")
+		a.note(a.taskCommandUsage())
 		return nil
+	}
+	if computer != "" {
+		solo = solo || config.TaskStartAt(a.profileDir) == config.TaskStartSingle
+		file, ctx := a.file, a.ctx
+		conv := a.taskCopyDoorNotes(brief)
+		return a.offLoop(func() func(bool) tea.Cmd {
+			var id uint64
+			var title, note string
+			var err error
+			if bound, ok := onDoor.(interface {
+				StartTaskOnIn(context.Context, string, bool, string, string, string) (uint64, string, string, error)
+			}); ok {
+				id, title, note, err = bound.StartTaskOnIn(ctx, brief, solo, computer, effort, file)
+			} else {
+				id, title, note, err = onDoor.StartTaskOn(ctx, brief, solo, computer, effort)
+			}
+			return foldTaskStarted(taskStartedMsg{kind: "single", id: strconv.FormatUint(id, 10), title: title, note: note, err: err, brief: brief, conv: conv})
+		})
 	}
 	if effort != "" {
 		door, ok := a.agent.(taskCrewEffortAgent)

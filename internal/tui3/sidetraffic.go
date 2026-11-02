@@ -47,6 +47,8 @@ type sideTrafficCacheKey struct {
 	kind, rows, width, height, hotDoor, moved      int
 	ascii, held                                    bool
 	minute                                         int64
+	computers                                      uint64
+	trafficVersion                                 int
 	// wrap is the team's wrap-up words (teamwrapclock.go).
 	wrap string
 }
@@ -98,7 +100,9 @@ func (a *app) sideTrafficView(height int) ([]railLine, int) {
 		team: t.ID, handle: handle, last: last, divider: a.side.divider[t.ID], hot: hot, focus: focus, front: a.frontTabKey(),
 		kind: kind, rows: len(rows), width: width, height: height, hotDoor: hotDoor, moved: a.side.moved,
 		ascii: a.pal.ascii, held: a.railHold, minute: a.now().Unix() / 60,
-		wrap: a.teamWrapWords(t, a.now()),
+		wrap:           a.teamWrapWords(t, a.now()),
+		computers:      a.devRow.version,
+		trafficVersion: a.traffic.version,
 	}
 	a.trafficMarkSeen(t)
 	if c := &a.side.traffic; c.lines != nil && c.key == key {
@@ -151,6 +155,10 @@ type sideSeg struct {
 // newer draws the `new` line once, above the first row that is not newer
 // than the divider, when rows above it were.
 func (s *sideSheet) newer(id string) {
+	// Mirror history has no position in the local unread stream.
+	if strings.Contains(id, "/") {
+		return
+	}
 	if s.ruled {
 		return
 	}
@@ -470,7 +478,7 @@ func sideChatter(th teamstore.Thread) bool {
 func sideLast(th teamstore.Thread) teamstore.Entry {
 	last := th.Root
 	for _, r := range th.Replies {
-		if r.ID > last.ID {
+		if trafficLater(r, last) {
 			last = r
 		}
 	}
@@ -489,7 +497,7 @@ func (s *sideSheet) threads(kind int, handle string) {
 			continue
 		}
 		chatter = append(chatter, th.Root)
-		if th.Root.ID > newest.ID {
+		if trafficLater(th.Root, newest) {
 			newest = th.Root
 		}
 	}
@@ -499,7 +507,7 @@ func (s *sideSheet) threads(kind int, handle string) {
 			continue
 		}
 		last := sideLast(th)
-		if !laid && newest.ID > last.ID {
+		if !laid && trafficLater(newest, last) {
 			s.general(chatter, newest)
 			laid = true
 		}
@@ -578,6 +586,7 @@ func (s *sideSheet) work(th teamstore.Thread, last teamstore.Entry) {
 	}
 	row.hint = s.jumpHint(e.From, "", age, extra)
 	s.add(row, segs, right, age)
+	s.provenance(e)
 	if !open {
 		return
 	}
@@ -624,6 +633,7 @@ func (s *sideSheet) member(r trafficReply) {
 	segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: pal.muted, door: -1, flex: true})
 	row.hint = s.jumpHint(r.who, "", age, words)
 	s.add(row, segs, nil, age)
+	s.provenance(e)
 }
 
 // sideThreadState is the one word a thread's answers leave it in: someone
@@ -678,6 +688,7 @@ func (s *sideSheet) reply(e teamstore.Entry) {
 	segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: pal.muted, door: -1, flex: true})
 	row.hint = s.jumpHint(e.From, "", age, words)
 	s.add(row, segs, nil, age)
+	s.provenance(e)
 }
 
 // general lays the chatter as one thread, `General`, and its entries under
@@ -737,5 +748,14 @@ func (s *sideSheet) messages(handle string) {
 		segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: s.a.pal.muted, door: -1, flex: true})
 		row.hint = s.jumpHint(e.From, handle, age, words)
 		s.add(row, segs, nil, age)
+		s.provenance(e)
+	}
+}
+
+// A separate dim line names the writer without consuming the message's few
+// columns. It carries no action, so history never offers an answer or reply.
+func (s *sideSheet) provenance(e teamstore.Entry) {
+	if origin := s.a.trafficComputer(e); origin != "" {
+		s.lines = append(s.lines, railLine{text: s.a.pal.dim(fit("  "+origin, s.width)), entry: -1})
 	}
 }

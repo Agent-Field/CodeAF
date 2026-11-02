@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -1017,5 +1018,39 @@ func TestStartCrewGoalStatesTheNewCrew(t *testing.T) {
 	conv.mu.Unlock()
 	if len(submissions) != 1 || submissions[0].Creation == nil || submissions[0].Creation.Team != got.Crew.ID {
 		t.Fatalf("the goal was handed as %+v, want the crew %s", submissions, got.Crew.ID)
+	}
+}
+
+// THE GLOBAL MANAGER IS NOT A NEW AGENT. "Each new agent" (the profile's
+// conversation limit) never caps the root's manager — the app's assistant —
+// which runs under the day cap; a team's manager still inherits it, and a
+// figure set on the root manager itself is still its own.
+func TestRootManagerIsNotCappedByTheNewAgentLimit(t *testing.T) {
+	h := newStartHarness(t)
+	t.Setenv(config.ProfileDirEnv, h.b.profileDir)
+	cent := 0.01
+	if _, err := h.b.SetSettings(appwire.SettingsPatch{BudgetUSD: &appwire.Figure{USD: &cent}}); err != nil {
+		t.Fatal(err)
+	}
+	team, err := h.b.CrewStart(appwire.CrewCreate{Name: "alpha", StartManager: true, ManagerStartsMembers: true, RequestID: "r-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := h.b.RootStart(appwire.RootStartAsk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usd, set := h.b.agentBudget(root.Manager, h.b.now()); usd != 0 || !set {
+		t.Fatalf("the global manager is capped at %v (set %v)", usd, set)
+	}
+	if usd, set := h.b.agentBudget(team.Start.Manager, h.b.now()); usd != cent || set {
+		t.Fatalf("a team's manager: %v (set %v)", usd, set)
+	}
+	five := 5.0
+	if _, err := h.b.SetAgentBudget(appwire.AgentBudgetSet{ID: root.Manager, USD: &five}); err != nil {
+		t.Fatal(err)
+	}
+	if usd, set := h.b.agentBudget(root.Manager, h.b.now()); usd != five || !set {
+		t.Fatalf("its own figure: %v (set %v)", usd, set)
 	}
 }

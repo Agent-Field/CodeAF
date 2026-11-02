@@ -185,6 +185,7 @@ const (
 	taskCardHitMention
 	taskCardHitStronger
 	taskCardHitOutput
+	taskCardHitRunHere
 )
 
 // back reports whether a row of the card is the way back to the list.
@@ -436,6 +437,8 @@ func (a *app) taskCardKey(key string) tea.Cmd {
 		return cmd
 	}
 	switch key {
+	case taskRunHereKey:
+		return a.runTaskHere(entry)
 	case "o":
 		return a.openTaskResultOutput(entry)
 	case "r":
@@ -515,6 +518,9 @@ func (a *app) taskCardPress(x, y int) tea.Cmd {
 	if hits[y] == taskCardHitOutput {
 		return a.openTaskResultOutput(a.taskSheet.detail)
 	}
+	if hits[y] == taskCardHitRunHere {
+		return a.runTaskHere(a.taskSheet.detail)
+	}
 	if hits[y] == taskCardHitStronger {
 		return a.redoTaskStronger(a.taskSheet.detail)
 	}
@@ -585,6 +591,10 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 
 	head := len(lines)
 	room := height - head - taskCardFoot
+	runHere := a.taskCanRunHere(entry) && width-2 >= len(taskRunHereVerb)
+	if runHere {
+		room--
+	}
 	stronger := a.taskCanRedoStronger(entry) && width-2 >= len(taskStrongerWord)
 	if stronger {
 		room--
@@ -621,6 +631,9 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 	for i := 0; i < drawn; i++ {
 		add(" "+body[a.taskSheet.detailTop+i], taskCardHitNone)
+	}
+	if runHere {
+		add(" "+pal.underline(taskRunHereVerb), taskCardHitRunHere)
 	}
 	if stronger {
 		add(" "+pal.underline(taskStrongerWord), taskCardHitStronger)
@@ -998,6 +1011,14 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	if line := a.taskCardWhenLine(entry); line != "" {
 		bands = append(bands, []string{pal.ink(fit(line, width))})
 	}
+	placement := a.taskEntryComputerWords(entry)
+	if placement != "" {
+		var rows []string
+		for _, line := range wrap(placement, width) {
+			rows = append(rows, pal.dim(line))
+		}
+		bands = append(bands, rows)
+	}
 	// THE RECOVERY BAND STANDS WHERE THE OUTCOME WOULD, because it is what this
 	// card was opened to say: work another window is running has no outcome and
 	// never will here, and the sentence a person came for is where the work is
@@ -1016,7 +1037,7 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 		bands = append(bands, result)
 	}
 	// Identical result and landing prose needs one paragraph; both original fields remain intact.
-	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && outcome != displayedResult {
+	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && outcome != displayedResult && (placement == "" || strings.TrimSuffix(outcome, taskRunHereSuffix) != placement) {
 		var said []string
 		for _, wrapped := range wrap(outcome, width) {
 			said = append(said, pal.ink(wrapped))
