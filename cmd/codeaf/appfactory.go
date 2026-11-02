@@ -1036,9 +1036,10 @@ func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Jo
 
 func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.FactoryRepos, error) {
 	var body struct {
-		Factory   api.Factory `json:"factory"`
-		Watched   []string    `json:"watched"`
-		Available []struct {
+		AvailableReadAt time.Time   `json:"available_read_at"`
+		Factory         api.Factory `json:"factory"`
+		Watched         []string    `json:"watched"`
+		Available       []struct {
 			Full    string    `json:"full"`
 			Name    string    `json:"name"`
 			Owner   string    `json:"owner"`
@@ -1052,7 +1053,7 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
 		return appwire.FactoryRepos{}, err
 	}
-	out := appwire.FactoryRepos{Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
+	out := appwire.FactoryRepos{AvailableReadAt: body.AvailableReadAt, Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
 	if out.Watched == nil {
 		out.Watched = []string{}
 	}

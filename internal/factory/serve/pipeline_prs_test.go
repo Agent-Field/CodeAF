@@ -26,6 +26,7 @@ type prsGitHub struct {
 	auth  []string
 	// open is the default branch's open pull requests, newest first; files is
 	// each one's changed paths.
+	sha    string
 	open   []prsPull
 	files  map[int][]string
 	status map[string]int // "repo", "pulls" or "files" -> forced status
@@ -77,7 +78,11 @@ func (g *prsGitHub) transport(next http.RoundTripper) http.RoundTripper {
 		case "pulls":
 			var out []map[string]any
 			for _, pr := range g.open {
-				head := map[string]any{"ref": pr.branch, "sha": strings.Repeat("3", 40), "repo": map[string]any{"full_name": "acme/api"}}
+				sha := g.sha
+				if sha == "" {
+					sha = strings.Repeat("3", 40)
+				}
+				head := map[string]any{"ref": pr.branch, "sha": sha, "repo": map[string]any{"full_name": "acme/api"}}
 				if pr.fork {
 					head["repo"] = map[string]any{"full_name": "mona/api"}
 				}
@@ -242,5 +247,40 @@ func TestPipelinePRsFailuresAreTypedAndReadOnly(t *testing.T) {
 			t.Errorf("%s %d: %d %s", c.stage, c.status, w.Code, w.Body)
 		}
 		assertClean(t, w)
+	}
+}
+
+func TestPipelinePRsFilesNotRereadForSameHeadAndRereadForNewHead(t *testing.T) {
+	g := newPRsGitHub(t, prsPull{number: 7, branch: "feature"})
+	g.files[7] = []string{factory.PipelineFile}
+	h := soloPRs(t, g)
+	h.config.GitHubToken = func(context.Context) string { return "token-" + t.Name() }
+	for range 2 {
+		out := readPRs(t, sourceRequest(h, "", "GET", prsPath))
+		if len(out.PRs) != 1 {
+			t.Fatalf("PRs=%+v", out)
+		}
+	}
+	count := func() int {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		n := 0
+		for _, c := range g.calls {
+			if strings.HasSuffix(c, "/files") {
+				n++
+			}
+		}
+		return n
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("same head: files requests=%d, want 1", n)
+	}
+	g.mu.Lock()
+	g.sha = strings.Repeat("4", 40)
+	g.files[7] = []string{"README.md"}
+	g.mu.Unlock()
+	out := readPRs(t, sourceRequest(h, "", "GET", prsPath))
+	if len(out.PRs) != 0 || count() != 2 {
+		t.Fatalf("new head: PRs=%+v files=%d", out.PRs, count())
 	}
 }

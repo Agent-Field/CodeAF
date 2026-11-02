@@ -1,5 +1,30 @@
 # The factory
 
+## factory repository list refresh, saved repositories and available_read_at
+
+The factory saves the last complete GitHub repository list across a restart.
+Repository reads return that saved list and its `available_read_at` timestamp,
+the UTC time the last complete discovery finished. The timestamp is absent
+when no discovery time is known. An older desktop app can ignore the field.
+
+When the list is at least five minutes old, the next read starts one background
+discovery. Other reads reuse the saved list while discovery runs. The first
+read with no saved list waits for discovery. A failed discovery keeps the saved
+list on disk and subsequent reads report the failure until a retry succeeds.
+Retries start at most once every five minutes while repository reads continue.
+
+A saved list belongs to the GitHub identity and credential that read it. A
+different connection must read its own list. The existing GitHub identity and
+caller-access checks still apply, and a refused sign-in fails the read.
+Turning a repository on or off changes `watched` immediately, including a newly
+watched repository absent from the saved available list. A repository removed
+on GitHub leaves the available list after the next successful discovery.
+
+Discovery uses conditional GitHub reads. If every repository page answers 304,
+it keeps the previous issue counts without another GraphQL count request. Open
+pipeline pull requests reuse their files for the same head SHA in the bounded
+process cache. A new head SHA reads the files again.
+
 ## save a job note after steps finish — who reads it and PR comments
 
 A `factory_item` note asks `save a note on the job?`. After your yes, it stays

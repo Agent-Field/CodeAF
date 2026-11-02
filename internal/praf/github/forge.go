@@ -605,9 +605,12 @@ func (c *client) Checks(ctx context.Context, owner, repo, sha string) (CheckStat
 func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 	q := url.Values{"affiliation": {"owner,collaborator,organization_member"}, "per_page": {"100"}, "sort": {"pushed"}}
 	var out []RepoInfo
+	allUnchanged := true
 	for page := 1; page <= listPages; page++ {
 		q.Set("page", strconv.Itoa(page))
-		body, _, err := c.read(ctx, c.baseURL+"/user/repos?"+q.Encode(), "")
+		pageURL := c.baseURL + "/user/repos?" + q.Encode()
+		body, _, changed, err := c.cachedReadChanged(pageURL, 0, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, pageURL, etag) })
+		allUnchanged = allUnchanged && !changed
 		if err != nil {
 			return nil, err
 		}
@@ -634,7 +637,17 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 		}
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Pushed.After(out[b].Pushed) })
+	countsKey := keyOf(c.token, c.baseURL+"/user/repos#counts")
+	if previous, ok := cache.get(countsKey); ok && allUnchanged {
+		var kept []RepoInfo
+		if json.Unmarshal(previous.body, &kept) == nil {
+			return kept, nil
+		}
+	}
 	c.fillOpenIssues(ctx, out)
+	if raw, err := json.Marshal(out); err == nil && len(raw) <= readCacheBody {
+		cache.put(countsKey, readRow{body: raw})
+	}
 	return out, nil
 }
 

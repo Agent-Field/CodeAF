@@ -30,7 +30,8 @@ import (
 //	GET /repos/{o}/{r}/pulls/{n}/files         first page of 100, for at most 20 of them
 //
 // GitHub cannot filter pull requests by path, so the changed files are read
-// per pull request. The factory's own branches (api.PipelinePRBranchPrefix) are
+// per pull request. Files already kept for the same head SHA need no request.
+// The factory's own branches (api.PipelinePRBranchPrefix) are
 // read first, then the rest by recency. When a bound may have hidden a pull
 // request (a full page, more candidates than reads, or a files page that is
 // full without the file) the answer says Complete false rather than guessing.
@@ -183,7 +184,7 @@ func (f *pipelinePRFlow) checkFiles(open []api.PipelineOpenPR, order []int) []pu
 			}
 			path := f.repoAt + "/pulls/" + strconv.Itoa(open[i].Number) + "/files?per_page=" + strconv.Itoa(pipelinePRsPage)
 			c := &out[i]
-			if c.status, c.err = f.get(path, &files); c.err != nil || c.status != 200 {
+			if c.status, c.err = f.h.githubRESTRevision(f.ctx, f.token, http.MethodGet, path, nil, &files, pipelinePRReadLimit, open[i].HeadSHA); c.err != nil || c.status != 200 {
 				return
 			}
 			c.full = len(files) >= pipelinePRsPage
