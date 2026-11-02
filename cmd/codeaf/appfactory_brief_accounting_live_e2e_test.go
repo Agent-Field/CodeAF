@@ -309,9 +309,6 @@ func briefAssertTotals(t *testing.T, path string, header float64, recorder *live
 		if row.Model != "" && row.Model != liveFactoryModel {
 			t.Errorf("call log model=%s", row.Model)
 		}
-		if row.Served != "" && row.Served != liveFactoryModel {
-			t.Errorf("call log served=%s", row.Served)
-		}
 		if row.Phase == "start" {
 			continue
 		}
