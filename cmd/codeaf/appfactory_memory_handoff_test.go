@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -159,6 +160,16 @@ func TestMemoryLaterStageDrainsSkippedEvidence(t *testing.T) {
 			t.Fatalf("first compile did not finish: %+v", snapshot)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	// Publication finishes only after its provider charges have been banked.
+	want := agents[0].Usage().CostUSD
+	reopened, err := session.New(session.Config{Workspace: root, SessionFile: agents[0].SessionPath(), ProfileDir: profile, Model: knowledge.Model, APIKey: "fixture", BaseURL: server.URL, JobBudget: meter, JobContext: jobCtx, Unattended: true, DeterministicNames: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if got := reopened.Usage().CostUSD; want <= .01 || math.Abs(got-want) > .000001 {
+		t.Fatalf("reopened stage lost paid memory: USD=%.4f want %.4f", got, want)
 	}
 	submit(agents[2], "Cedar queues jobs.")
 	hits, err := vault.Search("Birch", 5)
