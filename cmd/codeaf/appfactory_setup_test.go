@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -560,20 +558,4 @@ func TestLocalFactoryRefusesBadCallersAndForbiddenFolders(t *testing.T) {
 		t.Fatalf("a refused folder changed the repo: %+v", r)
 	}
 	s.neverSaid(setupSecret, "another-secret")
-}
-
-// graphQLRead is whether r is a GraphQL QUERY, which reads (discovery's
-// open-issue counts); a mutation, or anything else posted, is a write. The
-// body is put back for the request to be sent.
-func graphQLRead(r *http.Request) bool {
-	if r.Method != http.MethodPost || r.URL.Path != "/graphql" || r.Body == nil {
-		return false
-	}
-	raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	r.Body.Close()
-	r.Body = io.NopCloser(bytes.NewReader(raw))
-	var ask struct {
-		Query string `json:"query"`
-	}
-	return json.Unmarshal(raw, &ask) == nil && strings.HasPrefix(strings.TrimSpace(ask.Query), "query")
 }
