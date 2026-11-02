@@ -22,6 +22,10 @@ const StepModelsHeader = "X-Codeaf-Step-Models"
 // StepChatsHeader publishes live chat identities without breaking older strict servers.
 const StepChatsHeader = "X-Codeaf-Step-Chats"
 
+// LeaseWithdrawnHeader marks a rejected lease as replaced by retry or manual
+// control, so its worker cancels execution without reporting a person's Stop.
+const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
+
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
@@ -111,6 +115,7 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
+	Files          []string                `json:"files,omitzero"`
 	PublishSummary []string                `json:"publish_summary,omitempty"`
 	Repair         *factory.CIRepairResult `json:"repair,omitempty"`
 	Tests          *factory.TestCounts     `json:"tests,omitempty"`
@@ -134,13 +139,13 @@ type StepResult struct {
 // the round ran, and that line crosses (steps[].rounds). A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
-	return &StepResult{Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
+	return &StepResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Cost: r.Spent, Chat: r.Chat}
 }
 
 // stageResultItem is [stepResultWire] read back.
 func stageResultItem(r StepResult) factory.StageResult {
-	return factory.StageResult{Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
+	return factory.StageResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Spent: r.Cost, Chat: r.Chat}
 }
 

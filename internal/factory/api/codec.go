@@ -116,7 +116,7 @@ var Lost = map[string]string{
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
 	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
-	"Phase.Result":                 "a reader's job carries Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
+	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
 	"Phase.Left":                   "crosses in whole milliseconds",
 	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
@@ -144,7 +144,7 @@ func FromItem(it factory.Item) Job {
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
+		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
 		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
@@ -212,6 +212,9 @@ func needsYou(it factory.Item) *NeedsYou {
 		return nil
 	}
 	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
+	if it.QKind == factory.QKindSpendStopped {
+		ny.WhoCanAnswer = factory.WhoJobPerson
+	}
 	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
 		ny.WhoCanAnswer, ny.Approver = factory.WhoApprover, who
 	}
@@ -319,21 +322,23 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	if it.DoneHow == "closed_locally" {
 		return Can{Reopen: owner, RunAsNew: owner}
 	}
-	held := heldInQueue(it)
 	// START NOW ON A QUEUED JOB IS THE ONE PASS ABOVE JOBS AT ONCE, so a job
 	// already given it is not offered it again.
 	queued := state == StateQueued && it.State == factory.StateQueued
+	running := state == StateRunning && it.State == factory.StateRunning && !it.Publishing
+	held := (queued || running) && it.Stream != nil && it.Stream.Paused
 	return Can{
 		Run: owner && state == StateBacklog, StartNow: owner && (state == StateBacklog || queued && !it.OverLimit),
-		Hold: owner && queued && !held, Resume: owner && held,
+		Hold: owner && (queued || running) && !held, Resume: owner && held,
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
-		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner,
+		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner, StopAfterStep: owner && factory.MayStopAfterStep(it),
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
 		Approve: approve, RunAgain: a.RunAgain, RunAsNew: owner && factory.CanRunAsNew(it), CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
-		RejectPlan: answer && planSendsBack(it),
-		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
-		Restore:    owner && factory.JobDoneHow(it) == "dropped",
+		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
+		RejectPlan:  answer && planSendsBack(it),
+		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
+		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}
 }
 
@@ -460,9 +465,9 @@ func ToItem(j Job) factory.Item {
 	it := factory.Item{
 		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
-		SetupHeld: j.SetupHeld,
-		Owners:    append([]string(nil), j.Owners...),
-		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
+		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
+		Owners: append([]string(nil), j.Owners...),
+		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,
@@ -1062,6 +1067,7 @@ func runStep(s Step, p factory.Phase) Step {
 		s.RunKind = string(p.Kind)
 	}
 	if r := p.Result; r != nil {
+		s.Files = r.Files
 		s.Result, s.Cost, s.Tests, s.Model = r.Output, r.Spent, r.Tests, r.Model
 	}
 	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
@@ -1169,8 +1175,8 @@ func toPhase(s Step) factory.Phase {
 		res := stageResultItem(*r)
 		res.Model = s.Model
 		p.Result = &res
-	} else if s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
-		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
+	} else if s.Files != nil || s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
+		p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
 	}
 	if s.At != nil {
 		p.At = *s.At
@@ -1237,7 +1243,7 @@ func cloneStartRules(r *factory.StartRules) *factory.StartRules {
 	if r == nil {
 		return nil
 	}
-	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine}
 }
 
 func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {
