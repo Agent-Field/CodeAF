@@ -882,7 +882,7 @@ func itoa(n int) string {
 }
 
 // Shift is the handover: what happened since the person last looked.
-// SpentToday is the runner's day figure ([DaySpend]), separate from Spent.
+// SpentToday is the spend placed today ([placedToday]), separate from Spent.
 type Shift struct {
 	Since       time.Time
 	Shipped     int
