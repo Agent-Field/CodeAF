@@ -217,17 +217,17 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 	var pausedAt time.Time
 	for {
 		it, _ = floor.Get(id)
-		if pause && pausedAt.IsZero() && memoryStartsAfter(t, callPath, time.Time{}) > 0 {
+		if pause && pausedAt.IsZero() && memoryCallsAfter(t, callPath, time.Time{}).active > 0 {
 			var current api.Job
 			w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &current)
 			w.must("factory.job_hold", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": current.Version}}, &appwire.FactoryJobActed{})
 			pausedAt = time.Now()
 			memoryAwaitReceipts(t, callPath)
-			before := memoryStartsAfter(t, callPath, time.Time{})
+			before := memoryCallsAfter(t, callPath, time.Time{}).started
 			time.Sleep(5 * time.Second)
-			after := memoryStartsAfter(t, callPath, time.Time{})
-			t.Logf("PAUSE memory_calls_before=%d after=%d new_calls_after_pause=%d hold_seconds=5", before, after, memoryStartsAfter(t, callPath, pausedAt))
-			if after != before || memoryStartsAfter(t, callPath, pausedAt) != 0 {
+			after := memoryCallsAfter(t, callPath, time.Time{}).started
+			t.Logf("PAUSE memory_calls_before=%d after=%d new_calls_after_pause=%d hold_seconds=5", before, after, memoryCallsAfter(t, callPath, pausedAt).started)
+			if after != before || memoryCallsAfter(t, callPath, pausedAt).started != 0 {
 				t.Error("paused job admitted memory")
 			}
 			break
@@ -510,17 +510,20 @@ func memoryAwaitReceipts(t *testing.T, path string) {
 	}
 }
 
-func memoryStartsAfter(t *testing.T, path string, since time.Time) int {
+type memoryCallWindow struct{ started, active int }
+
+func memoryCallsAfter(t *testing.T, path string, since time.Time) memoryCallWindow {
 	t.Helper()
 	file, err := os.Open(path)
 	if os.IsNotExist(err) {
-		return 0
+		return memoryCallWindow{}
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	count := 0
+	count := memoryCallWindow{}
+	pending := map[string]bool{}
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
 	for scanner.Scan() {
@@ -530,11 +533,16 @@ func memoryStartsAfter(t *testing.T, path string, since time.Time) int {
 		}
 		at, _ := time.Parse(time.RFC3339Nano, row.Time)
 		if row.Phase == "start" && row.Tag == "memory" && at.After(since) {
-			count++
+			count.started++
+			pending[row.ID] = true
+		}
+		if row.Phase != "start" {
+			delete(pending, row.ID)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
 	}
+	count.active = len(pending)
 	return count
 }
