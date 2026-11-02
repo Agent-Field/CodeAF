@@ -40,7 +40,7 @@ type SetupRepo struct {
 	Checkout          *string    `json:"checkout"`
 	SuggestedCheckout string     `json:"suggested_checkout"`
 	CloneMB           int        `json:"clone_mb"`
-	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited"`
+	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited,enum=skipped"`
 	ReadCount         int        `json:"read_count"`
 	WaitingS          int        `json:"waiting_s"`
 	ResumesAt         *time.Time `json:"resumes_at"`
@@ -49,7 +49,7 @@ type SetupRepo struct {
 }
 type FactorySetupRequest struct {
 	ID      string   `json:"id,omitempty"`
-	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done"`
+	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done,enum=continue"`
 	Source  string   `json:"source,omitempty" jsonschema:"enum=gh,enum=token"`
 	Token   string   `json:"token,omitempty"`
 	RepoIDs []string `json:"repo_ids,omitempty"`
