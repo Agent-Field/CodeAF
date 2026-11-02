@@ -322,14 +322,13 @@ export class HostedIdentity {
     if(!this.watchers||this.appliedVersion===undefined||this.notifiedVersion===this.appliedVersion)return;
     const id=this.replica();if(!id)return;
     const index=this.states.get(id).applied,devices=[...new Set([...this.ctx.getWebSockets().filter(ws=>!ws.deserializeAttachment()?.clusterPeer).map(ws=>this.ctx.getTags(ws)[0]),...this.pendingIO.keys()])];
-    let version;
     for(let offset=0;offset===0||offset<devices.length;offset+=64){
-      const state=await this.members.get(id).hostWatchState(index,devices.slice(offset,offset+64));version=BigInt(state.version);
+      const state=await this.members.get(id).hostWatchState(index,devices.slice(offset,offset+64)),version=BigInt(state.version);
       await this.rememberRetirement(state.identity);
+      if(this.notifiedVersion!==version){this.watchers.broadcast(String(version));this.notifiedVersion=version;}
       if(state.identity.rotation){this.watchers.closeAll(CLOSE_ROTATED,'rotated');for(const device of this.pendingIO.keys())this.stopIO(device,'rotated');}
       for(const device of state.revoked){this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');this.stopIO(device,'revoked');}
     }
-    this.watchers.broadcast(String(version));this.notifiedVersion=version;
     if(this.retireAt)await this.armAlarm(this.retireAt);
   }
   async pumpQueue(){
@@ -776,10 +775,12 @@ export class HostedIdentity {
       if(result.value.code==='ok'){
         const b=await this.barrier(),row=await this.members.get(b.node).hostView(b.index,'state','identity');
         const identity=this.project('identity',row.raw);await this.rememberRetirement(identity);
-        this.watchers.broadcast(row.app.version);
         if(identity.rotation)this.watchers.closeAll(CLOSE_ROTATED,'rotated');
         if(this.retireAt)await this.armAlarm(this.retireAt);
-        if(q.command.change.revoke)this.watchers.closeDevice(q.command.change.revoke.device,CLOSE_REVOKED,'revoked');
+        if(q.command.change.revoke){
+          const device=q.command.change.revoke.device;
+          this.watchers.announce({t:'revoked',device},device);this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');
+        }
       }
       return this.jsonBytes(encodeCanonical({result:result.value}));
     }
@@ -866,15 +867,17 @@ export class HostedIdentity {
     let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,this.readNow(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
     if(join)await this.effects.admit(joinBox,joinCode,Date.now());
     const result=await this.commitV1(raw);
-    const b=await this.appliedReplica(result.index),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw),version=snapshot.app.version;
+    const b=await this.appliedReplica(result.index),snapshot=await this.members.get(b.node).hostView(b.index,'state','identity'),identity=this.project('identity',snapshot.raw);
     await this.rememberRetirement(identity);
-    this.watchers.broadcast(version);
     if(join){const code=decodeURIComponent(join[1]).trim().toLowerCase();await this.effects.deliver(this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(code)),code,Date.now());unwrap(await this.env.LINK_GATE.get(this.env.LINK_GATE.idFromName('gate')).decided(code));}
     if(path==='/v1/identity/rotation'){
       this.watchers.closeAll(CLOSE_ROTATED,'rotated');if(identity.rotation?.retire_at)await this.ctx.storage.setAlarm(identity.rotation.retire_at);
       return json(rotationView(identity.rotation,Number(snapshot.app.now),this.tenant.limits));
     }
-    if(path.endsWith('/revoke'))this.watchers.closeDevice(decodeURIComponent(route.args[0]),CLOSE_REVOKED,'revoked');
+    if(path.endsWith('/revoke')){
+      const device=decodeURIComponent(route.args[0]);
+      this.watchers.announce({t:'revoked',device},device);this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');
+    }
     if(path.endsWith('/release')||path.endsWith('/archive'))return empty();
     return result.value.view?this.jsonBytes(this.projectJSON('view',result.raw)):empty();
   }
