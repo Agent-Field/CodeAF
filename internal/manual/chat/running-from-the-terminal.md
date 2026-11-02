@@ -361,8 +361,9 @@ or from the call's clock.
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
 The app hands them to `codeaf app` at every launch and that process holds them in memory
 only: while it runs, a key never reaches the profile's `config.json`, and a provider the
-app disconnected is not quietly reconnected from a key in the profile or the shell. A
-rejected key is reported in the provider's own words and status code. Which providers the
+app disconnected is not quietly reconnected from a key in the profile or the shell. A key
+the provider rejects is reported in the provider's own words and status code; one codeaf
+turns away itself (an OpenRouter management key) says why in codeaf's words. Which providers the
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
@@ -394,7 +395,9 @@ browser and nothing else. Setup connects as many of them as you like, one after 
 or none at all, and Settings connects one later; with none connected, setup says there
 are no models yet instead of offering a default.
 
-OpenRouter's key is checked with one request and ten seconds to answer. Every other
+OpenRouter's key is checked against OpenRouter's own record of it before its models are
+listed, so a revoked or made-up key, or a management key, is turned away rather than
+reported as working; all of its requests share ten seconds to answer. Every other
 provider is checked the way `/connect` checks it: its model list, a one-token call where
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
@@ -2050,6 +2053,22 @@ command says `nothing is being kept running.`
 For the current chat's background commands, watches or renders, use `/processes`
 in that chat. Click a process to open its log. The sidebar shows only running
 processes; finished logs remain available on demand without an ended count.
+
+## Desktop app quit and saving helpers
+
+Saving helpers started by the desktop app use a one-minute idle limit. While
+the app's engine is alive, it sends a light health request about every 20 seconds
+to the helpers it started, so a quiet app keeps the same saving helper ready.
+These requests never start or restart a helper, and failures are ignored.
+
+After the engine quits or is killed, the requests stop. Its saving helpers exit
+by themselves after about one minute without activity. Quit sends no shutdown
+request to a saving helper, so another window can continue saving through it;
+that activity delays its idle exit. A real saving operation starts a helper again
+when needed.
+
+A helper already running when the app connects keeps its existing idle limit.
+Terminal and command-line helpers keep their normal ten-minute idle limit.
 
 ## Crew proposals in the desktop app stream beside the chat
 

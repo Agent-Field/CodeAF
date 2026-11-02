@@ -56,11 +56,14 @@ type registeredWorker struct {
 	Attached  time.Time
 	Checkouts []api.Checkout
 	Asleep    bool
-	Name      string
-	OS        string
-	Version   string
-	Last      time.Time
-	Worker    lease.Worker
+	// Needs is what the worker said at attach it lacks before a step can run
+	// ([api.WorkerAttach.Needs]); a new attach replaces it.
+	Needs   string
+	Name    string
+	OS      string
+	Version string
+	Last    time.Time
+	Worker  lease.Worker
 }
 
 type workerKey struct{}
@@ -88,6 +91,7 @@ func (h *Handler) workerRoutes() {
 	h.workers = svc
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
+	h.route("/v1/workers/leases/{lease}/stop-after-step", map[string]http.HandlerFunc{http.MethodGet: h.workerStopAfterStep})
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
@@ -261,12 +265,16 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.workers.mu.Lock()
-	asleep := false
+	// A PROCESS ATTACHING NOW IS RUNNING, SO ITS COMPUTER IS AWAKE. A saved
+	// asleep outlives the process that said it, and only a wake that same
+	// process sends would clear it: copied onto this row, it would refuse every
+	// job after a restart with nothing running.
+	asleep := h.workers.machineAsleepLocked(worker)
+	h.workers.wakeMachineLocked(worker)
 	newRunner := true
 	for _, row := range h.workers.credentials {
 		if row.Worker.Handle == worker.Handle && row.Worker.Machine == worker.Machine {
 			newRunner = false
-			asleep = row.Asleep
 			// The saved number wins, read through the ceiling: a legacy row
 			// above it is granted the ceiling, never more.
 			body.Slots = grantedRunnerSlots(row.Slots)
@@ -279,12 +287,15 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
-		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Asleep: asleep,
+		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Needs: strings.TrimSpace(body.Needs),
 	}
 	h.workers.forgetQuietLocked(worker, held, h.runnerOfflineAfter())
 	err = h.workers.saveRegistry()
 	h.workers.mu.Unlock()
 	if h.failed(w, err) {
+		return
+	}
+	if asleep && h.failed(w, h.workers.desk.Sleep(worker.Machine, worker.Handle, false)) {
 		return
 	}
 	if newRunner && h.config.Record != nil {
@@ -294,6 +305,26 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, RunnerID: body.Machine, Credential: credential, Slots: body.Slots})
+}
+
+// machineAsleepLocked is whether the factory has worker's computer asleep. Every
+// registration of a computer shares the word, and any of them saying it counts.
+func (s *workerService) machineAsleepLocked(worker lease.Worker) bool {
+	for _, row := range s.credentials {
+		if row.Worker.Machine == worker.Machine && row.Worker.Handle == worker.Handle && row.Asleep {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *workerService) wakeMachineLocked(worker lease.Worker) {
+	for key, row := range s.credentials {
+		if row.Worker.Machine == worker.Machine && row.Worker.Handle == worker.Handle {
+			row.Asleep = false
+			s.credentials[key] = row
+		}
+	}
 }
 
 // forgetQuietLocked removes the registrations of worker's own computer, for
@@ -388,13 +419,9 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		worker.Slots = current.Worker.Slots
-		asleep := false
-		for _, row := range h.workers.credentials {
-			if row.Worker.Machine == worker.Machine && row.Worker.Handle == worker.Handle && row.Asleep {
-				asleep = true
-			}
-		}
-		if asleep {
+		// A worker that cannot run a step yet is answered as an asleep one is:
+		// nothing to do, so the job stays queued for a runner that can.
+		if h.workers.machineAsleepLocked(worker) || current.Needs != "" {
 			h.workers.mu.RUnlock()
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -623,7 +650,11 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if it.PullRequest != nil {
 			detail = "pr · " + it.PullRequest.URL
 		}
-		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: requestWorker(r).Handle, Cost: jobCost(*it), Detail: detail})
+		handle := requestWorker(r).Handle
+		if it.Approval != nil && it.Approval.Automatic {
+			handle = ""
+		}
+		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: jobCost(*it), Detail: detail})
 		return nil
 	})
 }
@@ -661,6 +692,10 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, lease.ErrWorker):
 		h.fail(w, http.StatusForbidden, "lease belongs to another worker")
+		return true
+	case errors.Is(err, lease.ErrWithdrawn):
+		w.Header().Set(api.LeaseWithdrawnHeader, "1")
+		h.fail(w, http.StatusConflict, "lease was withdrawn")
 		return true
 	case errors.Is(err, lease.ErrNoLease):
 		h.fail(w, http.StatusConflict, "lease is no longer live")
