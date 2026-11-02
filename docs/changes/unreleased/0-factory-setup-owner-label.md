@@ -3,7 +3,8 @@ kind: fixed
 title: Factory setup names an owner only when every visible repository has it
 pr: 0
 surface: [engine]
-invalidates: [factory setup footers showing the first repository's owner as the account's organization]
+invalidates:
+  - "Was true: factory setup showed the first discovered repository's owner as the account's organization. Is true now: it names an owner only when every discovered repository has that owner."
 ---
 
 Setup took the owner of the first discovered repository as the footer's

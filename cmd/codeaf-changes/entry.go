@@ -62,6 +62,8 @@ var surfaces = map[string]string{
 	"remote":   "--host, --at, attachments",
 	"build":    "the Makefile, CI, the branch rules, the shipped binary",
 	"docs":     "prose, the manual, the rules",
+	"app":      "the desktop app and its backend, codeaf app",
+	"factory":  "the Factory: its jobs, pipelines and repositories",
 }
 
 var (
@@ -127,13 +129,15 @@ func (e Entry) validate() []error {
 		}
 	}
 
-	if e.PR <= 0 {
+	base := filepath.Base(e.Path)
+	frozen := frozenUnnumbered(base, e.PR)
+	if e.PR <= 0 && !frozen {
 		bad("pr is missing — every entry names the pull request it arrived in")
 	}
 
-	base := filepath.Base(e.Path)
 	m := fileName.FindStringSubmatch(base)
 	switch {
+	case frozen:
 	case m == nil:
 		bad("the file is named %q; it has to be <pr>-<a-lowercase-slug>.md", base)
 	default:

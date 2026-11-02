@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Permission mode changes reach running sessions on their next tool call
-pr: 0
+pr: 1930
 surface: [chat, engine, remote]
 invalidates:
   - "Running sessions could keep the approval policy built at launch after Settings saved a new mode. Sessions now follow current settings at their next tool decision."

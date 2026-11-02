@@ -21,7 +21,11 @@ invalidates: []
 ```
 
 Kinds are `added`, `changed`, `renamed`, `fixed`, `removed` and `internal`.
-Optional surfaces are `chat`, `engine`, `resident`, `remote`, `build` and `docs`.
+Optional surfaces are `chat`, `engine`, `resident`, `remote`, `build`, `docs`,
+`app` and `factory`.
+
+- `app` is the desktop app and its backend, `codeaf app`.
+- `factory` is the Factory: its jobs, pipelines and repositories.
 Keep the title under 100 characters without a trailing full stop. Explain any
 necessary limits in a short body.
 
