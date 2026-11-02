@@ -100,7 +100,7 @@ func TestFactoryRoundOutcomesAfterCarryOn(t *testing.T) {
 				if err := floor.Update(item.ID, func(it *factory.Item) error {
 					it.State = factory.StateRunning
 					failure := factory.NewFailure(tc.step, tc.code, "Work was in progress", "", factory.FailureStopped, 1, time.Now())
-					return factoryrun.ApplyReport(it, factory.RunReport{Steps: []factory.StageReport{{Name: tc.step, State: factory.PhaseFailed, Round: 1, Failure: &failure}}}, time.Now())
+					return factoryrun.ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: tc.step, State: factory.PhaseFailed, Round: 1, Failure: &failure}}}, time.Now())
 				}); err != nil {
 					t.Fatal(err)
 				}
