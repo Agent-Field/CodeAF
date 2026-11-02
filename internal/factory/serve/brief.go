@@ -99,3 +99,22 @@ func (h *Handler) keepBrief(w http.ResponseWriter, r *http.Request, it factory.I
 	}
 	h.write(w, http.StatusOK, out)
 }
+
+// readBriefSpot answers one spot of the job's newest brief with its hunks.
+// A spot the newest version does not have is not found: an older version's
+// spot is not this brief's.
+func (h *Handler) readBriefSpot(w http.ResponseWriter, r *http.Request) {
+	it, ok := h.findJob(w, r)
+	if !ok {
+		return
+	}
+	spot, ok := factory.BriefSpotOf(it, r.PathValue("spot"))
+	if !ok {
+		h.fail(w, http.StatusNotFound, "the brief has no such spot")
+		return
+	}
+	h.write(w, http.StatusOK, api.JobBriefSpot{
+		Factory: h.factory, Job: it.ID, Rev: factory.LatestBrief(it).Rev, Spot: spot.Spot, File: spot.File, Symbol: spot.Symbol,
+		Why: spot.Why, Lines: spot.Lines, Hunks: spot.Hunks, Annotations: spot.Annotations, Truncated: spot.Truncated,
+	})
+}

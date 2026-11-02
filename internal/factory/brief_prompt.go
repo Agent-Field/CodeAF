@@ -25,7 +25,7 @@ Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and the
 - flow: "flow": [{"label":"Before"|"After","nodes":[{"text","mark"}]}], at most %d nodes a row, one node may be marked; "evidence".
 - diagram: "mermaid": a mermaid graph, "nodes": its node labels (at most %d); "evidence".
 - table: "table": {"columns":[2-%d],"rows":[[cells]] at most %d}; "evidence".
-- where_to_look: "spots": [{"file","symbol","lines": a NUMBER, the lines the spot changes (a hunk's added plus removed),"why","evidence" of kind hunk}] 1-%d from the hunk index, and "rest": one line saying what the rest of the change is.
+- where_to_look: "spots": [{"file","symbol","lines": a NUMBER, the lines the spot changes (a hunk's added plus removed),"why","evidence" of kind hunk,"notes":[{"hunk":"file:start","text": one sentence on that hunk}]}] 1-%d from the hunk index, and "rest": one line saying what the rest of the change is.
 - proof: "proof": {"command","shown","total"} exactly as the proof step's claims say; "evidence" of kind claims.
 - open_question: "questions": [{"text","evidence","action":{"label","step","ask"}}] at most %d, for what the evidence does not cover.
 - your_call: "options": 2-%d short answers; only while needs_you is true; "evidence".
