@@ -24,6 +24,7 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 			hook := s.backend.local.seamHook
 			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
 				seam = hook(seam)
+				seam.ConnectGitHub = func(context.Context, string) error { return nil }
 				seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
 					if !connected.Load() {
 						return factory.GitHubLink{}, nil
@@ -40,6 +41,11 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 				t.Fatal("fixture started an automatic runner")
 			}
 			connected.Store(true)
+			// Connecting invalidates the host's cached anonymous identity. This
+			// fixture connect does not turn the app's automatic runner on.
+			if err := s.backend.local.host.seam.ConnectGitHub(context.Background(), "fixture"); err != nil {
+				t.Fatal(err)
+			}
 			if ending != "no checkout" {
 				if err := s.backend.local.host.floor.SetCheckout("acme/api", t.TempDir()); err != nil {
 					t.Fatal(err)
