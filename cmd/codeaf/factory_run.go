@@ -79,7 +79,7 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 	if err != nil {
 		return nil
 	}
-	return factory.WithRunner(lease.NewDoors(desk).WithStartRead(func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+	return factory.WithRunner(lease.NewDoors(desk).WithTalk(sessionTalk{}).WithStartRead(func(ctx context.Context, it factory.Item) (pipeline.File, error) {
 		return factoryJobRead(ctx, st, it, st.CheckoutDir(factory.RepoOf(it)))
 	}))
 }

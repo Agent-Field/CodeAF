@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +21,7 @@ type briefDoor struct {
 	*fakeConversation
 	mu     sync.Mutex
 	answer session.ErrandAnswer
+	fail   error
 	asks   []session.ErrandAsk
 }
 
@@ -26,7 +29,7 @@ func (d *briefDoor) RunErrand(_ context.Context, ask session.ErrandAsk) (session
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.asks = append(d.asks, ask)
-	return d.answer, nil
+	return d.answer, d.fail
 }
 
 const briefDraft = `{"verdict":"Fixed. Retries no longer double-send; 3 tests pass.","verdict_evidence":[{"step":"test","try":1,"kind":"tests"}],` +
@@ -36,7 +39,7 @@ const briefDraft = `{"verdict":"Fixed. Retries no longer double-send; 3 tests pa
 // THE WRITER, THROUGH THE APP'S DOOR: factory.job_brief_write asks the job's
 // agent one errand under the brief role with the factory's prompt and input,
 // hands its answer to the factory, which keeps what its check passes, says
-// what it dropped and books the cost to the job; the brief then reads it.
+// what it dropped; the brief then reads it. Billing belongs to the session.
 func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 	s := newLocalSetup(t)
 	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: briefDraft, Model: "deepseek/deepseek-v4.1-flash", Usage: session.ErrandUsage{CostUSD: 0.002}}}
@@ -72,7 +75,7 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 	if read.Brief.Rev != 1 || read.Brief.Verdict != "Fixed. Retries no longer double-send; 3 tests pass." {
 		t.Fatalf("read = %+v", read)
 	}
-	if cur, _ := floor.Get(it.ID); cur.Stream.Spent != 1.002 {
+	if cur, _ := floor.Get(it.ID); cur.Stream.Spent != 1 {
 		t.Fatalf("job spend = %v", cur.Stream.Spent)
 	}
 
@@ -85,6 +88,19 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 		t.Fatalf("failed write = %+v", got)
 	}
 	s.mustFail("factory.job_brief_write", map[string]any{"factory": "f-elsewhere", "job": it.ID}, appwire.CodeNotFound)
+
+	// A refused ask is model_failed on the brief, and its words are logged.
+	var log bytes.Buffer
+	was := errandLog
+	errandLog = &log
+	defer func() { errandLog = was }()
+	door.mu.Lock()
+	door.answer, door.fail = session.ErrandAnswer{}, fmt.Errorf("%w: system and messages are over 49152 bytes", session.ErrErrandAsk)
+	door.mu.Unlock()
+	s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &got)
+	if got.Current.Failure != session.ErrandModelFailed || !strings.Contains(log.String(), "over 49152 bytes") {
+		t.Fatalf("refused write = %+v, log %q", got, log.String())
+	}
 }
 
 // A BURST OF NEWS IS ONE WRITE, of the burst's strongest trigger.

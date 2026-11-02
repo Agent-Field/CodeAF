@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -45,8 +46,10 @@ const (
 	ErrandMaxSchemaBytes = 8 << 10
 	ErrandMaxCacheKey    = 128
 	ErrandDefaultTokens  = 400
-	ErrandMaxTokens      = 4096
-	ErrandMinDeadline    = time.Second
+	// ErrandMaxTokens bounds the answer. The wire ceiling adds the thinking
+	// share on top ([provider.reasoningCeiling]): 10240 at low effort.
+	ErrandMaxTokens   = 8192
+	ErrandMinDeadline = time.Second
 	// ErrandDefaultDeadline is the whole errand's wall, admission to answer.
 	ErrandDefaultDeadline = 10 * time.Second
 	ErrandMaxDeadline     = 60 * time.Second
@@ -65,6 +68,9 @@ const (
 	ErrandCancelled   = "cancelled"
 	ErrandModelFailed = "model_failed"
 	ErrandInvalidJSON = "invalid_json"
+	// ErrandNoAnswer is a call that was made and billed and said nothing: a
+	// reasoning model can spend its whole output bound before it answers.
+	ErrandNoAnswer = "no_answer"
 )
 
 // ErrErrandAsk is an ask outside the errand's shape or limits; the message
@@ -362,7 +368,12 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	defer cancel()
 	go a.watchErrand(ctx, cancel)
 	pick := errandPick{model: ask.Model, effort: ask.Effort}
-	callCtx := withErrandPick(withFirstRungOnly(withDetachedUsage(ctx)), pick)
+	// EVERY CALL THE ERRAND MADE IS ITS COST, the answers the adapter asked
+	// again for included: those were paid for. Session billing charges the
+	// job once; the returned usage describes those charges.
+	var superseded ErrandUsage
+	callCtx := provider.WithDiscardedUsage(withErrandPick(withFirstRungOnly(withDetachedUsage(ctx)), pick),
+		func(_, _ string, r *ai.Response) { superseded = superseded.plus(errandUsage(r)) })
 	// The conversation's own model is the ladder's floor, as it is for a
 	// title: a role nobody configured still answers on the model already paid
 	// for, rather than not at all.
@@ -370,15 +381,19 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	// Rejected output still cost money. Book it on the agent's auxiliary
 	// ledger and job meter under the caller's purpose, never on a later turn.
 	a.addDetachedUsageAs(response, model, 1, ask.Purpose)
-	answer := ErrandAnswer{Model: model, Role: ask.Role, Took: time.Since(started)}
+	answer := ErrandAnswer{Model: model, Role: ask.Role, Took: time.Since(started), Usage: superseded}
 	if response != nil {
-		answer.Usage = errandUsage(response)
+		answer.Usage = superseded.plus(errandUsage(response))
 		if response.Model != "" {
 			answer.Model = response.Model
 		}
 	}
 	answer.Provider = a.errandProvider(model)
 	if answer.Reason = a.errandFailure(ctx, err, response); answer.Reason != "" {
+		return answer
+	}
+	if strings.TrimSpace(response.Text()) == "" {
+		answer.Reason = ErrandNoAnswer
 		return answer
 	}
 	answer.Text, answer.Reason = ask.shape(response.Text(), check)
@@ -475,6 +490,11 @@ func errandUsage(response *ai.Response) ErrandUsage {
 		usage.CostUSD = *response.Usage.Cost
 	}
 	return usage
+}
+
+// plus is two calls' usage together.
+func (u ErrandUsage) plus(o ErrandUsage) ErrandUsage {
+	return ErrandUsage{In: u.In + o.In, Out: u.Out + o.Out, CostUSD: u.CostUSD + o.CostUSD}
 }
 
 // errandProvider is the service a model is reached through, or "" when this
