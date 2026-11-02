@@ -156,7 +156,7 @@ func TestFailedPublishRetriesSameApprovalAndOpensOnlyOnce(t *testing.T) {
 	}
 	var table struct{ Codes []publish.Code }
 	f.request(t, "GET", "/v1/publish/codes", "", nil, 200, &table)
-	if len(table.Codes) != 10 {
+	if len(table.Codes) != 11 {
 		t.Fatalf("codes=%+v", table)
 	}
 }
