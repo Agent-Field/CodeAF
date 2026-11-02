@@ -194,6 +194,16 @@ func PrepareWorkerReport(report api.WorkerReport, key string) (PreparedWorkerRep
 		}
 		extra.Set(api.StepModelsHeader, string(raw))
 	}
+	if len(report.Models) > 0 {
+		raw, err := json.Marshal(report.Models)
+		if err != nil {
+			return PreparedWorkerReport{}, err
+		}
+		if len(raw) > 64<<10 {
+			return PreparedWorkerReport{}, errors.New("model spend exceeds 64 KiB")
+		}
+		extra.Set(api.ModelSpendHeader, string(raw))
+	}
 	if key != "" {
 		extra.Set("Idempotency-Key", key)
 	}
