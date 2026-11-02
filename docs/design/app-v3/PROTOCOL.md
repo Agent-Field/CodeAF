@@ -237,6 +237,8 @@ decides which combinations are accepted.
 | `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
 | `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
+| `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
+| `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -280,11 +282,13 @@ decides which combinations are accepted.
 | `factory.pipeline_copy_clear` | `in.FactoryPipelineCopyClearParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_copy_set` | `in.FactoryPipelineCopySetParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_pr` | `in.FactoryPipelinePRParams` | `FactoryPipelinePRDone` |
+| `factory.pipeline_prs` | `in.FactoryPipelinePRsParams` | `FactoryPipelinePRs` |
 | `factory.pipeline_preview` | `in.FactoryPipelinePreviewParams` | `FactoryPipelinePreview` |
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
@@ -332,6 +336,24 @@ saying what was read; `factory.pipeline_preview` takes that `base_sha`, and
 `ref` answers no `ref` or `pr`. An engine without the feature refuses `ref` as
 an unknown field; a factory older than the read refuses it, and the engine says
 the factory cannot read a pull request.
+An engine whose hello carries the feature `factory.repo_read` (and
+`FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
+path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
+checkout (`GET /v1/repos/{owner}/{repo}/read`), from git's object store at the
+default branch's tip, or at job `job`'s head commit when the checkout has it.
+`op` is `tree` (a folder's children: `entries` of `{path, type, size?}`, at most
+500), `grep` (lines matching the RE2 `pattern`, at most 256 bytes: `hits` of
+`{path, line, text}`, at most 50, searched for at most 5 seconds) or `read`
+(lines `from`..`to` of one file: `text`, at most 400 lines and 32 KiB, with
+`size` and `eof`). `truncated` says a bound stopped the answer. `untrusted` is
+always true: the text is the repository's own and is data, never
+instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
+`.git/`, `.npmrc`, `.netrc`, `.pypirc`, `credentials*`, `*secret*`, `*.p12`,
+`*.pfx`, `.aws/`, `.ssh/`, `.docker/config.json`, `kubeconfig`) are absent from
+`tree` and `grep`, and naming one is `forbidden` with the message `denied`; a
+binary file is `unreadable` with `binary`; a repository with no checkout on the
+factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
+factory older than the route is `conflict`.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
@@ -345,6 +367,22 @@ checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
 `changed_since_seen` lists the keys (`verdict`, a fact's `key`, a block's
 `kind/heading`) changed after rev `since`, or by the newest version when
 `since` is absent. A factory older than the route is `conflict`.
+
+An engine whose hello carries `factory.job_brief_writer` writes the briefs of
+this machine's factory: after a step reports and when a step waits on its
+person, each job's news taken as one after 10 seconds. The write is one errand
+on the job's agent under the `brief` role (the small-work tier the small-jobs
+model pins). The factory checks the answer against the job (`POST
+/v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
+that names a step and try the job has, and every number in a claim found in its
+evidence. It keeps what passes and books the call's cost to the job's spend. A
+failing verdict keeps the previous version and marks the brief `failed`. Without
+a person's ask, a version is written only when the last one cost at most $0.03
+and the brief's spend stays within 5% of the job's; an ask opening, the job's
+end and a retry are written regardless, and unchanged inputs are never written
+twice. `factory.job_brief_write {factory, job}` is the page's Retry: it answers
+`{skip?, kept, drops: [{part, reason}], model?, cost_usd?, current:
+FactoryJobBrief}`, with `skip` `writing` while another write is under way.
 
 ## files methods
 

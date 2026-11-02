@@ -36,10 +36,6 @@ type Client struct {
 // as http://127.0.0.1:7420. token is the bearer access token; leave it
 // empty for a loopback factory, which does not ask.
 func Open(base, token string) *Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// The address is the factory the person named. An ambient proxy would
-	// carry the access token to whatever HTTP_PROXY points at.
-	transport.Proxy = nil
 	return &Client{
 		base:  strings.TrimRight(strings.TrimSpace(base), "/"),
 		token: token,
@@ -48,6 +44,23 @@ func Open(base, token string) *Client {
 		http: &http.Client{Transport: transport, CheckRedirect: refuseRedirect},
 	}
 }
+
+// transport is every client's connection pool. ONE POOL FOR THE PROCESS: a
+// runner slot opens a client for every pull, and a pool per client left each
+// one's idle connection open until its idle timeout, hundreds of sockets on a
+// machine with many slots. The bearer rides on each request, never on the
+// pool, so sharing it across factories and credentials shares only sockets.
+var transport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	// The address is the factory the person named. An ambient proxy would
+	// carry the access token to whatever HTTP_PROXY points at.
+	t.Proxy = nil
+	// Every slot of a runner holds a pull open to the same factory, and the
+	// pulls end together when their waits do; the default of two idle
+	// connections per host would close and redial the rest each time.
+	t.MaxIdleConnsPerHost = api.MaxRunnerSlots
+	return t
+}()
 
 func refuseRedirect(*http.Request, []*http.Request) error {
 	return http.ErrUseLastResponse

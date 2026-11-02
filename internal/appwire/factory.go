@@ -127,6 +127,10 @@ type FactoryCapabilities struct {
 	// pipeline pull request's head (feature factory.pipeline_source_ref). True
 	// only for an engine that implements [FactoryPipelineSourceRefReader].
 	PipelineSourceRef bool `json:"pipeline_source_ref"`
+	// PipelinePRs: factory.pipeline_prs is served (feature
+	// factory.pipeline_prs). True only for an engine that implements
+	// [FactoryPipelinePRLister]. It reads and writes nothing else.
+	PipelinePRs bool `json:"pipeline_prs"`
 	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
 	// served (feature factory.pipeline_edit). True only for an engine that
 	// implements [FactoryPipelineEditor]. Neither writes anything.
@@ -143,8 +147,12 @@ type FactoryCapabilities struct {
 	// from the shipped defaults (feature factory.pipeline_edit_rules). True
 	// only for an engine that implements [FactoryPipelineRulesEditor].
 	PipelineEditRules bool `json:"pipeline_edit_rules"`
-	MaxConnections    int  `json:"max_connections"`
-	MaxFlows          int  `json:"max_flows"`
+	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
+	// only for an engine that implements [FactoryRepoReader]; whether the
+	// factory has a checkout of a repository is answered by the call.
+	RepoRead       bool `json:"repo_read"`
+	MaxConnections int  `json:"max_connections"`
+	MaxFlows       int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,
