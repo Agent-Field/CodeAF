@@ -472,6 +472,9 @@ func grep(ctx context.Context, dir string, re *regexp.Regexp, out *api.RepoRead)
 	out.Hits = []api.RepoHit{}
 	for _, f := range files {
 		body, err := batchObject(r)
+		if err != nil && ctx.Err() == nil {
+			return err
+		}
 		if err != nil {
 			// The time bound ended the search: what was found stands.
 			out.Truncated = true

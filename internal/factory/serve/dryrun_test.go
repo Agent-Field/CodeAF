@@ -10,9 +10,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -28,6 +30,22 @@ start:
   max_cost: 2
   never: [auth/**]
 `
+
+// measured gives every candidate a small rubric and the floor five finished
+// small jobs in acme/web at fifty cents, so a written max_cost has a measured
+// cost to compare with instead of asking for want of history.
+func measured(items []factory.Item) []factory.Item {
+	for i := range items {
+		items[i].Triage.Rubric = &factory.Rubric{}
+	}
+	for i := range estimate.MinJobs {
+		started := now.Add(-time.Duration(48-i) * time.Hour)
+		items = append(items, factory.Item{ID: 9000 + i, Repo: "acme/web", Kind: factory.KindIssue, State: factory.StateShipped, DoneHow: "answered",
+			Triage: factory.Triage{Rubric: &factory.Rubric{}},
+			Stream: &factory.Stream{Spent: 0.5, Started: started, Ended: started.Add(10 * time.Minute)}})
+	}
+	return items
+}
 
 func dryRunFloor() []factory.Item {
 	return []factory.Item{
@@ -71,7 +89,7 @@ func TestDryRunAppliesStartToTheBacklog(t *testing.T) {
 		return factory.DefaultRecipe(), nil, dir, nil
 	}
 	seam.Load = func() (factory.Snapshot, error) {
-		return factory.Snapshot{Items: dryRunFloor()}, nil
+		return factory.Snapshot{Items: measured(dryRunFloor())}, nil
 	}
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
 	want := api.DryRun{
@@ -81,6 +99,7 @@ func TestDryRunAppliesStartToTheBacklog(t *testing.T) {
 			{Job: 70, Reason: "job budget $3 is over $2"},
 		},
 		WouldWait: []api.Ask{{Job: 60, Reason: "no agent-ready label"}},
+		CostJobs:  estimate.MinJobs,
 	}
 	if !reflect.DeepEqual(body.DryRun, want) {
 		t.Fatalf("dry run = %+v", body.DryRun)
@@ -172,8 +191,10 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 	seam.RecipeAt = func(string) (factory.Recipe, []factory.Problem, string, error) {
 		return factory.DefaultRecipe(), nil, dir, nil
 	}
+	items = measured(items)
 	seam.Load = func() (factory.Snapshot, error) { return factory.Snapshot{Items: items}, nil }
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
+	book := estimate.Open(items)
 
 	file, err := pipeline.Load(dir)
 	if err != nil {
@@ -183,7 +204,10 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 	ask := map[int]string{}
 	var wait []int
 	for _, it := range items {
-		switch d := file.DecideJob(it, intake.Job(it).Paths); {
+		if it.State != factory.StateNew {
+			continue
+		}
+		switch d := file.DecideJob(it, intake.Job(it).Paths, intake.Cost(book, it)); {
 		case d.Start:
 			start = append(start, it.ID)
 		case d.Ask:
