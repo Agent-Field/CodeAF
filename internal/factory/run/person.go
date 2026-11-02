@@ -128,7 +128,7 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	}
 	ph := &s.Phases[s.Cur]
 	switch {
-	case ph.Kind != factory.StageGate:
+	case ph.Kind != factory.StageGate && (yes || qkind != factory.QKindApprove || !factory.WaitingToStart(*ph)):
 		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
 		setPhaseState(ph, factory.PhaseDone, now)

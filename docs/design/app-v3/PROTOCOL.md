@@ -254,6 +254,7 @@ decides which combinations are accepted.
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_stop_after_step` | `in.FactoryJobStopAfterStepParams` | `FactoryJobActed` |
 | `factory.job_spend_answer` | `in.FactoryJobSpendAnswerParams` | `FactoryJobActed` |
@@ -309,8 +310,10 @@ decides which combinations are accepted.
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_clone` | `in.FactorySetupFolderParams` | `FactorySetupView` |
 | `factory.setup_connect` | `in.FactorySetupConnectParams` | `FactorySetupView` |
+| `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
 | `factory.setup_select` | `in.FactorySetupSelectParams` | `FactorySetupView` |
@@ -320,7 +323,48 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+| `factory.spending` | `in.FactoryRef` | `FactorySpending` |
+| `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
+
+An engine whose hello carries the features `factory.default_budget`,
+`factory.auto_start_cap` and `factory.default_model` serves
+`factory.spending {factory}` and `factory.spending_set {factory,
+default_budget_usd?, auto_start_max_usd?, default_model?, expect?}`. Both answer
+`{factory, default_budget_usd, auto_start_max_usd, default_model}`, the values the
+factory keeps for every repository it watches (`GET` and `PATCH /v1/spending`).
+`default_budget_usd` is the budget a job gets when it has none and its
+repository's file names no `default_budget`: a positive amount, or `null` for the
+built-in $5. `auto_start_max_usd` is the most a job may be budgeted and still
+start on its own: zero or more, or `null` for the built-in $5; a repository's
+stricter `start.max_cost` still holds, and zero makes every such job ask first.
+`default_model` is the model a step runs on when neither the step nor its job
+names one: a `models.list` id, or `""` for the runner's own default; a runner on
+one model for every task keeps that model. Each figure is at most $10,000. A set
+changes only the fields it sends (at least one); `null` clears a figure and `""`
+the model. Only the factory's operator may set them (`forbidden` otherwise).
+`expect` is the three values as last read; a factory that keeps others answers
+`stale` and changes nothing. A refused value is `bad_params` before anything is
+sent; an unconfirmed write is `uncertain`.
+
+`factory.job_create` keeps `title` trimmed and separate from literal `text`,
+including details whitespace in the job ask and body; empty details stay empty.
+Neither field lifts
+terminal chips or changes budget, approval steps, rounds, effort or security.
+The job title alone supplies the draft PR title. Existing jobs are not rewritten.
+The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
+Factories without the separate-title capability retain their prior behavior.
+
+
+`factory.job_create` keeps `title` trimmed and separate from literal `text`,
+including details whitespace in the job ask and body; empty details stay empty.
+Neither field lifts
+terminal chips or changes budget, approval steps, rounds, effort or security.
+The job title alone supplies the draft PR title. Existing jobs are not rewritten.
+The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
+Factories without the separate-title capability retain their prior behavior.
+
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
@@ -735,6 +779,29 @@ $0.10 goes out as `0.1`.
 | method | params | result |
 |---|---|---|
 | `search.all` | `{limit_per_group, query}` | `GroupsResult2` |
+
+With hello feature `search.jobs`, `search.all` includes a `job` group alongside
+`agent`, `crew`, `task` and `message`, including empty groups (`hits: []`).
+Each job hit has `{kind: "job", id: "<factory>#<document_id>", title,
+factory, document_id, repo?, number?, state?}`. `factory` is the connection id;
+`document_id` is the queue job's document id; `number` is its issue or PR number
+when known. The state is the factory's wire state. `agent` is absent. Older
+clients must ignore unknown groups; existing hit kinds retain their JSON shape.
+
+Search ignores case and matches words in titles, then queue request text
+(`ask.text`, when carried), then repository names. Numbers match `12`, `#12`,
+`repo#12` or `owner/repo#12`. Title and number matches precede request text,
+which precedes repository-only matches; newest creation time wins within each
+rank, with stable id breaking ties. `limit_per_group` bounds jobs across all
+factories (default 8, allowed 1–50).
+
+All connected factory queues are read concurrently under one 1.5-second total
+job-search deadline, using the caller's existing authority and visibility.
+Search never starts or resumes a local factory. A failed or timed-out factory
+adds no hits and no error. Dismissed and dropped jobs are excluded; other closed
+jobs are included only for the week they closed, and only with a known close
+time. `search.all` retains its existing `bad_params` error for an empty query.
+
 
 ## services methods
 
@@ -1231,3 +1298,35 @@ and `stop_after_step=true` or `stop_after_step=false`. Workers read the saved
 choice at every step boundary through their own live lease:
 `GET /v1/workers/leases/{lease}/stop-after-step` returns `{on: bool}`.
 An unreadable choice falls back to the last value the runner saved; the next boundary reads it again.
+
+### Run an ended job as a new job
+
+Hello feature `factory.job_run_as_new` adds
+`factory.job_run_as_new {factory, job, assignee?, expect?}`. When supplied,
+`expect.version` must be positive and guards the source job. The engine
+sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
+applies the same ownership and repository guards as `run_again`, and accepts
+failed, stopped, closed and done jobs. Running work is refused.
+
+The reply is `FactoryJobActed` with `action: "run_as_new"` and `job` naming the
+NEW job; `current` reads that job. The HTTP answer is `{factory, id}` with the
+new document ID. Job reads add `can.run_as_new`, `from_job` (the original job's
+document ID) and `source_issue` (an optional reference URL). Both jobs' records
+carry `run_as_new` receipts with the actor and both document IDs.
+
+The factory copies repo, title, Body and Ask.Text verbatim, autonomy, Cap,
+Stages, the decided pipeline and model choices. It creates an ordinary issue
+pipeline job with `number: 0` and a fresh run. The forge merge index uses repo,
+kind and issue number, so retaining the source's number would claim its
+identity. `source_issue` carries only the reference, never that identity.
+Omitting assignee uses the caller as starter; an explicit assignee names the
+new job's person. A person's ordinary Start queues it under the usual capacity
+limits. The original document is never changed.
+
+Errors follow other job writes: `bad_params` for malformed requests,
+`forbidden` for ownership, `stale` for a changed source, `conflict` for ongoing
+work or start refusals (`repo_off` or `needs_checkout` in refusal.reason),
+`not_found` for a missing job, and `uncertain` when the outcome is unconfirmed.
+A start refusal removes a provisional copy; its allocated document ID is not
+reused. Storage or receipt failures after a successful start remain uncertain;
+the engine never repeats the write automatically.

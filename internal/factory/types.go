@@ -439,6 +439,9 @@ type PullRequest struct {
 	Mergeable   string `json:",omitempty"`
 	ChecksRead  bool   `json:",omitempty"`
 	ReviewsRead bool   `json:",omitempty"`
+	// HeadBranch is the branch the pull request comes from, which a repair pushes
+	// to: an older branch can leave it named apart from the job's own.
+	HeadBranch string `json:",omitempty"`
 }
 
 // Item is one row on the floor.
@@ -485,6 +488,11 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// FromJob is the ended job whose request this person started afresh.
+	FromJob int `json:",omitempty"`
+	// SourceIssue is a reference only; it never gives this job a forge identity.
+	SourceIssue string `json:",omitempty"`
+
 	// Followers are the people who follow this job, by normalised handle
 	// (followers.go). Each person reads only whether they follow it.
 	Followers []string `json:",omitempty"`
@@ -667,6 +675,11 @@ type Item struct {
 	// (run's SetModel), as a conversation's model does.
 	Model           string `json:",omitempty"`
 	AutomaticModels *bool  `json:",omitempty"`
+	// FactoryModel is the factory's default model ([Spending.DefaultModel])
+	// as it stood when the job was last queued, "" for none. It travels with
+	// the job as House does, so a runner on another machine opens a step that
+	// names no model, on a job that names none, on the factory's choice.
+	FactoryModel string `json:",omitempty"`
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
@@ -883,7 +896,7 @@ func itoa(n int) string {
 }
 
 // Shift is the handover: what happened since the person last looked.
-// SpentToday is the runner's day figure ([DaySpend]), separate from Spent.
+// SpentToday is the spend placed today ([placedToday]), separate from Spent.
 type Shift struct {
 	Since       time.Time
 	Shipped     int

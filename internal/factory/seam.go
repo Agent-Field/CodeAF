@@ -77,6 +77,9 @@ type Seam struct {
 	// New makes an item from words typed in the terminal, on a repo. Chips
 	// lift out of the sentence. The id comes back so the surface can open it.
 	New func(repo, words string) (id int, err error)
+	// NewJob makes an item from a separate title and details. Neither field
+	// lifts chips; the repository recipe supplies the unchanged stages.
+	NewJob func(repo, title, text string) (id int, err error)
 	// Sync opens a terminal-made item on the forge too, or stops syncing it.
 	Sync func(id int, on bool) error
 	// AskAuthor posts the triage questions to the item's author, as a draft
@@ -254,6 +257,8 @@ func (s Seam) Has(door string) bool {
 		return s.Bank != nil
 	case "new":
 		return s.New != nil
+	case "newjob":
+		return s.NewJob != nil
 	case "sync":
 		return s.Sync != nil
 	case "askauthor":

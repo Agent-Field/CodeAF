@@ -25,6 +25,7 @@ import (
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
 	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
+	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
@@ -86,21 +87,23 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 // launchJob is the start's one write and its launch, for a job startRefused
 // has passed. also is what else the start changes on the job in that same
 // write (run_again's clearing of the run before it), nil for nothing.
+// The result says whether launch accepted, even if recording its receipt failed;
+// run-as-new must retain an accepted job when the receipt could not be written.
 //
 // START NOW ON A JOB ALREADY IN THE QUEUE IS NOT A SECOND LAUNCH: it lets the
 // job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),
 // lifts a hold in the same write, and launches nothing. A start from Backlog
 // queues the job at the top and waits for a slot like any other.
-func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) {
+func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) bool {
 	mark, queued := false, false
 	if st := h.config.Store; st != nil {
 		cur, err := st.Get(it.ID)
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		who, err := h.callerHandle(r)
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		now := strings.HasSuffix(r.URL.Path, "/start_now")
 		mark = now && !cur.Marked
@@ -125,7 +128,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			f, err := h.jobPipeline(r.Context(), cur, "")
 			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
-				return
+				return false
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
@@ -143,7 +146,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			budget, err = h.startBudget(r, cur)
 		}
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
@@ -183,21 +186,24 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				return nil
 			})
 			if h.failed(w, err) {
-				return
+				return false
 			}
 		}
 	}
 	if queued {
 		h.finish(w, h.recordAction(r, it, record.Started, startedOverLimit, func() error { return nil }))
-		return
+		return true
 	}
+	started := false
 	h.finish(w, h.recordAction(r, it, record.Started, "", func() error {
 		err := h.seam.Launch(it.ID)
+		started = err == nil
 		if err != nil && mark {
 			_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Marked = false; return nil })
 		}
 		return err
 	}))
+	return started
 }
 
 // startedOverLimit is the detail of a Start now that let a queued job take a

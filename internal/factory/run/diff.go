@@ -49,7 +49,7 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Cost = spent
 	}
 	r.Claims = append(claimsMoved(prev.Proof, cur.Proof), claimsMoved(prev.Policy, cur.Policy)...)
-	r.Question, r.QuestionKind = asked(prev, cur)
+	r.Question, r.QuestionKind = asked(prev, cur, r.Log)
 	if cur.PullRequest != nil && !reflect.DeepEqual(prev.PullRequest, cur.PullRequest) {
 		pr := *cur.PullRequest
 		r.PR = &pr
@@ -226,11 +226,14 @@ func claimsMoved(prev, cur []factory.Claim) []factory.Claim {
 
 // asked is the question cur puts to the person, when it is a new one: the
 // step it came from, its words and options, and its kind.
-func asked(prev, cur factory.Item) (*factory.Asked, string) {
+func asked(prev, cur factory.Item, lines []factory.LogLine) (*factory.Asked, string) {
 	if cur.State != factory.StateNeedsYou || strings.TrimSpace(cur.Question) == "" {
 		return nil, ""
 	}
-	if prev.State == factory.StateNeedsYou && prev.Question == cur.Question {
+	// THE SAME WORDS CAN BE A NEW ASK: a step sent back can finish between two
+	// reports, and the factory took the answered question down. Its new log line
+	// is what tells the two apart.
+	if prev.State == factory.StateNeedsYou && prev.Question == cur.Question && !askedAgain(lines, cur.Question) {
 		return nil, ""
 	}
 	q := factory.Asked{Question: cur.Question}
@@ -244,4 +247,14 @@ func asked(prev, cur factory.Item) (*factory.Asked, string) {
 		q.Options = []string{"yes", "no"}
 	}
 	return &q, cur.QKind
+}
+
+// askedAgain says the new log lines hold this question's ask.
+func askedAgain(lines []factory.LogLine, question string) bool {
+	for _, l := range lines {
+		if l.Tone == "ask" && l.Text == question {
+			return true
+		}
+	}
+	return false
 }
