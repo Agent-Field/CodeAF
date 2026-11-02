@@ -366,7 +366,7 @@ Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs 
 
 ## look closer — scout a job, files it will change, plan, unknowns, tests, about 2¢, monthly limit for AI reached
 
-Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. Its complexity is scored in a call of its own, from what the look read. A look never writes a price.
+Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. A look never writes a price.
 
 A look stops at 12 tool calls, one minute or $0.10, whichever comes first. The button shows what a typical look costs on this factory (`about 2¢`) once one has run; its cost goes on Spending as `factory scout`. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
 
