@@ -1,5 +1,5 @@
 ---
-kind: fix
+kind: fixed
 title: attached media keeps container facts already present in its bounded probe
 pr: 0
 surface: [engine, app]

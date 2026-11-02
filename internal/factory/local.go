@@ -571,7 +571,6 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	}
 	seen := map[string]bool{}
 	var names []string
-	y, m, d := now.Date()
 	for _, it := range items {
 		if it.Repo != "" && !seen[it.Repo] {
 			seen[it.Repo] = true
@@ -580,12 +579,8 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 		if it.State == StateRunning {
 			snap.Benches++
 		}
-		if it.Stream != nil {
-			if sy, sm, sd := it.Changed.In(now.Location()).Date(); sy == y && sm == m && sd == d {
-				snap.Daily += it.Stream.Spent
-			}
-		}
 	}
+	snap.Daily = DailySpent(items, now)
 	sort.Strings(names)
 	for _, name := range names {
 		r := recipe(name)
