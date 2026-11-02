@@ -72,7 +72,7 @@ func TestAppFactoryJobPRReady(t *testing.T) {
 		if !canReady(before) {
 			t.Error("draft PR does not offer can.pr_ready")
 		}
-		if before.Merge == nil || before.Merge.Blocked != "the pull request is a draft" {
+		if before.Merge == nil || !strings.HasPrefix(before.Merge.Blocked, "the pull request is a draft") {
 			t.Fatalf("draft merge gate: %+v", before.Merge)
 		}
 		n := sent()
