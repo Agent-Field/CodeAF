@@ -13,6 +13,30 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// sayWriteUnchanged is why a write round that reported done is not done. It
+// is the first line of that round's output, so the next round's brief and the
+// question a person reads after the last round both say it.
+const sayWriteUnchanged = "the checkout has no change from where the run began"
+
+// unchangedWrite holds back a write round that reported done while the
+// checkout has no change from the run's base. The write step is the one that
+// changes the repository, so its done on a clean checkout is a shortfall
+// found here, before test and review spend money on an unchanged tree. Every
+// other step may finish without a change, and a checkout that cannot be read
+// is never a reason to hold a round back.
+func unchangedWrite(st factory.Stage, job Job, res factory.StageResult) factory.StageResult {
+	if !res.Done || job.dirErr != nil || !strings.EqualFold(stageLabel(st), writeStep) {
+		return res
+	}
+	change, err := readChange(job.Dir, job.Item.ChangeBase)
+	if err != nil || len(change.Files) > 0 {
+		return res
+	}
+	res.Done, res.Exit = false, 1
+	res.Output = sayWriteUnchanged + "\nMake the change in the checkout, or report done: false with why none is needed.\n" + res.Output
+	return res
+}
+
 // changeBase fixes the comparison before any round can commit its edits.
 // A PR includes its existing change; other jobs start at their first HEAD.
 func changeBase(dir string, it factory.Item) string {
