@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: A computer left marked asleep no longer stops every Factory job
+pr: 2195
 surface: [engine, app]
 invalidates:
   - "A saved asleep mark survived app restarts and only a single wake cleared it. An attach now clears it, and the running runner corrects a mark it was not told about within about five seconds."

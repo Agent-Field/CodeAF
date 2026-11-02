@@ -100,7 +100,6 @@ func (h *Handler) pinnedStartRefused(w http.ResponseWriter, r *http.Request, it 
 	return true
 }
 
-
 // computersDown is the computer a queued job with no pin waits for, when every
 // computer that could take it is asleep or offline: nothing else can start it,
 // so no slot is what it waits for. An empty owner counts every computer. A
