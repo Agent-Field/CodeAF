@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Job briefs charge each model call once
-pr: 0
+pr: 2252
 surface: [engine, app]
 invalidates:
   - "Saving a brief added its cost again after the session had already charged the job."
