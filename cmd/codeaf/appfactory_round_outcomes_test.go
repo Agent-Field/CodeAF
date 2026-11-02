@@ -36,14 +36,16 @@ func TestFactoryRoundOutcomesAfterCarryOn(t *testing.T) {
 			if tc.rejected {
 				maker.Fail = errors.New("tool failed to start")
 			}
-			events := make(chan factoryrun.Event, 100)
-			runner := factoryrun.New(factoryrun.Options{Store: floor, Events: events, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.NewChatExecutor(maker)}})
+			runner := factoryrun.New(factoryrun.Options{Store: floor, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.NewChatExecutor(maker)}})
 			item, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 17, Title: "Keep the work", State: factory.StateNew, Cap: 10,
 				Stages: []factory.Stage{{Name: tc.step, Kind: factory.StageChat, On: true, Until: factory.UntilDone, Max: 2}}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = runner.Stop(item.ID) })
+			t.Cleanup(func() {
+				_ = runner.Stop(item.ID)
+				eventually(t, "runner cleanup", func() bool { return !runner.Running(item.ID) })
+			})
 			if err := runner.Launch(item.ID); err != nil {
 				t.Fatal(err)
 			}
@@ -82,18 +84,7 @@ func TestFactoryRoundOutcomesAfterCarryOn(t *testing.T) {
 			}
 			// Wait for the actual runner to release its round before the service
 			// rewinds it. No real model or native worker executes the next round.
-			deadline := time.After(5 * time.Second)
-		stopped:
-			for {
-				select {
-				case event := <-events:
-					if event.Kind == factoryrun.EventStopped {
-						break stopped
-					}
-				case <-deadline:
-					t.Fatal("runner did not stop")
-				}
-			}
+			eventually(t, "the runner releases the round", func() bool { return !runner.Running(item.ID) })
 			if tc.restart {
 				// A lost runner's typed report is the persisted restart boundary.
 				// Its wording deliberately says nothing about interruption.
@@ -107,13 +98,29 @@ func TestFactoryRoundOutcomesAfterCarryOn(t *testing.T) {
 				s.backend.Close()
 				wire, _ = reopened(t, s.backend.factoryHub())
 			}
+			legacy := factory.RoundLine{Round: 1, Chat: "earlier-chat", Summary: "Stopped by you", Rejected: true, At: time.Now().Add(-time.Hour)}
+			if err := floor.Update(item.ID, func(it *factory.Item) error {
+				it.Stream.Phases = append([]factory.Phase{{Name: "earlier", State: factory.PhaseDone, Round: 1, Rounds: []factory.RoundLine{legacy}}}, it.Stream.Phases...)
+				it.Stream.Cur = 1
+				it.Stages = append([]factory.Stage{{Name: "earlier", Kind: factory.StageChat, On: true}}, it.Stages...)
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
 			before := read()
-			if len(before.Steps) != 1 || len(before.Steps[0].Rounds) != 0 {
+			if len(before.Steps) != 2 || len(before.Steps[1].Rounds) != 0 {
 				t.Fatalf("before retry: %+v", before.Steps)
+			}
+			wantCode := tc.code
+			if tc.stop != "" {
+				wantCode = factory.CodeStopped
+			}
+			if before.Failure == nil || before.Failure.Code != wantCode {
+				t.Fatalf("failure before retry = %+v; want code %q", before.Failure, wantCode)
 			}
 			act("factory.job_step_rerun")
 			got := read()
-			step := got.Steps[0]
+			step := got.Steps[1]
 			if len(step.Rounds) != 1 {
 				t.Fatalf("rounds = %+v", step.Rounds)
 			}
@@ -124,10 +131,13 @@ func TestFactoryRoundOutcomesAfterCarryOn(t *testing.T) {
 			if step.Round != 2 || step.RoundLimit != 3 {
 				t.Errorf("retry limits: round=%d limit=%d; want 2, 3", step.Round, step.RoundLimit)
 			}
+			if old := got.Steps[0].Rounds; len(old) != 1 || !old[0].Rejected || old[0].Result != "" || old[0].Summary != legacy.Summary {
+				t.Errorf("legacy history changed: %+v", old)
+			}
 			// Reading again must retain the saved outcome, not reclassify old lines.
 			again := read()
-			if len(again.Steps[0].Rounds) != 1 || again.Steps[0].Rounds[0] != line {
-				t.Errorf("history changed on reread: %+v", again.Steps[0].Rounds)
+			if len(again.Steps[1].Rounds) != 1 || again.Steps[1].Rounds[0] != line {
+				t.Errorf("history changed on reread: %+v", again.Steps[1].Rounds)
 			}
 		})
 	}
