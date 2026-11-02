@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log"
 	"net/url"
@@ -333,7 +335,12 @@ func takeRootFor(id string) string {
 // takeCopyBucket files each copy under the folder it came from, apart from
 // conversations that work in this computer's own folder of the same name.
 func takeCopyBucket(origin string) string {
-	return home.Join("v3", "projects", "copy-"+encodeWorkspace(origin))
+	name := "copy-" + encodeWorkspace(origin)
+	if len(name) > 255 {
+		digest := sha256.Sum256([]byte(filepath.Clean(origin)))
+		name = "copy-" + hex.EncodeToString(digest[:])
+	}
+	return home.Join("v3", "projects", name)
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a

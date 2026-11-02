@@ -21,3 +21,6 @@ after its original pending deadline; expired undecided requests remain refused.
 Existing identities retain their voting configuration. New singleton births
 persist immutable provenance that older relay code cannot serve; upgrades must
 preserve compatible recovery rather than restore a local directory writer.
+
+Copied chats use bounded destination names when a source workspace path exceeds
+the filesystem component limit, including paths nested by earlier device moves.
