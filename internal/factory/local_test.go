@@ -96,7 +96,12 @@ func TestLocalLoadFillsTheShift(t *testing.T) {
 	if !sh.Since.Equal(started) || sh.Arrived != 6 || sh.Shipped != 1 || len(sh.Shipping) != 1 || sh.Shipping[0] != "#42" {
 		t.Fatalf("shift counts = %+v", sh)
 	}
-	if sh.Asked != 1 || sh.Handled != 2 || sh.Spent != 1.25 || sh.SpentToday != 3.25 {
+	// The $2 job began a minute before the window, which is yesterday just after midnight.
+	today := 1.25
+	if before.Day() == now.Day() {
+		today += 2
+	}
+	if sh.Asked != 1 || sh.Handled != 2 || sh.Spent != 1.25 || sh.SpentToday != today {
 		t.Fatalf("shift money = %+v", sh)
 	}
 	if sh.Hours[now.Hour()] == 0 {
