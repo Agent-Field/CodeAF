@@ -725,7 +725,12 @@ even when no step chat is open. The service retains that sleeping runner's lease
 for 24 hours at most after the computer went to sleep; wake refreshes its silence
 deadline. A computer that never wakes no longer holds its job for good: after
 that day the job is queued again like any silent hold. A failed presence request remains an error,
-not confirmation that remote ownership was retained. This does not change how
+not confirmation that remote ownership was retained.
+
+A computer marked asleep is handed no job, so a lost wake must not last. An app
+that starts and attaches clears the mark, and a running runner not told to sleep
+reads the mark and clears it within about five seconds, without another sleep.
+Clearing it starts only queued jobs, within Jobs at once; Backlog stays put. This does not change how
 ordinary conversation processes stop for sleep or turn an interrupted check green.
 
 Worker result delivery retains one exact per-lease request and retry identity
