@@ -182,14 +182,20 @@ func (d *briefDebounce) note(job int, trigger string) {
 }
 
 func (d *briefDebounce) take(job int) {
+	if trigger := d.claim(job); trigger != "" {
+		d.fire(job, trigger)
+	}
+}
+
+// claim takes a job's waiting trigger off the debounce, so the write fires
+// outside the lock.
+func (d *briefDebounce) claim(job int) string {
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	trigger := d.pending[job]
 	delete(d.pending, job)
 	delete(d.timers, job)
-	d.mu.Unlock()
-	if trigger != "" {
-		d.fire(job, trigger)
-	}
+	return trigger
 }
 
 // stop drops every trigger still waiting.
