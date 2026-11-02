@@ -144,10 +144,34 @@ type TaskModelRoles struct {
 	InsightFactoryScout *TaskModelRole `json:"insight_factory_scout,omitempty"`
 }
 
-// InsightRoleKeys is the page AI's roles, the family first, in the order a
-// settings screen lists them.
-var InsightRoleKeys = []string{RoleInsight, RoleInsightNotes, RoleInsightAsk, RoleInsightThemes,
-	RoleInsightPipeline, RoleInsightViews, RoleInsightFactoryRead, RoleInsightFactoryScout}
+// insightRoles is each page-AI role with its name in the person's words, the
+// family first, in the order a settings screen lists them. The label rides
+// the row so a desk draws a role it has never heard of with no work of its own.
+var insightRoles = []struct{ key, label string }{
+	{RoleInsight, "Page AI"}, {RoleInsightNotes, "Repo notes"}, {RoleInsightAsk, "Repo ask"},
+	{RoleInsightThemes, "Repo themes"}, {RoleInsightPipeline, "Build with AI"}, {RoleInsightViews, "Topic views"},
+	{RoleInsightFactoryRead, "Factory read"}, {RoleInsightFactoryScout, "Factory scout"},
+}
+
+// InsightRoleKeys is the page AI's roles, in [insightRoles]' order.
+var InsightRoleKeys = func() []string {
+	keys := make([]string, len(insightRoles))
+	for i, role := range insightRoles {
+		keys[i] = role.key
+	}
+	return keys
+}()
+
+// InsightLabel is a page-AI role's name in the person's words, "" for a word
+// that is not one.
+func InsightLabel(key string) string {
+	for _, role := range insightRoles {
+		if role.key == key {
+			return role.label
+		}
+	}
+	return ""
+}
 
 // InsightRow is the field that carries one page-AI role's row, or nil for a
 // word that is not one, so a caller fills every row from [InsightRoleKeys].
@@ -196,6 +220,9 @@ type TaskModelRole struct {
 	Default *ModelRef `json:"default,omitempty"`
 	// Follows names the role an unpinned override runs as: "insight".
 	Follows string `json:"follows,omitempty"`
+	// Label is the row's name in the person's words ("Build with AI"), sent
+	// on the page AI's rows only; absent on the task roles.
+	Label string `json:"label,omitempty"`
 }
 
 // TaskModelsProvider is one provider's header. A provider with no key is

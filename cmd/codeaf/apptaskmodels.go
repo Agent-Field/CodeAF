@@ -100,6 +100,7 @@ func (b *appBackend) taskModelsWire(profile string, state config.TaskModelsState
 		Checker: view(state.Roles[crewroute.Checker]), Auxiliary: &auxiliary}
 	for _, key := range appwire.InsightRoleKeys {
 		row := view(state.Insight[roles.Role(key)])
+		row.Label = appwire.InsightLabel(key)
 		if family, ok := roles.FamilyOf(roles.Role(key)); ok {
 			row.Follows = string(family)
 		}

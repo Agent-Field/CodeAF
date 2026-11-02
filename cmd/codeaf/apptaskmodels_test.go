@@ -311,8 +311,14 @@ func TestAppTaskModelsInsightDefaultIsSeededNotWritten(t *testing.T) {
 	}
 	insight := got.Roles.Insight
 	want := appwire.ModelRef{ID: "deepseek/deepseek-v4.1-flash", Provider: "openrouter"}
-	if insight == nil || insight.Pin != nil || insight.Default == nil || *insight.Default != want || insight.Follows != "" || insight.EligibleCount == 0 {
+	if insight == nil || insight.Pin != nil || insight.Default == nil || *insight.Default != want || insight.Follows != "" || insight.EligibleCount == 0 || insight.Label != "Page AI" {
 		t.Fatalf("roles.insight = %+v", insight)
+	}
+	if got.Roles.InsightPipeline == nil || got.Roles.InsightPipeline.Label != "Build with AI" || got.Roles.InsightFactoryScout.Label != "Factory scout" {
+		t.Fatalf("the page rows are not named: %+v %+v", got.Roles.InsightPipeline, got.Roles.InsightFactoryScout)
+	}
+	if got.Roles.Worker.Label != "" || got.Roles.Auxiliary.Label != "" {
+		t.Fatalf("a task role took a page label: %+v %+v", got.Roles.Worker, got.Roles.Auxiliary)
 	}
 	for name, row := range map[string]*appwire.TaskModelRole{"notes": got.Roles.InsightNotes, "ask": got.Roles.InsightAsk, "themes": got.Roles.InsightThemes,
 		"pipeline": got.Roles.InsightPipeline, "views": got.Roles.InsightViews, "factory_read": got.Roles.InsightFactoryRead, "factory_scout": got.Roles.InsightFactoryScout} {

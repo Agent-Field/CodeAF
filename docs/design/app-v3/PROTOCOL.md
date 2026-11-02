@@ -607,8 +607,11 @@ AI's roles: `insight` and its overrides `insight_notes` (repository notes),
 topic views), `insight_factory_read` (the read of what arrived in a factory) and
 `insight_factory_scout` (a closer look at it). Each is a row under `roles` in
 `settings.models.get` (and `settings.changed`),
-`{pin, warning, eligible_count, default?, follows?}`, and `settings.models.set`
-takes the same keys in `pins` as `{id, provider?}` or `null`. They are
+`{pin, warning, eligible_count, default?, follows?, label}`, and
+`settings.models.set` takes the same keys in `pins` as `{id, provider?}` or
+`null`. `label` is the row's name in the person's words (`Page AI`, `Repo notes`,
+`Repo ask`, `Repo themes`, `Build with AI`, `Topic views`, `Factory read`,
+`Factory scout`), so a client can draw a role it does not know yet. They are
 errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
 own pin, then the `insight` pin, then the engine's default for `insight`, then
 the small-work tier. `default` appears on `insight` only while the engine's

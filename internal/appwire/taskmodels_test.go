@@ -174,3 +174,28 @@ func TestTheInsightRowsTravelWithTheirDefaultAndFamily(t *testing.T) {
 		t.Errorf("an absent row or default was sent: %s", raw)
 	}
 }
+
+// EVERY PAGE-AI ROW CARRIES ITS NAME IN THE PERSON'S WORDS, so a desk draws a
+// role it has never heard of with no work of its own. An older desk ignores it.
+func TestEveryInsightRoleHasALabel(t *testing.T) {
+	want := map[string]string{
+		"insight": "Page AI", "insight_notes": "Repo notes", "insight_ask": "Repo ask", "insight_themes": "Repo themes",
+		"insight_pipeline": "Build with AI", "insight_views": "Topic views",
+		"insight_factory_read": "Factory read", "insight_factory_scout": "Factory scout",
+	}
+	if len(InsightRoleKeys) != len(want) {
+		t.Fatalf("InsightRoleKeys = %v", InsightRoleKeys)
+	}
+	for _, key := range InsightRoleKeys {
+		if got := InsightLabel(key); got != want[key] {
+			t.Errorf("InsightLabel(%q) = %q, want %q", key, got, want[key])
+		}
+	}
+	raw, err := json.Marshal(TaskModelRole{Label: "Build with AI", Follows: RoleInsight})
+	if err != nil || !strings.Contains(string(raw), `"label":"Build with AI"`) {
+		t.Fatalf("a labelled row = %s, %v", raw, err)
+	}
+	if raw, _ := json.Marshal(TaskModelRole{}); strings.Contains(string(raw), "label") {
+		t.Fatalf("an unlabelled row sends a label: %s", raw)
+	}
+}
