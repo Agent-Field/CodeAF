@@ -109,6 +109,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"Item.MemorySpent":             "runner-local provenance already included in total cost; completed-round checks compare only charges since local admission, so readers and a newly admitted worker need no historical split",
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
 	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",

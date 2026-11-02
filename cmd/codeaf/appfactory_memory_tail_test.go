@@ -172,11 +172,11 @@ func TestMemoryCompileTailLifecycle(t *testing.T) {
 					t.Fatal(err)
 				}
 				spent := factory.JobSpent(job)
-				if calls == 1 && math.Abs(usd-.02) < .000001 && math.Abs(spent-.04) < .000001 {
+				if calls == 1 && math.Abs(usd-.02) < .000001 && math.Abs(spent-.04) < .000001 && math.Abs(job.MemorySpent-.02) < .000001 {
 					break
 				}
 				if time.Now().After(deadline) {
-					t.Fatalf("late memory accounting incomplete: calls=%d ledger=%.4f job=%.4f want .02/.04", calls, usd, spent)
+					t.Fatalf("late memory accounting incomplete: calls=%d ledger=%.4f job=%.4f memory=%.4f want .02/.04/.02", calls, usd, spent, job.MemorySpent)
 				}
 				time.Sleep(10 * time.Millisecond)
 			}
