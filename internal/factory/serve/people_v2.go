@@ -238,6 +238,7 @@ func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	// off the stored item: the wire's steps do not carry the finished result
 	// that the shape older workers stored is recognised by.
 	_, job.Can.RejectPlan = factory.PlanSendsBack(stored)
+	job.Can.SpendAnswer = stored.State == factory.StateNeedsYou && stored.QKind == factory.QKindSpendStopped
 	if job.Desk != nil {
 		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker, job.Desk.Assignees = "", "", "", nil
 	}

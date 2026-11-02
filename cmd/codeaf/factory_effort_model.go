@@ -6,6 +6,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // factoryEffortTiers is the model tier each step effort word runs on: a cheap
@@ -30,4 +31,10 @@ func factoryStepModel(profile string, spec factoryrun.ConversationSpec, oneModel
 		return ""
 	}
 	return strings.TrimSpace(config.TierSeatAt(profile, tier).Model)
+}
+
+// factoryOpenModel is the model a step opens on. This first version ignores the
+// step's effort word.
+func factoryOpenModel(profile string, cfg session.Config, spec factoryrun.ConversationSpec) string {
+	return stageOpenModel(cfg, spec)
 }
