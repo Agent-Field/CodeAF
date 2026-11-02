@@ -20,7 +20,16 @@ func TestFollowPRNoChangeFeedbackCorrectsReportWithoutAnotherRound(t *testing.T)
 		if err := c.Spec.Stage.Report(ctx, r); err == nil || !strings.Contains(err.Error(), "repair.readiness") {
 			t.Errorf("incomplete feedback review was accepted instead of corrected in the same round: %v", err)
 		}
-		r.Repair.Readiness = &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}
+		r.Repair.Readiness = &factory.ReadinessReview{Head: "stale", DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}
+		if err := c.Spec.Stage.Report(ctx, r); err == nil {
+			t.Error("stale-head review was accepted")
+		}
+		r.Repair.Readiness.Head = head
+		r.Repair.Readiness.FeedbackAddressed = false
+		if err := c.Spec.Stage.Report(ctx, r); err == nil {
+			t.Error("unreviewed current-head feedback was accepted")
+		}
+		r.Repair.Readiness.FeedbackAddressed = true
 		if err := c.Spec.Stage.Report(ctx, r); err != nil {
 			t.Errorf("complete no-change assessment refused: %v", err)
 		}
