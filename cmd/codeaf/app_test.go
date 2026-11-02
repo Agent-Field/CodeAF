@@ -618,7 +618,9 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	want := []string{
 		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
 		appwire.EventTurnThinking, appwire.EventTurnThinkingDone, appwire.EventTurnDelta, appwire.EventEntryAdded,
-		appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool,
+		// The turn's first call says the agent's live line (appliveline.go); the
+		// calls right after it wait for the interval and the turn's end.
+		appwire.EventAgentChanged, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool,
 		appwire.EventTaskChanged, appwire.EventAgentChanged, appwire.EventTurnDone, appwire.EventAgentChanged,
 	}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
