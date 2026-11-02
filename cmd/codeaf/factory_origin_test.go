@@ -389,3 +389,16 @@ func stageBriefs(t *testing.T, profile, team string, m teamstore.Member) teamsto
 	}
 	return m
 }
+
+// A job with no issue was once named #3, and its saved team keeps that name.
+// Its next conversation joins that team, not a second one beside it.
+func TestItemTeamFindsAJobsTeamUnderItsOldName(t *testing.T) {
+	var f teams.File
+	old := itemTeamIn(&f, "#3 · review", time.Now())
+	if got := itemTeamIn(&f, "job 3 · review", time.Now()); got != old {
+		t.Fatalf("a second team %q beside the saved %q: %+v", got, old, f.Teams)
+	}
+	if other := itemTeamIn(&f, "job 4 · review", time.Now()); other == old {
+		t.Fatalf("another job joined the saved team: %+v", f.Teams)
+	}
+}
