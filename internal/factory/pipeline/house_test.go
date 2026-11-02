@@ -223,11 +223,11 @@ func TestABareAskFirstPathHoldsAtStartAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"billing/invoice.go"})
+	d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"billing/invoice.go"}, Measured{})
 	if want := []string{"protected · billing/ · billing/invoice.go"}; !reflect.DeepEqual(d.Reasons, want) {
 		t.Errorf("start reasons %q, want %q", d.Reasons, want)
 	}
-	if d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"docs/readme.md"}); !d.Start {
+	if d := f.DecideJob(factory.Item{Kind: factory.KindIssue, Labels: []string{"ready", "size:S"}, Cap: 1}, []string{"docs/readme.md"}, Measured{}); !d.Start {
 		t.Errorf("an unguarded start under a bare path = %+v", d)
 	}
 	rules := StartRulesOf(f)
