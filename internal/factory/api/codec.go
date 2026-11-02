@@ -144,7 +144,7 @@ func FromItem(it factory.Item) Job {
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, Model: it.Model, AutomaticModels: it.AutomaticModels,
+		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
 		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
@@ -462,7 +462,7 @@ func ToItem(j Job) factory.Item {
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld,
 		Owners:    append([]string(nil), j.Owners...),
-		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels,
+		ID:        j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,
@@ -596,7 +596,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
 			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
-		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -620,7 +620,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
 			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
 		}),
-		HeadSHA: pr.HeadSHA, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt

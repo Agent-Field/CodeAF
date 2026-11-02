@@ -308,8 +308,10 @@ decides which combinations are accepted.
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_clone` | `in.FactorySetupFolderParams` | `FactorySetupView` |
 | `factory.setup_connect` | `in.FactorySetupConnectParams` | `FactorySetupView` |
+| `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
 | `factory.setup_select` | `in.FactorySetupSelectParams` | `FactorySetupView` |
@@ -319,7 +321,39 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+| `factory.spending` | `in.FactoryRef` | `FactorySpending` |
+| `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
+
+An engine whose hello carries the features `factory.default_budget`,
+`factory.auto_start_cap` and `factory.default_model` serves
+`factory.spending {factory}` and `factory.spending_set {factory,
+default_budget_usd?, auto_start_max_usd?, default_model?, expect?}`. Both answer
+`{factory, default_budget_usd, auto_start_max_usd, default_model}`, the values the
+factory keeps for every repository it watches (`GET` and `PATCH /v1/spending`).
+`default_budget_usd` is the budget a job gets when it has none and its
+repository's file names no `default_budget`: a positive amount, or `null` for the
+built-in $5. `auto_start_max_usd` is the most a job may be budgeted and still
+start on its own: zero or more, or `null` for the built-in $5; a repository's
+stricter `start.max_cost` still holds, and zero makes every such job ask first.
+`default_model` is the model a step runs on when neither the step nor its job
+names one: a `models.list` id, or `""` for the runner's own default; a runner on
+one model for every task keeps that model. Each figure is at most $10,000. A set
+changes only the fields it sends (at least one); `null` clears a figure and `""`
+the model. Only the factory's operator may set them (`forbidden` otherwise).
+`expect` is the three values as last read; a factory that keeps others answers
+`stale` and changes nothing. A refused value is `bad_params` before anything is
+sent; an unconfirmed write is `uncertain`.
+
+`factory.job_create` keeps `title` trimmed and separate from literal `text`,
+including details whitespace in the job ask and body; empty details stay empty.
+Neither field lifts
+terminal chips or changes budget, approval steps, rounds, effort or security.
+The job title alone supplies the draft PR title. Existing jobs are not rewritten.
+The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
+Factories without the separate-title capability retain their prior behavior.
+
 
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
 including details whitespace in the job ask and body; empty details stay empty.
@@ -743,6 +777,29 @@ $0.10 goes out as `0.1`.
 | method | params | result |
 |---|---|---|
 | `search.all` | `{limit_per_group, query}` | `GroupsResult2` |
+
+With hello feature `search.jobs`, `search.all` includes a `job` group alongside
+`agent`, `crew`, `task` and `message`, including empty groups (`hits: []`).
+Each job hit has `{kind: "job", id: "<factory>#<document_id>", title,
+factory, document_id, repo?, number?, state?}`. `factory` is the connection id;
+`document_id` is the queue job's document id; `number` is its issue or PR number
+when known. The state is the factory's wire state. `agent` is absent. Older
+clients must ignore unknown groups; existing hit kinds retain their JSON shape.
+
+Search ignores case and matches words in titles, then queue request text
+(`ask.text`, when carried), then repository names. Numbers match `12`, `#12`,
+`repo#12` or `owner/repo#12`. Title and number matches precede request text,
+which precedes repository-only matches; newest creation time wins within each
+rank, with stable id breaking ties. `limit_per_group` bounds jobs across all
+factories (default 8, allowed 1–50).
+
+All connected factory queues are read concurrently under one 1.5-second total
+job-search deadline, using the caller's existing authority and visibility.
+Search never starts or resumes a local factory. A failed or timed-out factory
+adds no hits and no error. Dismissed and dropped jobs are excluded; other closed
+jobs are included only for the week they closed, and only with a known close
+time. `search.all` retains its existing `bad_params` error for an empty query.
+
 
 ## services methods
 
