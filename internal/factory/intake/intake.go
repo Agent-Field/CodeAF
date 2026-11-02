@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -20,8 +21,25 @@ import (
 type Options struct {
 	Refresh func(context.Context) error
 	Load    func(string) (pipeline.File, error)
+	// LoadJob reads ONE JOB'S OWN FILE (pipeline.JobFile): the one it was
+	// decided on ([factory.Item.DecidePipeline]), else its repository's as
+	// Load reads it. Nil reads Load. Intake decides a job's file when it
+	// stamps the job's steps first.
+	LoadJob func(factory.Item) (pipeline.File, error)
 	Launch  func(int) error
 	Record  *record.Record
+	// Owner is the factory owner's forge handle (its operator), "" when it
+	// cannot be told. A JOB A START RULE STARTS IS THE OWNER'S: it becomes the
+	// job's person when it has none, so its approvals have someone to answer
+	// them and Auto can pass the routine ones. Nil leaves such a job with no
+	// person, as before.
+	Owner func(context.Context) string
+	// Scout looks at one job closer (Look closer) and writes the look on it.
+	// AN AUTOMATIC START GETS THE BETTER READ FIRST: a job the rules would
+	// start is looked at before it launches and decided again on what the
+	// look changed. A failed look (a limit, no answer) never stops the start.
+	// Nil starts on the arrival read alone.
+	Scout func(ctx context.Context, id int) error
 }
 
 type Intake struct {
@@ -36,7 +54,7 @@ func (in *Intake) AskFirst(it factory.Item) []string {
 	if in.opts.Load == nil {
 		return nil
 	}
-	f, err := in.opts.Load(it.Repo)
+	f, err := in.load(it)
 	if err != nil {
 		return nil
 	}
@@ -70,6 +88,9 @@ func (in *Intake) Once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The ledger is read once a pass, from the same list: what jobs like
+	// each one cost is measured from the floor's finished jobs.
+	book := estimate.Open(items)
 	var errs []error
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
@@ -78,22 +99,56 @@ func (in *Intake) Once(ctx context.Context) error {
 		if factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
 			continue
 		}
-		if err := in.decide(ctx, it); err != nil {
+		if err := in.decide(ctx, it, book); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (in *Intake) decide(ctx context.Context, it factory.Item) error {
-	f, err := in.opts.Load(it.Repo)
+// load is the file job it is decided under: its own ([Options.LoadJob]),
+// else its repository's.
+func (in *Intake) load(it factory.Item) (pipeline.File, error) {
+	if in.opts.LoadJob != nil {
+		return in.opts.LoadJob(it)
+	}
+	return in.opts.Load(it.Repo)
+}
+
+// Cost is what jobs like it cost, as the start rules read it: the high end
+// of its measured range, and unknown when the ledger has too few similar
+// jobs.
+func Cost(book estimate.Book, it factory.Item) pipeline.Measured {
+	r, ok := book.For(it)
+	return pipeline.Measured{USD: r.USDHi, Known: ok}
+}
+
+func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Book) error {
+	f, err := in.load(it)
 	if err != nil {
 		return err
 	}
-	job := Job(it)
-	decision := f.DecideJob(it, job.Paths)
+	decision := f.DecideJob(it, Job(it).Paths, Cost(book, it))
+	if decision.Start {
+		if looked, ok := in.lookFirst(ctx, it); ok {
+			it = looked
+			decision = f.DecideJob(it, Job(it).Paths, Cost(book, it))
+		}
+	}
 	if !decision.Start && !decision.Ask {
 		return nil
+	}
+	// ONLY A JOB THE RULES START IS THE OWNER'S. One they hold waits for
+	// whoever approves it: owning it would shut out a teammate who could
+	// approve it before.
+	owner := ""
+	if decision.Start && it.Person() == "" && in.opts.Owner != nil {
+		owner = factory.NormalizeHandle(in.opts.Owner(ctx))
+	}
+	own := func(cur *factory.Item) {
+		if cur.Person() == "" && owner != "" {
+			cur.Starter = owner
+		}
 	}
 	kind, reason := record.AutoStarted, "inside start rules"
 	if decision.Ask {
@@ -103,11 +158,14 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
+			cur.DecidePipeline(f.Copy, time.Now())
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
 			cur.State, cur.QKind = factory.StateNeedsYou, factory.QKindAskFirst
 			cur.AskedFirstReason = reason
+			cur.SetStartCheck(factory.CheckAsked)
 			cur.Question = "Approval needed: start · " + reason
 			return nil
 		})
@@ -119,6 +177,12 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
+			// THE JOB'S FILE IS DECIDED WITH ITS STEPS: the launch just below
+			// reads this one, not a copy saved in between.
+			cur.DecidePipeline(f.Copy, time.Now())
+			own(cur)
+			cur.SetStartCheck(factory.CheckPassed)
 			if cur.Cap <= 0 {
 				cur.Cap = f.DefaultBudget
 			}
@@ -134,11 +198,29 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 	if err != nil {
 		return err
 	}
-	_, err = in.opts.Record.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: it.Person(), Detail: reason})
+	handle := it.Person()
+	if handle == "" {
+		handle = owner
+	}
+	_, err = in.opts.Record.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: reason})
 	return err
 }
 
 var errMoved = errors.New("intake: job already moved")
+
+// lookFirst looks at a job closer before an automatic start and answers the
+// job as the look left it; false when there is no scout, the job already has
+// a current look, or the look failed.
+func (in *Intake) lookFirst(ctx context.Context, it factory.Item) (factory.Item, bool) {
+	if in.opts.Scout == nil || (it.Scout != nil && !it.Scout.Stale(it)) {
+		return it, false
+	}
+	if in.opts.Scout(ctx, it.ID) != nil {
+		return it, false
+	}
+	looked, err := in.st.Get(it.ID)
+	return looked, err == nil
+}
 
 // canStart reads the stop history under the job's update lock, so a stop
 // after Once listed the backlog still wins. Only a person's Run door may
@@ -173,8 +255,8 @@ var pathWords = regexp.MustCompile(`[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.*?-]*)+`)
 func Job(it factory.Item) pipeline.Job {
 	j := pipeline.Job{
 		ID: it.ID, Kind: it.Kind, Tier: it.Tier, Labels: it.Labels,
-		Size: factory.JobSize(it), Cost: it.Triage.Est, CostKnown: it.Triage.Est > 0,
-		Cap: it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
+		Size: factory.JobSize(it),
+		Cap:  it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
 		Paths: append([]string(nil), it.Triage.StartPaths...),
 	}
 	text := it.Title + "\n" + it.Body

@@ -230,7 +230,7 @@ func itemCard(t *testing.T, change ItemChange, why string) ItemNotice {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ItemNotice{Item: 1, Ref: before.Ref(), Note: change.Note, Why: why, Before: ItemFactsOf(before), After: ItemFactsOf(after)}
+	return ItemNotice{Item: 1, Ref: before.Ref(), Remove: change.Edit.Remove, Move: change.Edit.Move, Note: change.Note, Why: why, Before: ItemFactsOf(before), After: ItemFactsOf(after)}
 }
 
 // EVERY CARD IS ONE QUESTION, AND ITS BODY IS BEFORE AND AFTER FOR ONLY WHAT
@@ -254,6 +254,16 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 		// skipped like any stage.
 		{"approve", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, approve"}}}}, "", "#1 · add an approve step?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · +approve2 · review · proof"}},
+		// A REMOVAL IS SAID AS ONE, never as a skip, and names the stage gone
+		// even when it was off and on neither row; a move is the order alone.
+		{"remove", ItemChange{Edit: factory.PlanEdit{Remove: []string{"review"}}}, "", "#1 · remove the review stage?",
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "removed: review"}},
+		{"remove an off stage", ItemChange{Edit: factory.PlanEdit{Remove: []string{"security"}}}, "", "#1 · remove the security stage?",
+			[]string{"removed: security"}},
+		{"remove two", ItemChange{Edit: factory.PlanEdit{Remove: []string{"security", "review"}}}, "", "#1 · remove the review and security stages?",
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "removed: review · security"}},
+		{"move", ItemChange{Edit: factory.PlanEdit{Move: []factory.Moved{{Stage: "review", After: "plan"}}}}, "", "#1 · move the review stage?",
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · review · approve · write · test · proof"}},
 		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
 		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
 		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  plan — → strong · write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong"}},
@@ -1246,5 +1256,35 @@ func TestItemThinkingKeepsARecipeFixedStageUnderALegacyName(t *testing.T) {
 	}
 	if _, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"REVIEW"}}}, recipe); err == nil || !strings.Contains(err.Error(), "is fixed by the recipe") {
 		t.Errorf("skip of a fixed legacy stage = %v", err)
+	}
+}
+
+// THE CARD'S ARGUMENTS CARRY A REMOVAL AND A MOVE into the change it previews,
+// a move with no place is refused before any card, and a removal of a stage
+// that is off still raises one: it is a change the person decides.
+func TestFactoryItemCarriesRemoveAndMove(t *testing.T) {
+	door := newFakeItemDoor()
+	agent := newItemAgent(t, door, 50*time.Millisecond)
+	out := <-runFactoryItem(t, agent, context.Background(), `{"item":1,"move":[{"stage":"review"}]}`)
+	if !strings.Contains(out, "needs its name and after") {
+		t.Fatalf("a move with no place = %q", out)
+	}
+	out = <-runFactoryItem(t, agent, context.Background(), `{"item":1,"remove":["proof"]}`)
+	if !strings.HasPrefix(out, itemRefusedLead) || !strings.Contains(out, "proof") {
+		t.Fatalf("removing proof = %q", out)
+	}
+	for _, args := range []string{`{"item":1,"remove":[" security "]}`, `{"item":1,"move":[{"stage":"review","after":""}]}`} {
+		out = <-runFactoryItem(t, agent, context.Background(), args)
+		if out != itemUnanswered {
+			t.Fatalf("%s raised no card: %q", args, out)
+		}
+	}
+	if len(door.changes()) != 0 {
+		t.Fatalf("an unanswered card changed the item: %+v", door.changes())
+	}
+	change := itemChange(ItemNotice{Item: 1, Remove: []string{"security"}, Move: []factory.Moved{{Stage: "review", After: "plan"}}})
+	next, err := ApplyItemChange(door.item, change, door.recipe)
+	if err != nil || factory.StageIndex(next.Stages, "security") >= 0 || next.Stages[1].Name != "review" {
+		t.Fatalf("applied = %+v, %v", next.Stages, err)
 	}
 }

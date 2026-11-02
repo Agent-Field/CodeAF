@@ -475,7 +475,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"), setupMovesWord,
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
 		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading"),
-		say(t, "chatFootEffortWord")); hit == "" {
+		say(t, "chatFootEffortWord"), "opt+e effort · opt+a approvals"); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r

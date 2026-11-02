@@ -1,6 +1,9 @@
 package factory
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Auto approves routine pipeline progress, never merge or critical questions.
 const AutonomyAuto = "auto"
@@ -46,6 +49,22 @@ func AutonomyBlockReason(it Item) string {
 	if it.QKind != "" && it.QKind != QKindApprove && it.QKind != "cap" {
 		return it.Question
 	}
+	// AN APPROVAL THAT NAMES SOMEONE ELSE IS THEIRS: Auto never answers for
+	// the person the pipeline asked by name.
+	if NamesOtherApprover(it) {
+		return "This approval waits on " + WaitingApprover(it) + ", whom the pipeline names."
+	}
+	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
+	// to be asked, so Auto asks.
+	if it.QKind == QKindApprove && it.RuleHold != "" {
+		if words, ok := planNoFilesWords(it.RuleHold); ok {
+			return words + ". Approve, or send it back to list them."
+		}
+		return ruleHoldWords(it.RuleHold) + ". Review the plan, then press Approve."
+	}
+	if it.State == StateLanded && it.RuleHold != "" {
+		return ruleHoldWords(it.RuleHold) + ". Review the changes, then press Approve."
+	}
 	if it.Approval != nil && it.Approval.Error != "" {
 		return "Automatic approval failed: " + it.Approval.Error + ". Review the problem before trying again."
 	}
@@ -84,4 +103,41 @@ func AutonomyBlockReason(it Item) string {
 		return "A job owner is required before Auto can approve progress."
 	}
 	return ""
+}
+
+// ruleHoldWords is a rule hold in a person's words: a protected path match
+// (`protected · auth/ · auth/login.go`) is "A protected path: auth/ ·
+// auth/login.go"; any other hold is said as the rule that asks first.
+func ruleHoldWords(hold string) string {
+	if words, ok := planNoFilesWords(hold); ok {
+		return words
+	}
+	if rest, ok := strings.CutPrefix(hold, "protected · "); ok {
+		return "A protected path: " + rest
+	}
+	return "A rule asks first: " + hold
+}
+
+// planNoFilesWords is a hold for a plan that listed no files ([PlanNoFiles])
+// as what happened, in a person's words: `protected · auth/ · the plan names
+// no files` is "The plan didn't list its files, so the factory couldn't check
+// them against auth/". False for any other hold.
+//
+// "A PROTECTED PATH: THE PLAN NAMES NO FILES" SAID NEITHER. Until 2026-10-28
+// that was the whole sentence, and a person read it as a plan touching a
+// protected path; it means the factory could not tell whether it did.
+func planNoFilesWords(hold string) (string, bool) {
+	rest, ok := strings.CutPrefix(hold, "protected · ")
+	if !ok {
+		return "", false
+	}
+	paths, ok := strings.CutSuffix(rest, PlanNoFiles)
+	if !ok {
+		return "", false
+	}
+	against := "its protected paths"
+	if paths = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(paths), "·")); paths != "" {
+		against = paths
+	}
+	return "The plan didn't list its files, so the factory couldn't check them against " + against, true
 }

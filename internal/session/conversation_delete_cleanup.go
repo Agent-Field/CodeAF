@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -68,7 +69,7 @@ func writeConversationTaskCleanup(file string, receipt conversationTaskCleanup) 
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, conversationTaskCleanupFile))
+	return fsreplace.Rename(tmp.Name(), filepath.Join(dir, conversationTaskCleanupFile))
 }
 
 // The receipt survives every cleanup error. Retrying must recheck memberships

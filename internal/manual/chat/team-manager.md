@@ -263,7 +263,9 @@ where it was. Its tab arrives at the end of the team's run, named `@lexer` until
 and its working mark is the only thing that moves. With the team's auto-wake on, the member
 starts on its own: it is handed the brief on its first request, marked `◆ brief from manager`,
 and its page shows the brief as a quoted card headed `◆ manager → @lexer`, never as your
-message. With auto-wake off the conversation is still opened behind the one you are in, and
+message. If opening or configuring the conversation delays its team membership, it still
+starts from that brief once it joins; you do not need to send a second message.
+With auto-wake off the conversation is still opened behind the one you are in, and
 no turn is started; the traffic says `opened @lexer; this team's auto-wake is off, so no turn
 was started. It reads the brief when it next runs.`, and the brief arrives on that next turn
 the same way. When the manager stops a member,
@@ -544,9 +546,11 @@ by its team with nothing from you stops being woken and asks you instead, as a w
 the traffic. It is woken again after you next say something to it.
 The ten wakes count ten replies when each member turn replies and then finishes.
 
+## How do I turn team message wakes off?
+
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams
-under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
+under it: its entry in the profile's teams store, `teams.db`, carries `"wake": false` (or `true`). With it
 off, every message waits for each conversation's next turn, and a member the manager starts
 with `team_start` is opened and handed its brief on that next turn, with no turn started for
 it. The traffic says so.
@@ -558,8 +562,26 @@ membership from before it joined; reusing a removed member's handle does not bri
 member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
+## Team sharing and Traffic on another computer
+
 The traffic itself is kept in the profile of the machine the conversations run on, in
-`teams/<id>/traffic.jsonl`, one line per message, only ever added to.
+`teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
+messages written on this computer. Team sharing is off by default: on each paired
+computer, set **share teams** to **on** in **Settings → General**. An unpaired
+computer or one with sharing off keeps teams and Traffic to itself. Turning it
+off keeps teams already received.
+
+Once both computers share teams, Traffic also shows recent history from the other
+computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
+cannot deliver a message, start, stop, answer or wake a chat here. A message to a
+member or manager known to be on another computer is refused before writing;
+continue that chat here from Home first, then send again. A room post or send to
+several members reaches local recipients and names those not reached. If all
+recipients are elsewhere, nothing is written. An unavailable relay does not
+block local delivery. Decisions and escalations also check their recipients
+before changing anything. Over `--host` or `--at`, a remote member shows an
+"on the other computer" notice; open it there. A history link whose message
+cannot be found says it is on the other computer's history.
 
 ## Which approval rules do new members inherit?
 

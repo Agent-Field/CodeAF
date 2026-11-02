@@ -18,6 +18,10 @@ import (
 // the journal's header changes; every turn and saved tool result stays intact.
 // This runs before derived indexes are built and before any window opens it.
 func branchIdentity(_ context.Context, c cell.Cell) (err error) {
+	place := session.Place{Dir: c.Root, Owned: true}
+	if err := session.ValidateForkTaskRoots(place, place.Work()); err != nil {
+		return err
+	}
 	path := transcriptOfBranch(c)
 	in, err := os.Open(path)
 	if err != nil {
@@ -38,7 +42,7 @@ func branchIdentity(_ context.Context, c cell.Cell) (err error) {
 	}
 	id, _ := json.Marshal(c.ID)
 	if string(header["id"]) == string(id) {
-		return branchRow(c)
+		return independentBranchRow(c)
 	}
 	header["id"] = id
 	line, err = json.Marshal(header)
@@ -69,7 +73,7 @@ func branchIdentity(_ context.Context, c cell.Cell) (err error) {
 	if err := fsreplace.Rename(out.Name(), path); err != nil {
 		return err
 	}
-	return branchRow(c)
+	return independentBranchRow(c)
 }
 
 func transcriptOfBranch(c cell.Cell) string { return session.Place{Dir: c.Root}.Transcript() }
@@ -87,4 +91,11 @@ func branchRow(c cell.Cell) error {
 	m.ID, m.Owned = c.ID, true
 	m.Workspace = (session.Place{Dir: c.Root, Owned: true}).Work()
 	return session.SaveMeta(c.Root, m)
+}
+
+func independentBranchRow(c cell.Cell) error {
+	if err := branchRow(c); err != nil {
+		return err
+	}
+	return detachBranchWork(c)
 }

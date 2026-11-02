@@ -13,6 +13,32 @@ import (
 	"testing"
 )
 
+func TestLandRunTreeLeavesNativeOwnershipMarkersOutOfTheWork(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, ".furrow", "fork-id"), "0123456789abcdef0123456789abcdef\n")
+	writeFile(t, filepath.Join(repo, ".furrow", "workspace-id"), "fedcba9876543210fedcba9876543210\n")
+	writeFile(t, filepath.Join(repo, "report.md"), "the requested report\n")
+	_, changed, refusal, err := LandRunTree(repo, "", "write the report", "")
+	if err != nil || refusal != "" || !reflect.DeepEqual(changed, []string{"report.md"}) {
+		t.Fatalf("landing mixed ownership markers into the work: %v, %q, %v", changed, refusal, err)
+	}
+}
+
+func TestLandRunTreeLeavesCommittedNativeMarkersOutOfItsLedger(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+	base := runTreeHead(repo)
+	writeFile(t, filepath.Join(repo, ".furrow", "fork-id"), "0123456789abcdef0123456789abcdef\n")
+	writeFile(t, filepath.Join(repo, "report.md"), "the requested report\n")
+	mustGit(t, repo, "add", "--all")
+	mustGit(t, repo, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "commit", "-m", "worker checkpoint")
+	_, changed, refusal, err := LandRunTree(repo, base, "write the report", "")
+	if err != nil || refusal != "" || !reflect.DeepEqual(changed, []string{"report.md"}) {
+		t.Fatalf("committed markers entered the landing ledger: %v, %q, %v", changed, refusal, err)
+	}
+}
+
 // A RUN'S WORK IS THE TREE'S OWN. Two files the tree says are changed land in
 // one commit on the branch the copy stands on, and the commit is the paths the
 // index built, not any list handed in.

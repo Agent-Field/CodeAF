@@ -18,3 +18,17 @@ func planPath(path string) string {
 	}
 	return strings.TrimPrefix(path, `\\?\`)
 }
+
+// composedPath keeps receipt destinations usable by the engine's native
+// replacement calls. A short .cell directory can have children beyond MAX_PATH.
+// Unlike the workspace, furrow does not canonicalize this composed path itself.
+func composedPath(dir string) string {
+	dir = canonicalTree(dir)
+	if strings.HasPrefix(dir, `\\?\`) {
+		return dir
+	}
+	if strings.HasPrefix(dir, `\\`) {
+		return `\\?\UNC\` + dir[2:]
+	}
+	return `\\?\` + dir
+}

@@ -362,7 +362,7 @@ func (d *fakeStagerDoor) Stages(_ context.Context, repo string, kind factory.Kin
 }
 
 // THE RECIPE CARD SAYS THE KIND'S STAGES BEFORE AND AFTER, the new one marked
-// `+`, then the line and the reason; and a recipe the door cannot read refuses
+// `+` and in before proof, where the bank puts it, then the line and the reason; and a recipe the door cannot read refuses
 // the line before any card, in the door's own words.
 func TestFactoryRecipeCardSaysNowAndAfter(t *testing.T) {
 	door := &fakeStagerDoor{now: []string{"plan", "write", "test", "review", "proof"}}
@@ -373,7 +373,7 @@ func TestFactoryRecipeCardSaysNowAndAfter(t *testing.T) {
 	t.Cleanup(cancel)
 	results := runFactoryRecipe(t, agent, ctx, `{"repo":"web","kind":"issue","stage":"security · chat · read it for auth holes · when touches auth","why":"you said auth always gets a second look"}`)
 	q := awaitRecipeQuestion(t, questions)
-	want := "now: plan · write · test · review · proof; after: plan · write · test · review · proof · +security; " +
+	want := "now: plan · write · test · review · proof; after: plan · write · test · review · +security · proof; " +
 		"security · chat · read it for auth holes · when touches auth; why: you said auth always gets a second look"
 	if q.Reason != want {
 		t.Errorf("reason =\n%q\nwant\n%q", q.Reason, want)

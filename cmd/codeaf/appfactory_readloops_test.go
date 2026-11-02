@@ -84,7 +84,7 @@ func newReadLoopsWorld(t *testing.T) *readLoopsWorld {
 		w.models = append(w.models, req.Model)
 		w.mu.Unlock()
 		rw.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(rw, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"A read\",\"size\":\"S\",\"est_usd\":1}"},"finish_reason":"stop"}]}`)
+		_, _ = io.WriteString(rw, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"A read\",\"rubric\":{\"scope\":{\"score\":0},\"clarity\":{\"score\":0},\"coupling\":{\"score\":0},\"proof\":{\"score\":1},\"novelty\":{\"score\":0}}}"},"finish_reason":"stop"}]}`)
 	}))
 	t.Cleanup(w.github.Close)
 	t.Cleanup(w.model.Close)
@@ -186,6 +186,7 @@ func readLoopsSetup(t *testing.T, w *readLoopsWorld, pin string) *localSetup {
 	readLoopsProfile(t, w, pin)
 	s.backend.local.pollSource = w.source()
 	s.backend.local.newIntake = w.intake
+	closeQuietly(t, s.backend)
 	return s
 }
 
@@ -264,6 +265,7 @@ func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	// A RESTART BRINGS THE POLL BACK, and still no model.
 	s.backend.Close()
 	w, _ := reopened(t, s.backend.factoryHub())
+	closeQuietly(t, w.backend)
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var resumed appwire.FactoryLocalStatus
@@ -296,9 +298,10 @@ func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	}
 }
 
-// AN ARRIVING ISSUE STARTS NOTHING. Even with a repository start rule that
-// allows the waiting item, this Mac's runner, on and polling, launches no job:
-// a job starts only when a person presses Run.
+// AN ARRIVING ISSUE STARTS NOTHING WHILE "START ON ITS OWN" IS OFF, which it
+// is until a person turns it on. Even with a repository start rule that allows
+// the waiting item, this Mac's runner, on and polling, launches no job: a job
+// starts only when a person presses Run.
 func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
@@ -324,6 +327,32 @@ func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 	}
 }
 
+// TURNED ON, THE SAME ISSUE STARTS BY ITSELF: with the factory's "Start on its
+// own" on, the start rule that let it through launches it once, and the next
+// polls leave it be.
+func TestStartOnItsOwnLaunchesWhatTheStartRulesAllow(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	if _, err := floor.ChangeHouseRules(func(h *factory.HouseRules) error { h.StartOnItsOwn = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the ready issue started", func() bool { return world.launches.Load() == 1 })
+	settle()
+	if n := world.launches.Load(); n != 1 {
+		t.Fatalf("%d launches for one ready issue", n)
+	}
+}
+
 // A HOST MADE LATER IN THE SAME PROCESS STARTS ITS OWN POLL: the start is per
 // host, so quitting one local factory and starting another is not answered by
 // a process-wide once that already fired.
@@ -338,6 +367,7 @@ func TestANewHostInTheSameProcessStartsItsOwnPoll(t *testing.T) {
 	s.backend.Close()
 
 	w, _ := reopened(t, s.backend.factoryHub())
+	closeQuietly(t, w.backend)
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var st appwire.FactoryLocalStatus
@@ -367,9 +397,11 @@ func TestAJoinedFactoryGetsNoReadLoops(t *testing.T) {
 	world := newReadLoopsWorld(t)
 	world.file(1)
 	a := newLocalSetup(t)
+	closeQuietly(t, a.backend)
 	readLoopsProfile(t, world, readLoopsPin)
 	a.start()
 	b := newFactoryWire(t, testFactoryHub(t))
+	closeQuietly(t, b.backend)
 	offlineLocal(b.backend, &setupGitHub{}, t)
 	b.backend.local.pollSource = world.source()
 	b.backend.local.newIntake = world.intake
@@ -435,6 +467,10 @@ func TestTheTerminalTriageStartStillHoldsOneActiveLoop(t *testing.T) {
 	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
 		t.Fatal(err)
 	}
+	// The read on arrival is off until the operator turns it on.
+	if _, err := floor.ChangeRunnerSettings(func(s *store.RunnerSettings) error { s.ReadOnArrival = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	factoryTriage = sync.Once{}
 	t.Cleanup(func() { factoryTriage = sync.Once{} })
 	ctx, cancel := context.WithCancel(context.Background())
@@ -456,4 +492,35 @@ func TestTheTerminalTriageStartStillHoldsOneActiveLoop(t *testing.T) {
 		}
 		return ok
 	})
+}
+
+// WITH READ NEW ISSUES AS THEY ARRIVE OFF (the default), the terminal's
+// triage worker runs and holds its lock, and reads nothing by itself.
+func TestTheTerminalTriageReadsNothingWhileTheReadOnArrivalIsOff(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	readLoopsProfile(t, world, readLoopsPin)
+	floor, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
+		t.Fatal(err)
+	}
+	factoryTriage = sync.Once{}
+	t.Cleanup(func() { factoryTriage = sync.Once{} })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startFactoryTriage(ctx, floor)
+	eventually(t, "the worker holds the triage lock", func() bool {
+		release, ok := floor.TryTriager()
+		if ok {
+			release()
+		}
+		return !ok
+	})
+	time.Sleep(10 * factoryTriageEvery)
+	if items := readLoopsItems(t, floor); len(items) != 1 || items[0].Triage.Read != "" || !items[0].Triage.TriagedAt.IsZero() {
+		t.Fatalf("an item was read with the read on arrival off: %+v", items[0].Triage)
+	}
 }

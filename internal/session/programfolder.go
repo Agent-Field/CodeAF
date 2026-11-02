@@ -66,6 +66,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -304,7 +305,7 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		folder.release()
 		return nil, err
 	}
-	if outer != "" && !holdsHomeFolder(outer) {
+	if outer != "" && !HoldsHomeFolder(outer) {
 		folder.IgnoredOuter = outer
 		folder.Outer = ""
 	}
@@ -359,7 +360,7 @@ func programFolderOf(asked string) (dir string, repo bool, outer string, refusal
 	switch {
 	case !ok || !hasCommit(root):
 		return asked, false, "", ""
-	case holdsHomeFolder(root):
+	case HoldsHomeFolder(root):
 		// A REPOSITORY AT THE HOME FOLDER IS NOBODY'S PROJECT. A dotfiles
 		// repository there would otherwise have every folder under home read as
 		// its subfolder, and the program's branch cut in the person's dotfiles.
@@ -1102,7 +1103,7 @@ func (f *ProgramFolder) write() {
 	if err := os.WriteFile(temporary, body, 0o600); err != nil {
 		return
 	}
-	_ = os.Rename(temporary, path)
+	_ = fsreplace.Rename(temporary, path)
 }
 
 // readProgramFolder is the record of the last run in one folder.

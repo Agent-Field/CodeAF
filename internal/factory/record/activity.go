@@ -29,6 +29,10 @@ func enrich(e *Event) {
 			e.Verb = "put away hand-off"
 		case AutoStarted, Started:
 			e.Verb = "started"
+		case Held:
+			e.Verb = "held"
+		case Resumed:
+			e.Verb = "resumed"
 		case AskedFirst:
 			e.Verb = "asked"
 		case Posted:

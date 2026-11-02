@@ -74,6 +74,10 @@ var stayBehind = map[string]string{
 	"Edit":             "a plan's proposal is applied as its round ends, and the kept result drops it",
 	"Reports":          "how many times the step reported is folded into the round line (`· updated 2 times`) where it ran",
 	"Inferred":         "a report the factory made is folded into the round line (`reported for the step · …`) where it ran",
+	// Known gaps, recorded rather than carried (2026-10-27): both are runtime-only (json:"-") on the runner that set
+	// them, and carrying them would make an older factory refuse a worker's whole report.
+	"Checkpoint":       "known gap: runtime-only progress on the runner that reported it; a runner taking the job on reads the step's round lines",
+	"ExecutionBlocked": "known gap: runtime-only reason for a mechanical interruption on the runner that hit it",
 }
 
 // A READER'S JOB IS AS IT WAS: no step carries a report, so the queue and a

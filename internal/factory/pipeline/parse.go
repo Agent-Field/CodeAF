@@ -96,6 +96,7 @@ type draft struct {
 	steps    map[string]Step
 	fixed    []string
 	rules    []string
+	adapt    factory.AdaptMode
 	merge    factory.MergePolicy
 }
 
@@ -136,6 +137,15 @@ func readDoc(root *yaml.Node) draft {
 			}
 		case "merge":
 			d.readMerge(p.val)
+		case "adapt":
+			s, ok := scalar(p.val)
+			word, good := stepWord(s, factory.AdaptWords)
+			if !ok || !good {
+				d.problems = append(d.problems, Problem{Line: p.line, Where: "adapt", Why: "adapt is adapt, ask or fixed"})
+				continue
+			}
+			d.adapt = factory.AdaptMode(word)
+			d.set.adapt = true
 		case "rules":
 			rules, ps, ok := stringList(p.val)
 			d.problems = append(d.problems, tag("rules", ps)...)
@@ -393,8 +403,18 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 			step.Effort = enumWord(p, factory.EffortWords, "effort is cheap or strong; leave it out for the default", &probs)
 		case "fanout":
 			step.Fanout = enumWord(p, StepFanouts, "fanout is one, per-file, per-finding or per-claim", &probs)
+		case "who":
+			// AN UNREADABLE APPROVER IS NEVER "ANYONE": the step is read as
+			// waiting on the job's person, and the file says why.
+			s, ok := scalar(p.val)
+			w, good := factory.ApproverWord(s)
+			if !ok || !good {
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "who is @handle or operator; leave it out for the job's person"})
+				continue
+			}
+			step.Who = w
 		default:
-			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until and a max"})
+			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until, a max and, for a person, who"})
 		}
 	}
 	// An unreadable condition costs a chat or a check money when it falls back
@@ -482,7 +502,7 @@ func (d draft) file(defaults bool) File {
 				base.Max = step.Max
 				base.wroteMax = true
 			}
-			base.Kind, base.When, base.Effort, base.Fanout, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.hold
+			base.Kind, base.When, base.Effort, base.Fanout, base.Who, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.Who, step.hold
 			if base.Kind != "" {
 				// A shipped prompt and stop sentence are words for a model. A
 				// check would run the prompt in a shell and a post would read it
@@ -513,6 +533,9 @@ func (d draft) file(defaults bool) File {
 	}
 	if d.set.rules {
 		f.Rules = append([]string(nil), d.rules...)
+	}
+	if d.set.adapt {
+		f.Adapt = d.adapt
 	}
 	if d.set.mergeAuto {
 		f.Merge.Auto = d.merge.Auto
@@ -563,6 +586,12 @@ func (f *File) clean(requireStep bool) {
 		}
 		// A person step is only ever a gate: it is not written to the file, so a
 		// runtime word kept on it would be dropped without a word.
+		// Only a person waits on someone: who on any other step is dropped.
+		if step.Who != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".who", Why: "only approve or a gate waits on someone"})
+			step.Who = ""
+			f.Steps[name] = step
+		}
 		if factory.ApproveWord(name) {
 			step := f.Steps[name]
 			if step.When != "" || step.Effort != "" || step.Fanout != "" || (step.Kind != "" && step.Kind != string(factory.StageGate)) {

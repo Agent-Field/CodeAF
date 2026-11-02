@@ -232,8 +232,10 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 			// Take and release are owned by the lease desk and have no Seam
 			// equivalent; the serve tests cover them against the real store.
 			// Merge is the factory's gate and the lease's signal, covered the
-			// same way (internal/factory/serve/merge_test.go).
-			if !strings.Contains(" take release retry_publish merge model start_now run_again restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo ", " "+verb.Name+" ") {
+			// same way (internal/factory/serve/merge_test.go). Close and reopen
+			// keep a job's work locally and are the floor's own
+			// (internal/factory/serve/close_test.go).
+			if !strings.Contains(" take release retry_publish merge model start_now run_again restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo close reopen ", " "+verb.Name+" ") {
 				t.Errorf("new server-owned verb %q needs a contract", verb.Name)
 			}
 			continue

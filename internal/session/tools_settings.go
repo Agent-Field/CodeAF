@@ -115,6 +115,9 @@ func (a *Agent) settingsTools() []bare.Tool {
 	// the LIST of rows, which changes only when the binary does.
 	registry := config.NewSettings(config.SettingsOptions{
 		ProfileDir: dir,
+		Include: func(key string) bool {
+			return key != config.KeyTaskRunsOn || a.config.TaskComputers != nil
+		},
 		// THE ONE LIVE SEAM, AND IT IS A READER. Without it the conversation's
 		// model row reads BLANK — the registry has no way to ask a running
 		// session what it is on — and a sheet whose first row is empty is a

@@ -10,6 +10,31 @@ import (
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
+type countedDeviceDirectory struct {
+	directory.Client
+	puts int
+}
+
+func (d *countedDeviceDirectory) PutDevice(ctx context.Context, id string, rec directory.Device) error {
+	d.puts++
+	return d.Client.PutDevice(ctx, id, rec)
+}
+
+func TestA1PutOwnDeviceDoesNotRewriteUnchangedRecord(t *testing.T) {
+	home := t.TempDir()
+	id, err := identity.Ensure(home)
+	mustNil(t, err)
+	dev, err := identity.Device(home)
+	mustNil(t, err)
+	dir := &countedDeviceDirectory{Client: directory.NewMemory(time.Now).For(dev.ID())}
+	for _, name := range []string{"desk", "desk", "renamed", "renamed"} {
+		mustNil(t, PutOwnDevice(t.Context(), dir, id, dev, name))
+	}
+	if dir.puts != 2 {
+		t.Fatalf("A1: %d PUTs, want one per real name change", dir.puts)
+	}
+}
+
 // A device's record names the system it runs on, so the device list can say so.
 func TestDeviceRecordCarriesThePlatform(t *testing.T) {
 	id, err := identity.Mint()

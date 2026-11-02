@@ -122,7 +122,9 @@ func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string,
 				g.planNote("the run's stop could not be written: " + err.Error())
 			}
 		}
-		if cut != nil {
+		if run.remoteEngine != nil {
+			a.stopRemoteRun(run)
+		} else if cut != nil {
 			cut()
 		}
 		promise := "its branch is kept"
@@ -385,6 +387,10 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 		if end.Kept {
 			merge, branch = mergeKept, run.folder.Branch
 		}
+	} else if run.tree.workspaceSet != nil {
+		var rootsReport string
+		merge, branch, changed, rootsReport = a.keepStoppedWorkspaceSet(run)
+		report += rootsReport
 	} else {
 		// THE WORKER'S OWN COMMITS ARE WORK TOO. The index may be clean when
 		// the stop arrives, so read the branch against its original base before
@@ -426,7 +432,8 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	// ([Agent.beltRunEndedAt]).
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: TaskFailed, Stopped: true,
-		Report: report, Changed: changed, Merge: merge, Branch: branch, EndedAt: a.beltRunEndedAt(run),
+		WorkspaceSet: cloneWorkspaceSet(run.tree.workspaceSet),
+		Report:       report, Changed: changed, Merge: merge, Branch: branch, EndedAt: a.beltRunEndedAt(run),
 	}
 	g := a.graph()
 	if g == nil {

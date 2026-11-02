@@ -1,0 +1,57 @@
+{
+  "Requirement": "R3",
+  "Replay": {
+    "Config": {
+      "PaddingBytes": 0,
+      "CutSnapshot": false,
+      "RecordDisk": false,
+      "Seed": 77,
+      "Nodes": 3,
+      "MaxEvents": 2000,
+      "Drop": 0,
+      "Duplicate": 0,
+      "Delay": 0,
+      "CutNode": 0,
+      "CutPhase": "",
+      "CutOccurrence": 0,
+      "Broken": "flush"
+    },
+    "Actions": [
+      {
+        "Kind": "drain",
+        "Node": 0,
+        "Other": 0,
+        "Count": 0,
+        "Value": 1000,
+        "Request": {
+          "Session": "",
+          "Sequence": 0,
+          "Digest": "",
+          "Ack": 0,
+          "Kind": "",
+          "Actor": "",
+          "Cell": "",
+          "At": 0,
+          "Expected": {
+            "Holder": "",
+            "Fence": 0,
+            "Until": 0,
+            "Head": "",
+            "Pending": 0,
+            "ReleasedAt": 0
+          },
+          "Force": false,
+          "Fence": 0,
+          "Head": "",
+          "OldHead": "",
+          "Pending": 0,
+          "Quiet": false,
+          "OldVault": "",
+          "NewVault": "",
+          "Target": ""
+        }
+      }
+    ]
+  },
+  "Expected": "before flush"
+}

@@ -329,6 +329,9 @@ var ErrNoCrewToRedo = errors.New("no task here to redo · /redo stronger follows
 // the panel's, untouched. A crew already at the top answers
 // [crewroute.ErrStrongest] in words, and nothing starts.
 func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, error) {
+	if err := a.CheckWork(); err != nil {
+		return 0, "", err
+	}
 	var crew *taskCrew
 	if row == 0 {
 		row, crew = a.crews.latest()

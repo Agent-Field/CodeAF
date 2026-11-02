@@ -1,6 +1,7 @@
 package taskcopy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/mirror"
+	"github.com/Agent-Field/codeaf/internal/taskstorage"
 )
 
 // Cutter makes a task copy the way a task makes one. Restore asks it instead of
@@ -41,17 +43,37 @@ type Spec struct {
 // its files, in a plain folder at its path, so the edits are found where the
 // task worked; the error says why it is not a working tree.
 func (k Carry) Restore(c cell.Cell, project string) ([]string, error) {
+	return k.RestoreWithParents(c, project, nil)
+}
+
+// RestoreWithParents restores a validated carrier graph parent-first. A parent
+// is another tree ID in this cell, never a caller-supplied filesystem path.
+func (k Carry) RestoreWithParents(c cell.Cell, project string, parents map[string]string) ([]string, error) {
+	order, err := restorationOrder(Carried(c), parents)
+	if err != nil {
+		return nil, err
+	}
 	var errs []error
 	if isRepository(project) {
 		_, err := git(project, "worktree", "prune")
 		errs = append(errs, err)
 	}
 	var restored []string
-	for _, name := range Carried(c) {
-		if err := k.restoreOne(c, project, name); err != nil {
+	ready := make(map[string]bool, len(order))
+	for _, name := range order {
+		ground := project
+		if parent := parents[name]; parent != "" {
+			if !ready[parent] {
+				errs = append(errs, fmt.Errorf("task copy %s: parent %s was not restored", name, parent))
+				continue
+			}
+			ground = filepath.Join(liveRoot(c), parent)
+		}
+		if err := k.restoreOne(c, ground, name); err != nil {
 			errs = append(errs, fmt.Errorf("task copy %s: %w", name, err))
 			continue
 		}
+		ready[name] = true
 		restored = append(restored, name)
 	}
 	return restored, errors.Join(errs...)
@@ -64,8 +86,13 @@ func (k Carry) restoreOne(c cell.Cell, project, name string) error {
 		return err
 	}
 	dest := filepath.Join(liveRoot(c), name)
+	if manager, enabled := taskstorage.Prototype(liveRoot(c)); enabled {
+		if err := manager.Ensure(context.Background(), dest); err != nil {
+			return err
+		}
+	}
 	cutErr := k.cutAgain(project, dest, name, from, rec)
-	return errors.Join(cutErr, applyEOL(dest, rec.EOL), overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes))
+	return errors.Join(cutErr, applyEOL(dest, rec.EOL), overlay(filepath.Join(from, filesDir), dest, rec), applyModes(dest, rec.Modes), restorePortableBaseline(dest, rec))
 }
 
 // applyModes gives each file of the copy the bits it left with, including the
@@ -103,6 +130,9 @@ func (k Carry) cutAgain(project, dest, name, from string, rec record) error {
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 		return err
+	}
+	if !isRepository(project) {
+		return restoreStandaloneCopy(project, dest, from, rec)
 	}
 	if err := unbundle(project, filepath.Join(from, bundleName)); err != nil {
 		return err
@@ -189,7 +219,10 @@ func overlay(files, dest string, rec record) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return removeAll(dest, rec.Deleted)
+	if err := removeAll(dest, rec.Deleted); err != nil {
+		return err
+	}
+	return restorePortableLinks(dest, rec.Symlinks)
 }
 
 func removeAll(dest string, rels []string) error {
@@ -198,6 +231,56 @@ func removeAll(dest string, rels []string) error {
 			return fmt.Errorf("carried path %q leaves the task copy", rel)
 		}
 		if err := os.Remove(filepath.Join(dest, rel)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePortableLinks(state *PortableState) error {
+	if state == nil {
+		return nil
+	}
+	if _, err := state.Digest(); err != nil {
+		return err
+	}
+	if len(state.Withheld) > 0 {
+		return errors.New("carried symlink metadata has unsupported disposition")
+	}
+	for _, entry := range state.Entries {
+		if entry.Kind != "symlink" {
+			return errors.New("carried symlink metadata contains another kind")
+		}
+	}
+	return nil
+}
+func restorePortableLinks(dest string, state *PortableState) error {
+	if err := validatePortableLinks(state); err != nil {
+		return err
+	}
+	if state == nil {
+		return nil
+	}
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	for path, entry := range state.Entries {
+		parent := filepath.Dir(filepath.FromSlash(path))
+		if _, err = workspacePath(dest, parent); err != nil {
+			return err
+		}
+		if err = root.MkdirAll(parent, 0700); err != nil {
+			return err
+		}
+		if err = root.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err = root.Symlink(entry.Link, path); err != nil {
+			return err
+		}
+		if err = setPortableSymlinkMode(root, path, entry.Mode); err != nil {
 			return err
 		}
 	}

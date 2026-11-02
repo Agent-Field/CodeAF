@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -79,6 +80,15 @@ func TestC31AStartupSaveIsNotAChoice(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The grouped durability worker owns the daemon until this cell's
+			// records and captured files have reached their closing boundary.
+			t.Cleanup(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+				defer cancel()
+				if err := cellstore.Await(ctx, c); err != nil {
+					t.Error(err)
+				}
+			})
 			if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: work}); err != nil {
 				t.Fatal(err)
 			}

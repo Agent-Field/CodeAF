@@ -85,8 +85,10 @@ func TestSlashCatalogRoundtripAndHelloFeature(t *testing.T) {
 func TestSlashCatalogIsTheTableWordForWord(t *testing.T) {
 	rows := slashcat.Rows()
 	got := BuildSlashCatalog(nil)
-	if len(got.Commands) != 48 || len(rows) != 82 {
-		t.Fatalf("the table has %d commands over %d rows; PROTOCOL.md states 48 over 82 — change both together", len(got.Commands), len(rows))
+	// E5: dev merges b5e7ef3ac6 and 2e835658e3 added processes, helpers,
+	// atlas, setup, pair and devices to the shared table.
+	if len(got.Commands) != 54 || len(rows) != 93 {
+		t.Fatalf("the table has %d commands over %d rows; PROTOCOL.md states 54 over 93 — change both together", len(got.Commands), len(rows))
 	}
 	words, aliases, forms := map[string]string{}, 0, 0
 	for _, c := range got.Commands {
@@ -103,8 +105,8 @@ func TestSlashCatalogIsTheTableWordForWord(t *testing.T) {
 		}
 		forms += len(c.Forms)
 	}
-	if aliases != 28 || forms != len(rows) {
-		t.Fatalf("%d aliases and %d forms on the wire; the table has 28 and %d", aliases, forms, len(rows))
+	if aliases != 31 || forms != len(rows) {
+		t.Fatalf("%d aliases and %d forms on the wire; the table has 31 and %d", aliases, forms, len(rows))
 	}
 	for _, r := range rows {
 		if words[r.Name] != r.Name {

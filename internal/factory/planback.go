@@ -70,3 +70,47 @@ func PlanSendsBack(it Item) (backTo string, ok bool) {
 func PlanWaiting(it Item) bool {
 	return it.State == StateNeedsYou && it.QKind == QKindApprove && strings.TrimSpace(it.Question) != "" && NeedsKind(it) == NeedsApprovePlan
 }
+
+// PlanGate is the approve step that answers for the plan: the first approve
+// step after the step named plan, or, in a pipeline with no plan step, the
+// first approve step with finished work before it; -1 when there is none. IT
+// IS FOUND BY WHERE IT STANDS, NOT BY WHAT THE STEP BEFORE IS CALLED, so a
+// plan reviewed by another step before its approval is still held by its
+// files ([pipeline.PlanHold]).
+func PlanGate(ph []Phase) int {
+	from := 0
+	for i := range ph {
+		if strings.EqualFold(strings.TrimSpace(ph[i].Name), "plan") {
+			from = i + 1
+			break
+		}
+	}
+	for i := from; i < len(ph); i++ {
+		if ph[i].Kind == StageGate {
+			if from == 0 && PreviousWork(ph, i) < 0 {
+				return -1
+			}
+			return i
+		}
+	}
+	return -1
+}
+
+// PlanGateStage is [PlanGate] read from a pipeline's steps instead of a run's
+// phases, on or off: the approve step after the step named plan, or the first
+// approve step; -1 when there is none.
+func PlanGateStage(stages []Stage) int {
+	from := 0
+	for i := range stages {
+		if strings.EqualFold(strings.TrimSpace(stages[i].Name), "plan") {
+			from = i + 1
+			break
+		}
+	}
+	for i := from; i < len(stages); i++ {
+		if IsApprove(stages[i]) {
+			return i
+		}
+	}
+	return -1
+}

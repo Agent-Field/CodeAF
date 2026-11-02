@@ -77,6 +77,22 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 	return nil
 }
 
+// HoldQueued holds a queued job that no worker holds yet where it is: it
+// keeps its place, and no worker takes it until [ResumeItem] lets it go on.
+// A Start now waiting on it is withdrawn, because the hold is the later word.
+func HoldQueued(it *factory.Item, now time.Time) error {
+	if it.State != factory.StateQueued {
+		return fmt.Errorf("%s is not queued", it.Ref())
+	}
+	if it.Stream == nil {
+		it.Stream = freshStream(it, now)
+	}
+	it.Stream.Paused = true
+	it.OverLimit = false
+	loopSay(it, now, "said", sayPaused)
+	return nil
+}
+
 // AnswerHeld takes the question down from a job a worker holds: the worker's
 // runner hears the answer through the lease and logs it. An approve step is
 // passed (yes) or sent back to wait (no) here, because only a person's door

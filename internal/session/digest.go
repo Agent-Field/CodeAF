@@ -143,7 +143,12 @@ func (d Digest) Spend() (usd float64, tokens int) {
 // transcript cannot know (effort, approval, referred places, working copies,
 // archive marks) are m's and pass through untouched.
 func (d Digest) Derive(m Meta) Meta {
-	m.ID, m.Model = d.ID, d.Model
+	m.ID = d.ID
+	// The journal header names the original model, not later conversation
+	// choices. A sealed identity carries the current main/fallback rules.
+	if m.ModelIdentity == nil {
+		m.Model = d.Model
+	}
 	if d.Workspace != "" { // a sealed journal names none: the summary already knows where it is here
 		m.Workspace = d.Workspace
 	}

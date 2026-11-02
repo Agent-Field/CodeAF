@@ -28,7 +28,7 @@ A question with more behind it than the block draws **opens out into a page of
 its own** — `O` opens it, `esc` closes it, and the sections below say what you
 can do in there.
 
-## The squiggle, the tick and the amber mark at the start of a card
+## The squiggly line at the start of a card — the squiggle, tick and amber mark
 
 Every question opens with **one cell**, and it says whether the card in front of
 you is waiting for you at all:
@@ -1448,3 +1448,11 @@ Saving is not forever: pausing or deleting one later is `/automations`, or askin
 (*Automations*). A rule such as "always use tabs" is not an automation — it has no
 time and nothing to run — so it is kept as a memory, with `/remember` (*Rules are not
 automations*).
+
+## Desktop Hold — stop a model question's countdown
+
+Hold on a model question stops its clock in the engine without answering it.
+The same question stays open past its original deadline. Its countdown goes
+away in the chat and Inbox, and later listings keep showing it without a clock.
+Hold on a task proposal still uses the task's existing hold action. A clock
+that has not been held still takes its declared suggestion when it expires.

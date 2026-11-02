@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
@@ -182,6 +183,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if err := reportQuestion(it, report.Question, report.QuestionKind, now); err != nil {
 		return err
 	}
+	// THE HOLD IS THE SERVER'S OWN READING: a worker's runner records it on
+	// its mirror, which a report does not carry, so the copy that decides Auto
+	// works it out again from the plan and the rules it holds.
+	it.RuleHold = PlanRuleHold(*it)
 	if talk := strings.TrimSpace(report.Talk); talk != "" && strings.TrimSpace(it.Talk) == "" {
 		it.Talk = talk
 	}
@@ -255,7 +260,15 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 		}
 		phases = append(phases, factory.Phase{Name: ph.Name, Kind: ph.Kind, State: factory.PhasePending, Note: ph.Note})
 	}
-	it.Stages = append([]factory.Stage(nil), change.Stages...)
+	stages := append([]factory.Stage(nil), change.Stages...)
+	// A PERSON'S MODEL PICK OUTLIVES A RUNNER'S RESHAPE: a runner never sends
+	// one (client.PrepareWorkerReport), so each step keeps the pick it had.
+	for i := range stages {
+		if j := factory.StageIndex(it.Stages, stages[i].Name); j >= 0 && stages[i].Model == "" {
+			stages[i].Model = it.Stages[j].Model
+		}
+	}
+	it.Stages = stages
 	it.Stream.Phases = phases
 	if it.Stream.Cur >= len(phases) {
 		it.Stream.Cur = max(len(phases)-1, 0)
@@ -452,8 +465,10 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	if round < 1 {
 		round = 1
 	}
+	word, reason := factory.TryResult(st, res)
 	factory.NoteRound(ph, factory.RoundLinesMost, factory.RoundLine{
 		Rejected: !factory.Met(st, res) && res.ExecutionBlocked == "", Round: round, Summary: factory.RoundSummary(kept), At: now, Started: ph.Started, Chat: res.Chat,
+		Result: word, Reason: reason,
 	})
 	it.Stream.Findings = res.Findings
 	sheet := makesSheet(st)
@@ -598,7 +613,22 @@ func landItem(it *factory.Item, now time.Time) bool {
 			it.Stream.Cur = n - 2
 		}
 	}
-	if it.FollowUp == nil && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
+	// THE CHANGE IS CHECKED AGAINST THE RULES BEFORE ANYTHING IS PUBLISHED: a
+	// changed file an ask-first or never path names waits for the person, in
+	// Auto ([factory.AutonomyBlockReason]) and as a habit alike.
+	// What it found is kept for the job's ◆ Before publishing row; a change
+	// that could not be read, or a job with no rules to judge it by, found
+	// nothing, so it says nothing rather than "passed".
+	it.RuleHold = ChangeRuleHold(*it)
+	switch {
+	case it.RuleHold != "":
+		it.SetPublishCheck(factory.CheckAsked)
+	case changeJudged(*it):
+		it.SetPublishCheck(factory.CheckPassed)
+	case it.RuleChecks != nil:
+		it.RuleChecks.Publish, it.RuleChecks.PublishHead = "", ""
+	}
+	if it.FollowUp == nil && it.RuleHold == "" && !factory.NeedsPublishApproval(*it) && len(it.Proof) > 0 && clean(*it) {
 		it.State = factory.StateShipped
 		loopSay(it, now, "ok", logShippedHabit)
 		return true
@@ -653,4 +683,41 @@ func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 		}
 	}
 	return nil
+}
+
+// PlanRuleHold is why the approval it waits on is a person's by the rules the
+// job started under ([pipeline.PlanHold]), or "": only an approve question at
+// the plan's approve step ([factory.PlanGate]) can be held, and only by that
+// plan's files. A landed job is held by its change instead ([landItem]).
+func PlanRuleHold(it factory.Item) string {
+	if it.QKind != factory.QKindApprove {
+		return ""
+	}
+	gate, prev := factory.ApproveBackTarget(it.Stream)
+	if gate < 0 || prev < 0 || factory.PlanGate(it.Stream.Phases) != gate {
+		return ""
+	}
+	return pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
+}
+
+// ChangeRuleHold is why a landed job's publication is a person's by the rules
+// it started under ([pipeline.ChangeHold]): the files its change really
+// touches, read from the diff, not from what the plan said it would touch.
+func ChangeRuleHold(it factory.Item) string {
+	if it.Change == nil {
+		return ""
+	}
+	files := make([]string, 0, len(it.Change.Files))
+	for _, f := range it.Change.Files {
+		files = append(files, f.Path)
+	}
+	return pipeline.ChangeHold(it.StartRules, files)
+}
+
+// changeJudged says whether [ChangeRuleHold] had anything to judge: the run's
+// change, read, with files, and the rules the job started under, read. Rules
+// the repository's file could not give ([factory.StartRules.Unread]) leave its
+// protected paths unknown, so the change was not judged against them.
+func changeJudged(it factory.Item) bool {
+	return it.Change != nil && len(it.Change.Files) > 0 && it.StartRules != nil && !it.StartRules.Unread
 }

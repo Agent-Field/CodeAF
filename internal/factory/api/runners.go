@@ -120,6 +120,10 @@ type RunnerSettings struct {
 // capacity its owner saved. It names no other runner and no other owner.
 type RunnerSelf struct {
 	Slots int `json:"slots"`
+	// OverLimit is how many queued jobs a person said to start now that this
+	// runner may take above Slots. The runner keeps that many more slots
+	// ready until they are taken. An older factory never sends it.
+	OverLimit int `json:"over_limit,omitempty"`
 }
 
 // People is absent as a section in solo mode and populated only in a team.

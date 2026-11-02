@@ -262,15 +262,21 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if words || labels {
 					it.Note(at, factory.EventChanged)
 				}
+				// A START HELD FOR ITS LABELS IS ASKED AGAIN when they change
+				// (a size label added, a start label put on), so the rules
+				// decide the new labels rather than the ones they held.
+				if labels {
+					factory.ReaskStart(it)
+				}
 				it.Title, it.Body = in.Title, in.Body
 				it.Labels = append([]string(nil), in.Labels...)
 				it.Checks = in.Checks
 				if in.URL != "" {
 					it.URL = in.URL
 				}
-				if in.Comments != nil {
-					it.Comments = in.Comments
-				}
+				// Every new comment goes to the job's manager here, the one
+				// place the floor learns of it ([factory.ReadComments]).
+				factory.ReadComments(it, in.Comments, at)
 				if in.Kind != factory.KindPR || in.Files != nil {
 					it.Diff = in.Diff
 				}
@@ -316,6 +322,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			in.Places = []string{in.Repo}
 		}
 		in.Activity = nil
+		// The comments an issue arrives with are its context, never news.
+		factory.ReadComments(&in, in.Comments, time.Now())
 		in.Note(time.Now(), factory.EventArrived)
 		made, err := st.Create(in)
 		if err == nil {

@@ -1,0 +1,49 @@
+package directory
+
+import (
+	"context"
+	current "github.com/Agent-Field/codeaf/internal/directory"
+	"net/http"
+	"strconv"
+)
+
+type Rotation = current.Rotation
+type RotationReq = current.RotationReq
+type RotationView = current.RotationView
+type PresenceView = current.PresenceView
+type Approval struct {
+	Device Device `json:"device"`
+	Cert   string `json:"cert"`
+	Grant  string `json:"grant"`
+}
+type vaultSwap struct {
+	Old string `json:"old"`
+	New string `json:"new"`
+}
+type fenceBody struct {
+	Fence uint64 `json:"fence"`
+}
+
+const MaxBody = 1 << 20
+const VersionHeader = current.VersionHeader
+
+var (
+	ErrStillPending    = current.ErrStillPending
+	ErrRotated         = current.ErrRotated
+	ErrRotationStep    = current.ErrRotationStep
+	ErrBadGrace        = current.ErrBadGrace
+	ErrTooManyWatchers = current.ErrTooManyWatchers
+	ErrRequestGone     = current.ErrRequestGone
+	ErrAlreadyDecided  = current.ErrAlreadyDecided
+	ErrTooBig          = current.ErrTooBig
+	ErrFull            = current.ErrFull
+	ErrBadRequest      = current.ErrBadRequest
+)
+
+func (h *HTTP) Presence(ctx context.Context) (v PresenceView, err error) {
+	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/presence", nil, &v)
+	if err == nil {
+		v.Version, _ = strconv.ParseUint(hdr.Get(VersionHeader), 10, 64)
+	}
+	return v, err
+}

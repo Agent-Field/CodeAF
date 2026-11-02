@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -172,5 +173,5 @@ func writePresenceRequest(path string, raw []byte) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(file.Name(), path)
+	return fsreplace.Rename(file.Name(), path)
 }

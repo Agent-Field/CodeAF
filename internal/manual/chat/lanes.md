@@ -893,7 +893,8 @@ address is inspected; a router is recognised by what it answers.
 
 A base with **no endpoints page at all** — it answers with a not-found page
 rather than the router's own error message, the way a plain proxy does — is
-remembered as having none for five minutes, then asked again in the background.
+remembered as having none for at least five minutes, then asked again in the
+background when routing is active. An idle engine waits until routing resumes.
 A router that has the page but **does not publish that one model** says so in
 its own words, about the model, and nothing is remembered about the base. A 500,
 a timeout or a rate limit is a bad afternoon rather than an answer.
@@ -916,6 +917,10 @@ that proxy from one honouring your pin silently — nothing in the answer says
 which host served — so it tells you, sends later requests bare, and the proxy
 then routes your model however it likes. Your work still goes out; your pin is
 not honoured there, and you know rather than guess.
+
+If that base later serves an endpoints page, a background refresh can restore
+host preferences. A real model request wakes that recheck even after earlier
+answers named no host, once the five-minute backoff has passed.
 
 Neither question costs an extra call of its own, and pointing `CODEAF_BASE_URL`
 somewhere else asks the new address afresh about both.

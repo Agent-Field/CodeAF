@@ -114,10 +114,11 @@ func TestAttestedRuntimeEditRefusesUnsupportedWordsAndLockedSteps(t *testing.T) 
 	zero := 0
 	_, err := w.previewAt(prBaseSHA, runtimeSourceFile, wordEdit("plan", str("sometimes"), nil, nil))
 	wantRefusalDetail(t, err, "bad_value", &zero)
+	// A check takes no model's words: no fanout, no effort.
 	_, err = w.previewAt(prBaseSHA, runtimeSourceFile, wordEdit("test", nil, nil, str("per-file")))
-	wantRefusalDetail(t, err, "locked", &zero)
-	_, err = w.previewAt(prBaseSHA, runtimeSourceFile, wordEdit("test", str(""), nil, nil))
-	wantRefusalDetail(t, err, "locked", &zero)
+	wantRefusalDetail(t, err, "bad_value", &zero)
+	_, err = w.previewAt(prBaseSHA, runtimeSourceFile, wordEdit("test", nil, str("strong"), nil))
+	wantRefusalDetail(t, err, "bad_value", &zero)
 }
 
 func TestRuntimeEditAttestationDoesNotSurviveACallerFlip(t *testing.T) {

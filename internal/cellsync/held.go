@@ -24,7 +24,7 @@ const askFloor = 64 << 10
 // fails the export is returned whole, and the puts that follow report the real
 // error.
 func (p *Publisher) skipHeld(ctx context.Context, c cell.Cell, ex Export) Export {
-	if ex.Bytes < askFloor {
+	if ex.Bytes < askFloor && !p.CheckHeld {
 		return ex
 	}
 	held, err := p.holdings(ctx, ex.Frames)
@@ -58,7 +58,9 @@ func (p *Publisher) holdings(ctx context.Context, frames []FrameFile) (map[strin
 			return nil, err
 		}
 		for i, h := range have {
-			held[rids[i]] = h
+			if h {
+				held[rids[i]] = true
+			}
 		}
 		rids = rids[n:]
 	}

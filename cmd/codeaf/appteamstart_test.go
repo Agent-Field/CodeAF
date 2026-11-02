@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -561,11 +562,22 @@ func TestStartCommitFailureAnswersNotSentAndSendsNothing(t *testing.T) {
 		got.Start.Goal.ClientID != "c-n" || got.Crew.Manager != got.Start.Manager || got.Start.Manager == "" {
 		t.Fatalf("%+v", got)
 	}
-	// The manager is held as an ordinary idle conversation, opened with no words.
-	h.rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
-		d, ok := data.(appwire.AgentChanged)
-		return ok && d.Agent.ID == got.Start.Manager && d.Agent.State == appwire.StateIdle && h.conv(got.Start.Manager) != nil
-	})
+	// E5: #1843 (0-app-blank-conversations.md) stopped announcing blank
+	// agents. Read the idle manager through its door and observe its opener.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		manager, err := h.b.OpenAgent(got.Start.Manager)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if manager.State == appwire.StateIdle && h.conv(got.Start.Manager) != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the idle manager never opened: %+v", manager)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if n := reviewGoalSends(h, "never twice"); n != 0 {
 		t.Fatalf("the goal was sent %d times", n)
 	}
@@ -837,13 +849,14 @@ func TestRootStartDoesNotReplaceAManagerItCannotCheck(t *testing.T) {
 	}
 }
 
-// A REAL CONVERSATION (in-process engine, scripted model on loopback, fake key)
-// keeps the person's said and the client id on the persisted first line, and
+// C1 and C2: a real conversation (in-process engine, scripted model on loopback,
+// fake key) keeps the person's said and client id on the persisted first line, and
 // after a restart the same request is a repeat that mints nothing, opens no
-// first turn and leaves exactly one person line in the record.
+// first turn and leaves exactly one person line in the record. A read-only
+// crew open may still be finishing when the replay answers.
 func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 	root := resolvedTempDir(t)
-	_, workspace := wakeEnvironment(t, root)
+	model, workspace := wakeEnvironment(t, root)
 	rec := newAppRecorder()
 	first := newAppBackend(rec, appOpenInProcess)
 	closed := false
@@ -868,6 +881,9 @@ func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	closed = true
+	model.mu.Lock()
+	requestsBeforeRestart := len(model.requests)
+	model.mu.Unlock()
 	if n := appUserCount(member.File); n != 1 {
 		t.Fatalf("the record holds %d person lines", n)
 	}
@@ -895,13 +911,44 @@ func TestStartRealJournalRepeatAfterRestartSendsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var booting bool
-	second.locked(func() { booting = a.boot != nil || a.opening })
+	// C2 permits a read-only open, including a crew hold admitted before its
+	// goroutine takes the agent's gate. Wait for both to finish before asking
+	// whether the repeat left a first turn booting, running or queued.
+	run := second.crews()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var opening bool
+		second.locked(func() { opening = a.opening })
+		run.locked(func() { opening = opening || run.opening[got.Start.Manager] })
+		if !opening {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the read-only conversation open did not settle within five seconds")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var booting, running bool
+	var queued int
+	second.locked(func() {
+		booting = a.boot != nil || a.opening || a.starting
+		running = a.live != nil && a.live.running
+		queued = len(a.queue)
+	})
 	if minted != 0 || booting {
 		t.Fatalf("the repeat minted %d and left a first turn booting: %v", minted, booting)
 	}
+	if turns := second.turns.Load(); turns != 0 || running || queued != 0 {
+		t.Fatalf("the repeat started %d turns, running: %v, queued: %d", turns, running, queued)
+	}
 	if err := second.Close(); err != nil {
 		t.Fatal(err)
+	}
+	model.mu.Lock()
+	newRequests := len(model.requests) - requestsBeforeRestart
+	model.mu.Unlock()
+	if newRequests != 0 {
+		t.Fatalf("after the restart the model received %d new requests", newRequests)
 	}
 	if n := appUserCount(member.File); n != 1 {
 		t.Fatalf("after the repeat the record holds %d person lines", n)
@@ -971,5 +1018,39 @@ func TestStartCrewGoalStatesTheNewCrew(t *testing.T) {
 	conv.mu.Unlock()
 	if len(submissions) != 1 || submissions[0].Creation == nil || submissions[0].Creation.Team != got.Crew.ID {
 		t.Fatalf("the goal was handed as %+v, want the crew %s", submissions, got.Crew.ID)
+	}
+}
+
+// THE GLOBAL MANAGER IS NOT A NEW AGENT. "Each new agent" (the profile's
+// conversation limit) never caps the root's manager — the app's assistant —
+// which runs under the day cap; a team's manager still inherits it, and a
+// figure set on the root manager itself is still its own.
+func TestRootManagerIsNotCappedByTheNewAgentLimit(t *testing.T) {
+	h := newStartHarness(t)
+	t.Setenv(config.ProfileDirEnv, h.b.profileDir)
+	cent := 0.01
+	if _, err := h.b.SetSettings(appwire.SettingsPatch{BudgetUSD: &appwire.Figure{USD: &cent}}); err != nil {
+		t.Fatal(err)
+	}
+	team, err := h.b.CrewStart(appwire.CrewCreate{Name: "alpha", StartManager: true, ManagerStartsMembers: true, RequestID: "r-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := h.b.RootStart(appwire.RootStartAsk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usd, set := h.b.agentBudget(root.Manager, h.b.now()); usd != 0 || !set {
+		t.Fatalf("the global manager is capped at %v (set %v)", usd, set)
+	}
+	if usd, set := h.b.agentBudget(team.Start.Manager, h.b.now()); usd != cent || set {
+		t.Fatalf("a team's manager: %v (set %v)", usd, set)
+	}
+	five := 5.0
+	if _, err := h.b.SetAgentBudget(appwire.AgentBudgetSet{ID: root.Manager, USD: &five}); err != nil {
+		t.Fatal(err)
+	}
+	if usd, set := h.b.agentBudget(root.Manager, h.b.now()); usd != five || !set {
+		t.Fatalf("its own figure: %v (set %v)", usd, set)
 	}
 }

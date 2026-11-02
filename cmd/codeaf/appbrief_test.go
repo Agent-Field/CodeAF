@@ -51,6 +51,13 @@ func TestAppMemberBriefSetIsDurableAndPostsNothing(t *testing.T) {
 	conv.mu.Lock()
 	submits, texts := conv.submits, len(conv.texts)
 	conv.mu.Unlock()
+	// The member exists in crew state alone; admission must not look it up
+	// as a conversation or open it just to revise that state.
+	backend.locked(func() {
+		if a := backend.agents[web]; a != nil && a.live != nil {
+			t.Fatal("the brief fixture unexpectedly opened the member")
+		}
+	})
 
 	got, err := backend.MemberBriefSet(id, web, "Own the web client and skip the e2e suite.", nil)
 	if err != nil {
@@ -59,6 +66,11 @@ func TestAppMemberBriefSetIsDurableAndPostsNothing(t *testing.T) {
 	if got.Text != "Own the web client and skip the e2e suite." || got.From != "lead" || len(got.Revisions) != 1 {
 		t.Fatalf("after = %+v", got)
 	}
+	backend.locked(func() {
+		if a := backend.agents[web]; a != nil && a.live != nil {
+			t.Fatal("revising a crew brief opened the member")
+		}
+	})
 	r := got.Revisions[0]
 	if r.Before != start || r.By != "you" || r.At.IsZero() || r.Post == "" {
 		t.Fatalf("revision = %+v", r)

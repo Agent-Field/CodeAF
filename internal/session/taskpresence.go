@@ -89,6 +89,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
@@ -865,7 +866,7 @@ func (d *presenceDesk) writeAt(now time.Time, refresh bool) {
 		os.Remove(name)
 		return
 	}
-	if err := os.Rename(name, d.path); err != nil {
+	if err := fsreplace.Rename(name, d.path); err != nil {
 		os.Remove(name)
 		return
 	}

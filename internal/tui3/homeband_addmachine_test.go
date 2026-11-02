@@ -38,7 +38,7 @@ func addMachineFrame(a *app, width int) string {
 func TestAddMachineCardShowsForAFleetOfOne(t *testing.T) {
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	got := addMachineFrame(a, 80)
-	for _, want := range []string{"Add another device", "pick up your work anywhere, exactly where you left it.", addMachineShow} {
+	for _, want := range []string{"Add another device", "Pick up your work anywhere, exactly where you left it.", addMachineShow} {
 		if !strings.Contains(strings.Join(strings.Fields(got), " "), want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -86,14 +86,11 @@ func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T
 	a.addMachine = addMachine{size: 1, known: true}
 	a.openHome()
 	a.toggleAddMachine()
-	cmd := a.paste(testLink)
-	if cmd == nil {
-		t.Fatal("a pasted link did not open the approve screen")
-	}
+	drive(t, a, tea.PasteMsg{Content: testLink})
+	r.press("enter")
 	if a.addMachine.open {
 		t.Fatal("the card stayed open under the approve screen")
 	}
-	drive(t, a, cmd())
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
 	if !strings.Contains(door.did(), "pending:"+testLink) {
 		t.Fatalf("door was not asked for the link: %s", door.did())
@@ -276,8 +273,148 @@ func TestAddMachinePasteOnHomeShowsTheApproveScreen(t *testing.T) {
 	a.openHome()
 	drive(t, a, altD)
 	drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
+	r.press("enter")
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
 	if got := plain(frame(a)); !strings.Contains(got, "wants to pair") {
 		t.Fatalf("no approve screen on the frame:\n%s", got)
+	}
+}
+
+// Click the visible text through the same event boundary as the terminal.
+func clickAddMachineText(t *testing.T, a *app, text string) {
+	t.Helper()
+	for y, line := range strings.Split(plain(frame(a)), "\n") {
+		if x := strings.Index(line, text); x >= 0 {
+			drive(t, a, tea.MouseClickMsg{X: ansi.StringWidth(line[:x]), Y: y, Button: tea.MouseLeft})
+			return
+		}
+	}
+	t.Fatalf("no clickable %q in frame:\n%s", text, plain(frame(a)))
+}
+
+func TestAddMachineClickOpensInstructions(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	clickAddMachineText(t, a, addMachineHeading)
+	if !strings.Contains(plain(frame(a)), addMachineStepRun) {
+		t.Fatalf("click did not open pairing instructions:\n%s", plain(frame(a)))
+	}
+}
+
+func TestAddMachineClickFieldTypesAndSubmitsLink(t *testing.T) {
+	door := &fakeApprovals{pending: tower(time.Now())}
+	a, r := approveApp(t, door)
+	a.addMachine = addMachine{size: 1, known: true}
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	clickAddMachineText(t, a, addMachineHeading)
+	clickAddMachineText(t, a, addMachineField)
+	for _, ch := range testLink {
+		r.press(string(ch))
+	}
+	if !strings.Contains(plain(frame(a)), testLink) {
+		t.Fatalf("typed link is not visible in the field:\n%s", plain(frame(a)))
+	}
+	if a.home.box.String() != "" {
+		t.Fatalf("pairing input leaked into chat draft: %q", a.home.box.String())
+	}
+	r.press("enter")
+	r.until("pairing approval", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
+	if !strings.Contains(door.did(), "pending:"+testLink) {
+		t.Fatalf("typed link did not reach approval: %s", door.did())
+	}
+}
+
+func TestAddMachineClickFieldPasteAndReturnToDraft(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	clickAddMachineText(t, a, addMachineHeading)
+	clickAddMachineText(t, a, "Paste pairing link")
+	drive(t, a, tea.PasteMsg{Content: testLink})
+	if a.pair.open || !strings.Contains(plain(frame(a)), testLink) {
+		t.Fatalf("paste should remain editable until Enter:\n%s", plain(frame(a)))
+	}
+	clickAddMachineText(t, a, "type to search or start something new")
+	drive(t, a, key("h"), key("i"))
+	if a.home.box.String() != "hi" {
+		t.Fatalf("clicking the composer did not restore typing: %q", a.home.box.String())
+	}
+	drive(t, a, key("backspace"), key("backspace"))
+	if !strings.Contains(plain(frame(a)), testLink) {
+		t.Fatal("returning to the draft lost the pairing link")
+	}
+}
+
+func TestAddMachineClickRemainsUsableOnShortTerminal(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 80, Height: 20})
+	clickAddMachineText(t, a, addMachineHeading)
+	clickAddMachineText(t, a, "Paste pairing link")
+	drive(t, a, key("x"))
+	if !strings.Contains(plain(frame(a)), "> x") || a.home.box.String() != "" {
+		t.Fatalf("short terminal lost the pairing input:\n%s", plain(frame(a)))
+	}
+}
+
+func TestAddMachineInvalidLinkStaysEditable(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	clickAddMachineText(t, a, addMachineHeading)
+	drive(t, a, tea.PasteMsg{Content: "not a pairing link"}, key("enter"))
+	got := plain(frame(a))
+	if a.pair.open || !strings.Contains(got, "not a pairing link") || !strings.Contains(got, "Enter a pairing link") {
+		t.Fatalf("invalid input needs an editable value and explanation:\n%s", got)
+	}
+	if a.home.box.String() != "" {
+		t.Fatal("invalid pairing link was sent to the chat draft")
+	}
+}
+
+func TestAddMachineFieldDoesNotTakeOverlayPaste(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	clickAddMachineText(t, a, addMachineHeading)
+	a.openPicker()
+	drive(t, a, tea.PasteMsg{Content: "needle"})
+	if got := a.pick.filter.String(); got != "needle" {
+		t.Fatalf("paste did not reach the model filter: %q", got)
+	}
+	if a.addMachine.box.String() != "" {
+		t.Fatal("the hidden pairing field took the overlay's paste")
+	}
+}
+
+func TestAddMachineShortcutPreservesExistingDraft(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	for _, ch := range "draft" {
+		drive(t, a, key(string(ch)))
+	}
+	drive(t, a, altD)
+	if !strings.Contains(plain(frame(a)), "Paste pairing link") {
+		t.Fatalf("shortcut focused an invisible pairing field:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("x"))
+	if !strings.Contains(plain(frame(a)), "> x") || a.home.box.String() != "draft" {
+		t.Fatalf("pairing edits changed the existing draft:\n%s", plain(frame(a)))
+	}
+}
+
+func TestAddMachineHiddenOnResizeReleasesInput(t *testing.T) {
+	a := addMachineRig(&fakeApprovals{}, 1, true)
+	a.openHome()
+	drive(t, a, tea.WindowSizeMsg{Width: 100, Height: 40})
+	clickAddMachineText(t, a, addMachineHeading)
+	drive(t, a, tea.WindowSizeMsg{Width: 80, Height: 10})
+	_ = frame(a)
+	drive(t, a, key("x"))
+	if a.home.box.String() != "x" {
+		t.Fatalf("hidden pairing field kept the keyboard: draft=%q", a.home.box.String())
 	}
 }

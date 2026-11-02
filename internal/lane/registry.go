@@ -1,6 +1,10 @@
 package lane
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+	"time"
+)
 
 // ── ONE PLACE THE PARTS ARE PLUGGED TOGETHER ────────────────────────────────
 //
@@ -31,6 +35,9 @@ type Registry struct {
 	chooser Chooser
 	prober  Prober
 	store   Store
+
+	routing      atomic.Pointer[routingState]
+	routingStart time.Time
 }
 
 // defaultRegistry is the process's own set. It is a variable rather than a
@@ -59,13 +66,17 @@ func newRegistry() *Registry {
 	// moment it lands rather than leaving a factless belief in the file until
 	// some later beat happens to prime it (belief.go's dress).
 	beliefs.readFrom(pages)
-	return &Registry{
+	r := &Registry{
 		sheet:   pages,
 		ledger:  beliefs,
 		chooser: newChooser(),
 		prober:  newProber(),
 		store:   keeper,
+
+		routingStart: time.Now(),
 	}
+	r.routing.Store(&routingState{})
+	return r
 }
 
 // Sheet is the live sheet.
@@ -185,4 +196,6 @@ func (r *Registry) Reset() {
 	fresh := newRegistry()
 	r.sheet, r.ledger, r.chooser, r.prober, r.store =
 		fresh.sheet, fresh.ledger, fresh.chooser, fresh.prober, fresh.store
+	r.routing.Store(fresh.routing.Load())
+	r.routingStart = fresh.routingStart
 }

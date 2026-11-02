@@ -45,7 +45,9 @@ func (d *Doors) RecoverAutomatic(id int) (bool, error) {
 			cp := *rec
 			if why := factory.RecoveryBlockReason(*it); why != "" {
 				cp.State, cp.Reason = "exhausted", why
-			} else if cp.Attempts >= cp.Limit || !now.Before(cp.Deadline) {
+			} else if cp.Attempts >= cp.Limit || (held != nil && !now.Before(cp.Deadline)) {
+				// Out of attempts; or a worker that still holds the job never
+				// let a retry start within the runner-return window.
 				cp.State, cp.Reason = "exhausted", "Automatic recovery reached its limit. Try again when ready."
 			} else if held != nil {
 				// Keep the wait visible and bounded, but do not supersede a
@@ -61,7 +63,8 @@ func (d *Doors) RecoverAutomatic(id int) (bool, error) {
 				if err := run.StepControl(it, cp.Step, true, "", now); err != nil {
 					return false, err
 				}
-				cp.State, cp.NextAt = "queued", time.Time{}
+				// The wait for the runner to take this retry starts now.
+				cp.State, cp.NextAt, cp.Deadline = "queued", time.Time{}, now.Add(factory.RunnerReturnWindow)
 				cp.Attempts++
 				cp.Reason = fmt.Sprintf("Automatic retry %d of %d queued; waiting for the runner.", cp.Attempts, cp.Limit)
 				restarted, detail = true, cp.Reason

@@ -2,11 +2,15 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 const schemaV = 1
+
+// ErrReadOnly leaves pending records local when this window may only view the chat.
+var ErrReadOnly = errors.New("this window only shows the chat")
 
 // Cell-relative paths of the files this package persists inside a cell.
 const (

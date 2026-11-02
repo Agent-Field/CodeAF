@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -364,13 +365,10 @@ func openChatV3Local(launch localLaunch) error {
 	// door has no engine to ask about. Both keep the road they had
 	// ([tui3.Options.EngineAnswers]).
 	options.EngineAnswers = v3HostAnswers
-	// The draft this terminal has half-typed is keyed by the workspace and NOT
-	// by a machine, because there is no machine: a person who takes the host
-	// road today and the in-process door tomorrow is in the same place both
-	// times, and a key with an empty machine glued to the front of it would
-	// hide their own unsent words from them.
+	// The local engine and the in-process door share the same chat identity,
+	// so changing how the chat opens cannot hide its unsent words.
 	if dir, err := v3Dir(); err == nil {
-		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
+		options.DraftFile = tui3.ChatDraftFile(dir, "", welcome.Workspace, welcome.SessionFile)
 	}
 	// THIS IS A WINDOW ON THIS MACHINE, whose automations it shows: it holds
 	// its own presence here rather than asking the engine to, because the
@@ -402,6 +400,7 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		profileDir = settings.ProfileDir
 	}
 	options.ProfileDir = profileDir
+	options.Knowledge = knowledge.Open(config.ProfilePath(profileDir, ""))
 	// Home decides its greeting once, before the first frame. This engine's
 	// files are here, so its still-unknown wire cache must not turn fifty saved
 	// chats into an empty conversation for the rest of the window's lifetime.

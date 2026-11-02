@@ -35,8 +35,9 @@ type Entry struct {
 // one small record per deleted secret.
 type record struct {
 	Entry
-	Deleted bool  `json:"deleted,omitempty"`
-	Updated int64 `json:"updated,omitempty"`
+	Deleted  bool   `json:"deleted,omitempty"`
+	Updated  int64  `json:"updated,omitempty"`
+	Metadata string `json:"metadata,omitempty"`
 }
 
 // stampOf is the time a slot was last written, falling back to its document's.
@@ -73,6 +74,7 @@ var ErrNotFound = errors.New("keys: no such secret")
 // Vault is the local secret store rooted at a codeaf home.
 type Vault struct {
 	mu   sync.Mutex
+	home string
 	path string
 	key  []byte
 }
@@ -80,11 +82,16 @@ type Vault struct {
 // Open prepares the vault under home, creating the home and the identity on
 // first use. The vault seals under the identity's cell key: one root secret.
 func Open(home string) (*Vault, error) {
+	unlock, err := LockHome(home)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	id, err := identity.EnsureSolo(home)
 	if err != nil {
 		return nil, err
 	}
-	return &Vault{path: filepath.Join(home, "vault.enc"), key: id.CellKey()}, nil
+	return &Vault{home: home, path: filepath.Join(home, "vault.enc"), key: id.CellKey()}, nil
 }
 
 // Exists reports whether a vault has been written under home. Asking does not
@@ -114,6 +121,12 @@ func (v *Vault) Put(id string, e Entry) error { return v.PutAt(id, e, time.Now()
 // time of the edit, so recording an old edit late never beats a newer one that
 // another machine has already sent.
 func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
+	return v.PutMetadataAt(id, e, at, "")
+}
+
+// PutMetadataAt keeps a carrier's optional identity facts beside its value.
+// Older readers still receive the same value and ignore the extra metadata.
+func (v *Vault) PutMetadataAt(id string, e Entry, at time.Time, metadata string) error {
 	return v.update(func(d *vaultDoc) error {
 		stamp := at.UnixMilli()
 		if previous, exists := d.Secrets[id]; exists {
@@ -121,9 +134,33 @@ func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
 		}
 		// A new slot has its own edit clock. Falling back to the document's
 		// clock would make another setting's recent capture age this one.
-		d.Secrets[id] = record{Entry: e, Updated: stamp}
+		d.Secrets[id] = record{Entry: e, Updated: stamp, Metadata: metadata}
 		return nil
 	})
+}
+
+// Annotate supplies missing carrier facts without making the choice newer.
+// The expected value prevents an upgrade from describing a different choice
+// that arrived from another computer while the profile was being read.
+func (v *Vault) Annotate(id string, expected Entry, metadata string) error {
+	unlock, err := v.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	d, err := v.readLocked()
+	if err != nil {
+		return err
+	}
+	r, ok := d.Secrets[id]
+	if !ok || !r.live() || r.Entry != expected || r.Metadata != "" || metadata == "" {
+		return nil
+	}
+	r.Updated = r.stampOf(d)
+	r.Metadata = metadata
+	d.Secrets[id] = r
+	// Preserve the document clock too: older slots may still inherit it.
+	return v.write(d)
 }
 
 // Get returns the secret under id.
@@ -180,6 +217,28 @@ func (v *Vault) Entries(project string) ([]Entry, error) {
 	return out, nil
 }
 
+// Revision identifies a slot's choice and the carrier facts saved with it.
+type Revision struct {
+	Stamp    int64
+	Metadata string
+}
+
+// Revisions returns the revisions of a scope's live slots in one vault read.
+// Receivers can remember a rejected revision without changing the shared slot.
+func (v *Vault) Revisions(scope string) (map[string]Revision, error) {
+	d, err := v.read()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]Revision{}
+	for _, r := range d.Secrets {
+		if r.live() && r.Scope == scope {
+			out[r.Name] = Revision{Stamp: r.stampOf(d), Metadata: r.Metadata}
+		}
+	}
+	return out, nil
+}
+
 // IDs lists the ids that start with prefix, in order, the removed ones too: a
 // reader that keeps one slot per path needs the paths that were deleted as much
 // as the live ones, since a tombstone is what tells it to delete the file.
@@ -191,6 +250,24 @@ func (v *Vault) IDs(prefix string) ([]string, error) {
 	var out []string
 	for id := range d.Secrets {
 		if strings.HasPrefix(id, prefix) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// Removed lists the ids that start with prefix and hold a tombstone, in order.
+// It opens the vault once, so a caller asking about many slots does not pay for
+// a whole vault per slot the way a loop over Deleted would.
+func (v *Vault) Removed(prefix string) ([]string, error) {
+	d, err := v.read()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for id, r := range d.Secrets {
+		if r.Deleted && strings.HasPrefix(id, prefix) {
 			out = append(out, id)
 		}
 	}
@@ -251,6 +328,15 @@ func idFor(d *vaultDoc, name, project string) (string, error) {
 }
 
 func (v *Vault) read() (*vaultDoc, error) {
+	unlock, err := v.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return v.readLocked()
+}
+
+func (v *Vault) readLocked() (*vaultDoc, error) {
 	blob, err := os.ReadFile(v.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return &vaultDoc{V: 1, Secrets: map[string]record{}}, nil
@@ -260,7 +346,7 @@ func (v *Vault) read() (*vaultDoc, error) {
 	}
 	d, err := openDoc(v.key, blob)
 	if errors.Is(err, ErrOtherKey) && v.adoptStaged() {
-		return v.read()
+		return v.readLocked()
 	}
 	return d, err
 }
@@ -303,9 +389,12 @@ var errUnchanged = errors.New("keys: nothing to write")
 
 // update applies fn to the stored document and writes it back atomically.
 func (v *Vault) update(fn func(*vaultDoc) error) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	d, err := v.read()
+	unlock, err := v.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	d, err := v.readLocked()
 	if err != nil {
 		return err
 	}

@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -289,6 +290,13 @@ func (st *Store) Save(it factory.Item) error {
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return err
 	}
+	var was factory.Item
+	wrote := false
+	defer func() {
+		if wrote {
+			st.tellWritten(was, it)
+		}
+	}()
 	return st.underItemLock(it.ID, func() error {
 		rev := 1
 		current, err := st.read(st.ItemPath(it.ID))
@@ -304,9 +312,11 @@ func (st *Store) Save(it factory.Item) error {
 		if err != nil {
 			return err
 		}
-		return live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
+		err = live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
 			return writeAtomic(st.ItemPath(it.ID), data)
 		})
+		was, wrote = current.Item, err == nil
+		return err
 	})
 }
 
@@ -320,7 +330,7 @@ func (st *Store) Save(it factory.Item) error {
 // window did since; a door that moves one field moves it on the document on
 // disk instead.
 func (st *Store) Update(id int, change func(*factory.Item) error) error {
-	return st.update(id, true, nil, change)
+	return st.update(id, writeWork, nil, change)
 }
 
 // UpdateExpected is [Store.Update] that writes only when the document on disk
@@ -331,7 +341,7 @@ func (st *Store) Update(id int, change func(*factory.Item) error) error {
 // revision here and gets [*StaleError], with nothing written and change never
 // called, when the job moved.
 func (st *Store) UpdateExpected(id, revision int, change func(*factory.Item) error) error {
-	return st.update(id, true, &revision, change)
+	return st.update(id, writeWork, &revision, change)
 }
 
 // StaleError is [Store.UpdateExpected]'s refusal: the document is at Revision,
@@ -353,18 +363,81 @@ func (e *StaleError) Error() string {
 // read the factory made by itself is not the item moving: every row on a
 // freshly connected floor would otherwise say `now` the minute it was read.
 func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
-	return st.update(id, false, nil, change)
+	return st.update(id, writeAnnotation, nil, change)
+}
+
+// UpdatePersonal is [Store.Update] for one person's own fact about a job (the
+// brief revision they last saw, whether they follow it): the same
+// read-modify-write under the item's flock, with the revision AND Changed left
+// as they were. The revision is what every open page's `expect.version`
+// carries, and nothing any other reader sees has moved, so another person's
+// page must not go stale over it. A later revision-checked write is still safe:
+// it runs its change on the document on disk, which holds this write.
+//
+// change answers whether it changed anything. When it did not (the same
+// revision seen again, a follow that was already on), nothing is written, so a
+// page that reports the same fact on every read does not rewrite the job's
+// document and wake every watcher of the factory's folder each time.
+func (st *Store) UpdatePersonal(id int, change func(*factory.Item) bool) error {
+	err := st.update(id, writePersonal, nil, func(it *factory.Item) error {
+		if !change(it) {
+			return errUnchanged
+		}
+		return nil
+	})
+	if errors.Is(err, errUnchanged) {
+		return nil
+	}
+	return err
+}
+
+// errUnchanged ends a personal write whose change changed nothing, before
+// anything is written.
+var errUnchanged = errors.New("factory store: nothing changed")
+
+// writeMode is what a write says about the job besides its change: whether the
+// work moved (Changed stamped) and whether the document is a new revision.
+type writeMode struct{ stamp, bump bool }
+
+var (
+	writeWork       = writeMode{stamp: true, bump: true}
+	writeAnnotation = writeMode{stamp: false, bump: true}
+	writePersonal   = writeMode{stamp: false, bump: false}
+)
+
+// written is told of every item write; see [WhenWritten].
+var written atomic.Pointer[func(st *Store, before, after factory.Item)]
+
+// WhenWritten has fn told of every item a write lands, as it was before the
+// write and as it is after, with the store written. It is told after the
+// item's lock is let go, so fn may write elsewhere (the crews store, where a
+// job's room follows the job), and two writes of one item may be told in
+// either order: fn that acts on the item reads it again from st. A later fn
+// replaces an earlier one.
+func WhenWritten(fn func(st *Store, before, after factory.Item)) { written.Store(&fn) }
+
+func (st *Store) tellWritten(before, after factory.Item) {
+	if fn := written.Load(); fn != nil {
+		(*fn)(st, before, after)
+	}
 }
 
 // update is every read-modify-write. A nil expect writes whatever revision is
 // on disk; a revision refuses any other one before change runs.
-func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.Item) error) error {
+func (st *Store) update(id int, mode writeMode, expect *int, change func(*factory.Item) error) error {
 	if err := checkID(id); err != nil {
 		return ErrNotFound
 	}
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return err
 	}
+	var was, after factory.Item
+	wrote := false
+	defer func() {
+		if wrote {
+			st.tellWritten(was, after)
+		}
+	}()
 	return st.underItemLock(id, func() error {
 		current, err := st.read(st.ItemPath(id))
 		if err != nil {
@@ -402,7 +475,7 @@ func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.It
 		}
 		it.ID = id
 		now := st.now()
-		if stamp {
+		if mode.stamp {
 			it.Changed = now
 		}
 		// THE ACTIVITY IS WRITTEN HERE, ON EVERY WRITE, by comparing the
@@ -411,13 +484,19 @@ func (st *Store) update(id int, stamp bool, expect *int, change func(*factory.It
 		// `stages changed by plan`) without one of them having to remember.
 		factory.NoteChanges(before, &it, now)
 		st.retainOutput(&it)
-		data, err := marshalDoc(doc{Revision: current.Revision + 1, Item: it})
+		rev := current.Revision
+		if mode.bump {
+			rev++
+		}
+		data, err := marshalDoc(doc{Revision: rev, Item: it})
 		if err != nil {
 			return err
 		}
-		return live.Commit(st.root, live.Changes(before, it, now), func() error {
+		err = live.Commit(st.root, live.Changes(before, it, now), func() error {
 			return writeAtomic(st.ItemPath(id), data)
 		})
+		was, after, wrote = before, it, err == nil
+		return err
 	})
 }
 

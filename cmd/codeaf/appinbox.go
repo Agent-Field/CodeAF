@@ -18,13 +18,13 @@ package main
 // [appBackend.sweepAgent]), which is what keeps its asks answerable here.
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -71,14 +71,27 @@ type appInboxTap struct {
 }
 
 func (t *appInboxTap) Emit(event string, data any) {
-	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
-	// its crews, its live line, and working while a turn runs.
-	if changed, ok := data.(appwire.AgentChanged); ok {
-		t.b.dress(&changed.Agent)
-		data = changed
+	// A QUESTION COUNTS FOR UNREAD BEFORE THE WINDOW HEARS OF IT, so a mark
+	// sent once the window has it is never stamped ahead of it.
+	if opened, ok := data.(appwire.AskOpened); ok {
+		t.b.noteAsk(opened.Ask)
 	}
-	t.next.Emit(event, data)
+	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
+	// its crews, its live line, working while a turn runs, and unread. Its
+	// unread is worked out and said in one step, so two roads saying the
+	// agent at once cannot leave the window with the older reading.
+	if changed, ok := data.(appwire.AgentChanged); ok {
+		t.b.dressState(&changed.Agent)
+		t.b.sayingUnread(func() {
+			t.b.dressUnreadLocked(&changed.Agent)
+			t.next.Emit(event, changed)
+		})
+		data = changed
+	} else {
+		t.next.Emit(event, data)
+	}
 	t.b.inboxSaw(event, data)
+	t.b.unreadSaw(data)
 }
 
 // newAppInbox listens on emit and answers the emitter the backend uses.
@@ -208,14 +221,12 @@ func (b *appBackend) inboxWhere(ask appwire.Ask) appwire.InboxWhere {
 	// Inbox is where it reaches the person, and the person knows a member by
 	// the handle the crew's Team and Log call it, never by a conversation title
 	// they did not write. One crew is named, the one it works in.
-	if f, err := teamstore.Load(b.crewProfile()); err == nil {
-		if t, m, ok := appCrewSeat(f, ask.Agent); ok {
-			where.Crew = t.ID
-			if m.Handle != "" {
-				title = m.Handle
-			}
-			where.Path = append([]string{t.Name}, where.Path...)
+	if t, m, ok := b.crewSeatOf(ask.Agent); ok {
+		where.Crew = t.ID
+		if m.Handle != "" {
+			title = m.Handle
 		}
+		where.Path = append([]string{t.Name}, where.Path...)
 	}
 	if title != "" {
 		at := 0
@@ -352,12 +363,74 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 	if !ok {
 		return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)
 	}
+	// Validate outside the Inbox lock because finding a crew owner can emit.
+	words := strings.TrimSpace(strings.TrimSpace(text) + "\n" + strings.TrimSpace(why))
+	if episode, service := strings.CutPrefix(ask, "service:"); service {
+		if err := appValidateServiceAnswer(option); err != nil {
+			return time.Time{}, err
+		}
+		local, _, _ := strings.Cut(episode, ".")
+		svc, owner, serviceID, err := b.serviceRow(agent + ":" + local)
+		if err != nil {
+			return time.Time{}, err
+		}
+		if _, err := svc.sup.Get(owner, serviceID); err != nil {
+			return time.Time{}, appServiceError(err)
+		}
+	} else {
+		asks, err := b.ListAsks(agent)
+		if err != nil {
+			return time.Time{}, err
+		}
+		at := slices.IndexFunc(asks, func(q appwire.Ask) bool { return q.ID == ask })
+		if at < 0 {
+			return time.Time{}, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", ask)
+		}
+		q := asks[at]
+		switch q.Subkind {
+		case appwire.SubkindCrewProposal:
+			err = appValidateProposalAnswer(option)
+		case appwire.SubkindOrderRun:
+			err = appValidateOrderAnswer(ask, option)
+		case appwire.SubkindCrewDecision:
+			_, err = appValidateCrewDecisionAnswer(option, text)
+		}
+		if err != nil {
+			return time.Time{}, err
+		}
+		a, err := b.findCrewOwner(agent)
+		if err != nil {
+			return time.Time{}, err
+		}
+		var refused error
+		b.locked(func() {
+			if a.live == nil {
+				return
+			}
+			if money, found := a.live.money[ask]; found {
+				_, refused = appValidateMoneyAnswer(money.scope, ask, option, words, a.live.running)
+			} else if question, found := a.live.questions[ask]; found {
+				_, refused = appValidateQuestionAnswer(ask, question, option, words, scope)
+			}
+		})
+		if refused != nil {
+			return time.Time{}, refused
+		}
+		if option != "" && !slices.ContainsFunc(q.Options, func(o appwire.AskOption) bool { return o.ID == option }) {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", ask, option)
+		}
+		if q.Subkind == appwire.SubkindPermission {
+			if err := appValidateScope(option, scope, q.Scopes); err != nil {
+				return time.Time{}, err
+			}
+		}
+	}
 	in := b.inbox
 	var refused error
 	var until time.Time
 	in.locked(func() {
 		switch {
-		case in.items[id] == nil:
+		case in.items[id] == nil || in.closing[id].ID != "":
 			refused = appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
 		case in.held[id] != nil:
 			refused = appwire.Errorf(appwire.CodeBusy, "the Inbox item %s is already being answered", id)
@@ -428,6 +501,9 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	}
 	if strings.HasPrefix(askID, appProposalAskPrefix) {
 		run := b.crews()
+		if run == nil {
+			return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
+		}
 		run.proposal.Lock()
 		defer run.proposal.Unlock()
 		var ask appwire.Ask

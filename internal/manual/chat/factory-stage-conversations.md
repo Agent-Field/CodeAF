@@ -178,6 +178,10 @@ over when it has been idle, with no task it started still running.
 itself, so it cannot be opened yet, and `enter` on its stage row says
 `plan has no conversation yet · it opens when a round ends`. Once the round has ended, `enter`
 on the row, or the team menu, opens it like any other conversation.
+When the job ends (merged, closed, answered, dropped or closed here) its team closes quietly,
+with no report and no line in its traffic; its conversations still open from the item's rows.
+When the job comes back (you reopen it or run it again, or its pull request is reopened) its team
+opens again and its next round joins it. A team you closed or archived yourself stays as you left it.
 
 ## what a stage may do — edit files and run commands, the allow posture
 
@@ -241,7 +245,10 @@ once before a run, and only the steps not yet started during one (see change one
 on the factory page). What it set is one line, the same one the Adapted row of the item page
 shows, one clause for each change and the reason last:
 `manager set review: thorough on security, code and architecture · added arch after review ·
-skipped neaten · why: touches the call row`. A change the bounds refuse is answered
+skipped neaten · why: touches the call row`. It also removes a step from the job (`removed
+pretest`; skipping only switches a step off) and moves one (`moved docs after write`, `moved
+docs first`) when you ask; proof, a fixed step, a step a rule names, a step that has run,
+your approvals and your posts stay where they are. A change the bounds refuse is answered
 `nothing changed: <why>`, for instance `a stage is one word · "do through" is two` or
 `the run has nine stages already`, and the steps stay as they were.
 
@@ -335,13 +342,16 @@ available through its normal ownership and budget gates. A cap must be raised be
 another attempt can spend. Completed publication status does not disable step retry.
 
 In Auto, a lost runner or a recognised transient model connection failure gets at
-most three automatic retries, after 2, 5 and 15 seconds, within a two-minute recovery
-window. The service persists the attempt count and deadline, including waiting for
-the runner, and resumes them after a restart without an open job tab. The job shows
+most three automatic retries, after 2, 5 and 15 seconds. They are counted in
+attempts, not minutes; the only deadline is for the runner, which has 15 minutes
+to take a queued retry. The same 15 minutes, counted again from each new failure
+and from a raised budget, bound how long a worker that still holds the job may
+keep it before a retry can start. The service persists the attempt count and that deadline
+and resumes them after a restart without an open job tab. The job shows
 the reason, next retry and limit; **Try again now** can skip the wait. A still-held
 worker is never silently replaced. After the limit, **Try again** makes a new manual
 attempt. Manual, Take over, repository-off, spending limits and terminal jobs stop
-automatic admission. A successful step ends that recovery window.
+automatic admission. A successful step ends that recovery.
 
 A message has **Retry message** only when the backend retained the failed message.
 An old error in a cold or factory-owned conversation does not imply that capability.
@@ -442,6 +452,15 @@ worktree and context. Its spend still counts toward the job budget. Working chat
 inside the job and out of Agents. Stop any active manual turn before **Resume pipeline**;
 resuming checks the current work and continues on the same issue and PR. Finished jobs
 and a publication already underway cannot change control.
+
+Before a pull request is open, **Resume pipeline** after **Take over** checks your
+commits again: the run goes back to the first check or review that had already
+passed (a check, or a step that runs until clean or green) and runs it and every
+step after it, so an approval after it asks again. The steps before it and the money
+spent are kept, and every step reads that the branch changed by hand. A job taken
+over before any check or review ran carries on from its step, and so does one whose
+budget is spent, until Budget is raised and the check is run again. With a pull request
+open, resuming asks the PR's follow-up to inspect and verify the changes instead.
 
 The manager's `factory_follow_pr` tool turns an explicit request such as “fix it anyway”
 into another maintenance investigation. It needs an open linked PR and the original
@@ -624,9 +643,11 @@ shell profiles or change the engine's own PATH.
 
 After a repair claims completion and verification rejects it, the agent can
 correct the check in the same conversation. Three completion reports repeating
-the same unresolved evidence stop the stage. Recovery is also bounded to five
-minutes after the first rejected completion, even if the agent keeps investigating.
-These bounds do not shorten the initial test run. The job retains local changes,
+the same unresolved evidence stop the stage, and so do six refused completion
+reports in all, even when the evidence changes each time. No timer runs: a slow
+repair that is making progress is not stopped for the minutes it takes, and the
+stage's own time and money bounds still apply. These bounds do not shorten the
+initial test run. The job retains local changes,
 explains the specific problem and waits for a retry instead of opening another
 paid repair round automatically. A successful correction cancels that stop.
 
@@ -700,8 +721,10 @@ Implementation checks are not prerequisites for a Plan report.
 ## Result delivery and Mac sleep
 
 When this Mac sleeps, the app reports the elected runner's sleep to its factory,
-even when no step chat is open. The service retains that sleeping runner's lease;
-wake refreshes its silence deadline. A failed presence request remains an error,
+even when no step chat is open. The service retains that sleeping runner's lease
+for 24 hours at most after the computer went to sleep; wake refreshes its silence
+deadline. A computer that never wakes no longer holds its job for good: after
+that day the job is queued again like any silent hold. A failed presence request remains an error,
 not confirmation that remote ownership was retained. This does not change how
 ordinary conversation processes stop for sleep or turn an interrupted check green.
 

@@ -31,7 +31,8 @@ type After func(d time.Duration, fn func()) (stop func() bool)
 // whose sockets simply fell silent is announced offline by the sweep at the
 // moment its last one lapsed, and its sockets are told to go.
 type presence struct {
-	clock func() time.Time
+	clock   func() time.Time
+	started time.Time
 	// after is the timers the debounce and the sweep run on.
 	after After
 
@@ -57,7 +58,8 @@ type seenAt struct {
 
 func newPresence(clock func() time.Time) *presence {
 	return &presence{
-		clock: clock,
+		clock:   clock,
+		started: clock(),
 		after: func(d time.Duration, fn func()) func() bool {
 			return time.AfterFunc(d, fn).Stop
 		},
@@ -257,6 +259,12 @@ func (p *presence) onlineSet() map[string]bool {
 	return p.liveDevices()
 }
 
+func (p *presence) presentSet() map[string]bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.believed()
+}
+
 // announce tells every event socket except those of `except` about e.
 func (p *presence) announce(e dirwatch.Event, except string) {
 	p.mu.Lock()
@@ -310,12 +318,43 @@ func (f *Feed) Online(device string) bool { return f.pres.online(device) }
 // OnlineSet is every device that holds a watch socket now. The caller owns the map.
 func (f *Feed) OnlineSet() map[string]bool { return f.pres.onlineSet() }
 
+// PresentSet agrees with presence events during the reconnect debounce. A
+// roster refresh cannot announce offline before the watch would announce it.
+func (f *Feed) PresentSet() map[string]bool { return f.pres.presentSet() }
+
+// WithPresence applies this feed's evidence to a roster answer. A fresh relay
+// has not observed the stored computers yet; absence becomes offline only
+// after a default presence window, or after an observed socket actually lapses.
+func (f *Feed) WithPresence(v PresenceView) PresenceView {
+	p := f.pres
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	online := p.believed()
+	young := p.clock().Sub(p.started) < Window(DefaultBeat)
+	for id, seen := range v.Devices {
+		if young && !online[id] && len(p.socks[id]) == 0 && !p.gone[id] {
+			delete(v.Devices, id)
+			continue
+		}
+		seen.Online = online[id]
+		if seen.Online {
+			seen.LastSeen = v.Now
+		}
+		v.Devices[id] = seen
+	}
+	return v
+}
+
 // announceJoin tells the event sockets of every device but the new one that it
 // joined. A backend calls it, through SetOnJoin, in the turn that approves the
 // device; the name is the sealed name as stored.
 func (f *Feed) announceJoin(j Joined) {
 	f.pres.announce(dirwatch.JoinedEvent(j.Device, j.Name, j.Platform, j.At), j.Device)
 }
+
+// AnnounceJoin publishes an advisory event only after a consensus host has
+// committed the device and completed its pairing delivery.
+func (f *Feed) AnnounceJoin(j Joined) { f.announceJoin(j) }
 
 // OnSeen registers fn to stamp a device's last_seen: it is called with the
 // directory time (unix ms) at each watch connect and when a device closes its

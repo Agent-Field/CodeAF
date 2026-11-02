@@ -108,6 +108,9 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	}
 	job := h.withVersion(api.FromItem(updated))
 	job.Can = api.CanFor(updated, me, h.clock())
+	if h.mode() != api.FactorySolo && h.isOperator(r) {
+		api.AsOperator(&job.Can, updated, me)
+	}
 	h.presentJob(r, &job)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
@@ -146,6 +149,9 @@ func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}
 	job := h.withVersion(api.FromItem(updated))
 	job.Can = api.CanFor(updated, me, h.clock())
+	if h.mode() != api.FactorySolo && h.isOperator(r) {
+		api.AsOperator(&job.Can, updated, me)
+	}
 	h.presentJob(r, &job)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
@@ -210,9 +216,23 @@ func (h *Handler) idVerb(door func(int) error) jobAction {
 	}
 }
 
+// holdVerb is pause (on) and resume. A hold of a queued job, or the end of
+// one, is a decision on the queue that only the job's person makes, and it is
+// recorded with who made it.
 func (h *Handler) holdVerb(on bool) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
-		h.finish(w, h.seam.Hold(it.ID, on))
+		if it.State != factory.StateQueued {
+			h.finish(w, h.seam.Hold(it.ID, on))
+			return
+		}
+		if !h.owns(w, r, it) {
+			return
+		}
+		kind := record.Held
+		if !on {
+			kind = record.Resumed
+		}
+		h.finish(w, h.recordAction(r, it, kind, "", func() error { return h.seam.Hold(it.ID, on) }))
 	}
 }
 
@@ -332,6 +352,9 @@ func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.I
 	if h.mode() == api.FactorySolo {
 		return true
 	}
+	if factory.WaitingApprover(it) != "" {
+		return h.approves(w, r, it)
+	}
 	if !factory.JobPersonOnly(factory.NeedsKind(it)) {
 		return true
 	}
@@ -349,6 +372,35 @@ func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.I
 	h.writeRefusal(w, http.StatusForbidden, refusalBody{
 		Error: "only @" + who + " can answer this", Reason: factory.ReasonNotJobPerson,
 		By: "@" + who, JobPerson: "@" + who, NowState: h.withVersion(api.FromItem(it)).State,
+	})
+	return false
+}
+
+// approves is [Handler.owns] for an approval: when the approval names who it
+// waits on (factory.WaitingApprover), that person, or any operator for the
+// operator role, and nobody else, the job's person included; otherwise the
+// job's person. A solo factory has one person, who answers everything.
+func (h *Handler) approves(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.mode() == api.FactorySolo {
+		return true
+	}
+	who := factory.WaitingApprover(it)
+	if who == "" {
+		return h.owns(w, r, it)
+	}
+	handle, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return false
+	}
+	if factory.MayApprove(it, handle, h.isOperator(r)) {
+		return true
+	}
+	words := "only " + who + " can approve this"
+	if who == factory.ApproverOperator {
+		words = "only an operator of this factory can approve this"
+	}
+	h.writeRefusal(w, http.StatusForbidden, refusalBody{
+		Error: words, Reason: factory.ReasonNotApprover, By: who, NowState: h.withVersion(api.FromItem(it)).State,
 	})
 	return false
 }
@@ -752,6 +804,12 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var selected []factory.Stage
+	// copied is the factory's copy the read of the selected steps used, nil
+	// for main's file: the job's file is decided with them
+	// ([factory.Item.DecidePipeline]), so its start runs the file its steps
+	// came from.
+	var copied *factory.PipelineCopy
+	decided := false
 	if body.Pipeline != "" && body.Pipeline != "default" {
 		if !h.requireVerb(w, h.config.Store != nil && h.seam.RecipeAt != nil) {
 			return
@@ -766,6 +824,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			recipe = f.Recipe()
+			copied, decided = f.Copy, true
 		}
 		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
 		if body.Pipeline == "issue" {
@@ -804,7 +863,13 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.stampAsk(r, id, body)) {
 		return
 	}
-	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error { it.Stages = factory.CopyStages(selected); return nil })) {
+	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error {
+		it.Stages = factory.CopyStages(selected)
+		if decided {
+			it.DecidePipeline(copied, h.clock())
+		}
+		return nil
+	})) {
 		return
 	}
 	if body.Issue && h.failed(w, h.keepIssue(id, issue)) {

@@ -190,6 +190,7 @@ func quickAgent(t *testing.T, completer Completer, more ...func(*Config)) (*Agen
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Cleanup(CloseUsage)
 	t.Setenv("OPENROUTER_API_KEY", "")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo

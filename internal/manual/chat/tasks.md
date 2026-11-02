@@ -4830,6 +4830,13 @@ holds the same door through its `tasks` tool, and whichever of the two is used f
 The other finds the question already gone and says `already answered` rather than raising
 an error.
 
+## Saving task progress and desktop settings on Windows
+
+Task checkpoints and session, project and desktop records wait up to 630 ms when
+a Windows reader briefly has the old file open. A lasting failure keeps the old
+file and the writer's usual error handling. A task checkpoint failure is still
+logged as `session: could not write the task checkpoint` with its path and cause.
+
 ## The task has a conflict — conflicts with your branch, resolve it or drop it
 
 When the same file changed on both sides, nothing is forced onto your branch: the merge is
@@ -5282,6 +5289,21 @@ The sidebar is for active work and unresolved decisions. It has no Done or Ended
 fold. Click its `Tasks` heading to open results and history on demand. Finished tasks
 keep their results, reports, files, branch and run details; hiding routine completion
 receipts never deletes their records.
+
+A moved chat keeps the same finished task in Tasks even when its checkpoint has
+only completed runs and no plan nodes. The activity page lists the chat once and
+uses the task's settled state. When the transferred local worker journal is
+present, its transcript remains readable without the original plan database.
+
+## Read finished task steps and transcript after moving to another computer
+
+Open `/task`, select the finished task and press `enter`. Its saved steps and
+worker replies open expanded, including on macOS and when the chat lives under
+a temporary folder. The `transcript` tab shows that worker's conversation;
+`work` shows the working copy when it is available. If the copy is gone, the tab
+says `the run's working copy is not here any more`; return to `transcript` to
+keep reading. Finished history is read-only, offers no task actions, and never
+starts the task again.
 
 ## What does queued behind it mean? — open tasks are waiting on this one
 

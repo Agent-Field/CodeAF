@@ -27,7 +27,7 @@ func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 		Ending:  node.ending,
 		Life:    node.phase,
 		Kind:    node.kind,
-		Phase:   node.doing,
+		Phase:   taskDoingWords(node),
 		Gap:     node.mending,
 		Hold:    node.waiting,
 		Waits:   a.taskWaitTitles(node),

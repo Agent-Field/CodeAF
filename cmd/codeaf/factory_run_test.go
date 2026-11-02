@@ -157,7 +157,7 @@ func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 	if src := opts.Source("acme/api"); src != nil {
 		t.Errorf("a floor with no token and nothing watched has a source: %T", src)
 	}
-	if len(opts.Recipe("api").Stages) == 0 {
+	if len(opts.Recipe(factory.Item{Repo: "api"}).Stages) == 0 {
 		t.Error("a repository with no recipe file has no stages; it should run the default recipe")
 	}
 }

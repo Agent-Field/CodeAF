@@ -66,6 +66,9 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// THE BELT IS THE SEAT'S, and InTask is the predicate's other half
 	// ([Config.mayBashBelt]): a run worker is a task, and the switch above is
 	// what said a run may build one.
+	if err := prepareWorkspaceWriteScope(&config); err != nil {
+		return nil, err
+	}
 	config.InTask = true
 	config.bashBelt = true
 	// A RUN WORKER THINKS AT THE WORK SEAT, ONE ACTION PER ROUND. The belt's
@@ -92,6 +95,9 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// place to inherit.
 	taskDir := plandb.TaskDir(filepath.Dir(storePath), task.ID)
 	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := configureOwnedWorker(&config, taskDir); err != nil {
 		return nil, err
 	}
 	config.SessionFile = filepath.Join(taskDir, workerJournalName())

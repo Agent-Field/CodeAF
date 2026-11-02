@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -292,11 +293,37 @@ func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 	if st == nil {
 		return nil
 	}
-	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(factoryRepoDirs(st, workspace)))
+	dirs := factoryRepoDirs(st, workspace)
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(st), factory.WithRepoDirs(dirs))
 	if seam.Edit == nil {
 		return nil
 	}
-	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: seam.Edit}
+	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: managerEdit(st, dirs)}
+}
+
+// managerEdit is the manager's edit through the door a person's edit takes
+// ([lease.Doors.EditSteps]): A WORKER RUNNING THE JOB FROM ITS OWN COPY IS
+// WITHDRAWN in the same change, so it pulls the edited steps, and no report
+// from the old copy can write its steps back. The bounds are the pipeline the
+// job runs (the file it was decided on, [factoryJobRead]) with the
+// factory's rules, as the person's edit is bounded.
+func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
+	return func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
+		it, err := st.Get(id)
+		if err != nil {
+			return factory.Item{}, nil, err
+		}
+		repo := factory.RepoOf(it)
+		f, err := factoryJobRead(ctx, st, it, dirs(repo))
+		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
+			return factory.Item{}, nil, err
+		}
+		desk, err := lease.Open(st, lease.Options{})
+		if err != nil {
+			return factory.Item{}, nil, err
+		}
+		return lease.NewDoors(desk).EditSteps(id, e, f.Recipe())
+	}
 }
 
 // seamRunDoor finds the item a conversation manages and edits it through the
@@ -366,11 +393,11 @@ func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (fa
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	held, err := desk.HasLiveHold(it.ID)
+	held, threadOnly, err := desk.LiveHold(it.ID)
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	return factory.StatusForManager(it, held, time.Now()), nil
+	return factory.StatusForManagerHold(it, held, threadOnly, time.Now()), nil
 }
 
 func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {

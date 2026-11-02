@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // git runs one git command in dir and answers its standard output as it came.
@@ -12,8 +14,13 @@ import (
 // cannot be put back.
 func git(dir string, args ...string) (string, error) {
 	var stderr strings.Builder
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.Dir = dir
+	// A cold capture must not be invalidated by an optional index refresh in
+	// a read-only repository query while its portable relay artifact is prepared.
+	if env.Get("CODEAF_PROTOTYPE_TASK_STORAGE") == "1" {
+		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	}
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {

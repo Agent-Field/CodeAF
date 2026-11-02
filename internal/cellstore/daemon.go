@@ -72,7 +72,7 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), err)
 	}
 	if response.Err != "" {
-		return nil, fmt.Errorf("engine %s: %s", op.Verb(), response.Err)
+		return nil, classifyStoreBusyError(t.DataDir, d.Socket, fmt.Errorf("engine %s: %s", op.Verb(), response.Err))
 	}
 	return response.Ok, nil
 }
@@ -134,7 +134,7 @@ func (d Daemon) Stop(ctx context.Context) error {
 	return nil
 }
 
-func unavailable(err error) error { return fmt.Errorf("%w: %v", ErrUnavailable, err) }
+func unavailable(err error) error { return fmt.Errorf("%w: %w", ErrUnavailable, err) }
 
 func newRequest(t Target, op Op) wireRequest {
 	args, _ := json.Marshal(op) // an Op is plain data
@@ -169,6 +169,12 @@ func exchange(conn net.Conn, req wireRequest) (wireResponse, error) {
 
 // connect dials the daemon, starting it when nothing listens.
 func (d Daemon) connect(ctx context.Context) (net.Conn, error) {
+	if d.Socket == "" {
+		return nil, fmt.Errorf("no private saving-engine socket directory fits the address limit")
+	}
+	if err := validateSocket(d.Socket); err != nil {
+		return nil, err
+	}
 	if conn, err := dial(ctx, d.Socket); err == nil {
 		return conn, nil
 	}
@@ -176,6 +182,9 @@ func (d Daemon) connect(ctx context.Context) (net.Conn, error) {
 }
 
 func dial(ctx context.Context, socket string) (net.Conn, error) {
+	if err := validateSocket(socket); err != nil {
+		return nil, err
+	}
 	var dialer net.Dialer
 	return dialer.DialContext(ctx, "unix", socket)
 }

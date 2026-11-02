@@ -8,12 +8,14 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"net"
 	"time"
 
 	"golang.org/x/crypto/nacl/box"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -24,7 +26,10 @@ type LinkUI interface {
 }
 
 // Fleet is what a device sees of the identity it just joined.
-type Fleet struct{ Devices, Workspaces int }
+type Fleet struct {
+	Devices, Workspaces int
+	With                string
+}
 
 // LinkJoining is this computer as the device that asks to join.
 type LinkJoining struct {
@@ -70,21 +75,15 @@ func JoinByLink(ctx context.Context, reqs directory.Requests, j LinkJoining, ui 
 	return me.install(ctx, j, grant)
 }
 
-// free refuses a join that would overwrite chats, before any approval is spent.
-// A computer that has only been started holds nothing to lose, so it joins
-// without being told to replace; one that is used keeps its chats unless told.
+// free checks that this home's pairing can be read. Whether the grant is the
+// same set, its successor, or a different set is decided only once it arrives.
 func (j LinkJoining) free() (LinkJoining, error) {
 	if j.Replace {
 		return j, nil
 	}
-	if _, err := identity.Load(j.Home); err != nil {
-		return j, nil
+	if _, err := identity.Load(j.Home); err != nil && !errors.Is(err, identity.ErrNone) {
+		return j, err
 	}
-	fresh, err := identity.Joinable(j.Home)
-	if err != nil || !fresh {
-		return j, ErrDifferentChats
-	}
-	j.MergeState = true
 	return j, nil
 }
 
@@ -188,12 +187,17 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	joined, err := adopt(j.Joining, g.Grant)
+	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev)
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	if err := identity.Install(j.Home, g.Identity, dev); err != nil {
-		return LinkJoined{}, err
+	// Explicit re-pairing installs the approved device even in the same set,
+	// so a removed device can return without changing the shared identity.
+	if !joined.Already || j.Replace {
+		if err := identity.Install(j.Home, g.Identity, dev); err != nil {
+			return LinkJoined{}, err
+		}
+		joined.Already = false
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {
@@ -204,7 +208,10 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 
 // phraseLink turns what the directory said into the one sentence for it.
 func phraseLink(err error, host string) error {
+	var network net.Error
 	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &network) && network.Timeout():
+		return ServiceTimeout(err, host)
 	case errors.Is(err, directory.ErrRequestGone):
 		return ErrLinkExpired
 	case errors.Is(err, directory.ErrRateLimited):
@@ -214,7 +221,7 @@ func phraseLink(err error, host string) error {
 	case errors.Is(err, directory.ErrTooOld):
 		return ErrRelayTooOld
 	case errors.Is(err, directory.ErrUnreachable):
-		return CannotReachHost(host)
+		return syncwords.Explain(err, host)
 	}
-	return err
+	return syncwords.Explain(err, host)
 }

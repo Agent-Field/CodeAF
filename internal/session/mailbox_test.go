@@ -581,6 +581,7 @@ func TestALandingIsNotSettledWhenTheJournalRefusesTheWrite(t *testing.T) {
 	// The journal stops taking lines under the conversation, which is what a
 	// disk error or a closed file looks like to the write.
 	sitting.agent.file.mu.Lock()
+	_ = sitting.agent.file.file.Close()
 	sitting.agent.file.closed = true
 	sitting.agent.file.mu.Unlock()
 

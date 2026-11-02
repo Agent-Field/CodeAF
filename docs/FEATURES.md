@@ -1,3 +1,8 @@
+> **Historical mixed-surface catalog.** This inventory includes resident designs
+> and earlier UI concepts; it is not a verified current chat feature reference.
+> Use the [chat capabilities manual](../internal/manual/chat/what-i-can-do.md).
+> See the [documentation map](README.md) for current references.
+
 # codeaf — everything it can do
 
 This is the master feature catalog: one entry per capability, each with

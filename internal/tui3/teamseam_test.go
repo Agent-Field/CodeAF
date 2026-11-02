@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"strings"
@@ -310,5 +311,44 @@ func TestTheLocalTeamsSeamCarriesTheDelegationDoors(t *testing.T) {
 	}
 	if _, _, same, _ := seam.Spend("0a0a0a0a0a0a", "", at); !same {
 		t.Fatal("a quiet spend was not same")
+	}
+}
+
+// A STORE THE LOCAL SEAM REFUSES IS NOT AN EMPTY ONE. A newer build's store
+// is never set aside, so the window does not hold it as known and empty, where
+// every edit would fail with nothing said: it reads it off the loop, as a
+// connection's first read, and says why it holds no teams.
+func TestALocalStoreItCannotReadIsNotHeldEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := saveTeams(dir, []team{{ID: "0a0a0a0a0a0a", Name: "harbor"}}); err != nil {
+		t.Fatal(err)
+	}
+	teamstore.Close()
+	db, err := sql.Open("sqlite", teamstore.Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 1000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var watch teamstore.Watch
+	seam := localTeams(dir, &watch)
+	if teams, _, known := seam.Load(nil); known {
+		t.Fatalf("a newer store loaded as known with %d teams", len(teams))
+	}
+
+	a, _, _ := tabApp(t)
+	a.teamsDisk.door = seam
+	a.wall.loaded = false
+	a.teamsEnsure()
+	teamsFlush(t, a)
+	if a.wall.loaded {
+		t.Fatal("the window holds a store it cannot read as loaded")
+	}
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "newer") {
+		t.Fatalf("the window said %q", got)
 	}
 }

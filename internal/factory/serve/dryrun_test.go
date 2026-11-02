@@ -10,9 +10,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -29,29 +31,45 @@ start:
   never: [auth/**]
 `
 
+// measured gives every candidate a small rubric and the floor five finished
+// small jobs in acme/web at fifty cents, so a written max_cost has a measured
+// cost to compare with instead of asking for want of history.
+func measured(items []factory.Item) []factory.Item {
+	for i := range items {
+		items[i].Triage.Rubric = &factory.Rubric{}
+	}
+	for i := range estimate.MinJobs {
+		started := now.Add(-time.Duration(48-i) * time.Hour)
+		items = append(items, factory.Item{ID: 9000 + i, Repo: "acme/web", Kind: factory.KindIssue, State: factory.StateShipped, DoneHow: "answered",
+			Triage: factory.Triage{Rubric: &factory.Rubric{}},
+			Stream: &factory.Stream{Spent: 0.5, Started: started, Ended: started.Add(10 * time.Minute)}})
+	}
+	return items
+}
+
 func dryRunFloor() []factory.Item {
 	return []factory.Item{
 		{ID: 2088, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready", "size:S"}, Cap: 2,
-			Triage: factory.Triage{Size: "XL", Est: 99, TriagedAt: now}},
+			Triage: factory.Triage{Size: "XL", TriagedAt: now}},
 		{ID: 1, Repo: "acme/web", State: factory.StateRunning, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 2090, Repo: "Acme/Web", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"Agent-Ready", "Size/M"}, Cap: 2,
-			Triage: factory.Triage{Size: "M", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "M", TriagedAt: now}},
 		{ID: 50, Repo: "acme/api", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 2077, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindPR, Tier: factory.TierOwner, Labels: []string{"agent-ready", "size:s"}, Cap: 2,
 			Files:  []factory.FileChange{{Path: "auth/keys.go", Added: 4}},
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 60, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"bug"},
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 70, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready", "size:S"}, Cap: 3,
-			Triage: factory.Triage{Size: "S", Est: 1.5, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 80, Repo: "acme/web", State: factory.StateQueued, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 2104, Repo: "Web", Product: "Acme", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready", "size:S"}, Cap: 2,
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		{ID: 2105, Repo: "web", Product: "other", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
-			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+			Triage: factory.Triage{Size: "S", TriagedAt: now}},
 	}
 }
 
@@ -71,16 +89,17 @@ func TestDryRunAppliesStartToTheBacklog(t *testing.T) {
 		return factory.DefaultRecipe(), nil, dir, nil
 	}
 	seam.Load = func() (factory.Snapshot, error) {
-		return factory.Snapshot{Items: dryRunFloor()}, nil
+		return factory.Snapshot{Items: measured(dryRunFloor())}, nil
 	}
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
 	want := api.DryRun{
 		WouldStart: []int{2088, 2090, 2104},
 		WouldAsk: []api.Ask{
-			{Job: 2077, Reason: "touches auth/keys.go (auth/**)"},
+			{Job: 2077, Reason: "protected · auth/** · auth/keys.go"},
 			{Job: 70, Reason: "job budget $3 is over $2"},
 		},
 		WouldWait: []api.Ask{{Job: 60, Reason: "no agent-ready label"}},
+		CostJobs:  estimate.MinJobs,
 	}
 	if !reflect.DeepEqual(body.DryRun, want) {
 		t.Fatalf("dry run = %+v", body.DryRun)
@@ -95,7 +114,7 @@ func TestDryRunWithNoCheckoutUsesDefaults(t *testing.T) {
 	seam.Load = func() (factory.Snapshot, error) {
 		return factory.Snapshot{Items: []factory.Item{
 			{ID: 4, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
-				Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+				Triage: factory.Triage{Size: "S", TriagedAt: now}},
 		}}, nil
 	}
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
@@ -153,14 +172,14 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(dryRunYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	guess := factory.Triage{Size: "S", Est: 0.1, TriagedAt: now}
+	guess := factory.Triage{Size: "S", TriagedAt: now}
 	ready := func(id int, cap float64, labels ...string) factory.Item {
 		return factory.Item{ID: id, Repo: "acme/web", State: factory.StateNew, Kind: factory.KindIssue,
 			Labels: append([]string{"agent-ready"}, labels...), Cap: cap, Triage: guess}
 	}
 	items := []factory.Item{
 		ready(1, 1, "size:S"),           // starts
-		ready(2, 1),                     // no label: the S guess must not start it
+		ready(2, 1),                     // no label: M, whatever the S guess says
 		ready(3, 3, "size:S"),           // over the $2 ceiling despite a $0.10 estimate
 		ready(4, 1, "size:XL"),          // explicit oversize
 		ready(5, 1, "size:S", "size/L"), // several: the largest wins
@@ -172,8 +191,10 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 	seam.RecipeAt = func(string) (factory.Recipe, []factory.Problem, string, error) {
 		return factory.DefaultRecipe(), nil, dir, nil
 	}
+	items = measured(items)
 	seam.Load = func() (factory.Snapshot, error) { return factory.Snapshot{Items: items}, nil }
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
+	book := estimate.Open(items)
 
 	file, err := pipeline.Load(dir)
 	if err != nil {
@@ -183,7 +204,10 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 	ask := map[int]string{}
 	var wait []int
 	for _, it := range items {
-		switch d := file.DecideJob(it, intake.Job(it).Paths); {
+		if it.State != factory.StateNew {
+			continue
+		}
+		switch d := file.DecideJob(it, intake.Job(it).Paths, intake.Cost(book, it)); {
 		case d.Start:
 			start = append(start, it.ID)
 		case d.Ask:
@@ -208,10 +232,10 @@ func TestDryRunMatchesDecideJobForTheSameItems(t *testing.T) {
 		t.Fatalf("wait = %+v, want %v", body.WouldWait, wait)
 	}
 	// The anchors, so parity cannot pass by both sides being wrong together.
-	if !reflect.DeepEqual(start, []int{1, 6}) {
+	if !reflect.DeepEqual(start, []int{1, 2, 6}) {
 		t.Fatalf("DecideJob starts %v", start)
 	}
-	for id, want := range map[int]string{2: "no size label", 3: "job budget $3 is over $2", 4: "this one is XL", 5: "this one is L", 7: "job budget"} {
+	for id, want := range map[int]string{3: "job budget $3 is over $2", 4: "this one is XL", 5: "this one is L", 7: "job budget"} {
 		found := false
 		for _, a := range body.WouldAsk {
 			found = found || (a.Job == id && strings.Contains(a.Reason, want))

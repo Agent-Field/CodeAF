@@ -118,6 +118,9 @@ const (
 // and the cost, because those are the three questions asked about work that is
 // already over.
 type TaskIndexEntry struct {
+	Computer     string `json:"computer,omitempty"`
+	Unreachable  bool   `json:"unreachable,omitempty"`
+	RanElsewhere bool   `json:"ran_elsewhere,omitempty"`
 	// ID is the node's id inside the session that ran it, decimal. It is NOT
 	// unique across the file — ids restart with every conversation — which is
 	// why SessionID sits beside it and why the pair is what identifies a row.
@@ -707,6 +710,13 @@ func (a *Agent) recordTaskIndex(node *TaskNode) {
 // regular task reaches it through [Agent.recordTaskIndex]; an adaptive run has
 // no TaskNode, so its completion seam supplies the same citation directly.
 func (a *Agent) recordTaskIndexEntry(entry TaskIndexEntry) {
+	select {
+	case <-a.closeDone:
+		// A goroutine that outlived Close must not create index or lock files
+		// after the session has handed its directories back to the caller.
+		return
+	default:
+	}
 	path := a.config.taskIndexFile()
 	if path == "" || strings.TrimSpace(entry.Title) == "" {
 		return

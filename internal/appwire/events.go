@@ -6,6 +6,10 @@ import "reflect"
 // other type is a contract break; the test recorders check every event they
 // see against this table, and the schema is generated from it.
 var eventShapes = map[string]reflect.Type{
+	EventPairChanged:       reflect.TypeFor[PairResult](),
+	EventChatChanged:       reflect.TypeFor[ChatChanged](),
+	EventChatRemoved:       reflect.TypeFor[ChatRemoved](),
+	EventSyncChanged:       reflect.TypeFor[SyncChanged](),
 	EventHello:             reflect.TypeFor[Hello](),
 	EventAgentChanged:      reflect.TypeFor[AgentChanged](),
 	EventTurnStarted:       reflect.TypeFor[TurnStarted](),
@@ -44,6 +48,8 @@ var eventShapes = map[string]reflect.Type{
 	EventOrderAsking:       reflect.TypeFor[OrderFired](),
 	EventSettingsChanged:   reflect.TypeFor[SettingsChanged](),
 	EventProviderChanged:   reflect.TypeFor[ProviderChanged](),
+	EventModelsChanged:     reflect.TypeFor[Empty](),
+	EventDevicesChanged:    reflect.TypeFor[DevicesResult](),
 	EventLog:               reflect.TypeFor[Log](),
 
 	EventCollectionChanged: reflect.TypeFor[CollectionChanged](),

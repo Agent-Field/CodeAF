@@ -211,3 +211,25 @@ test('locate over a thousand rids is too_many', async () => {
     (e) => e instanceof Wire && e.code === 'too_many' && e.status === 400,
   );
 });
+
+// R21 exercises the actual local workerd R2 backend: storage failure cannot
+// produce upload evidence, and retry repairs the immutable bytes and index.
+test('R21 upload references become confirmable only after local R2 and index completion', async () => {
+  let fail = true;
+  const bucket = {
+    async put(...args) { if (fail) throw new Error('injected R2 failure'); return env.bucket.put(...args); },
+    get(...args) { return env.bucket.get(...args); },
+  };
+  const sql = memorySql(), store = new R2Store(bucket, sql, 'id_r21');
+  const f = frame([rid(21), rid(22)]), sealed = await sealFrame(f.bytes);
+  await assert.rejects(store.put(sealed), /injected R2 failure/);
+  await assert.rejects(store.checkReferences(rid(21), [sealed.id], async () => {}));
+  fail = false;
+  assert.equal(await store.put(sealed), true);
+  let completed = false;
+  await store.checkReferences(rid(21), [sealed.id], async () => { completed = true; });
+  assert(completed);
+  const cold = new R2Store(bucket, sql, 'id_r21');
+  await cold.checkReferences(rid(21), [], async () => {});
+  assert.deepEqual(await cold.get(rid(22)), f.objs[1]);
+});

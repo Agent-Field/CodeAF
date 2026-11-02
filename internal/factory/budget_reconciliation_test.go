@@ -164,3 +164,18 @@ func TestBudgetRecoveryCannotEraseCriticalDecisionsOrHumanPause(t *testing.T) {
 		})
 	}
 }
+
+// The Follow PR step's note says what the follow-up says: a budget pause
+// never leaves it reading "watching".
+func TestFollowPRBudgetPauseIsTheStepsNoteToo(t *testing.T) {
+	it := followItem()
+	it.Autonomy = AutonomyAuto
+	it.Stream.Spent = it.Cap
+	it.FollowUp.Attempt = 1
+	if !QueueCIFollowUp(&it, time.Now()) || it.FollowUp.State != "needs_you" {
+		t.Fatal("budget exhaustion did not park maintenance")
+	}
+	if note := it.Stream.Phases[EnsureFollowPR(&it)].Note; !strings.HasPrefix(note, "Job budget reached") {
+		t.Fatalf("the Follow PR step still says %q", note)
+	}
+}

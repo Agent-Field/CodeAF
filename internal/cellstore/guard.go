@@ -2,7 +2,7 @@ package cellstore
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -21,13 +21,33 @@ import (
 // so the file stays where it is on this machine and is simply never captured.
 // Nothing is written into the tree: the exclusions live in the cell's own folder.
 //
-// The zero Guard works: the vault lives in the codeaf home and a notice is one
-// line on stderr.
+// A FILE KEPT OUT FOR A SECRET IS LOGGED, NEVER SAID IN THE CHAT. A fresh
+// checkout of a repository whose tests carry fake keys kept a dozen of them out
+// on its first seal, and each was a line in the chat that asked nothing of the
+// person. The line goes to the engine's log instead ([Guard.Kept]), and the
+// cell's policy file keeps the list of what is withheld. A file this machine
+// cannot read, or a vault that cannot be written, is still said: the person can
+// fix those.
+//
+// The zero Guard works: the vault lives in the codeaf home, a kept-out file is
+// one line in the log and a notice is one line in the standard logger.
+//
+// A NOTICE WITH NO ROUTE GOES TO THE STANDARD LOGGER, NEVER STRAIGHT TO STDERR.
+// The full-screen surface parks the logger in chat.log for its whole lifetime
+// (cmd/codeaf withSurfaceLogger), and engines built with no route run inside
+// it: the older-chat copier seals a whole folder in the background, and each
+// fake key in a test file printed a raw row through the frame. Outside the
+// surface the logger is stderr, so a command line still sees the line.
 type Guard struct {
 	// Home is the codeaf home that holds the vault; empty means the state root.
 	Home string
-	// Notify receives one line for a path newly withheld; nil writes to stderr.
+	// Notify receives one line the person should see (a file this machine
+	// cannot read, a vault that cannot be written); nil writes it to the
+	// standard logger.
 	Notify func(string)
+	// Kept receives one line for a path newly withheld because it holds a
+	// secret; nil writes it to the log.
+	Kept func(string)
 	// Ledger, when set, spares a file that has not changed since it was found
 	// clean from being read again; EngineFor sets one per session.
 	Ledger *keys.Ledger
@@ -46,7 +66,7 @@ func (g Guard) notify(line string) {
 		g.Notify(line)
 		return
 	}
-	fmt.Fprintln(os.Stderr, "codeaf: "+line)
+	log.Printf("seal guard: %s", line)
 }
 
 // Screen is the pre-seal step for the tree the seal will capture. changed is
@@ -130,14 +150,22 @@ func pathsOf(found []keys.Finding) []string {
 	return out
 }
 
-// announce tells a person once about each path newly withheld. It names the
-// file and the rule, never the value.
+// announce logs once each path newly withheld. It names the file and the rule,
+// never the value.
 func (g Guard) announce(before policyFile, found []keys.Finding) {
 	for _, f := range found {
 		if !before.isWithheld(f.Path) {
-			g.notify(noticeFor(f))
+			g.kept(noticeFor(f))
 		}
 	}
+}
+
+func (g Guard) kept(line string) {
+	if g.Kept != nil {
+		g.Kept(line)
+		return
+	}
+	log.Printf("seal guard: %s", line)
 }
 
 // announceUnreadable tells a person once about each path newly left out because

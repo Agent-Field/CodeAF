@@ -221,7 +221,7 @@ func (b *appBackend) startAnswer(claim appStartClaim, replayed bool, goal appwir
 // teamCommitted says whether a team with id is in the teams file, and errors
 // when the file cannot be read: a failed read is not an absent team.
 func (b *appBackend) teamCommitted(id string) (bool, error) {
-	file, err := teamstore.Load(b.crewProfile())
+	file, err := teamstore.LoadTeams(b.crewProfile(), id)
 	if err != nil {
 		return false, err
 	}
@@ -412,12 +412,11 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 	if err != nil {
 		// A WRITE THAT FAILED MAY HAVE LANDED: it is looked for by the key of
 		// the conversation it would have seated.
-		file, lookErr := teamstore.Load(b.crewProfile())
+		root, ok, lookErr := teamstore.LoadRoot(b.crewProfile())
 		if lookErr != nil {
 			return appwire.RootStartResult{}, appwire.Errorf(appwire.CodeUncertain,
 				"the global manager may have been made; look at All teams before starting it again")
 		}
-		root, ok := file.Root()
 		if !ok || root.Manager != manager.Key {
 			b.takeBack(transcript)
 			return appwire.RootStartResult{}, err
@@ -445,11 +444,10 @@ func (b *appBackend) RootStart(ask appwire.RootStartAsk) (appwire.RootStartResul
 // still there: the answer to a start that has nothing left to make. A
 // conversation that cannot be checked is an error, not a missing manager.
 func (b *appBackend) rootHeld() (appwire.RootStartResult, bool, error) {
-	file, err := teamstore.Load(b.crewProfile())
+	root, ok, err := teamstore.LoadRoot(b.crewProfile())
 	if err != nil {
 		return appwire.RootStartResult{}, false, appEngineError(err)
 	}
-	root, ok := file.Root()
 	if !ok || root.Manager == "" {
 		return appwire.RootStartResult{}, false, nil
 	}
@@ -482,7 +480,7 @@ func appConversationHere(t teamstore.Team, key string) (bool, error) {
 	var dirs []string
 	for _, path := range []string{m.File, m.Key} {
 		if filepath.IsAbs(path) {
-			dirs = append(dirs, filepath.Dir(path))
+			dirs = append(dirs, session.DirOf(path))
 		}
 	}
 	for _, dir := range dirs {
@@ -536,10 +534,10 @@ func (b *appBackend) takeBack(transcript string) {
 }
 
 // appUnmint removes a minted conversation folder, and only that: it must sit
-// under root and hold nothing but the lookup file mint wrote. A folder with
+// under root and hold only the lookup and empty metadata lock mint wrote. A folder with
 // anything else in it is somebody's, and stays.
 func appUnmint(root, transcript string) {
-	dir := filepath.Dir(filepath.Clean(transcript))
+	dir := session.DirOf(filepath.Clean(transcript))
 	rel, err := filepath.Rel(root, dir)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return
@@ -549,7 +547,14 @@ func appUnmint(root, transcript string) {
 		return
 	}
 	for _, e := range entries {
-		if e.Name() != "meta.json" {
+		if e.Name() == "meta.json" {
+			continue
+		}
+		if e.Name() != session.MetaLockName {
+			return
+		}
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
 			return
 		}
 	}

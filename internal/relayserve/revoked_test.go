@@ -159,7 +159,7 @@ func TestRevokeUnderConcurrentRequests(t *testing.T) {
 // real signed HTTP against the relay. Each case gets a fresh relay and a fresh
 // identity; a device is made under it the first time a case names it.
 func TestRelayPassesDirectoryConformance(t *testing.T) {
-	directorytest.RunRigs(t, func(t *testing.T) directorytest.Rig {
+	directorytest.RunConsensusRigs(t, func(t *testing.T) directorytest.Rig {
 		r := newRig(t)
 		id, first := newIdentity(t)
 		var mu sync.Mutex

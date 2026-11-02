@@ -24,6 +24,7 @@ import (
 type engine struct{}
 
 func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummary {
+	ctx, storage := withStorageProof(ctx)
 	// THE REVIEW ROUND IS ON for every task the chat's door opens: a leaf
 	// that lands done is checked against its acceptance, and a check that
 	// does not hold becomes a fix task the run waits on.
@@ -40,14 +41,14 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 	// AND THE CHECK SEAT CLIMBS THE SAME LADDER `codeaf do` CLIMBS, minus
 	// the flag no chat has ([chatCheckSeat]), so CODEAF_CHECK_MODEL reaches
 	// a `/task` run the way the manual says it reaches a headless one.
-	factory := CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
+	factory := CrewFactoryWithWorkers(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
 		Work:  spec.WorkModel,
 		Plan:  spec.PlanModel,
 		Check: chatCheckSeat(spec.CheckModel),
 		// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
 		// check's environment rung included ([Seats.One]).
 		One: spec.OneModel,
-	}, spec.Memory, false, spec.CompleterFor, spec.Sources)
+	}, spec.Memory, false, spec.CompleterFor, []WorkerOption{WithWorkspaceURI(spec.WorkspaceURI), WithWorkspaceSet(spec.WorkspaceSet)}, spec.Sources)
 	// A `/task` run from interactive chat is never spend-preauthorized: `--yes-spend`
 	// is a headless `codeaf do` flag, so a chat run is held to the daily ceiling
 	// like every interactive turn (crew.go's CrewFactory, #1546).
@@ -95,8 +96,9 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		OnWorker:  spec.OnWorker,
 	})
 	return session.RunSummary{
-		Outcome: string(outcome),
-		Result:  summary.Result,
+		StorageSafe: storage.safe() && spec.Delegate == nil,
+		Outcome:     string(outcome),
+		Result:      summary.Result,
 		// WHICH LIMIT FIRED IS A FACT AND NOT A WORD IN THE OUTCOME SENTENCE:
 		// the run's own typed answer crosses the seam here, mapped one for one,
 		// so the session draws the ending out of the fact and never parses the

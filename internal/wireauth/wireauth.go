@@ -40,11 +40,15 @@ var ErrRevoked = errors.New("wireauth: device revoked")
 // other refusal: only pairing with the new identity brings a machine back.
 var ErrGone = errors.New("wireauth: this identity was replaced and deleted")
 
-// Narrow reduces any authentication failure to the four the wires name: skew,
-// revoked and gone, which the person can act on, and the rest. Both wires call it,
+// ErrUnavailable preserves a retryable failure after signature authentication
+// when the authoritative namespace cannot complete its quorum read or import.
+var ErrUnavailable = errors.New("wireauth: coordination unavailable")
+
+// Narrow preserves named authentication and coordination failures, then reduces
+// all other errors to unauthorized. Both wires call it,
 // so they cannot disagree about what a refusal is.
 func Narrow(err error) error {
-	for _, named := range []error{ErrSkew, ErrRevoked, ErrGone} {
+	for _, named := range []error{ErrSkew, ErrRevoked, ErrGone, ErrUnavailable} {
 		if errors.Is(err, named) {
 			return named
 		}

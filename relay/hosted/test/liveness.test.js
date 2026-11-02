@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OFFLINE_DEBOUNCE_MS, Liveness } from '../src/liveness.js';
-import { windowMs } from '../src/limits.js';
+import { PRESENCE, windowMs } from '../src/limits.js';
+import { matchRoute } from '../src/routes.js';
 
 /** A room is a set of fake sockets and the clock; each socket keeps the frames it was sent. */
 function room() {
@@ -43,6 +44,31 @@ function room() {
 }
 
 const flat = (s) => s.got.map((f) => `${f.device}:${f.online}`);
+
+test('P2 restarted presence memory omits unseen computers, observes returns, and reports real lapses', async () => {
+  const r = room(), devices = { dev_a: { last_seen: 1 }, dev_b: { last_seen: 2 } };
+  const tenant = {
+    dir: { list: () => ({ devices }), version: 7 }, clock: () => r.now.t,
+    watchers: { present: () => r.liveness.present(), presence: (rows, now) => r.liveness.presence(rows, now) },
+  };
+  const read = async () => {
+    const route = matchRoute('GET', '/v1/dir/presence');
+    const reply = route.handler({ tenant }, route.args);
+    assert.equal(reply.headers.get('Codeaf-Dir-Version'), '7');
+    return (await reply.json()).devices;
+  };
+  assert.deepEqual(await read(), {}, 'P2 a restarted relay has not seen either stored computer');
+  const b = r.join('dev_b', true, 10);
+  assert.equal((await read()).dev_b.online, true);
+  r.leave(b);
+  assert.equal((await read()).dev_b.online, true, 'P2 reconnect debounce still applies');
+  r.now.t += OFFLINE_DEBOUNCE_MS;
+  r.liveness.expire();
+  assert.equal((await read()).dev_b.online, false, 'P2 an observed lapse is evidence even during startup');
+  assert.equal((await read()).dev_a, undefined);
+  r.now.t += windowMs(PRESENCE.defaultBeat);
+  assert.equal((await read()).dev_a.online, false, 'P2 no return for a full window is offline');
+});
 
 test('the first socket of a device is news to the other event sockets, a second socket is not', () => {
   const r = room();
@@ -281,4 +307,14 @@ test('a device that comes back after being told offline is told online at once',
   r.leave(frozen);
   r.join('dev_b', false, 10);
   assert.deepEqual(flat(viewer), ['dev_b:true', 'dev_b:false', 'dev_b:true']);
+});
+
+test('P1 presence queries retain a computer until its reconnect debounce lapses', () => {
+  const r = room();
+  const a = r.join('dev_a');
+  r.leave(a);
+  assert.deepEqual([...r.liveness.present()], ['dev_a']);
+  r.now.t += OFFLINE_DEBOUNCE_MS;
+  r.liveness.expire();
+  assert.deepEqual([...r.liveness.present()], []);
 });

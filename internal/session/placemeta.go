@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 )
 
@@ -70,6 +71,7 @@ func (a *Agent) stampUserLocked(text string) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
@@ -276,6 +278,12 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		if meta.ID == "" {
 			meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
 		}
+		if meta.ChatURI == "" {
+			meta.ChatURI = snapshot.ChatURI
+		}
+		if meta.AgentIdentity == nil {
+			meta.AgentIdentity = snapshot.AgentIdentity
+		}
 		if meta.Workspace == "" {
 			meta.Workspace = snapshot.Workspace
 		}
@@ -286,6 +294,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 		}
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
@@ -294,7 +303,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Trees = snapshot.Trees
 		}
 		patch(&meta)
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -303,6 +312,12 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 // comes back whole rather than half-filled. The agent lock is held for the
 // model, which /model moves.
 func (a *Agent) fillMetaLocked(meta Meta) Meta {
+	if !a.config.InTask && a.config.WorkspaceURI != "" {
+		meta.ChatURI = a.config.WorkspaceURI
+	}
+	if identity := a.config.agentIdentity(); identity != nil {
+		meta.AgentIdentity = identity
+	}
 	if strings.TrimSpace(meta.ID) == "" {
 		meta.ID = a.config.Place.ID()
 	}
@@ -322,6 +337,7 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	}
 	if model := strings.TrimSpace(a.model); model != "" {
 		meta.Model = model
+		meta.ModelProvider = a.config.serviceFor(model).Source.ID
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
@@ -385,6 +401,7 @@ func (a *Agent) stampMeta() {
 		meta.AutomaticModels = snapshot.AutomaticModels
 		meta.ModelIdentity = snapshot.ModelIdentity
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+		meta.ModelProvider = snapshot.ModelProvider
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }
@@ -418,16 +435,64 @@ func (a *Agent) stampMeta() {
 // file of a few hundred bytes, once per turn of a conversation, beside a
 // provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
 // stated reason: the total is a citation and the transcript is the record.
-func (a *Agent) stampSpend() {
+func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
+
+// stampSealed is [Agent.stampSpend] at a turn's seal, which also says when the
+// conversation last answered the person ([Meta.LastReplyAt]) if this turn
+// ended on an answer. It is the same one write, so a turn still owes meta.json
+// one write and not two.
+//
+// AN ANSWER IS THE TURN'S LAST WORD TO THE PERSON: an answer was recorded
+// since the last seal and the journal still ends on it, an assistant message
+// with words and no tool call. A turn that stopped on a tool step, on
+// thinking, or before saying anything leaves the stamp where it was, and so
+// does one that ends on a partial reply a stop cut short or on a line the
+// harness wrote in the model's place ([Agent.answeredLocked]).
+func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
+
+func (a *Agent) stampTurnEnd(sealed bool) {
 	a.mu.Lock()
 	dir := a.config.Place.Dir
 	snapshot := a.fillMetaLocked(Meta{})
 	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
+	replied := false
+	if sealed {
+		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
+		a.answeredSinceSeal = false
+	}
 	a.mu.Unlock()
-	if spent <= 0 && tokens <= 0 {
+	if !replied {
+		if spent <= 0 && tokens <= 0 {
+			return
+		}
+		a.writeSpendSnapshot(dir, snapshot, spent, tokens)
 		return
 	}
-	a.writeSpendSnapshot(dir, snapshot, spent, tokens)
+	at := time.Now()
+	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		if spent > 0 || tokens > 0 {
+			meta.SpentUSD, meta.Tokens = spent, tokens
+		}
+		meta.LastReplyAt = at
+	})
+}
+
+// answeredLocked says a recorded message answered the person: [isAnswer], and
+// not marked as a reply cut short (a stop, a steer) or as an operational line
+// (a checkpoint's hand-over note), which the model did not finish saying to
+// them. Callers hold a.mu.
+func (a *Agent) answeredLocked(message ai.Message) bool {
+	if !isAnswer(message) {
+		return false
+	}
+	mark := a.presentation.of(message)
+	return mark == nil || (!mark.Interrupted && mark.Audience != "operational")
+}
+
+// isAnswer says a message is an answer: the assistant's words, with no tool
+// call waiting on them.
+func isAnswer(message ai.Message) bool {
+	return message.Role == "assistant" && len(message.ToolCalls) == 0 && strings.TrimSpace(messageContentText(message)) != ""
 }
 
 // stampRestoredSpend fills the total in for a conversation resumed from a

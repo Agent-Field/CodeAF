@@ -158,6 +158,36 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if err != nil {
 		return err
 	}
+	// A STEER WHILE THE AGENT IS STARTING IS KEPT FOR ITS FIRST TURN, which is
+	// on its way and is what the person is correcting; it is given to that
+	// turn the moment it runs ([appBackend.bootSettle]), through this same
+	// door, so the full admission below applies then. It is checked before the
+	// gate, which the open holds for as long as it takes. A chat known to
+	// belong elsewhere is refused now. After a stop there is no turn to give
+	// it to, and it is refused as any steer with nothing running is.
+	if err := b.knownWorkRefusal(a); err != nil {
+		return err
+	}
+	kept := false
+	b.locked(func() {
+		if a.starting && !a.stopAsked {
+			var copied *appSending
+			if shown != nil {
+				c := *shown
+				copied = &c
+			}
+			a.early = append(a.early, appEarlySteer{text: text, clientID: clientID, shown: copied})
+			kept = true
+		}
+	})
+	if kept {
+		return nil
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return err
+	}
 	if _, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
 		return err
 	}
@@ -309,13 +339,39 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if err != nil {
 		return nil, err
 	}
+	// An agent still starting has its first turn on its way: a message
+	// queued now waits for that turn's end, like any other. It is queued
+	// before the gate, which the open holds for as long as it takes; the
+	// queue sends it through the ordinary door, admission and all, and a chat
+	// known to belong elsewhere is refused now.
+	if err := b.knownWorkRefusal(a); err != nil {
+		return nil, err
+	}
+	starting := false
+	var queued []appwire.Queued
+	b.locked(func() {
+		if starting = a.starting && !a.stopAsked; starting {
+			a.queueN++
+			a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID, shown: shown})
+			queued = appQueuedOf(a.queue)
+		}
+	})
+	if starting {
+		b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
+		return queued, nil
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return nil, err
+	}
 	live := b.liveOf(a)
 	busy := false
 	if live != nil {
 		b.locked(func() { busy = live.running || live.adopting > 0 })
 	}
 	if !busy {
-		if _, err := b.send(agent, text, clientID, shown); err != nil {
+		if _, err := b.sendLocked(a, text, clientID, shown); err != nil {
 			return nil, err
 		}
 		return b.queued(a), nil
@@ -326,12 +382,18 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if shown != nil && !shown.marksNothing(text) && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads; send it when the turn ends")
 	}
-	var queued []appwire.Queued
+	var refused error
 	b.locked(func() {
+		if refused = appLocationRefusal(a.view.Location); refused != nil {
+			return
+		}
 		a.queueN++
 		a.queue = append(a.queue, appQueued{id: "q" + strconv.Itoa(a.queueN), text: text, clientID: clientID, shown: shown})
 		queued = appQueuedOf(a.queue)
 	})
+	if refused != nil {
+		return nil, refused
+	}
 	b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
 	return queued, nil
 }
@@ -363,6 +425,8 @@ func (b *appBackend) changeQueue(agent, id string, change func(a *appAgent, at i
 	if err != nil {
 		return nil, err
 	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
 	var queued []appwire.Queued
 	found := false
 	b.locked(func() {
@@ -446,6 +510,11 @@ func (b *appBackend) MoveQueued(agent, id string, to int) ([]appwire.Queued, err
 // sendQueued sends the first queued message once a turn has ended and
 // nothing else is about to start.
 func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return
+	}
 	var next appQueued
 	var queued []appwire.Queued
 	var agent string
@@ -471,7 +540,16 @@ func (b *appBackend) sendQueued(a *appAgent, live *appLive) {
 	if shown != nil {
 		shown.queued = true
 	}
-	if _, err := b.send(agent, next.text, next.clientID, shown); err != nil {
+	if _, err := b.sendLocked(a, next.text, next.clientID, shown); err != nil {
+		var refusal *appwire.Error
+		if errors.As(err, &refusal) && refusal.Code == appwire.CodeConflict {
+			b.locked(func() {
+				a.queue = append([]appQueued{next}, a.queue...)
+				queued = appQueuedOf(a.queue)
+			})
+			b.emit.Emit(appwire.EventQueueChanged, appwire.QueueChanged{Agent: agent, Queued: queued})
+			return
+		}
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: "qx" + next.id, Agent: agent, Kind: appwire.EntryError, At: b.now(), Text: "the queued message was not sent: " + err.Error(),
 		}})
@@ -641,6 +719,8 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	}
 	text := strings.TrimSpace(strings.TrimSpace(answer.Text) + "\n" + strings.TrimSpace(answer.Why))
 	if answer.YouDecide {
+		a.gate.Lock()
+		defer a.gate.Unlock()
 		if !open {
 			return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
 		}
@@ -708,8 +788,8 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 // appDecideMark marks an ask the person handed back to the agent's own pick.
 const appDecideMark = "decide:"
 
-// HoldAsk stops an ask's clock. Only a proposed task has one: its hold is the
-// task's own.
+// HoldAsk stops an ask's clock through its owning lane. Proposed tasks keep
+// their task action; the model's questions use the engine's question hold.
 func (b *appBackend) HoldAsk(agent, id string) error {
 	a, err := b.findCrewOwner(agent)
 	if err != nil {
@@ -724,6 +804,16 @@ func (b *appBackend) HoldAsk(agent, id string) error {
 	b.locked(func() { q, open = live.questions[id] })
 	if !open {
 		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
+	}
+	if q.Kind == session.QuestionAsk {
+		holder, ok := live.conn.Conv.(interface {
+			HoldQuestion(session.QuestionKind, string)
+		})
+		if !ok {
+			return appwire.Errorf(appwire.CodeEngine, "this conversation cannot hold a question's clock")
+		}
+		holder.HoldQuestion(q.Kind, q.Token())
+		return nil
 	}
 	if q.Kind != session.QuestionTask || q.Deadline.IsZero() {
 		return nil
@@ -1094,7 +1184,7 @@ func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
 	submission := session.Submission{
 		Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads,
-		Queued: shown.queued, Creation: shown.creation,
+		Queued: shown.queued, Creation: shown.creation, From: shown.from,
 	}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
@@ -1350,11 +1440,11 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		said = *message.Said
 	}
 	shown := appAttachShown(said, kept)
-	if shown == nil && (message.Said != nil || len(reads) > 0) {
+	if shown == nil && (message.Said != nil || len(reads) > 0 || message.From != "") {
 		shown = &appSending{text: said}
 	}
 	if shown != nil {
-		shown.reads = reads
+		shown.reads, shown.from = reads, message.From
 	}
 	// THE PICTURES ARE RESOLVED AND CHECKED WHOLE BEFORE THE CONVERSATION IS
 	// OPENED: a message the engine would refuse leaves every chip staged.
@@ -1366,7 +1456,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 	}
 	if composed != nil {
 		if shown == nil {
-			shown = &appSending{text: said, reads: reads}
+			shown = &appSending{text: said, reads: reads, from: message.From}
 		}
 		shown.composed = composed
 	}
@@ -1377,7 +1467,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		shown.creation = creation
 	}
 	attempted := b.referenceAttempt(kept)
-	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
+	turn, err := b.sendLocked(a, appAttributed(message.From, appAttachWords(message.Text, kept)), message.ClientID, shown)
 	if err != nil {
 		b.referenceRefused(attempted, err)
 		return 0, nil, err
@@ -1419,11 +1509,31 @@ type appSending struct {
 	// retry; never inferred from membership. Shared, never written after it is
 	// set.
 	creation *session.CreationContext
+	// from names who sent the message on the person's behalf
+	// ([appAttributed]); "" is the person's own.
+	from string
 	// bare says the sending exists only to carry creation: the door gave no
 	// words of the person's apart from text, so Said stays nil and the line
 	// reads as the plain message it is. A sending the door built for Said,
 	// reads or attachments is never bare, even when its words equal text.
 	bare bool
+}
+
+// appAttribution is the one line the model reads above a message someone sent
+// on the person's behalf. It is the least the model needs: who wrote the words,
+// and that they speak for the person, so it neither mistakes them for the
+// person's own nor treats them as a stranger's.
+func appAttribution(from string) string {
+	return "[sent by " + from + " on the person's behalf]"
+}
+
+// appAttributed is words as the model is sent them: under the attribution line
+// when from names a sender, else unchanged.
+func appAttributed(from, words string) string {
+	if from == "" {
+		return words
+	}
+	return appAttribution(from) + "\n" + words
 }
 
 // appNoTeam is the explicit none the person's own send states.
@@ -1455,8 +1565,17 @@ func (b *appBackend) RetryTask(id string) error {
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return err
 	}
 	n, err := strconv.ParseUint(local, 10, 64)
@@ -1484,8 +1603,17 @@ func (b *appBackend) NoteTask(id, text, clientID string) (appwire.Entry, error) 
 	if !ok {
 		return appwire.Entry{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return appwire.Entry{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.Entry{}, err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return appwire.Entry{}, err
 	}
 	// The same key the engine will keep, so the receipt, the event and the page
@@ -1916,7 +2044,7 @@ func appTrimmedStart(path string) int {
 func (b *appBackend) recordAttachedMedia(a *appAgent, attachments []appwire.Attachment) {
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
-	id := filepath.Base(filepath.Dir(a.transcript))
+	id := appAgentID(a.transcript)
 	for _, attach := range attachments {
 		if attach.Kind == appwire.AttachFile {
 			if source := session.RecordAttachment(appMediaIndex(), id, appAttachFull(workspace, attach.Path)); source != "" {

@@ -47,6 +47,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
@@ -61,6 +62,9 @@ const (
 	// text, because the directory itself is named by a hash and a person
 	// looking at ~/.codeaf/v3/hosts deserves to be able to tell which is which.
 	placeName = "workspace"
+	// savingName is held by a host that has given the workspace up and is
+	// still saving its conversations ([Host.shutdown]).
+	savingName = "host.saving"
 )
 
 // SocketLimit is the most bytes a unix socket path may weigh.
@@ -214,9 +218,52 @@ func Attach(workspace string, spawn func() error) (net.Conn, error) {
 		if err := spawn(); err != nil {
 			return nil, err
 		}
+		return waitForHost(workspace, spawnWait)
 	}
-	return waitForHost(workspace, spawnWait)
+	if attachWaiting != nil {
+		attachWaiting()
+	}
+	return waitForHolder(workspace, dir, spawn, spawnWait)
 }
+
+// waitForHolder is the wait when the lock was busy: a host being born, which
+// listens within moments, or a host on its way out, which may hold the lock
+// through its last save with nothing listening. Hosts of this build give the
+// lock up before they save ([Host.shutdown]); older builds do not.
+//
+// SO THE LOCK IS ASKED AGAIN ON EVERY TURN, NOT ONLY THE SOCKET. The moment the
+// holder lets go with no socket behind it, nobody is coming, and this launch
+// starts the host itself rather than waiting out the rest of [spawnWait] and
+// then falling back to its own process. It starts at most one: the host it
+// starts takes the lock, and a second spawn would only be a process that finds
+// the lock taken and exits.
+func waitForHolder(workspace, dir string, spawn func() error, within time.Duration) (net.Conn, error) {
+	deadline := time.Now().Add(within)
+	spawned := false
+	for {
+		if conn, err := Dial(workspace); err == nil {
+			return conn, nil
+		}
+		if !spawned {
+			if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
+				_ = releaseLock(held)
+				if err := spawn(); err != nil {
+					return nil, err
+				}
+				spawned = true
+			}
+		}
+		if time.Now().After(deadline) {
+			return nil, ErrNoHostAnswered
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// attachWaiting is told when [Attach] found the lock busy and is about to wait
+// on whoever holds it. Nothing in the product writes it; a test sets it to know
+// the launch has looked before the holder lets go.
+var attachWaiting func()
 
 func waitForHost(workspace string, within time.Duration) (net.Conn, error) {
 	deadline := time.Now().Add(within)
@@ -368,12 +415,42 @@ func waitForGone(workspace string, within time.Duration) error {
 			_ = conn.Close()
 		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
 			_ = releaseLock(held)
+			waitForSaves(dir, savesWait)
 			return nil
 		}
 		if time.Now().After(deadline) {
 			return errors.New("engine host: the host is still holding this workspace")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// savesWait is how long a caller that asked a host to go also waits for that
+// host's conversations to finish saving, once the workspace itself is free.
+//
+// IT IS SHORT ON PURPOSE. The callers that retire a host go on to start the
+// current build and reopen the conversations it held; an ordinary save ends in
+// milliseconds and this lets those journals be reopened rather than found busy.
+// A save of a large folder can run for its whole bound, and no launch waits for
+// that: past this the new host starts anyway, and a conversation still being
+// written is found held, which is a landing every surface already has.
+const savesWait = time.Second
+
+// waitForSaves waits, at most within, for no host to be saving in this
+// workspace's directory. A host too old to say so never holds the lock, which
+// reads as nothing being saved.
+func waitForSaves(dir string, within time.Duration) {
+	deadline := time.Now().Add(within)
+	for {
+		held, err := takeLock(filepath.Join(dir, savingName))
+		if err == nil {
+			_ = releaseLock(held)
+			return
+		}
+		if !filelock.IsBusy(err) || time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

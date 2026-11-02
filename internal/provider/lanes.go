@@ -647,7 +647,15 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 // it is stamped. That is what makes the plan's set ([requestSet]) and the body's
 // set one fact rather than two that agree on a good day.
 func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) context.Context {
-	if request == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
+	if request == nil || c.routing() == RoutingOff {
+		return ctx
+	}
+	// Demand lets a later sheet replace a weak negative capability answer; a
+	// terminal refusal cannot be replaced, so it wakes nothing.
+	if !lanes.PrefsRefused(c.config.BaseURL) {
+		lanes.Default().RecordRouting()
+	}
+	if !c.carriesPreferences() {
 		return ctx
 	}
 	if expectedAnswerFrom(ctx) == 0 {

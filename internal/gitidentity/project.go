@@ -56,7 +56,7 @@ func hashKey(value string) string {
 // the authority; a failed read is "no remote", never a failure — the path
 // fallback is the designed answer for a workspace without one.
 func originRemote(root string) string {
-	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
+	out, err := exec.Command("git", "--no-optional-locks", "-C", root, "remote", "get-url", "origin").Output()
 	if err != nil {
 		return ""
 	}

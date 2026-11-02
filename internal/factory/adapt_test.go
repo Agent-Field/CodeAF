@@ -336,13 +336,14 @@ func TestAdaptAddsOnlyConversationsWithAnAsk(t *testing.T) {
 
 // THE MANAGER'S PROGRAM, before anything runs: a new ask on a stage, a stage
 // added after a named one, a skip, each stage it touched carrying who and why,
-// and the record saying so in one line. The recipe's adapt word is a bound on
-// a run, not on the program written before one.
+// and the record saying so in one line. The recipe's `ask` is a bound on a
+// run, not on the program written before one; `fixed` binds both
+// ([TestEditBeforeRunUnderFixedIsTheOnlyPersonsEdit]).
 func TestEditBeforeRunSetsAnAskAndAddsAfterANamedStage(t *testing.T) {
 	it := adaptItem()
 	it.Stream = nil
 	r := factory.DefaultRecipe()
-	r.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptFixed}
+	r.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptAsk}
 	e := factory.RunEdit{
 		By:   factory.ByManager,
 		Ask:  map[string]string{"review": "thorough on security, code and architecture"},
@@ -385,8 +386,41 @@ func TestEditBeforeRunSetsAnAskAndAddsAfterANamedStage(t *testing.T) {
 	}
 	// The same edit during a run is held to the recipe's fixed word.
 	it.Stream = adaptItem().Stream
+	r.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptFixed}
 	if _, _, err := factory.Edit(it, e, r, factory.EditInRun); err == nil || err.Error() != "the recipe for issue is fixed; manager may not change the stages" {
 		t.Fatalf("in a run under fixed = %v", err)
+	}
+}
+
+// STEPS THAT MAY NEVER CHANGE ARE NOT THE MANAGER'S TO CHANGE AHEAD OF A RUN
+// either: under `fixed`, by the repository's file or the factory's own word,
+// the manager's edit before a run is refused and writes nothing, and the
+// person's own edit still goes through.
+func TestEditBeforeRunUnderFixedIsTheOnlyPersonsEdit(t *testing.T) {
+	it := adaptItem()
+	it.Stream = nil
+	e := factory.RunEdit{By: factory.ByManager, Skip: []string{"neaten"}, Why: "small change"}
+	fixed := factory.DefaultRecipe()
+	fixed.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptFixed}
+	house := it
+	house.House = &factory.HouseRules{Adapt: factory.AdaptFixed}
+	for name, c := range map[string]struct {
+		it factory.Item
+		r  factory.Recipe
+	}{"the repository's file": {it, fixed}, "the factory's own word": {house, factory.DefaultRecipe()}} {
+		got, lines, err := factory.Edit(c.it, e, c.r, factory.EditBeforeRun)
+		if err == nil || err.Error() != "the recipe for issue is fixed; manager may not change the stages" || lines != nil || !reflect.DeepEqual(got, c.it) {
+			t.Fatalf("%s: the manager changed fixed steps before a run: %v %q", name, err, lines)
+		}
+		you := e
+		you.By = factory.ByYou
+		if _, lines, err := factory.Edit(c.it, you, c.r, factory.EditBeforeRun); err != nil || len(lines) == 0 {
+			t.Fatalf("%s: the person's own edit = %q, %v", name, lines, err)
+		}
+	}
+	// With the default word the manager shapes the program as before.
+	if _, lines, err := factory.Edit(it, e, factory.DefaultRecipe(), factory.EditBeforeRun); err != nil || len(lines) == 0 {
+		t.Fatalf("under the default word = %q, %v", lines, err)
 	}
 }
 

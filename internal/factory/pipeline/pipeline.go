@@ -47,7 +47,10 @@ const (
 	// DefaultMaxSize is the largest job that starts on its own.
 	DefaultMaxSize = "M"
 	// DefaultMaxCost is the dollars per job, over which the job asks first.
-	DefaultMaxCost = 2
+	// It is the default job budget, so a job no file sizes up starts by itself:
+	// what a start compares is the budget, the most a job may spend, never an
+	// estimate, and a lower default would hold every job a factory picks up.
+	DefaultMaxCost = factory.DefaultJobBudget
 	// DefaultIssueMode is how an issue's size is read: the model's rubric.
 	DefaultIssueMode = "model"
 	// IssueModeLabel reads size/S, size/M and size/L off the issue's labels.
@@ -71,6 +74,12 @@ type File struct {
 	Steps         map[string]Step
 	Fixed         []string
 	Rules         []string
+	// Adapt is the `adapt:` key: how much a job's plan may reshape the steps
+	// it runs, for every pipeline in the file ([factory.AdaptMode]): adapt
+	// (within the bounds, the default), ask (and a person ratifies before
+	// anything after plan runs) or fixed (the steps as written). Empty when
+	// the file says nothing, which is adapt.
+	Adapt factory.AdaptMode
 	// Merge is the `merge:` key. AUTO-MERGE IS OFF unless a file turns it on;
 	// a personal file may only turn it off ([Merge]).
 	Merge factory.MergePolicy
@@ -84,6 +93,14 @@ type File struct {
 	Text         string
 	PersonalText string
 	Personal     bool
+	// House is the factory's own rules when [WithHouseRules] added them to this
+	// read, so a client can say which lines came from the factory rather than
+	// the repository. The repository's Text never holds them.
+	House factory.HouseRules
+	// Copy is the factory's own copy of the repository's file when
+	// [WithFactoryCopy] read it in place of main's: Text is then the copy's,
+	// and From is factory.FromFactoryCopy. Nil for every other read.
+	Copy *factory.PipelineCopy
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
 
@@ -97,9 +114,12 @@ type File struct {
 // Start is what may begin without a person. An empty Labels means nothing
 // starts on its own: a label has to be named first.
 type Start struct {
-	Labels   []string
-	MaxSize  string
-	MaxCost  float64
+	Labels  []string
+	MaxSize string
+	MaxCost float64
+	// Never is kept so files that still write `never:` keep working: each
+	// line is a protected path, exactly like an ask-first `touch <path>`
+	// ([ProtectedPaths]).
 	Never    []string
 	AskFirst []string
 }
@@ -128,6 +148,9 @@ type Step struct {
 	Fanout string
 	Until  string
 	Max    int
+	// Who is who a person step waits on ([factory.ApproverWord]): "" the job's
+	// person. Only approve and a gate take one.
+	Who string
 
 	wrotePrompt bool
 	wroteUntil  bool
@@ -231,6 +254,7 @@ type presence struct {
 	pipeline      map[factory.Kind]bool
 	fixed         bool
 	rules         bool
+	adapt         bool
 	mergeAuto     bool
 	mergeMethod   bool
 }
@@ -356,7 +380,7 @@ func (f File) Recipe() factory.Recipe {
 		Source:        f.Source,
 		DefaultBudget: f.DefaultBudget,
 
-		Adapt:  copyAdapt(f.markdownAdapt),
+		Adapt:  f.adaptByKind(),
 		Policy: append([]string(nil), f.Rules...),
 		ByKind: map[factory.Kind][]factory.Stage{},
 		Merge:  f.Merge,
@@ -390,7 +414,7 @@ func (f File) stages(names []string) []factory.Stage {
 				continue
 			}
 			used[raw] = true
-			out = append(out, factory.Stage{Name: raw, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
+			out = append(out, factory.Stage{Name: raw, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
 			continue
 		}
 		step, ok := f.Steps[raw]
@@ -428,9 +452,13 @@ func (f File) stages(names []string) []factory.Stage {
 		if free && kind == factory.StageChat {
 			ask = withStop(ask, step.Until)
 		}
+		who := ""
+		if kind == factory.StageGate {
+			who = step.Who
+		}
 		out = append(out, factory.Stage{
 			Name: name, Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
-			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw),
+			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who,
 		})
 	}
 	return out
@@ -501,6 +529,20 @@ func (f File) RecipeProblems() []factory.Problem {
 	out := make([]factory.Problem, len(f.Problems))
 	for i, p := range f.Problems {
 		out[i] = factory.Problem{Line: p.Line, Text: p.Where, Why: p.Why}
+	}
+	return out
+}
+
+// adaptByKind is the recipe's adapt word per kind: the file's `adapt:` for the
+// issue pipeline and every pipeline the file lists, else the Markdown recipe's
+// words carried over, else none (the default, adapt).
+func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
+	if f.Adapt == "" {
+		return copyAdapt(f.markdownAdapt)
+	}
+	out := map[factory.Kind]factory.AdaptMode{factory.KindIssue: f.Adapt}
+	for kind := range f.Pipeline {
+		out[kind] = f.Adapt
 	}
 	return out
 }

@@ -28,7 +28,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
 const (
@@ -38,7 +42,9 @@ const (
 	// appLeaveWait is how long the careful wrap-up may take before the process
 	// ends regardless: the factory's runner and its service each get their own
 	// stop wait, the conversations theirs, and a running process its grace.
-	appLeaveWait = 2*appLocalStopWait + appReleaseWait + appQuitGraceS*time.Second
+	// Local sealing, final publication and the grouped disk flush each retain
+	// their complete saving bound before a forced exit can cut them off.
+	appLeaveWait = 2*appLocalStopWait + appReleaseWait + appQuitGraceS*time.Second + 3*cellstore.SealWithin
 )
 
 // watchAppParent calls gone once the process that started this one has ended,
@@ -96,3 +102,13 @@ func appLeaveNow() {
 	fmt.Fprintf(os.Stderr, "codeaf app: still leaving after %s; ending now\n", appLeaveWait)
 	os.Exit(1)
 }
+
+// surviveBrokenPipes makes a write to a pipe whose reader has gone fail with
+// EPIPE instead of ending the process. Go ends a program that writes to a
+// broken stdout or stderr unless it asked for SIGPIPE; the app's pipes are
+// both, and the engine may outlive the app (a crash, or a quit's wrap-up).
+// It asks with Notify, never Ignore: an ignored SIGPIPE is inherited across
+// exec, so every shell, tool and server this engine starts would lose it
+// (`producer | head` would never end). The channel is never read; Notify
+// drops a signal its channel has no room for.
+func surviveBrokenPipes() { signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE) }

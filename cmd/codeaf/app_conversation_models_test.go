@@ -104,3 +104,25 @@ func TestAppDefaultFallbackUsesSharedDefaultAndKeepsExplicitChoice(t *testing.T)
 		t.Fatalf("explicit fallback=%q", got)
 	}
 }
+
+// agents.set_models with no fallback moves the main model and keeps the
+// conversation's own fallback.
+func TestAppConversationMainKeepsTheFallback(t *testing.T) {
+	c := &appPairConversation{fakeConversation: &fakeConversation{model: "main/old"}, pair: session.ConversationModels{Main: "main/old", Fallback: "backup/old"}}
+	rec := newAppRecorder()
+	b := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: c, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	defer b.Close()
+	a, err := mustCreate(t, b, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.SetConversationMain(a.ID, "main/new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "main/new" || got.ModelIdentity == nil || got.ModelIdentity.Models.Fallback != "backup/old" {
+		t.Fatalf("ack: %+v", got)
+	}
+}

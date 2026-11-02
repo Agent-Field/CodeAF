@@ -635,6 +635,9 @@ func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan E
 	if words == "" {
 		return nil, errors.New("session: empty message")
 	}
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 
 	a.mu.Lock()
 	if a.closed {

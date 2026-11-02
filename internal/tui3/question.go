@@ -168,6 +168,8 @@ func (a *app) questionDoors() (questionAgent, bool) {
 // is on offer, and how to answer it when no engine is behind it.
 type questionShown struct {
 	question session.Question
+	// continuation binds a move card's preview and return to its own chat.
+	continuation *continueCard
 	// local answers a question the SURFACE raised — the stop card, the
 	// tab-close card, anything this program asks about itself. It is nil on
 	// every question that came from the engine, which go through

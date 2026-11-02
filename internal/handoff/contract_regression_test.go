@@ -46,3 +46,35 @@ func TestC7CardCannotDisplaceAHolderThatArrivedBeforeConfirmation(t *testing.T) 
 		t.Fatalf("stale card changed holder: %v, %+v", err, w.cellRec(chatID).Lease)
 	}
 }
+
+func TestTakeF2SameHolderSameHeadFenceChange(t *testing.T) {
+	for _, change := range []string{"fence", "head", "holder"} {
+		t.Run(change, func(t *testing.T) {
+			w := newWorld(t)
+			a, b := w.device(devA), w.device(devB)
+			a.start(map[string]string{"a.txt": "one"})
+			old := w.cellRec(chatID)
+			seen := &directory.LeaseExpectation{Device: old.Lease.Device, Fence: old.Lease.Fence, Head: old.Head}
+			switch change {
+			case "fence":
+				_, err := a.dir.Acquire(context.Background(), chatID, directory.AcquireOpts{})
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "head":
+				a.work(map[string]string{"a.txt": "two"})
+			case "holder":
+				if _, err := w.device("dev_c").taker().Take(context.Background(), chatID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := b.taker().TakeSeen(context.Background(), chatID, seen)
+			if change == "fence" && err != nil {
+				t.Fatalf("F2 harmless fence bump refused: %v", err)
+			}
+			if change != "fence" && !errors.Is(err, directory.ErrLeaseHeld) {
+				t.Fatalf("F2 %s must conflict: %v", change, err)
+			}
+		})
+	}
+}

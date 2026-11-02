@@ -1,6 +1,10 @@
 package tui3
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+)
 
 // ── THE NOTICE SEAM: A SENTENCE FROM OUTSIDE THE LOOP, SHOWN AT ONCE ────────
 //
@@ -124,11 +128,14 @@ func (a *app) useNotices(desk *Notices) {
 // loop on the door again.
 func (a *app) saidNotices() {
 	for _, line := range a.outsideDesk.take() {
-		if line.home {
+		if chatlist.IsRemovedNotice(line.text) {
+			a.removedComputer()
+		}
+		if line.home && !chatlist.IsRemovedNotice(line.text) {
 			a.homeAccountNotice = firstLine(line.text)
 		}
 		before := a.echoHome
-		a.echoHome = before || line.home
+		a.echoHome = before || (line.home && !chatlist.IsRemovedNotice(line.text))
 		a.note(line.text)
 		a.echoHome = before
 	}

@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -430,7 +431,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which is the safe direction and not the useful one ([beltWatch] states the
 	// ordering problem this closes).
 	launch.Subharnesses.Belt.watch(agent.ToolOnBelt)
-	if notice != "" {
+	if cfg.SessionFile != launch.SessionFile {
 		// The session file moved under us, so everything downstream that names
 		// it — /help, /new, the resumed line — has to name the new one.
 		transcript, resumed = cfg.SessionFile, false
@@ -483,7 +484,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	draft := ""
 	if keepDraft {
 		if dir, err := v3Dir(); err == nil {
-			draft = tui3.DraftFile(dir, workspace)
+			draft = tui3.ChatDraftFile(dir, "", workspace, cfg.SessionFile)
 		}
 	}
 	// THE AGENT-BUILDING SEAM (chatv3_process.go's [v3Seam]). Every conversation
@@ -926,7 +927,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	var taskLanded func(session.TaskLanding)
 	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
 	// launch therefore leaves this optional scoring to an ordinary launch;
-	// it must neither judge new landings nor sweep earlier pending work.
+	// it must neither judge new landings nor sweep earlier pending work. The
+	// saved one-model setting can change while this process runs, so the hook
+	// and the sweep read it themselves at the moment they would ask
+	// ([poolJudgeStandsDown]).
 	if !opts.OneModel {
 		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
 			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
@@ -1023,6 +1027,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	}
 
 	cfg := session.Config{
+		TeamComputers:  teamComputers,
 		Workspace:      workspace,
 		Model:          chosen,
 		APIKey:         settings.APIKey,
@@ -1460,7 +1465,21 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if handoff.Arriving(cfg.Place.Dir) {
 		return nil, cfg, "", errors.New(chatArrivingSentence)
 	}
-	cfg = v3Seated(v3Migrated(cfg))
+	model, modelNotice, err := continuedModel(cfg)
+	if err != nil {
+		var missing *continuedModelUnavailable
+		if !errors.As(err, &missing) {
+			return nil, cfg, "", err
+		}
+		// Taking and opening a chat do not require a usable model. Retain the
+		// incoming identity even if seating seals local bookkeeping first.
+		cfg.PrepareModel = missing.prepare
+	}
+	if model != "" {
+		cfg.Model = model
+	}
+	cfg, claim := v3SeatedPending(v3Migrated(cfg))
+	defer claim(false)
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1492,6 +1511,13 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	agent, err := open(restored)
 	if err == nil {
+		claim(true)
+		if model != "" {
+			if err := agent.ContinueWithModel(model, modelNotice); err != nil {
+				closeV3Agent(agent)
+				return nil, cfg, "", err
+			}
+		}
 		if restoredPosture != "" {
 			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
 				closeV3Agent(agent)
@@ -1501,7 +1527,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		if savedEffort != "" {
 			agent.SetConversationEffort(savedEffort)
 		}
-		return agent, cfg, "", nil
+		return agent, cfg, modelNotice, nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {
 		return nil, cfg, "", err
@@ -1560,11 +1586,8 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 	if err != nil {
 		return nil, cfg, err
 	}
-	agent, err := v3OpenSession(fresh)
-	if err != nil {
-		return nil, cfg, err
-	}
-	return agent, fresh, nil
+	agent, fresh, _, err := openV3Agent(fresh, workspace, v3OpenSession)
+	return agent, fresh, err
 }
 
 // sessionHeldElsewhereSentence is what a person reads when the conversation
@@ -2457,7 +2480,49 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 			values[roles.PinKey(roles.Role(role))] = model
 		}
 	}
-	return values, nil
+	// THE PAGE AI's DEFAULT IS ANSWERED, NEVER WRITTEN ([config.InsightDefault]):
+	// it rides the snapshot while its provider is connected and the model is
+	// allowed, below every pin, and a one-model profile drops it with the pins.
+	if send, ok := config.InsightDefaultAt(c.profileDir); ok {
+		values[roles.DefaultKey(roles.RoleInsight)] = send
+	}
+	return v3SettleOneModel(values, c.profileDir), nil
+}
+
+// v3SettleOneModel answers every text tier with the saved one model while the
+// profile's task models are in one-model mode, and drops the text pins.
+//
+// ONE MODEL MEANS ONE MODEL AT EVERY RUNG, HERE AS UNDER `--one-model`. The
+// flag withholds these rows and lets each errand fall to the conversation's
+// model; the saved setting names its model, so the rows answer that model
+// instead, and the crew-only callers that pass an empty floor (the mark's
+// reader, the brief's writer) reach it too rather than a tier nobody chose.
+// The snapshot is rebuilt whenever the settings move, so a mode switched
+// mid-process reaches the next errand. Media pins stay: a media slot is
+// capability-qualified, exactly as under the flag. A one model that cannot be
+// used right now answers no tier at all, never another model.
+func v3SettleOneModel(values map[string]string, profileDir string) map[string]string {
+	send, one, err := factoryTaskOneModel(profileDir, modelsource.Set{})
+	if !one {
+		return values
+	}
+	media := map[string]bool{}
+	for _, role := range v3MediaPin {
+		media[roles.PinKey(role)] = true
+	}
+	settled := map[string]string{}
+	for key, model := range values {
+		if media[key] {
+			settled[key] = model
+		}
+	}
+	if err != nil {
+		return settled
+	}
+	for _, tier := range roles.Tiers {
+		settled[roles.TierKey(tier)] = send
+	}
+	return settled
 }
 
 // v3Catalog is the ONE question this door asks a model catalog, and it is a

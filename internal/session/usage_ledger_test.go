@@ -44,6 +44,7 @@ func bankCall(agent *Agent, turn *Usage, model string, in, out int, usd float64,
 // test in this file needs and nothing else.
 func ledgerAgent(t *testing.T, ledger string, more ...func(*Config)) (*Agent, string) {
 	t.Helper()
+	t.Cleanup(func() { StopUsageWriter(ledger) })
 	return newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.usageLedger = ledger
 		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")

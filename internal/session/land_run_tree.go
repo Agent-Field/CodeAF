@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -66,6 +67,10 @@ func LandRunTree(dir, base, title, model string) (branch string, changed []strin
 	} else {
 		changed = saved
 	}
+	// A worker may have committed native bookkeeping itself. Its commit is
+	// retained, but those ownership records are never deliverables to lay over
+	// another workspace's identifiers.
+	changed = slices.DeleteFunc(changed, harnessWrote)
 	if len(changed) == 0 && !headMoved {
 		return "", nil, runNothingToLand, nil
 	}

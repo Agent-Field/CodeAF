@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
@@ -299,12 +300,31 @@ func launchable(it factory.Item) error {
 func loopPhases(it factory.Item) []factory.Phase {
 	var out []factory.Phase
 	for _, s := range it.Stages {
-		if !s.On || !factory.Fits(s, it) {
+		if !runsIn(it, s) {
 			continue
 		}
 		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
 	}
 	return out
+}
+
+// runsIn says whether stage s is a phase of it's run: on and fitting it, or
+// the plan's approve step turned off while the rules the job started under
+// guard paths ([forcedGate]).
+func runsIn(it factory.Item, s factory.Stage) bool {
+	return (s.On || forcedGate(it, s)) && factory.Fits(s, it)
+}
+
+// forcedGate says whether s is the plan's approve step ([factory.PlanGateStage])
+// turned off under rules that guard paths ([pipeline.GuardsPaths]). TURNING
+// THE APPROVAL OFF DOES NOT TURN A RULE OFF: the step runs anyway, and passes
+// on its own unless the plan touches what a rule guards ([floorLoop.approve]).
+func forcedGate(it factory.Item, s factory.Stage) bool {
+	if s.On || !factory.IsApprove(s) || !pipeline.GuardsPaths(it.StartRules) {
+		return false
+	}
+	g := factory.PlanGateStage(it.Stages)
+	return g >= 0 && it.Stages[g].Name == s.Name
 }
 
 func kindOf(s factory.Stage) factory.StageKind {
@@ -650,9 +670,29 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	if prev >= 0 {
 		prevName = ph[prev].Name
 	}
+	// THE PLAN IS CHECKED AGAINST THE RULES THE JOB STARTED UNDER: a planned
+	// file that an ask-first path or a never path names makes this approval a
+	// person's, even in Auto ([factory.AutonomyBlockReason]). The plan's
+	// approval is the one after the plan, whatever the step before it is
+	// called ([factory.PlanGate]).
+	hold := ""
+	if factory.PlanGate(ph) == i {
+		hold = pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
+	}
+	if hold != it.RuleHold {
+		if lp.write(c, func(saved *factory.Item) error { saved.RuleHold = hold; return nil }) != nil {
+			return false
+		}
+		it.RuleHold = hold
+	}
+	st, index := lp.stageAt(it, i)
+	// AN APPROVAL TURNED OFF RUNS ONLY FOR THE RULES ([forcedGate]): with
+	// nothing they guard in the plan it passes as if it were not there.
+	if index >= 0 && !st.On && hold == "" {
+		return lp.finish(c, i, name, "")
+	}
 	said := ""
-	if factory.Automatic(it) {
-		st, _ := lp.stageAt(it, i)
+	if factory.Automatic(it) && hold == "" {
 		if !st.Fixed {
 			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
@@ -663,6 +703,9 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	switch {
 	case a.yes:
+		if hold != "" {
+			_ = lp.write(c, func(saved *factory.Item) error { saved.RuleHold = ""; return nil })
+		}
 		lp.addNote(c.id, a.words)
 		return lp.finish(c, i, name, "")
 	case prev < 0:
@@ -1110,10 +1153,68 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
 			continue
 		}
+		// A FAILING CHECK SENDS THE WORK BACK TO THE CHAT BEFORE IT: running the
+		// same command again would fail the same way, so the conversation that
+		// made the change gets the failure and another round, and the check runs
+		// after it. The check keeps its own count; once its max is spent the
+		// person is asked, above.
+		if kindOf(st) == factory.StageCheck {
+			if prev := lp.chatBefore(c, i); prev >= 0 {
+				return lp.checkBack(c, i, prev, round, checkFailure(st, res))
+			}
+		}
 		lp.say(c, "fail", fmt.Sprintf("%s %d/%d: %s · going again", name, round, limit, shortfall(res)))
 		round++
 	}
 }
+
+// chatBefore is the finished conversation step a failing check at i sends
+// its work back to: the last finished step before it, when that is a chat;
+// -1 otherwise (a check first in its pipeline, or one after another check).
+func (lp *floorLoop) chatBefore(c *loopCtl, i int) int {
+	cur, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || cur.Stream == nil {
+		return -1
+	}
+	prev := factory.PreviousWork(cur.Stream.Phases, i)
+	if prev < 0 {
+		return -1
+	}
+	if k := cur.Stream.Phases[prev].Kind; k != "" && k != factory.StageChat {
+		return -1
+	}
+	return prev
+}
+
+// checkBack is [floorLoop.back] for a failing check: the chat at prev runs
+// again with the failure as its note, and the check's next run is its next
+// round, so its max bounds how often the work goes round.
+func (lp *floorLoop) checkBack(c *loopCtl, i, prev, round int, words string) bool {
+	if lp.write(c, func(it *factory.Item) error {
+		it.Stream.Phases[i].Round = round + 1
+		return nil
+	}) != nil {
+		return false
+	}
+	return lp.back(c, i, prev, words)
+}
+
+// checkFailure is what a failing check tells the chat it sends back to: the
+// command, how it ended, and the last of what it printed.
+func checkFailure(st factory.Stage, res factory.StageResult) string {
+	out := strings.TrimSpace(res.Output)
+	if lines := strings.Split(out, "\n"); len(lines) > checkBackLines {
+		out = strings.Join(lines[len(lines)-checkBackLines:], "\n")
+	}
+	head := fmt.Sprintf("the check `%s` failed (%s)", strings.TrimSpace(st.Ask), shortfall(res))
+	if out == "" {
+		return head + "; make it pass"
+	}
+	return head + "; make it pass. Its output ended:\n" + out
+}
+
+// checkBackLines is how much of a failing check's output goes back with it.
+const checkBackLines = 20
 
 // stepShort is what the person reads about a step that ended without its
 // until holding: the note the step keeps, and why, "" when the note says it.
@@ -1176,26 +1277,7 @@ func shortfall(res factory.StageResult) string {
 	if reason := verificationReason(res); reason != "" {
 		return "verification blocked: " + reason
 	}
-	switch {
-	case !res.Done:
-		return "no result"
-	case res.Findings == 1:
-		return "1 finding"
-	case res.Findings > 1:
-		return strconv.Itoa(res.Findings) + " findings"
-	case res.Exit != 0:
-		return "exit " + strconv.Itoa(res.Exit)
-	}
-	shown := 0
-	for _, cl := range res.Claims {
-		if cl.OK && strings.TrimSpace(cl.Evidence) != "" {
-			shown++
-		}
-	}
-	if len(res.Claims) == 0 {
-		return "no claims"
-	}
-	return fmt.Sprintf("%d of %d claims shown", shown, len(res.Claims))
+	return factory.Shortfall(res)
 }
 
 // held waits while the item is paused, and answers false when it stopped.
@@ -1405,6 +1487,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		PriorNames:      priorNames,
 		Last:            last,
 		Dir:             dir,
+		Rules:           JobRules(lp.r.opts.Recipe, it),
 		dirErr:          dirErr,
 		Steer:           c.steer,
 		ModelSelections: c.modelSelections,
@@ -1530,9 +1613,8 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 
 	var recipe factory.Recipe
 	if res.Edit != nil {
-		if lp.r.opts.Recipe != nil {
-			recipe = lp.r.opts.Recipe(before.Repo)
-		} else {
+		var ok bool
+		if recipe, ok = jobRecipe(lp.r.opts.Recipe, before); !ok {
 			recipe = factory.DefaultRecipe()
 		}
 	}
@@ -1566,7 +1648,7 @@ func retail(it factory.Item, phases []factory.Phase, i int) []factory.Phase {
 		return append(out, phases[i+1:]...)
 	}
 	for _, s := range it.Stages[from+1:] {
-		if !s.On || !factory.Fits(s, it) {
+		if !runsIn(it, s) {
 			continue
 		}
 		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})

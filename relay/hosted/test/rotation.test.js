@@ -97,3 +97,12 @@ test('a retire answers a deadline of exactly the answer\'s own time plus the gra
   const view = tenant.rotate('a', { op: 'retire', grace_ms: DEFAULTS.minGraceMs });
   assert.equal(view.rotation.retire_at, view.now + DEFAULTS.minGraceMs);
 });
+
+// R28 keeps local platform metadata outside explicit owner erasure while
+// removing every actual application table, including interrupted migrations.
+test('R28 owner erasure preserves the local platform name table',()=>{
+ const sql=memorySql();sql.exec('CREATE TABLE __miniflare_do_name(name TEXT)');sql.exec('INSERT INTO __miniflare_do_name VALUES(?)','identity');
+ new Directory(sql,'id_t',()=>NOW,STAGE1).setVault('','sealed');dropTables(sql);dropTables(sql);
+ assert.deepEqual(sql.exec("SELECT name FROM sqlite_master WHERE type='table'").toArray().map(r=>r.name),['__miniflare_do_name']);
+ assert.equal(sql.exec('SELECT name FROM __miniflare_do_name').one().name,'identity');
+});

@@ -245,7 +245,7 @@ func Bash() (string, error) {
 				// path. A broken shim cannot hold up the first command forever.
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
-				cmd := exec.CommandContext(ctx, git, "--exec-path")
+				cmd := exec.CommandContext(ctx, git, "--no-optional-locks", "--exec-path")
 				cmd.WaitDelay = 100 * time.Millisecond
 				output, err := cmd.Output()
 				return strings.TrimSpace(string(output)), err

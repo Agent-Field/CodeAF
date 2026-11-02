@@ -75,6 +75,10 @@ type Job struct {
 	Last *factory.StageResult
 	// Dir is the repository's checkout on this machine, "" when unknown.
 	Dir string
+	// Rules are the sentences every step must follow: the repository's own
+	// `rules` and the factory's (the job's [factory.Item.House]), in that
+	// order, each once. A chat step's brief quotes them; nil says nothing.
+	Rules []string
 	// Steer delivers the person's words while the round runs; a chat stage
 	// hands them to its conversation, a check ignores them.
 	Steer <-chan string
@@ -162,9 +166,11 @@ type Options struct {
 	// comes from it and its error fails the round with its sentence; when it
 	// is nil, Dir is RepoDir's. The workdir lane added it, additively.
 	Workdir func(it factory.Item) (dir string, err error)
-	// Recipe answers the repo's recipe (its file, else the default), which
-	// the plan stage's edits are bounded by.
-	Recipe func(repo string) factory.Recipe
+	// Recipe answers the recipe one job is bounded by: its rules, the plan
+	// stage's edits and a post's policy. It reads the factory's copy the job
+	// carries first, else its repository's file, else the default
+	// (pipeline.JobFile). Nil bounds a job by the copy it carries alone.
+	Recipe func(it factory.Item) factory.Recipe
 	// Source answers the item's source for a post stage, nil when none.
 	Source func(repo string) factory.Source
 	// Publisher resolves the assignee's account and one credential for both

@@ -256,6 +256,11 @@ func TestConfigurationALandWillNotMergeUnder(t *testing.T) {
 			for _, kv := range c.set {
 				gitT(t, repo, "config", kv[0], kv[1])
 			}
+			if c.reason == LandFilter {
+				// L1/L2: configuration alone permits a plan; a matching path refuses it.
+				planLand(t, place, repo)
+				writeFile(t, filepath.Join(repo, ".git", "info", "attributes"), "b.txt filter=lfs\n")
+			}
 			_, err := PlanTaskBranchLand(landCtx(t), place, repo, landBranch)
 			wantRefusal(t, err, c.reason)
 		})

@@ -1261,6 +1261,9 @@ func TestLinkTypedChoicesAreAcceptedByTheRealServer(t *testing.T) {
 func TestLinkHostKeyOperatorNeedsNoVerifiedProfile(t *testing.T) {
 	f := startAdminFactory(t)
 	hub := testFactoryHub(t)
+	// E5: the host-key contract must not expire when the wall clock passes
+	// the invitation made by the factory's fixed clock.
+	hub.now = f.clock.now
 	w := newFactoryWire(t, hub)
 	w.backend.useClipboard(&fakeCopier{avail: true})
 	var conn appwire.FactoryConnection
@@ -1271,7 +1274,7 @@ func TestLinkHostKeyOperatorNeedsNoVerifiedProfile(t *testing.T) {
 		t.Fatalf("me = %+v", me)
 	}
 	if !me.Operator {
-		t.Skipf("this factory does not call the host key an operator in team mode: %+v", me)
+		t.Fatalf("the host key is not an operator in team mode: %+v", me)
 	}
 	var made appwire.FactoryLinkMade
 	w.must("factory.link_create", map[string]any{"factory": conn.ID}, &made)

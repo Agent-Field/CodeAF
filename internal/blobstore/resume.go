@@ -126,3 +126,8 @@ func (r *Resuming) Locate(ctx context.Context, rids []string) (map[string]Locati
 func (r *Resuming) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return r.Inner.Has(ctx, rids)
 }
+
+// GetFrameBounded passes through without resuming or widening a bounded read.
+func (r *Resuming) GetFrameBounded(ctx context.Context, id string, maxEncoded int64) ([]byte, error) {
+	return ReadFrameBounded(ctx, r.Inner, id, maxEncoded)
+}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
@@ -23,10 +24,28 @@ import (
 // the floor.
 type Doors struct {
 	desk *Desk
+	read StartRead
 }
+
+// StartRead is one job's pipeline read with the factory's own rules in it, as
+// a start decides under it: the same read intake and a person's Start make,
+// of THE JOB'S OWN FILE (pipeline.JobFile: the one its first start decided,
+// else, for a job never started, its repository's as this factory reads it
+// now, its own copy first). An error wrapping [pipeline.ErrHouseRulesUnread]
+// means the factory's rules could not be read; any other error, the
+// repository's file.
+type StartRead func(ctx context.Context, it factory.Item) (pipeline.File, error)
 
 // NewDoors hangs the doors over desk's store.
 func NewDoors(desk *Desk) *Doors { return &Doors{desk: desk} }
+
+// WithStartRead makes every Launch read the job's repository first, so a job
+// started by any door (a person's, the manager's, a new job's, intake's) runs
+// the steps and carries the rules a person's Start would give it.
+func (d *Doors) WithStartRead(read StartRead) *Doors {
+	d.read = read
+	return d
+}
 
 // update changes job id under the desk's lock: held is its live lease, nil
 // when no worker holds it. change answers whether the desk itself changed.
@@ -67,6 +86,32 @@ func (d *Doors) Launch(id int) error {
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}
+	// THE FACTORY'S OWN RULES GO WITH THE JOB ([factory.Item.House]), read
+	// here, on the factory that queues it, because a runner on another machine
+	// cannot read this store. A rules file that cannot be read refuses the
+	// start: rules that silently vanished would let work begin that a person
+	// said must not.
+	house, err := d.desk.store.HouseRules()
+	if err != nil {
+		return err
+	}
+	// THE REPOSITORY IS READ AS A PERSON'S START READS IT: with the factory's
+	// rules unread nothing starts; with only the repository's file unread the
+	// job keeps the steps it has and is marked so its plan waits for a person.
+	var file *pipeline.File
+	var copied *factory.PipelineCopy
+	unread, decide := false, false
+	if d.read != nil {
+		f, err := d.read(context.Background(), it)
+		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
+			return err
+		}
+		if err == nil {
+			file = &f
+		}
+		unread = err != nil
+		copied, decide = f.Copy, true
+	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held != nil {
 			return false, run.AlreadyRunning(it.Ref())
@@ -79,9 +124,43 @@ func (d *Doors) Launch(id int) error {
 			it.MarkPublishing("queued", "", "", now)
 			return true, nil
 		}
+		// A JOB THAT NEVER RAN RUNS THE PIPELINE ITS FILE SAYS NOW, not the
+		// one it was stamped with when it arrived; the run is built from
+		// these steps just below.
+		if file != nil {
+			pipeline.StampSteps(it, *file)
+		}
+		// THE JOB'S PIPELINE FILE IS DECIDED AT ITS FIRST START, ONCE
+		// ([factory.Item.DecidePipeline]): the factory's copy this read used
+		// goes with the job ([factory.Item.PipelineCopy]), as the factory's
+		// rules do, so a runner on another machine reads it from the job and
+		// never from its own read of main; no copy decides main's file alone.
+		// A job already decided read its own file above and keeps it, so a
+		// copy saved or stopped since never reaches its steps, rules or
+		// merge. Even a read of main that failed decides: the job runs
+		// main's file, or the copy the read still used.
+		if decide {
+			it.DecidePipeline(copied, now)
+		}
+		// EVERY START CARRIES ITS START RULES ([factory.Item.StartRules]), so
+		// the approval after the plan is checked whichever door started it.
+		// One a door already stamped keeps them.
+		if it.StartRules == nil {
+			switch {
+			case file != nil:
+				it.StartRules = pipeline.StartRulesOf(*file)
+			case unread:
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true}
+				it.Note(now, "Started with the repository's rules unread; its plan will wait for you")
+			default:
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
+			}
+			it.RuleHold = ""
+		}
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
 		}
+		it.House = &house
 		_, stale := doc.Signals[id]
 		delete(doc.Signals, id)
 		return stale, nil
@@ -140,13 +219,17 @@ func (d *Doors) Pause(id int) error {
 }
 
 // Hold says on (pause) or off (go on). An ask already true changes nothing.
-// A paused job nobody holds is queued again, and its worker resumes it.
+// A paused job nobody holds is queued again, and its worker resumes it. A
+// queued job nobody holds yet is held where it is: no worker takes it until a
+// person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		paused := run.StoredPaused(*it)
 		switch {
 		case paused == on:
 			return false, nil
+		case held == nil && on && it.State == factory.StateQueued:
+			return false, run.HoldQueued(it, now)
 		case held == nil && on:
 			return false, fmt.Errorf("%s is not running", it.Ref())
 		case held == nil:

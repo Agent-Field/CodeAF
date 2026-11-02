@@ -71,6 +71,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -979,7 +980,7 @@ func writeProgramExclude(exclude, outside string, ours []string, created bool) {
 	}
 	_, werr := temporary.WriteString(text)
 	cerr := temporary.Close()
-	if werr != nil || cerr != nil || os.Chmod(temporary.Name(), mode) != nil || os.Rename(temporary.Name(), exclude) != nil {
+	if werr != nil || cerr != nil || os.Chmod(temporary.Name(), mode) != nil || fsreplace.Rename(temporary.Name(), exclude) != nil {
 		_ = os.Remove(temporary.Name())
 	}
 }

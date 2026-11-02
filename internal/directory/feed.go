@@ -62,10 +62,13 @@ type Watchable interface {
 type Feed struct {
 	cur atomic.Pointer[Status]
 
-	mu     sync.Mutex
-	cap    int
-	subs   map[*Sub]struct{}
-	closed chan struct{}
+	mu        sync.Mutex
+	cap       int
+	subs      map[*Sub]struct{}
+	closed    chan struct{}
+	renewMu   sync.Mutex
+	renewAt   int64
+	renewPage []holdSample
 
 	// clock is the directory's own clock, so a sign of life and a lease expiry
 	// are read on one timeline (a test's fake clock moves both).
@@ -150,17 +153,56 @@ func (f *Feed) Subscribe(device string, holds []Hold) (*Sub, error) {
 
 // SubscribeBeat is Subscribe for a watcher that promised to ping every beat: it
 // counts as online for Window(beat) after its last sign of life.
-func (f *Feed) SubscribeBeat(device string, holds []Hold, beat time.Duration) (*Sub, error) {
+// SubscribeBeatWithEvidence reserves a watch before asking a consensus host
+// to commit its authenticated liveness. The callback belongs to this socket,
+// so its original public certificate disappears with the subscription.
+func (f *Feed) SubscribeBeatWithEvidence(device string, holds []Hold, beat time.Duration, evidence func(string, []Hold, int64) error) (*Sub, error) {
 	s, err := f.subscribe(device, holds, beat)
-	if err == nil {
-		f.pres.opened(s)
+	if err != nil {
+		return nil, err
 	}
-	return s, err
+	s.evidence = evidence
+	if evidence != nil {
+		if err = evidence(device, holds, f.clock().UnixMilli()); err != nil {
+			s.leave()
+			return nil, err
+		}
+	}
+	f.pres.opened(s)
+	return s, nil
+}
+
+// SubscribeCommitted carries only durable exact-fence receipts. It deliberately
+// leaves socket vouching disabled: a pong cannot authorize a lease extension.
+func (f *Feed) SubscribeCommitted(device string, holds []Hold, beat time.Duration, renew func(string, []Hold, int64) ([]dirwatch.HoldReceipt, error)) (*Sub, error) {
+	s, err := f.subscribe(device, holds, beat)
+	if err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	s.committed = true
+	s.renew = renew
+	f.mu.Unlock()
+	if err = s.PingCommitted(); err != nil {
+		s.leave()
+		return nil, err
+	}
+	f.pres.opened(s)
+	return s, nil
+}
+
+func (f *Feed) SubscribeBeat(device string, holds []Hold, beat time.Duration) (*Sub, error) {
+	return f.SubscribeBeatWithEvidence(device, holds, beat, nil)
 }
 
 func (f *Feed) subscribe(device string, holds []Hold, beat time.Duration) (*Sub, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	select {
+	case <-f.closed:
+		return nil, errFeedClosed
+	default:
+	}
 	if len(f.subs) >= f.cap {
 		return nil, ErrTooManyWatchers
 	}
@@ -229,10 +271,15 @@ func (f *Feed) differs(id string, old, next any, now int64) bool {
 // Sub is one watcher. It keeps no queue: it always reads the newest Status, so
 // a slow watcher skips intermediate versions and never sees one go down.
 type Sub struct {
-	f       *Feed
-	poke    chan struct{}
-	sent    uint64
-	started bool
+	evidence  func(string, []Hold, int64) error
+	committed bool
+	renew     func(string, []Hold, int64) ([]dirwatch.HoldReceipt, error)
+	receiptMu sync.Mutex
+	receipts  []dirwatch.HoldReceipt
+	f         *Feed
+	poke      chan struct{}
+	sent      uint64
+	started   bool
 
 	device string
 	shut   atomic.Bool
@@ -265,7 +312,37 @@ func (s *Sub) lapse() {
 
 // Ping records a sign of life at the directory's time. It changes no version
 // and wakes nobody: evidence is not a change a person can see.
-func (s *Sub) Ping() { s.alive.Store(s.f.clock().UnixMilli()) }
+func (s *Sub) Ping() { _ = s.PingCommitted() }
+
+// PingCommitted withholds a pong when a consensus renewal cannot commit.
+func (s *Sub) PingCommitted() error {
+	at := s.f.clock().UnixMilli()
+	if s.renew != nil {
+		if err := s.f.renewCommitted(s, at); err != nil {
+			return err
+		}
+	} else if s.evidence != nil {
+		holds := make([]Hold, len(s.keys))
+		for i, k := range s.keys {
+			holds[i] = Hold{Cell: k.cell, Fence: k.fence}
+		}
+		if err := s.evidence(s.device, holds, at); err != nil {
+			return err
+		}
+	}
+	s.alive.Store(at)
+	return nil
+}
+
+// takeReceipts transfers the last committed batch to the socket writer. Only
+// the bounded set returned by the renewal callback is retained per socket.
+func (s *Sub) takeReceipts() []dirwatch.HoldReceipt {
+	s.receiptMu.Lock()
+	defer s.receiptMu.Unlock()
+	receipts := s.receipts
+	s.receipts = nil
+	return receipts
+}
 
 func (s *Sub) wake() {
 	select {
@@ -316,25 +393,30 @@ func (s *Sub) leave() {
 	}
 }
 
-// visible is a record that can say which of its fields a person sees.
-type visible interface{ visibleAt(now int64) any }
-
-// visibleAt is the Cell as the home list shows it: whether the lease is held
-// counts, and when it runs out does not, so a heartbeat that only pushes the
-// expiry later changes nothing a person could see.
-func (c Cell) visibleAt(now int64) any {
-	if c.Lease.Expires > now {
-		c.Lease.Expires = 1
-	} else {
-		c.Lease.Expires = 0
-	}
-	return c
-}
-
 // fingerprint is the bytes two records are compared by.
 func fingerprint(v any, now int64) []byte {
-	if p, ok := v.(visible); ok {
-		v = p.visibleAt(now)
+	// Aliased shared records cannot carry private directory methods. Keep the
+	// presentation projection here so it never becomes replicated authority.
+	switch r := v.(type) {
+	case Device:
+		r.LastSeen = 0
+		v = r
+	case *Device:
+		if r != nil {
+			return fingerprint(*r, now)
+		}
+	case Cell:
+		r.FrameHints = nil
+		if r.Lease.Expires > now {
+			r.Lease.Expires = 1
+		} else {
+			r.Lease.Expires = 0
+		}
+		v = r
+	case *Cell:
+		if r != nil {
+			return fingerprint(*r, now)
+		}
 	}
 	b, _ := json.Marshal(v)
 	return b

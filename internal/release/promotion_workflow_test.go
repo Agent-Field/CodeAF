@@ -9,8 +9,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,17 +54,53 @@ func stringField(t *testing.T, value any) string {
 	return result
 }
 
-// C16: Promotion requires an explicit dispatch and retains safe concurrency.
+// C16: The schedule and the dispatch are the only triggers, and the parsed cron follows the parsed cutoff in both Toronto offsets.
 func TestC16PromotionTriggerAndCutoff(t *testing.T) {
 	doc := workflowDocument(t, "promote-staging.yml")
 	on := obj(t, doc["on"])
-	if len(on) != 1 {
-		t.Fatalf("triggers = %v; want explicit dispatch only", on)
+	if len(on) != 2 {
+		t.Fatalf("triggers = %v", on)
 	}
-	inputs := obj(t, obj(t, on["workflow_dispatch"])["inputs"])
+	schedule := list(t, on["schedule"])
+	if len(schedule) != 1 {
+		t.Fatalf("schedule = %v", schedule)
+	}
+	cron := strings.Fields(stringField(t, obj(t, schedule[0])["cron"]))
+	if len(cron) != 5 {
+		t.Fatalf("cron = %v", cron)
+	}
+	minute, e1 := strconv.Atoi(cron[0])
+	hour, e2 := strconv.Atoi(cron[1])
+	if e1 != nil || e2 != nil || cron[2] != "*" || cron[3] != "*" {
+		t.Fatalf("cron = %v", cron)
+	}
+	dispatch := obj(t, on["workflow_dispatch"])
+	inputs := obj(t, dispatch["inputs"])
+	if len(inputs) != 3 {
+		t.Fatalf("inputs = %v", inputs)
+	}
 	for _, name := range []string{"target", "dry_run", "signal"} {
 		if _, ok := inputs[name]; !ok {
 			t.Errorf("missing %s", name)
+		}
+	}
+	env := obj(t, doc["env"])
+	zone := stringField(t, env["CUTOFF_ZONE"])
+	weekday := stringField(t, env["CUTOFF_WEEKDAY"])
+	clock := stringField(t, env["CUTOFF_CLOCK"])
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutParts := strings.Split(clock, ":")
+	cutHour, _ := strconv.Atoi(cutParts[0])
+	cutMinute, _ := strconv.Atoi(cutParts[1])
+	for _, day := range []time.Time{time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)} {
+		run := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, time.UTC)
+		local := run.In(loc)
+		cut := time.Date(local.Year(), local.Month(), local.Day(), cutHour, cutMinute, 0, 0, loc)
+		if local.Weekday().String() != weekday || cron[4] != strconv.Itoa(int(local.Weekday())) || !run.After(cut) {
+			t.Errorf("cron %v run %s before cutoff %s", cron, run, cut)
 		}
 	}
 	concurrency := obj(t, doc["concurrency"])
@@ -71,14 +109,14 @@ func TestC16PromotionTriggerAndCutoff(t *testing.T) {
 	}
 }
 
-// F8: The workflow documents the validation and push safety boundaries.
+// F8: The workflow explains why a late cron is safe and why each job exists.
 func TestPromotionWorkflowExplainsItsSafetyLaws(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "promote-staging.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, want := range []string{"Validate the selected dev commit", "PROMOTION_TOKEN", "SLACK_RELEASE_WEBHOOK", "forward-only", "persist-credentials"} {
+	for _, want := range []string{"# THE CUTOFF IS A COMMIT TIME, NOT THE RUN TIME.", "12:59Z and 15:46Z", "PROMOTION_TOKEN", "SLACK_RELEASE_WEBHOOK", "forward-only", "persist-credentials"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("workflow lacks explanation %q", want)
 		}
@@ -91,13 +129,13 @@ func TestPromotionWorkflowExplainsItsSafetyLaws(t *testing.T) {
 	}
 }
 
-// Promotion instructions must preserve candidate validation and forward-only updates.
+// Promotion instructions must preserve the Friday cutoff schedule, candidate validation and forward-only updates.
 func TestPromotionDocsDescribeLiveSetupAndConditionalCadence(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs/rules/promotion.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"dry_run=true", "Full check", "exact candidate", "git merge-base --is-ancestor", "git push origin $SHA:staging", "Never\nforce a promotion"} {
+	for _, want := range []string{"every Friday after a 17:00 America/Toronto cutoff", "dry_run=true", "Full check", "exact candidate", "git merge-base --is-ancestor", "git push origin $SHA:staging", "Never\nforce a promotion"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("runbook lacks %q", want)
 		}

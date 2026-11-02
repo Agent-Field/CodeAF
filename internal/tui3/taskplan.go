@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -655,15 +656,19 @@ func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) ([]tasksMin
 		return rows, nil
 	}
 	held := make(map[string]bool, len(plan))
+	history := make(map[tasksKey]bool)
 	for _, task := range plan {
 		if id := strings.TrimSpace(task.ID); id != "" {
 			held[id] = true
+		}
+		if task.HistoricalRun != 0 {
+			history[tasksKey{session: task.HistoricalSession, id: strconv.FormatUint(task.HistoricalRun, 10)}] = true
 		}
 	}
 	kept := make([]tasksMineRow, 0, len(rows))
 	replaced := make(map[tasksKey]bool)
 	for _, row := range rows {
-		if held[strings.TrimSpace(row.planTask)] {
+		if held[strings.TrimSpace(row.planTask)] || history[tasksKeyOf(row.entry)] {
 			replaced[tasksKeyOf(row.entry)] = true
 			continue
 		}

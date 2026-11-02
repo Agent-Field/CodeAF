@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -18,7 +19,11 @@ func TestDryRunIgnoresEveryNonLabelSize(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(dryRunYAML), 0o644); err != nil {
+	// No written max_cost: an unknown cost then starts, so only sizes are
+	// under test here (a written cap holds an unmeasured job; see
+	// pipeline's measured tests).
+	noCost := strings.Replace(dryRunYAML, "  max_cost: 2\n", "", 1)
+	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(noCost), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	floor := func(tr factory.Triage) []factory.Item {
@@ -37,7 +42,8 @@ func TestDryRunIgnoresEveryNonLabelSize(t *testing.T) {
 		return getDryRun(t, seam, "/v1/repos/acme/web/dryrun").DryRun
 	}
 	base := run(factory.Triage{})
-	if !reflect.DeepEqual(base.WouldStart, []int{1}) || len(base.WouldAsk) != 2 {
+	// The unlabelled job is M, so it starts: from its missing label, never a read.
+	if !reflect.DeepEqual(base.WouldStart, []int{1, 3}) || len(base.WouldAsk) != 1 {
 		t.Fatalf("baseline dry run = %+v", base)
 	}
 	for _, tr := range []factory.Triage{

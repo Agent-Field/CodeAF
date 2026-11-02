@@ -29,7 +29,9 @@ export function makeRules({ ttlMs, renewOnPublish }) {
   // force is the amendment: a person who chose "continue here" takes a live lease at once.
   // The fence still goes up, so the old holder's next write is refused as before.
   const acquire = (c, device, now, force = false, expect = undefined) => {
-    if (expect != null && (c.lease.device !== expect.device || c.lease.fence !== expect.fence)) throw refuse('lease_held');
+    if (expect != null && (c.lease.device !== expect.device ||
+        (expect.head && c.head !== expect.head) ||
+        (c.lease.fence !== expect.fence && !(expect.head && c.lease.fence > expect.fence)))) throw refuse('lease_held');
     if (!force && c.lease.expires > now && c.lease.device !== device) throw refuse('lease_held');
     return { ...c, lease: { device, fence: c.lease.fence + 1, expires: now + ttlMs, pending: 0 } };
   };
@@ -46,9 +48,9 @@ export function makeRules({ ttlMs, renewOnPublish }) {
     const expires = renewOnPublish ? now + ttlMs : c.lease.expires;
     // The frame plan describes the head it was set with, so every publish replaces it
     // wholesale: a publish that says nothing is a true statement, a stale one is not kept.
-    const { frames, ...kept } = c;
+    const { frames, frame_hints, saved_at, ...kept } = c;
     const next = { ...kept, head: p.head, size: p.size, class: p.class, durable_at: now, lease: { ...c.lease, expires, pending: p.pending } };
-    return omitEmpty(next, { title, frames: p.frames });
+    return omitEmpty(next, { title, frames: p.frames, frame_hints: boundedFrameHints(p.frame_hints), saved_at: p.saved_at > 0 ? p.saved_at : (p.head === p.old_head ? saved_at : undefined) });
   };
 
   const releaseOf = (c, device, fence, now) => {
@@ -59,7 +61,7 @@ export function makeRules({ ttlMs, renewOnPublish }) {
   const created = (init, device, now) => {
     const c = { V: 1, head: init.head, durable_at: now, class: init.class, size: init.size, keys: init.keys,
       lease: { device, fence: 1, expires: now + ttlMs, pending: 0 } };
-    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, orphan_turns: init.orphan_turns, frames: init.frames });
+    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, orphan_turns: init.orphan_turns, frames: init.frames, frame_hints: boundedFrameHints(init.frame_hints), saved_at: init.saved_at });
   };
 
   return { acquire, heartbeat, publishTo, releaseOf, created };
@@ -69,3 +71,14 @@ const omitEmpty = (c, optional) =>
   Object.assign(c, Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined && v !== '' && v !== 0 && !(Array.isArray(v) && !v.length))));
 
 export const { acquire, heartbeat, publishTo, releaseOf, created } = makeRules(AMENDED);
+
+
+function boundedFrameHints(hints) {
+ if (!Array.isArray(hints) || hints.length===0 || hints.length>2) return undefined;
+ let remaining=64*1024;const seen=new Set();const out=[];
+ for (const h of hints) {
+  if (!h || typeof h.id!=='string' || !/^[0-9a-f]{64}$/.test(h.id) || !Number.isSafeInteger(h.bytes) || h.bytes<=0 || h.bytes>=remaining || seen.has(h.id)) return undefined;
+  remaining-=h.bytes+1;seen.add(h.id);out.push({id:h.id,bytes:h.bytes});
+ }
+ return out;
+}

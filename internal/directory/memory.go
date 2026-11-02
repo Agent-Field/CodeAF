@@ -310,6 +310,7 @@ func copyCell(c Cell) Cell {
 		keys[id] = maps.Clone(wrapped)
 	}
 	c.Keys = keys
+	c.FrameHints = append([]FrameHint(nil), c.FrameHints...)
 	return c
 }
 

@@ -25,18 +25,20 @@ const (
 	NeedsConflict         = "conflict"
 	WhoAnyoneWithRepo     = "anyone_with_repo"
 	WhoJobPerson          = "job_person"
-	QuestionText          = "text"
-	AskYesNo              = "yes_no"
-	AskOptions            = "options"
-	ChoiceContinue        = "continue"
-	ChoiceTryOnceMore     = "try_once_more"
-	ChoiceSendBack        = "send_back"
-	ChoiceCancel          = "cancel_job"
-	CodeToolError         = "tool_error"
-	CodeProviderError     = "provider_error"
-	CodeCrash             = "crash"
-	CodeMachineLost       = "machine_lost"
-	CodeTransportError    = "transport_error"
+	// WhoApprover is an approval that names who it waits on (Stage.Who).
+	WhoApprover        = "approver"
+	QuestionText       = "text"
+	AskYesNo           = "yes_no"
+	AskOptions         = "options"
+	ChoiceContinue     = "continue"
+	ChoiceTryOnceMore  = "try_once_more"
+	ChoiceSendBack     = "send_back"
+	ChoiceCancel       = "cancel_job"
+	CodeToolError      = "tool_error"
+	CodeProviderError  = "provider_error"
+	CodeCrash          = "crash"
+	CodeMachineLost    = "machine_lost"
+	CodeTransportError = "transport_error"
 	// CodeStopped is a person's stop that cut a step, by the step's own Stop
 	// or the whole job's: the job and that step both say it was stopped.
 	CodeStopped     = "stopped"
@@ -50,9 +52,11 @@ const (
 	LinkRevoked        = "revoked"
 	LinkUnknown        = "unknown"
 	ReasonNotJobPerson = "not_job_person"
-	AskApp             = "app"
-	AskTUI             = "tui"
-	CurrencyUSD        = "USD"
+	// ReasonNotApprover refuses an approval to anyone but whom it names.
+	ReasonNotApprover = "not_approver"
+	AskApp            = "app"
+	AskTUI            = "tui"
+	CurrencyUSD       = "USD"
 )
 
 // NeedsYouKinds is the whole enum, in the order the queue groups by.
@@ -123,6 +127,13 @@ type RoundLine struct {
 	At       time.Time `json:",omitempty"`
 	Started  time.Time `json:",omitempty"`
 	Chat     string    `json:",omitempty"`
+	// Result and Reason are how the try ended ([TryResult]): its rule's word
+	// (clean, not clean, green, proven, blocked…) and a counted reason ("2
+	// findings"). Absent on a try recorded before they were, and on a try
+	// that ended without a report (a failure or a stop), whose word must not
+	// be guessed from its summary.
+	Result string `json:",omitempty"`
+	Reason string `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.
@@ -453,6 +464,14 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 	replaced := false
 	for i := range ph.Rounds {
 		if (line.Chat != "" && ph.Rounds[i].Chat == line.Chat) || (line.Chat == "" && ph.Rounds[i].Chat == "" && ph.Rounds[i].Round == line.Round) {
+			// A LINE THAT DOES NOT SAY HOW THE TRY ENDED KEEPS WHAT WAS SAID: a
+			// worker's report and a rerun's note carry the try again without
+			// its word, which the factory judged from the report it folded.
+			// A line that says the try was rejected never keeps a word that said
+			// it passed, so only a line that agrees with the old one keeps it.
+			if old := ph.Rounds[i]; line.Result == "" && old.Round == line.Round && old.Rejected == line.Rejected {
+				line.Result, line.Reason = old.Result, old.Reason
+			}
 			ph.Rounds[i] = line
 			replaced = true
 			break

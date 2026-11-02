@@ -476,7 +476,11 @@ You will see one exact reason:
 - `its branch task/x was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
 - `its branch task/… was kept: feat/x has moved on since the work was cut — inspect the retained task branch before choosing a destination`
 
-## How do I take the work — why did the work not land in my checkout, why didn't my task merge, I committed, amended, rebased or reset my branch while it ran, my checkout is on main or dev, tasks do not merge into a protected branch automatically
+## How do I take the work — why didn't my task's changes show up in my folder, why did the work not land in my checkout, why didn't my task merge, I committed, amended, rebased or reset my branch while it ran, my checkout is on main or dev, tasks do not merge into a protected branch automatically
+
+Ordinary chats use the automatic landing described here. Experimental private-task
+chats on Linux and macOS instead keep results for `/task review` and `/task apply`;
+see “Review and apply an owned task root” in Task controls.
 
 An ordinary task keeps its work on its own branch when your checkout is protected,
 detached, on a different branch or on a commit you moved after the task started.
@@ -1213,6 +1217,11 @@ screen even while the terminal is focused, because a focused terminal is no
 longer evidence that anybody is looking at *that* conversation.
 
 ## How long a task gets before it is stopped
+
+For a task on another computer, the default wall is six hours; a time limit
+sent by this chat replaces it. The other computer's spending permission still
+applies. See *Tasks on another computer*. The checkpoint clocks below describe
+local session-tree work.
 
 Two clocks, and neither is a hard stop.
 
@@ -2322,6 +2331,32 @@ one, which lands the way it always did.
 cannot decide which of two versions of your file you meant, so an accept over a folder that
 moved leaves the task needing your look with the same sentence.
 
+## Land a kept task branch in the desktop app — Git LFS, filters and changed plans
+
+The desktop app can plan a merge of a task branch recorded by this conversation
+into your checkout, then land the exact commit after confirmation. It refuses a
+dirty checkout or a conflict. It does not put your changes aside. If the branch,
+checkout, configuration, hooks or attributes change after the plan, plan again.
+
+Having Git LFS installed globally or system-wide does not by itself prevent a
+land. A filter refusal means an attribute selects a configured `clean`, `smudge`
+or `process` program for a file the land writes or compares. That includes tracked
+files checked for cleanliness and the task branch's checked-out copies. The
+refusal names up to 50 affected paths and says “this repository runs a filter
+program on its files, and a land cannot vouch for it”.
+
+Attributes in either branch, the merge base, nested `.gitattributes`,
+`info/attributes`, and global or system attribute files all count. If their
+meaning or readability cannot be established, the land refuses. These checks
+need Git's tree-attribute and attribute-file-location queries (Git 2.42 or newer
+provides both), and run only when a filter program is configured: without one, an
+older Git lands as before. Attribute path lists and answers are limited to 8 MiB per read;
+attribute files outside committed trees share an 8 MiB budget per checkout.
+
+Custom merge programs, sparse checkouts and branch-specific merge options still
+prevent a confirmed land. The branch stays available for you to inspect or
+merge with Git yourself.
+
 ## Nothing is thrown away
 
 On every ending except a clean merge, the branch is **kept and named**. This is true
@@ -2653,7 +2688,13 @@ and stay there.
 
 ## Does a task survive a restart?
 
-The graph survives. The running work does not.
+For a task on another computer, reopening the chat follows the saved attempt
+and brings its answer home once. Restarting `codeaf serve --take-tasks` on that computer
+follows a child still running there; a child that died is interrupted, never
+automatically run again. See *Tasks on another computer* for `run it here`.
+
+For the local session-tree tasks described below, the graph survives but the
+running worker does not.
 
 When a session comes back:
 
@@ -3191,7 +3232,20 @@ pointer — they still point at your turn, never at the parent task's own journa
 
 ## The optional arguments on propose_task
 
-Four more arguments, all optional. Every bad value is an ordinary result, not an error.
+These arguments are optional. Bad values return a refusal the model can correct.
+
+**`computer`** — the shown name of a paired computer that runs
+`codeaf serve --take-tasks`. This argument and its model guidance appear only
+while **Run tasks on** names a paired computer. At the default `this computer`,
+the model gets the ordinary local tool. You can still name a computer for one
+task with `/task --on`. The task needs its own independent
+copy, and both ends need Linux or macOS; Windows is not yet supported. Omitted
+uses **Run tasks on**, whose default is `this computer`. An explicit choice wins;
+`here` and `this computer` run locally. An unknown name returns
+`no paired computer is named "<name>" — your computers are: <names>` as a tool
+error. The chat and transcript stay here. A remote task runs alone in this
+conversation; wait for it to finish before proposing more tasks. See *Tasks on
+another computer* for the return path, spending and recovery.
 
 **`depends_on`** — an array of task ids that must finish first. The task waits for them,
 and their reports are put in front of it when it starts — every one of them, bounded
@@ -3391,6 +3445,51 @@ and timelines. Old temporary conversations still follow the usual seven-day
 retention policy. Previously orphaned timelines are not automatically purged:
 a missing directory alone does not prove that its history is disposable.
 
+## Experimental compact task copies in an isolated profile
+
+Compact task storage is unfinished and off unless
+`CODEAF_PROTOTYPE_TASK_STORAGE=1`, an explicit `CODEAF_HOME`, and
+`CODEAF_PROTOTYPE_ARCHIVE_BINARY` select a separate profile and archive engine.
+Ordinary profiles keep their existing cleanup behavior.
+
+Only controlled file-tool-only cases are eligible. Verification uses isolated
+owned copies, trusted Git plumbing and no user hooks or external writers. File
+tool names do not prove that an arbitrary custom implementation is contained.
+Ordinary planned workers use bash, so their work does not qualify for automatic
+retirement. Explicitly certified offline test copies exercise packing and
+restoration separately; this is not an automatic normal-use lifecycle.
+
+Before an uncontained shell, check, automation or custom tool launches, the
+prototype durably marks the **whole profile** uncertain: host processes can name
+absolute paths outside their launch folder. Every task copy then stays resident.
+A clean retry, engine restart or vanished process group never clears this mark;
+a detached descendant might still write. There is no automatic expiry or purge.
+This prototype does not promise disk reclamation for normal shell workloads.
+
+For an eligible task, codeaf saves all file contents and supported metadata,
+verifies independent restoration and retires the expanded directory. A failure
+preserves recovery state and reports `compact storage could not be prepared`.
+The person's project and in-place folders are never retired by this mechanism.
+
+Verification covers file names and types, bytes, modes, owner and group,
+modification times, extended attributes and link relationships. Access and
+creation timestamps are not retained. Unsupported ACLs, filesystem flags,
+sparse files and special nodes keep the copy resident. Exact metadata survival
+after power loss has not been tested.
+
+Explicitly reading a saved task file restores its copy. An existing task room's
+`work` tab also restores it where that room is available. Ordinary completed
+tasks open a result card, which has no work tab; its record stays compact until
+an explicit file read. Listing, hovering and polling do not expand archives.
+Interrupted runs restore before their existing continuation; missing or corrupt
+archives refuse it. Existing cost-recovery checks can still block continuation.
+This does not enable continuing completed runs or programs.
+
+Linked Git copies retain their administration and index, with an owned lock and
+compact backup. Shared project Git objects remain required; user locks survive.
+Local archives retain ignored files. Relay keeps its screened transfer rules:
+dependencies and secrets do not start travelling because a task was compressed.
+
 ## Can bash tasks search the web and fetch pages?
 
 Yes. PlanDB run workers carry `web_search` and `web_fetch` as native tools,
@@ -3417,3 +3516,17 @@ conversation's own folder, with file reservations rather than a separate branch.
 If the request explicitly names a plain folder outside a repository, that exact
 folder is used. The resolved place is a fact on the task, not guessed from your
 terminal's current folder after the task has started.
+
+## Which agent ran this command — CODEAF_AGENT_DID, the agent's identity, and a task's `#w` suffix
+
+Every conversation has its own identity, a DID such as `did:key:z7QE…`. It is
+made when the conversation opens, saved with it by the end of its first turn,
+and stays the same after a restart.
+A copied or branched conversation gets a new one.
+
+Each command the conversation runs sees it as `CODEAF_AGENT_DID`, so a tool can
+record which agent acted. A task's commands see the conversation's DID followed
+by `#w` and the task's number, for example `did:key:z7QE…#w3`. The desktop app
+reads the same DID in the agent list as `did`.
+
+The DID is a name, not a credential: no key is kept and nothing is signed with it.

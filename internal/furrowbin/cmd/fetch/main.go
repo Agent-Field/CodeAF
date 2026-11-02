@@ -5,14 +5,16 @@
 // is the step that either gets it or stops. It never half-succeeds. Either the
 // normal fetched archive matches internal/furrowbin/pin.json, or the command
 // exits non-zero with the sentence that says what to run. Explicit developer
-// artifacts bypass the pin; Windows deliberately clears staged engines.
+// artifacts bypass the pin and announce the override and pinned version.
 //
 //	go run ./internal/furrowbin/cmd/fetch
-//	go run ./internal/furrowbin/cmd/fetch -from ~/.agentfield/bin/furrow
+//	go run ./internal/furrowbin/cmd/fetch -from /path/to/furrow-windows-amd64.exe -goos windows -goarch amd64
 //	go run ./internal/furrowbin/cmd/fetch -built /path/to/furrow/target/release/furrow
 //
 // -built stages an explicitly selected artifact or an engine from an external
 // furrow checkout. These developer overrides do not consult the release pin.
+// -omit clears staged engines for a platform without a native furrow release;
+// Windows has pinned native artifacts and must use the normal fetch path.
 //
 // A build machine with no network is the case worth spelling out: -from takes
 // the artifact off local disk and checks it against the same pin, so an air
@@ -67,6 +69,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "stage the built furrow: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Fprintf(os.Stderr, "furrow: staged developer override %q for %s without pin verification (pinned version %s)\n", *built, platform, furrowbin.Version())
 		return
 	}
 	if err := fetch(furrowbin.ReadPin(), platform, *cache, *stage, *from); err != nil {
@@ -170,7 +173,7 @@ func stageInto(stage, platform string, binary []byte) error {
 }
 
 // clearStaged prevents another platform's engine from riding in this build.
-// An empty keep is the deliberate no-native-engine road used by Windows.
+// An empty keep is the explicit -omit path for platforms without a native engine.
 func clearStaged(stage, keep string) error {
 	leftovers, err := filepath.Glob(filepath.Join(stage, "furrow-*.gz"))
 	if err != nil {

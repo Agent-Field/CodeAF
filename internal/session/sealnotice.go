@@ -9,6 +9,21 @@ func (a *Agent) SealFailing() bool {
 	return a != nil && a.config.Seals != nil && a.config.Seals.Failing()
 }
 
+// TakeSealNotice forwards saving news after a turn's event stream has ended.
+// A running turn keeps its own notices on that stream.
+func (a *Agent) TakeSealNotice() string {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.Seals == nil {
+		return ""
+	}
+	a.mu.Lock()
+	running := a.running
+	a.mu.Unlock()
+	if running {
+		return ""
+	}
+	return a.config.Seals.Take()
+}
+
 // noticeSealed says on the turn's own stream what the seat's seal watch has to
 // say: a file kept out of the saved history, a seal that failed, a seal that
 // works again.

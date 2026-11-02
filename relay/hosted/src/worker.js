@@ -12,7 +12,10 @@ export { LinkGate } from './link/gate.js';
 export { LinkRequest } from './link/request.js';
 export { PairGate } from './pair/gate.js';
 export { Mailbox } from './pair/mailbox.js';
+export { MachineDO } from './engine/machine.js';
 
 export default {
   fetch: (request, env) => respond(() => dispatch(request, env)),
 };
+
+export { RaftMemberDO } from './raft/member.js';

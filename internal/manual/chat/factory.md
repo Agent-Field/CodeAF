@@ -18,21 +18,48 @@ A machine with no factory set up has none of this: the chat's factory tools are 
 
 ### Jobs at once and queued work
 
-A newly attached computer defaults to **15 jobs at once**. Set a different limit
-in **Settings → Factory concurrency → Jobs at once**, then press **Set slots**.
-The same owner-only control remains in Settings → Factory → Your machines.
-The current supported range is 1–100. An existing saved limit is kept on restart
-and upgrade, including a previously chosen limit of two; change it in Settings
-to admit more jobs. A change applies within about five seconds without restarting.
+**Jobs at once** is the one number that limits how many jobs a computer runs
+together. A newly attached computer defaults to **15 jobs at once**. Change it
+in **Settings → Factory → Your computers**, with the stepper beside each of
+your computers; it is owner-only. The supported range is 1–100. An existing
+saved limit is kept on restart and upgrade, including a previously chosen limit
+of two. A change applies within about five seconds without restarting.
 Lowering the limit lets admitted jobs finish and withholds new jobs until there
-is room. Raising it admits queued work up to the new limit.
+is room. Raising it admits queued work up to the new limit. There are no CPU or
+memory limits per job: the computer's own system shares them.
 
-When the owner's eligible computers are full, queued jobs say **Waiting for
-capacity** and show the number of occupied execution slots and the configured
-limit. The notice points to Settings → Factory concurrency and offers
-**Configure concurrency**. An offline or unknown runner is reported as waiting
-for a runner, without inventing a full-capacity count. The manager calls these
-execution slots, never benches, and gives the same Settings location.
+Jobs over the limit wait in the queue, oldest first. When the owner's eligible
+computers are full, queued jobs say **Waiting for capacity** and show the
+number of occupied execution slots and the configured limit. The notice points
+to Settings → Factory → Your computers and offers **Change jobs at once**. An
+offline or unknown runner is reported as waiting for a runner, without
+inventing a full-capacity count. The manager calls these execution slots, never
+benches, and gives the same Settings location.
+
+A queued job whose work is already on one computer can only run there. While
+that computer is offline or asleep, the job says **Waiting for <computer>
+(offline for 3 h)** instead, and no free slot elsewhere or Jobs at once setting
+starts it. Only that computer's own person sees its name; anyone else reads
+**Waiting for its computer**.
+
+Two overrides act on one queued job, and only its person may use them:
+
+- **Start now** lets that job take one slot above Jobs at once, this one time,
+  so it starts without waiting for another job to finish. It reads **Starting
+  now** until a computer takes it. A job that goes back to the queue later
+  waits like any other. Start on a Backlog job only queues it at the top. On a
+  job waiting for a computer that is down, Start now is refused with that
+  reason and changes nothing.
+- **Hold** keeps a queued job from starting; it reads **Held**. **Resume** puts
+  it back in the queue, and Start now on a held job lifts the hold and starts it.
+
+Both are recorded in the factory's activity with who made them.
+
+A computer attaches once per slot each time its factory moves to a new
+address; the factory inside the app takes a new port on every start. When the
+same person's same computer attaches again, the factory forgets its older
+registrations that have been silent past the runner timeout and hold no job,
+so the list of registrations does not grow without end.
 
 Idle Follow PR monitoring uses the factory's background GitHub poll, with no
 execution slot or model turn. New actionable review feedback, failing CI or a
@@ -41,6 +68,12 @@ holds a slot; completing it releases capacity and resumes background monitoring.
 Budgets, ownership, publication consent and duplicate-repair protection still apply.
 
 The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir` and `trusted_proxies`. Unknown keys are refused. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
+
+## GitHub rate limit on a team factory — "GitHub is rate-limited until", github_limited, operator access link after the reset
+
+When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
+
+The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
 
 ## give someone access — codeaf factory token, revoke, revoke-sessions and name
 
@@ -56,6 +89,10 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 ## codeaf attach and codeaf detach — use another machine's factory
 
 `codeaf attach <url> [--name n] [--token t]` writes `attach.json` in the factory folder (`~/.codeaf/v3/factory`, readable by you only) so this machine's windows and runners use that factory instead of serving their own. It does not dial the factory: a team box that is down now is still the one you mean. `--name` is the name this machine goes by there (its hostname by default) and `--token` is a session you already hold. `codeaf detach` removes the file, and this machine's own factory is used again. Only `http://` and `https://` addresses are accepted, and a link with a user name in it is refused.
+
+## the app keeps a factory sign-in — signed out after a restart, keychain, sign out removes it
+
+In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
 
 ## codeaf runner join — run a factory's jobs on this machine, sign in with GitHub
 
@@ -90,6 +127,49 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 
 A step that falls short goes round again until its rounds run out, and only then asks you what to do. New jobs default to Auto, which passes routine optional approvals and publishes passing proof as a draft PR within the job budget. Manual asks before enabled approval gates and publication; the job header switch saves that choice. Fixed gates and critical unresolved decisions still ask. Merge remains your decision. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
 
+## the factory's own rules — rules for every repository, instructions, protected paths, ask first, never, "don't touch auth without checking with me"
+
+A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. A change to a file the repository already has reaches the next start; a file added where there was none (the first `factory.yaml`, or a `CODEOWNERS`) is read within five minutes of its merge. **Use on this factory** runs the edit at once instead (see the next section). The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
+
+They hold three lists:
+
+- **rules**: sentences every step of every job is told, below the repository's own, in a "rules for this work" paragraph. A step that would break one stops and asks instead. A sentence codeaf recognises, such as "never close an issue" or "tests pass before anything posts", is also applied by code, exactly like the repository's.
+- **ask first**: protected paths, written `touch auth/`, and sentences a job asks about before it starts on its own, like `start.ask_first`. In the app the paths are **Protected folders and files**.
+- **never**: kept so older files still work. A path listed here is a protected path, exactly like `touch <path>` under ask first; it is not held more strictly or briefed differently. Write new ones under ask first.
+
+The factory's rules only ever ADD to a repository's: they can never remove or loosen anything its file says. A job carries the rules that stood when it was queued, so a runner on another machine follows the factory's rules, not its own machine's. A rules file the factory cannot read refuses to start jobs rather than starting them without the rules.
+
+## use edited steps now — Use on this factory, the factory's own copy of a repository's steps, no pull request, stop using it
+
+A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, so an edit made in the app's Steps tab (Repository view) runs only once its pull request merges. **Use on this factory**, beside **Open pull request**, saves the edited file in the factory itself instead, as **its own copy** of that repository's steps: no push and no pull request. It is checked exactly as a pull request's file is, and the copy is the very file that pull request would write.
+
+- Jobs this factory starts afterwards run the copy instead of main's file. The factory's own rules and protected paths still apply on top, as they do on main's file.
+- A job's file is decided once, the first time it starts (or when a start label stamps its steps, if that comes first): the copy, when the factory keeps one then, else main's file. It keeps that file for its life, and starting it again does not change it: saving or stopping a copy changes only jobs not started yet. **Bring back** forgets it with the job's steps, and its next start decides again.
+- A job carries that file, so a runner on another machine runs the same steps, and everything that bounds or starts the job reads it: an edit of its steps (from its tab, its manager or the `factory_item` card), its manager's brief, its plan's bounds, its rules (ask first, never), what it may post, the budget a start gives it and how it merges. A job decided on main's file reads main's file, never a copy saved later. Its record says `Runs this factory's copy of .codeaf/factory.yaml, saved <when> by @<who>, not main's`, and the log says `recipe from factory copy`.
+- The page says what is in effect: `This factory uses its own copy of these steps, saved <when> by @<who>.` and whether main has no file yet or a different one. **Open pull request** still shares the steps with the repository.
+- When main's file becomes the same file (the pull request merged), the copy clears itself and new jobs run main's file. **Stop using this copy** makes new jobs run main's file; jobs already started keep the copy they started with. When the file cannot be shown (GitHub does not answer, or the copy spells settings the factory has not confirmed), the factory still says it keeps a copy, who saved it and when, so it can still be stopped.
+- Precedence: the factory's copy, else main's file, else the built-in steps.
+
+Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps. Steps that use kind, when, effort or fanout are saved as a copy only when the factory has confirmed it runs them for the file they were edited from, as for a pull request. A factory older than this feature answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
+
+## a rule asks first — protected paths, Auto paused at the plan, a plan that touches auth, why a job waits on a rule
+
+Ask-first paths and never paths are one kind of rule, **protected paths**. When a job starts, the protected paths it starts under (the repository's and the factory's) go with it, and every step is told them on one line, "ask before touching: auth/, infra/". A job is held at its start, after its plan and before its change is published whenever a file it names or changes is under one (`touch auth/`, or a bare `auth`, covers everything under `auth/`). The approval is never routine, even in Auto: the job waits with `protected · auth/ · auth/login.go`, shown as "A protected path: auth/ · auth/login.go". A plan step is told to end its plan with its file list in the one shape the factory reads, a line that says only `Files:` and then a `- path` line per file, outside any code block; nothing else in a plan is read as its files. A plan without that list waits with `protected · auth/ · the plan names no files` (every protected path in force), shown as "The plan didn't list its files, so the factory couldn't check them against auth/. Approve, or send it back to list them." Answering it clears the hold. The job keeps what each check found: on its Steps panel, **Before it starts** and **Before publishing** show a green ◆ and "passed" when nothing a rule guards was touched, and stay amber with "asked" when a rule made the job wait for you. A job a person started was not checked at its start, so that row shows no finding. Ask-first sentences, which nothing can check against files, are told on their own line, "ask before you: …", and hold a job before it starts with "ask first ·" and the sentence.
+
+## pick up issues — labelled work starts by itself, its labels, who owns those jobs
+
+**Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, a factory on your own machine starts nothing a person did not start; a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next start at once.
+
+## let the plan reshape the steps — adapt, ask, fixed, a pipeline tailored to each job
+
+A job's plan step may change the steps the rest of the job runs, within bounds codeaf holds in code: it may add a step, switch one on or skip one, but never skip proof, a fixed step or a step a rule names, and never touch a step that already ran. How much freedom it has is one word:
+
+- **adapt** (the default): the plan reshapes the steps for this issue, and the run goes on.
+- **ask**: the plan may reshape them, and a person approves before anything after the plan runs.
+- **fixed**: the steps run as the pipeline wrote them; only you can change them.
+
+A repository says it with `adapt:` in its `.codeaf/factory.yaml` (one word for every pipeline in the file). The factory can say it for every repository (the Steps tab's Global view, "Plans may reshape a job's steps"), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
+
 ## issues only — pull requests are outcomes, old PR jobs removed
 
 Issues are the factory's only work items, including briefs handed over from chat. GitHub imports issues only; pull requests never become queue rows or review jobs. New jobs cannot select a PR or standalone CI pipeline.
@@ -105,6 +185,22 @@ Once a job has landed, a nonempty step edit is refused with `the job has landed,
 Proof is the step named proof, a send-back's prove step, or any step that runs until proven, whatever it is called; checks and posts are not proof. Before landing, once any proof has started, a nonempty step edit is refused with `proof has started, so the steps can no longer be edited`. A refused step edit leaves the job, its proof and its recorded changes as they were. An empty edit changes nothing.
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
+
+## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs
+
+On the app's job page, the job's person can set how many tries one conversation step of that job gets, from 1 to 3, before the step runs. A try that does not meet the step's rule (until clean, until proven) goes again until the step runs out of tries, then the job asks you. The change is for this job only, never the repository's steps.
+
+It is refused above three or below one (`a step gets 1 to 3 tries`), for a check or an approval (`test is a check or an approval; only a conversation step's tries change here`; a check says its rounds when it is added), for a step that has run, a fixed step or a step after proof, and from anyone but the job's person (`only the person sets how many tries a step gets`). A factory older than the change answers that it doesn't support that yet.
+
+## remove or move a step of one job — delete a step, reorder, run it after, skip versus remove
+
+Skipping a step leaves it in the job, switched off. Removing it takes it out of the job's steps altogether; moving it puts it after another step, or first. Both change this job only, never the repository's pipeline, and both go through the same edit and bounds as every other change: tell the job's manager (`remove pretest`, `run docs after write`), or use the step's menu on the job's tab.
+
+A step that has already run, is running, waits on you or failed is never removed or moved, and nothing is moved before one. Proof is never removed or moved (`you may not remove proof; proof vouches for the work before it`), nothing but your approval or a post is moved after proof, and a fixed step or a step a rule names stays (`review is fixed by the recipe`, `you may not move test; the policy names it`). Only you remove or move an approval (`only you may remove approve, where the run holds for you`) or a post (`only you may move pr, which posts outward`); the manager may move a conversation step across an approval. A post is never moved before the proof or approval it stood after (`you may not move pr before approve; nothing posts before what holds it`), and an approval is never moved after a post it stood before (`you may not move approve after pr; nothing posts before what holds it`). Under a recipe's `fixed` only you change the steps, and under `ask` the manager's change gets an approval after plan, as for any edit. A job keeps at least one step, and a step moved to where it already stands changes nothing.
+
+An edit is whole or nothing: a step removed is not also changed by the same edit, nor moved after, and a step is moved once per edit. The job's record says `manager removed pretest` and `you moved docs after write` (or `moved docs first`), after any set, added, switched on and skipped lines.
+
+A removal or a move reaches the run at once, from whichever door makes it (the job's tab, its manager or the `factory_item` card): a removed step never runs and a moved step runs in its new place, whether the job is queued or running; the steps that already began keep their place. A factory older than remove and move answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
 
 
 ## two steps with the same name — step names in capitals, "more than one stage is named", cannot change a step by name
@@ -160,7 +256,7 @@ changed code, CI or feedback cannot reuse stale readiness approval. Marking read
 never grants merge authority. The repository's separate auto-merge setting is
 the explicit opt-in for automatic merge.
 
-## merge a job's pull request — Merge, auto-merge, why it will not merge
+## merge a job's pull request — factory auto-merge when checks pass, or why it will not merge
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
 
@@ -201,11 +297,27 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 **Anything of the old run still here goes first**, before the job is back: a folder or branch something made again after the drop, and the conversations and team of a job dropped before drops deleted them. If one cannot be deleted, the job still comes back and its activity says `brought back · the local branch and folder were kept:` or `brought back · its conversations were not all deleted:` and why; the job no longer names it, so its next run never reads it.
 
+## comment on a job's issue — teammates' comments, does the manager read GitHub comments, write access
+
+A comment typed on a job's Issue tab is posted to the job's GitHub issue as you, with your own GitHub sign-in; a solo factory uses its host's sign-in. Only a job from a GitHub issue takes one, up to 8000 characters. A sign-in GitHub will not let comment there is refused with "Your GitHub sign-in can't comment on owner/repo", and nothing is posted. If GitHub's answer is lost, the comment may have posted: read the issue before posting again. A second comment on the same job while one is still being posted is refused, and nothing more is posted. A job of a repository that is turned off takes no comment.
+
+The job's manager reads every new comment on the issue once the factory's next GitHub read brings it, about a minute. Comments already there when the job first read the issue are its context. Under each comment it read, one line says what it did:
+
+- from someone without write access to the repository: "read as context · no write access to the repo";
+- on a job with a run under way: "asked you in the manager chat whether the plan should change", and the manager conversation quotes the comment and asks. Reply there with what to do;
+- on a job that has not started, or has finished: nothing changes, and the line says why.
+
+The manager never changes the plan from a comment on its own yet, even one that only narrows the work.
+
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
 The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
+
+## a job refused for a missing key — no key, which has no key, add a key for its service
+
+On a factory on your own machine, a person's Start, Run, Start now or Run again is refused before anything is written when the job's own choice (or the default, when the job names none) is on a service with no key: "This job can't start: its model, …, is on …, which has no key." Only that choice counts: a call on a service with no key is reported, never moved to a fallback, so a fallback with a key would not be asked. Add a key for that service in Settings, or choose another for the job. A team server never checks, since it holds none of its people's keys, and neither does a profile set to one model for every task, which checks that model itself.
 
 ## a job's repository isn't checked out — clone, cloning, private repository, Start refused, not checked out on this machine
 
@@ -225,18 +337,56 @@ The factory reads GitHub on its own about once a minute, but those reads list op
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
-## how big is a job — size of a job, the size: filter, why there is no size, risky
+## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
 
 1. **A size label** on the item (`size:S`, `size/s`, XS to XL). It wins.
-2. **The completed issue read**, shown as `read says M`.
+2. **The completed issue read**, shown as `read says M`. The read scores five factors 0, 1 or 2, each with a why of at most six words: scope (one spot, one area, several areas), clarity (is the wanted result stated), coupling (shared code, data, migrations, public API), proof (how a finished change is checked) and novelty (follows existing code or new design). Their sum is the complexity, 0 to 10: 0–3 is small (S), 4–6 medium (M), 7–10 large (L). A sum on an edge (3 or 4, 6 or 7) shows both bands, as `small–medium`, because two reads of one issue often land a point apart there. The read sees only the item's text, not the repository, so its scope and coupling are marked low confidence.
 
-The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
+The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `cheap` matches items the read scored small; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
 
 Only a size label decides whether a job starts on its own. A size from a read never starts, holds or orders a job; with no label the factory asks instead, saying "no size label".
 
+The read never guesses a price: a model cannot know what the factory's agent spends, so no read, card or chat guess writes dollars on a job. The floor tool's `cheapest` lists the least complex first and each row says `complexity 4/10, medium (read)`.
+
 Limits: items read before this change show no size until their text changes or someone labels them. Older items are not reread just to fill this gap; editing the title or body allows one fresh read through the normal worker. There is no "read again" action yet.
+
+## what will a job cost — estimate, cost range, from N jobs, no cost history yet, max_cost
+
+A job's cost and time are measured from the factory's own finished jobs, never guessed by a model. An open job's range is the 10th to the 90th percentile of up to 12 finished jobs nearest to it, so about eight in ten similar jobs spent inside it: the same repository first, then every repository; near means close on the five complexity factors and the same kind of work. The app shows it with its basis, as `$0.40–1.10 · from 12 jobs in api`, and minutes the same way. A dropped job is not counted, because it spent only what it spent before it was dropped; a job run again counts once, with its latest run.
+
+A running job also has what is likely left: what similar finished jobs spent past this job's spend so far, over those that got that far (`about $4 more to finish`).
+
+Every finished job counts, read or not. A job with no read, or a read with fewer than five similar read jobs, is measured on its kind instead: the latest 12 finished jobs of the same kind of work, in its repository first and then in every repository. The app says so: `$0.30–0.90 · from 12 jobs in api, not read`.
+
+New job shows the same figure before the job exists: what a job of that kind in that repository is likely to cost, next to Start now.
+
+With fewer than five finished jobs on both bases there is no figure: the job shows its band and `no cost history yet`.
+
+Each finished job is checked against the range the jobs before it would have given; the factory shows how many landed inside (`8 of 10 inside the range`), for figures matched on a read and figures by kind apart. When fewer than 6 in 10 of one kind of figure land inside, those ranges are widened by how far real spend strayed from the median.
+
+Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs like it cost up to $3 · over $2`). An unknown cost asks first only when the repository's file writes `max_cost` (`no cost history yet · max_cost $2 asks first`); under the default ceiling an unknown cost starts, because the job's budget still stops a running job.
+
+## look closer — scout a job, files it will change, plan, unknowns, tests, about 2¢, monthly limit for AI reached
+
+Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. A look never writes a price.
+
+A look stops asking for files at 12 tool calls, one minute or $0.10, whichever comes first, and then answers once. The button shows what a typical look costs on this factory (`about 2¢`) once one has run; its cost goes on Spending as `factory scout`. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
+
+Its complexity replaces the read's, and its questions become the job's when the job has none. Credential-looking files (`.env`, keys, `.ssh/`) are never listed or read, and the repository's text is treated as data, so an instruction inside a file or the issue is not followed.
+
+The read runs on the `insight_factory_read` role and the look on `insight_factory_scout`; unpinned, each follows `insight` (DeepSeek V4.1 Flash by default), then the small-work model. Under one model, both use that model.
+
+Limits: $10 of looks a month per factory (`Monthly limit for AI reached`) and 20 looks a day per repository (`Daily limit for this repo reached`). A repository that is not checked out cannot be looked at.
+
+## read new issues as they arrive — automatic issue read, Read N new issues, read one issue, look before an automatic start
+
+Off by default: the factory's AI runs only when you click. With it off, new issues arrive unread. Backlog offers `Read N new issues · about $X` (the last read's cost times N), and each row has Read and Look closer. A click reads exactly the issues chosen, at most 20 at a time; an issue whose read failed stays unread so you can try again.
+
+Turned on, each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start.
+
+Reading never makes a job start on its own: size labels and the start rules decide. A read's complexity only places the job among similar finished jobs, so a measured cost over `max_cost` asks first. Only the factory's operator can change this setting.
 
 ## which model runs factory jobs — Task models and one model
 
@@ -245,6 +395,15 @@ Factory reads, manager turns and step conversations follow Task models. With one
 An explicit `--one-model` launch keeps its pin. Interactive chats keep their own model. Under the saved one-model policy, a factory manager turn uses its governed factory conversation. If an open chat holds that manager conversation, close it before the background turn can proceed. A running conversation keeps the model it started with.
 
 
+
+## pick one step's model for one job — a step's own model, the job's model, use_model
+
+On the app's job page, the job's person can pick the model one conversation step of that job runs on, before the step runs. The step then opens on that model and does not choose models automatically; a model chosen for the whole job does not move it. Choosing the job's model again gives the step back. The pick changes only this job, never the repository's steps.
+
+A pick is refused when the step has already run (`you may not change review, which has already run`), when it is a check or an approval (`test is a check or an approval and runs no model`), when the recipe fixes the step, when the step comes after proof, and when anyone but the job's person makes it (`only the person picks the model a step runs on`). The app offers only models it lists; another is refused as `vendor/x is not a model this engine offers now; models.list names them`. A factory older than the pick answers that it doesn't support that yet. The manager and the plan cannot pick a step's model.
+
+A step that has run takes another model only through Run again from here: that step and every step after it run again (an approval after it asks again), and that step runs on the model you named, in a fresh conversation. The job's log says `Rerun from <step> on <model>`. A check, an approval and a fixed step take no model there either.
+
 ## budget recovery and external PR commits
 
 Spending-owned Follow PR stops keep a durable budget cause. In Auto, raising
@@ -252,8 +411,8 @@ Budget wakes a fresh GitHub read and releases only that stop, within the existin
 repair-attempt limit. Manual mode, takeover, critical questions, exhausted attempts
 and uncertain publication retain their own recovery controls. Cumulative spend,
 local work and other contributors' commits are kept. Interrupted automatic step
-recovery preserves attempts and freezes its remaining retry window while waiting
-for budget; raising a limit does not grant unlimited retries.
+recovery keeps its attempts while waiting for budget: time spent waiting is not
+an attempt, and raising a limit does not grant more retries.
 
 GitHub observations continue while spending is blocked. Before paid Follow PR
 work resumes, the runner reads the existing PR again. Merge or closure ends the
@@ -281,4 +440,4 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 ## runner recovery window — running time versus waiting for reconnect
 
-Automatic interrupted-step recovery allows three retries with a two-minute reconnect window. Time actually spent running an admitted retry does not consume that waiting window. Waiting, backoff and attempts remain bounded, survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -187,6 +188,45 @@ func TestSyncEngineSpawnLeavesKeylessVerbsWithoutKeys(t *testing.T) {
 		if strings.HasPrefix(kv, "FURROW_CELL_KEY=") && strings.Contains(kv, testCellKey) {
 			t.Fatalf("materialize carried a key")
 		}
+	}
+}
+
+func TestSyncMaterializePreservesInjectedSpawn(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		wrap func(Spawn) Transport
+	}{
+		{"spawn", func(s Spawn) Transport { return s }},
+		{"non-daemon fallback", func(s Spawn) Transport {
+			return Fallback{Primary: s, Secondary: &fixedTransport{err: errors.New("unexpected fallback")}}
+		}},
+		{"daemon fallback", func(s Spawn) Transport {
+			return Fallback{Primary: Daemon{Binary: "unused-daemon"}, Secondary: s}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := cell.Cell{ID: "c1", Root: root}
+			var argv []string
+			var dir string
+			e := Engine{
+				DataRoot: t.TempDir(),
+				Transport: tc.wrap(Spawn{Binary: "injected-engine", Run: func(_ context.Context, cwd string, _ []string, args ...string) ([]byte, error) {
+					dir, argv = cwd, args
+					return []byte(`{}`), nil
+				}}),
+			}
+			if err := e.Sync(SyncKeys{}, "ledger").Materialize(t.Context(), c, rid); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"injected-engine", "--json", "materialize", "--head", rid}
+			if len(argv) < len(want) || !reflect.DeepEqual(argv[:len(want)], want) || dir != c.Root {
+				t.Fatalf("injected spawn = %v in %q, want %v in %q", argv, dir, want, c.Root)
+			}
+		})
 	}
 }
 

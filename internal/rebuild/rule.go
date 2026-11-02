@@ -46,7 +46,7 @@ func nearest(tree, dir string, kind Kind) (string, bool) {
 // repository has no tracked file. A folder that git could not be asked about is
 // treated as tracked, because the safe answer to "may this be left out" is no.
 func Tracked(tree, folder string) bool {
-	cmd := exec.Command("git", "ls-files", "-z", "--", folder) //codeaf:plumbing asks the project's own repository whether a folder is source
+	cmd := exec.Command("git", "--no-optional-locks", "ls-files", "-z", "--", folder) //codeaf:plumbing asks the project's own repository whether a folder is source
 	cmd.Dir = tree
 	out, err := cmd.Output()
 	if err == nil {

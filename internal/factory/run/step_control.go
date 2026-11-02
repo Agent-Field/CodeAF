@@ -18,6 +18,13 @@ func (e StepControlRefusal) Error() string { return string(e) }
 // every step's brief carries, so trying again or sending work back says what to
 // do differently. A stop takes none.
 func StepControl(it *factory.Item, name string, rerun bool, words string, now time.Time) error {
+	return stepControl(it, name, rerun, words, "", now)
+}
+
+// stepControl is [StepControl] with the model a rerun moves the step to: ""
+// for the one it had. The log line names a new model, and a step moving to one
+// never resumes a conversation the old model held.
+func stepControl(it *factory.Item, name string, rerun bool, words, model string, now time.Time) error {
 	if factory.JobState(*it) == "done" || it.Publishing {
 		return StepControlRefusal("finished or publishing jobs cannot change steps")
 	}
@@ -62,7 +69,7 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 		if previous.Chat != "" {
 			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Note, At: previous.At, Started: previous.Started})
 		}
-		if planReportPending(name, previous.Result) && previous.Chat != "" {
+		if planReportPending(name, previous.Result) && previous.Chat != "" && model == "" {
 			target.Chat = previous.Chat
 			target.State = factory.PhaseRunning
 			target.Carry = append([]string(nil), previous.Carry...)
@@ -92,6 +99,9 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 	it.Question, it.QKind, it.Asking = "", "", nil
 	it.Approval, it.StopUndo = nil, nil
 	said := map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun]
+	if model != "" {
+		said += " on " + model
+	}
 	if words = strings.TrimSpace(words); rerun && words != "" {
 		it.Notes = append(it.Notes, words)
 		said += ": " + oneLine(words)
@@ -103,13 +113,9 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 // EditStepsItem recompiles the unstarted tail after a bounded person edit.
 // Completed and current phases retain their results and conversation identity.
 func EditStepsItem(it *factory.Item, edit factory.RunEdit, recipe factory.Recipe) ([]string, error) {
-	mode, last := factory.EditBeforeRun, -1
-	if it.Stream != nil {
-		for i, p := range it.Stream.Phases {
-			if p.State != factory.PhasePending {
-				mode, last = factory.EditInRun, i
-			}
-		}
+	mode := factory.EditBeforeRun
+	if lastBegun(it) >= 0 {
+		mode = factory.EditInRun
 	}
 	next, lines, err := factory.Edit(*it, edit, recipe, mode)
 	if err != nil {
@@ -118,14 +124,77 @@ func EditStepsItem(it *factory.Item, edit factory.RunEdit, recipe factory.Recipe
 	if len(lines) == 0 {
 		return nil, nil
 	}
-	if next.Stream != nil {
-		if last >= 0 {
-			next.Stream.Phases = retail(next, next.Stream.Phases, last)
-		} else {
-			next.Stream.Phases = loopPhases(next)
-			next.Stream.Cur = 0
-		}
-	}
+	RelayTail(&next)
 	*it = next
 	return lines, nil
+}
+
+// RelayTail lays the phases of it's run that have not begun again from its
+// steps as they stand, after any door changed them (a person's edit, the
+// manager's, the factory_item card): A STEP REMOVED LEAVES THE RUN and a step
+// moved runs in its new place, whether the job is queued (its phases were
+// laid when it was queued) or running. Phases that began keep their results
+// and conversations. A job with no run is left as it is.
+//
+// The runner's own re-lay at each round ([tailPhases]) cannot do this for a
+// removed step: it leaves alone a tail holding a phase no step names, which
+// is how a send-back's prove looks.
+func RelayTail(it *factory.Item) {
+	if it.Stream == nil {
+		return
+	}
+	if last := lastBegun(it); last >= 0 {
+		it.Stream.Phases = retail(*it, it.Stream.Phases, last)
+		return
+	}
+	it.Stream.Phases = loopPhases(*it)
+	it.Stream.Cur = 0
+}
+
+// lastBegun is the index of the last phase of it's run that is not pending,
+// -1 when none is (or it has no run).
+func lastBegun(it *factory.Item) int {
+	last := -1
+	if it.Stream != nil {
+		for i, p := range it.Stream.Phases {
+			if p.State != factory.PhasePending {
+				last = i
+			}
+		}
+	}
+	return last
+}
+
+// StepRerun is [StepControl]'s rerun that may also name the model the step
+// runs on this time and after: "" keeps the step's own. The step and every
+// step after it go back to pending, so an approval after it asks again. A
+// model is the person's pick of one conversation step ([factory.RunEdit]'s
+// Model), so a check, an approval or a fixed step refuses one, and a refusal
+// moves nothing.
+func StepRerun(it *factory.Item, name, words, model string, now time.Time) error {
+	model = strings.TrimSpace(model)
+	i := factory.StageIndex(it.Stages, name)
+	if model != "" {
+		switch {
+		case !factory.ModelID(model):
+			return StepControlRefusal(factory.ErrModelID.Error())
+		case i < 0:
+			return StepControlRefusal("step not found")
+		case it.Stages[i].Kind == factory.StageCheck || factory.IsApprove(it.Stages[i]):
+			return StepControlRefusal(name + " is a check or an approval and runs no model")
+		case it.Stages[i].Fixed:
+			return factory.FixedRefusal(name)
+		}
+	}
+	if i >= 0 && it.Stages[i].Model == model {
+		model = ""
+	}
+	if err := stepControl(it, name, true, words, model, now); err != nil {
+		return err
+	}
+	if model != "" {
+		st := &it.Stages[i]
+		st.Model, st.By, st.Why = model, factory.ByYou, oneLine(words)
+	}
+	return nil
 }

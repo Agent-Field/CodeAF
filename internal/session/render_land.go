@@ -3,6 +3,8 @@ package session
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // renderLanding is how [Agent.landRender] ended.
@@ -74,7 +76,7 @@ func writeFileAtomic(path string, data []byte) error {
 		err = os.Chmod(name, 0o644)
 	}
 	if err == nil {
-		err = os.Rename(name, path)
+		err = fsreplace.Rename(name, path)
 	}
 	if err != nil {
 		_ = os.Remove(name)

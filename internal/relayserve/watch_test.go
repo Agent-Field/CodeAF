@@ -48,19 +48,25 @@ func (r *rig) signer(d device) wireauth.Sign { return reqsign.SignFor(d, r.clock
 
 func (r *rig) watchRig(t *testing.T) directorytest.WatchRig {
 	home := newHousehold(t)
+	// Namespace creation includes durable import and election. Complete that
+	// readiness boundary before measuring the socket handshake itself.
+	_, stranger := newIdentity(t)
+	for _, d := range []device{newDevice(t, home.id, t.TempDir()), stranger} {
+		if _, err := r.dir(d).List(bg); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return directorytest.WatchRig{
+		Committed: true,
 		Rig: directorytest.Rig{
 			Clock:   r.clock,
 			Devices: func(name string) directory.Client { return r.dir(home.device(name)) },
 			ID:      func(name string) string { return home.device(name).dev.ID() },
 		},
-		Base: r.srv.URL,
-		Sign: func(name string) wireauth.Sign { return r.signer(home.device(name)) },
-		Stranger: func() wireauth.Sign {
-			_, d := newIdentity(t)
-			return r.signer(d)
-		},
-		Cap: watchCap,
+		Base:     r.srv.URL,
+		Sign:     func(name string) wireauth.Sign { return r.signer(home.device(name)) },
+		Stranger: func() wireauth.Sign { return r.signer(stranger) },
+		Cap:      watchCap,
 	}
 }
 

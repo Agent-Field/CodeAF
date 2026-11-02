@@ -666,3 +666,19 @@ func TestWorkerLiveChatHeaderReachesMainJob(t *testing.T) {
 		t.Fatalf("missing live chat: %+v", saved.Stream.Phases[0])
 	}
 }
+
+// THE SAME COMPUTER ATTACHING AGAIN does not leave its old registrations
+// behind: once they are quiet past the offline limit, the next attach forgets
+// them, and a forgotten credential is no longer a worker.
+func TestReattachingTheSameComputerLeavesOneRegistrationPerLiveSlot(t *testing.T) {
+	f := workerSetup(t)
+	first := f.attach(t, "sam")
+	second := f.attach(t, "sam")
+	f.clock.Add(int64(2 * lease.OfflineAfter))
+	third := f.attach(t, "sam")
+	for _, gone := range []api.WorkerAttached{first, second} {
+		f.request(t, "GET", "/v1/workers/pull", gone.Credential, nil, http.StatusUnauthorized, nil)
+	}
+	f.add(t, "sam")
+	f.pull(t, third)
+}

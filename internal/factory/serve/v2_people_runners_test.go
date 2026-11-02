@@ -82,7 +82,7 @@ func TestV2RunnerCapacitySleepAndSixtySecondOffline(t *testing.T) {
 	f.add(t, "raj")
 	var workers [3]api.RunnerAttached
 	for i := range workers {
-		f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "owner", Kind: api.RunnerMac, Checkouts: []api.Checkout{{Repo: "acme/api", Path: "/code/api"}}, TakesUnassigned: map[string]bool{"*": true}}, 201, &workers[i])
+		f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "owner", Kind: api.RunnerMac, Slots: 2, Checkouts: []api.Checkout{{Repo: "acme/api", Path: "/code/api"}}, TakesUnassigned: map[string]bool{"*": true}}, 201, &workers[i])
 	}
 	var list api.Runners
 	raw := f.request(t, "GET", "/v1/runners", "operator-secret", nil, 200, &list)
@@ -172,6 +172,8 @@ func TestV2LinksGitHubPeopleAndOperatorRevocation(t *testing.T) {
 	signed := signInHandle(t, f.h, g, &f.now, "priya", gate)
 	f.request(t, "POST", "/v1/access/links", signed, api.CreateAccessLink{}, 403, nil)
 	f.request(t, "PUT", "/v1/repos", signed, map[string]any{"watched": []string{"acme/api"}}, 403, nil)
+	f.request(t, "GET", "/v1/rules", signed, nil, 200, nil)
+	f.request(t, "PUT", "/v1/rules", signed, map[string]any{"rules": []string{"x"}, "ask_first": []string{}, "never": []string{}}, 403, nil)
 	f.request(t, "GET", "/v1/people", "operator-secret", nil, 200, &directory)
 	person := directory.People[0]
 	for _, p := range directory.People {

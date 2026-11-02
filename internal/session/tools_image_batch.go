@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -173,7 +174,7 @@ func writeImageAtomic(path string, data []byte) error {
 		_ = os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, target); err != nil {
+	if err := fsreplace.Rename(name, target); err != nil {
 		_ = os.Remove(name)
 		return err
 	}

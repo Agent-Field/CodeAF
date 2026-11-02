@@ -1,3 +1,8 @@
+> **Historical remote-session acceptance notes.** Run results, deployment state
+> and known failures below describe an earlier snapshot, not current acceptance.
+> Use [remote architecture](REMOTE.md) and [current moving-chat tests](testing-anywhere.md);
+> check the [manual](../internal/manual/chat/use-this-on-another-computer.md) for current support.
+
 # Remote access — how to try it, and what is not finished
 
 Self-contained. Everything a person (or an agent) needs to exercise this wave by hand,
@@ -370,7 +375,7 @@ clear refusal. Run it anyway; the refusals are the deliverable.
 
 ```sh
 codeaf devices                     # who may reach this machine, and its name
-codeaf serve                       # be reachable (needs CODEAF_RELAY set)
+codeaf serve                       # be reachable (through the relay sync uses, or CODEAF_RELAY)
 codeaf chat --at otter-lamp-42     # reach a machine by its name
 ```
 

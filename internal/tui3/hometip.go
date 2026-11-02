@@ -83,10 +83,15 @@ func (a *app) tipLine(tip string, width int, pal palette) (string, hudSpan) {
 // columns in [app.targetFolderSpan] — the same span the rule used to write —
 // and clears them where the path does not fit.
 func (a *app) homeFootLine(width int, pal palette) string {
+	return a.homeFootWithWarning(width, pal, a.homeCreditWarningFor(width))
+}
+
+// homeFootWithWarning also serves a footer below a message row that already
+// carries the warning, so the account news is drawn only once.
+func (a *app) homeFootWithWarning(width int, pal palette, warning string) string {
 	a.targetFolderSpan = hudSpan{}
 	// THE LOW-CREDIT LINE, when it applies, stands just left of the project and
 	// is fitted before either the keys or the path (credits.go, #1439).
-	warning := a.homeCreditWarningFor(width)
 	room := width - 2
 	if warning != "" {
 		room -= ansi.StringWidth(warning) + 1

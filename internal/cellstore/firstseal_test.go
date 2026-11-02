@@ -165,7 +165,8 @@ func assertC9Screened(t *testing.T, e Engine, r *guardRig, path, secret string) 
 	if err != nil || !slices.Contains(withheld, path) {
 		t.Fatalf("withheld = %v, %v; missing %s", withheld, err, path)
 	}
-	if len(r.notice) != 1 || !strings.Contains(r.notice[0], path) {
-		t.Fatalf("withholding was not announced once: %v", r.notice)
+	// Logged once, never said in the chat ([Guard.Kept]).
+	if len(r.kept) != 1 || !strings.Contains(r.kept[0], path) || len(r.notice) != 0 {
+		t.Fatalf("withholding was not logged once: log %v, notices %v", r.kept, r.notice)
 	}
 }

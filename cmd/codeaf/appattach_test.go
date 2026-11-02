@@ -143,7 +143,7 @@ func TestAppCreateWithAttachmentsAloneStartsOnTheirWords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if agent.State != appwire.StateWorking || agent.Title != "notes.md, docs" {
+	if agent.State != appwire.StateStarting || agent.Title != "notes.md, docs" {
 		t.Fatalf("the created agent = %+v", agent)
 	}
 	user := entryWith(rec, t, func(e appwire.Entry) bool { return e.Kind == appwire.EntryUser })

@@ -115,6 +115,7 @@ func (h *appFactoryHub) dropSession(id, token string) {
 	if s, ok := h.sessions[id]; ok && s.token == token {
 		delete(h.sessions, id)
 		h.dropHeldLocked(id)
+		h.forgetKeptLocked(id)
 	}
 }
 

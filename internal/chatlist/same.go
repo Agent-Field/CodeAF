@@ -1,5 +1,10 @@
 package chatlist
 
+import (
+	"slices"
+	"time"
+)
+
 // Same reports whether two listings say the same thing about the chats.
 //
 // DurableAgo is left out on purpose: it is measured against the directory's
@@ -13,15 +18,43 @@ func Same(a, b []Row) bool {
 		return false
 	}
 	for i := range a {
-		if timeless(a[i]) != timeless(b[i]) {
+		if timeless(a[i]) != timeless(b[i]) || !slices.Equal(a[i].Copies, b[i].Copies) {
 			return false
 		}
 	}
 	return true
 }
 
-// timeless is a row with the read-time-dependent age taken out.
-func timeless(r Row) Row {
-	r.DurableAgo = 0
-	return r
+type timelessRow struct {
+	cell, title, device, deviceID, parent string
+	head                                  string
+	status                                Status
+	durableAt                             int64
+	pending, orphanTurns                  uint32
+	fence                                 uint64
+	mine, released                        bool
+	releasedAgo                           time.Duration
+	holderRemoved, branchRedundant        bool
+}
+
+// timeless is a row with the read-time-dependent age and slice fields taken out.
+func timeless(r Row) timelessRow {
+	return timelessRow{
+		cell:            r.Cell,
+		title:           r.Title,
+		device:          r.Device,
+		deviceID:        r.DeviceID,
+		parent:          r.Parent,
+		head:            r.Head,
+		status:          r.Status,
+		durableAt:       r.DurableAt,
+		pending:         r.Pending,
+		orphanTurns:     r.OrphanTurns,
+		fence:           r.Fence,
+		mine:            r.Mine,
+		released:        r.Released,
+		releasedAgo:     r.ReleasedAgo,
+		holderRemoved:   r.HolderRemoved,
+		branchRedundant: r.BranchRedundant,
+	}
 }

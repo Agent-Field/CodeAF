@@ -295,3 +295,74 @@ func TestRepairCorrectsInvalidCargoWithSavedExitAndReporting(t *testing.T) {
 		}
 	}
 }
+
+// A repair whose evidence keeps changing is not stopped by a clock: it has
+// stageVerificationReportLimit refused reports in all, and no timer runs
+// between them.
+func TestRepairChangingEvidenceIsBoundedByReportsNotMinutes(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	stopped := door.stoppedVerification()
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}}
+	for i := range stageVerificationReportLimit {
+		// A different failing exit each time is changed evidence, not a repeat.
+		run(fmt.Sprintf("CHECK_EXIT=%d cargo test --test cli regression", 10+i))
+		if err := door.Report(t.Context(), fixed); err == nil {
+			t.Fatal("failed repair accepted")
+		}
+		door.mu.Lock()
+		timer := door.timer
+		door.mu.Unlock()
+		if timer != nil {
+			t.Fatal("a refused report started a clock")
+		}
+		if i < stageVerificationReportLimit-1 {
+			select {
+			case reason := <-stopped:
+				t.Fatalf("stopped after %d changing reports: %s", i+1, reason)
+			default:
+			}
+		}
+	}
+	select {
+	case reason := <-stopped:
+		if !strings.Contains(reason, fmt.Sprintf("%d completion reports were refused", stageVerificationReportLimit)) {
+			t.Fatal(reason)
+		}
+	default:
+		t.Fatal("changing evidence ran past its report limit")
+	}
+}
+
+// A successful correction cancels the stop: refused reports before it do not
+// count toward the limit after it.
+func TestASuccessfulReportStartsTheRefusedCountOver(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	stopped := door.stoppedVerification()
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}}
+	refuse := func(from int) {
+		t.Helper()
+		for i := range stageVerificationReportLimit - 1 {
+			run(fmt.Sprintf("CHECK_EXIT=%d cargo test --test cli regression", from+i))
+			if err := door.Report(t.Context(), fixed); err == nil {
+				t.Fatal("failed repair accepted")
+			}
+		}
+	}
+	refuse(10)
+	run("cargo test --test cli regression")
+	if err := door.Report(t.Context(), fixed); err != nil {
+		t.Fatalf("passing correction refused: %v", err)
+	}
+	refuse(30)
+	select {
+	case reason := <-stopped:
+		t.Fatalf("stopped on reports refused before the correction: %s", reason)
+	default:
+	}
+}

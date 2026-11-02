@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"io"
 	"net/http"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 // MaxBody caps a request body. The largest honest body is a CellInit with its
 // key map, far below this; the cap keeps an anonymous caller from making the
 // relay buffer more, since the body must be read whole before it can be verified.
-const MaxBody = 1 << 20
+const MaxBody = clusterstate.MaxV1BodyBytes
 
 // call is everything one route needs: the Client of the verified device and
 // the request it answers. Routes never see an identity or a device to trust.
@@ -33,6 +34,13 @@ func (c call) code() string         { return c.r.PathValue("code") }
 
 // route answers one call. A nil result is an empty 204.
 type route func(call) (any, error)
+
+// RequestDirectory binds the exact authenticated v1 request to its client.
+// Consensus adapters retain this proof rather than mint a device signature.
+// Ordinary in-process directories need only implement Directory.
+type RequestDirectory interface {
+	ForRequest(device string, request *http.Request, body []byte) Client
+}
 
 // Handler serves the directory wire. Each request is authenticated first, and
 // then answered by open(identity).For(device), both taken from auth, so a body
@@ -54,6 +62,8 @@ type handler struct {
 
 func (h *handler) serve(rt route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(SavedTurnTimeHeader, "1")
+		w.Header().Set(HeadTakeHeader, "1")
 		c, err := h.admit(w, r)
 		if err != nil {
 			refuse(w, err)
@@ -83,7 +93,13 @@ func (h *handler) admit(w http.ResponseWriter, r *http.Request) (call, error) {
 	if err != nil {
 		return call{}, err
 	}
-	return call{dir: dir, cl: dir.For(device), device: device, r: r, body: body}, nil
+	var cl Client
+	if bound, ok := dir.(RequestDirectory); ok {
+		cl = bound.ForRequest(device, r, body)
+	} else {
+		cl = dir.For(device)
+	}
+	return call{dir: dir, cl: cl, device: device, r: r, body: body}, nil
 }
 
 // denial names a refusal the way the wire does: skew and revoked have their
@@ -106,13 +122,18 @@ func refuse(w http.ResponseWriter, err error) {
 // headed is an answer that also sets headers, as a list sets its version.
 type headed interface{ header(http.Header) }
 
-func (l Listing) header(h http.Header) {
-	h.Set(VersionHeader, strconv.FormatUint(l.Version, 10))
-}
-
 func reply(w http.ResponseWriter, out any) {
-	if h, ok := out.(headed); ok {
-		h.header(w.Header())
+	// Listing is a shared record alias; keep its HTTP projection here rather
+	// than importing HTTP into the pure record package.
+	switch l := out.(type) {
+	case Listing:
+		w.Header().Set(VersionHeader, strconv.FormatUint(l.Version, 10))
+	case *Listing:
+		if l != nil {
+			w.Header().Set(VersionHeader, strconv.FormatUint(l.Version, 10))
+		}
+	case headed:
+		l.header(w.Header())
 	}
 	if out == nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -127,7 +148,7 @@ func send(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// routes is the §4.4 table, one entry per method and path.
+// Each method and path has one route so legacy request decoding stays closed.
 var routes = map[string]route{
 	"GET " + dirBase + "/list":                     func(c call) (any, error) { return pair(c.cl.List(c.ctx())) },
 	"GET " + dirBase + "/presence":                 func(c call) (any, error) { return pair(c.cl.Presence(c.ctx())) },

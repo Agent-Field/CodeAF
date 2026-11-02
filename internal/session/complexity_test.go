@@ -78,7 +78,7 @@ const theCeiling = 15
 // refuse the debt it was built to hold; it can only refuse the next one.
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
-	"taskSegments":          26,
+	"taskSegments":          22,
 	"TaskGraph.runFrontier": 18,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,

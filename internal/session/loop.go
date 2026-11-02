@@ -337,6 +337,18 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	if user.bash == "" {
+		resolved, ready := a.prepareModel(hub)
+		if !ready {
+			return false
+		}
+		if resolved && !user.empty() && !user.resumed {
+			a.mu.Lock()
+			a.startTitleLocked()
+			a.startIntentNameLocked(user)
+			a.mu.Unlock()
+		}
+	}
 	// A newly admitted stage turn may do more work after an earlier report.
 	// Withdraw that candidate before this turn can submit a newer one; runTurn
 	// is serialized, so a later valid final report cannot be invalidated here.
@@ -1799,8 +1811,9 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
 	// holds, and a surface listing every session on disk cannot open every
-	// transcript to find it (placemeta.go's [Agent.stampSpend]).
-	a.stampSpend()
+	// transcript to find it (placemeta.go's [Agent.stampSpend]). A turn that
+	// ended on an answer says so in the same write ([Agent.stampSealed]).
+	a.stampSealed()
 	a.noticeNewerBuild()
 	// THE TURN'S LAST LINES ARE SEALED BEFORE THE SYNC SIDE IS TOLD: the closing
 	// answer and the usage line were written above, and an upload asked for
@@ -2130,6 +2143,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		attemptCtx = provider.WithContextBudget(attemptCtx, provider.ContextBudget{
 			Window: a.window(), Reserve: ctxbudget.CompletionReserve(), PromptFloor: promptFloor,
 		})
+		// THE FIRST REQUEST LOOKS ONCE AT FURROW'S QUESTION, and only here: the
+		// session was built without waiting for it (tools_workspace.go).
+		a.settleFurrow()
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
 		inputMessages := a.preparedMediaInputs(messages)
 		// THE BELT, AND THE ONE TOOL THIS ANSWER MUST CALL WHEN THE TURN OWES ONE
@@ -3759,6 +3775,15 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // owns its process, is recorded like every other. A seat that could not log the
 // call did not run it, and says so as the tool's own error.
 func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
+	// File-only builtins have no arbitrary process/custom-tool execution road.
+	// Everything else must conservatively retain the workspace after restart.
+	switch tool.Name {
+	case "read", "write", "edit":
+	default:
+		if err := markTaskStorageUncertain(a.config.Workspace); err != nil {
+			return "", true, err
+		}
+	}
 	args, moved, mapErr := a.movedToolArguments(tool.Name, args)
 	if mapErr != nil {
 		return "", true, mapErr
@@ -4396,6 +4421,7 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 type bankedCall struct {
 	// run is captured from the call's immutable execution context, never the current turn.
 	run    string
+	remote *remoteUsage
 	used   Usage
 	model  string
 	role   string

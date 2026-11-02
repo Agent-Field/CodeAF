@@ -18,6 +18,7 @@ import (
 
 func (h *Handler) v2Routes() {
 	h.route("/v1/settings", map[string]http.HandlerFunc{http.MethodGet: h.runnerPolicy, http.MethodPatch: h.runnerPolicy})
+	h.route("/v1/rules", map[string]http.HandlerFunc{http.MethodGet: h.houseRules, http.MethodPut: h.houseRules})
 	h.read("/v1/runners", h.runnersDirectory)
 	h.route("/v1/runners/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/runners/pull", h.pullWorker)
@@ -217,13 +218,26 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 // named "self" can ever collide with PUT /v1/runners/{runner}) a runner's own credential with the capacity its owner
 // saved. The worker polls it to follow a raise or a lowering without a
 // restart. Person tokens never reach it (workerPath), and the body names
-// nothing but this machine's own number.
+// nothing but this machine's own number and how many jobs started now may
+// run above it.
 func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	h.write(w, http.StatusOK, api.RunnerSelf{Slots: requestWorker(r).Slots})
+	self := requestWorker(r)
+	over := 0
+	if h.workers != nil && h.workers.desk != nil {
+		n, err := h.workers.desk.OverLimit(self)
+		if h.failed(w, err) {
+			return
+		}
+		over = n
+	}
+	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over})
 }
+
+// registryFile is the runner registry's document under the factory root.
+const registryFile = "runners.json"
 
 // saveRegistry persists only credential hashes and public runner facts under the service lock.
 func (s *workerService) saveRegistry() error {
@@ -250,14 +264,14 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), "runners.json"))
+	return os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile))
 }
 
 func (s *workerService) loadRegistry() error {
 	if s.st == nil {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(s.st.Root(), "runners.json"))
+	data, err := os.ReadFile(filepath.Join(s.st.Root(), registryFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

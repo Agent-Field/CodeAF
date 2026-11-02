@@ -15,10 +15,14 @@ import (
 // effort or fanout spells those keys and meets the runtime seal like any other
 // edit that does.
 //
-// THE ROWS A PERSON DEPENDS ON STAY WHERE THEY ARE. approve, any step of another
-// kind (a check's shell command, a post's forge verb, a gate's person) and any
-// name under fixed are locked: none is added, removed or moved here, so the
-// order of those rows among themselves never changes. That is this editor's
+// THE ROWS A PERSON DEPENDS ON STAY WHERE THEY ARE. approve, a post's forge
+// verb, a gate's person and any name under fixed are locked: none is added,
+// removed or moved here, so the order of those rows among themselves never
+// changes. A CHECK IS NOT ONE OF THEM: its prompt is a shell command whose exit
+// code is the evidence, and add_step may add one (kind check) as it adds a
+// chat, through the same reviewed pull request that would add it by hand. A
+// check takes no effort or fanout (no model reads it) and stops only on done,
+// clean, green or proven, the words its runner checks. That is this editor's
 // policy, matching the board's fixed rows; a reviewed pull request to the file
 // is the file changing, which is how the law changes.
 //
@@ -77,11 +81,12 @@ type GateChange struct {
 // checkStructure bounds add_step, remove_step and move_step without the file.
 // Each names a pipeline and a step; add_step and move_step name After, the step
 // it goes after, with "" for first; add_step alone takes a prompt (required)
-// and until, max, when, effort and fanout. No structural edit takes a kind or a
+// and until, max, when, effort and fanout, and a kind: chat (the default) or
+// check. No other structural edit takes a kind, and none takes a
 // value: a step added here is a chat.
 func checkStructure(i int, op EditOp) (EditOp, *EditError) {
-	if op.Kind != nil || op.Value != nil {
-		return op, refuseEdit(EditBadOp, i, "%s takes no kind and no value; a step added here is a chat", op.Op)
+	if op.Value != nil || (op.Kind != nil && op.Op != OpAddStep) {
+		return op, refuseEdit(EditBadOp, i, "%s takes no kind and no value; only add_step names a kind", op.Op)
 	}
 	if op.Pipeline == "" {
 		return op, refuseEdit(EditBadOp, i, "%s names a pipeline", op.Op)
@@ -132,6 +137,16 @@ func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
 	if op.Prompt == nil {
 		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
 	}
+	if op.Kind != nil {
+		k, ok := kindWord(*op.Kind)
+		if !ok || (k != "" && k != string(factory.StageCheck)) {
+			return op, refuseEdit(EditBadValue, i, "a step added here is a chat or a check")
+		}
+		op.Kind = &k
+		if bad := checkCheckWords(i, op); bad != nil {
+			return op, bad
+		}
+	}
 	word, err := factory.StageWord(strings.ReplaceAll(op.Name, "-", ""))
 	if err != nil {
 		return op, refuseEdit(EditBadValue, i, "%s is not a name the runner can run (2 to 12 letters or digits once hyphens are removed)", op.Name)
@@ -140,6 +155,23 @@ func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadValue, i, "%s would read as a person's name", op.Name)
 	}
 	return checkStepFields(i, op)
+}
+
+// checkCheckWords refuses what a check cannot hold: effort and fanout (no
+// model reads it), and an until its runner does not check.
+func checkCheckWords(i int, op EditOp) *EditError {
+	if op.Kind == nil || *op.Kind != string(factory.StageCheck) {
+		return nil
+	}
+	if (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return refuseEdit(EditBadValue, i, "a check runs a command, not a model; it takes no effort or fanout")
+	}
+	if op.Until != nil {
+		if _, free := mechanicalUntil(*op.Until); free {
+			return refuseEdit(EditBadValue, i, "a check stops on done, clean, green or proven")
+		}
+	}
+	return nil
 }
 
 func stepFieldsNamed(op EditOp) bool {
@@ -213,6 +245,9 @@ func (st *editState) define(i int, op EditOp) *EditError {
 	have, exists := st.out.Steps[op.Name]
 	if !exists {
 		s := Step{Prompt: *op.Prompt, wrotePrompt: true}
+		if op.Kind != nil {
+			s.Kind = *op.Kind
+		}
 		setStepWords(&s, op)
 		st.out.Steps[op.Name] = s
 		st.newSteps = append(st.newSteps, op.Name)
@@ -220,8 +255,11 @@ func (st *editState) define(i int, op EditOp) *EditError {
 	}
 	want := have
 	want.Prompt = *op.Prompt
+	if op.Kind != nil {
+		want.Kind = *op.Kind
+	}
 	setStepWords(&want, op)
-	if want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
+	if want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
 		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout {
 		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
 	}
@@ -365,10 +403,16 @@ func (st *editState) proofEnded(kind string, first int, list []string) *EditErro
 // edit kept proof), unless this preview placed it there. A base proof row a
 // set_step made ordinary chat is work like any other.
 func (st *editState) strayAfterProof(kind, name string) bool {
+	_, placed := st.placedAt[kind+"\x00"+name]
+	// A CHECK THIS EDIT PUT AFTER PROOF runs a command on work the sheet has
+	// already vouched for; one the file already had there keeps its place.
+	if st.out.Steps[name].Kind == string(factory.StageCheck) {
+		return placed
+	}
 	if isPerson(st.out, name) || st.out.Steps[name].Kind != "" {
 		return false
 	}
-	if _, placed := st.placedAt[kind+"\x00"+name]; placed {
+	if placed {
 		return true
 	}
 	return !lockedStep(st.out, name) && !(proofStep(st.base, name) && proofStep(st.out, name))

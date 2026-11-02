@@ -50,6 +50,9 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
+	// DropRefusedEffort lets a task child repair an explicit thinking refusal
+	// without teaching other clients or processes on this home.
+	DropRefusedEffort bool
 	// BillingDoor is the person-facing name of a bound road. Empty is a service
 	// with one road and preserves every older status line.
 	BillingDoor string
@@ -144,8 +147,10 @@ type Config struct {
 type Client struct {
 	// Unsupported stream-usage options are remembered per endpoint, never per model.
 	streamUsageUnsupported sync.Map
-	config                 Config
-	http                   *http.Client
+	// A task's refusal is local to this client and never enters persisted quirks.
+	refusedEffort sync.Map
+	config        Config
+	http          *http.Client
 	// stream is the same client with the total deadline removed. A streamed
 	// answer is bounded by silence, not by duration — see send.
 	stream *http.Client
@@ -634,6 +639,12 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	// The reasoning repair has already had its one attempt. A persistent
+	// capability refusal cannot be cured by widening endpoint preferences.
+	if readErr == nil && response.StatusCode == http.StatusBadRequest && refusesReasoning(peek) {
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
 	// WHETHER THE BASE UNDERSTANDS THE `provider` FIELD AT ALL IS ASKED BEFORE
 	// ANYTHING ELSE (#433), because until it is answered nothing below this line
 	// is reading the right refusal. It is a QUESTION here and an answer only
@@ -812,12 +823,24 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		// The compatible usage option earns only its own repair. Peeking at an
 		// unrelated refusal must not admit it to the older learning road.
 		repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
-		if !foreign && !repairable && !(streamUsage && usageRefusalStatus) {
+		dropEffort := c.config.DropRefusedEffort && c.refusedEffortRepairable(model, knobs, response.StatusCode)
+		if !foreign && !repairable && !dropEffort && !(streamUsage && usageRefusalStatus) {
 			return response, nil
 		}
 		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		switch {
 		case readErr != nil:
+		case dropEffort && !repaired["refused_effort"] && refusesRequestedEffort(peek):
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: c.attemptsSoFar(knobs), began: began,
+				status: response.StatusCode, err: apiError(response.StatusCode, peek), responseBody: peek,
+			})
+			c.refusedEffort.Store(normalizeModel(model), true)
+			repaired["refused_effort"] = true
+			began = logNow()
+			response, err = c.resend(ctx, request, knobs, stream, response)
+			continue
 		case foreign && !repaired["foreign_reasoning"] && refusesForeignReasoning(peek):
 			// THE WORDS STILL GO; ONLY THE OTHER MODEL'S THINKING STAYS HOME. A
 			// sidecar tagged with its model never gets here (reasoning.go's
@@ -875,6 +898,17 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	}
 }
 
+// A task child may repair only an effort it actually sent, on the model's
+// precise refusal. Other 400s remain the provider's own error.
+func (c *Client) refusedEffortRepairable(model string, knobs callKnobs, status int) bool {
+	return status == http.StatusBadRequest && !knobs.relaxed.has(relaxReasoning) && c.resolveEffort(model, knobs.effort) != EffortNone
+}
+
+func refusesRequestedEffort(body []byte) bool {
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "does not support thinking") || strings.Contains(text, "does not support reasoning")
+}
+
 // resend closes a refused answer and sends the request again as the knobs now
 // say to shape it. The refusal generated no tokens, so the retry is free.
 func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool, refused *http.Response) (*http.Response, error) {
@@ -890,7 +924,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 // adapter knows how to answer. It is asked before the error body is touched, so
 // a 400 that could not be ours costs no extra read.
 func (c *Client) repairable(model string, knobs callKnobs) bool {
-	return c.resolveEffort(model, knobs.effort) == EffortOff ||
+	return c.resolveEffort(model, knobs.effort) != EffortNone ||
 		c.resolveReasoningBudget(model, knobs.effort) > 0 ||
 		c.dialectFor(model) == cacheDialectBreakpoints ||
 		(len(knobs.reasoning) > 0 && !reasoningReplayRefused(model))
@@ -903,6 +937,12 @@ func (c *Client) repairable(model string, knobs callKnobs) bool {
 // first match winning, because a single 400 can name more than one field.
 func (c *Client) learn(model string, knobs callKnobs, payload []byte) []string {
 	var learned []string
+	// Only an effort that was on the wire can have been refused. A request the
+	// endpoint ladder had already stripped teaches nothing about the model.
+	if !knobs.relaxed.has(relaxReasoning) && c.resolveEffort(model, knobs.effort) != EffortNone && refusesReasoning(payload) {
+		quirks.record(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model, time.Now())
+		learned = append(learned, learnedReasoningUnsupported)
+	}
 	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
 		noteReasoningMandatory(model)
 		learned = append(learned, learnedReasoningMandatory)
@@ -2624,6 +2664,8 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // somebody and the refusal are both in the JSON it sent: `error.metadata`
 // carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
+	// ReasoningUnsupported is a permanent model capability refusal.
+	ReasoningUnsupported bool
 	// Status is the refusal's HTTP status, or the normalized gateway failure
 	// for an in-band error that supplied no status of its own.
 	Status int
@@ -2762,6 +2804,9 @@ func (e *APIError) UpstreamFault() bool {
 func (e *APIError) OurRequest() bool {
 	if e == nil {
 		return false
+	}
+	if e.ReasoningUnsupported {
+		return true
 	}
 	// AN EMPTY ACCOUNT IS OURS TO STOP WHOEVER WAS ASKED, so this is read
 	// before the two "nobody was asked" answers below. A payment refusal is a
@@ -2927,6 +2972,9 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	if status == http.StatusBadRequest && refusesReasoning(payload) {
+		failure.ReasoningUnsupported = true
+	}
 	readContextLimit(failure)
 	return failure
 }

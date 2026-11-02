@@ -76,6 +76,7 @@ func (a *Agent) deliverAskAnswer(answer Answer, text string) bool {
 // shape.
 func answerNote(text string) userMessage {
 	note := wakeNote(text)
+	note.answer = true
 	note.authored = true
 	note.steered = true
 	note.batch = false

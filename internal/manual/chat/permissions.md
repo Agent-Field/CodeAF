@@ -1245,3 +1245,21 @@ still asks, with the closest saved rule it falls outside (the longest rule for
 the same program). Non-shell calls and commands with no same-program rule have
 no outside-rule explanation. If saving fails, the question stays open and the desktop gets an
 error. Nothing is silently widened to all bash commands.
+
+## Desktop Inbox — invalid answers and the five-second Undo hold
+
+An Inbox answer is checked before its five-second Undo hold starts. If the
+question has closed, the chosen option is not offered, or its conversation
+cannot be reached, the request returns the error immediately. Permission scopes,
+required options and budget payloads are checked before the hold too: raising an
+agent budget needs a positive amount, and Tell needs words and an idle agent.
+Service health answers must choose Restart or Stop, and standing order runs need
+one of the offered choices. A crew decision needs an option or answer text. A
+landed task needs one of its offered choices, and Tell needs words. Fuel top-ups need a positive dollar
+amount; finishing or stopping needs no amount. Text-only model answers and task
+redirects remain supported. A valid answer waits five seconds; Undo during that
+hold leaves the question waiting and sends nothing.
+
+A question can close or its conversation can fail during those five seconds.
+The eventual send still checks it again; the app protocol does not publish a
+separate deferred-send failure event.

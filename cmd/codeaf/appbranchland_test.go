@@ -29,6 +29,10 @@ func landGit(t *testing.T, dir string, args ...string) string {
 // recorded task branch, and whose own folder records it.
 func landBackend(t *testing.T) (*appBackend, appwire.Agent, string) {
 	t.Helper()
+	// E5: landing and dirty-path contracts need a repository without the
+	// runner's global filters. The landing reader deliberately strips GIT_*.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	backend, _, agent := workBackend(t, &fakeConversation{script: []session.Event{{Kind: session.EventTurnDone}}})
 	repo := agent.Workspace
 	landGit(t, repo, "init", "-q", "-b", "main")

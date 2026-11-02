@@ -58,3 +58,26 @@ func TestConversationModelsPairIsAtomicAtAppWireDoor(t *testing.T) {
 		t.Fatal("old engine silently accepted pair")
 	}
 }
+
+func (e *modelPairEngine) SetConversationMain(id, main string) (Agent, error) {
+	e.pair = session.ConversationModels{Main: main, Fallback: "kept/" + id}
+	return Agent{ID: id, Model: main}, nil
+}
+
+// A FALLBACK LEFT OUT IS KEPT; AN EXPLICIT "" IS NONE. A client that moves only
+// the main model cannot clear the fallback by not naming it.
+func TestConversationModelsMissingFallbackKeepsTheCurrentOne(t *testing.T) {
+	e := &modelPairEngine{}
+	if _, err := methods["agents.set_models"].call(e, json.RawMessage(`{"id":"chat","main":"vendor/main"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if e.pair.Main != "vendor/main" || e.pair.Fallback != "kept/chat" {
+		t.Fatalf("a missing fallback reached the engine as %+v", e.pair)
+	}
+	if _, err := methods["agents.set_models"].call(e, json.RawMessage(`{"id":"chat","main":"vendor/main","fallback":""}`)); err != nil {
+		t.Fatal(err)
+	}
+	if e.pair.Fallback != "" {
+		t.Fatalf("an explicit empty fallback reached the engine as %+v", e.pair)
+	}
+}

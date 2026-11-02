@@ -176,9 +176,10 @@ func (h *Handler) sendMerge(doors *lease.Doors, it factory.Item, now time.Time) 
 	}
 }
 
-// pinnedMerge is the job's pipeline merge settings as they stand now, pinned
-// on the job when its proof is approved. A pipeline that cannot be read pins
-// nothing, which is auto-merge off.
+// pinnedMerge is the merge settings of the job's own pipeline file
+// ([Handler.jobPipeline]: the one its first start decided), pinned on the job
+// when its proof is approved. A pipeline that cannot be read pins nothing,
+// which is auto-merge off.
 func (h *Handler) pinnedMerge(r *http.Request, it factory.Item) *factory.MergePolicy {
 	if it.Autonomy == factory.AutonomyAuto || it.Autonomy == factory.AutonomyManual {
 		return nil
@@ -190,8 +191,8 @@ func (h *Handler) pinnedMerge(r *http.Request, it factory.Item) *factory.MergePo
 	if err != nil {
 		return nil
 	}
-	if h.config.Pipeline != nil {
-		f, err := h.config.Pipeline(r.Context(), it.Repo, dir)
+	if h.config.Pipeline != nil || h.config.JobPipeline != nil {
+		f, err := h.jobPipeline(r.Context(), it, dir)
 		if err != nil {
 			return nil
 		}

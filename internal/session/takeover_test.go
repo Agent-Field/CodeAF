@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"os"
 	"path/filepath"
 	"testing"
@@ -161,5 +162,17 @@ func drainRoster(lane <-chan Event) {
 		case <-time.After(100 * time.Millisecond):
 			return
 		}
+	}
+}
+
+// Contract A1 lets a displaced reader answer retirement without its old heartbeat.
+func TestTakeoverReadAnswersWithoutThePresenceHeartbeat(t *testing.T) {
+	agent, dir := questionSession(t, "displaced", func(config *Config) { config.knowledgeReadVault = knowledge.Open(t.TempDir()) })
+	agent.stopPresence()
+	if err := AskTakeover(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !agent.TakeoverAsked() {
+		t.Fatal("a holder without its presence heartbeat ignored retirement")
 	}
 }

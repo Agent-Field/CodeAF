@@ -2,8 +2,9 @@
 // shows the directory learns of another device's change when it happens rather
 // than by asking on a timer.
 //
-// The socket carries one fact: the directory's version. It never carries
-// records, so a frame is only ever a reason to read the list once. This package
+// The socket carries directory versions, presence hints and committed hold
+// receipts. Versions prompt a fresh list read; receipts cover only an exact
+// lease and never replace an authority read. This package
 // owns the connection (dialling, keeping it alive, noticing it died, coming
 // back with jittered waits) and nothing else; what to do with a new version,
 // and what to do while the socket is down, stay with the surface that draws

@@ -61,9 +61,16 @@ func NeedsTaskRecovery(sessionFile string) bool {
 	return false
 }
 
-// NeedsProcessRecovery finds saved running jobs even when the last presence
-// was removed. Paging reads process records alone, never the conversation.
+// NeedsProcessRecovery finds unfinished jobs even when the last presence was
+// removed. A running record whose run the checkpoint already settled is not
+// unfinished: the ending is known locally, so nobody has to open the chat (and
+// take its lease) to learn it. This only reads; the record itself is repaired
+// by the next recovery that holds the chat (recoverTasks).
 func NeedsProcessRecovery(sessionFile string) bool {
+	ended := map[int]JobNotice{}
+	if document, ok := loadTaskCheckpoint(taskCheckpointPath(sessionFile)); ok {
+		ended = knownJobEndings(document)
+	}
 	ask := ProcessPageAsk{Limit: ProcessPageMax}
 	for {
 		page, err := ReadProcessPage(context.Background(), sessionFile, ask)
@@ -71,7 +78,10 @@ func NeedsProcessRecovery(sessionFile string) bool {
 			return true
 		}
 		for _, row := range page.Rows {
-			if row.State == JobRunning {
+			if row.State != JobRunning {
+				continue
+			}
+			if n, ok := ended[row.ID]; !ok || !sameJobRun(row.JobNotice, n) {
 				return true
 			}
 		}

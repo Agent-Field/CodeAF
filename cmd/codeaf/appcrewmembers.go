@@ -495,8 +495,17 @@ type appSideAsker interface {
 // One ask runs per agent at a time: a second press while the first is out is
 // answered by the first's card.
 func (b *appBackend) CrewPropose(agent string) error {
-	a, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return err
 	}
 	asker, ok := live.conn.Conv.(appSideAsker)
@@ -649,7 +658,7 @@ func appProposalAskOf(p appwire.Proposal) appwire.Ask {
 		ID: appProposalAskPrefix + p.ID, Agent: p.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewProposal,
 		Title: "Bring in helpers: " + p.Name, Detail: strings.Join(detail, "\n"), Reason: p.Goal,
 		Subject:  &appwire.AskSubject{Kind: appwire.SubjectCrewProposal, Ref: p.ID},
-		Proposal: &p, Later: p.Later,
+		Proposal: &p, Asked: p.At, Later: p.Later,
 		Options: []appwire.AskOption{
 			{ID: appwire.ProposalCreate, Label: "Make the crew"},
 			{ID: appwire.ProposalEdit, Label: "Edit"},
@@ -693,6 +702,9 @@ func appParseProposal(answer string) (appwire.Proposal, bool) {
 // answerProposal is the person's answer to a proposal: make the crew, or keep
 // the agent alone. Edit is the app's editor, and leaves the ask open.
 func (b *appBackend) answerProposal(agent, id, option string) error {
+	if err := appValidateProposalAnswer(option); err != nil {
+		return err
+	}
 	switch option {
 	case appwire.ProposalCreate:
 		_, err := b.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: id})
@@ -706,18 +718,28 @@ func (b *appBackend) answerProposal(agent, id, option string) error {
 	return appwire.Errorf(appwire.CodeBadParams, "a proposal is answered create, edit or keep")
 }
 
+func appValidateProposalAnswer(option string) error {
+	switch option {
+	case appwire.ProposalCreate, appwire.ProposalEdit, appwire.ProposalKeep:
+		return nil
+	}
+	return appwire.Errorf(appwire.CodeBadParams, "a proposal is answered create, edit or keep")
+}
+
 // dropProposal forgets a proposal and closes its ask.
 func (b *appBackend) dropProposal(id, option string) {
 	run := b.crews()
-	if run == nil {
-		return
+	if run != nil {
+		run.proposal.Lock()
+		defer run.proposal.Unlock()
 	}
-	run.proposal.Lock()
-	defer run.proposal.Unlock()
 	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		delete(f.Proposals, id)
 		return nil
 	})
+	if run == nil {
+		return
+	}
 	var ask appwire.Ask
 	run.locked(func() {
 		ask = run.asks[appProposalAskPrefix+id]
@@ -733,6 +755,9 @@ func (b *appBackend) dropProposal(id, option string) {
 	// "Made the crew" here drew the card's end twice. A kept agent's receipt
 	// says so in its own words.
 	if option == appwire.ProposalCreate {
+		// The formation fact names the crew, so its receipt id cannot resolve
+		// the proposal's Inbox item through the usual receipt-id mapping.
+		b.inboxResolved(appInboxID(ask.Agent, ask.ID), appwire.Entry{})
 		return
 	}
 	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
@@ -936,7 +961,7 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 				return appwire.Crew{}, appEngineError(err)
 			}
 		} else {
-			if err := b.crewStart(team, manager, entry); err != nil {
+			if err := b.crewStart(team, manager, entry, appwire.CreatedByPerson); err != nil {
 				return appwire.Crew{}, appEngineError(err)
 			}
 		}
@@ -972,6 +997,11 @@ func (b *appBackend) MemberBrief(crew, agent string) (appwire.MemberBrief, error
 
 func (b *appBackend) memberBrief(t teamstore.Team, m teamstore.Member) (appwire.MemberBrief, error) {
 	var out appwire.MemberBrief
+	// A load leaves briefs out; they are read here, where they are shown.
+	m, err := teamstore.WithBriefs(b.crewProfile(), t.ID, m)
+	if err != nil {
+		return appwire.MemberBrief{}, appEngineError(err)
+	}
 	// A FACTORY STAGE'S BRIEF IS THE ONE THE FACTORY RECORDED when it started
 	// the stage: no manager started it, so no sender is named. A stage recovered
 	// from an old build may still carry edits a person made BEFORE it was
@@ -1050,6 +1080,9 @@ func (b *appBackend) MemberBriefSet(crew, agent, text string, base *string) (app
 	}
 	// The words it replaces, when it was never changed: its start line.
 	before := ""
+	if m, err = teamstore.WithBriefs(b.crewProfile(), t.ID, m); err != nil {
+		return appwire.MemberBrief{}, appEngineError(err)
+	}
 	if _, has := m.CurrentBrief(); !has {
 		e, ok, err := teamstore.StartFor(b.crewProfile(), t, m)
 		if err != nil {

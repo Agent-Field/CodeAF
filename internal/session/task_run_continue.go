@@ -40,6 +40,9 @@ import (
 // door that spends money says what it did in the words the person will read
 // about it afterwards.
 func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
+	if err := a.CheckWork(); err != nil {
+		return "", err
+	}
 	epoch, err := a.beltAdmissionEpoch()
 	if err != nil {
 		return "", err
@@ -50,6 +53,9 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		return "", errRunRoadUnavailable
 	}
 
+	if kept, remote := remoteRowToContinue(g, row); remote {
+		return a.continueRemoteRun(ctx, kept)
+	}
 	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the start lock, held
 	// until the carried-on run is registered, because a run installed between
 	// this look and the work below would be a second run on one conversation's
@@ -62,11 +68,8 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	a.beltMu.Lock()
 	live := a.beltRun
 	a.beltMu.Unlock()
-	if live != nil {
-		if live.row == row {
-			return "", fmt.Errorf("%s is already running", taskStopName(row, live.title))
-		}
-		return "", fmt.Errorf("%s is running, and a conversation drives one run at a time", taskStopName(row, live.title))
+	if err := liveContinueRefusal(live, row); err != nil {
+		return "", err
 	}
 
 	kept, found := runRowOf(g, row)
@@ -95,7 +98,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	// record exists for: the road that MAKES a copy clears the directory it is
 	// handed, so reaching for it here would delete the work this door is meant
 	// to resume (task_run_copy.go says it at length).
-	tree, err := runCopyTree(kept.Copy, a.config.Place)
+	tree, err := reopenWorkspaceSet(kept.Copy, kept.WorkspaceSet, a.config.Place)
 	if err != nil {
 		return "", err
 	}
@@ -115,7 +118,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	runCtx, cut := context.WithCancel(context.WithoutCancel(ctx))
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: row, title: kept.Title,
-		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut, crew: crew, recoveredCrew: kept.CrewState,
+		workspace: tree.dir, ground: tree.ground, tree: tree, stand: taskStand{dir: tree.ground, mode: tree.mode, workspaceSet: workspaceSetRequestOf(tree.workspaceSet)}, cut: cut, crew: crew, recoveredCrew: kept.CrewState,
 		born: a.taskClockNow(), over: make(chan struct{}),
 		joined: recoveredJoinedRows(g, row),
 	}
@@ -123,9 +126,13 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	// THE ROW GOES BACK TO RUNNING AND KEEPS THE COPY IT NAMED. Publishing
 	// without it would make the run one nobody can carry on a second time, which
 	// is the defect this door exists on the other side of.
+	primaryCopy := kept.Copy
+	if tree.workspaceSet != nil {
+		primaryCopy = runCopyOf(tree)
+	}
 	a.publishRunRow(g, TaskNotice{
 		ID: row, Title: kept.Title, State: TaskRunning,
-		StartedAt: kept.StartedAt, Parent: kept.Parent, Copy: kept.Copy,
+		StartedAt: kept.StartedAt, Parent: kept.Parent, Copy: primaryCopy, WorkspaceSet: cloneWorkspaceSet(tree.workspaceSet),
 	})
 
 	// THE SAME SPEC THE RUN WOULD HAVE HAD ([Agent.beltRunSpec]). A continued
@@ -145,4 +152,21 @@ func runRowOf(g *TaskGraph, row uint64) (TaskNotice, bool) {
 		}
 	}
 	return TaskNotice{}, false
+}
+
+// Remote rows return to their saved executor before local continuation takes the start lock.
+func remoteRowToContinue(g *TaskGraph, row uint64) (TaskNotice, bool) {
+	kept, found := runRowOf(g, row)
+	return kept, found && kept.Remote != nil && !kept.Remote.Abandoned
+}
+
+// A live run is refused in the same words whether it is this row or another one.
+func liveContinueRefusal(live *beltRun, row uint64) error {
+	if live == nil {
+		return nil
+	}
+	if live.row == row {
+		return fmt.Errorf("%s is already running", taskStopName(row, live.title))
+	}
+	return fmt.Errorf("%s is running, and a conversation drives one run at a time", taskStopName(row, live.title))
 }

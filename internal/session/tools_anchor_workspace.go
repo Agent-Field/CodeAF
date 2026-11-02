@@ -74,8 +74,14 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	// The config is the source every future worker copies. Rebuild the hands as
 	// well as the words: bare tools close over their workspace when the belt is
 	// assembled, so changing only Config would leave their cwd behind.
+	if a.file != nil && !a.file.writeLine(sessionEntry{Type: "knowledge_scope", KnowledgeProject: resolved, KnowledgePreviousProject: a.config.Workspace, Timestamp: stamp()}) {
+		return "", fmt.Errorf("could not persist knowledge project scope; workspace anchor must be retried")
+	}
 	a.config.Workspace = resolved
 	a.config.Place = place
+	if a.Knowledge() != nil {
+		a.rebindKnowledgeLocked(resolved)
+	}
 	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE, exactly as [v3PointAt] states
 	// it: the key IS the workspace's provable identity, so an anchor that moved
 	// the workspace and left the key behind would scope every later project write
@@ -111,6 +117,11 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 		a.jobs.place = place
 		a.jobs.mu.Unlock()
 	}
+	// AND FURROW IS ASKED ABOUT THE NEW FOLDER, from the background and never
+	// waited for: the belt rebuilt above read only what was already remembered,
+	// and the verbs arrive at the tail when furrow answers
+	// (tools_workspace.go's [Agent.askFurrow]).
+	a.askFurrow()
 	a.rerenderSystemLocked(time.Now())
 	return resolved, nil
 }
@@ -137,7 +148,7 @@ func (a *Agent) anchorMetaLocked(dir, workspace string) error {
 			meta = a.fillMetaLocked(meta)
 		}
 		meta.Workspace, meta.Owned = workspace, false
-		if err := SaveMeta(dir, meta); err != nil {
+		if err := saveMetaLocked(dir, meta); err != nil {
 			return fmt.Errorf("save conversation place: %w", err)
 		}
 		return nil

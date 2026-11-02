@@ -98,6 +98,16 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 		config.ConversationModels = &pair
 	}
 	config.JobBudget = a.jobBudgetOf()
+	// THE CHILD ACTS FOR THE SAME AGENT. A task worker hangs its own fragment
+	// off the agent's DID (agent_identity.go); any other child acts as its
+	// builder does.
+	if config.agentDID == "" {
+		config.agentDID = a.config.agentDID
+	}
+	if config.actorDID == "" && config.taskID == 0 {
+		config.actorDID = a.config.actorDID
+	}
+	config.knowledgeReadVault = a.Knowledge()
 	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err
@@ -124,6 +134,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
+	if err := configureOwnedChat(&config); err != nil {
+		return nil, fmt.Errorf("prepare conversation storage: %w", err)
+	}
+	configureAgentIdentity(&config)
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
@@ -142,9 +156,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
 	}
+	if config.WorkspaceURI != "" {
+		system += "\n\nWORKSPACE STORAGE\nUse mktemp or $TMPDIR for temporary files and $XDG_CACHE_HOME for ordinary caches. These locations are outside the files that a task lands. Keep task deliverables in the assigned working directory. The directory is an assignment, not a shell sandbox; external and remote writes still need an explicit purpose."
+	}
+	if watch, ok := config.Seals.(interface{ TrackTurn(string) }); ok && config.Place.Dir != "" && !config.InTask && !config.Errand {
+		watch.TrackTurn(config.Place.Dir)
+	}
 	agent := &Agent{
-		config: config,
-		system: system,
+		taskComputerPrompt: config.mayNameTaskComputer(),
+		config:             config,
+		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
 		// file deciding what another door's worker is told.
@@ -264,6 +285,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
+	agent.initKnowledge()
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -498,6 +520,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// is why it is the thing most carefully gated: see [Agent.startLaneBeat] for
 	// the three sessions that run no beat at all.
 	agent.startLaneBeat()
+	// AND FURROW IS ASKED ABOUT THIS FOLDER, from the background. Opening the
+	// conversation must not wait on a subprocess, so the answer is started here
+	// and read later by the belt (tools_workspace.go).
+	agent.askFurrow()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
@@ -524,6 +550,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.mu.Lock()
 	agent.startPendingIntentNamesLocked()
 	agent.mu.Unlock()
+	agent.startKnowledge()
 	return agent, nil
 }
 
@@ -1054,6 +1081,10 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	return a.submitText(ctx, text, nil)
 }
 
+// CheckWork reuses the seat's ownership gate for every user-work door. It is
+// checked before journaling and again when a queued message starts its turn.
+func (a *Agent) CheckWork() error { return procexec.CheckWork(a.config.Seat) }
+
 // submitText is Submit's body with the PERSON'S MARK beside the words: what a
 // door that knows more than the words said about the message
 // ([Agent.SubmitMessage]), nil for every other door. The mark rides the message
@@ -1062,6 +1093,12 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // A plain Submit carries no mark and so no creation context: an automation made
 // in its turn records its team as UNKNOWN, never as "no team".
 func (a *Agent) submitText(ctx context.Context, text string, person *messagePresentation) (<-chan Event, error) {
+	return a.submitTextAnswer(ctx, text, person, false)
+}
+
+// submitTextAnswer keeps a replacement or clarification on the pending
+// question's path. Its tools still meet the seat's ownership gate.
+func (a *Agent) submitTextAnswer(ctx context.Context, text string, person *messagePresentation, answer bool) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -1091,6 +1128,7 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 		user := planDigested(digest, text)
 		user.said = said
 		user.person = person
+		user.answer = answer
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
@@ -1098,6 +1136,7 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 		user.said = said
 	}
 	user.person = person
+	user.answer = answer
 	return a.submitUser(ctx, user)
 }
 
@@ -1111,6 +1150,11 @@ func (a *Agent) submitText(ctx context.Context, text string, person *messagePres
 // steering rules and the rail are laws about a turn starting, and two functions
 // applying them separately is two chances for one of them to stop.
 func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
+	if !user.answer {
+		if err := a.CheckWork(); err != nil {
+			return nil, err
+		}
+	}
 	a.owedResumeNews(user)
 	a.mu.Lock()
 	if a.closed {
@@ -1302,6 +1346,9 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// answer continues an existing question, including a replacement or
+	// clarification, so ownership is checked at its tools rather than admission.
+	answer bool
 
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
@@ -1920,6 +1967,17 @@ func (u userMessage) journaled() ai.Message {
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	if !user.answer {
+		if err := a.CheckWork(); err != nil {
+			for _, stream := range extra {
+				refuseOn(stream, err)
+			}
+			if watcher != nil {
+				return refuseOn(watcher, err)
+			}
+			return refusedStream(err)
+		}
+	}
 	// A new turn depends on the shortened conversation and ends its undo.
 	a.rewindUndo = nil
 	if a.debugRun == "" {
@@ -2019,13 +2077,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the transcript on the line above; a shell opening additionally waits
 		// for an ordinary reply to explain its output. Naming is started under
 		// this lock so two Submits racing to be first cannot buy two names.
-		if user.bash == "" {
+		if user.bash == "" && a.config.PrepareModel == nil {
 			a.startTitleLocked()
 		}
 		// A DESKTOP CONVERSATION IS NAMED FROM WHAT THE PERSON OPENED WITH, and
 		// the shell opening is one of the things that decides it too
 		// (intentname.go).
-		a.startIntentNameLocked(user)
+		// A continued chat may still need model setup. Its turn checks readiness
+		// before starting either naming errand, which also calls a provider.
+		if a.config.PrepareModel == nil {
+			a.startIntentNameLocked(user)
+		}
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
@@ -2158,7 +2220,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only) {
+			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -2259,6 +2321,9 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -2308,6 +2373,13 @@ func (a *Agent) nextFollowUpLocked(completed bool) (followUp, bool) {
 	}
 	if !completed || a.closed {
 		a.dropFollowUpsLocked()
+		return followUp{}, false
+	}
+	if err := a.CheckWork(); err != nil {
+		for _, queued := range a.followups {
+			refuseOn(queued.stream, err)
+		}
+		a.followups = nil
 		return followUp{}, false
 	}
 	if err := a.railBlockLocked(); err != nil {
@@ -2613,7 +2685,8 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // bounded because Close is what the person's quit reaches: a turn wedged
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
-func (a *Agent) Close() error {
+func (a *Agent) Close() (saveErr error) {
+	defer func() { saveErr = SavingError(a.config.SessionFile, saveErr) }()
 	forgetLiveJournal(a)
 	// A pass a surface asked for outside any turn ends with the conversation.
 	a.mu.Lock()
@@ -2690,6 +2763,7 @@ func (a *Agent) Close() error {
 	// road out of this function goes through it, which is the reason it is a
 	// defer and not a line at the end.
 	defer close(a.closeDone)
+	defer a.stopKnowledge()
 	// No memory pass outlives the session. The cancel is what stops one waiting
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).
@@ -2740,6 +2814,7 @@ func (a *Agent) Close() error {
 	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	teamTraffic.remove(a)
 	cutPass()
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
 	// below can take time: a window that is closing is not somebody in front of
@@ -2750,6 +2825,7 @@ func (a *Agent) Close() error {
 	// its fetch and join any cache write before the state directory can be
 	// handed back to the caller.
 	a.stopLaneBeat()
+	a.furrow.close()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
 	// the only thing that can reach it. A RUN'S LIFE IS THE CONVERSATION'S. Until
@@ -2806,6 +2882,7 @@ func (a *Agent) Close() error {
 	// cancellations were cut above; join their accepted lifetimes before any
 	// store is closed. Setup may have created the graph since the first snapshot.
 	a.waitOrchestrations()
+	a.waitEndingBeltRun(beltDone, closeGrace)
 	a.mu.Lock()
 	tasks = a.tasks
 	a.mu.Unlock()
@@ -2911,10 +2988,16 @@ func (a *Agent) Close() error {
 		}
 		return err
 	}
-	if file == nil {
-		return nil
+	var localErr error
+	if file != nil {
+		localErr = file.Close()
 	}
-	return file.Close()
+	if localErr == nil {
+		a.mu.Lock()
+		a.localDurable = true
+		a.mu.Unlock()
+	}
+	return localErr
 }
 
 // ── transcript ──────────────────────────────────────────────────────────────
@@ -2929,6 +3012,7 @@ func (a *Agent) recordLocked(message ai.Message) {
 	}
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.answeredSinceSeal = a.answeredSinceSeal || isAnswer(message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
 	if a.file != nil {
 		a.file.appendMessage(message)
@@ -3666,6 +3750,7 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 type queueDrain struct {
 	landed      int
 	owed, heard bool
+	answer      bool
 	// only is the durable id of the person's message when it is the whole of
 	// what landed, and "" otherwise ([userMessage.answersMessage]).
 	only string
@@ -3697,9 +3782,10 @@ func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain 
 	}
 	sourceCount := len(queued)
 	queued = coalesceSessionNotes(queued)
-	owed, heard := false, false
+	owed, heard, answer := false, false, false
 	only := ""
 	for _, message := range queued {
+		answer = answer || message.answer
 		// The id is read off the copy that is recorded: recording takes the
 		// message by value, so the id it mints would otherwise be lost here.
 		message = ensureUserIdentity(message)
@@ -3742,7 +3828,7 @@ func (a *Agent) drainQueueLocked(hub *eventHub, includeAmbient bool) queueDrain 
 	if sourceCount != 1 || !heard {
 		only = ""
 	}
-	return queueDrain{landed: sourceCount, owed: owed, heard: heard, only: only}
+	return queueDrain{landed: sourceCount, owed: owed, heard: heard, answer: answer, only: only}
 }
 
 // boundaryNoteHeld reports whether the next step is already owed external news.
@@ -3942,6 +4028,9 @@ func (a *Agent) enqueueSteering(text string) {
 // exactly what `task.settle = auto` does at a landing, so the bound is the same.
 func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 	note := wakeNote(text)
+	note.answer = true
+	// Keep the answer mark through the turn's final drain.
+	note.batch = false
 	note.settle, note.settleCeiling = true, ceiling
 	a.enqueueNote(note)
 }
@@ -4050,6 +4139,11 @@ func (a *Agent) steeringHeld() bool {
 // enqueueNote is the queue itself, and it reports whether the note was taken:
 // false is a closed agent, whose queue nothing will ever drain again.
 func (a *Agent) enqueueNote(note userMessage) bool {
+	if !note.answer {
+		if err := a.CheckWork(); err != nil {
+			return false
+		}
+	}
 	text := strings.TrimSpace(note.text())
 	if text == "" {
 		return false
@@ -4090,7 +4184,7 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		if note.deferJobWake && !a.running {
 			a.deferJobWakeLocked()
 		} else {
-			a.wakeLocked()
+			a.wakeAnsweringLocked(false, "", note.answer)
 		}
 	}
 	return true
@@ -4414,12 +4508,17 @@ func (a *Agent) settleWindow() time.Duration {
 // note on the queue; the turn's end has just drained one INTO the transcript, so
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
-func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "") }
+func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", false) }
 
 // wakeAnsweringLocked is [Agent.wakeLocked] for the turn's end, which knows
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
-func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) bool {
+func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
+	if !answer {
+		if err := a.CheckWork(); err != nil {
+			return false
+		}
+	}
 	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
 	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
 	// different decision in [Steward.Decide], while the wall's budget ending is
@@ -4477,7 +4576,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string) b
 	if wake, settle := a.settleWakeLocked(); settle {
 		ctx = withSettleWake(ctx, wake)
 	}
-	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage}, sink, watchers...)
+	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage, answer: answer}, sink, watchers...)
 	return true
 }
 
@@ -5280,6 +5379,9 @@ type PersonMark struct {
 	// record accepted it ([Submission.ClientID]), and empty on every line whose
 	// door named none. It is never guessed for a legacy line.
 	ClientID string
+	// From is who sent the message on the person's behalf, as the record kept
+	// it ([Submission.From]); empty for the person's own.
+	From string
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -5450,7 +5552,7 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 			// on it and the reads its words were written from. A line with no
 			// such mark is shown as it always was.
 			if mark := presentation.of(msg).person(); mark != nil {
-				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID}
+				person = &PersonMark{Attachments: cloneAttachments(mark.Attachments), Reads: cloneReads(mark.Reads), Composed: cloneComposed(mark.Composed), Queued: mark.Queued, ClientID: mark.ClientID, From: mark.From}
 				if mark.Text != nil {
 					displayText, person.Authored = *mark.Text, true
 				}

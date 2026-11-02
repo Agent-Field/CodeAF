@@ -216,7 +216,7 @@ func ignoredFiles(tree string) ([]string, error) {
 	if !hasGitMarker(tree) {
 		return nil, nil
 	}
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Ignored individual secrets still belong in the vault.
+	cmd := exec.Command("git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Ignored individual secrets still belong in the vault.
 	cmd.Dir = tree
 	raw, err := cmd.Output()
 	if err != nil {
@@ -246,7 +246,7 @@ func ignoredFiles(tree string) ([]string, error) {
 			if inRules(dirs, strings.TrimSuffix(dir, "/")) {
 				continue
 			}
-			cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", dir) //codeaf:plumbing Collapsed names do not hide individual vault files.
+			cmd := exec.Command("git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", dir) //codeaf:plumbing Collapsed names do not hide individual vault files.
 			cmd.Dir = tree
 			raw, err := cmd.Output()
 			if err != nil {

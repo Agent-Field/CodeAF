@@ -89,7 +89,7 @@ func TestNavigationLatency(t *testing.T) {
 	chat := func(s string) bool {
 		return strings.Contains(s, "space space home") && !strings.Contains(s, "first message starts")
 	}
-	homeUp := func(s string) bool { return strings.Contains(s, "[Home]") }
+	homeUp := func(s string) bool { return strings.Contains(s, "type to search or start something new") }
 	startUp := func(s string) bool { return strings.Contains(s, "first message starts the conversation") }
 	// Leave the initial greeting so the measured chat-return predicate is exact.
 	r.lit("/status")
@@ -121,7 +121,9 @@ func TestNavigationLatency(t *testing.T) {
 		wait("settings_command", time.Now(), 10*time.Second, func(screen string) bool { return strings.Contains(screen, "/settings") })
 		began = time.Now()
 		send("Enter")
-		wait("settings", began, 10*time.Second, func(screen string) bool { return strings.Contains(screen, "[Settings]") })
+		wait("settings", began, 10*time.Second, func(screen string) bool {
+			return strings.Contains(screen, "type to search all") && strings.Contains(screen, "categories")
+		})
 		began = time.Now()
 		send("Escape")
 		wait("settings_return", began, 10*time.Second, chat)

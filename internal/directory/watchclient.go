@@ -50,7 +50,7 @@ const closeSilent websocket.StatusCode = dirwatch.CloseSilent
 
 // watchLimit is the most a frame may weigh. The frames are a few bytes, so a
 // larger one is a fault and is refused before it is buffered.
-const watchLimit = 1 << 10
+const watchLimit = MaxHolds * (MaxHoldCellBytes*6 + 256)
 
 // Watch opens the signed watch socket of a screen: it names no holds, so it
 // vouches for nothing, and it asks for events (EventsQuery), so its Stream
@@ -74,6 +74,9 @@ func (h *HTTP) dial(ctx context.Context, holds []Hold, events bool) (dirwatch.St
 		return nil, err
 	}
 	req.URL.RawQuery = withBeat(watchQuery(holds, events))
+	if len(holds) != 0 {
+		req.URL.RawQuery += "&receipts=1"
+	}
 	h.sign(req, nil)
 	// The library applies the client's Timeout to the dial alone and clears it
 	// for the socket, so the shared client is safe to hand over.
@@ -173,13 +176,16 @@ func decodeFrame(data []byte) (dirwatch.Frame, error) {
 		return dirwatch.Frame{Pong: true}, nil
 	}
 	var f struct {
-		V *uint64 `json:"v"`
+		V     *uint64                `json:"v"`
+		Holds []dirwatch.HoldReceipt `json:"holds"`
 		dirwatch.Event
 	}
 	if err := json.Unmarshal(data, &f); err != nil {
 		return dirwatch.Frame{}, fmt.Errorf("directory: undecodable watch frame %q", data)
 	}
 	switch {
+	case f.Holds != nil:
+		return dirwatch.Frame{Holds: f.Holds}, nil
 	case f.V != nil:
 		return dirwatch.Frame{Version: *f.V}, nil
 	case f.T != "":

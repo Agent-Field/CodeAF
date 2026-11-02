@@ -123,7 +123,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	if err := a.interrupt.allow(role); err != nil {
 		return nil, "", err
 	}
+	// A caller's own errand may route itself (errand.go's [routedErrandLadder]).
 	rungs, err := roles.Ladder(roles.Source(source), role, sessionDefault)
+	rungs, err = routedErrandLadder(ctx, rungs, err)
 	if err != nil {
 		return nil, "", err
 	}

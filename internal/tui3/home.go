@@ -1233,8 +1233,15 @@ func (a *app) dropHome() {
 // way. So there is one constructor, and a field added to the view is a field
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
+	draft := a.openingHomeDraft
+	a.openingHomeDraft = composerState{}
+	notice := a.homeAccountNotice
+	if a.machineRead.computerRemoved {
+		notice = ""
+	}
 	return homeView{
-		msg:        a.homeAccountNotice,
+		box: draft.box, chips: draft.chips, carrying: len(draft.chips) > 0,
+		msg:        notice,
 		tabs:       a.tabList,
 		holding:    a.holding,
 		closedTabs: func() []chatTab { return a.closedTabs },
@@ -2525,6 +2532,9 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.cancelTakeover() {
 			return nil
 		}
+		if a.cancelHomeTake() {
+			return nil
+		}
 		// THE @ LIST IS INNER TO THE BOX, and so it goes first. It is drawn
 		// under home's box and belongs to the half-typed token in it
 		// (homeat.go), so esc over an open list means "not that one" and must
@@ -3091,6 +3101,19 @@ func (a *app) homeEnter() tea.Cmd {
 // cursor" is two answers to whether a project somewhere else may be opened, and
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
+	if !a.homeTakeOpening {
+		a.continueChecking = nil
+	}
+	if !a.homeTakeOpening && a.homeTakeAutomatic && (!a.homeTakeAbandoned || a.homeTakeResult == nil) && homeSessionID(line.row) == a.homeTaking {
+		// A local row can still be the old copy of the arriving chat. Joining the
+		// move avoids opening that copy before the replacement has settled.
+		a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
+		a.home.say(continuing, "")
+		return nil
+	}
+	if !a.homeTakeOpening {
+		a.abandonAutomaticTake()
+	}
 	if line.row.DeletionPending {
 		a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
 		return nil
@@ -3106,7 +3129,8 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	if line.row.Transcript == a.file {
 		a.rememberOpen(a.frontTabKey())
 		a.closeHome()
-		return a.homeLandOnTask(line)
+		said := a.spendHomeTakeFor(line)
+		return tea.Batch(a.homeLandOnTask(line), said)
 	}
 	// THE ORDER OF THESE CHECKS IS THE FEATURE. Identity comes first, because a
 	// transcript THIS PROCESS holds answers [session.InUse] true about itself —
@@ -3127,7 +3151,8 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// surface narrating a door it just walked through.
 		cmd, _ := a.bringForward(line.row.Transcript)
 		a.closeHome()
-		return tea.Batch(cmd, a.homeLandOnTask(line))
+		said := a.spendHomeTakeFor(line)
+		return tea.Batch(cmd, a.homeLandOnTask(line), said)
 	case !a.canOpen():
 		h.say(resumeUnavailableWord, "")
 		return nil
@@ -3425,6 +3450,7 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	a.abandonAutomaticTake()
 	a.teamViewSet("")
 	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not
 	// run is refused the same way whichever road would have opened it.
@@ -3985,6 +4011,9 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	}
 	width, height := a.size()
 	lines, hits, _, _ := a.homeFrame(width, height)
+	if cmd, took := a.addMachinePress(x, y, width); took {
+		return cmd
+	}
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
@@ -4274,6 +4303,8 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		a.home.build()
 	}
 	if a.home.phone {
+		a.addMachine.targets = nil
+		a.addMachine.focused = false
 		// THE PHONE FRAME IS HOME'S OWN SHAPE AND NOT THE ROUTER'S, so the box
 		// span the router keeps for the pointer is not written by it — and a
 		// span left standing from the wide frame would be a press resolved
@@ -4306,8 +4337,15 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// cuts rows cuts both of them the same way.
 	marks := placeHitsOf(hits, homeMark{line: -1, pane: -1})
 	rows, panes := make([]int, len(marks)), make([]int, len(marks))
+	a.addMachine.targets = make([]addMachineTarget, len(marks))
+	inputVisible := false
 	for i, mark := range marks {
 		rows[i], panes[i] = mark.line, mark.pane
+		a.addMachine.targets[i] = mark.addMachine
+		inputVisible = inputVisible || mark.addMachine == addMachineInput
+	}
+	if !inputVisible {
+		a.addMachine.focused = false
 	}
 	a.home.pane = panes
 	a.home.gridMarks = nil
@@ -4340,8 +4378,9 @@ type homePainted struct {
 // It is named apart from [homeHit], which is a PROJECT that survived the box and
 // has nothing to do with the pointer.
 type homeMark struct {
-	line int
-	pane int
+	addMachine addMachineTarget // 1 opens the instructions; 2 focuses the link input.
+	line       int
+	pane       int
 	// grid says the row is the resting grid's, where one screen row holds a line
 	// of EVERY column and the x of the press says which (homecell.go's
 	// [homeGridZip]); cells is those lines, -1 where a column drew nothing.

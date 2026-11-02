@@ -73,9 +73,9 @@ func (r *Recorder) wait(ctx context.Context) error {
 	return awaitCapture(ctx, done)
 }
 
-// Warm begins a screened capture before tools run. A tool arriving before the
-// initial screen finishes waits: reading files concurrently with an unscreened
-// writer would break C9. Close and movement wait on this same worker (E2).
+// Warm prepares the store before tools run without sealing an empty turn.
+// A tool arriving before the screen finishes waits, so it cannot change files
+// during that screen. Close and movement wait on the same worker.
 func (r *Recorder) Warm(ctx context.Context) {
 	r.asyncMu.Lock()
 	r.warming = true
@@ -134,6 +134,21 @@ func (r *Recorder) capture(ctx context.Context) {
 	warm := r.warming
 	r.warming = false
 	r.asyncMu.Unlock()
+	if prepare, ok := r.store.(interface {
+		Prepare(context.Context, cell.Cell) error
+	}); warm && ok {
+		run, cancel := context.WithTimeout(context.WithoutCancel(ctx), SealWithin)
+		err := prepare.Prepare(run, r.cell)
+		cancel()
+		if err != nil {
+			r.report(err)
+			return
+		}
+		if len(r.pending) == 0 && len(r.models) == 0 {
+			return
+		}
+		warm = false
+	}
 	if !warm && len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
 		return
 	}

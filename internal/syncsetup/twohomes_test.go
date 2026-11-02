@@ -391,7 +391,7 @@ func (h *twoHomes) fetchInto(head string) map[string]entry {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		h.t.Fatal(err)
 	}
-	if err := fetcher.taker(h.b.scope(h.cell.ID)).Fetch.Fetch(context.Background(), stage, head); err != nil {
+	if err := fetcher.taker(context.Background(), h.b.scope(h.cell.ID)).Fetch.Fetch(context.Background(), stage, head); err != nil {
 		h.t.Fatalf("the head is not in the store: %v", err)
 	}
 	return readTree(h.t, workspaceOf(root))
@@ -675,9 +675,11 @@ func TestTwoHomesTakeARunningChatAtOnce(t *testing.T) {
 	}
 	a.mustSay("orphaned") // A does not know it lost the chat; its publish is refused and becomes a branch
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
-	if _, ok := branchRowOf(t, h.a, h.cell.ID); !ok {
-		t.Fatal("A's refused turns did not become a branch")
-	}
+	// The drive refuses new work before its asynchronous branch upload finishes.
+	waitFor(t, "A's refused turns to become a branch", func() bool {
+		_, ok := branchRowOf(t, h.a, h.cell.ID)
+		return ok
+	})
 	if err := a.drive.Close(ctx); err != nil {
 		t.Fatal(err)
 	}

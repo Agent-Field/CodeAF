@@ -492,7 +492,7 @@ func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {
 	}
 
 	ask := newRig(t, exec, func(o *Options) {
-		o.Recipe = func(string) factory.Recipe {
+		o.Recipe = func(factory.Item) factory.Recipe {
 			r := factory.DefaultRecipe()
 			r.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptAsk}
 			return r

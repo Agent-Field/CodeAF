@@ -128,7 +128,7 @@ func newV2Jobs(t *testing.T) *v2Jobs {
 			return factory.Snapshot{Items: items}, err
 		},
 		GitHub: func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: f.person}, nil },
-		Launch: doors.Launch, Stop: doors.Stop, Answer: doors.Answer, SignOff: doors.SignOff,
+		Launch: doors.Launch, Stop: doors.Stop, Hold: doors.Hold, Answer: doors.Answer, SignOff: doors.SignOff,
 	}
 	f.cfg = serve.Config{Mode: api.FactoryTeam, Address: config.Address, Version: config.Version, Store: f.st, Record: f.rec, Now: clock, LeaseOptions: lease.Options{Now: clock, Record: f.rec},
 		Pipeline: func(context.Context, string, string) (pipeline.File, error) {
@@ -865,9 +865,20 @@ func TestV2ClosedPRRunAgainAndMergedRefusal(t *testing.T) {
 	if j := f.read(t, it); j.DoneHow != "closed" || j.State != "done" {
 		t.Fatalf("closed %+v", j)
 	}
+	// What the last run's change check found, on its head.
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.HeadCommit = "c0ffee"
+		cur.SetPublishCheck(factory.CheckPassed)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	f.post(t, it, "run_again", "", 200)
 	if f.read(t, it).State != "queued" {
 		t.Fatal("Run again did not queue")
+	}
+	if cur, err := f.st.Get(it.ID); err != nil || (cur.RuleChecks != nil && (cur.RuleChecks.Publish != "" || cur.RuleChecks.PublishHead != "")) {
+		t.Fatalf("the last run's change check survived Run again: %+v %v", cur.RuleChecks, err)
 	}
 	merged := f.create(t, factory.Item{State: factory.StateShipped, Assignee: "sam", PullRequest: &factory.PullRequest{State: factory.PRMerged}})
 	f.post(t, merged, "run_again", "", 409)
@@ -906,6 +917,30 @@ func TestSoloUnassignedPlanApprovalKeepsUndoAndNoAssignment(t *testing.T) {
 	stored, err := f.st.Get(it.ID)
 	if err != nil || stored.Person() != "" {
 		t.Fatalf("solo approval invented an owner: %+v %v", stored, err)
+	}
+}
+
+// A HELD START A PERSON APPROVES IS THEIRS: on a solo factory the job a rule
+// held (nobody on it) launches with the approver as its starter, so Auto has
+// an owner at the plan.
+func TestSoloApprovedHeldStartBelongsToTheApprover(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.cfg.Mode = api.FactorySolo
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "Approval needed: start · ask first · touch auth/", QKind: factory.QKindAskFirst, AskedFirstReason: "ask first · touch auth/", Autonomy: factory.AutonomyAuto, Cap: 3})
+	f.post(t, it, "approve", "{}", 200)
+	f.clock.Add(int64(factory.ApprovalUndo))
+	if j := f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
+		t.Fatalf("approval did not settle: %+v", j.Approval)
+	}
+	stored, err := f.st.Get(it.ID)
+	if err != nil || stored.Person() != "sam" {
+		t.Fatalf("an approved held start has person %q: %v", stored.Person(), err)
+	}
+	stored.State, stored.QKind = factory.StateNeedsYou, factory.QKindApprove
+	if why := factory.AutonomyBlockReason(stored); strings.Contains(why, "owner is required") {
+		t.Fatalf("Auto still wants an owner: %q", why)
 	}
 }
 
@@ -1083,5 +1118,53 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				t.Fatal("budget edit erased a separate user decision")
 			}
 		})
+	}
+}
+
+// START NOW ON A QUEUED JOB IS ONE SLOT ABOVE JOBS AT ONCE and launches
+// nothing, while a start from Backlog waits its turn; Hold keeps a queued job
+// from starting until Resume, and each is a person's recorded decision.
+func TestV2StartNowPassesTheLimitOnceAndHoldWaitsForResume(t *testing.T) {
+	f := newV2Jobs(t)
+	backlog := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, backlog, "start_now", "", 200)
+	if cur, _ := f.st.Get(backlog.ID); cur.OverLimit || cur.State != factory.StateQueued {
+		t.Fatalf("a start from backlog passed the limit %+v", cur)
+	}
+	f.post(t, backlog, "start_now", "", 200)
+	if j := f.read(t, backlog); !j.OverLimit || j.Can.StartNow || j.StatePresentation.Title != "Starting now" {
+		t.Fatalf("started-now job reads %+v", j)
+	}
+
+	queued := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, queued, "run", "", 200)
+	j := f.read(t, queued)
+	if j.OverLimit || !j.Can.StartNow || !j.Can.Hold || j.Can.Resume {
+		t.Fatalf("queued job reads %+v", j)
+	}
+	f.post(t, queued, "pause", "", 200)
+	if j := f.read(t, queued); !j.Held || j.Can.Hold || !j.Can.Resume || j.StatePresentation.Title != "Held" {
+		t.Fatalf("held job reads %+v", j)
+	}
+	f.post(t, queued, "resume", "", 200)
+	if j := f.read(t, queued); j.Held || !j.Can.Hold || j.State != "queued" {
+		t.Fatalf("resumed job reads %+v", j)
+	}
+	f.post(t, queued, "pause", "", 200)
+	f.post(t, queued, "start_now", "", 200)
+	cur, _ := f.st.Get(queued.ID)
+	if !cur.OverLimit || cur.State != factory.StateQueued || cur.Stream == nil || cur.Stream.Paused {
+		t.Fatalf("start now on a held queued job %+v", cur)
+	}
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	var kinds []string
+	for _, e := range events {
+		if e.Job == queued.ID {
+			kinds = append(kinds, e.Kind+":"+e.Detail)
+		}
+	}
+	want := []string{"started:", "held:", "resumed:", "held:", "started:above Jobs at once"}
+	if strings.Join(kinds, ",") != strings.Join(want, ",") {
+		t.Fatalf("recorded %v, want %v", kinds, want)
 	}
 }

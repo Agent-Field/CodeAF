@@ -26,6 +26,9 @@ func (b *appBackend) tryFactoryStatus(a *appAgent, text, clientID string, shown 
 	if !ok {
 		return 0, false, nil
 	}
+	if err := b.workAllowed(a); err != nil {
+		return 0, true, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	reply, handled, err := door.ReadFactoryStatus(ctx, text)
@@ -34,6 +37,9 @@ func (b *appBackend) tryFactoryStatus(a *appAgent, text, clientID string, shown 
 	}
 	if err != nil {
 		return 0, true, appEngineError(err)
+	}
+	if err := b.knownWorkRefusal(a); err != nil {
+		return 0, true, err
 	}
 	var id string
 	var turn uint64

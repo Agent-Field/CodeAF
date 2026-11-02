@@ -185,13 +185,19 @@ steps:
 fixed: [approve, proof, audit]
 `
 	for i, op := range []EditOp{
-		add("issue", "deploy", "write", "make deploy"),
 		add("issue", "signoff", "write", "x"),
 		add("issue", "audit", "write", "audit it"),
 	} {
 		wantCode(t, refusal(t, base, op), EditLocked, 0)
 		_ = i
 	}
+	// A CHECK IS NOT LOCKED: the file's own check is listed as it is, and stays
+	// a check; another command under its name is refused like any other step.
+	got := mustApply(t, base, add("issue", "deploy", "write", "make deploy"))
+	if back := reread(t, got.Text); back.Steps["deploy"].Kind != "check" || joined(back.Pipeline[factory.KindIssue]) != "plan,write,deploy,proof" {
+		t.Fatalf("%+v", back.Steps["deploy"])
+	}
+	wantCode(t, refusal(t, base, add("issue", "deploy", "write", "make deploy-all")), EditBadValue, 0)
 }
 
 func TestNinthStepIsAllowedAndTenthIsRefusedNotTruncated(t *testing.T) {
@@ -224,7 +230,7 @@ func TestRemoveStepKeepsDefinitionAndOtherKinds(t *testing.T) {
 }
 
 func TestRemoveOrMoveLockedStepRefused(t *testing.T) {
-	base := strings.Replace(editBase, "  lint-pass:\n    prompt: run the linter\n", "  lint-pass:\n    kind: check\n    prompt: make lint\n", 1)
+	base := strings.Replace(editBase, "  lint-pass:\n    prompt: run the linter\n", "  lint-pass:\n    kind: post\n    prompt: pr draft\n", 1)
 	if _, problems, ok := Inspect(base); !ok {
 		t.Fatal(problems)
 	}
@@ -305,24 +311,27 @@ func TestStructuralNoOpIsUnchanged(t *testing.T) {
 
 func TestStructuralShapeIsCheckedBeforeTheFile(t *testing.T) {
 	for name, op := range map[string]EditOp{
-		"add no pipeline":       {Op: OpAddStep, Name: "lint", After: s("write"), Prompt: s("x")},
-		"add no after":          {Op: OpAddStep, Pipeline: "issue", Name: "lint", Prompt: s("x")},
-		"add no prompt":         {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write")},
-		"add a kind":            {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("check")},
-		"add chat kind":         {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("chat")},
-		"add a value":           {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Value: f(2)},
-		"remove an anchor":      {Op: OpRemoveStep, Pipeline: "issue", Name: "test", After: s("write")},
-		"remove a prompt":       {Op: OpRemoveStep, Pipeline: "issue", Name: "test", Prompt: s("x")},
-		"move no after":         {Op: OpMoveStep, Pipeline: "issue", Name: "test"},
-		"move a field":          {Op: OpMoveStep, Pipeline: "issue", Name: "test", After: s("plan"), Max: i(2)},
-		"move after itself":     {Op: OpMoveStep, Pipeline: "issue", Name: "test", After: s("test")},
-		"set_step a pipeline":   {Op: OpSetStep, Pipeline: "issue", Name: "test", Prompt: s("x")},
-		"set_step an anchor":    {Op: OpSetStep, Name: "test", Prompt: s("x"), After: s("plan")},
-		"set_budget a pipeline": {Op: OpSetBudget, Pipeline: "issue", Value: f(3)},
-		"bad pipeline":          {Op: OpRemoveStep, Pipeline: "Issue", Name: "test"},
-		"bad anchor":            {Op: OpMoveStep, Pipeline: "issue", Name: "test", After: s("../plan")},
-		"loop":                  {Op: "add_loop", Pipeline: "issue", Name: "test"},
-		"reorder":               {Op: "reorder", Pipeline: "issue", Name: "test", After: s("plan")},
+		"add no pipeline":        {Op: OpAddStep, Name: "lint", After: s("write"), Prompt: s("x")},
+		"add no after":           {Op: OpAddStep, Pipeline: "issue", Name: "lint", Prompt: s("x")},
+		"add no prompt":          {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write")},
+		"add a post":             {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("post")},
+		"add a gate":             {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("gate")},
+		"add a check's effort":   {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("check"), Effort: s("strong")},
+		"add a check's sentence": {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("check"), Until: s("it is quiet")},
+		"remove a kind":          {Op: OpRemoveStep, Pipeline: "issue", Name: "test", Kind: s("check")},
+		"add a value":            {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Value: f(2)},
+		"remove an anchor":       {Op: OpRemoveStep, Pipeline: "issue", Name: "test", After: s("write")},
+		"remove a prompt":        {Op: OpRemoveStep, Pipeline: "issue", Name: "test", Prompt: s("x")},
+		"move no after":          {Op: OpMoveStep, Pipeline: "issue", Name: "test"},
+		"move a field":           {Op: OpMoveStep, Pipeline: "issue", Name: "test", After: s("plan"), Max: i(2)},
+		"move after itself":      {Op: OpMoveStep, Pipeline: "issue", Name: "test", After: s("test")},
+		"set_step a pipeline":    {Op: OpSetStep, Pipeline: "issue", Name: "test", Prompt: s("x")},
+		"set_step an anchor":     {Op: OpSetStep, Name: "test", Prompt: s("x"), After: s("plan")},
+		"set_budget a pipeline":  {Op: OpSetBudget, Pipeline: "issue", Value: f(3)},
+		"bad pipeline":           {Op: OpRemoveStep, Pipeline: "Issue", Name: "test"},
+		"bad anchor":             {Op: OpMoveStep, Pipeline: "issue", Name: "test", After: s("../plan")},
+		"loop":                   {Op: "add_loop", Pipeline: "issue", Name: "test"},
+		"reorder":                {Op: "reorder", Pipeline: "issue", Name: "test", After: s("plan")},
 	} {
 		if _, bad := CheckEdit(0, op); bad == nil {
 			t.Errorf("%s: accepted", name)
@@ -657,9 +666,59 @@ steps:
 	if g := joined(reread(t, got.Text).Pipeline[factory.KindIssue]); g != "plan,write,bench,proof,lint,ship,signoff,notes" {
 		t.Fatalf("%s", g)
 	}
-	for _, name := range []string{"lint", "ship", "signoff", "notes"} {
+	for _, name := range []string{"ship", "signoff", "notes"} {
 		wantCode(t, refusal(t, base, remove("issue", name)), EditLocked, 0)
 		wantCode(t, refusal(t, base, move("issue", name, "plan")), EditLocked, 0)
+	}
+	// The file's own check after proof keeps its place through other edits,
+	// and may be moved before proof or removed; a check put there is refused.
+	if g := joined(reread(t, mustApply(t, base, move("issue", "lint", "write")).Text).Pipeline[factory.KindIssue]); g != "plan,write,lint,proof,ship,signoff,notes" {
+		t.Fatalf("%s", g)
+	}
+	mustApply(t, base, remove("issue", "lint"))
+	wantCode(t, refusal(t, base, addCheck("issue", "bench", "proof", "go test -bench .")), EditLocked, 0)
+}
+
+func addCheck(pipeline, name, after, command string) EditOp {
+	op := add(pipeline, name, after, command)
+	k := "check"
+	op.Kind = &k
+	return op
+}
+
+// A CHECK IS ADDED, EDITED AND MOVED LIKE A CHAT: its prompt is the command and
+// the runner reads it as a check; it stops on a word its runner checks.
+func TestACheckStepIsAddedEditedAndMovedFromTheEditor(t *testing.T) {
+	op := addCheck("issue", "unit", "write", "go test ./...")
+	green := "green"
+	op.Until, op.Max = &green, i(3)
+	got := mustApply(t, editBase, op)
+	back := reread(t, got.Text)
+	if st := back.Steps["unit"]; st.Kind != "check" || st.Prompt != "go test ./..." || st.Until != "green" || st.Max != 3 {
+		t.Fatalf("%+v", st)
+	}
+	var unit factory.Stage
+	for _, st := range back.Recipe().For(factory.KindIssue) {
+		if st.Name == "unit" {
+			unit = st
+		}
+	}
+	if unit.Kind != factory.StageCheck || unit.Ask != "go test ./..." || unit.Until != factory.UntilGreen || unit.Max != 3 {
+		t.Fatalf("the runner reads %+v", unit)
+	}
+	if !RuntimeKeysIn(got.Text) {
+		t.Fatal("a file with a check spells kind, which only an attesting factory may be sent")
+	}
+	// Its command is its prompt; its kind stays.
+	edited := mustApply(t, got.Text, EditOp{Op: OpSetStep, Name: "unit", Prompt: s("go test -race ./...")})
+	if st := reread(t, edited.Text).Steps["unit"]; st.Kind != "check" || st.Prompt != "go test -race ./..." {
+		t.Fatalf("%+v", st)
+	}
+	wantCode(t, refusal(t, got.Text, EditOp{Op: OpSetStep, Name: "unit", Effort: s("strong")}), EditBadValue, 0)
+	wantCode(t, refusal(t, got.Text, EditOp{Op: OpSetStep, Name: "unit", Kind: s("chat")}), EditLocked, 0)
+	moved := mustApply(t, got.Text, move("issue", "unit", "test"))
+	if g := joined(reread(t, moved.Text).Pipeline[factory.KindIssue]); !strings.Contains(g, "test,unit") {
+		t.Fatalf("%s", g)
 	}
 }
 

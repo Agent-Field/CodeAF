@@ -1,7 +1,10 @@
 package relayserve
 
 import (
+	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/raftstore"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -52,11 +55,27 @@ func (n *namespaces) sweepOne(id string) error {
 
 // due says whether the identity's retirement time has come by the relay's clock.
 func (n *namespaces) due(id string) (bool, error) {
-	d, err := n.sqlite(id)
+	d, err := n.activate(context.Background(), id, nil)
 	if err != nil {
 		return false, err
 	}
-	r := d.Rotated()
+	var r *directory.Rotation
+	err = d.host.Inspect(context.Background(), func(ctx context.Context, s *raftstore.SQLite, a raftstore.Application) error {
+		key := raftstore.Key{Namespace: raftstore.State, Key: clusterstate.IdentityKey().Key}
+		rows, _, e := s.Read(ctx, a.Applied, []raftstore.Key{key})
+		if e != nil {
+			return e
+		}
+		var identity clusterstate.IdentityRec
+		if e = clusterstate.Decode(rows[key], &identity); e != nil {
+			return e
+		}
+		r = identity.Rotation
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
 	return r != nil && r.State == directory.StateRetired && n.now().UnixMilli() >= r.RetireAt, nil
 }
 
@@ -82,13 +101,17 @@ func (n *namespaces) erase(id string) error {
 			failed = errors.Join(failed, err)
 		}
 	}
-	return errors.Join(failed, os.RemoveAll(filepath.Join(n.root, "blobs", id)))
+	return errors.Join(failed, os.RemoveAll(filepath.Join(n.root, "blobs", id)), os.RemoveAll(filepath.Join(n.root, "raft", id)))
 }
 
 // forget closes the identity's open directory, if it has one.
 func (n *namespaces) forget(id string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if d, ok := n.groups[id]; ok {
+		_ = d.Close()
+		delete(n.groups, id)
+	}
 	if d, ok := n.dirs[id]; ok {
 		_ = d.Close()
 		delete(n.dirs, id)

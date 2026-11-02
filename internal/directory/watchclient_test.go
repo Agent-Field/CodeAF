@@ -202,7 +202,11 @@ func TestWatchHoldingNamesHoldsInTheSignedURLAndReadsTheVouchWord(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if got := (<-seen).URL.Query()["hold"]; len(got) != 2 || got[0] != "c:1:7" || got[1] != "d:2" {
+	request := <-seen
+	if request.URL.Query().Get("receipts") != "1" {
+		t.Fatal("R22 holding watch omitted committed receipt negotiation")
+	}
+	if got := request.URL.Query()["hold"]; len(got) != 2 || got[0] != "c:1:7" || got[1] != "d:2" {
 		t.Fatalf("holds in the query = %q", got)
 	}
 	if !s.Vouching() {

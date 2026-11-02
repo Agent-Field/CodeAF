@@ -132,6 +132,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -348,6 +349,18 @@ func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
 // carveGroundDown is [carveGround] over the rungs it is handed, which is how a
 // copy that must be a particular kind of world comes back by the same walk.
 func carveGroundDown(ctx context.Context, ladder []groundRung, order groundOrder) (taskTree, error) {
+	if err := ensureTaskStorage(ctx, order.place, order.ground); err != nil {
+		return taskTree{}, fmt.Errorf("restore task ground: %w", err)
+	}
+	if manager, enabled := taskStorage(order.place); enabled && taskStorageOwns(order.place, order.dir) {
+		state, err := manager.Inspect(ctx, order.dir)
+		if err != nil {
+			return taskTree{}, err
+		}
+		if state.Snapshot != "" {
+			return taskTree{}, errors.New("this task already has saved work; continue its existing copy")
+		}
+	}
 	var climb groundClimb
 	for _, rung := range ladder {
 		reaches, stood := rung.reach(order)
@@ -1169,6 +1182,9 @@ func (t taskTree) carryBranchHomeLocked() (string, error) {
 // releaseLanded retires a completed copy before giving back its directory.
 // A failed retirement preserves the files Furrow needs to remove its timeline.
 func (t taskTree) releaseLanded() error {
+	if retainTaskStorage(t) {
+		return nil
+	}
 	// THE SAME DOOR [taskTree.releaseKept] closes: a tree whose ground was never
 	// made has nowhere a worktree could be registered and no repository to ask,
 	// and a command with no directory runs in the process's own directory — so

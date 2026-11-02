@@ -1,5 +1,37 @@
 # Measuring performance
 
+## Idle desktop chat admission
+
+`TestAppLazyQuietColdSweepBoundAndCoverage` in `cmd/codeaf/applazy_quiet_test.go`
+counts work-input probes with 13, 100 and 1,000 saved chats and a fake clock.
+Startup stamps every eligible closed candidate once. Each subsequent two-second
+beat stamps every hot candidate plus at most `ceil(cold / 30)` cold candidates
+in round-robin order. `appLazyColdSweep` is one minute; `appCrewPoll` is two
+seconds. Every cold chat is visited within 30 ticks for a stable population.
+
+| Quiet cold chats | Base work-input stats per tick | Cold stamps per tick | Local/budget probes per tick | Shared team stats per tick |
+| --- | --- | --- | --- | --- |
+| 13 | 104 | 1 | 7 | 1 |
+| 100 | 800 | 4 | 25 | 1 |
+| 1,000 | 8,000 | 34 | 205 | 1 |
+
+Each selected chat uses six local metadata probes. The budget and profile/team
+stamps are computed once per admission pass; traffic stamps once per crew per
+pass. The existing crew-view metadata checks and admission reads after a stamp
+changes are separate from these work-input counts. Work counts are the gate;
+elapsed test time is diagnostic.
+
+Live factory stages, kept/starting services, existing crew holds, due retries
+and chats seen live within `appLazyHotWindow` (10 minutes) stay on the hot beat.
+Crew traffic/team events retain their existing immediate reconciliation. Other
+work-file changes wait for the next cold visit (up to 60 seconds, plus a tick at
+the boundary), including when events are lost, watching is unavailable or work
+directories are re-created. Watcher errors still reconcile crews immediately.
+There is no periodic full cold repair. Only the base profile, teams and per-team
+traffic directories are watched; no watch or native buffer is added per saved
+chat. `TestAppLazyWatchSetDoesNotGrowWithChatHistory` checks the same three
+watches for one team at all three history sizes.
+
 ## Measure the changed path
 
 Use focused tests and benchmarks while editing. Record the Go version, operating
@@ -17,6 +49,13 @@ is diagnostic; regression gates count deterministic work, bytes, allocations,
 request fanout, retained data and cache reuse. Do not gate on wall-clock thresholds.
 Use scripted providers and explicit synchronization rather than real sleeps.
 
+Keyed vault restores read the sealed vault at most twice when no selection
+policy is needed, and at most three times when incoming model choices need
+provider and revision checks. These caps are independent of the number of keys;
+`TestARestoreOpensTheVaultAFixedNumberOfTimes` and
+`TestSelectiveRestoreM1BoundedVaultReads` exercise 16 and 256 keys. A model's
+optional provider metadata is backfilled without advancing its choice clock.
+
 Activity layout lines share immutable task records instead of copying both task
 and conversation payloads into every line. Conversation overlays keep their own
 copy, so live titles do not mutate the held reading. Paint scratch still expires
@@ -31,12 +70,79 @@ memberships; the batch trades temporary indexed storage for repeated scans.
 `TestTeamsDisbandScaleTerminalLatency` measures confirmation through the visible
 saved result, including persistence and redraw work.
 
+The All teams overview retains offscreen card heights and keyboard targets,
+but skips their border composition and grid padding. Latest-message ordering
+walks current and former memberships without copying their records.
+`TestTeamsOverviewPaintAllocationBudget` measures five complete frames at 200
+teams and 40,000 memberships against an 8 MiB per-frame allocation limit.
+`TestTeamsOverviewViewportMatchesFullCards` compares scrolled narrow and wide
+viewports with the complete rendering; hierarchy and fold tests preserve
+keyboard and pointer reachability.
+
+## Startup and interaction audit
+
+Build the baseline and candidate through `make build` with the same Go version,
+platform and pinned engine. Keep distinct executable files, and run the same
+test binary and fixture against each. Prepare platform-specific embedded engine
+artifacts serially: the staging step replaces the prior platform's artifact.
+An absent engine is a failed measurement, not a faster startup.
+
+```sh
+CODEAF_E2E_MODEL=deepseek/deepseek-v4.1-flash go test -tags=e2e ./internal/e2e \
+  -run '^(TestStartupWhileStorageCaptureIsPending|TestTabAndEngineAttachmentLatency)$' \
+  -count=3 -v -timeout=5m
+```
+
+The capture test uses real movable chats and a real storage daemon behind a
+transparent proxy. It withholds capture-plan requests, checks that history and
+the composer appear and accept typing, then verifies saving completes after
+release. Both in-process and newly hosted launches run. Tools and movement keep
+their capture barriers; recorder regressions check those independently.
+
+The tab test measures fresh-engine startup, attachment to an existing engine,
+opening another saved chat, twelve alternating tab selections and typed drafts
+with 2,001 message records in each chat. It pauses only its own identified engine
+for 1,200 ms while opening the resume picker, then measures picker and filter
+response separately from the engine's response. No model request belongs in
+these measurements; the fixture rejects and counts any that occurs.
+
+Start clocks before input delivery. A process ID, terminal-mode change, existing
+tab title or old frame cannot satisfy readiness: require destination-only
+history and a composer, followed by an echoed unique draft. Observation includes
+5 ms polling plus terminal command overhead. Keep every sample and timeout,
+report sample counts and maxima, and separate first process launches from later
+ones. Fresh profiles and engines do not imply cold operating-system caches.
+Report live-provider completion and recorded model identities separately; a
+scripted provider cannot establish live model acceptance.
+
 Store reopening probes distinct nonempty session IDs through the existing
 message index before checking for missing session rows. It still scans message
 IDs, and still discovers older writers' missing rows on a later open; no cached
 migration flag skips that check. `BenchmarkOpenSettledSessions` measures the
 whole public open/close operation. `TestSettledStoreTerminalStartup` separates
 fixture construction from the first interactive frame of the running terminal.
+
+Furrow detection stays off the hello path. The belt reads the remembered answer
+(`furrow.PeekTools`); the session asks furrow from a goroutine joined at close
+and appends the four workspace tools through `armFamily` if the folder is
+watched. Measured on Spark linux-arm64 with a cold engine per workspace and the
+owner profile, first frame fell from 3.87 s to about 0.5 s with the furrow
+that was embedded then; with furrow 0.3.3's fast status the unfixed tree is already
+at about 0.43 s, and this change keeps the build from depending on furrow's speed. The gate is
+`TestBuildingASessionDoesNotWaitForFurrow`, which holds `furrow status` open and
+asserts the build came back while that process was still alive; no clock decides it.
+
+Native peer acknowledgements reuse the validated routing view only for the same
+store and durably applied index. Every applied change, including revocation,
+invalidates that view. `TestR11R27UnchangedPeerAcknowledgementWork` exercises the
+real transport and caps an unchanged acknowledgement at 1,000 allocations with
+no application append; the measured cost fell from 3,273 allocations to 192.
+
+An authenticated native directory read with already durable ingress time uses a
+fresh quorum view and the normal state evaluator before omitting an identical
+append. New time and changed records still commit before inspection.
+`TestR4R26R27ReadCommitsOnlyChangedTime` counts applied entries for unchanged,
+advanced and repeated time, and requires invalid original authority to fail.
 
 ## Live tool approval settings
 
@@ -84,6 +190,31 @@ sizes, allocations, decompression, request counts, retained previews and renderi
 work. Preserve those assertions when changing a hot path. Paint must not perform
 filesystem or network reads. Document any cap change with its rationale in the
 same commit; derive repeated values from constants.
+
+## Paired team history
+
+These sharing budgets apply only when **share teams** is on in Settings → Devices.
+Sharing is off by default on each computer; off rounds run no team carriers,
+identity discovery, mirror writes or ownership lookups and retain existing polling.
+
+`teams.TrafficSyncLines` limits each writing computer's window to 32 lines per
+team, and `teams.TrafficSyncBytes` limits encoded lines to 16 KiB per team.
+`teams.TrafficSyncTextBytes` shortens text beyond 2 KiB at a rune boundary.
+`teams.TrafficSyncDeviceBytes` caps each device's encoded Traffic share at 64 KiB
+across teams, newest local activity first. `teams.TrafficSyncEvery` permits a
+publication at most once every 30 seconds; team record edits are not delayed.
+Capture reads the bounded backward tail across the current and rotated logs. Received windows replace a
+separate display mirror and are never republished. An unchanged round on 500
+chats and 5 teams performs zero world scans and opens zero cell metadata files;
+member identities cache by metadata stamp, unchanged authored tails are reused,
+and unresolved incoming identities share at most one discovery pass per round. Tests count scans and encoded bytes,
+compare deterministic values, and verify quiet rounds leave the vault unchanged.
+Mirror filtering makes zero directory requests per vault round, using only an
+already-held local roster, or every other writer when none is available. A send
+shares one ownership reading across its recipients, with a 3-second timeout and
+a 5-second process cache (including failures). Cursor saves stat identity files
+but decode them only after a stamp changes. Mirror refresh never acknowledges
+local news and each hosted window carries its own mirror version.
 
 ## Binary size
 
@@ -239,3 +370,12 @@ bounded to 2000 bytes. This adds no model call, polling timer or unbounded retry
 the existing GitHub read retry and factory poll remain the only retry owners.
 Policy capability failures are not cached, so subsequent polls observe plan or
 permission changes. Readiness keys are issued only for complete snapshots.
+
+## Raft coordination binary size
+
+Every build links the Raft coordination core: the modified Raft copy, protobuf,
+the signed state machine and its SQLite snapshot host. The relay and devices
+always coordinate through it, so no build leaves it out. On linux/amd64 it adds
+3,379,200 bytes to the stripped binary (75,755,785 to 79,134,985 on the same dev
+base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
+the 56,063 bytes of headroom the base had are kept.

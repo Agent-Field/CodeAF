@@ -1,0 +1,152 @@
+// Copyright 2015 The etcd Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package raft
+
+import (
+	"fmt"
+	"math"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
+	pb "go.etcd.io/raft/v3/raftpb"
+)
+
+var testFormatter EntryFormatter = func(data []byte) string {
+	return strings.ToUpper(string(data))
+}
+
+func TestDescribeEntry(t *testing.T) {
+	entry := &pb.Entry{
+		Term:  new(uint64(1)),
+		Index: new(uint64(2)),
+		Type:  pb.EntryNormal.Enum(),
+		Data:  []byte("hello\x00world"),
+	}
+	require.Equal(t, `1/2 EntryNormal "hello\x00world"`, DescribeEntry(entry, nil))
+	require.Equal(t, "1/2 EntryNormal HELLO\x00WORLD", DescribeEntry(entry, testFormatter))
+}
+
+func TestLimitSize(t *testing.T) {
+	ents := []*pb.Entry{{Index: new(uint64(4)), Term: new(uint64(4))}, {Index: new(uint64(5)), Term: new(uint64(5))}, {Index: new(uint64(6)), Term: new(uint64(6))}}
+	prefix := func(size int) []*pb.Entry {
+		return append([]*pb.Entry{}, ents[:size]...) // protect the original slice
+	}
+	for _, tt := range []struct {
+		maxSize uint64
+		want    []*pb.Entry
+	}{
+		{math.MaxUint64, prefix(len(ents))}, // all entries are returned
+		// Even if maxSize is zero, the first entry should be returned.
+		{0, prefix(1)},
+		// Limit to 2.
+		{uint64(proto.Size(ents[0]) + proto.Size(ents[1])), prefix(2)},
+		{uint64(proto.Size(ents[0]) + proto.Size(ents[1]) + proto.Size(ents[2])/2), prefix(2)},
+		{uint64(proto.Size(ents[0]) + proto.Size(ents[1]) + proto.Size(ents[2]) - 1), prefix(2)},
+		// All.
+		{uint64(proto.Size(ents[0]) + proto.Size(ents[1]) + proto.Size(ents[2])), prefix(3)},
+	} {
+		t.Run("", func(t *testing.T) {
+			got := limitSize(ents, entryEncodingSize(tt.maxSize))
+			require.Equal(t, tt.want, got)
+			size := entsSize(got)
+			require.True(t, len(got) == 1 || size <= entryEncodingSize(tt.maxSize))
+		})
+	}
+}
+
+func TestIsLocalMsg(t *testing.T) {
+	tests := []struct {
+		msgt    pb.MessageType
+		isLocal bool
+	}{
+		{pb.MsgHup, true},
+		{pb.MsgBeat, true},
+		{pb.MsgUnreachable, true},
+		{pb.MsgSnapStatus, true},
+		{pb.MsgCheckQuorum, true},
+		{pb.MsgTransferLeader, false},
+		{pb.MsgProp, false},
+		{pb.MsgApp, false},
+		{pb.MsgAppResp, false},
+		{pb.MsgVote, false},
+		{pb.MsgVoteResp, false},
+		{pb.MsgSnap, false},
+		{pb.MsgHeartbeat, false},
+		{pb.MsgHeartbeatResp, false},
+		{pb.MsgTimeoutNow, false},
+		{pb.MsgReadIndex, false},
+		{pb.MsgReadIndexResp, false},
+		{pb.MsgPreVote, false},
+		{pb.MsgPreVoteResp, false},
+		{pb.MsgStorageAppend, true},
+		{pb.MsgStorageAppendResp, true},
+		{pb.MsgStorageApply, true},
+		{pb.MsgStorageApplyResp, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprint(tt.msgt), func(t *testing.T) {
+			require.Equal(t, tt.isLocal, IsLocalMsg(tt.msgt))
+		})
+	}
+}
+
+func TestIsResponseMsg(t *testing.T) {
+	tests := []struct {
+		msgt       pb.MessageType
+		isResponse bool
+	}{
+		{pb.MsgHup, false},
+		{pb.MsgBeat, false},
+		{pb.MsgUnreachable, true},
+		{pb.MsgSnapStatus, false},
+		{pb.MsgCheckQuorum, false},
+		{pb.MsgTransferLeader, false},
+		{pb.MsgProp, false},
+		{pb.MsgApp, false},
+		{pb.MsgAppResp, true},
+		{pb.MsgVote, false},
+		{pb.MsgVoteResp, true},
+		{pb.MsgSnap, false},
+		{pb.MsgHeartbeat, false},
+		{pb.MsgHeartbeatResp, true},
+		{pb.MsgTimeoutNow, false},
+		{pb.MsgReadIndex, false},
+		{pb.MsgReadIndexResp, true},
+		{pb.MsgPreVote, false},
+		{pb.MsgPreVoteResp, true},
+		{pb.MsgStorageAppend, false},
+		{pb.MsgStorageAppendResp, true},
+		{pb.MsgStorageApply, false},
+		{pb.MsgStorageApplyResp, true},
+	}
+
+	for i, tt := range tests {
+		got := IsResponseMsg(tt.msgt)
+		assert.Equal(t, tt.isResponse, got, "#%d", i)
+	}
+}
+
+// TestPayloadSizeOfEmptyEntry ensures that payloadSize of empty entry is always zero.
+// This property is important because new leaders append an empty entry to their log,
+// and we don't want this to count towards the uncommitted log quota.
+func TestPayloadSizeOfEmptyEntry(t *testing.T) {
+	e := &pb.Entry{Data: nil}
+	require.Equal(t, 0, int(payloadSize(e)))
+}

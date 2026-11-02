@@ -94,7 +94,7 @@ func orderError(err error) error {
 }
 
 // orderView is one automation as the app draws an order.
-func orderView(store *automation.Store, a automation.Automation, now time.Time) appwire.Order {
+func orderView(asking map[string]automation.Run, a automation.Automation, now time.Time) appwire.Order {
 	o := appwire.Order{
 		ID:           a.ID,
 		Crew:         a.Crew,
@@ -109,11 +109,7 @@ func orderView(store *automation.Store, a automation.Automation, now time.Time) 
 		TrustAfter:   automation.TrustAfter,
 		CreatedAt:    a.Created,
 	}
-	if a.Origin.Transcript != "" {
-		o.Agent = appAgentID(a.Origin.Transcript)
-	} else {
-		o.Agent = a.Origin.SessionID
-	}
+	o.Agent = orderAgent(a)
 	switch {
 	case a.Look != nil:
 		o.Kind = appwire.OrderKindWatch
@@ -154,17 +150,27 @@ func orderView(store *automation.Store, a automation.Automation, now time.Time) 
 		last := orderRunView(*a.Last)
 		o.LastRun = &last
 	}
-	if store != nil {
-		if asking, err := store.Asking(); err == nil {
-			for _, run := range asking {
-				if run.AutomationID == a.ID {
-					view := orderRunView(run)
-					o.Asking = &view
-				}
-			}
-		}
+	if run, ok := asking[a.ID]; ok {
+		view := orderRunView(run)
+		o.Asking = &view
 	}
 	return o
+}
+
+func orderAgent(a automation.Automation) string {
+	if a.Origin.Transcript != "" {
+		return appAgentID(a.Origin.Transcript)
+	}
+	return a.Origin.SessionID
+}
+
+// orderAsking keeps the last run in the store's oldest-first snapshot.
+func orderAsking(runs []automation.Run) map[string]automation.Run {
+	asking := make(map[string]automation.Run, len(runs))
+	for _, run := range runs {
+		asking[run.AutomationID] = run
+	}
+	return asking
 }
 
 // orderRunView is one run as an order's row says it.
@@ -210,14 +216,15 @@ func (b *appBackend) Orders(agent string) ([]appwire.Order, error) {
 	if err != nil {
 		return nil, appEngineError(err)
 	}
+	runs, _ := store.Asking()
+	asking := orderAsking(runs)
 	now := b.now()
 	var out []appwire.Order
 	for _, a := range all {
-		view := orderView(store, a, now)
-		if agent != "" && view.Agent != agent {
+		if agent != "" && orderAgent(a) != agent {
 			continue
 		}
-		out = append(out, view)
+		out = append(out, orderView(asking, a, now))
 	}
 	return out, nil
 }
@@ -245,7 +252,8 @@ func (b *appBackend) sayOrder(store *automation.Store, id string) (appwire.Order
 	if err != nil {
 		return appwire.Order{}, orderError(err)
 	}
-	view := orderView(store, a, b.now())
+	runs, _ := store.Asking()
+	view := orderView(orderAsking(runs), a, b.now())
 	b.emit.Emit(appwire.EventOrderChanged, appwire.OrderChanged{Order: view})
 	return view, nil
 }
@@ -514,16 +522,22 @@ func (b *appBackend) answerOrderAsk(askID, option string) (bool, error) {
 	if err != nil {
 		return true, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", askID)
 	}
-	switch option {
-	case appwire.VerdictGo, appwire.VerdictSkip, appwire.VerdictNotRight:
-	default:
-		return true, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, skip or not_right", askID)
+	if err := appValidateOrderAnswer(askID, option); err != nil {
+		return true, err
 	}
 	_, err = b.OrderVerdict(r.AutomationID, run, option)
 	if err == nil {
 		appOrderAnswered.Store(run, option)
 	}
 	return true, err
+}
+
+func appValidateOrderAnswer(id, option string) error {
+	switch option {
+	case appwire.VerdictGo, appwire.VerdictSkip, appwire.VerdictNotRight:
+		return nil
+	}
+	return appwire.Errorf(appwire.CodeBadParams, "the ask %s offers go, skip or not_right", id)
 }
 
 // appOrderAnswered is the runs this app answered, with the option, so the
@@ -544,6 +558,7 @@ func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
 		ID: appOrderAskID(run.ID), Agent: view.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindOrderRun,
 		Title: "Run " + view.Title + " now?", Detail: view.Does,
 		Subject: &appwire.AskSubject{Kind: appwire.SubjectAutomation, Ref: view.ID},
+		Asked:   appOrderRunAskedAt(run),
 		Options: []appwire.AskOption{
 			{ID: appwire.VerdictGo, Label: "Go"},
 			{ID: appwire.VerdictSkip, Label: "Skip this one"},
@@ -554,6 +569,16 @@ func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
 		ask.Reason = "it asks before each run until it has earned trust"
 	}
 	return ask
+}
+
+// appOrderRunAskedAt is when a run began to wait on the person: when the
+// clock parked it, which for a run parked late after codeaf was away is long
+// after its slot, or its slot for one an older build parked.
+func appOrderRunAskedAt(run automation.Run) time.Time {
+	if !run.Asked.IsZero() {
+		return run.Asked
+	}
+	return run.Due
 }
 
 // orderAsksOf is the runs waiting on the person for an agent's orders, as
@@ -567,6 +592,7 @@ func (b *appBackend) orderAsksOf(agent string) []appwire.Ask {
 	if err != nil {
 		return nil
 	}
+	asking := orderAsking(runs)
 	now := b.now()
 	var out []appwire.Ask
 	for _, run := range runs {
@@ -574,9 +600,8 @@ func (b *appBackend) orderAsksOf(agent string) []appwire.Ask {
 		if err != nil {
 			continue
 		}
-		view := orderView(store, a, now)
-		if view.Agent == agent {
-			out = append(out, appOrderRunAsk(view, run))
+		if orderAgent(a) == agent {
+			out = append(out, appOrderRunAsk(orderView(asking, a, now), run))
 		}
 	}
 	return out
@@ -589,6 +614,12 @@ func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwir
 	if err != nil {
 		return false
 	}
+	b.sayOrderAsksFrom(store, open, runs)
+	return true
+}
+
+func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]appwire.Ask, runs []automation.Run) {
+	asking := orderAsking(runs)
 	now := b.now()
 	waiting := map[int64]bool{}
 	for _, run := range runs {
@@ -600,7 +631,7 @@ func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwir
 		if err != nil {
 			continue
 		}
-		ask := appOrderRunAsk(orderView(store, a, now), run)
+		ask := appOrderRunAsk(orderView(asking, a, now), run)
 		open[run.ID] = ask
 		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 	}
@@ -615,7 +646,6 @@ func (b *appBackend) sayOrderAsks(store *automation.Store, open map[int64]appwir
 		}
 		b.emit.Emit(appwire.EventAskClosed, closed)
 	}
-	return true
 }
 
 // sayOrderResult puts a finished run's line in the chat it answers in.
@@ -652,15 +682,19 @@ func (b *appBackend) watchOrders(stop <-chan struct{}) {
 		return
 	}
 	seen := map[string]string{}
+	runs, askingErr := store.Asking()
+	asking := orderAsking(runs)
 	if all, err := store.List(); err == nil {
 		for _, a := range all {
-			seen[a.ID] = orderPrint(orderView(store, a, b.now()))
+			seen[a.ID] = orderPrint(orderView(asking, a, b.now()))
 		}
 	}
 	// THE RUNS ALREADY WAITING ARE SAID AT ONCE, so the Inbox holds them from
 	// the moment the app opens.
 	open := map[int64]appwire.Ask{}
-	b.sayOrderAsks(store, open)
+	if askingErr == nil {
+		b.sayOrderAsksFrom(store, open, runs)
+	}
 	ticker := time.NewTicker(appOrdersEvery)
 	defer ticker.Stop()
 	for {
@@ -681,27 +715,32 @@ func orderPrint(view appwire.Order) string {
 
 // ordersOnce is one look at the store.
 func (b *appBackend) ordersOnce(store *automation.Store, cursor int64, seen map[string]string) int64 {
-	next, _ := b.ordersRead(store, cursor, seen)
+	next, _, _ := b.ordersRead(store, cursor, seen)
 	return next
 }
 
 // ordersRead leaves the input stamp unconsumed after a transient database error.
-func (b *appBackend) ordersRead(store *automation.Store, cursor int64, seen map[string]string) (int64, bool) {
+func (b *appBackend) ordersRead(store *automation.Store, cursor int64, seen map[string]string) (int64, []automation.Run, bool) {
 	now := b.now()
 	runs, next, err := store.Changes(cursor)
 	if err != nil {
-		return cursor, false
+		return cursor, nil, false
 	}
 	all, err := store.List()
 	if err != nil {
-		return cursor, false
+		return cursor, nil, false
 	}
+	waiting, err := store.Asking()
+	if err != nil {
+		return cursor, nil, false
+	}
+	asking := orderAsking(waiting)
 	for _, run := range runs {
 		a, err := store.Get(run.AutomationID)
 		if err != nil {
 			continue
 		}
-		view := orderView(store, a, now)
+		view := orderView(asking, a, now)
 		fired := appwire.OrderFired{Order: view, Run: orderRunView(run)}
 		switch run.Phase {
 		case automation.PhaseAsking:
@@ -719,7 +758,7 @@ func (b *appBackend) ordersRead(store *automation.Store, cursor int64, seen map[
 	present := map[string]bool{}
 	for _, a := range all {
 		present[a.ID] = true
-		view := orderView(store, a, now)
+		view := orderView(asking, a, now)
 		print := orderPrint(view)
 		if seen[a.ID] == print {
 			continue
@@ -733,5 +772,5 @@ func (b *appBackend) ordersRead(store *automation.Store, cursor int64, seen map[
 			b.emit.Emit(appwire.EventOrderRemoved, appwire.OrderRemoved{ID: id})
 		}
 	}
-	return cursor, true
+	return cursor, waiting, true
 }

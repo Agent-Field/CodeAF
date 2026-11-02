@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -288,7 +289,7 @@ func writeStub(place Place, workspace, text string) (string, error) {
 		_ = os.Remove(name)
 		return "", err
 	}
-	if err := os.Rename(name, full); err != nil {
+	if err := fsreplace.Rename(name, full); err != nil {
 		_ = os.Remove(name)
 		return "", err
 	}

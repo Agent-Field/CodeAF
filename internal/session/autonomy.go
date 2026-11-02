@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const awayAfter = 10 * time.Minute
@@ -94,7 +96,7 @@ func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return fsreplace.Rename(tmp, path)
 }
 
 func (a *Agent) readAutonomy() map[AskKind]Policy {

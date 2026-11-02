@@ -3,8 +3,60 @@ package tui3
 import (
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
+
+func TestTeamsOverviewPaintAllocationBudget(t *testing.T) {
+	a := teamsScaleApp(t, 200, 200)
+	a.View()
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range 5 {
+		a.touch()
+		a.View()
+	}
+	runtime.ReadMemStats(&after)
+	allocated := (after.TotalAlloc - before.TotalAlloc) / 5
+	t.Logf("200 teams, 40000 memberships: %d bytes per full frame", allocated)
+	if allocated > 8<<20 {
+		t.Fatalf("overview painted offscreen cards: %d bytes per frame exceeds 8 MiB", allocated)
+	}
+}
+
+func TestTeamsOverviewViewportMatchesFullCards(t *testing.T) {
+	a := teamsScaleApp(t, 12, 5)
+	for _, width := range []int{55, 90, 160} {
+		a.width = width
+		for _, offset := range []int{0, 15, 60, 9999} {
+			a.tp.paneOffset, a.tp.paneWheel = offset, true
+			const room = 22
+			got := a.teamsBody(width, room)
+			paneWidth := width - teamsRailCols(width) - 1
+			d := &teamsDraw{a: a}
+			whole := a.teamsTop(d, paneWidth)
+			whole = append(whole, a.teamsPaneRest(d, paneWidth, len(whole))...)
+			for row := a.tp.paneTop; row < room; row++ {
+				index := a.tp.paneOffset + row - a.tp.paneTop
+				want := ""
+				if index < len(whole) {
+					want = strings.TrimRight(plain(whole[index]), " ")
+				}
+				text := got[row].text
+				if rail := teamsRailCols(width); rail > 0 {
+					text = ansi.Cut(text, rail, width)
+				}
+				if strings.TrimRight(plain(text), " ") != want {
+					t.Fatalf("overview differs at width=%d offset=%d row=%d: got %q, want %q", width, offset, row, plain(text), want)
+				}
+			}
+		}
+	}
+}
 
 func teamsScaleApp(tb testing.TB, count, members int) *app {
 	tb.Helper()

@@ -110,6 +110,8 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	// The plan's target and the caller's right to answer are the job's own
 	// facts (api.CanFor); whether this factory takes the revision is its own.
 	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
+	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil
+	j.Can.Resume = j.Can.Resume && h.seam.Hold != nil
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
 	session, _ := h.credential(r)
 	hasToken := session.githubToken != ""
@@ -153,6 +155,10 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
 	}
 	if !proven(j.Runner) {
+		if j.StatePresentation.Kind == api.WaitingForComputer {
+			j.StatePresentation.Title = "Waiting for its computer"
+			j.StatePresentation.Detail = "Waiting for the computer its work is on, which is not running now."
+		}
 		j.Runner = ""
 	}
 	if j.Failure != nil && (!proven(j.Failure.Machine) || !proven(j.Failure.Runner)) {

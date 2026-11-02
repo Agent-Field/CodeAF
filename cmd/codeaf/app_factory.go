@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
@@ -31,7 +32,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -59,6 +59,13 @@ type appFactoryHost struct {
 	// factory.local_run ends the quiet, through [appFactoryHost.readLoops]
 	// (appfactory_setup.go).
 	quiet bool
+	// answered names the requests whose first answer the startup trace has
+	// recorded (startup.log on the floor): the first of all, the queue, a job.
+	// allAnswered is set once all three are, so every later answer skips the
+	// lock.
+	answeredMu  sync.Mutex
+	answered    map[string]bool
+	allAnswered atomic.Bool
 	// loopMu guards the read loops' start and their shutdown, loopsOn says this
 	// host already started them, loopsClosed that close has begun, and loops
 	// counts the goroutines close waits for. THE START IS PER HOST, never per
@@ -129,22 +136,24 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.handler != nil {
 		return h.handler, nil
 	}
+	trace := filepath.Join(h.floor.Root(), "startup.log")
+	began := time.Now()
 	if target, ok := liveFactoryDiscovery(); ok {
+		traceStartup(trace, "factory: another codeaf serves this floor; used it after %d ms", ms(time.Since(began)))
 		return appFactoryProxy(target), nil
 	}
+	discovered := time.Now()
 	release, err := factoryFileLock(filepath.Join(h.floor.Root(), "serve.lock"), true)
 	if err != nil {
 		release()
 		target, e := waitForFactoryDiscovery(factoryLockWait)
+		traceStartup(trace, "factory: the floor was locked by another codeaf; waited %d ms (%v)", ms(time.Since(discovered)), e == nil)
 		if e != nil {
 			return nil, e
 		}
 		return appFactoryProxy(target), nil
 	}
-	if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
-		release()
-		return nil, err
-	}
+	locked := time.Now()
 	history, err := record.Open(h.floor, record.Options{})
 	if err != nil {
 		release()
@@ -154,13 +163,21 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.seamHook != nil {
 		seam = h.seamHook(seam)
 	}
+	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
 			}
-			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
+			return factoryPipelineRead(ctx, h.floor, repo, dir)
+		},
+		JobPipeline: func(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
+			if h.rules != nil {
+				return pipeline.JobFile(it, "", func(bool) (pipeline.File, error) { return h.rules(ctx, factory.RepoOf(it), dir) })
+			}
+			return factoryJobRead(ctx, h.floor, it, dir)
 		},
 		ChangeAssignee: factorygithub.JobWrites{Token: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }}.Assign,
 		// A person's start reads the one item again first (serve's endedOnGitHub).
@@ -182,13 +199,46 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		release()
 		return nil, err
 	}
+	traceStartup(trace, "factory: ready in %d ms (discovery %d, lock %d, serve %d)", ms(time.Since(began)), ms(discovered.Sub(began)), ms(locked.Sub(discovered)), ms(time.Since(locked)))
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
+	h.tidy(trace)
 	if h.quiet {
 		return handler, nil
 	}
 	h.readLoops()
 	return handler, nil
+}
+
+// tidy forgets the old standalone PR jobs behind the serving factory. THE
+// FACTORY NEVER WAITS ON IT: it once ran before the service started, and one
+// job it could not clean failed every launch, so the factory on that Mac never
+// came up. It runs once per host while serve.lock is held, under the host's
+// context. A job it cannot clean now stays as it is and is tried again at the
+// next launch; the trace says what happened, and nothing reaches the person.
+func (h *appFactoryHost) tidy(trace string) {
+	h.chore("app/factory tidy", func() {
+		began := time.Now()
+		if err := forgetFactoryPRJobs(h.ctx, h.floor, h.profile); err != nil {
+			traceStartup(trace, "factory: old PR jobs kept for the next launch after %d ms: %v", ms(time.Since(began)), err)
+			return
+		}
+		traceStartup(trace, "factory: old PR jobs forgotten in %d ms", ms(time.Since(began)))
+	})
+}
+
+// chore runs fn in the background under the host, and answers whether it
+// started: none starts once close has begun, and close waits for every one
+// that did before the floor is let go, so no chore writes after close.
+func (h *appFactoryHost) chore(name string, fn func()) bool {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.loopsClosed || h.ctx.Err() != nil {
+		return false
+	}
+	h.loops.Add(1)
+	guard.Go(name, func() { defer h.loops.Done(); fn() })
+	return true
 }
 
 // stopLoops forbids any later start and waits for the loops that began.
@@ -241,11 +291,13 @@ func (h *appFactoryHost) readLoops() {
 	})
 }
 
-// pollLoop starts the GitHub poll alone, for this Mac's own factory: issues
-// filed after setup reach Backlog, and nothing rides on the poll. No intake
-// applies start rules after it and no triage reads what it brought, so it
-// starts no job and asks no model. It shares [readLoops]' once-per-host guard,
-// and closing the host stops it.
+// pollLoop starts the GitHub poll, for this Mac's own factory: issues filed
+// after setup reach Backlog. No triage reads what it brought, so it asks no
+// model. Start rules ride on it ONLY WHILE THE PERSON HAS TURNED "START ON ITS
+// OWN" ON in the factory's own rules ([appFactoryHost.startOnItsOwn]): then an
+// issue that carries a start label and clears every rule starts by itself, and
+// one a rule flags waits for the person. Off, it starts no job. It shares
+// [readLoops]' once-per-host guard, and closing the host stops it.
 func (h *appFactoryHost) pollLoop() {
 	h.loopMu.Lock()
 	defer h.loopMu.Unlock()
@@ -264,9 +316,21 @@ func (h *appFactoryHost) pollLoop() {
 			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
 		}
 		if source != nil {
-			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil)
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, h.startOnItsOwn)
 		}
 	})
+}
+
+// startOnItsOwn runs the factory's start rules after a poll, and only while
+// the person's "Start on its own" is on. The setting is read again every time,
+// so turning it off stops the next start without a restart, and a rules file
+// that cannot be read starts nothing.
+func (h *appFactoryHost) startOnItsOwn(ctx context.Context) error {
+	house, err := h.floor.HouseRules()
+	if err != nil || !house.StartOnItsOwn {
+		return nil
+	}
+	return h.intakeFor(h.floor).Once(ctx)
 }
 
 // intakeFor is the intake over st: the factory's own, or the test seam.
@@ -274,7 +338,19 @@ func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {
 	if h.newIntake != nil {
 		return h.newIntake(st)
 	}
-	return factoryIntake(st)
+	// THE PERSON THIS FACTORY KNOWS IS ITS OPERATOR: a job a start rule
+	// starts here is theirs.
+	return factoryIntakeOwned(st, func(ctx context.Context) string {
+		handle, _ := h.currentSeam().PersonHandle(ctx)
+		return handle
+	})
+}
+
+// currentSeam is the floor's door the service serves now.
+func (h *appFactoryHost) currentSeam() factory.Seam {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seam
 }
 
 // waitForPollSource is [waitForFactoryGitHub] over the test seam.
@@ -305,9 +381,51 @@ func (h *appFactoryHost) mountSolo(ctx context.Context) (http.Handler, error) {
 			_, _ = w.Write([]byte(`{"reason":"no_factory","error":"the solo factory is unavailable"}`))
 			return
 		}
+		served := time.Now()
 		handler.ServeHTTP(w, r)
+		h.traceAnswer(r, time.Since(served))
 	}), nil
 }
+
+// traceAnswer writes the first answer of all, of the queue and of a job to the
+// startup trace, with how long each took: what a cold start waits on.
+func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
+	if h.allAnswered.Load() {
+		return
+	}
+	kinds := []string{"any"}
+	if r.URL.Path == "/v1/queue" {
+		kinds = append(kinds, "queue")
+	} else if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/jobs/"); ok && rest != "" && !strings.Contains(rest, "/") {
+		kinds = append(kinds, "job")
+	}
+	for _, k := range h.firstAnswers(kinds) {
+		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
+		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
+	}
+}
+
+// firstAnswers marks kinds as answered and returns the ones answered for the
+// first time.
+func (h *appFactoryHost) firstAnswers(kinds []string) []string {
+	h.answeredMu.Lock()
+	defer h.answeredMu.Unlock()
+	var fresh []string
+	for _, k := range kinds {
+		if !h.answered[k] {
+			if h.answered == nil {
+				h.answered = map[string]bool{}
+			}
+			h.answered[k] = true
+			fresh = append(fresh, k)
+		}
+	}
+	if len(h.answered) == 3 {
+		h.allAnswered.Store(true)
+	}
+	return fresh
+}
+
 func appFactoryProxy(target factoryTarget) http.Handler {
 	address, _ := url.Parse(target.url)
 	proxy := httputil.NewSingleHostReverseProxy(address)
@@ -436,7 +554,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, factoryStageMakerFrom(h.floor, h.workspace, h.profile, current).withRefusal(source.Refusal), turns)
+	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
 	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
@@ -477,6 +595,14 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})
+}
+
+// stepMaker opens this worker's step conversations. A step's money is the
+// leased job's, so its meter reads and books it on mirror, the copy of the job
+// the factory handed over; the report carries what it booked back. A runner
+// whose home holds no factory of its own has no other record of the budget.
+func (h *appFactoryHost) stepMaker(mirror *store.Store, source *factoryParentSource) stageMaker {
+	return factoryStageMakerFrom(h.floor, h.workspace, h.profile, source.Config).withRefusal(source.Refusal).withJobs(mirror)
 }
 
 // parentSource is the parent every conversation of this host opens from: the

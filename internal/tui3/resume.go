@@ -65,7 +65,9 @@ const (
 // roster is the overlay's whole state. The zero value is closed, which is what
 // every surface starts as.
 type roster struct {
-	open bool
+	open    bool
+	loading bool
+	request uint64
 
 	// all is the list as it was resolved, and fields each row's own words held
 	// once at open — the name and the last line separately, because a person
@@ -91,7 +93,7 @@ type roster struct {
 
 // start opens the roster over list, with the session already open marked.
 func (r *roster) start(list []Session, current string) {
-	*r = roster{open: true, all: list, current: current}
+	*r = roster{open: true, all: list, current: current, request: r.request}
 	r.fields = make([][]string, len(list))
 	for i, session := range list {
 		r.fields[i] = []string{humanName(session), session.Last}
@@ -112,7 +114,7 @@ func (r *roster) start(list []Session, current string) {
 	r.follow(resumeRows)
 }
 
-func (r *roster) close() { *r = roster{} }
+func (r *roster) close() { *r = roster{request: r.request + 1} }
 
 // rank re-filters against the filter box with the matcher every picker on
 // this surface shares (internal/fuzzy, by way of palette.go's [fuzzyTerms]):
@@ -188,6 +190,9 @@ func (r *roster) height(width int) int {
 func (r *roster) rows(width, n int, pal palette, hover int) []string {
 	if n <= 0 {
 		return nil
+	}
+	if r.loading {
+		return []string{pal.dim("  reading saved conversations… · esc cancels")}
 	}
 	if len(r.hits) == 0 {
 		return []string{pal.dim("  no session matches")}
@@ -386,32 +391,47 @@ func ago(at time.Time) string {
 
 // openResume is /resume, and the list `codeaf resume` opens on.
 //
-// It resolves the list HERE rather than holding one from boot: a session picker
-// opened an hour into a conversation must show the conversation that was had in
-// the next terminal since, and the walk is a directory read and a bounded
-// number of file scans (internal/session's Recent), which is the same order of
-// work the file completion does on every "@".
-func (a *app) openResume() {
+// Read a fresh list beside the input loop. Locally this scans transcripts;
+// through an engine it is a socket call. Neither may hold typing or Escape.
+func (a *app) openResume() tea.Cmd {
 	a.noticeEvent(eventResumeOpened)
 	if !a.canOpen() {
 		a.note(resumeUnavailableWord)
-		return
-	}
-	var list []Session
-	if a.recentSessions != nil {
-		list = a.recentSessions()
-	}
-	if len(list) == 0 {
-		a.note(noSessionsWord)
-		return
+		return nil
 	}
 	a.closeLists()
 	// The welcome box is the same list in its short form, and the two must not
 	// be on screen at once saying it twice. Opening the picker is also work
 	// beginning, which is what dismissal means (welcome.go).
 	a.dismissWelcome()
-	a.roster.start(list, a.file)
+	a.roster.start(nil, a.file)
+	a.roster.loading = true
+	request, recent := a.roster.request, a.recentSessions
 	a.touch()
+	return a.besideLine(func() func(bool) tea.Cmd {
+		var list []Session
+		if recent != nil {
+			list = recent()
+		}
+		return func(here bool) tea.Cmd {
+			if !here || !a.roster.open || a.roster.request != request {
+				return nil
+			}
+			if len(list) == 0 {
+				a.roster.close()
+				a.note(noSessionsWord)
+			} else {
+				filter := a.roster.filter
+				a.roster.start(list, a.file)
+				if !filter.empty() {
+					a.roster.filter = filter
+					a.roster.rank()
+				}
+			}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // resumeKey routes one keypress while the roster owns the keyboard. It is the
@@ -428,6 +448,9 @@ func (a *app) resumeKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.roster.close()
 
 	case "enter":
+		if a.roster.loading {
+			return nil
+		}
 		chosen, ok := a.roster.choice()
 		a.roster.close()
 		switch {

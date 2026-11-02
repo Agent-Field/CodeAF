@@ -898,7 +898,12 @@ type placeRow struct {
 // frame otherwise. It is the only door onto a place's rows — a place's own
 // `<word>Frame` function is a two-line shim over this that casts the hit map
 // back into that place's vocabulary.
-func (a *app) placeDraw(pl place, width, height int) ([]string, []placeHit, int, int) {
+func (a *app) placeDraw(pl place, width, height int) (lines []string, hits []placeHit, caretX, caretY int) {
+	defer func() {
+		if reader, ok := pl.(interface{ rememberHits(*app, []placeHit) }); ok {
+			reader.rememberHits(a, hits)
+		}
+	}()
 	// AND THE VERB STRIP IS DROPPED HERE IF THE CURSOR HAS LEFT ITS ROW. Every
 	// way a cursor can move ends in a frame — a press, a hover, a wheel tick, a
 	// filter re-ranking the list, the three-second beat re-reading it — so this
@@ -1120,7 +1125,14 @@ func placeFrameWithBar(a *app, width, height int,
 	// after the body would push the box down by three cells the moment the chord
 	// was pressed.
 	layer := a.composerRows(width, pal)
+	homeMessage := ""
+	if a.at(pageHome) && !a.composer.open {
+		homeMessage, _ = a.placeMsgLine(width)
+	}
 	foot := 2 + len(tray) + draftHeight + len(strip) + len(layer)
+	if homeMessage != "" {
+		foot++
+	}
 	room := height - len(lines) - foot - spacingRuleClearance
 	if room < 1 {
 		room = 1
@@ -1355,7 +1367,10 @@ func placeFrameWithBar(a *app, width, height int,
 		}
 		fallthrough
 	default:
-		if msg, ok := a.placeMsgLine(width); ok {
+		if homeMessage != "" {
+			add(a.creditPlaceMessage(width, homeMessage, pal), nil)
+			add(a.homeFootWithWarning(width, pal, ""), nil)
+		} else if msg, ok := a.placeMsgLine(width); ok {
 			add(a.creditPlaceMessage(width, msg, pal), nil)
 		} else if hasBox {
 			// HOME'S KEYS ROW CARRIES THE PROJECT AT ITS RIGHT (hometip.go's
@@ -2028,7 +2043,13 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// line, so its keys are read by the same grammar ([paintHint]) rather than
 	// dimmed flat, and the door's clause keeps the colour every other key on
 	// this surface wears.
-	line := a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	line := ""
+	if a.at(pageHome) {
+		// News has its own dim row; the footer below remains a key legend.
+		line = a.pathLink(path, a.pal.dim(fit(msg, max(width-2, 1))))
+	} else {
+		line = a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim))
+	}
 	// AND A LINE THAT NAMES SOMEWHERE TO GO CARRIES THE WAY THERE: the address
 	// [app.tellHere] was handed with it, for as long as the line still says it.
 	// It wraps the line whole, after the fitting, because a link occupies no
@@ -2210,7 +2231,7 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 
 // placeBodyPress is a press on one place's own rows: the row under it is
 // entered, exactly as `enter` on it would (the law is [place.press]'s).
-func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
+func (a *app) placeBodyPress(x, y int) (tea.Cmd, bool) {
 	pl := a.showing()
 	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are
 	// drawn at the faintest tier precisely to say they are not the subject any
@@ -2219,14 +2240,25 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	if pl == nil || a.composer.open {
 		return nil, false
 	}
+	if point, ok := pl.(interface {
+		pressAt(*app, int, int) (tea.Cmd, bool)
+	}); ok {
+		return point.pressAt(a, x, y)
+	}
 	return pl.press(a, y)
 }
 
 // placeBodyHover selects the row reached by the pointer. The same cursor
 // drives keyboard actions, and a place repaints only when that row changes.
-func (a *app) placeBodyHover(y int) bool {
+func (a *app) placeBodyHover(x, y int) bool {
 	pl := a.showing()
-	return pl != nil && !a.composer.open && pl.hover(a, y)
+	if pl == nil || a.composer.open {
+		return false
+	}
+	if point, ok := pl.(interface{ hoverAt(*app, int, int) bool }); ok {
+		return point.hoverAt(a, x, y)
+	}
+	return pl.hover(a, y)
 }
 
 // placeBodyWheel is the wheel over one place: it walks that place's cursor, by
@@ -2234,10 +2266,15 @@ func (a *app) placeBodyHover(y int) bool {
 // does with it (app.go's wheel ladder). A place whose window follows its cursor
 // has no offset of its own to move, so a scroll and a selection are one gesture
 // here — the bargain the task page and home both already struck.
-func (a *app) placeBodyWheel(delta int) (tea.Cmd, bool) {
+func (a *app) placeBodyWheel(x, y, delta int) (tea.Cmd, bool) {
 	pl := a.showing()
 	if pl == nil || a.composer.open {
 		return nil, false
+	}
+	if point, ok := pl.(interface {
+		wheelAt(*app, int, int, int) (tea.Cmd, bool)
+	}); ok {
+		return point.wheelAt(a, x, y, delta)
 	}
 	return pl.wheel(a, delta)
 }

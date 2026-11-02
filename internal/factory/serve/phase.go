@@ -13,10 +13,26 @@ import (
 // clearPhase, can never claim a refusal wrote nothing, so a new mutating route
 // is uncertain-on-failure to its clients until it is added deliberately.
 func markPreMutation(r *http.Request) bool {
+	// The factory's own copy of one repository's steps, saved or stopped:
+	// exactly /v1/repos/{owner}/{repo}/pipeline/factory-copy.
+	if r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/repos/"); ok {
+			if name, ok := strings.CutSuffix(rest, "/pipeline/factory-copy"); ok {
+				owner, repo, two := strings.Cut(name, "/")
+				if two && owner != "" && repo != "" && !strings.Contains(repo, "/") {
+					return true
+				}
+			}
+		}
+	}
 	switch r.Method {
 	case http.MethodPost:
 		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
 	case http.MethodPut:
+		// The factory's own rules: exactly /v1/rules.
+		if r.URL.Path == "/v1/rules" {
+			return true
+		}
 		// One runner's settings: exactly /v1/runners/{runner}.
 		if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/runners/"); ok {
 			return rest != "" && !strings.Contains(rest, "/")

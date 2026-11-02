@@ -323,7 +323,7 @@ func TestPairJoinSaysWaitingThenItsEnding(t *testing.T) {
 			}
 			close(release)
 			r.until("the ending", func() bool { return a.pair.done })
-			if got := plain(frame(a)); !strings.Contains(got, c.want) {
+			if got := plain(frame(a)); !strings.Contains(strings.Join(strings.Fields(got), " "), c.want) {
 				t.Fatalf("want %q:\n%s", c.want, got)
 			}
 			if typed != "42-715-302" {
@@ -418,7 +418,7 @@ func TestFirstRunFieldJoinsThroughTheSameDoor(t *testing.T) {
 	r.press("enter")
 	r.until("the join to end", func() bool { return a.pair.done })
 	got := plain(frame(a))
-	if !strings.Contains(got, pair.JoinedLine) || typed != "42-715-302" {
+	if !strings.Contains(strings.Join(strings.Fields(got), " "), pair.JoinedLine) || typed != "42-715-302" {
 		t.Fatalf("typed=%q\n%s", typed, got)
 	}
 	if !a.setup.open || a.pair.open {

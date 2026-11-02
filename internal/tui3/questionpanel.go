@@ -160,8 +160,8 @@ func (a *app) questionPanelInside(q questionShown, width, inner, above int, edge
 		rows = append(rows, questionPanelGap+a.pal.dim(fit(a.questionWritingRow(q), inner-2)))
 		keyRow = a.pal.data("esc") + a.pal.dim(" back")
 	}
-	if len(edge) == 0 && a.questionPanelTyping(q) {
-		input, _, _ := a.inputBlock(inner - len(questionPanelGap))
+	if len(edge) == 0 && (q.continuation != nil || a.questionPanelTyping(q)) {
+		input := a.questionPreviewRows(q, inner-len(questionPanelGap))
 		for _, line := range input {
 			rows = append(rows, questionPanelGap+line)
 		}

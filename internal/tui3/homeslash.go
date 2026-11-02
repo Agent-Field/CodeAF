@@ -193,6 +193,8 @@ func homeFate(word, rest string) string {
 		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
 		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
+	case "pair", "devices":
+		return fateAnswers
 	case "settings", "spend", "history", "home", "wall", "teams":
 		return fatePlace
 	case "resume":
@@ -207,7 +209,7 @@ func homeFate(word, rest string) string {
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "skill",
 		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder", "processes",
-		"setup", "pair", "devices", "atlas":
+		"setup", "atlas":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,

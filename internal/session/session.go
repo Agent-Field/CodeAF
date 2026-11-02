@@ -23,6 +23,8 @@ import (
 	"context"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1434,6 +1436,8 @@ type Config struct {
 	// sends its output as it arrives (EventToolOutput), as one the person
 	// typed always does, so a work log can show what a long command is saying.
 	LiveToolOutput bool
+	// knowledgeReadVault lends the parent project knowledge to task worktrees, read-only.
+	knowledgeReadVault *knowledge.Vault
 
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close
@@ -1442,6 +1446,12 @@ type Config struct {
 	WaitForBeltSteps bool
 
 	Workspace string // tools root here; all relative paths resolve inside it
+	// WorkspaceURI selects a previously admitted owned run for worker scratch routing.
+	WorkspaceURI string
+	// WorkspaceSet carries identity-backed routes to a prototype task worker.
+	WorkspaceSet            *WorkspaceSet
+	workspaceWriteRoots     []string
+	workspaceProtectedRoots []string
 	// Seat is the executor this session owns: every tool call runs on it, so
 	// the class the workspace declared and the seal after each call follow the
 	// session and never a path. Nil is a session with no cell, whose calls run
@@ -1459,6 +1469,8 @@ type Config struct {
 	// seat: whoever builds one builds the other, and a config with no seat has
 	// none. Nil draws and says nothing.
 	Seals SealState
+	// Renewals reads the local writer's health so the surface can report an outage.
+	Renewals RenewalState
 	// AuthKeySource explains a refused worker account without supplying routing
 	// settings to a worker whose completer already owns its endpoint and key.
 	// Nil keeps ordinary sessions on their own profile and source ladder.
@@ -1471,6 +1483,11 @@ type Config struct {
 	APIKey          string
 	BaseURL         string
 	Sources         modelsource.Set
+	// PrepareModel resolves a continued chat's unavailable model before any
+	// model work. A failure leaves it pending for setup and the next turn;
+	// success applies the replacement through the conversation's model rules
+	// and records the notice once. Ordinary conversations leave it nil.
+	PrepareModel func(model string, sources modelsource.Set) (replacement, notice string, err error)
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category
@@ -1772,6 +1789,9 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
+	// TaskComputers is nil when this home cannot send tasks to paired computers.
+	TaskComputers TaskComputers
+
 	// Automations is the door to the automations store (automation_tool.go).
 	// Nil is off: no `automation` tool and no card — which is what a run of an
 	// automation is given, because nothing an automation does may arm another.
@@ -1800,6 +1820,11 @@ type Config struct {
 	// decision, and a package that resolved ~/.codeaf itself would write there
 	// from a test.
 	ProfileDir string
+
+	// TeamComputers is used only with local team sharing on. It checks current
+	// holders once for the complete recipient batch before any team Traffic is
+	// written; an unpaired home stays quiet.
+	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
 
 	// failures is the tally the piece of work this agent belongs to keeps of its
 	// own failures (internal/taxonomy). A worker built for a task node carries
@@ -2591,6 +2616,13 @@ type Config struct {
 	// worker.
 	rootSession string
 
+	// agentDID is the conversation's agent DID and actorDID who this agent's
+	// commands act as: the same DID in a conversation, `<did>#w<task id>` in a
+	// task worker (agent_identity.go). A child agent inherits both from the
+	// agent that built it ([Agent.newChildAgent]); no surface sets them.
+	agentDID string
+	actorDID string
+
 	// automationID is the id of the automation whose run this agent IS
 	// (automation_run.go), and empty in every conversation and every ordinary
 	// task. It rides on the config for [Config.taskID]'s reason: the money a run
@@ -2700,10 +2732,13 @@ type Agent struct {
 	conversationModels *ConversationModels
 	modelRequestSlot   string
 	fallbackNoticeOwed bool
+	// continuedModelNoticed suppresses the next main-request announcement when
+	// the receiver already explained this exact change on continuation.
+	continuedModelNoticed string
 
 	modelIdentity   ModelIdentity
 	automaticModels atomic.Int32
-	replySuggestion replySuggestionState
+	errands         errandState
 	// rewindUndo keeps one reversible cut; a new cut replaces it.
 	rewindUndo *rewindUndo
 	debugRun   string
@@ -2716,8 +2751,14 @@ type Agent struct {
 	// liveOutputWanted counts the windows that joined this conversation asking
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
-	liveOutputWanted atomic.Int32
-	chatStarts       map[string]bool
+	liveOutputWanted   atomic.Int32
+	chatStarts         map[string]bool
+	knowledgeMu        sync.RWMutex
+	knowledgeRetired   []*knowledgeJournal
+	knowledgeVault     *knowledge.Vault
+	knowledgeJournal   *knowledgeJournal
+	taskComputerPrompt bool
+	remoteAckJobs      sync.WaitGroup
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
@@ -2988,6 +3029,10 @@ type Agent struct {
 	// have a lane context, and "did a beat start" is the question the gate is
 	// about (agent.go's [Agent.startLaneBeat]).
 	laneBeating bool
+	// furrow is the background question to furrow about this session's folder
+	// (tools_workspace.go): started at construction, settled once by the first
+	// request, cancelled and joined by Close.
+	furrow furrowRefresher
 
 	// turnLane is what THIS agent's own last request was served by, and it is
 	// the only honest source there is for the lane half of a usage row
@@ -3557,6 +3602,7 @@ type Agent struct {
 	// rather than a nil one.
 	closeDone    chan struct{}
 	closedSignal chan struct{}
+	localDurable bool
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.
@@ -3572,6 +3618,11 @@ type Agent struct {
 	// not let a request that was already on the disk before this turn started
 	// end it (takeover.go says why that request has had its chance).
 	turnBegan time.Time
+	// answeredSinceSeal says an answer to the person was recorded since the
+	// last seal, which is what lets the seal stamp [Meta.LastReplyAt] for this
+	// turn's answer and never again for an older one (placemeta.go's
+	// [Agent.stampSealed]).
+	answeredSinceSeal bool
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be

@@ -2,9 +2,12 @@ package cellstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"os"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
 // Capture snapshots the cell's folder as it stands and answers the snapshot
@@ -18,6 +21,13 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 	if err := e.recoverCompleted(ctx, c); err != nil {
 		return "", err
 	}
+	// Recovery can seal independently; acquire after it to avoid nesting this
+	// process lock while still fencing composition through the native snapshot.
+	release, err := taskcopy.LockWorkspaceCheckpoint(ctx, c)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	if err := e.composeExtra(c); err != nil {
 		return "", err
 	}
@@ -88,4 +98,34 @@ func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) 
 		return sealed, err
 	}
 	return sealed, wal.Sealed(recovery.Completed)
+}
+
+// StageAdmission reads only the incoming workspace policy and checkpoint into
+// private scratch space. Ordinary chats need no full tree before their lease.
+func (e Engine) StageAdmission(ctx context.Context, c cell.Cell, head string) error {
+	return e.stageIncoming(ctx, c, head, []string{cell.MetaPath, cell.StateDir + "/session.json", cell.StateDir + "/tasks.json", taskcopy.WorkspaceCarrierPath + "/manifest.json"})
+}
+
+// StageWorkspace restores a workspace for admission in an independent timeline,
+// leaving the real chat's binding and folder untouched if admission refuses it.
+func (e Engine) StageWorkspace(ctx context.Context, c cell.Cell, head string) error {
+	return e.stageIncoming(ctx, c, head, nil)
+}
+
+func (e Engine) stageIncoming(ctx context.Context, c cell.Cell, head string, paths []string) error {
+	if err := os.MkdirAll(c.Root, 0700); err != nil {
+		return err
+	}
+	target := e.target(c)
+	target.Tree, target.CellDir = canonicalTree(c.Root), ""
+	// Filing a copy changes its next staging folder. Detached timelines retain
+	// their folder binding, so admission identity belongs to the scratch path.
+	target.Timeline = fmt.Sprintf("incoming-admission-%x", sha256.Sum256([]byte(target.Tree)))
+	transport := Spawn{Binary: e.Binary, Run: e.Run}
+	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
+		return err
+	}
+	defer func() { _, _ = transport.Do(ctx, target, indexScratchOp{forget: true}) }()
+	_, err := transport.Do(ctx, target, restoreOp{Snapshot: head, Paths: paths})
+	return err
 }

@@ -25,6 +25,7 @@ var wireErrors = []struct {
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
+	{"unreachable", http.StatusServiceUnavailable, wireauth.ErrUnavailable},
 	{"rate_limited", http.StatusTooManyRequests, wireauth.ErrRateLimited},
 	{"too_many_identities", http.StatusTooManyRequests, wireauth.ErrTooManyIdentities},
 	{"skew", http.StatusUnauthorized, wireauth.ErrSkew},

@@ -106,9 +106,17 @@ type Stage struct {
 	Ask    string    // the sentence as typed; the brief is compiled from it
 	When   string    // "" or always · thin · large · touches auth · has ui
 	Effort string    // "" (the knee) · cheap · strong — the crew's one word
-	Fanout string    // one · per-file · per-finding · per-claim
-	Until  string    // done · clean · green · proven
-	Max    int       // rounds before it stops and asks; 0 means one
+	// Model is the model a person picked for this stage on this job, "" for
+	// the job's own (Item.Model) or the factory's default. Only a
+	// conversation stage carries one; a check and an approval run no model.
+	Model  string `json:",omitempty"`
+	Fanout string // one · per-file · per-finding · per-claim
+	Until  string // done · clean · green · proven
+	Max    int    // rounds before it stops and asks; 0 means one
+	// Who is who an approve step waits on ([ApproverWord]): "" the job's
+	// person, "@handle" a named person, operator any of the factory's
+	// operators. Only an approve step carries one.
+	Who string `json:",omitempty"`
 	// OldGate and OldGateWhen are a stage's gate as a file or a document
 	// written before approve steps said it (`gate plan when large`). They are
 	// read, turned into approve steps ([ExpandGates]) and never written.
@@ -173,8 +181,11 @@ type Triage struct {
 	SizeFrom  string `json:",omitempty"`
 	Area      string
 	Readiness int // 0..100; under 55 the item is thin and wants questions
-	Est       float64
-	DupOf     int
+	// Rubric is how complex the job is ([Rubric]), from the read or from
+	// Look closer, and nil when nobody scored it. A model never writes a
+	// price: an older document's model-written estimate is not read.
+	Rubric *Rubric `json:",omitempty"`
+	DupOf  int
 	// Risk is what the work touches that a person would want to know before it
 	// runs, in short phrases: `touches money`, `touches auth`, `has ui`,
 	// `migration`. Empty is "nothing said", never "safe".
@@ -434,7 +445,50 @@ type PullRequest struct {
 // QKindAskFirst is an intake question, before a run or any step exists.
 const QKindAskFirst = "ask_first"
 
+// CheckPassed and CheckAsked are what one of the factory's own checks found on
+// a job ([RuleChecks]): nothing a rule guards, so the job went on by itself; or
+// a rule that made it wait for a person.
+const (
+	CheckPassed = "passed"
+	CheckAsked  = "asked"
+)
+
+// RuleChecks is what the factory's own two checks found on a job: its start
+// rules, judged when the factory starts it on its own (a person's start judges
+// nothing), and its change, judged against the protected paths when its run
+// lands ([Item.RuleHold]). A client draws them on the job's two ◆ rows.
+type RuleChecks struct {
+	// Start is the start rules' finding; "" for a job a person started.
+	Start string `json:",omitempty"`
+	// Publish is the change's finding when the run landed, and PublishHead
+	// the commit it was judged on: a later commit is another change. The wire
+	// sends both as they are kept; a client takes the finding as the job's
+	// only while PublishHead is still the job's head_commit.
+	Publish     string `json:",omitempty"`
+	PublishHead string `json:",omitempty"`
+}
+
+// SetStartCheck records the start rules' finding on it.
+func (it *Item) SetStartCheck(found string) {
+	if it.RuleChecks == nil {
+		it.RuleChecks = &RuleChecks{}
+	}
+	it.RuleChecks.Start = found
+}
+
+// SetPublishCheck records the change's finding on it, judged on its head.
+func (it *Item) SetPublishCheck(found string) {
+	if it.RuleChecks == nil {
+		it.RuleChecks = &RuleChecks{}
+	}
+	it.RuleChecks.Publish, it.RuleChecks.PublishHead = found, it.HeadCommit
+}
+
 type Item struct {
+	// Followers are the people who follow this job, by normalised handle
+	// (followers.go). Each person reads only whether they follow it.
+	Followers []string `json:",omitempty"`
+
 	// Autonomy is explicit on new jobs. Missing on older jobs means manual.
 	Autonomy string      `json:",omitempty"`
 	Manual   bool        `json:",omitempty"`
@@ -446,9 +500,17 @@ type Item struct {
 	Priority    *JobPriority `json:",omitempty"`
 	DismissedBy []string     `json:",omitempty"`
 	DoneHow     string       `json:",omitempty"`
-	DoneAt      time.Time    `json:",omitempty"`
-	Approval    *Approval    `json:",omitempty"`
-	StopUndo    *StopUndo    `json:",omitempty"`
+	// Scout is the last Look closer on this job ([Scout]); nil is never.
+	Scout    *Scout    `json:",omitempty"`
+	DoneAt   time.Time `json:",omitempty"`
+	Approval *Approval `json:",omitempty"`
+	StopUndo *StopUndo `json:",omitempty"`
+
+	// BriefSeen is the Brief revision each person last saw, by normalised
+	// handle (brief_seen.go). It is private to each person: it never crosses
+	// in a job, only as the caller's own brief_seen.
+	BriefSeen map[string]int `json:",omitempty"`
+
 	// MergePolicy is the pipeline's merge settings as they stood when the
 	// proof was approved: approving publishes, and the approval says whether
 	// the pull request it opens may merge on its own. nil is auto-merge off.
@@ -521,6 +583,36 @@ type Item struct {
 	QKind string
 	// AskedFirstReason keeps the matched rule visible after the question is answered.
 	AskedFirstReason string `json:",omitempty"`
+	// RuleChecks is what the factory's own two checks found on the job
+	// ([RuleChecks]); nil before either was judged.
+	RuleChecks *RuleChecks `json:",omitempty"`
+	// House is the factory's own rules ([HouseRules]) as they stood when the
+	// job was last queued. They travel WITH THE JOB, so a runner on another
+	// machine follows the rules of the factory that handed it the work, not
+	// whatever its own machine keeps. Nil before a job is first queued.
+	House *HouseRules `json:",omitempty"`
+	// PipelineCopy is the factory's own copy of the repository's pipeline
+	// file ([PipelineCopy]) the job runs, when its file was decided as one
+	// ([Item.DecidePipeline]): ITS STEPS AND RULES ARE THAT FILE'S, not
+	// main's. It travels with the job as House does, so a runner on another
+	// machine reads the same file. Nil when the job runs main's file (or the
+	// built-in steps), or its file is not decided yet.
+	PipelineCopy *PipelineCopy `json:",omitempty"`
+	// PipelineDecided says the job's pipeline file was decided, once, for its
+	// life ([Item.DecidePipeline]): PipelineCopy, or MAIN'S FILE ALONE when
+	// that is nil, never whatever copy the factory keeps later. False before
+	// its first launch (or intake's stamp), and again after Bring back.
+	PipelineDecided bool `json:",omitempty"`
+	// StartRules are the ask-first and never lines (never kept as an alias of
+	// a protected path) the job was started under
+	// (the repository's and the factory's), so the approval after its plan can
+	// be checked against the files the plan names. Nil before it was started.
+	StartRules *StartRules `json:",omitempty"`
+	// RuleHold is why the approval after the plan is not routine: the rule the
+	// plan's files matched and the file (`protected · auth/ ·
+	// auth/login.go`). Auto never passes an approval that carries one. Empty
+	// once that approval is answered, and before any plan.
+	RuleHold string `json:",omitempty"`
 	// Ask is the person's own words when the job did not start from a GitHub
 	// issue. A GitHub issue keeps that on the wire and leaves Ask empty.
 	Ask *JobAsk `json:",omitempty"`
@@ -535,9 +627,14 @@ type Item struct {
 	Proof        []Claim
 	Policy       []Claim
 	Marked       bool
-	Labels       []string
-	Checks       string
-	Diff         string
+	// OverLimit is a person's Start now on a job that waits in the queue: the
+	// job may take ONE slot above its computer's Jobs at once, so it starts
+	// without waiting for another job to finish. It is spent when a worker
+	// takes the job, so a job that goes back to the queue waits like any other.
+	OverLimit bool `json:",omitempty"`
+	Labels    []string
+	Checks    string
+	Diff      string
 	// Asking is the question a step of the run put to the manager and that
 	// is not answered yet (the inbox, internal/factory/run's inbox.go): with
 	// the manager while it reads it, with the person once the manager sent it
@@ -546,6 +643,11 @@ type Item struct {
 	Asking *Asked
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
+	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at
+	// most [BriefKeep]; nil before the first is written. BriefWriting is the
+	// next version on its way, or the last write that failed.
+	Briefs       []BriefVersion `json:",omitempty"`
+	BriefWriting *BriefWriting  `json:",omitempty"`
 	// Adapted is what was changed about the item's stages, one line each in
 	// the order it changed them, each starting with who changed them
 	// (`manager set review: …`, `plan added arch`), `why: …` last: the record
@@ -594,6 +696,12 @@ type Item struct {
 	// NOT READ YET and an empty list is read and nothing said: a busy
 	// repository's first read folds its items before their comments.
 	Comments []Comment
+	// CommentReads is what the job's manager did with each new comment, the
+	// newest [CommentReadsMost] ([ReadComments]). CommentsSeen is the ids of
+	// the comments it has considered: NIL IS NOT READ YET, and the first read
+	// takes every comment already there as the issue's own context.
+	CommentReads []CommentRead `json:",omitempty"`
+	CommentsSeen []string      `json:",omitzero"`
 	// Files are a pull request's changed files, the most changed first, at
 	// most twenty; nil for anything that is not a pull request, or for one
 	// whose files are not read yet (its Diff is then not read yet either).
@@ -695,6 +803,17 @@ type Comment struct {
 	Author string
 	Body   string
 	At     time.Time
+	// ID is GitHub's id for the comment and URL its page; both are "" on a
+	// comment read before they were kept. The id is what a [CommentRead]
+	// names, so a comment with none is never handled.
+	ID  string `json:",omitempty"`
+	URL string `json:",omitempty"`
+	// Tier is the author's standing on the repository when the comment was
+	// read; "" is not asked yet (a comment the app just posted), and such a
+	// comment waits for the next read before the manager handles it.
+	Tier Tier `json:",omitempty"`
+	// ByFactory marks the factory's own publication comment.
+	ByFactory bool `json:",omitempty"`
 }
 
 // FileChange is one file a pull request changes, with its line counts.
@@ -803,6 +922,9 @@ type Snapshot struct {
 	// LastReadCost is what the last triage read cost in dollars, the figure
 	// the floor's `~$0.0004` note quotes; 0 is not known, and draws nothing.
 	LastReadCost float64
+	// ScoutPrice is what one Look closer typically costs (the median of the
+	// floor's scouts), the figure its button quotes; 0 is none ran yet.
+	ScoutPrice float64
 	// Marked is the floor's own marks, by item id: the new items the foreman
 	// (or anything else behind [Seam.Mark]) proposed for the next launch,
 	// kept by the store so every window reads the same ones. Each is also
