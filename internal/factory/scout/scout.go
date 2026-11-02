@@ -63,7 +63,7 @@ type Budget struct {
 }
 
 // DefaultBudget is a scout's hard budget.
-var DefaultBudget = Budget{Calls: 12, Wall: time.Minute, USD: 0.10}
+var DefaultBudget = Budget{Calls: 12, Wall: api.ScoutWall, USD: 0.10}
 
 // answerReserve is the time kept back for the last answer.
 const answerReserve = 15 * time.Second

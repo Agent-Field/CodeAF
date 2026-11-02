@@ -20,8 +20,8 @@ import (
 // factory.read.
 const FeatureFactoryRead = "factory.read"
 
-// readCallBudget is twenty reads one after another.
-const readCallBudget = 3 * time.Minute
+// readCallBudget is the most reads one click takes, one after another.
+const readCallBudget = api.ReadMost * 9 * time.Second
 
 // FactoryReadParams is one Read.
 type FactoryReadParams struct {

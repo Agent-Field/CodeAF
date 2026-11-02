@@ -24,8 +24,8 @@ import (
 // factory.scout.
 const FeatureFactoryScout = "factory.scout"
 
-// scoutCallBudget is a look's own minute and the answer's margin.
-const scoutCallBudget = 90 * time.Second
+// scoutCallBudget is a look's own time and the answer's margin.
+const scoutCallBudget = api.ScoutWall + 30*time.Second
 
 // FactoryScoutParams is one Look closer.
 type FactoryScoutParams struct {

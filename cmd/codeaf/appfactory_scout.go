@@ -19,8 +19,8 @@ import (
 
 var _ appwire.FactoryScouter = (*appBackend)(nil)
 
-// appScoutTimeout is a look's minute and the answer's margin.
-const appScoutTimeout = 85 * time.Second
+// appScoutTimeout is a look's own time and the answer's margin.
+const appScoutTimeout = api.ScoutWall + 25*time.Second
 
 func (b *appBackend) FactoryScout(ctx context.Context, p appwire.FactoryScoutParams) (api.ScoutLook, error) {
 	hub := b.factoryHub()
@@ -43,8 +43,9 @@ func (b *appBackend) FactoryScout(ctx context.Context, p appwire.FactoryScoutPar
 
 var _ appwire.FactoryReader = (*appBackend)(nil)
 
-// appReadTimeout is twenty reads one after another and the answer's margin.
-const appReadTimeout = 170 * time.Second
+// appReadTimeout is the most reads one click takes, one after another at
+// about eight seconds each, and the answer's margin.
+const appReadTimeout = api.ReadMost*8*time.Second + 10*time.Second
 
 // FactoryRead is a person's Read of chosen jobs: POST /v1/read on the
 // factory, on a client of its own for the same reason as a look.
