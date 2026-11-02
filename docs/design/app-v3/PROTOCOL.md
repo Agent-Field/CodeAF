@@ -1230,4 +1230,4 @@ Each accepted toggle records `stop_after_step_changed`, the person's identity,
 and `stop_after_step=true` or `stop_after_step=false`. Workers read the saved
 choice at every step boundary through their own live lease:
 `GET /v1/workers/leases/{lease}/stop-after-step` returns `{on: bool}`.
-An unreadable choice stops the run before more work starts.
+An unreadable choice falls back to the last value the runner saved; the next boundary reads it again.
