@@ -457,3 +457,11 @@ func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobC
 	}
 	return h.acted(ctx, p.Factory, appwire.JobActCreate, a.ID, a), nil
 }
+
+// FactoryJobRunAsNew starts a separate job and answers its new number.
+func (b *appBackend) FactoryJobRunAsNew(ctx context.Context, p appwire.FactoryJobRunAsNewParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRunAsNew, p.Job, "run-as-new", struct {
+		Assignee *string     `json:"assignee,omitempty"`
+		Expect   *api.Expect `json:"expect,omitempty"`
+	}{p.Assignee, p.Expect})
+}

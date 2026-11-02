@@ -164,11 +164,15 @@ type Handler struct {
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
-	setupCancel context.CancelFunc
-	setupDone   chan struct{}
-	setupTimer  *time.Timer
-	accessMu    sync.Mutex
-	accessFlows map[string]accessLinkFlow
+	// setupContinuing is held by a Continue from the moment it decides to stop
+	// the reader until it saves its own step, so nothing starts reading again
+	// in between.
+	setupContinuing bool
+	setupCancel     context.CancelFunc
+	setupDone       chan struct{}
+	setupTimer      *time.Timer
+	accessMu        sync.Mutex
+	accessFlows     map[string]accessLinkFlow
 	// commentFlights holds the jobs with a comment on their issue being
 	// posted by this handler (issue_comment.go).
 	commentFlights sync.Map
