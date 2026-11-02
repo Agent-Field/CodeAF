@@ -67,6 +67,12 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 // thread-only: the manager answering a reply runs no step and takes no
 // execution slot, so it is never described as the step running.
 func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) ManagerStatus {
+	return StatusForManagerWaiting(it, held, threadOnly, "", now)
+}
+
+// StatusForManagerWaiting is [StatusForManagerHold] knowing what a queued job
+// is really waiting for, when the factory can say.
+func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, now time.Time) ManagerStatus {
 	out := ManagerStatus{At: now, QuestionID: PendingQuestionID(it)}
 	var done []string
 	step := "pipeline"
@@ -102,8 +108,12 @@ func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) Manager
 		out.Text += it.FollowUp.Reason
 	case it.Stream != nil && it.Stream.Paused:
 		out.Text += step + " is paused. Resume pipeline to continue."
+	case it.State == StateQueued && waitingFor != "":
+		out.Text += step + " is queued. " + waitingFor
 	case it.State == StateQueued && held && threadOnly:
 		out.Text += step + " is queued; waiting for an available execution slot. Answering a reply in this thread does not take one. Change Jobs at once in Settings → Factory → Your computers."
+	case it.State == StateQueued && it.OverLimit:
+		out.Text += step + " is starting now, above Jobs at once this one time."
 	case it.State == StateQueued:
 		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers. Idle PR monitoring does not use an execution slot."
 	case it.State == StateRunning && held && threadOnly:

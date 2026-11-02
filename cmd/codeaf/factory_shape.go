@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"unicode/utf8"
@@ -399,7 +400,8 @@ func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (fa
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	return factory.StatusForManagerHold(it, held, threadOnly, time.Now()), nil
+	now := time.Now()
+	return factory.StatusForManagerWaiting(it, held, threadOnly, serve.QueuedWait(d.st, it, now), now), nil
 }
 
 func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {

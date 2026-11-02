@@ -715,6 +715,25 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	return lp.back(c, i, prev, a.words)
 }
 
+// askBeforeStep is Manual's word before step i. A yes leaves the step running,
+// so the drive loop's next pass runs it without asking again; a no sends back
+// the work before it. Either way the drive loop carries on from the store.
+func (lp *floorLoop) askBeforeStep(c *loopCtl, i int, name string) bool {
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.NextStepQuestion(name), factory.PhaseWaiting, "", "")
+	if !ok {
+		return false
+	}
+	if a.yes {
+		lp.addNote(c.id, a.words)
+		return true
+	}
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || it.Stream == nil {
+		return false
+	}
+	return lp.back(c, i, factory.PreviousWork(it.Stream.Phases, i), a.words)
+}
+
 // back sends the run from the approve step at i to the step at prev with the
 // person's words: prev runs again in a new round, its loop whole, with the
 // words in its brief, and the approve step waits again after it.
@@ -830,6 +849,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
 		return lp.approve(c, i, name)
+	}
+	if factory.AsksBeforeStep(it, i) {
+		return lp.askBeforeStep(c, i, name)
 	}
 
 	exec := lp.r.opts.Exec[kindOf(st)]
