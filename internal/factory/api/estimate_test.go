@@ -27,19 +27,22 @@ func TestAnOpenJobCarriesItsMeasuredRangeAndTheQueueItsHitRate(t *testing.T) {
 	}
 	for _, j := range q.Jobs {
 		switch {
-		case j.ID == 9 && (j.Estimate == nil || j.Estimate.N != 6 || j.Estimate.USDLo != 0.5 || j.Estimate.MinHi != 20 || j.Estimate.Repo != "acme/api"):
+		case j.ID == 9 && (j.Estimate == nil || j.Estimate.N != 6 || j.Estimate.USDLo != 0.5 || j.Estimate.MinHi != 20 || j.Estimate.Repo != "acme/api" || j.Estimate.Basis != "read"):
 			t.Errorf("open scored job estimate = %+v", j.Estimate)
-		case j.ID == 10 && j.Estimate != nil:
-			t.Errorf("an unscored job got a figure: %+v", j.Estimate)
+		case j.ID == 10 && (j.Estimate == nil || j.Estimate.Basis != "kind" || j.Estimate.N != 6):
+			t.Errorf("an unread job is not measured on its kind: %+v", j.Estimate)
 		case j.ID < 9 && j.Estimate != nil:
 			t.Errorf("a finished job carries an estimate: %+v", j.Estimate)
 		}
 	}
-	if c := q.Desk.Estimates; c == nil || c.Jobs != 6 || c.Of != 1 || c.Hit != 1 {
-		t.Fatalf("queue calibration = %+v, want 6 jobs, 1 of 1 backtested inside", c)
+	if c := q.Desk.Estimates; c == nil || c.Jobs != 6 || c.Of != 1 || c.Hit != 1 || c.Basis["read"] != (HitRate{Hit: 1, Of: 1}) {
+		t.Fatalf("queue calibration = %+v, want 6 jobs, 1 of 1 read figures backtested inside", c)
 	}
-	if !strings.Contains(string(raw), `"estimate":{"usd_lo":0.5,"usd_hi":0.5,"min_lo":20,"min_hi":20,"n":6,"repo":"acme/api"}`) {
-		t.Errorf("wire = %s", raw)
+	for _, want := range []string{`"estimate":{"usd_lo":0.5,"usd_hi":0.5,"min_lo":20,"min_hi":20,"n":6,"repo":"acme/api","basis":"read"}`,
+		`"basis":"kind"`, `"basis":{"read":{"hit":1,"of":1}}`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("wire is missing %s: %s", want, raw)
+		}
 	}
 }
 

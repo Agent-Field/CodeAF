@@ -287,6 +287,7 @@ decides which combinations are accepted.
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
+| `factory.estimate_new` | `in.FactoryEstimateNewParams` | `NewEstimate` |
 | `factory.read` | `in.FactoryReadParams` | `ReadResult` |
 | `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
@@ -392,15 +393,29 @@ repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
 (`small` 0–3, `medium` 4–6, `large` 7–10), with `band_near` naming the
 neighbouring band when the sum sits on an edge (3 or 4, 6 or 7) so the desk
 shows both; `triage.est` is gone. An open job
-carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?}`: the
-10th to the 90th percentile of the `n` nearest finished jobs (about eight in
-ten land inside), in `repo`
-(absent: every repository), and is absent while fewer than five similar jobs
-finished. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
+carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?, basis}`:
+the 10th to the 90th percentile of `n` finished jobs (about eight in ten land
+inside), in `repo` (absent: every repository). `basis` is `read` when they are
+the nearest on the job's read, or `kind` when the job has no read or too few
+similar read jobs and they are the latest finished jobs of the same kind, read
+or not (the desk says `from 12 jobs in api, not read`). Every finished job
+counts. The estimate is absent while fewer than five jobs finished on both
+bases. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
 finished jobs spent past this job's spend so far, over the `n` that spent at
 least that much (absent below five; a running job with `left` alone has `n` 0).
-`queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
-figures see and how many of `of` backtested jobs spent inside their range. The
+`queue.desk.estimates {jobs, hit, of, basis?}` is how many finished jobs the
+figures see and how many of `of` backtested jobs spent inside their range;
+`basis {read?: {hit, of}, kind?: {hit, of}}` is the same per basis, which is
+backtested and widened on its own.
+
+An engine whose hello carries the feature `factory.estimate_new` serves
+`factory.estimate_new {factory, repo, kind}` (`GET
+/v1/repos/{owner}/{repo}/estimate?kind=K`): what a job of that kind will
+likely cost before it exists, for New job's Start now. It answers
+`NewEstimate {factory, repo, kind, estimate?}`, where `factory` is the
+factory itself (`{name, address, version}`, as in a queue) and `estimate` is the kind
+pool's figure (basis `kind`, the repository first, then every repository),
+from the finished jobs the caller can see, and is absent below five. The
 repository dry run adds `cost_jobs`, that repository's finished jobs.
 
 An engine whose hello carries the feature `factory.scout` serves
