@@ -22,16 +22,25 @@ type FactorySetupFolderCheckParams struct {
 // not, Checked is the nearest folder above it that is, which is where a clone
 // would first write. Writable and FreeBytes are measured at Checked: whether
 // this account may create files there, and the bytes its disk still offers.
+//
+// Problem, when set, is one sentence saying what is wrong. A file standing
+// where the folder or one above it should be ("~/notes.txt is a file, not a
+// folder") or a folder on the way that cannot be looked into ("codeaf cannot
+// look inside ~/private") means the folder cannot be used: Writable is false,
+// FreeBytes 0, and Checked names that file or folder. On Windows it can also
+// name a probe file the check could not remove; the measurements then stand.
 type FactorySetupFolder struct {
 	Folder    string `json:"folder"`
 	Exists    bool   `json:"exists"`
 	Checked   string `json:"checked"`
 	Writable  bool   `json:"writable"`
 	FreeBytes int64  `json:"free_bytes"`
+	Problem   string `json:"problem,omitempty"`
 }
 
 // FactorySetupFolderChecker is the engine's half of
-// factory.setup_folder_check. It reads the folder and changes nothing.
+// factory.setup_folder_check. It makes no folder; on Windows it makes and
+// removes one temporary probe file to learn whether the folder is writable.
 type FactorySetupFolderChecker interface {
 	FactorySetupFolderCheck(ctx context.Context, caller, folder string) (FactorySetupFolder, error)
 }

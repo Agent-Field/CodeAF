@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -252,13 +253,19 @@ func factoryLocalOf(e Engine, name string) (FactoryLocal, error) {
 	return l, nil
 }
 
-// setupFolder is a folder the person chose: absolute or "~/…", one line.
+// windowsFullPath is a Windows drive path from its root (C:\ or C:/) or a
+// share (\\server\share). A drive letter with no separator after it is
+// relative to that drive's current folder, so it is not a full path.
+var windowsFullPath = regexp.MustCompile(`^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)`)
+
+// setupFolder is a folder the person chose, one line: a full path of any
+// platform, or one under their home ("~/…", or "~\…" on Windows).
 func setupFolder(folder string) (string, error) {
 	folder = strings.TrimSpace(folder)
 	if folder == "" || len(folder) > MaxSetupFolder || strings.IndexFunc(folder, unicode.IsControl) >= 0 {
 		return "", Errorf(CodeBadParams, "folder is required, one line, at most %d characters", MaxSetupFolder)
 	}
-	if !strings.HasPrefix(folder, "/") && !strings.HasPrefix(folder, "~/") && !(len(folder) > 2 && folder[1] == ':') {
+	if !strings.HasPrefix(folder, "/") && !strings.HasPrefix(folder, "~/") && !strings.HasPrefix(folder, `~\`) && !windowsFullPath.MatchString(folder) {
 		return "", Errorf(CodeBadParams, "folder must be a full path or start with ~/")
 	}
 	return folder, nil

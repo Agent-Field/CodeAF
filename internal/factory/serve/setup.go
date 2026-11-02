@@ -277,11 +277,12 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 422, err.Error())
 		return
 	}
-	if body.Verb == setupVerbContinue {
-		h.stopSetupReader(id)
-	}
+	continuing := body.Verb == setupVerbContinue && h.stopSetupReader(id)
 	h.setupMu.Lock()
 	defer h.setupMu.Unlock()
+	if continuing {
+		h.setupContinuing = false
+	}
 	out, err := h.loadSetup(id)
 	if h.failed(w, err) {
 		return
@@ -339,26 +340,32 @@ func setupID(route, body string) (string, error) {
 
 // stopSetupReader stops a reader that is still reading issues and waits until
 // it has saved its last page and let go of the poller lock, so Continue
-// decides from what was really read. A clone is never stopped by it.
-func (h *Handler) stopSetupReader(id string) {
+// decides from what was really read. A clone is never stopped by it. It
+// answers whether it stopped one; the caller then holds setupContinuing and
+// gives it up once it holds setupMu again.
+func (h *Handler) stopSetupReader(id string) bool {
 	cancel, done := h.setupReader(id)
 	if cancel == nil {
-		return
+		return false
 	}
 	cancel()
 	<-done
+	return true
 }
 
 // setupReader is the running reader's stop and finish, or nothing when no
-// reader is reading issues or Continue would be refused anyway, so a refused
-// Continue leaves reading running.
+// reader is reading issues, another Continue is already stopping it, or
+// Continue would be refused anyway, so a refused Continue leaves reading
+// running. Taking the stop also takes setupContinuing, which keeps any other
+// request from starting a reader before this Continue saves its step.
 func (h *Handler) setupReader(id string) (context.CancelFunc, chan struct{}) {
 	h.setupMu.Lock()
 	defer h.setupMu.Unlock()
 	saved, err := h.loadSetup(id)
-	if !h.setupBusy || err != nil || saved.View.State != "reading" || !slices.ContainsFunc(saved.View.Repos, setupReadWhole) {
+	if !h.setupBusy || h.setupContinuing || err != nil || saved.View.State != "reading" || !slices.ContainsFunc(saved.View.Repos, setupReadWhole) {
 		return nil, nil
 	}
+	h.setupContinuing = true
 	return h.setupCancel, h.setupDone
 }
 
@@ -547,7 +554,7 @@ func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) erro
 
 // startSetup keeps ingestion and cloning alive when a window leaves. Each completed step is saved before the next.
 func (h *Handler) startSetup(out setupState) {
-	if h.setupBusy || h.setupClosed {
+	if h.setupBusy || h.setupClosed || h.setupContinuing {
 		return
 	}
 	todo := out.View.State == "reading" && slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && (r.Read == "next" || r.Read == "reading") })

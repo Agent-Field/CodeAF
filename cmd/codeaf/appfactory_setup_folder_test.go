@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -34,7 +35,7 @@ func TestLocalFactoryFolderCheckReportsRoomWithoutMakingTheFolder(t *testing.T) 
 	if got = check(there); got.Folder != "~/api" || !got.Exists || got.Checked != "~/api" || !got.Writable {
 		t.Fatalf("an existing folder: %+v", got)
 	}
-	if os.Geteuid() != 0 {
+	if permissionsHold() {
 		locked := filepath.Join(s.userHm, "locked")
 		if err := os.Mkdir(locked, 0o500); err != nil {
 			t.Fatal(err)
@@ -46,6 +47,56 @@ func TestLocalFactoryFolderCheckReportsRoomWithoutMakingTheFolder(t *testing.T) 
 	s.mustFail("factory.setup_folder_check", map[string]any{"caller": "w1", "folder": filepath.Join(s.home, "x")}, appwire.CodeForbidden)
 	if s.backend.local.running {
 		t.Fatal("the folder check started the factory")
+	}
+}
+
+// permissionsHold says folder modes bind this account: a unix account that
+// is not root. Windows has no such modes and root passes every check.
+func permissionsHold() bool { return runtime.GOOS != "windows" && os.Geteuid() != 0 }
+
+// A folder that cannot hold a checkout says why instead of borrowing the room
+// of a folder above it: a file where a folder should be, a file on the way to
+// it, or a folder this account may not look into.
+func TestLocalFactoryFolderCheckNamesWhatIsInTheWay(t *testing.T) {
+	s := newLocalSetup(t)
+	check := func(folder string) appwire.FactorySetupFolder {
+		t.Helper()
+		var out appwire.FactorySetupFolder
+		s.must("factory.setup_folder_check", map[string]any{"caller": "w1", "folder": folder}, &out)
+		return out
+	}
+	file := filepath.Join(s.userHm, "notes.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range []string{"~/notes.txt", "~/notes.txt/api"} {
+		got := check(folder)
+		if got.Problem != "~/notes.txt is a file, not a folder" || got.Exists || got.Writable || got.FreeBytes != 0 || got.Checked != "~/notes.txt" {
+			t.Fatalf("%s: %+v", folder, got)
+		}
+	}
+	if !permissionsHold() {
+		return
+	}
+	closed := filepath.Join(s.userHm, "closed")
+	if err := os.Mkdir(closed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(closed, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(closed, 0o700) })
+	if got := check("~/closed/api"); got.Problem != "codeaf cannot look inside ~/closed" || got.Writable || got.Exists || got.FreeBytes != 0 {
+		t.Fatalf("a folder this account may not look into: %+v", got)
+	}
+	// Writing into a folder also needs the right to enter it.
+	noEntry := filepath.Join(s.userHm, "noentry")
+	if err := os.Mkdir(noEntry, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(noEntry, 0o700) })
+	if got := check("~/noentry"); got.Writable || !got.Exists {
+		t.Fatalf("a folder that can be written but not entered: %+v", got)
 	}
 }
 

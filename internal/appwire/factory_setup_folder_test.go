@@ -56,3 +56,19 @@ func TestFactorySetupFolderCheckIsRegisteredAnnouncedAndChecked(t *testing.T) {
 		t.Fatalf("a refused request reached the engine: %v", e.got)
 	}
 }
+
+// A setup folder is a full path on either kind of machine, or one under the
+// person's home: Windows drive and share paths pass, a drive-relative or
+// relative one does not.
+func TestSetupFolderTakesFullPathsOfEveryPlatform(t *testing.T) {
+	for _, ok := range []string{"/work/api", "~/code/api", `~\code\api`, `C:\code\api`, "C:/code/api", `d:\api`, `\\server\share\repo`, "//server/share/repo", `\\server\share`} {
+		if got, err := setupFolder(" " + ok + " "); err != nil || got != ok {
+			t.Errorf("%q: %q %v", ok, got, err)
+		}
+	}
+	for _, bad := range []string{"C:repo", "C:", "code/api", `code\api`, "~other/api", "~", `\code\api`, `\\server`, `\\server\`, `\\`} {
+		if _, err := setupFolder(bad); err == nil {
+			t.Errorf("%q was taken", bad)
+		}
+	}
+}
