@@ -65,6 +65,8 @@ func liveFactoryProfileDir() string {
 
 // liveRecorder is an HTTP forwarding recorder for /chat/completions.
 type liveRecorder struct {
+	budget   float64
+	maxCalls int
 	client   *http.Client
 	server   *httptest.Server
 	mu       sync.Mutex
@@ -78,7 +80,7 @@ type liveRecorder struct {
 
 func newLiveRecorder(t *testing.T, upstream string) *liveRecorder {
 	t.Helper()
-	r := &liveRecorder{client: &http.Client{}, requests: map[string]int{}, replies: map[string]int{}, statuses: map[int]int{}}
+	r := &liveRecorder{budget: liveFactoryBudget, maxCalls: liveFactoryMaxHit, client: &http.Client{}, requests: map[string]int{}, replies: map[string]int{}, statuses: map[int]int{}}
 	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, "/chat/completions") {
 			http.Error(w, "the live lane forwards chat completions only", http.StatusServiceUnavailable)
@@ -103,9 +105,9 @@ func newLiveRecorder(t *testing.T, upstream string) *liveRecorder {
 			over = "request model " + asked + " is not " + liveFactoryModel
 		case body["models"] != nil:
 			over = "request carries a models fallback list"
-		case r.cost >= liveFactoryBudget:
+		case r.cost >= r.budget:
 			over = "the budget is spent"
-		case r.calls > liveFactoryMaxHit:
+		case r.calls > r.maxCalls:
 			over = "the call cap is reached"
 		}
 		if over != "" {
