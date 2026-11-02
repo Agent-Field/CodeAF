@@ -14,8 +14,8 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // The own-fleet dedup rig: one identity (one pair of secrets) publishing from
@@ -50,10 +50,7 @@ func newIdentityKeys(t *testing.T) cellstore.SyncKeys {
 
 func newMachine(t *testing.T, keys cellstore.SyncKeys) *machine {
 	t.Helper()
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	return &machine{t: t, bin: bin, data: t.TempDir(), keys: keys, url: "http://relay"}
 }
 
