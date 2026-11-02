@@ -58,12 +58,13 @@ type stageMaker struct {
 	floor *store.Store
 	// jobs is where the job a step runs for is kept: the worker's mirror of
 	// the job the factory leased it. Nil is floor.
-	jobs       *store.Store
-	parent     session.Config
-	current    func() session.Config
-	refusal    func() error
-	workspace  string
-	profileDir string
+	jobs        *store.Store
+	memoryOwner *store.Store
+	parent      session.Config
+	current     func() session.Config
+	refusal     func() error
+	workspace   string
+	profileDir  string
 }
 
 // factoryStageMaker is this process's maker.
@@ -152,7 +153,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if jobs == nil {
 		jobs = m.floor
 	}
-	budget := &stageBudget{floor: jobs, item: spec.Item}
+	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item}
 	cfg.JobBudget = budget
 	cfg.JobContext = spec.JobContext
 	cfg.JobPendingSpend = spec.PendingSpend

@@ -558,7 +558,13 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns := factoryShapeTurnsFrom(h.floor, h.workspace, h.profile, current)
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
+	maker := h.stepMaker(mirror, source)
+	if target.url == h.address {
+		// Memory admission reads Pause and Stop before their worker signal arrives.
+		// Receipts still book on the mirror and follow its ordinary settlement path.
+		maker.memoryOwner = h.floor
+	}
+	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, maker, turns)
 	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI

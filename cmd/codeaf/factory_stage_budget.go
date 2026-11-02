@@ -11,13 +11,14 @@ import (
 // One live meter per round; descendants share it. The store is the worker's
 // authoritative mirror, also read by the manager's meter, not a copied cap.
 type stageBudget struct {
-	floor   *store.Store
-	item    factory.Item
-	mu      sync.Mutex
-	spent   float64
-	failed  bool
-	stopped string
-	reached bool
+	floor       *store.Store
+	memoryOwner *store.Store
+	item        factory.Item
+	mu          sync.Mutex
+	spent       float64
+	failed      bool
+	stopped     string
+	reached     bool
 }
 
 func (b *stageBudget) FactoryAuto() bool {
@@ -102,10 +103,14 @@ func (b *stageBudget) reachedCap() bool { b.mu.Lock(); defer b.mu.Unlock(); retu
 // MemoryRefusal keeps optional learning inside the job's active work, even if
 // a foreground conversation is still open after its job published or paused.
 func (b *stageBudget) MemoryRefusal() string {
-	if b.floor == nil {
+	owner := b.memoryOwner
+	if owner == nil {
+		owner = b.floor
+	}
+	if owner == nil {
 		return "job could not be read; memory stopped"
 	}
-	it, err := b.floor.Get(b.item.ID)
+	it, err := owner.Get(b.item.ID)
 	if err != nil {
 		return "job could not be read; memory stopped"
 	}

@@ -375,7 +375,8 @@ func ownsStageChat(it factory.Item, talk talkKey) bool {
 }
 
 func (c *jobChat) MemoryRefusal() string {
-	for _, st := range c.holders() {
+	// Admission follows the owning factory before a worker's delayed mirror.
+	for _, st := range append([]*store.Store{c.floor}, liveMirrors(c.floor, strconv.Itoa(c.id)+".json")...) {
 		if it, err := st.Get(c.id); err == nil && (c.talk.is(it.Talk) || ownsStageChat(it, c.talk)) {
 			return jobMemoryRefusal(it)
 		}
