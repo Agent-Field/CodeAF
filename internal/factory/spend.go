@@ -219,6 +219,19 @@ func handledSince(it Item, started time.Time) (int, time.Time) {
 	return n, at
 }
 
+// LedgerName is how the spend ledger names the job a call was spent for:
+// `owner/name#number`, lower-cased like every repository key, the same on
+// this machine's floor and on a worker's mirror of the job. A CI item's
+// reference is the bare word "ci", so it is named by its floor id as well
+// (`owner/name#ci-<id>`): two CI jobs of one repository are two jobs.
+func LedgerName(it Item) string {
+	ref := it.Ref()
+	if it.Kind == KindCI {
+		ref = "#ci-" + itoa(it.ID)
+	}
+	return strings.ToLower(RepoOf(it)) + ref
+}
+
 // SpendDaysMax is the most calendar days one spend read may span.
 const SpendDaysMax = 366
 
