@@ -25,7 +25,7 @@ import (
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
 	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
-	h.postJob("run-as-new", stored && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
+	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
@@ -86,6 +86,8 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 // launchJob is the start's one write and its launch, for a job startRefused
 // has passed. also is what else the start changes on the job in that same
 // write (run_again's clearing of the run before it), nil for nothing.
+// The result says whether launch accepted, even if recording its receipt failed;
+// run-as-new must retain an accepted job when the receipt could not be written.
 //
 // START NOW ON A JOB ALREADY IN THE QUEUE IS NOT A SECOND LAUNCH: it lets the
 // job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),

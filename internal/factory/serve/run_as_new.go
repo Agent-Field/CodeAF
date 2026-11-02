@@ -72,7 +72,17 @@ func (h *Handler) runAsNew(w http.ResponseWriter, r *http.Request, source factor
 	if h.startRefused(w, start, next) {
 		return
 	}
-	next, err = h.config.Store.Create(next)
+	id, err := h.seam.NewJob(next.Repo, next.Title, next.Body)
+	if h.failed(w, err) {
+		return
+	}
+	// Creation uses the separate-title door. The saved request then replaces
+	// its repository defaults before the ordinary start can see the copy.
+	err = h.config.Store.Update(id, func(cur *factory.Item) error {
+		next.ID, next.Created, next.Changed = cur.ID, cur.Created, cur.Changed
+		*cur = next
+		return nil
+	})
 	if h.failed(w, err) {
 		return
 	}
