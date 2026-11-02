@@ -39,7 +39,7 @@ func TestStopAfterStepReaderErrorUsesStoredChoice(t *testing.T) {
 				t.Fatal(err)
 			}
 			it := g.wait(id, "landed or waiting", func(it factory.Item) bool {
-				return it.State == factory.StateLanded || it.State == factory.StateNeedsYou || it.State == factory.StateFailed
+				return it.State == factory.StateLanded || it.State == factory.StateNeedsYou || it.Failure != nil
 			})
 			if armed {
 				if it.State != factory.StateNeedsYou || it.QKind != factory.QKindSpendStopped || !it.StopAfterStep {
