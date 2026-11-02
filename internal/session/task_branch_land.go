@@ -269,9 +269,21 @@ func landRead(ctx context.Context, dir string, max int, args ...string) ([]byte,
 // landReadInput also supplies a bounded question on stdin and keeps diagnostics.
 // Attribute reads must inspect diagnostics because git can warn and exit zero.
 func landReadInput(ctx context.Context, dir string, max int, input []byte, args ...string) ([]byte, []byte, int, error) {
+	return landReadInputEnv(ctx, dir, max, input, nil, args...)
+}
+
+// landReadInputEnv appends private command settings after landCommand has
+// stripped inherited Git variables, so scratch reads cannot borrow an index.
+func landReadInputEnv(ctx context.Context, dir string, max int, input []byte, env []string, args ...string) ([]byte, []byte, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, deliverGitCallMax)
 	defer cancel()
 	command := landCommand(ctx, dir, append(append([]string{"--no-optional-locks"}, landQuiet...), args...)...)
+	if len(env) > 0 {
+		if command.Env == nil {
+			command.Env = os.Environ()
+		}
+		command.Env = append(command.Env, env...)
+	}
 	capture := &landCapture{max: max, cancel: cancel}
 	diagnostics := &landCapture{max: max, cancel: cancel}
 	command.Stdin = bytes.NewReader(input)
@@ -309,8 +321,10 @@ func landLine(ctx context.Context, dir string, args ...string) (string, error) {
 func isOid(s string) bool { return len(s) >= 40 && isHex(s) }
 
 // PlanTaskBranchLand reads and binds what landing branch into the
-// conversation's checkout would do. It writes nothing but the objects
-// merge-tree adds to the object store, which nothing refers to.
+// conversation's checkout would do. It may write the objects merge-tree adds
+// to the object store, which nothing refers to. An older Git
+// also gets a temporary index in a private temporary directory outside the
+// repository, removed before the plan returns.
 func PlanTaskBranchLand(ctx context.Context, place Place, workspace, branch string) (TaskBranchLandPlan, error) {
 	return readLandPlan(ctx, place, workspace, branch)
 }
