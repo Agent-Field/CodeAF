@@ -18,7 +18,7 @@ func BriefSystem() string {
 You are given the job as JSON: the issue, the plan, each step's result per try, the change's stats and hunk index, the rule checks, the facts row and the brief before.
 Answer ONE JSON object and nothing else:
 {"verdict": string, "verdict_evidence": [evidence], "blocks": [block]}
-Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; change is the whole change's stat (files, added, removed); hunk names "file:start" in ref; rule_checks names no step.
+Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; change is the whole change's stat (files, added, removed); hunk names "file:start" in ref; rule_checks names no step; pr names the published PR and shows its number, with no step.
 The verdict says the outcome, not the activity, in at most %d words ("Fixed. Retries no longer double-send after a worker restart.").
 Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and their fields:
 - bullets: "bullets": [{"text","evidence"}], at most %d, at most %d words each, a **bold** lead word allowed.
@@ -93,12 +93,12 @@ func briefAfterStep(it Item) string {
 	return step
 }
 
-// EndBrief ends a write: the writer's cost is the job's, whatever came of it;
-// a draft whose verdict passes is kept with what survived the check; anything
+// EndBrief ends a write. The session already charged the job for the call;
+// the version keeps its cost for the brief guard without charging it again.
+// A draft whose verdict passes is kept with what survived the check; anything
 // else leaves the versions as they were and the write failed. It answers the
 // version kept (false when none), and the parts dropped.
 func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDrop, bool) {
-	AddChatSpend(it, w.CostUSD)
 	after := briefAfterStep(*it)
 	if it.BriefWriting != nil && it.BriefWriting.AfterStep != "" {
 		after = it.BriefWriting.AfterStep

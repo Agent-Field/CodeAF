@@ -2054,6 +2054,22 @@ For the current chat's background commands, watches or renders, use `/processes`
 in that chat. Click a process to open its log. The sidebar shows only running
 processes; finished logs remain available on demand without an ended count.
 
+## Desktop app quit and saving helpers
+
+Saving helpers started by the desktop app use a one-minute idle limit. While
+the app's engine is alive, it sends a light health request about every 20 seconds
+to the helpers it started, so a quiet app keeps the same saving helper ready.
+These requests never start or restart a helper, and failures are ignored.
+
+After the engine quits or is killed, the requests stop. Its saving helpers exit
+by themselves after about one minute without activity. Quit sends no shutdown
+request to a saving helper, so another window can continue saving through it;
+that activity delays its idle exit. A real saving operation starts a helper again
+when needed.
+
+A helper already running when the app connects keeps its existing idle limit.
+Terminal and command-line helpers keep their normal ten-minute idle limit.
+
 ## Crew proposals in the desktop app stream beside the chat
 
 **Bring in helpers** asks the conversation's own model about the work without

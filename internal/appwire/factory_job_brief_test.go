@@ -42,11 +42,11 @@ func TestJobBriefIsRegisteredAnnouncedAndAbsentWithoutItsEngine(t *testing.T) {
 	if len(e.got) != 1 || e.got[0] != (FactoryJobBriefParams{Factory: "f", Job: 12, Since: 3}) {
 		t.Fatalf("handed %+v", e.got)
 	}
-	want := `{"factory":"f","job":12,"status":"stub","brief":{"rev":0,"stub":true,"issue":"","steps_done":0,"steps_total":0,"verdict":"","facts":[],"blocks":[],"changed_keys":[]},"changed_since_seen":[]}`
+	want := `{"factory":"f","job":12,"status":"stub","brief":{"rev":0,"stub":true,"issue":"","steps_done":0,"steps_total":0,"verdict":"","facts":[],"blocks":[],"changed_keys":[]},"verdict_behind":false,"changed_since_seen":[]}`
 	if got, _ := json.Marshal(out); string(got) != want {
 		t.Fatalf("answered %s", got)
 	}
-	if h := withFactoryJobBriefFeature(Hello{}, e); len(h.Features) != 1 || h.Features[0] != FeatureFactoryJobBrief {
+	if h := withFactoryJobBriefFeature(Hello{}, e); len(h.Features) != 2 || h.Features[0] != FeatureFactoryJobBrief || h.Features[1] != FeatureFactoryJobBriefVerdictBehind {
 		t.Fatalf("announced %v", h.Features)
 	}
 	for _, bad := range []string{`{"factory":"","job":12}`, `{"factory":"f","job":0}`, `{"factory":"f","job":1,"since":-1}`, `{"factory":"f","job":1,"seen":2}`} {

@@ -165,11 +165,15 @@ type Handler struct {
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
-	setupCancel context.CancelFunc
-	setupDone   chan struct{}
-	setupTimer  *time.Timer
-	accessMu    sync.Mutex
-	accessFlows map[string]accessLinkFlow
+	// setupContinuing is held by a Continue from the moment it decides to stop
+	// the reader until it saves its own step, so nothing starts reading again
+	// in between.
+	setupContinuing bool
+	setupCancel     context.CancelFunc
+	setupDone       chan struct{}
+	setupTimer      *time.Timer
+	accessMu        sync.Mutex
+	accessFlows     map[string]accessLinkFlow
 	// commentFlights holds the jobs with a comment on their issue being
 	// posted by this handler (issue_comment.go).
 	commentFlights sync.Map
@@ -265,6 +269,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
 	h.read("/v1/spend/repos", h.spendRepos)
+	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
@@ -305,7 +310,16 @@ func (h *Handler) Close() {
 		if h.setupCancel != nil {
 			h.setupCancel()
 		}
+		var setupDone chan struct{}
+		if h.setupBusy {
+			setupDone = h.setupDone
+		}
 		h.setupMu.Unlock()
+		// A cancelled setup worker still finishes its last write; nothing may
+		// write into the factory's folder once Close has returned.
+		if setupDone != nil {
+			<-setupDone
+		}
 	}
 	if h != nil {
 		h.jobsMu.Lock()

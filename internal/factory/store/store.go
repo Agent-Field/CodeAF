@@ -56,6 +56,7 @@ var ErrNewer = errors.New("factory store: written by a newer codeaf")
 type Store struct {
 	root         string
 	outputPolicy func() (int, int)
+	observer     atomic.Pointer[func(before, after factory.Item)]
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
@@ -416,7 +417,17 @@ var written atomic.Pointer[func(st *Store, before, after factory.Item)]
 // replaces an earlier one.
 func WhenWritten(fn func(st *Store, before, after factory.Item)) { written.Store(&fn) }
 
+// ObserveWrites installs this store's reader of committed updates. Like
+// WhenWritten, it runs after the item lock is released; it must not block.
+// It is separate from the process-wide reader so one host owns its listener.
+func (st *Store) ObserveWrites(fn func(before, after factory.Item)) {
+	st.observer.Store(&fn)
+}
+
 func (st *Store) tellWritten(before, after factory.Item) {
+	if fn := st.observer.Load(); fn != nil && *fn != nil {
+		(*fn)(before, after)
+	}
 	if fn := written.Load(); fn != nil {
 		(*fn)(st, before, after)
 	}
