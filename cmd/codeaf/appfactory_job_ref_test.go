@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -17,6 +18,10 @@ import (
 // GitHub issue. Its saved identity still addresses the same job.
 func TestAppFactoryJobWithoutIssueHasAnHonestReference(t *testing.T) {
 	s := newLocalSetup(t)
+	// The start reads a valid recipe; missing-file budget recovery is unrelated.
+	s.backend.local.rules = func(context.Context, string, string) (pipeline.File, error) {
+		return pipeline.Defaults(), nil
+	}
 	keys := config.NewAppCredentials()
 	keys.Set("openrouter", "test-key-not-real")
 	t.Cleanup(config.UseAppCredentials(keys))
