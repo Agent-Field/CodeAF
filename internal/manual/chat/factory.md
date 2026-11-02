@@ -372,6 +372,8 @@ A look stops at 12 tool calls, one minute or $0.10, whichever comes first. The b
 
 Its complexity replaces the read's, and its questions become the job's when the job has none. Credential-looking files (`.env`, keys, `.ssh/`) are never listed or read, and the repository's text is treated as data, so an instruction inside a file or the issue is not followed.
 
+The read runs on the `insight_factory_read` role and the look on `insight_factory_scout`; unpinned, each follows `insight` (DeepSeek V4.1 Flash by default), then the small-work model. Under one model, both use that model.
+
 Limits: $10 of looks a month per factory (`Monthly limit for AI reached`) and 20 looks a day per repository (`Daily limit for this repo reached`). A repository that is not checked out cannot be looked at.
 
 ## read new issues as they arrive — automatic issue read, Read N new issues, read one issue, look before an automatic start
