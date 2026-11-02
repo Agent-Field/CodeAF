@@ -356,7 +356,7 @@ func TestJobBudgetResumeKeepsChatAndDoesNotDoubleChargeLiveSpend(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	it := g.asked(id, "budget of $1 reached · $1 spent · raise it to $5, or stop?")
 	if it.Stream.Spent != 1 {
 		t.Fatalf("double charged %v", it.Stream.Spent)
 	}
@@ -364,7 +364,7 @@ func TestJobBudgetResumeKeepsChatAndDoesNotDoubleChargeLiveSpend(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateLanded)
-	if calls != 2 || it.Stream.Spent != 1 || it.Cap != 2 {
+	if calls != 2 || it.Stream.Spent != 1 || it.Cap != 5 {
 		t.Fatalf("calls %v spent %v cap %v", calls, it.Stream.Spent, it.Cap)
 	}
 }
@@ -399,7 +399,7 @@ func TestJobBudgetCancelsNonChatExecutorWhenManagerSpends(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("shared cap did not cancel executor")
 	}
-	g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	g.asked(id, "budget of $1 reached · $1 spent · raise it to $5, or stop?")
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}

@@ -274,10 +274,19 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		if h.workers != nil {
 			now = h.workers.now()
 		}
-		if err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
+		exhausted := errors.New("no higher budget is available; stop this job")
+		err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
+			if factory.NextJobCap(factory.JobSpent(*item)) == 0 {
+				return exhausted
+			}
 			run.NoteContinue(item, now)
 			return nil
-		}); h.failed(w, err) {
+		})
+		if errors.Is(err, exhausted) {
+			h.fail(w, http.StatusUnprocessableEntity, exhausted.Error())
+			return
+		}
+		if h.failed(w, err) {
 			return
 		}
 	}

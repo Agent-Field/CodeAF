@@ -672,7 +672,7 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "raise_budget", body.Expect) {
 		return
 	}
-	if !slices.Contains([]float64{5, 10, 20, 30}, body.Budget) {
+	if !slices.Contains(factory.JobBudgetSteps(), body.Budget) {
 		h.fail(w, 422, "choose a budget: 5, 10, 20 or 30 USD")
 		return
 	}

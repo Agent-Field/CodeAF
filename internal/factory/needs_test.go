@@ -6,7 +6,7 @@ import (
 )
 
 func TestContinueRaisesThisJobOnce(t *testing.T) {
-	if NextJobCap(5) != 10 || NextJobCap(0) != 0 || NextJobCap(-1) != 0 {
+	if NextJobCap(5) != 10 || NextJobCap(0) != 5 || NextJobCap(30) != 0 {
 		t.Fatalf("next = %v %v", NextJobCap(5), NextJobCap(0))
 	}
 	it := &Item{Cap: 5, Stream: &Stream{Spent: 5}}

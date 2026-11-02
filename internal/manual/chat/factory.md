@@ -611,3 +611,18 @@ Automatic brief writes keep their existing limit: the last kept version must
 cost at most $0.03, and the kept versions plus one more at that cost must fit
 within 5% of the job's actual spend. Correcting a duplicate charge can therefore
 hold back an automatic write sooner. A requested retry still bypasses this guard.
+
+## budget reached — yes, raise the cap, next budget and stop
+
+When a job reaches its budget, the question names its current budget, what it
+spent, and the next absolute budget: `budget of $0.01 reached · $0.01 spent ·
+raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
+the desktop's raise button at $5 does the same. It does not add $5 to the cap.
+
+The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
+spending. If a round spent $5.25, the next budget is $10 even when the old cap
+was $0.01. Saved questions on older jobs can keep their old words, but yes now
+uses this same rule.
+
+At $30 spent or more, the question says `no higher budget is available; stop
+this job.` No larger budget is offered. Stop keeps the recorded spend and work.

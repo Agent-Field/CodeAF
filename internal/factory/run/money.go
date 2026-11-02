@@ -188,8 +188,12 @@ func (m *Money) CapReached(it factory.Item) bool {
 
 // CapQuestion is the sentence the item waits on, and its QKind.
 func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
-	c := dollars(it.Cap)
-	return "budget of " + c + " reached · " + c + " more, or stop?", "cap"
+	spent := factory.JobSpent(it)
+	q = "budget of " + dollars(it.Cap) + " reached · " + dollars(spent) + " spent · "
+	if next := factory.NextJobCap(spent); next > 0 {
+		return q + "raise it to " + dollars(next) + ", or stop?", "cap"
+	}
+	return q + "no higher budget is available; stop this job.", "cap"
 }
 
 func dollars(usd float64) string {

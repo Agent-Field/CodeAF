@@ -1543,14 +1543,15 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 }
 
 // capCheck parks the item when its budget is reached after a round: yes raises
-// the budget by as much again, no stops it. It answers false when it stopped.
+// the budget to the next allowed amount above spend, no stops it.
+// It answers false when it stopped.
 func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
 	}
 	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
-	q, kind := "budget of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"
+	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
 		if reached {
@@ -1564,7 +1565,7 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	if !ok {
 		return false
 	}
-	if !factory.IsContinue(a.yes, a.words) {
+	if !factory.IsContinue(a.yes, a.words) || factory.NextJobCap(factory.JobSpent(it)) == 0 {
 		lp.stop(c)
 		return false
 	}

@@ -44,7 +44,8 @@ import (
 
 // FeatureFactoryJobActions is announced in hello when the engine serves
 // factory.job_*. Job creation keeps separate title and details literal;
-// neither field sets budget or edits the pipeline.
+// neither field sets budget or edits the pipeline. Spending questions and
+// budget edits share the allowed budgets from factory.JobBudgetSteps.
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FeatureFactoryStopAnyVersion says Stop accepts no expect and ignores an
@@ -53,7 +54,7 @@ const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
 
 // FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
 // dollars. The job owner can choose either direction, never below recorded spending.
-var FactoryBudgetSteps = []float64{5, 10, 20, 30}
+var FactoryBudgetSteps = factory.JobBudgetSteps()
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
 const (
