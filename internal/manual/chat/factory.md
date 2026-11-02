@@ -358,7 +358,7 @@ An explicit `--one-model` launch keeps its pin. Interactive chats keep their own
 
 
 
-## the factory's spending defaults — default budget for a new job, the most a job may cost to start on its own, the factory's default model
+## the factory's spending defaults — default budget per job, the most an automatic job may cost before it asks, the factory's default model for steps
 
 A factory can keep three settings for every repository it watches, said once instead of in each repository's `.codeaf/factory.yaml`. In the app they are on the Spending page. Everyone signed in can read them; only the factory's operator can change them, and on a team they live on the shared server.
 

@@ -43,7 +43,11 @@ func TestLiveFactoryStepRunsOnTheFactorysDefaultModel(t *testing.T) {
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv(home.EnvVar, filepath.Join(root, "state"))
 	t.Setenv(config.ProfileDirEnv, "")
-	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	profile := t.TempDir()
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	// Off one model, the small calls beside a step ride the profile's tier
+	// rows; this lane runs every role on the one allowed model, so it pins them.
+	writeExternalCrewSettings(t, config.BudgetConfigPath(profile), map[string]string{config.KeyTierLowModel: liveFactoryModel, config.KeyTierReflexModel: liveFactoryModel})
 	t.Setenv("OPENROUTER_API_KEY", liveFactoryKey)
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv(factoryPostureEnv, "")
