@@ -16,15 +16,19 @@ import (
 // edit that does.
 //
 // THE ROWS A PERSON DEPENDS ON STAY WHERE THEY ARE. approve, a post's forge
-// verb, a gate's person and any name under fixed are locked: none is added,
-// removed or moved here, so the order of those rows among themselves never
-// changes. A CHECK IS NOT ONE OF THEM: its prompt is a shell command whose exit
-// code is the evidence, and add_step may add one (kind check) as it adds a
-// chat, through the same reviewed pull request that would add it by hand. A
-// check takes no effort or fanout (no model reads it) and stops only on done,
-// clean, green or proven, the words its runner checks. That is this editor's
-// policy, matching the board's fixed rows; a reviewed pull request to the file
-// is the file changing, which is how the law changes.
+// verb, a gate's person and any name under fixed are locked: none is removed
+// or moved here, so the order of those rows among themselves never changes.
+// A NEW PERSON MAY BE ADDED: add_step of kind gate puts an approval in one
+// pipeline, waiting on whom its who names ("@handle", operator, or "" for the
+// job's person), with an optional prompt the person reads. A gate is a person,
+// so it takes no until, rounds, effort or fanout, and once in the file it is
+// locked like every other person. A CHECK IS NOT ONE OF THEM: its prompt is a
+// shell command whose exit code is the evidence, and add_step may add one
+// (kind check) as it adds a chat, through the same reviewed pull request that
+// would add it by hand. A check takes no effort or fanout (no model reads it)
+// and stops only on done, clean, green or proven, the words its runner checks.
+// That is this editor's policy, matching the board's fixed rows; a reviewed
+// pull request to the file is the file changing, which is how the law changes.
 //
 // A CHAT STEP MAY CROSS A PERSON, AND THE PREVIEW SAYS SO. Moving, adding or
 // removing a chat step before a gate changes what runs unattended before that
@@ -80,10 +84,10 @@ type GateChange struct {
 
 // checkStructure bounds add_step, remove_step and move_step without the file.
 // Each names a pipeline and a step; add_step and move_step name After, the step
-// it goes after, with "" for first; add_step alone takes a prompt (required)
-// and until, max, when, effort and fanout, and a kind: chat (the default) or
-// check. No other structural edit takes a kind, and none takes a
-// value: a step added here is a chat.
+// it goes after, with "" for first; add_step alone takes a prompt (required
+// but for a gate) and until, max, when, effort and fanout, and a kind: chat
+// (the default), check or gate, and who for a gate. No other structural edit
+// takes a kind, and none takes a value.
 func checkStructure(i int, op EditOp) (EditOp, *EditError) {
 	if op.Value != nil || (op.Kind != nil && op.Op != OpAddStep) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no kind and no value; only add_step names a kind", op.Op)
@@ -134,18 +138,22 @@ func checkAnchor(i int, op EditOp) *EditError {
 }
 
 func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
-	if op.Prompt == nil {
-		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
-	}
 	if op.Kind != nil {
 		k, ok := kindWord(*op.Kind)
-		if !ok || (k != "" && k != string(factory.StageCheck)) {
-			return op, refuseEdit(EditBadValue, i, "a step added here is a chat or a check")
+		if !ok || (k != "" && k != string(factory.StageCheck) && k != string(factory.StageGate)) {
+			return op, refuseEdit(EditBadValue, i, "a step added here is a chat, a check or a gate")
 		}
 		op.Kind = &k
-		if bad := checkCheckWords(i, op); bad != nil {
-			return op, bad
-		}
+	}
+	if op.Prompt == nil && !addsGate(op) {
+		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
+	}
+	if bad := checkCheckWords(i, op); bad != nil {
+		return op, bad
+	}
+	op, bad := checkGateWords(i, op)
+	if bad != nil {
+		return op, bad
 	}
 	word, err := factory.StageWord(strings.ReplaceAll(op.Name, "-", ""))
 	if err != nil {
@@ -172,6 +180,35 @@ func checkCheckWords(i int, op EditOp) *EditError {
 		}
 	}
 	return nil
+}
+
+// addsGate says whether an add_step adds a person.
+func addsGate(op EditOp) bool {
+	return op.Kind != nil && *op.Kind == string(factory.StageGate)
+}
+
+// checkGateWords refuses who on any added step but a gate, and on a gate what
+// a person cannot hold: until and rounds (it stops when they answer), effort
+// and fanout (no model reads it). It answers who as the file spells it.
+func checkGateWords(i int, op EditOp) (EditOp, *EditError) {
+	if !addsGate(op) {
+		if op.Who != nil {
+			return op, refuseEdit(EditBadOp, i, "only a gate added here names who it waits on")
+		}
+		return op, nil
+	}
+	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return op, refuseEdit(EditBadValue, i, "a gate is a person; it takes no until, rounds, effort or fanout")
+	}
+	if op.Who == nil {
+		return op, nil
+	}
+	w, ok := factory.ApproverWord(*op.Who)
+	if !ok {
+		return op, refuseEdit(EditBadValue, i, "who is @handle, operator, or \"\" for the job's person")
+	}
+	op.Who = &w
+	return op, nil
 }
 
 func stepFieldsNamed(op EditOp) bool {
@@ -218,7 +255,11 @@ func (st *editState) addStep(i int, list []string, op EditOp) ([]string, *EditEr
 	if st.named[op.Name] {
 		return nil, refuseEdit(EditBadOp, i, "%s is edited by a set_step too; a step added here takes its fields on the add_step", op.Name)
 	}
-	if lockedStep(st.out, op.Name) {
+	// A GATE THE FILE ALREADY DEFINES may be listed in another pipeline: one
+	// more place a person answers takes nothing away from anyone ([define]
+	// still holds it to its own words).
+	gate := addsGate(op) && st.out.Steps[op.Name].Kind == string(factory.StageGate)
+	if lockedStep(st.out, op.Name) && !gate {
 		return nil, refuseEdit(EditLocked, i, "%s is locked and is not added here", op.Name)
 	}
 	if other := sameStage(list, op.Name); other != "" {
@@ -243,24 +284,24 @@ func (st *editState) addStep(i int, list []string, op EditOp) ([]string, *EditEr
 // edit names already says the same; its other fields are the definition's own.
 func (st *editState) define(i int, op EditOp) *EditError {
 	have, exists := st.out.Steps[op.Name]
-	if !exists {
-		s := Step{Prompt: *op.Prompt, wrotePrompt: true}
-		if op.Kind != nil {
-			s.Kind = *op.Kind
-		}
-		setStepWords(&s, op)
-		st.out.Steps[op.Name] = s
-		st.newSteps = append(st.newSteps, op.Name)
-		return nil
-	}
 	want := have
-	want.Prompt = *op.Prompt
+	if op.Prompt != nil {
+		want.Prompt, want.wrotePrompt = *op.Prompt, true
+	}
 	if op.Kind != nil {
 		want.Kind = *op.Kind
 	}
+	if op.Who != nil {
+		want.Who = *op.Who
+	}
 	setStepWords(&want, op)
+	if !exists {
+		st.out.Steps[op.Name] = want
+		st.newSteps = append(st.newSteps, op.Name)
+		return nil
+	}
 	if want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
-		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout {
+		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who {
 		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
 	}
 	return nil

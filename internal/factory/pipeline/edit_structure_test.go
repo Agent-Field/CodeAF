@@ -315,7 +315,6 @@ func TestStructuralShapeIsCheckedBeforeTheFile(t *testing.T) {
 		"add no after":           {Op: OpAddStep, Pipeline: "issue", Name: "lint", Prompt: s("x")},
 		"add no prompt":          {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write")},
 		"add a post":             {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("post")},
-		"add a gate":             {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("gate")},
 		"add a check's effort":   {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("check"), Effort: s("strong")},
 		"add a check's sentence": {Op: OpAddStep, Pipeline: "issue", Name: "lint", After: s("write"), Prompt: s("x"), Kind: s("check"), Until: s("it is quiet")},
 		"remove a kind":          {Op: OpRemoveStep, Pipeline: "issue", Name: "test", Kind: s("check")},
