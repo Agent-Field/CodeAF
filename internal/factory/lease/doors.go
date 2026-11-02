@@ -514,6 +514,9 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 				if factory.PendingQuestionID(*it) != questionID {
 					return errors.New("the pending step question changed; read factory_status before answering again")
 				}
+				if it.QKind != "step" || it.Asking == nil {
+					return errors.New("Nothing changed: use the supported gate action from factory_status or the job decision controls")
+				}
 				if it.Manual || it.Publishing {
 					return errors.New("manual control or publication owns this job")
 				}
