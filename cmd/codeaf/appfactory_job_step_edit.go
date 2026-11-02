@@ -56,7 +56,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 		return appwire.FactoryJobStepEdited{}, err
 	}
 	body := api.StepEditsRequest{
-		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Model: models, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
+		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Max: p.Edit.Max, Model: models, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
 	}
 	for _, mv := range p.Edit.Move {
 		body.Move = append(body.Move, api.StepMove{Step: mv.Step, After: mv.After})
@@ -70,7 +70,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 	h := b.factoryHub()
 	data, err := h.post(ctx, p.Factory, stepEditsPath(p.Job), body)
 	if err != nil {
-		if (len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Model) > 0) && unknownStepEditField(err) {
+		if (len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Max) > 0 || len(body.Model) > 0) && unknownStepEditField(err) {
 			return appwire.FactoryJobStepEdited{}, factoryTooOld()
 		}
 		return appwire.FactoryJobStepEdited{}, err
@@ -84,6 +84,9 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 		return appwire.FactoryJobStepEdited{}, appwire.Errorf(appwire.CodeUncertain, "the factory answered yes without a receipt this app can read; the edit may have happened, so read the job's steps before trying again")
 	}
 	out := appwire.FactoryJobStepEdited{Factory: got.Factory, Job: p.Job, Version: got.Version, Steps: orSteps(got.Steps), Lines: orLines(got.Lines)}
+	if len(out.Lines) > 0 {
+		b.briefEdited(p.Factory, p.Job)
+	}
 	var current api.Job
 	// A reread that is another job, or older than the receipt, is not the job as
 	// it reads after this edit, so it is left out rather than shown as current.
@@ -98,11 +101,22 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 // move as fields it does not know: the strict decode of a factory older than
 // both, which refused the whole edit as a bad request and changed nothing.
 func unknownStepEditField(err error) bool {
+	return unknownFactoryField(err, "remove", "move", "model", "max")
+}
+
+// unknownFactoryField is an older factory's strict decoder refusing one of the
+// named body fields, which the engine reports as the factory being too old.
+func unknownFactoryField(err error, names ...string) bool {
 	var e *appwire.Error
 	if !errors.As(err, &e) || e.Code != appwire.CodeBadParams {
 		return false
 	}
-	return strings.Contains(e.Message, `unknown field "remove"`) || strings.Contains(e.Message, `unknown field "move"`) || strings.Contains(e.Message, `unknown field "model"`)
+	for _, name := range names {
+		if strings.Contains(e.Message, `unknown field "`+name+`"`) {
+			return true
+		}
+	}
+	return false
 }
 
 // offeredStepModels is each step's picked model in models.list's own spelling,

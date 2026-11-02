@@ -58,6 +58,29 @@ func RotateOperator(path, hostLogin string, now time.Time, recovery bool) (Token
 	return rotateOperatorLocked(path, hostLogin, now, recovery)
 }
 
+// InviteOperator names the GitHub login an operator link minted without one
+// is for. Serve mints the row before it says ready and names the login once
+// GitHub answers, before the link is printed, so the secret is never shown
+// unbound. A row already named, revoked or gone is left as it is.
+func InviteOperator(path, id, login string) error {
+	unlock, err := lockRows(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	rows, err := Load(path)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		if row := &rows[i]; row.ID == id && row.Operator && !row.Revoked && row.InvitedLogin == "" {
+			row.InvitedLogin = login
+			return Save(path, rows)
+		}
+	}
+	return nil
+}
+
 // lockRows is shared by link rotation and GitHub binding so neither can race a claim.
 func lockRows(path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

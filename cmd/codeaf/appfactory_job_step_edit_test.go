@@ -53,6 +53,12 @@ func startStepFactory(t *testing.T) *stepFactory {
 			}
 			w.WriteHeader(f.status)
 			_, _ = io.WriteString(w, f.reply)
+		case r.URL.Path == "/v1/jobs/7/steps/review/rerun" && r.Method == http.MethodPost:
+			b, _ := io.ReadAll(r.Body)
+			f.posts = append(f.posts, r.URL.Path)
+			f.bodies = append(f.bodies, string(b))
+			w.WriteHeader(f.status)
+			_, _ = io.WriteString(w, f.reply)
 		case r.URL.Path == "/v1/jobs/7" && r.Method == http.MethodGet:
 			f.gets = append(f.gets, r.URL.Path)
 			_, _ = io.WriteString(w, f.job)
