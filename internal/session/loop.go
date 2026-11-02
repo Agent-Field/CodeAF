@@ -4518,7 +4518,7 @@ func (a *Agent) bank(call bankedCall) {
 	// charge at their own call boundary; their later folded totals do not.
 	if call.used.CostUSD > 0 {
 		if budget := a.jobBudgetOf(); budget != nil && call.ledger {
-			if memory, ok := budget.(interface{ SpendMemory(float64) }); ok && call.role == string(lane.RoleMemory) {
+			if memory, ok := budget.(interface{ SpendMemory(float64) }); ok && call.role == string(lanes.RoleMemory) {
 				memory.SpendMemory(call.used.CostUSD)
 			} else {
 				budget.Spend(call.used.CostUSD)
