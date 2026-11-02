@@ -760,6 +760,8 @@ unfinished pass continues with that job while the next step works. A job has at
 most one pass running; later turns do not queue more. Pause, Stop and the job's
 end cancel it, including a request in flight. Paid receipts still charge the job.
 The worker can remain occupied briefly after work finishes to report those prices.
+Paid memory that finishes after its stage closes stays in that stage’s saved
+spending total when the conversation reopens.
 Quit drops the pass; saved sources stay pending for its next finished turn, and
 idle learning never takes over a job's sources. The next admitted pass also
 includes earlier steps skipped while another pass was running. Unchanged source input
