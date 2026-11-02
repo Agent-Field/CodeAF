@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func TestAppSearchJobs(t *testing.T) {
 			}
 			jobs = append(jobs, kept)
 		}
-		for _, query := range []string{"DELIVERY", "12", "#12", "api#12", "ACME/API#12"} {
+		for _, query := range []string{"DELIVERY", "repair delivery", "12", "#12", "api#12", "ACME/API#12"} {
 			hits := search(t, s.factoryWire, query, 8)
 			if len(hits) != 1 {
 				t.Fatalf("%q: got %v, want one job", query, hits)
@@ -87,6 +88,12 @@ func TestAppSearchJobs(t *testing.T) {
 	t.Run("parallel factories share one deadline and one limit", func(t *testing.T) {
 		useLocalHome(t)
 		w := newFactoryWire(t, testFactoryHub(t))
+		var mu sync.Mutex
+		var opens, releases int
+		w.backend.open = fakeOpener(&fakeConversation{}, &opens, &releases, &mu)
+		var created struct{ Agent appwire.Agent }
+		w.must("agents.create", map[string]any{"workspace": t.TempDir()}, &created)
+		w.must("agents.rename", map[string]any{"id": created.Agent.ID, "title": "Needle conversation"}, nil)
 		var reads atomic.Int32
 		attach := func(jobs []api.Job, hang bool) appwire.FactoryConnection {
 			srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -101,6 +108,10 @@ func TestAppSearchJobs(t *testing.T) {
 						<-r.Context().Done()
 						return
 					}
+					if jobs == nil {
+						rw.WriteHeader(http.StatusServiceUnavailable)
+						return
+					}
 					json.NewEncoder(rw).Encode(api.Queue{Jobs: jobs})
 				default:
 					http.NotFound(rw, r)
@@ -113,17 +124,37 @@ func TestAppSearchJobs(t *testing.T) {
 		}
 		attach(nil, true)
 		attach(nil, true)
+		attach(nil, false)
 		old := time.Now().Add(-time.Hour)
 		newer := time.Now()
 		attach([]api.Job{{ID: 1, Title: "Needle oldest", CreatedAt: old, State: "backlog"}, {ID: 2, Title: "Other", Ask: &api.JobAsk{Text: "needle"}, CreatedAt: newer, State: "backlog"}, {ID: 3, Title: "Needle dismissed", Dismissed: true, State: "backlog"}}, false)
 		c := attach([]api.Job{{ID: 4, Title: "Needle newest", CreatedAt: newer, State: "queued"}}, false)
 		started := time.Now()
-		hits := search(t, w, "needle", 2)
+		var reply struct {
+			Groups []struct {
+				Kind string
+				Hits []map[string]any
+			}
+		}
+		w.must("search.all", map[string]any{"query": "needle", "limit_per_group": 2}, &reply)
+		var hits []map[string]any
+		var foundAgent bool
+		for _, group := range reply.Groups {
+			if group.Kind == "job" {
+				hits = group.Hits
+			}
+			if group.Kind == "agent" && len(group.Hits) == 1 && group.Hits[0]["id"] == created.Agent.ID {
+				foundAgent = true
+			}
+		}
+		if !foundAgent {
+			t.Fatalf("agent results lost while factories timed out: %+v", reply)
+		}
 		if elapsed := time.Since(started); elapsed > 2*time.Second {
 			t.Fatalf("search exceeded total deadline: %s", elapsed)
 		}
-		if reads.Load() != 4 {
-			t.Fatalf("read %d queues, want all four", reads.Load())
+		if reads.Load() != 5 {
+			t.Fatalf("read %d queues, want all five", reads.Load())
 		}
 		if len(hits) != 2 || hits[0]["id"] != c.ID+"#4" || hits[1]["title"] != "Needle oldest" {
 			t.Fatalf("global rank and limit: %v", hits)
@@ -145,10 +176,17 @@ func TestAppSearchJobs(t *testing.T) {
 	t.Run("team visibility", func(t *testing.T) {
 		useLocalHome(t)
 		f := startActionFactory(t)
+		f.github.rest = func(r *http.Request) (int, string, bool) {
+			if r.URL.Path == "/repos/secret/private" {
+				return http.StatusNotFound, `{}`, true
+			}
+			return 0, "", false
+		}
+		visible := f.create(t, factory.Item{Repo: "acme/api", Title: "Visible kumquat", State: factory.StateNew})
 		f.create(t, factory.Item{Repo: "secret/private", Title: "Invisible kumquat", State: factory.StateNew})
 		p := signedIn(t, f, 1, "alice")
-		if hits := search(t, p.w, "kumquat", 8); len(hits) != 0 {
-			t.Fatalf("private job leaked: %v", hits)
+		if hits := search(t, p.w, "kumquat", 8); len(hits) != 1 || hits[0]["document_id"] != float64(visible.ID) {
+			t.Fatalf("want only the visible team job: %v", hits)
 		}
 	})
 	t.Run("schema names job fields and keeps agent optional", func(t *testing.T) {
