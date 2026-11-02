@@ -668,7 +668,7 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 		return
 	}
 	var budgetRefused error
-	var parked *factory.Item
+	var atCap *factory.Item // the job as its cap question stood, when the raise resumes it
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if body.Budget < factory.JobSpent(*cur) {
@@ -678,8 +678,7 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 			cur.Cap = body.Budget
 			if capResumes(*cur) {
 				asked := *cur
-				parked = &asked
-				run.NoteRaised(cur, h.now())
+				atCap = &asked
 			}
 			return nil
 		})
@@ -701,10 +700,23 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 			return
 		}
 	}
-	if parked != nil {
-		err = h.continueCap(r, *parked, factory.ChoiceContinue)
+	if atCap != nil {
+		err = h.resumeAtCap(r, *atCap)
 	}
 	h.finish(w, err)
+}
+
+// resumeAtCap answers the cap question the raise cleared with continue, as a
+// person's answer does, and only then says on the timeline that the job
+// carries on under its new budget.
+func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
+	if err := h.continueCap(r, it, factory.ChoiceContinue); err != nil {
+		return err
+	}
+	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		run.NoteRaised(cur, h.now())
+		return nil
+	})
 }
 
 // capResumes is a raise that lets an Auto job parked at its budget carry on:

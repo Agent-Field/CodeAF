@@ -301,7 +301,6 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 	t.Fatalf("no comment in the record: %+v", events)
 }
 
-// A raised limit must reach the running mirror, not merely the service's row.
 // capParked is a job held by the rig's worker whose runner parked it at its
 // budget: the first step spends first, the second spends five more. autonomy
 // is the job's mode; the rig's own server is the worker-backed desk.

@@ -421,7 +421,10 @@ func (h *Handler) approves(w http.ResponseWriter, r *http.Request, it factory.It
 // job, so continue still raises the cap when KeepAnswer would refuse it.
 func (h *Handler) releaseCapWait(id int) error {
 	return h.config.Store.Update(id, func(it *factory.Item) error {
-		run.ReleaseCap(it, h.now())
+		// A job that moved on meanwhile keeps what it waits on now.
+		if it.QKind == "cap" {
+			run.ReleaseCap(it, h.now())
+		}
 		return nil
 	})
 }
