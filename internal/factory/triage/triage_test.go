@@ -151,30 +151,46 @@ func TestWorkerTriagesOneItemATickAndStopsOnCtx(t *testing.T) {
 	before, _ := st.Get(ids[0])
 	r := &recorder{asked: make(chan struct{}, 8), answer: func(int) (string, error) { return clean, nil }}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { Worker(ctx, st, r.call, 150*time.Millisecond, nil); close(done) }()
-
-	waitAsked(t, r)
-	triaged := 0
-	for wait := time.Now().Add(time.Second); triaged == 0 && time.Now().Before(wait); time.Sleep(2 * time.Millisecond) {
+	defer cancel()
+	// Counted on the worker's own goroutine at the end of each tick: how long this
+	// test or the box takes cannot move a read from one tick into another. The third
+	// read ends the context; the worker may start one more tick, which reads nothing.
+	var readAfterTick []int
+	afterTick := func(context.Context) error {
 		items, _ := st.List()
+		n := 0
 		for _, it := range items {
 			if !it.Triage.TriagedAt.IsZero() {
-				triaged++
+				n++
 			}
 		}
+		readAfterTick = append(readAfterTick, n)
+		if n >= len(ids) {
+			cancel()
+		}
+		return nil
 	}
-	if triaged != 1 {
-		t.Fatalf("after one tick %d items were triaged, want exactly one", triaged)
-	}
-	for range 2 {
+	done := make(chan struct{})
+	go func() {
+		Worker(ctx, st, r.call, time.Millisecond, nil, Options{AfterTick: afterTick})
+		close(done)
+	}()
+
+	for range ids {
 		waitAsked(t, r)
 	}
-	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the worker did not stop with its context")
+	}
+	if len(readAfterTick) < len(ids) {
+		t.Fatalf("items read after each tick: %v, want one more each tick", readAfterTick)
+	}
+	for tick, n := range readAfterTick {
+		if want := min(tick+1, len(ids)); n != want {
+			t.Fatalf("items read after each tick: %v, want one more each tick", readAfterTick)
+		}
 	}
 	for _, id := range ids {
 		it, _ := st.Get(id)
