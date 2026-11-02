@@ -28,6 +28,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	var calls atomic.Int64
 	var blockNext atomic.Bool
 	var failUpdates atomic.Bool
+	var richModel atomic.Bool
 	entered := make(chan struct{})
 	model := knowledge.Model
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +70,19 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			if failUpdates.Load() {
 				result = "{broken"
 			}
+		}
+		if richModel.Load() && len(body.Messages) > 1 {
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(body.Messages[1].Content), &payload); err != nil {
+				t.Error(err)
+				return
+			}
+			content, err := json.Marshal(memoryRichReply(payload))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			result = string(content)
 		}
 		if len(body.ResponseFormat) == 0 {
 			result = "Cedar queues jobs."
@@ -402,6 +416,73 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			t.Errorf("unchanged failed input spent %d model calls, want 1", got)
 		}
 	})
+	t.Run("unchanged refinement", func(t *testing.T) {
+		richModel.Store(true)
+		defer richModel.Store(false)
+		v := knowledge.Open(t.TempDir())
+		if err := v.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		for _, round := range []string{"baseline", "added"} {
+			for _, scope := range []string{"Cedar", "Maple", "Birch"} {
+				if err := v.Capture(knowledge.Source{ID: scope + round, Session: "chat", Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: scope + " " + round + " guidance."}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := v.Flush(context.Background(), "fixture", true); err != nil {
+				t.Fatal(err)
+			}
+		}
+		before := calls.Load()
+		if err := v.Flush(context.Background(), "fixture", true); err != nil {
+			t.Fatal(err)
+		}
+		if calls.Load() != before {
+			t.Errorf("unchanged sources launched %d further refinement calls", calls.Load()-before)
+		}
+	})
+}
+
+// This model supplies three independent concepts so unfinished refinement cannot
+// hide behind an empty subject list. The production compiler owns every stage.
+func memoryRichReply(p map[string]any) map[string]any {
+	if messages, ok := p["messages"].([]any); ok {
+		claims := []any{}
+		for _, raw := range messages {
+			s := raw.(map[string]any)
+			scope := strings.Fields(s["text"].(string))[0]
+			claims = append(claims, map[string]any{"local_id": s["id"], "text": s["text"], "scope": scope, "topic": "Operations", "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}})
+		}
+		return map[string]any{"claims": claims}
+	}
+	if catalog, ok := p["catalog"].([]any); ok {
+		subjects := []any{}
+		for _, raw := range catalog {
+			n := raw.(map[string]any)
+			subjects = append(subjects, map[string]any{"title": n["scope"].(string) + " guide", "scope": n["scope"], "notes": []any{n["id"]}})
+		}
+		return map[string]any{"subjects": subjects}
+	}
+	if catalog, ok := p["consolidation_catalog"].([]any); ok {
+		groups := []any{}
+		for _, raw := range catalog {
+			d := raw.(map[string]any)
+			groups = append(groups, map[string]any{"members": []any{d["id"]}, "title": d["title"], "scope": d["scope"], "purpose": d["purpose"], "folder": d["folder"]})
+		}
+		return map[string]any{"groups": groups}
+	}
+	if p["remaining_steps"] != nil {
+		refs := []any{}
+		for _, raw := range p["claims"].([]any) {
+			refs = append(refs, raw.(map[string]any)["id"])
+		}
+		scope := p["subject"].(map[string]any)["scope"].(string)
+		return map[string]any{"action": "write", "sections": []any{map[string]any{"heading": "Current operations", "paragraphs": []any{map[string]any{"text": scope + " baseline and added guidance.", "claims": refs}}}}}
+	}
+	if p["paragraphs"] != nil {
+		return map[string]any{"checks": []any{map[string]any{"id": "P0", "supported": true, "useful": true}}}
+	}
+	return map[string]any{"sections": []any{}, "questions": []any{}, "conflicts": []any{}}
 }
 
 type memoryFixtureHistory struct {
