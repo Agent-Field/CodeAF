@@ -47,6 +47,10 @@ import (
 // neither field sets budget or edits the pipeline.
 const FeatureFactoryJobActions = "factory.job_actions"
 
+// FeatureFactoryStopAnyVersion says Stop accepts no expect and ignores an
+// old expect on an active job or its current running step.
+const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
+
 // FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
 // dollars. The job owner can choose either direction, never below recorded spending.
 var FactoryBudgetSteps = []float64{5, 10, 20, 30}
@@ -337,6 +341,7 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryActor); ok {
 		hello = withFeature(hello, FeatureFactoryJobActions)
+		hello = withFeature(hello, FeatureFactoryStopAnyVersion)
 		if _, ok := e.(FactoryJobNewRunner); ok {
 			hello = withFeature(hello, FeatureFactoryJobRunAsNew)
 		}
@@ -354,6 +359,7 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 		}
 		if _, ok := e.(FactoryJobHolder); ok {
 			hello = withFeature(hello, FeatureFactoryJobHold)
+			hello = withFeature(hello, FeatureFactoryJobPause)
 		}
 	}
 	return hello
@@ -372,8 +378,7 @@ var factoryLogin = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0
 
 var factoryCommit = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
-// checkJob trims the factory id and checks the job number and the read the
-// action stands on.
+// checkJobTarget trims the factory id and checks the job number.
 func checkJobTarget(factory *string, job int) error {
 	id, err := factoryID(strings.TrimSpace(*factory))
 	if err != nil {
@@ -440,6 +445,16 @@ func factoryAction[P any](name string, prep func(*P) error, call func(FactoryAct
 }
 
 func prepAction(p *FactoryJobActionParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
+
+// checkStop accepts old desks' guards and lets a person stop without a read.
+func checkStop(factory *string, job int, expect *api.Expect) error {
+	if expect == nil {
+		return checkJobTarget(factory, job)
+	}
+	return checkJob(factory, job, expect)
+}
+
+func prepStop(p *FactoryJobActionParams) error { return checkStop(&p.Factory, p.Job, p.Expect) }
 
 func prepDrop(p *FactoryJobDropParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
 
@@ -523,8 +538,11 @@ func prepChanges(p *FactoryJobChangesParams) error {
 	return err
 }
 
-// prepStepRerun is [prepStep] with the rerun's optional words.
+// prepStepRerun requires the version read and accepts the rerun's optional words.
 func prepStepRerun(p *FactoryJobStepParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
 	words, err := words("words", p.Words, MaxFactoryJobWords, false)
 	if err != nil {
 		return err
@@ -545,7 +563,7 @@ func prepStep(p *FactoryJobStepParams) error {
 	if strings.TrimSpace(p.Words) != "" || strings.TrimSpace(p.Model) != "" {
 		return Errorf(CodeBadParams, "only a rerun takes words or a model")
 	}
-	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+	if err := checkStop(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
 	var err error
@@ -597,7 +615,7 @@ func prepCreate(p *FactoryJobCreateParams) error {
 func init() {
 	for name, m := range map[string]method{
 		"factory.job_start":           factoryAction("factory.job_start", prepAction, FactoryActor.FactoryJobStart),
-		"factory.job_stop":            factoryAction("factory.job_stop", prepAction, FactoryActor.FactoryJobStop),
+		"factory.job_stop":            factoryAction("factory.job_stop", prepStop, FactoryActor.FactoryJobStop),
 		"factory.job_dismiss":         factoryAction("factory.job_dismiss", prepAction, FactoryActor.FactoryJobDismiss),
 		"factory.job_drop":            factoryAction("factory.job_drop", prepDrop, FactoryActor.FactoryJobDrop),
 		"factory.job_restore":         factoryAction("factory.job_restore", prepAction, FactoryActor.FactoryJobRestore),

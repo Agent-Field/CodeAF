@@ -130,9 +130,9 @@ type RoundLine struct {
 	Chat     string    `json:",omitempty"`
 	// Result and Reason are how the try ended ([TryResult]): its rule's word
 	// (clean, not clean, green, proven, blocked…) and a counted reason ("2
-	// findings"). Absent on a try recorded before they were, and on a try
-	// that ended without a report (a failure or a stop), whose word must not
-	// be guessed from its summary.
+	// findings"). A failure closed on retry says stopped, interrupted or failed
+	// from its failure code. Absent on older tries, whose outcome must not be
+	// guessed from their summary.
 	Result string `json:",omitempty"`
 	Reason string `json:",omitempty"`
 }

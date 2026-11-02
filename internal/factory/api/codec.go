@@ -322,13 +322,14 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	if it.DoneHow == "closed_locally" {
 		return Can{Reopen: owner, RunAsNew: owner}
 	}
-	held := heldInQueue(it)
 	// START NOW ON A QUEUED JOB IS THE ONE PASS ABOVE JOBS AT ONCE, so a job
 	// already given it is not offered it again.
 	queued := state == StateQueued && it.State == factory.StateQueued
+	running := state == StateRunning && it.State == factory.StateRunning && !it.Publishing
+	held := (queued || running) && it.Stream != nil && it.Stream.Paused
 	return Can{
 		Run: owner && state == StateBacklog, StartNow: owner && (state == StateBacklog || queued && !it.OverLimit),
-		Hold: owner && queued && !held, Resume: owner && held,
+		Hold: owner && (queued || running) && !held, Resume: owner && held,
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
 		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner, StopAfterStep: owner && factory.MayStopAfterStep(it),
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),

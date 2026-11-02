@@ -684,6 +684,10 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, lease.ErrWorker):
 		h.fail(w, http.StatusForbidden, "lease belongs to another worker")
 		return true
+	case errors.Is(err, lease.ErrWithdrawn):
+		w.Header().Set(api.LeaseWithdrawnHeader, "1")
+		h.fail(w, http.StatusConflict, "lease was withdrawn")
+		return true
 	case errors.Is(err, lease.ErrNoLease):
 		h.fail(w, http.StatusConflict, "lease is no longer live")
 		return true
