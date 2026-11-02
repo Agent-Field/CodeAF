@@ -12,3 +12,7 @@ jobs. At the boundary, yes carries on without rerunning completed work; no
 stops the job and keeps its work. A step's own question or failure comes first.
 The app wire and HTTP door carry the choice, including to a leased runner, and
 the record names the person who changed it.
+
+If a leased worker cannot read the choice at a step boundary, it keeps the last
+saved choice and tries again at the next boundary. A temporary read failure no
+longer fails the job; an already armed spending hold still applies.

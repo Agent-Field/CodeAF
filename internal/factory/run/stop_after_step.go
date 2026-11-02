@@ -22,11 +22,7 @@ func (r *Runner) SetStopAfterStepReader(id int, read func(context.Context) (bool
 func (lp *floorLoop) stopSpending(c *loopCtl, it factory.Item) bool {
 	if read, ok := lp.r.stopReaders.Load(c.id); ok {
 		on, err := read.(func(context.Context) (bool, error))(c.ctx)
-		if err != nil {
-			lp.failStop(c, "", fmt.Errorf("could not read spending stop: %w", err))
-			return false
-		}
-		if on != it.StopAfterStep {
+		if err == nil && on != it.StopAfterStep {
 			if err := lp.write(c, func(cur *factory.Item) error { cur.StopAfterStep = on; return nil }); err != nil {
 				return false
 			}

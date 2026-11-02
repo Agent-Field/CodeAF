@@ -813,3 +813,5 @@ spending choice stays armed for the next step boundary. After the final step,
 the job holds before landing, so automatic publication cannot pass this hold.
 The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
+If that read fails, it keeps the last saved choice, including an armed hold,
+and tries again at the next boundary. The read failure does not fail the job.
