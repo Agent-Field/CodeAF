@@ -337,18 +337,52 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
-## how big is a job — size of a job, the size: filter, why there is no size, risky
+## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
 
 1. **A size label** on the item (`size:S`, `size/s`, XS to XL). It wins.
-2. **The completed issue read**, shown as `read says M`.
+2. **The completed issue read**, shown as `read says M`. The read scores five factors 0, 1 or 2, each with a why of at most six words: scope (one spot, one area, several areas), clarity (is the wanted result stated), coupling (shared code, data, migrations, public API), proof (how a finished change is checked) and novelty (follows existing code or new design). Their sum is the complexity, 0 to 10: 0–3 is small (S), 4–6 medium (M), 7–10 large (L). A sum on an edge (3 or 4, 6 or 7) shows both bands, as `small–medium`, because two reads of one issue often land a point apart there. The read sees only the item's text, not the repository, so its scope and coupling are marked low confidence.
 
-The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
+The length of an issue's body is not a size, and neither is the guess on a chat card. An item with neither shows no size, as nothing at all. `size:s` finds only items whose shown size is S; `cheap` matches items the read scored small; `risky` matches when the read named a risk or the shown size is L. Editing an item's title or body drops the read's size until the next read.
 
 Only a size label decides whether a job starts on its own. A size from a read never starts, holds or orders a job; with no label the factory asks instead, saying "no size label".
 
+The read never guesses a price: a model cannot know what the factory's agent spends, so no read, card or chat guess writes dollars on a job. The floor tool's `cheapest` lists the least complex first and each row says `complexity 4/10, medium (read)`.
+
 Limits: items read before this change show no size until their text changes or someone labels them. Older items are not reread just to fill this gap; editing the title or body allows one fresh read through the normal worker. There is no "read again" action yet.
+
+## what will a job cost — estimate, cost range, from N jobs, no cost history yet, max_cost
+
+A job's cost and time are measured from the factory's own finished jobs, never guessed by a model. An open job's range is the 10th to the 90th percentile of up to 12 finished jobs nearest to it, so about eight in ten similar jobs spent inside it: the same repository first, then every repository; near means close on the five complexity factors and the same kind of work. The app shows it with its basis, as `$0.40–1.10 · from 12 jobs in api`, and minutes the same way. A dropped job is not counted, because it spent only what it spent before it was dropped; a job run again counts once, with its latest run.
+
+A running job also has what is likely left: what similar finished jobs spent past this job's spend so far, over those that got that far (`about $4 more to finish`).
+
+With fewer than five similar finished jobs there is no figure: the job shows its band and `no cost history yet`.
+
+Each finished job is checked against the range the jobs before it would have given; the factory shows how many landed inside (`8 of 10 inside the range`). When fewer than 6 in 10 land inside, ranges are widened by how far real spend strayed from the median.
+
+Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs like it cost up to $3 · over $2`). An unknown cost asks first only when the repository's file writes `max_cost` (`no cost history yet · max_cost $2 asks first`); under the default ceiling an unknown cost starts, because the job's budget still stops a running job.
+
+## look closer — scout a job, files it will change, plan, unknowns, tests, about 2¢, monthly limit for AI reached
+
+Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. A look never writes a price.
+
+A look stops asking for files at 12 tool calls, one minute or $0.10, whichever comes first, and then answers once. The button shows what a typical look costs on this factory (`about 2¢`) once one has run; its cost goes on Spending as `factory scout`. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
+
+Its complexity replaces the read's, and its questions become the job's when the job has none. Credential-looking files (`.env`, keys, `.ssh/`) are never listed or read, and the repository's text is treated as data, so an instruction inside a file or the issue is not followed.
+
+The read runs on the `insight_factory_read` role and the look on `insight_factory_scout`; unpinned, each follows `insight` (DeepSeek V4.1 Flash by default), then the small-work model. Under one model, both use that model.
+
+Limits: $10 of looks a month per factory (`Monthly limit for AI reached`) and 20 looks a day per repository (`Daily limit for this repo reached`). A repository that is not checked out cannot be looked at.
+
+## read new issues as they arrive — automatic issue read, Read N new issues, read one issue, look before an automatic start
+
+Off by default: the factory's AI runs only when you click. With it off, new issues arrive unread. Backlog offers `Read N new issues · about $X` (the last read's cost times N), and each row has Read and Look closer. A click reads exactly the issues chosen, at most 20 at a time; an issue whose read failed stays unread so you can try again.
+
+Turned on, each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start.
+
+Reading never makes a job start on its own: size labels and the start rules decide. A read's complexity only places the job among similar finished jobs, so a measured cost over `max_cost` asks first. Only the factory's operator can change this setting.
 
 ## which model runs factory jobs — Task models and one model
 
