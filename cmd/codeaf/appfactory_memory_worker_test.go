@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) {
 	s := newLocalSetup(t)
 	release := make(chan struct{})
+	releaseReceipt := sync.OnceFunc(func() { close(release) })
 	cancelled := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -72,6 +74,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) 
 		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
 	}))
 	t.Cleanup(server.Close)
+	t.Cleanup(releaseReceipt)
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
 		clone := r.Clone(r.Context())
@@ -124,6 +127,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { s.backend.closeLocalFactory() })
 	var job api.Job
 	s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 	var acted appwire.FactoryJobActed
@@ -131,7 +135,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
-		if job.State == api.StateReady {
+		if job.Ready {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -163,7 +167,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) 
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	close(release)
+	releaseReceipt()
 	item, err := floor.Get(id)
 	if err != nil {
 		t.Fatal(err)
