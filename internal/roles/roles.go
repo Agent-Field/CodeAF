@@ -553,8 +553,9 @@ func Known(name string) bool {
 var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
-	RoleImageGen, RoleInsight, RoleInsightAsk, RoleInsightNotes,
-	RoleInsightThemes, RoleIntake, RoleJobName, RoleMarkReader,
+	RoleImageGen, RoleInsight, RoleInsightAsk, RoleInsightFactoryRead,
+	RoleInsightFactoryScout, RoleInsightNotes, RoleInsightPipeline,
+	RoleInsightThemes, RoleInsightViews, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,

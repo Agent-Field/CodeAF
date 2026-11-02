@@ -53,6 +53,25 @@ func TestAnInsightRoleClimbsItsOwnPinThenTheFamilyThenTheTier(t *testing.T) {
 	}
 }
 
+// Every page feature is an override of insight, in the order a settings
+// screen lists them, and each one climbs the family's ladder.
+func TestEveryPageFeatureIsAnInsightOverride(t *testing.T) {
+	want := []Role{"insight_notes", "insight_ask", "insight_themes", "insight_pipeline", "insight_views", "insight_factory_read", "insight_factory_scout"}
+	if len(InsightOverrides) != len(want) {
+		t.Fatalf("InsightOverrides = %v, want %v", InsightOverrides, want)
+	}
+	registerInsight(t)
+	src := settings(map[string]string{"defaults.insight": "seeded", "tiers.low": "low"})
+	for i, role := range want {
+		if InsightOverrides[i] != role {
+			t.Fatalf("InsightOverrides = %v, want %v", InsightOverrides, want)
+		}
+		if got, _ := Resolve(src, role, "session"); got != "seeded" {
+			t.Errorf("%s resolves to %q, want the family default", role, got)
+		}
+	}
+}
+
 // A role with no family never reads another role's pin or a default it was
 // not given: the ladder every existing role climbs is unchanged.
 func TestARoleWithNoFamilyReadsOnlyItsOwnRungs(t *testing.T) {

@@ -132,6 +132,10 @@ func TestTaskModelsPatchCarriesTheInsightPins(t *testing.T) {
 			t.Fatalf("a null %s pin = %+v", role, patch.Pins)
 		}
 	}
+	more, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"insight_pipeline":{"id":"vendor/p"},"insight_views":null,"insight_factory_read":null,"insight_factory_scout":{"id":"vendor/s"}}}`))
+	if err != nil || more.Pins["insight_pipeline"] == nil || more.Pins["insight_factory_scout"] == nil || len(more.Pins) != 4 {
+		t.Fatalf("the page roles' pins = %+v, %v", more.Pins, err)
+	}
 	if _, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"insight_other":null}}`)); err == nil {
 		t.Fatal("an unknown insight role was accepted")
 	}

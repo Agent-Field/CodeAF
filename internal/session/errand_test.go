@@ -318,6 +318,11 @@ func TestAnInsightErrandClimbsItsFamilyLadder(t *testing.T) {
 	for _, route := range ErrandRoutesFrom(roles.Source(func(key string) (string, bool) { v, ok := values[key]; return v, ok }), "floor") {
 		routes[route.Role] = route.Model
 	}
+	for _, role := range []string{"insight_pipeline", "insight_views", "insight_factory_read", "insight_factory_scout"} {
+		if routes[role] != "vendor/family" {
+			t.Errorf("errand route for %s = %q, want the family pin", role, routes[role])
+		}
+	}
 	if routes["insight"] != "vendor/family" || routes["insight_ask"] != "vendor/family" || routes["insight_themes"] != "vendor/family" || routes["insight_notes"] != "vendor/own" {
 		t.Fatalf("errand routes for the page AI: %v", routes)
 	}

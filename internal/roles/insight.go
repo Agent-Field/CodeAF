@@ -4,7 +4,8 @@ import "fmt"
 
 // The page-AI roles: the calls an app makes on an agent's errand door to write
 // about what is on a page (a repository's notes, an answer to a question about
-// it, the themes in its backlog). They are one FAMILY: `insight` is the model
+// it, the themes in its backlog, a pipeline built with AI, a factory's topic
+// views, and a factory's arrival read and closer look). They are one FAMILY: `insight` is the model
 // every page AI runs on, and each override is one page feature a person may
 // point somewhere else. An override nobody pinned is the family's choice, so a
 // person who sets `insight` once has set every page.
@@ -13,11 +14,20 @@ const (
 	RoleInsightNotes  Role = "insight_notes"
 	RoleInsightAsk    Role = "insight_ask"
 	RoleInsightThemes Role = "insight_themes"
+	// RoleInsightPipeline is a pipeline's steps written with AI.
+	RoleInsightPipeline Role = "insight_pipeline"
+	// RoleInsightViews is a factory's topic views.
+	RoleInsightViews Role = "insight_views"
+	// RoleInsightFactoryRead is the read of what arrived in a factory, and
+	// RoleInsightFactoryScout is the closer look a person asks for after it.
+	RoleInsightFactoryRead  Role = "insight_factory_read"
+	RoleInsightFactoryScout Role = "insight_factory_scout"
 )
 
 // InsightOverrides are the family's per-feature roles, in the order a settings
 // screen lists them.
-var InsightOverrides = []Role{RoleInsightNotes, RoleInsightAsk, RoleInsightThemes}
+var InsightOverrides = []Role{RoleInsightNotes, RoleInsightAsk, RoleInsightThemes,
+	RoleInsightPipeline, RoleInsightViews, RoleInsightFactoryRead, RoleInsightFactoryScout}
 
 // families is each override's family role, written once by [RegisterUnder].
 var families = map[Role]Role{}

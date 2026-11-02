@@ -1048,6 +1048,10 @@ role**, grouped under the row answering it, saying which model comes out:
 | `insight_notes` | small work | a repository's notes since you last looked; unpinned, it follows `insight` |
 | `insight_ask` | small work | an answer to a question about a repository; unpinned, it follows `insight` |
 | `insight_themes` | small work | the themes in a repository's backlog; unpinned, it follows `insight` |
+| `insight_pipeline` | small work | a pipeline's steps written with AI; unpinned, it follows `insight` |
+| `insight_views` | small work | a factory's topic views; unpinned, it follows `insight` |
+| `insight_factory_read` | small work | the read of what arrived in a factory; unpinned, it follows `insight` |
+| `insight_factory_scout` | small work | a closer look at what arrived in a factory; unpinned, it follows `insight` |
 | `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
@@ -1339,8 +1343,9 @@ because those are bindings the running session holds rather than values in your 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
 then **the model you are talking to**.
 
-The page AI's roles add two rungs after their own pin. `insight_notes`, `insight_ask` and
-`insight_themes` read **the `insight` pin** next, so one pin on `insight` moves every page.
+The page AI's roles add two rungs after their own pin. Every `insight_` override
+(`insight_notes`, `insight_ask`, `insight_themes`, `insight_pipeline`, `insight_views`,
+`insight_factory_read`, `insight_factory_scout`) reads **the `insight` pin** next, so one pin on `insight` moves every page.
 Then comes **codeaf's default for `insight`**: `deepseek/deepseek-v4.1-flash` on
 OpenRouter, while OpenRouter is connected and your allowed models admit it. That default is
 never written into `models.roles`; it stops applying the moment either condition does, and

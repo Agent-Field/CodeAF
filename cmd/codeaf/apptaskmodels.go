@@ -98,15 +98,13 @@ func (b *appBackend) taskModelsWire(profile string, state config.TaskModelsState
 	auxiliary := view(state.Auxiliary)
 	out.Roles = appwire.TaskModelRoles{Worker: view(state.Roles[crewroute.Worker]), Planner: view(state.Roles[crewroute.Planner]),
 		Checker: view(state.Roles[crewroute.Checker]), Auxiliary: &auxiliary}
-	insight := func(role roles.Role) *appwire.TaskModelRole {
-		row := view(state.Insight[role])
-		if family, ok := roles.FamilyOf(role); ok {
+	for _, key := range appwire.InsightRoleKeys {
+		row := view(state.Insight[roles.Role(key)])
+		if family, ok := roles.FamilyOf(roles.Role(key)); ok {
 			row.Follows = string(family)
 		}
-		return &row
+		*out.Roles.InsightRow(key) = &row
 	}
-	out.Roles.Insight, out.Roles.InsightNotes = insight(roles.RoleInsight), insight(roles.RoleInsightNotes)
-	out.Roles.InsightAsk, out.Roles.InsightThemes = insight(roles.RoleInsightAsk), insight(roles.RoleInsightThemes)
 	sources := config.ResolveSources(profile, config.APIKeyAt(profile), config.DefaultBaseURL)
 	for _, p := range state.Providers {
 		view := appwire.TaskModelsProvider{

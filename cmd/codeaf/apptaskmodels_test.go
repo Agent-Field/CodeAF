@@ -314,7 +314,8 @@ func TestAppTaskModelsInsightDefaultIsSeededNotWritten(t *testing.T) {
 	if insight == nil || insight.Pin != nil || insight.Default == nil || *insight.Default != want || insight.Follows != "" || insight.EligibleCount == 0 {
 		t.Fatalf("roles.insight = %+v", insight)
 	}
-	for name, row := range map[string]*appwire.TaskModelRole{"notes": got.Roles.InsightNotes, "ask": got.Roles.InsightAsk, "themes": got.Roles.InsightThemes} {
+	for name, row := range map[string]*appwire.TaskModelRole{"notes": got.Roles.InsightNotes, "ask": got.Roles.InsightAsk, "themes": got.Roles.InsightThemes,
+		"pipeline": got.Roles.InsightPipeline, "views": got.Roles.InsightViews, "factory_read": got.Roles.InsightFactoryRead, "factory_scout": got.Roles.InsightFactoryScout} {
 		if row == nil || row.Pin != nil || row.Default != nil || row.Follows != appwire.RoleInsight {
 			t.Fatalf("roles.insight_%s = %+v", name, row)
 		}
@@ -322,7 +323,8 @@ func TestAppTaskModelsInsightDefaultIsSeededNotWritten(t *testing.T) {
 	if config.ModelRolesAt(config.ProfileDir()) != "" {
 		t.Fatalf("the default was written as a pin: %q", config.ModelRolesAt(config.ProfileDir()))
 	}
-	for _, role := range []roles.Role{roles.RoleInsight, roles.RoleInsightNotes, roles.RoleInsightAsk, roles.RoleInsightThemes} {
+	for _, role := range []roles.Role{roles.RoleInsight, roles.RoleInsightNotes, roles.RoleInsightAsk, roles.RoleInsightThemes,
+		roles.RoleInsightPipeline, roles.RoleInsightViews, roles.RoleInsightFactoryRead, roles.RoleInsightFactoryScout} {
 		if model := insightResolves(t, role); model != want.ID {
 			t.Errorf("%s resolves to %q, want the default %q", role, model, want.ID)
 		}
@@ -392,6 +394,17 @@ func TestAppTaskModelsInsightPinsReadSetAndClear(t *testing.T) {
 	if model := insightResolves(t, roles.RoleInsightNotes); model != kimi.ID {
 		t.Errorf("insight_notes resolves to %q", model)
 	}
+	scout := &appwire.ModelRef{ID: "deepseek/deepseek-v4-flash", Provider: "openrouter"}
+	if got, err = backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleInsightFactoryScout: scout}}); err != nil ||
+		got.Roles.InsightFactoryScout.Pin == nil || *got.Roles.InsightFactoryScout.Pin != *scout {
+		t.Fatalf("insight_factory_scout after its pin = %+v, %v", got.Roles.InsightFactoryScout, err)
+	}
+	if model := insightResolves(t, roles.RoleInsightFactoryScout); model != scout.ID {
+		t.Errorf("insight_factory_scout resolves to %q", model)
+	}
+	if model := insightResolves(t, roles.RoleInsightFactoryRead); model != glm.ID {
+		t.Errorf("insight_factory_read resolves to %q, want the family pin", model)
+	}
 	if model := insightResolves(t, roles.RoleInsightAsk); model != glm.ID {
 		t.Errorf("insight_ask resolves to %q, want the family pin", model)
 	}
@@ -406,7 +419,7 @@ func TestAppTaskModelsInsightPinsReadSetAndClear(t *testing.T) {
 	if _, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleInsightAsk: {ID: "nobody/listed"}}}); wireCode(err) != appwire.CodeBadParams {
 		t.Errorf("an insight pin to nothing listed: %v", err)
 	}
-	cleared, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleInsight: nil, appwire.RoleInsightNotes: nil}})
+	cleared, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleInsight: nil, appwire.RoleInsightNotes: nil, appwire.RoleInsightFactoryScout: nil}})
 	if err != nil || cleared.Roles.Insight.Pin != nil || cleared.Roles.InsightNotes.Pin != nil || cleared.Roles.Insight.Default == nil {
 		t.Fatalf("after clearing insight=%+v notes=%+v %v", cleared.Roles.Insight, cleared.Roles.InsightNotes, err)
 	}
