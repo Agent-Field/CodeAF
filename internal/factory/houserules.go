@@ -138,6 +138,11 @@ type StartRules struct {
 	// started, so the lines above may lack its own: the approval after its
 	// plan is then always a person's.
 	Unread bool `json:"unread,omitempty"`
+	// UnreadWhy names the repository file and a safe diagnostic for a person
+	// to fix; it never carries a raw read error.
+	UnreadWhy  string `json:"unread_why,omitempty"`
+	UnreadFile string `json:"unread_file,omitempty"`
+	UnreadLine int    `json:"unread_line,omitempty"`
 }
 
 // StartRulesUnreadHold is the hold a plan gets when its job started with the

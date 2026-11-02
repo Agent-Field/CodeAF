@@ -131,14 +131,16 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
+			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
 			file, fileErr = &f, err
 		}
 		var budget float64
 		if file != nil && cur.Cap <= 0 {
-			// The budget comes from the same read, and a read that failed
-			// refuses the start as the budget's own read would.
-			err = fileErr
-			if err == nil {
+			// An unread repository takes a bounded default. A clean read
+			// must still supply its own positive budget.
+			if fileErr != nil {
+				budget = factory.DefaultJobBudget
+			} else {
 				budget, err = h.budgetOf(file.Recipe())
 			}
 		} else {
