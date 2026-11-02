@@ -696,7 +696,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
 	}
-	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)
+	question := factory.ApproveQuestion(prevName)
+	if hold != "" && it.StartRules != nil && it.StartRules.UnreadWhy != "" {
+		question += " · " + it.StartRules.UnreadWhy
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, question, factory.PhaseWaiting, "", said)
 	if !ok {
 		return false
 	}
