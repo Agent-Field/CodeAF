@@ -15,7 +15,7 @@ import (
 // ([factory.Item.Adapted]) and one made with steps of its own keep theirs. It
 // reports whether it changed the steps.
 func StampSteps(it *factory.Item, f File) bool {
-	if it.Stream != nil || len(it.Adapted) > 0 || !sameSteps(it.Stages, factory.DefaultRecipe().For(it.Kind)) {
+	if it.FromJob > 0 || it.Stream != nil || len(it.Adapted) > 0 || !sameSteps(it.Stages, factory.DefaultRecipe().For(it.Kind)) {
 		return false
 	}
 	want := f.Recipe().For(it.Kind)

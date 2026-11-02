@@ -27,6 +27,8 @@ func enrich(e *Event) {
 			e.Verb = "reran step"
 		case HandOffNotNow:
 			e.Verb = "put away hand-off"
+		case RunAsNew:
+			e.Verb = "ran as new"
 		case AutoStarted, Started:
 			e.Verb = "started"
 		case Held:

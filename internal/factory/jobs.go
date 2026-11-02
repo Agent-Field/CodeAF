@@ -397,3 +397,8 @@ func PriorityRank(it Item) int {
 	}
 	return 4
 }
+
+// CanRunAsNew says the work has ended, so a person may start its request anew.
+func CanRunAsNew(it Item) bool {
+	return RunEnded(it) || JobState(it) == "done"
+}

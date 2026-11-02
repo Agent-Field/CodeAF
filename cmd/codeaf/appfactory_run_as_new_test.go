@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,24 +8,31 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 func TestAppFactoryRunAsNew(t *testing.T) {
-	for _, ending := range []string{"failed", "stopped", "closed", "done", "running", "repo off"} {
+	for _, ending := range []string{"failed", "stopped", "closed", "done", "running", "repo off", "no checkout", "launch refused"} {
 		t.Run(ending, func(t *testing.T) {
 			s := newLocalSetup(t)
-			hook := s.backend.local.seamHook
-			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
-				seam = hook(seam)
-				seam.CheckoutOf = func(context.Context, string) (factory.CheckoutState, error) {
-					return factory.CheckoutState("ready"), nil
+			if ending == "launch refused" {
+				hook := s.backend.local.seamHook
+				s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
+					seam = hook(seam)
+					seam.Launch = func(int) error { return factoryrun.AlreadyRunning("fixture") }
+					return seam
 				}
-				return seam
 			}
 			st := s.start()
+			if ending != "no checkout" {
+				if err := s.backend.local.host.floor.SetCheckout("acme/api", t.TempDir()); err != nil {
+					t.Fatal(err)
+				}
+			}
 			source := factory.Item{Repo: "acme/api", Num: 42, Kind: factory.KindIssue, Origin: factory.OriginForge,
 				Title: "Fix auto-save $5", Body: "  security, two review rounds\nKeep  these words.\n", URL: "https://github.com/acme/api/issues/42",
-				Ask:   &factory.JobAsk{Text: "  cheaper; ship it; plan first\n", Source: factory.AskApp},
+				Ask:  &factory.JobAsk{Text: "  cheaper; ship it; plan first\n", Source: factory.AskApp},
+				Talk: "old-conversation", Head: "old-branch",
 				State: factory.StateNew, Autonomy: factory.AutonomyManual, Cap: 20,
 				Stages:      []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "Keep the words", Model: "test/model"}},
 				PullRequest: &factory.PullRequest{Number: 90, State: factory.PROpen},
@@ -62,7 +68,7 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 				before = read(old.ID)
 			}
 			params := map[string]any{"factory": st.Factory, "job": old.ID, "expect": map[string]any{"version": before["version"]}}
-			if ending == "running" || ending == "repo off" {
+			if ending == "running" || ending == "repo off" || ending == "no checkout" || ending == "launch refused" {
 				code := appwire.CodeConflict
 				if ending == "repo off" {
 					code = appwire.CodeConflict
@@ -85,7 +91,7 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 				}
 				var job api.Job
 				s.must("factory.job", map[string]any{"factory": st.Factory, "job": acted.Job}, &job)
-				if job.Title != source.Title || job.Ask == nil || job.Ask.Text != source.Ask.Text || job.Budget != 20 || job.PR != nil || job.Failure != nil || job.Cost != 0 || job.Num != 0 {
+				if job.Title != source.Title || job.Ask == nil || job.Ask.Text != source.Ask.Text || job.Budget != 20 || job.PR != nil || job.Failure != nil || job.Cost != 0 || job.Num != 0 || job.Autonomy != source.Autonomy || job.Repo != source.Repo || job.SourceIssue != source.URL || job.Desk == nil || job.Desk.Body != source.Body || job.Desk.Head != "" || job.Desk.Talk != "" {
 					t.Errorf("new job did not copy only the request: %+v", job)
 				}
 				if job.State != "queued" && job.State != "running" {
