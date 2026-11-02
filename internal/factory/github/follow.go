@@ -24,6 +24,23 @@ type followExtra interface {
 	RequiredReviews(ctx context.Context, owner, repo, branch string) (int, error)
 }
 
+// workflowFiles is the read a client has of the head's workflow folder.
+type workflowFiles interface {
+	WorkflowFiles(ctx context.Context, owner, repo, ref string) (int, error)
+}
+
+// noWorkflows is the no-checks fact as one read finds it: nothing reported on
+// the head and no workflow file in it. A client that cannot read the folder,
+// or a read that fails, finds nothing, so the job waits as it always has.
+func (s *Source) noWorkflows(ctx context.Context, owner, repo, head string, state forge.CheckState, runs []forge.CheckRun) bool {
+	files, ok := s.api.(workflowFiles)
+	if !ok || state != forge.ChecksNone || len(runs) > 0 {
+		return false
+	}
+	n, err := files.WorkflowFiles(ctx, owner, repo, head)
+	return err == nil && n == 0
+}
+
 // FollowPR reads one pull request the factory opened, including after GitHub
 // has merged or closed it. The open list never carries those.
 func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (factory.PullRequest, error) {
@@ -47,6 +64,7 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 			out.Problems = append(out.Problems, readProblem("checks", e))
 		} else {
 			out.CI, out.Checks, out.CheckRuns, out.ChecksRead = ChecksWords(state), summarizeChecks(runs), checkRuns(runs), true
+			out.NoWorkflows = s.noWorkflows(ctx, owner, repo, p.HeadSHA, state, runs)
 		}
 	}
 	if extra, ok := s.api.(followExtra); ok {
@@ -298,6 +316,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
+		factory.SettleNoChecks(it.PullRequest, &fresh, f.now())
 		checkpointRecovered := false
 		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
 			checkpointRecovered = f.verificationRecovered(it)
