@@ -111,7 +111,7 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
-	Files          []string                `json:"files,omitempty"`
+	Files          []string                `json:"files,omitzero"`
 	PublishSummary []string                `json:"publish_summary,omitempty"`
 	Repair         *factory.CIRepairResult `json:"repair,omitempty"`
 	Tests          *factory.TestCounts     `json:"tests,omitempty"`
