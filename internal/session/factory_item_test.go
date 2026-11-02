@@ -1095,7 +1095,7 @@ func TestFactoryItemNoticeJSONReplayKeepsHeadRowsAndReceipt(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatal(err)
 	}
-	if got := ItemHead(back); got != "job 1"+DecisionSep+"think strong?" {
+	if got := ItemHead(back); got != "#1"+DecisionSep+"think strong?" {
 		t.Errorf("legacy head = %q", got)
 	}
 	if got := strings.Join(ItemRows(back), "|"); got != "thinking  — → strong" {
