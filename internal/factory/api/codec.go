@@ -333,9 +333,10 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
 		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
-		RejectPlan: answer && planSendsBack(it),
-		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
-		Restore:    owner && factory.JobDoneHow(it) == "dropped",
+		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
+		RejectPlan:  answer && planSendsBack(it),
+		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
+		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}
 }
 

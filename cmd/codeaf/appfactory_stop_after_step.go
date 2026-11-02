@@ -13,3 +13,7 @@ func (b *appBackend) FactoryJobStopAfterStep(ctx context.Context, p appwire.Fact
 		Expect *api.Expect `json:"expect,omitempty"`
 	}{*p.On, p.Expect})
 }
+
+func (b *appBackend) FactoryJobSpendAnswer(ctx context.Context, p appwire.FactoryJobSpendAnswerParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActSpendAnswer, p.Job, "spend_answer", api.SpendAnswer{CarryOn: p.CarryOn, Expect: p.Expect})
+}

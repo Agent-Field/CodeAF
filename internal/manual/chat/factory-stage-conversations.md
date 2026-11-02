@@ -808,6 +808,12 @@ keep its work. Switch the choice off before the current step ends to let the
 job continue without this question. A queued job runs its first step before
 holding. The choice belongs to the job's owner.
 
+The app offers this answer only while your job asks this spending question.
+Its `factory.job_spend_answer` door takes `carry_on: true` for yes or false
+for no, with the version you read in `expect`. It cannot answer a spending
+limit, a plan, or a start question. If the job has moved on, refresh it before
+deciding; an unconfirmed answer is never sent again automatically.
+
 If the current step asks a question or fails first, resolve that first. Your
 spending choice stays armed for the next step boundary. After the final step,
 the job holds before landing, so automatic publication cannot pass this hold.

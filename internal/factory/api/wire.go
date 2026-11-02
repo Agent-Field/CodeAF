@@ -645,6 +645,7 @@ type Can struct {
 	Nudge          bool `json:"nudge"`
 	RaiseBudget    bool `json:"raise_budget"`
 	StopAfterStep  bool `json:"stop_after_step"`
+	SpendAnswer    bool `json:"spend_answer"`
 	Undo           bool `json:"undo"`
 
 	Approve      bool `json:"approve"`
@@ -1213,4 +1214,10 @@ type PublishFailedEvent = live.FailedPayload
 type BriefMark struct {
 	Rev    int    `json:"rev"`
 	Status string `json:"status"`
+}
+
+// SpendAnswer answers only a spending hold at the revision the person read.
+type SpendAnswer struct {
+	CarryOn *bool   `json:"carry_on"`
+	Expect  *Expect `json:"expect"`
 }

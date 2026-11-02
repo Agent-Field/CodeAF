@@ -110,6 +110,7 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	// The plan's target and the caller's right to answer are the job's own
 	// facts (api.CanFor); whether this factory takes the revision is its own.
 	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
+	j.Can.SpendAnswer = j.Can.SpendAnswer && h.seam.SpendAnswer != nil
 	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil
 	j.Can.Resume = j.Can.Resume && h.seam.Hold != nil
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)

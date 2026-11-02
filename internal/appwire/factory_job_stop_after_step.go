@@ -25,6 +25,7 @@ type FactoryJobStopAfterStepParams struct {
 
 // FactoryStepSpending is the engine's single-write spending hold door.
 type FactoryStepSpending interface {
+	FactoryJobSpendAnswer(context.Context, FactoryJobSpendAnswerParams) (FactoryJobActed, error)
 	FactoryJobStopAfterStep(context.Context, FactoryJobStopAfterStepParams) (FactoryJobActed, error)
 }
 

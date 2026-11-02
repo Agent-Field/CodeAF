@@ -256,6 +256,7 @@ decides which combinations are accepted.
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_stop_after_step` | `in.FactoryJobStopAfterStepParams` | `FactoryJobActed` |
+| `factory.job_spend_answer` | `in.FactoryJobSpendAnswerParams` | `FactoryJobActed` |
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
@@ -1206,8 +1207,21 @@ inactive job is refused. An unconfirmed write is `uncertain` and is never retrie
 The current step finishes. Before the next step, or before landing when there
 is no next step, the job waits in `needs_you`, question kind `spend_stopped`:
 "Stopped spending after <Step> as you asked · $<spent> so far. Carry on?"
-The existing answer door takes yes to clear the flag and continue at the next
-step, or no to stop the job as the person's stop. Off before the boundary
+Hello advertises `factory.job_spend_answer` exactly when it advertises
+`factory.job_stop_after_step`. The narrow door is
+`factory.job_spend_answer {factory, job, carry_on: bool, expect}` and returns
+`FactoryJobActed` with action `spend_answer`. It sends one
+`POST /v1/jobs/{id}/spend_answer {carry_on, expect}`. Missing or nonboolean
+`carry_on`, or missing `expect.version`, is `bad_params`. Under the revision
+lock the factory requires the current question to be `spend_stopped` and the
+caller to own the job: another question is `conflict`, a changed revision is
+`stale`, and another owner is `forbidden`. Refusals record nothing.
+`can.spend_answer` is true only for the owner while that question waits.
+`carry_on: true` behaves like yes on `/answer`, clearing the flag and continuing
+at the next step; false behaves like no, stopping as the person's stop. Both
+keep the same `answered` event and saved answer as `/answer`. An unconfirmed
+write is `uncertain` and is never retried. This door cannot answer another
+question, approve a plan or decline a start. Off before the boundary
 withdraws the hold. A step's own question or failure comes first and leaves
 the flag armed. A queued job without a started step runs its first step before
 holding. Landing and any automatic publication remain behind the hold.

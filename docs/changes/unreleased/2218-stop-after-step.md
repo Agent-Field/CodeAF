@@ -16,3 +16,7 @@ the record names the person who changed it.
 If a leased worker cannot read the choice at a step boundary, it keeps the last
 saved choice and tries again at the next boundary. A temporary read failure no
 longer fails the job; an already armed spending hold still applies.
+
+The desk can now answer this spending hold through `factory.job_spend_answer`:
+carry on continues at the next step, and no stops as your own stop. The door
+refuses other questions and stale reads without recording an answer.
