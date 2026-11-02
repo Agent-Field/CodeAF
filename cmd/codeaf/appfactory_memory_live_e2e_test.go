@@ -4,8 +4,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +33,14 @@ import (
 )
 
 func TestLiveMemoryStageMeasure(t *testing.T) {
+	liveMemoryStageMeasure(t, false)
+}
+
+func TestLiveMemoryPauseMeasure(t *testing.T) {
+	liveMemoryStageMeasure(t, true)
+}
+
+func liveMemoryStageMeasure(t *testing.T, pause bool) {
 	if os.Getenv(liveFactoryOptIn) != "1" {
 		t.Skipf("opt-in live lane: set %s=1 (spends a few cents on OpenRouter)", liveFactoryOptIn)
 	}
@@ -67,6 +78,8 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 
 	recorder := newLiveRecorder(t, config.DefaultBaseURL)
 	recorder.budget, recorder.maxCalls = 1, 250
+	var receiptMu sync.Mutex
+	receipts := map[string]float64{}
 	originalClient := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
 		copy := r.Clone(r.Context())
@@ -86,7 +99,23 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 			copy.URL.Scheme = "http"
 			copy.URL.Host = recorder.server.Listener.Addr().String()
 		}
-		return http.DefaultTransport.RoundTrip(copy)
+		response, err := http.DefaultTransport.RoundTrip(copy)
+		if err == nil && r.Method == http.MethodGet && strings.HasSuffix(u.Path, "/generation") {
+			raw, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			response.Body = io.NopCloser(bytes.NewReader(raw))
+			var receipt struct {
+				Data struct {
+					Cost *float64 `json:"total_cost"`
+				} `json:"data"`
+			}
+			if readErr == nil && json.Unmarshal(raw, &receipt) == nil && receipt.Data.Cost != nil {
+				receiptMu.Lock()
+				receipts[u.Query().Get("id")] = *receipt.Data.Cost
+				receiptMu.Unlock()
+			}
+		}
+		return response, err
 	})}
 	t.Cleanup(func() { http.DefaultClient = originalClient })
 	t.Setenv("CODEAF_BASE_URL", recorder.server.URL)
@@ -185,8 +214,24 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	var it factory.Item
+	var pausedAt time.Time
 	for {
 		it, _ = floor.Get(id)
+		if pause && pausedAt.IsZero() && memoryStartsAfter(t, callPath, time.Time{}) > 0 {
+			var current api.Job
+			w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &current)
+			w.must("factory.job_hold", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": current.Version}}, &appwire.FactoryJobActed{})
+			pausedAt = time.Now()
+			memoryAwaitReceipts(t, callPath)
+			before := memoryStartsAfter(t, callPath, time.Time{})
+			time.Sleep(5 * time.Second)
+			after := memoryStartsAfter(t, callPath, time.Time{})
+			t.Logf("PAUSE memory_calls_before=%d after=%d new_calls_after_pause=%d hold_seconds=5", before, after, memoryStartsAfter(t, callPath, pausedAt))
+			if after != before || memoryStartsAfter(t, callPath, pausedAt) != 0 {
+				t.Error("paused job admitted memory")
+			}
+			break
+		}
 		if it.State == factory.StateLanded || it.Failure != nil || it.Question != "" || it.State == factory.StateDismissed || ctx.Err() != nil {
 			break
 		}
@@ -198,13 +243,16 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 			cancel()
 			t.Fatal("live run reached $1; no further calls authorized")
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if ctx.Err() != nil {
 		stopJob()
 	}
-	if it.State != factory.StateLanded {
+	if pause && pausedAt.IsZero() {
+		t.Error("job ended before a running memory call could be paused")
+	}
+	if !pause && it.State != factory.StateLanded {
 		t.Errorf("job state=%s question=%q failure=%+v", it.State, it.Question, it.Failure)
 	}
 	if gh.count() != 0 {
@@ -220,7 +268,13 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	}
 	var header api.Job
 	w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &header)
-	memoryMeasureTable(t, callPath, it, header.Cost)
+	receiptMu.Lock()
+	lateUSD := 0.0
+	for _, cost := range receipts {
+		lateUSD += cost
+	}
+	receiptMu.Unlock()
+	memoryMeasureTable(t, callPath, it, header.Cost, lateUSD)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	t.Logf("models requested=%v answered=%v provider_total=%.8f problems=%v", recorder.requests, recorder.replies, recorder.cost, recorder.problems)
@@ -231,7 +285,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 
 // Tables come from the shipped call log, ledger and stage records. They are
 // printed only; no measurement artifact becomes part of the repository.
-func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD float64) {
+func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, receiptUSD float64) {
 	t.Helper()
 	if !session.FlushUsage() {
 		t.Error("usage ledger did not flush")
@@ -247,7 +301,8 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 	defer file.Close()
 	var calls []calllog.Record
 	starts := map[string]time.Time{}
-	var providerUSD, ledgerUSD, memoryUSD float64
+	var ledgerUSD, memoryUSD float64
+	providerUSD := receiptUSD
 	total, memory, afterEnd := 0, 0, 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
@@ -391,8 +446,8 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 		t.Logf("step-end median_ms=%d max_ms=%d", delays[len(delays)/2], delays[len(delays)-1])
 	}
 	t.Logf("TOTAL calls=%d memory_calls=%d memory_USD=%.8f provider_USD=%.8f ledger_USD=%.8f job_header_USD=%.8f", total, memory, memoryUSD, providerUSD, ledgerUSD, headerUSD)
-	t.Logf("ledger_minus_terminal_call_log_USD=%.8f (late receipts are ledger rows)", ledgerUSD-providerUSD)
-	if ledgerUSD+0.000001 < providerUSD {
+	t.Logf("late_provider_receipts_USD=%.8f", receiptUSD)
+	if math.Abs(ledgerUSD-providerUSD) > 0.000001 {
 		t.Errorf("ledger lost provider-reported cost: %.8f vs %.8f", ledgerUSD, providerUSD)
 	}
 	if math.Abs(headerUSD-ledgerUSD) > 0.000001 {
@@ -453,4 +508,33 @@ func memoryAwaitReceipts(t *testing.T, path string) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func memoryStartsAfter(t *testing.T, path string, since time.Time) int {
+	t.Helper()
+	file, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	count := 0
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64<<10), 4<<20)
+	for scanner.Scan() {
+		var row calllog.Record
+		if json.Unmarshal(scanner.Bytes(), &row) != nil {
+			continue
+		}
+		at, _ := time.Parse(time.RFC3339Nano, row.Time)
+		if row.Phase == "start" && row.Tag == "memory" && at.After(since) {
+			count++
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
