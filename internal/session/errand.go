@@ -65,6 +65,9 @@ const (
 	ErrandCancelled   = "cancelled"
 	ErrandModelFailed = "model_failed"
 	ErrandInvalidJSON = "invalid_json"
+	// ErrandNoAnswer is a call that was made and billed and said nothing: a
+	// reasoning model can spend its whole output bound before it answers.
+	ErrandNoAnswer = "no_answer"
 )
 
 // ErrErrandAsk is an ask outside the errand's shape or limits; the message
