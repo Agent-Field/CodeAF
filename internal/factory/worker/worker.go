@@ -679,7 +679,12 @@ func (j *job) settleAccounting(ctx context.Context) {
 	if additional == 0 {
 		return
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
-	defer cancel()
-	_, _ = j.w.Recover(requestCtx, j.id, j.lease, *j.spendReport, additional)
+	for attempt := range deliveryRecoveryLimit {
+		requestCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		_, err := j.w.Recover(requestCtx, j.id, j.lease, *j.spendReport, additional)
+		cancel()
+		if err == nil || !reportRetryable(err) || !pause(ctx, time.Duration(attempt+1)*time.Second) {
+			return
+		}
+	}
 }

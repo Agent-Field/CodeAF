@@ -186,12 +186,6 @@ func (j *job) sendPending(ctx context.Context) bool {
 	}
 	// This snapshot, rather than a later mirror read, is the acknowledged
 	// baseline. New work becomes a new delta only after this exact request lands.
-	if !p.Empty {
-		j.spendReport = &p.Request
-		if p.Snapshot.Stream != nil {
-			j.spendBaseline = p.Snapshot.Stream.Spent
-		}
-	}
 	j.sent = p.Snapshot
 	j.mu.Lock()
 	for _, id := range p.Delivered {
