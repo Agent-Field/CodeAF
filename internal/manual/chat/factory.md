@@ -42,6 +42,12 @@ that computer is offline or asleep, the job says **Waiting for <computer>
 starts it. Only that computer's own person sees its name; anyone else reads
 **Waiting for its computer**.
 
+A queued job with no computer yet says the same when every computer that could
+take it is offline or asleep: **Waiting for <computer> (asleep for 5 min)**. This
+wins over **Starting now**, because Start now gives a slot and nothing takes the
+job until a computer is back. A team's unassigned job reads **Waiting to start**,
+since it can go to anyone. The manager says the job is waiting for its computer.
+
 Two overrides act on one queued job, and only its person may use them:
 
 - **Start now** lets that job take one slot above Jobs at once, this one time,
@@ -401,6 +407,16 @@ Factory reads, manager turns and step conversations follow Task models. With one
 An explicit `--one-model` launch keeps its pin. Interactive chats keep their own model. Under the saved one-model policy, a factory manager turn uses its governed factory conversation. If an open chat holds that manager conversation, close it before the background turn can proceed. A running conversation keeps the model it started with.
 
 
+
+## the factory's spending defaults — default budget per job, the most an automatic job may cost before it asks, the factory's default model for steps
+
+A factory can keep three settings for every repository it watches, said once instead of in each repository's `.codeaf/factory.yaml`. In the app they are on the Spending page. Everyone signed in can read them; only the factory's operator can change them, and on a team they live on the shared server.
+
+- **Default budget per job**: the budget a job gets when it has none and its repository's file names no `default_budget`. Without it the built-in $5 applies. A job always has a budget, so it is a positive amount; clearing it gives the $5 back. A repository's own `default_budget` stands.
+- **Most a job may cost to start on its own**: a job whose budget is above it asks you before it starts by itself (with Start on its own on); a job you start is not held by it. Without it the built-in $5 applies. Where a repository sets `start.max_cost`, the stricter of the two holds. Zero makes every such job ask first.
+- **Default model**: the model a step runs on when neither the step nor its job names one; without it steps run on the runner's own default. The app offers only models it lists. With Task models on one model, steps keep that one model. A job carries the default that stood when it was queued, so a runner on another machine uses it too.
+
+Each figure is at most $10,000. A change applies to jobs queued after it; a job already queued keeps its budget and model. A settings file the factory cannot read refuses to start jobs rather than starting them on figures nobody chose.
 
 ## pick one step's model for one job — a step's own model, the job's model, use_model
 
