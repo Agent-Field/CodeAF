@@ -32,6 +32,7 @@ import (
 type factoryWire struct {
 	t       *testing.T
 	backend *appBackend
+	server  *appwire.Server
 	in      io.Writer
 	mu      sync.Mutex
 	lines   []string
@@ -59,7 +60,7 @@ func wireOver(t *testing.T, backend *appBackend) *factoryWire {
 		_ = server.Serve(context.Background(), inR, appwire.Hello{Version: "test"}, backend)
 		outW.Close()
 	}()
-	w := &factoryWire{t: t, backend: backend, in: inW, answers: make(chan json.RawMessage, 64)}
+	w := &factoryWire{t: t, backend: backend, server: server, in: inW, answers: make(chan json.RawMessage, 64)}
 	go func() {
 		scanner := bufio.NewScanner(outR)
 		scanner.Buffer(make([]byte, 16<<20), 16<<20)

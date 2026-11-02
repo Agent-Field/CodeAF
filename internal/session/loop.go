@@ -4513,7 +4513,15 @@ func (a *Agent) bank(call bankedCall) {
 	// charge at their own call boundary; their later folded totals do not.
 	if call.used.CostUSD > 0 {
 		if budget := a.jobBudgetOf(); budget != nil && call.ledger {
-			budget.Spend(call.used.CostUSD)
+			if split, ok := budget.(JobModelSpend); ok && strings.TrimSpace(call.model) != "" {
+				calls := call.used.Calls
+				if calls < 1 {
+					calls = 1
+				}
+				split.SpendModel(call.used.CostUSD, call.model, calls, call.used.Input, call.used.Output)
+			} else {
+				budget.Spend(call.used.CostUSD)
+			}
 		}
 	}
 }
