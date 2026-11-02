@@ -268,6 +268,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
 	h.read("/v1/spend/repos", h.spendRepos)
+	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
