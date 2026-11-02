@@ -110,7 +110,7 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("pause did not cancel the model round")
 		}
-		paused := wait("paused", func(j api.Job) bool { return j.StatePresentation.Kind == "paused" && j.Can.Resume })
+		paused := wait("paused", func(j api.Job) bool { return j.StatePresentation.Kind == "paused" && j.Can.Resume && j.Cost == 0.125 })
 		if paused.StatePresentation.Title != "Paused" || paused.Can.Hold || paused.NeedsYou != nil || paused.Failure != nil || paused.Cost != 0.125 {
 			t.Fatalf("paused job: %+v", paused)
 		}
