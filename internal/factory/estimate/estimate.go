@@ -5,8 +5,12 @@
 // read or from Look closer); the dollars and minutes come from the jobs this
 // factory already ran. An item's figure is the 10th to the 90th percentile of
 // its nearest finished jobs, where about eight in ten of them landed: the same repository first, then every
-// repository, near on the rubric's factors and the kind. Fewer than [MinJobs]
-// similar jobs is no figure at all, and the page says "no cost history yet".
+// repository, near on the rubric's factors and the kind. A job with no read,
+// or a read with too few similar jobs, is measured on its kind instead: the
+// latest finished jobs of the same kind, read or not, in its repository and
+// then in every repository. Every finished job counts. Fewer than [MinJobs]
+// jobs on both bases is no figure at all, and the page says "no cost history
+// yet".
 //
 // THE LEDGER IS THE FLOOR STORE. A finished job keeps its stream (spent,
 // started, ended) and its rubric on its own document, so reading the store is
@@ -16,7 +20,9 @@
 // that had ended before it started, which is the figure the page could have
 // shown, and its spend is checked against that range. When fewer than
 // [Coverage] of them land inside, every range is widened by the spread of
-// what jobs really spent against their median.
+// what jobs really spent against their median. Each basis is backtested and
+// widened on its own, so a well-read history is not hidden by a kind pool
+// that misses, nor the other way round.
 package estimate
 
 import (
@@ -42,6 +48,15 @@ const (
 	// Low and High are the percentiles a range runs between: about eight in
 	// ten similar jobs spent inside it.
 	Low, High = 0.1, 0.9
+)
+
+// The bases a figure is made on.
+const (
+	// BasisRead is a figure from the jobs nearest on a read's rubric.
+	BasisRead = "read"
+	// BasisKind is a figure from the latest finished jobs of the same kind,
+	// read or not: the page says it was not matched on a read.
+	BasisKind = "kind"
 )
 
 // Done is one finished job as the ledger reads it.
@@ -121,12 +136,13 @@ func bandOf(t factory.Triage) string {
 
 // Range is one item's measured figure: dollars and minutes from the 10th to
 // the 90th percentile of N similar finished jobs, in Repo ("" is every
-// repository). Widened says calibration widened it.
+// repository), on Basis. Widened says calibration widened it.
 type Range struct {
 	USDLo, USDHi float64
 	MinLo, MinHi float64
 	N            int
 	Repo         string
+	Basis        string
 	Widened      bool
 	// mid is the median spend, which calibration measures strays from.
 	mid float64
@@ -153,7 +169,7 @@ func (c Calibration) Poor() bool {
 type Book struct {
 	done []Done
 	seen int
-	cal  Calibration
+	cal  map[string]Calibration
 }
 
 // Open reads the ledger from the floor's items and backtests it.
@@ -177,17 +193,36 @@ func (b Book) JobsIn(repo string) int {
 	return n
 }
 
-// Calibration is the ledger's backtest.
-func (b Book) Calibration() Calibration { return b.cal }
-
-// For is the item's measured figure, and false when it has no band or fewer
-// than [MinJobs] similar jobs finished.
-func (b Book) For(it factory.Item) (Range, bool) {
-	r, ok := rangeOf(pointOf(it), b.done)
-	if !ok || !b.cal.Poor() {
-		return r, ok
+// Calibration is the ledger's backtest over every basis.
+func (b Book) Calibration() Calibration {
+	var all Calibration
+	for _, c := range b.cal {
+		all.Hit, all.Of = all.Hit+c.Hit, all.Of+c.Of
 	}
-	return b.cal.widen(r), true
+	return all
+}
+
+// CalibrationBy is the backtest of the figures made on one basis.
+func (b Book) CalibrationBy(basis string) Calibration { return b.cal[basis] }
+
+// For is the item's measured figure: near on its read when five similar
+// read jobs finished, else on its kind; false below five on both.
+func (b Book) For(it factory.Item) (Range, bool) {
+	return b.calibrated(figure(pointOf(it), b.done))
+}
+
+// ForNew is a job's figure before it exists: on its kind in repo, then in
+// every repository; false below five finished jobs of that kind.
+func (b Book) ForNew(repo string, kind factory.Kind) (Range, bool) {
+	return b.calibrated(byKind(repo, kind, b.done))
+}
+
+// calibrated widens a figure when its own basis misses too often.
+func (b Book) calibrated(r Range, ok bool) (Range, bool) {
+	if c := b.cal[r.Basis]; ok && c.Poor() {
+		return c.widen(r), true
+	}
+	return r, ok
 }
 
 // Left is what a running job will likely spend from here to its end: the
@@ -203,7 +238,7 @@ func (b Book) Left(it factory.Item) (Range, bool) {
 			past = append(past, d)
 		}
 	}
-	r, ok := rangeOf(pointOf(it), past)
+	r, ok := figure(pointOf(it), past)
 	r.MinLo, r.MinHi = 0, 0 // minutes past a spend are not what this measures
 	return r, ok
 }
@@ -229,24 +264,65 @@ func pointOf(it factory.Item) point {
 	return p
 }
 
+// figure is the read match when there is one, else the kind pool.
+func figure(p point, done []Done) (Range, bool) {
+	if r, ok := rangeOf(p, done); ok {
+		return r, true
+	}
+	return byKind(p.repo, p.kind, done)
+}
+
 func rangeOf(p point, done []Done) (Range, bool) {
 	if p.band < 0 {
 		return Range{}, false
 	}
 	inRepo, all := nearest(p, done)
-	near, repo := inRepo, p.repo
-	if len(near) < MinJobs {
-		near, repo = all, ""
+	if len(inRepo) >= MinJobs {
+		return spread(inRepo, p.repo, BasisRead), true
 	}
-	if len(near) < MinJobs {
-		return Range{}, false
+	if len(all) >= MinJobs {
+		return spread(all, "", BasisRead), true
 	}
+	return Range{}, false
+}
+
+// byKind is the figure from the latest [Nearest] finished jobs of the kind,
+// in repo first and then in every repository.
+func byKind(repo string, kind factory.Kind, done []Done) (Range, bool) {
+	var inRepo, every []Done
+	for _, d := range done {
+		if d.Kind != kind {
+			continue
+		}
+		every = append(every, d)
+		if strings.EqualFold(d.Repo, repo) {
+			inRepo = append(inRepo, d)
+		}
+	}
+	if len(inRepo) >= MinJobs {
+		return spread(latest(inRepo), inRepo[0].Repo, BasisKind), true
+	}
+	if len(every) >= MinJobs {
+		return spread(latest(every), "", BasisKind), true
+	}
+	return Range{}, false
+}
+
+// latest is the [Nearest] jobs that ended last.
+func latest(done []Done) []Done {
+	s := slices.Clone(done)
+	slices.SortStableFunc(s, func(a, b Done) int { return b.Ended.Compare(a.Ended) })
+	return s[:min(len(s), Nearest)]
+}
+
+// spread is the 10th to the 90th percentile of what the jobs spent and took.
+func spread(near []Done, repo, basis string) Range {
 	usd, minutes := make([]float64, len(near)), make([]float64, len(near))
 	for i, d := range near {
 		usd[i], minutes[i] = d.Spent, math.Round(d.Wall.Minutes())
 	}
 	return Range{USDLo: quantile(usd, Low), USDHi: quantile(usd, High), mid: quantile(usd, 0.5),
-		MinLo: quantile(minutes, Low), MinHi: quantile(minutes, High), N: len(near), Repo: repo}, true
+		MinLo: quantile(minutes, Low), MinHi: quantile(minutes, High), N: len(near), Repo: repo, Basis: basis}
 }
 
 // nearest is the [Nearest] closest similar jobs in the probe's repository and
@@ -308,32 +384,36 @@ func bandRank(band string) int {
 }
 
 // backtest estimates each finished job from the jobs that ended before it
-// started, and counts the ones whose spend fell inside.
+// started, and counts, per basis, the ones whose spend fell inside.
 //
 // The ledger is sorted by end, so the jobs before one are a prefix of it.
-func backtest(done []Done) Calibration {
-	var c Calibration
-	var ratios []float64
+func backtest(done []Done) map[string]Calibration {
+	cal := map[string]Calibration{}
+	ratios := map[string][]float64{}
 	byEnd := slices.Clone(done)
 	slices.SortStableFunc(byEnd, func(a, b Done) int { return a.Ended.Compare(b.Ended) })
 	for _, d := range done {
 		n, _ := slices.BinarySearchFunc(byEnd, d.Started, func(e Done, t time.Time) int { return e.Ended.Compare(t) })
-		r, ok := rangeOf(d.at, byEnd[:n])
+		r, ok := figure(d.at, byEnd[:n])
 		if !ok {
 			continue
 		}
+		c := cal[r.Basis]
 		c.Of++
 		if d.Spent >= r.USDLo && d.Spent <= r.USDHi {
 			c.Hit++
 		}
+		cal[r.Basis] = c
 		if r.mid > 0 {
-			ratios = append(ratios, d.Spent/r.mid)
+			ratios[r.Basis] = append(ratios[r.Basis], d.Spent/r.mid)
 		}
 	}
-	if len(ratios) > 0 {
-		c.low, c.high = quantile(ratios, 0.1), quantile(ratios, 0.9)
+	for basis, rs := range ratios {
+		c := cal[basis]
+		c.low, c.high = quantile(rs, 0.1), quantile(rs, 0.9)
+		cal[basis] = c
 	}
-	return c
+	return cal
 }
 
 // widen stretches a range to the spread of what jobs really spent over their
