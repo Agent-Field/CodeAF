@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A job step the factory is running is not called another window
-pr: 0
+pr: 2225
 surface: [engine]
 invalidates:
   - "A crew member the app could not open was always said as open in another codeaf window. A factory step whose journal this app's own runner holds is not said, and its row does not read as unheld; when the runner lets go the next try holds it without an open-here-again note. An ordinary member open in another window is still said."
