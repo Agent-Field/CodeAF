@@ -22,7 +22,7 @@ var Pairing = &Map{
 			Files:   []FileRef{{Path: "cmd/codeaf/pair.go", Symbols: []string{"runPair"}}}},
 		// ── services ──────────────────────────────────────────────────────
 		{ID: "hosted", Label: "hosted relay", Short: "default", Kind: KindService, X: 0.38, Y: 0.1,
-			Summary: "The default service at https://codeaf.agentfield.ai/fabric: a Cloudflare Worker with Durable Objects and R2. It holds the directory, the encrypted blobs and pairing requests, and it cannot decrypt any of them.",
+			Summary: "The default hosted sync service selected per release channel in internal/syncsetup/relayurl.go: a Cloudflare Worker with Durable Objects and R2. It holds the directory, the encrypted blobs and pairing requests, and it cannot decrypt any of them.",
 			Details: []string{
 				"Limits: 5 GiB/identity, 1200 req/min/identity, 600/min/device",
 				"Pairing: 10-minute TTL, 10 link creates/hr, 3 pending per IP",

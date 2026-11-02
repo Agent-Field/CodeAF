@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 )
@@ -46,25 +47,21 @@ const frameHeader = 1 + 8 + 4
 // surface's read and a surface's write agree about what happened.
 var errCarrierGone = errors.New("the connection to the relay ended")
 
-// writeFrame puts one frame on a carrier. Callers hold the carrier's write
-// mutex; the mutex is not taken here because a frame is sometimes written as
-// part of a longer critical section.
-func writeFrame(w io.Writer, op byte, stream uint64, payload []byte) error {
+// writeFrame puts one frame on a carrier in one write, so a carrier that is a
+// WebSocket carries each frame as one message (see transport.go). The frame is
+// assembled in scratch, which is handed back for the next frame so a carrier
+// does not allocate one per write. Callers hold the carrier's write mutex,
+// which also guards scratch.
+func writeFrame(w io.Writer, scratch []byte, op byte, stream uint64, payload []byte) ([]byte, error) {
 	if len(payload) > MaxPayload {
-		return fmt.Errorf("relay: frame of %d bytes is over the %d-byte limit", len(payload), MaxPayload)
+		return scratch, fmt.Errorf("relay: frame of %d bytes is over the %d-byte limit", len(payload), MaxPayload)
 	}
-	var header [frameHeader]byte
-	header[0] = op
-	binary.BigEndian.PutUint64(header[1:9], stream)
-	binary.BigEndian.PutUint32(header[9:13], uint32(len(payload)))
-	if _, err := w.Write(header[:]); err != nil {
-		return err
-	}
-	if len(payload) == 0 {
-		return nil
-	}
-	_, err := w.Write(payload)
-	return err
+	frame := append(scratch[:0], op)
+	frame = binary.BigEndian.AppendUint64(frame, stream)
+	frame = binary.BigEndian.AppendUint32(frame, uint32(len(payload)))
+	frame = append(frame, payload...)
+	_, err := w.Write(frame)
+	return frame, err
 }
 
 // readFrame takes one frame off a carrier. The payload is freshly allocated
@@ -96,13 +93,18 @@ func readFrame(r io.Reader) (op byte, stream uint64, payload []byte, err error) 
 const streamDepth = 8
 
 // muxStream is one surface's byte stream, presented as the [io.ReadWriteCloser]
-// everything above this package deals in.
+// everything above this package deals in. It carries real read and write
+// deadlines so a handshake above this package can evict a silent caller instead
+// of letting it hold one of a machine's [MaxStreams] slots forever.
 type muxStream struct {
 	id      uint64
 	carrier *carrier
 
 	incoming chan []byte
 	rest     []byte
+
+	readDeadline  streamDeadline
+	writeDeadline streamDeadline
 
 	// closed is THIS END letting go, and incoming being closed is the FAR END
 	// letting go. THE TWO ARE DELIBERATELY NOT THE SAME SIGNAL, and conflating
@@ -119,14 +121,40 @@ type muxStream struct {
 
 func newMuxStream(id uint64, c *carrier) *muxStream {
 	return &muxStream{
-		id:       id,
-		carrier:  c,
-		incoming: make(chan []byte, streamDepth),
-		closed:   make(chan struct{}),
+		id:            id,
+		carrier:       c,
+		incoming:      make(chan []byte, streamDepth),
+		readDeadline:  newStreamDeadline(),
+		writeDeadline: newStreamDeadline(),
+		closed:        make(chan struct{}),
 	}
 }
 
+func (s *muxStream) SetDeadline(t time.Time) error {
+	s.readDeadline.set(t)
+	s.writeDeadline.set(t)
+	return nil
+}
+
+func (s *muxStream) SetReadDeadline(t time.Time) error {
+	s.readDeadline.set(t)
+	return nil
+}
+
+func (s *muxStream) SetWriteDeadline(t time.Time) error {
+	s.writeDeadline.set(t)
+	return nil
+}
+
+func (s *muxStream) stopDeadlines() {
+	s.readDeadline.set(time.Time{})
+	s.writeDeadline.set(time.Time{})
+}
+
 func (s *muxStream) Read(b []byte) (int, error) {
+	if isClosedChan(s.readDeadline.wait()) {
+		return 0, os.ErrDeadlineExceeded
+	}
 	for len(s.rest) == 0 {
 		select {
 		case chunk, ok := <-s.incoming:
@@ -139,6 +167,8 @@ func (s *muxStream) Read(b []byte) (int, error) {
 			s.rest = chunk
 		case <-s.closed:
 			return 0, io.EOF
+		case <-s.readDeadline.wait():
+			return 0, os.ErrDeadlineExceeded
 		}
 	}
 	n := copy(b, s.rest)
@@ -152,10 +182,20 @@ func (s *muxStream) Write(b []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	default:
 	}
+	if isClosedChan(s.writeDeadline.wait()) {
+		return 0, os.ErrDeadlineExceeded
+	}
 	// A write is cut into carrier-sized frames, because a caller above knows
 	// nothing about this framing and must not have to.
 	written := 0
 	for len(b) > 0 {
+		select {
+		case <-s.closed:
+			return written, io.ErrClosedPipe
+		case <-s.writeDeadline.wait():
+			return written, os.ErrDeadlineExceeded
+		default:
+		}
 		chunk := b
 		if len(chunk) > MaxPayload {
 			chunk = chunk[:MaxPayload]
@@ -172,10 +212,70 @@ func (s *muxStream) Write(b []byte) (int, error) {
 func (s *muxStream) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.closed)
+		s.stopDeadlines()
 		_ = s.carrier.send(opClose, s.id, nil)
 		s.carrier.forget(s.id)
 	})
 	return nil
+}
+
+// streamDeadline signals when a stream's read or write deadline has passed, in
+// the shape of net.Pipe's pipeDeadline so blocked callers wake at once and
+// cleared deadlines hold no timer.
+type streamDeadline struct {
+	mu     sync.Mutex
+	timer  *time.Timer
+	cancel chan struct{}
+}
+
+func newStreamDeadline() streamDeadline {
+	return streamDeadline{cancel: make(chan struct{})}
+}
+
+func (d *streamDeadline) set(t time.Time) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.timer != nil && !d.timer.Stop() {
+		<-d.cancel
+	}
+	d.timer = nil
+
+	closed := isClosedChan(d.cancel)
+	if t.IsZero() {
+		if closed {
+			d.cancel = make(chan struct{})
+		}
+		return
+	}
+	if dur := time.Until(t); dur > 0 {
+		if closed {
+			d.cancel = make(chan struct{})
+		}
+		cancel := d.cancel
+		d.timer = time.AfterFunc(dur, func() {
+			close(cancel)
+		})
+		return
+	}
+	if !closed {
+		close(d.cancel)
+	}
+}
+
+func (d *streamDeadline) wait() chan struct{} {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.cancel
+}
+
+func isClosedChan(c <-chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
 }
 
 // deliver hands a frame to this stream's reader, or drops it on the floor once
@@ -203,9 +303,11 @@ type carrier struct {
 	conn io.ReadWriteCloser
 
 	writeMu sync.Mutex
+	scratch []byte // the frame being written, reused under writeMu
 
 	mu      sync.Mutex
 	streams map[uint64]*muxStream
+	probes  map[chan struct{}]struct{}
 	nextID  uint64
 	gone    bool
 
@@ -247,7 +349,9 @@ func (c *carrier) send(op byte, stream uint64, payload []byte) error {
 	if gone {
 		return errCarrierGone
 	}
-	if err := writeFrame(c.conn, op, stream, payload); err != nil {
+	scratch, err := writeFrame(c.conn, c.scratch, op, stream, payload)
+	c.scratch = scratch
+	if err != nil {
 		return err
 	}
 	return nil
@@ -329,9 +433,50 @@ func (c *carrier) pump() {
 		case opPing:
 			_ = c.send(opPong, id, nil)
 		case opPong:
-			// Nothing to do: the frame arriving is the whole of the answer,
-			// and [IdleAfter] is measured against ANY byte on the carrier.
+			c.mu.Lock()
+			for ch := range c.probes {
+				close(ch)
+				delete(c.probes, ch)
+			}
+			c.mu.Unlock()
 		}
+	}
+}
+
+// probe tests whether an older carrier under the same key is still answering,
+// waiting at most within for its pong. A live machine answers in one round
+// trip; one whose network vanished says nothing and lets its successor in.
+func (c *carrier) probe(within time.Duration) bool {
+	ch := make(chan struct{})
+	c.mu.Lock()
+	if c.gone {
+		c.mu.Unlock()
+		return false
+	}
+	if c.probes == nil {
+		c.probes = map[chan struct{}]struct{}{}
+	}
+	c.probes[ch] = struct{}{}
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.probes, ch)
+		c.mu.Unlock()
+	}()
+
+	if err := c.send(opPing, 0, nil); err != nil {
+		return false
+	}
+	timer := time.NewTimer(within)
+	defer timer.Stop()
+	select {
+	case <-ch:
+		return true
+	case <-c.done:
+		return false
+	case <-timer.C:
+		return false
 	}
 }
 
@@ -356,7 +501,10 @@ func (c *carrier) shutdown(cause error) {
 		// without the race.
 		close(c.done)
 		for _, stream := range streams {
-			stream.closeOnce.Do(func() { close(stream.closed) })
+			stream.closeOnce.Do(func() {
+				close(stream.closed)
+				stream.stopDeadlines()
+			})
 		}
 		_ = c.conn.Close()
 	})

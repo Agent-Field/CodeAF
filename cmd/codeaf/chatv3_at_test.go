@@ -1,8 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // The target is read the way the ssh door reads its own, because it is the same
@@ -58,19 +65,20 @@ func TestTheFlagsThatBuildASessionCannotTravelOverAt(t *testing.T) {
 }
 
 // WITH NO RELAY SET UP, BOTH DOORS SAY SO IN ONE SENTENCE AND NAME THE ROAD
-// THAT DOES WORK. The relay is a service, this build does not assume one is
-// running, and a person who meets this must not be left guessing whether their
-// network is broken.
+// THAT DOES WORK. Sync falls back to the hosted relay, so the only machine
+// with no relay is one whose person turned sync off, and they must not be
+// left guessing whether their network is broken.
 func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_RELAY", "")
+	t.Setenv(syncsetup.URLVar, "off")
 
 	err := openChatV3At(atLaunch{target: "otter-lamp-42"})
 	if err == nil {
 		t.Fatal("--at opened a connection with no relay set up")
 	}
 	said := err.Error()
-	for _, want := range []string{"no service address is set up", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
+	for _, want := range []string{"no sync service is set up on this machine", "CODEAF_RELAY", "--host over ssh", "otter-lamp-42"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("--at with no relay said %q, which does not mention %q", said, want)
 		}
@@ -84,10 +92,46 @@ func TestWithNoRelayBothDoorsSayWhatIsWrongAndWhatToDoInstead(t *testing.T) {
 		t.Fatal("codeaf serve started with no relay set up")
 	}
 	said = err.Error()
-	for _, want := range []string{"no sync address is set up", "CODEAF_RELAY", "--host"} {
+	for _, want := range []string{"no sync service is set up on this machine", "CODEAF_RELAY", "set " + pair.RelayEnv + " to your sync service"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("codeaf serve with no relay said %q, which does not mention %q", said, want)
 		}
+	}
+	if strings.Contains(said, "--host") {
+		t.Fatalf("codeaf serve told this computer to reach itself: %q", said)
+	}
+}
+
+// SERVE, --at, PAIRING AND SYNC AGREE ABOUT THE RELAY. A machine whose chats
+// sync is reachable through that same relay with nothing else set up, whether
+// sync's address came from the variable, a saved pairing or the hosted default.
+func TestServeAtPairingAndSyncResolveOneRelay(t *testing.T) {
+	cases := []struct{ name, variable, saved, want string }{
+		{"the hosted default", "", "", syncsetup.HostedRelayURL},
+		{"the relay a pairing saved", "", "https://saved.example/fabric", "https://saved.example/fabric"},
+		{"the variable", "https://variable.example", "https://saved.example/fabric", "https://variable.example"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			t.Setenv(pair.RelayEnv, "")
+			t.Setenv(syncsetup.URLVar, c.variable)
+			if c.saved != "" {
+				if err := syncsetup.SaveRelayURL(home.Dir(), c.saved); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mailbox, err := pairMailbox("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sync := syncsetup.Resolve(home.Dir()).URL
+			serve := pair.Relay(syncRelayURL())
+			at := pair.RelayFor(pair.Known{}, false, syncRelayURL())
+			if sync != c.want || mailbox.URL != c.want || serve != c.want || at != c.want {
+				t.Fatalf("sync %q, pairing %q, serve %q, --at %q; want all %q", sync, mailbox.URL, serve, at, c.want)
+			}
+		})
 	}
 }
 
@@ -106,5 +150,51 @@ func TestDevicesOnAFreshMachineSaysNothingIsPaired(t *testing.T) {
 	}
 	if err := runDevices([]string{"nonsense"}); err == nil {
 		t.Fatal("an unknown word was accepted")
+	}
+}
+
+// Contract item 7 (Finding 10): `codeaf serve --help` names the full relay
+// precedence — CODEAF_RELAY, ~/.codeaf/v3/remote/relay, then sync — matching
+// what pair.Relay and pair.RelayFor actually resolve.
+func TestServeHelpAndRelayPrecedenceIncludeSavedRemoteRelayFile(t *testing.T) {
+	var buf bytes.Buffer
+	previous := usageOut
+	usageOut = &buf
+	t.Cleanup(func() { usageOut = previous })
+
+	if err := runServe([]string{"--help"}); err != exitHelped {
+		t.Fatalf("runServe(--help) returned %v, want exitHelped", err)
+	}
+	help := strings.Join(strings.Fields(buf.String()), " ")
+	envPos := strings.Index(help, pair.RelayEnv)
+	filePos := strings.Index(help, "~/.codeaf/v3/remote/relay")
+	syncPos := strings.Index(help, "syncs through")
+	if envPos < 0 || filePos < 0 || syncPos < 0 || !(envPos < filePos && filePos < syncPos) {
+		t.Fatalf("serve --help did not list %s, ~/.codeaf/v3/remote/relay, then sync in order: %q", pair.RelayEnv, help)
+	}
+
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv(pair.RelayEnv, "")
+	t.Setenv(syncsetup.URLVar, "https://sync.example")
+	if err := os.MkdirAll(filepath.Dir(pair.RelayFile()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pair.RelayFile(), []byte("https://file.example/fabric\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := pair.Relay(syncRelayURL()); got != "https://file.example/fabric" {
+		t.Fatalf("serve precedence with v3/remote/relay gave %q, want file override", got)
+	}
+	if got := pair.RelayFor(pair.Known{}, false, syncRelayURL()); got != "https://file.example/fabric" {
+		t.Fatalf("unpaired --at precedence with v3/remote/relay gave %q, want file override", got)
+	}
+	paired := pair.Known{Service: "https://paired.example/fabric"}
+	if got := pair.RelayFor(paired, true, syncRelayURL()); got != "https://paired.example/fabric" {
+		t.Fatalf("paired --at precedence gave %q, want paired machine service over file", got)
+	}
+	t.Setenv(pair.RelayEnv, "https://env.example/fabric")
+	if got := pair.RelayFor(paired, true, syncRelayURL()); got != "https://env.example/fabric" {
+		t.Fatalf("CODEAF_RELAY precedence gave %q, want env override", got)
 	}
 }

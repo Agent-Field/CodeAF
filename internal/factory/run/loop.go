@@ -1277,26 +1277,7 @@ func shortfall(res factory.StageResult) string {
 	if reason := verificationReason(res); reason != "" {
 		return "verification blocked: " + reason
 	}
-	switch {
-	case !res.Done:
-		return "no result"
-	case res.Findings == 1:
-		return "1 finding"
-	case res.Findings > 1:
-		return strconv.Itoa(res.Findings) + " findings"
-	case res.Exit != 0:
-		return "exit " + strconv.Itoa(res.Exit)
-	}
-	shown := 0
-	for _, cl := range res.Claims {
-		if cl.OK && strings.TrimSpace(cl.Evidence) != "" {
-			shown++
-		}
-	}
-	if len(res.Claims) == 0 {
-		return "no claims"
-	}
-	return fmt.Sprintf("%d of %d claims shown", shown, len(res.Claims))
+	return factory.Shortfall(res)
 }
 
 // held waits while the item is paused, and answers false when it stopped.

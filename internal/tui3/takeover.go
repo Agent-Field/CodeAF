@@ -591,6 +591,7 @@ func (a *app) takeOver() tea.Cmd {
 		// This window is reopening the same chat, so retirement needs no new chat.
 		a.dropParked()
 		a.writeDraftsNow(a.leavingDraft())
+		a.retainSavingDurability([]Agent{a.agent})
 		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil)
 	}
 	a.dropParked()

@@ -957,11 +957,15 @@ func newWriteTool(cwd string) Tool {
 		Schema:      json.RawMessage(writeSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
-				Path    string `json:"path"`
-				Content string `json:"content"`
+				Path    string  `json:"path"`
+				Content *string `json:"content"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
 				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
+			}
+
+			if p.Content == nil {
+				return "Invalid arguments: content is required and must be a string", true, nil
 			}
 
 			absPath := resolveToCwd(p.Path, cwd)
@@ -977,7 +981,7 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				written, err := writeFileObserved(absPath, []byte(p.Content))
+				written, err := writeFileObserved(absPath, []byte(*p.Content))
 				if err != nil {
 					return err.Error(), true, nil
 				}
@@ -992,7 +996,7 @@ func newWriteTool(cwd string) Tool {
 				}
 				// pi uses content.length which is the JS string char length
 				// (UTF-16 code units), NOT the byte length.
-				return fmt.Sprintf("Successfully wrote %d bytes to %s", utf16Length(p.Content), p.Path), false, nil
+				return fmt.Sprintf("Successfully wrote %d bytes to %s", utf16Length(*p.Content), p.Path), false, nil
 			})
 		},
 	}

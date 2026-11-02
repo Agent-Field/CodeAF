@@ -72,7 +72,7 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), err)
 	}
 	if response.Err != "" {
-		return nil, fmt.Errorf("engine %s: %s", op.Verb(), response.Err)
+		return nil, classifyStoreBusyError(t.DataDir, d.Socket, fmt.Errorf("engine %s: %s", op.Verb(), response.Err))
 	}
 	return response.Ok, nil
 }

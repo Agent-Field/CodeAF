@@ -1027,6 +1027,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	}
 
 	cfg := session.Config{
+		TeamComputers:  teamComputers,
 		Workspace:      workspace,
 		Model:          chosen,
 		APIKey:         settings.APIKey,

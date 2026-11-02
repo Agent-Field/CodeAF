@@ -492,3 +492,29 @@ func TestBranchRecordsCannotNameUnrelatedLocalWork(t *testing.T) {
 		t.Fatalf("ignored current record: %s", got)
 	}
 }
+
+// A WORKTREE AN EARLIER RELEASE NAMED DIFFERENTLY still holds the job's
+// branch: the folder once took the repository's display name ("CodeAF-1796"),
+// now its slug. Discard finds it by the branch it holds inside this work root
+// and deletes both; once, the branch alone was refused as "used by worktree",
+// at every launch.
+func TestDiscardFindsTheJobsWorktreeUnderAnEarlierName(t *testing.T) {
+	checkout := gitRig(t)
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	it := wdItem()
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	earlier := filepath.Join(filepath.Dir(dir), "Earlier-"+filepath.Base(dir))
+	mustGit(t, checkout, "worktree", "move", dir, earlier)
+	if err := w.Discard(it, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(earlier); !os.IsNotExist(err) {
+		t.Fatal("the job's worktree under its earlier name remains")
+	}
+	if branches := mustGit(t, checkout, "branch", "--list", w.Branch(it)); branches != "" {
+		t.Fatalf("the job's branch remains: %q", branches)
+	}
+}

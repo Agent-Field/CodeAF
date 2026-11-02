@@ -4421,6 +4421,7 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 type bankedCall struct {
 	// run is captured from the call's immutable execution context, never the current turn.
 	run    string
+	remote *remoteUsage
 	used   Usage
 	model  string
 	role   string

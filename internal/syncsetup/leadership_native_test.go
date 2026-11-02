@@ -39,6 +39,10 @@ func personalLeader(t *testing.T, r *memberRig, s *Sync) cs.LeadershipReceipt {
 	if status.Leader != receipt.Node || !slices.Equal(status.Configuration.Voters, []uint64{1, 2, receipt.Node}) || status.Configuration.Joint() || !slices.Contains(status.Configuration.Learners, 3) || status.Membership.Leadership == nil || !status.Membership.Leadership.Completed {
 		t.Fatalf("R6 transfer lacks durable settlement/elected leader: %+v %+v", receipt, status)
 	}
+	// Status returns as soon as one anchor voter answers ReadIndex quorum, while
+	// the remaining peer responses and their cursor acknowledgments finish on
+	// the member socket; settle them before callers snapshot post-decision traffic.
+	waitMember(t, s, func(m *personalMember) bool { return m.idle })
 	return receipt
 }
 

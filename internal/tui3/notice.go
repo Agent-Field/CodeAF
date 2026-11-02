@@ -402,7 +402,7 @@ var notices = []notice{
 		// it.
 		id: "home-by-two-spaces", slot: slotHint,
 		armed:  awayFromHome,
-		text:   "space space takes you back to home",
+		text:   "space space brings you back to home",
 		retire: eventHomeGesture,
 	},
 	{

@@ -98,6 +98,7 @@ func TestTaskWorkspaceTransactionRejectsChangedPermissions(t *testing.T) {
 }
 
 func TestTaskWorkspaceTransactionGitRefFailureRollsBackPortableState(t *testing.T) {
+	// macOS additions need supported metadata without changing the original project root group.
 	agent, id, _, source, copyDir := completedWorkspaceApplyFixtureWithInput(t, true, func(root string) {
 		if err := os.Symlink("shared.txt", filepath.Join(root, "pointer")); err != nil {
 			t.Fatal(err)
@@ -120,6 +121,7 @@ func TestTaskWorkspaceTransactionGitRefFailureRollsBackPortableState(t *testing.
 	if err := os.Mkdir(filepath.Join(copyDir, "empty"), 0750); err != nil {
 		t.Fatal(err)
 	}
+	prepareWorkspaceApplyFixture(t, copyDir)
 	if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 		t.Fatal(err)
 	}
@@ -193,10 +195,12 @@ func TestTaskWorkspaceTransactionPreservesUnrelatedStagedAndDirtyFiles(t *testin
 }
 
 func TestTaskWorkspaceTransactionPreservesRawBytesWithCleanGitRepresentation(t *testing.T) {
+	// macOS additions need supported metadata without changing the original project root group.
 	agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, true)
 	mustGit(t, source, "config", "core.safecrlf", "warn")
 	writeFile(t, filepath.Join(copyDir, ".gitattributes"), "*.txt text eol=lf\n")
 	writeFile(t, filepath.Join(copyDir, "shared.txt"), "reviewed CRLF\r\n")
+	prepareWorkspaceApplyFixture(t, copyDir)
 	if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 		t.Fatal(err)
 	}
@@ -272,11 +276,13 @@ func TestTaskWorkspaceTransactionCheckpointFailureReplaysWithoutApplyingAgain(t 
 }
 
 func TestTaskWorkspaceTransactionPreservesGitFilenames(t *testing.T) {
+	// macOS additions need supported metadata without changing the original project root group.
 	agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, true)
 	paths := []string{"has space.txt", "line\nbreak.txt", "-leading.txt", "café-文件.txt"}
 	for _, path := range paths {
 		writeFile(t, filepath.Join(copyDir, path), "reviewed "+path+"\r\n")
 	}
+	prepareWorkspaceApplyFixture(t, copyDir)
 	if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 		t.Fatal(err)
 	}
@@ -294,12 +300,14 @@ func TestTaskWorkspaceTransactionPreservesGitFilenames(t *testing.T) {
 }
 
 func TestTaskWorkspaceTransactionApplyScale(t *testing.T) {
+	// macOS additions need supported metadata without changing the original project root group.
 	for _, count := range []int{100, 1000} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, true)
 			for index := 0; index < count; index++ {
 				writeFile(t, filepath.Join(copyDir, fmt.Sprintf("result-%04d.txt", index)), "reviewed result\r\n")
 			}
+			prepareWorkspaceApplyFixture(t, copyDir)
 			if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 				t.Fatal(err)
 			}
@@ -413,6 +421,7 @@ func TestTaskWorkspaceTransactionRefusesConfiguredSplitPreference(t *testing.T) 
 }
 
 func TestTaskWorkspaceTransactionKeepsRootGroupAndNormalizesNewDirectory(t *testing.T) {
+	// macOS additions need supported metadata without changing the original project root group.
 	groups, err := os.Getgroups()
 	if err != nil {
 		t.Fatal(err)
@@ -435,6 +444,7 @@ func TestTaskWorkspaceTransactionKeepsRootGroupAndNormalizesNewDirectory(t *test
 	if err := os.Mkdir(filepath.Join(copyDir, "new-directory"), 0750); err != nil {
 		t.Fatal(err)
 	}
+	prepareWorkspaceApplyFixture(t, copyDir)
 	if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 		t.Fatal(err)
 	}

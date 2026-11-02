@@ -42,6 +42,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"strconv"
 	"strings"
 	"time"
@@ -206,7 +207,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 			}
 			members = append(members, m)
 		}
-		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now()}
+		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now(), CreatedBy: teams.ConversationName(role.key)}
 		f.Teams = append(f.Teams, child)
 		if share := f.SubTeamCap(parent.ID, d); share > 0 {
 			if err := f.SetSettings(child.ID, func(s *teams.Settings) { s.CapUSDDay = &share }); err != nil {
@@ -594,6 +595,13 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	if origin == "" {
 		origin = role.id
 	}
+	// A remote decider cannot read this computer's packet or its wake. Refuse
+	// before Raise records either, rather than claiming it reached a manager.
+	if manager, ok := lca.Member(lca.Manager); ok {
+		if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{manager}); refusal != "" {
+			return refusal, true, nil
+		}
+	}
 	prov := turnOriginFrom(ctx).provenance(role.key)
 	raised, err := teams.RaiseFrom(profile, teams.Packet{
 		Team: decider, Origin: origin, Kind: teams.PacketConflict, RaisedBy: role.handle,
@@ -696,6 +704,17 @@ func readableBelow(profile string, team teams.Team, words string) (teams.Member,
 // to, marked with the sub-team it came from, and that manager roused.
 func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (string, bool, error) {
 	profile := a.config.teamProfile()
+	if config.TeamsShareAt(profile) {
+		if file, _, _, _ := a.teamSnapshot(profile); file != nil {
+			if boss, ok := file.Team(role.boss); ok {
+				if m, ok := boss.Member(boss.Manager); ok {
+					if refusal := a.teamDeliveryRefusal(context.Background(), []teams.Member{m}); refusal != "" {
+						return refusal, true, nil
+					}
+				}
+			}
+		}
+	}
 	entry.Member = role.key
 	entry.Text = fmt.Sprintf("(from %q, a team under yours with no manager of its own) %s", team.Name, entry.Text)
 	// THE LINE'S OWN NUMBER AND ITS TEAM'S ID ARE IN THE ANSWER, as for a post

@@ -61,11 +61,11 @@ type PeopleLoader struct {
 	failed  map[string]time.Time
 	reading bool
 
-	// ownersMu is separate because an ownership read does hold its lock over
-	// the forge call: it happens once per repository per poll, and two
-	// callers asking for the same file should share one read.
-	ownersMu sync.Mutex
-	owners   map[string]ownerRead
+	// ownersMu guards owners and is never held over the forge call; ownersAsk
+	// makes the callers asking for the same file share one read.
+	ownersMu  sync.Mutex
+	ownersAsk behind
+	owners    map[string]ownerRead
 }
 
 // NewPeopleLoader binds the forge and an optional deterministic clock.
@@ -188,19 +188,33 @@ func (l *PeopleLoader) read(ctx context.Context, handle string, seen profileRead
 
 // RefreshOwners invalidates both missing files and failures on every poll.
 func (l *PeopleLoader) RefreshOwners(ctx context.Context, repo string) {
+	seen := l.readOwners(ctx, repo)
 	l.ownersMu.Lock()
 	defer l.ownersMu.Unlock()
-	l.owners[repo] = l.readOwners(ctx, repo)
+	l.owners[repo] = seen
 }
 
 // Owners returns independent rules so a caller cannot mutate the poll cache.
+// Every reader only shows owners (the queue, a job's card), so a repository
+// not read yet waits for the forge at most [FirstWait] and then answers none,
+// while the forge's answer lands for the next read; the forge is never asked
+// while ownersMu is held.
 func (l *PeopleLoader) Owners(ctx context.Context, repo string) ([]factory.CodeOwner, error) {
 	l.ownersMu.Lock()
-	defer l.ownersMu.Unlock()
 	seen, ok := l.owners[repo]
+	l.ownersMu.Unlock()
 	if !ok {
-		seen = l.readOwners(ctx, repo)
-		l.owners[repo] = seen
+		l.ownersAsk.start(repo, "factory/codeowners read", func(ctx context.Context) {
+			seen := l.readOwners(ctx, repo)
+			l.ownersMu.Lock()
+			defer l.ownersMu.Unlock()
+			if _, known := l.owners[repo]; !known || ctx.Err() == nil {
+				l.owners[repo] = seen
+			}
+		}).wait(ctx, FirstWait)
+		l.ownersMu.Lock()
+		seen = l.owners[repo]
+		l.ownersMu.Unlock()
 	}
 	out := make([]factory.CodeOwner, len(seen.rules))
 	for i, rule := range seen.rules {

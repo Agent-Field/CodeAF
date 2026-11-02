@@ -104,7 +104,7 @@ func TestPairReplaceAsksAndOnlyYesJoins(t *testing.T) {
 	r.slash("/pair 71-869-571 --replace")
 	r.until("the question", func() bool { return a.pair.ask != nil })
 	shown := strings.Join(strings.Fields(plain(frame(a))), " ")
-	for _, want := range []string{"Replace them?", "cannot be read afterwards", "gone for good"} {
+	for _, want := range []string{"Pair with your other devices?", "existing chats stay here", "shared memories and settings are cleared"} {
 		if !strings.Contains(shown, want) {
 			t.Fatalf("no replace confirmation (lacks %q):\n%s", want, shown)
 		}

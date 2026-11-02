@@ -87,6 +87,8 @@ type Moved struct {
 //     for the person.
 //   - Ask is a new ask for a stage, by name.
 //   - Thinking is a stage's thinking, by name: "", cheap or strong.
+//   - Model is the model a stage runs on, by name: a model id, or "" for the
+//     job's. Only the person picks it, and only for a conversation.
 //   - On switches a stage on by name, an off one included.
 //   - Skip switches a stage off by name; it stays in the job, off.
 //   - Remove takes a stage out of this job by name: it is gone from the job's
@@ -99,6 +101,7 @@ type RunEdit struct {
 	Add      []Added
 	Ask      map[string]string
 	Thinking map[string]string
+	Model    map[string]string
 	On       []string
 	Skip     []string
 	Remove   []string
@@ -110,7 +113,7 @@ type RunEdit struct {
 // Empty says the edit changes nothing. A reason with no change is nothing to
 // record.
 func (e RunEdit) Empty() bool {
-	return len(e.Add) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
+	return len(e.Add) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.Model) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
 		len(e.Remove) == 0 && len(e.Move) == 0
 }
 
@@ -383,6 +386,36 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			} else {
 				say("set " + stages[i].Name + " thinking " + word)
 			}
+		}
+	}
+	for _, name := range sortedKeys(e.Model) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		model := strings.TrimSpace(e.Model[name])
+		switch {
+		// THE MODEL A STEP RUNS ON IS THE PERSON'S PICK: it is what the step
+		// costs, so neither the manager nor the plan chooses it.
+		case who != ByYou:
+			refuse("only the person picks the model a step runs on")
+		case !ModelID(model):
+			refuse("%s", ErrModelID.Error())
+		case stages[i].Kind == StageCheck || IsApprove(stages[i]):
+			refuse("%s is a check or an approval and runs no model", stages[i].Name)
+		case fixed(i) && model != stages[i].Model:
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && model != stages[i].Model:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case model != stages[i].Model:
+			stages[i].Model = model
+			mark(i, "")
+			if model == "" {
+				model = "usual"
+			}
+			say("set " + stages[i].Name + " model " + model)
 		}
 	}
 	for _, add := range e.Add {

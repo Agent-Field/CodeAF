@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ func (a *Agent) recoverBeltRun() {
 	if g == nil || g.planPath() == "" {
 		return
 	}
+	defer a.retrySavedRemoteAcks(g)
 	if _, err := os.Stat(g.planPath()); err != nil {
 		return
 	}
@@ -38,6 +40,9 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	kept, found := runRowOf(g, id)
+	if a.recoverRemoteBeltRun(g, store, &kept, found) {
+		return
+	}
 	if !found || kept.State != TaskInterrupted {
 		return
 	}
@@ -171,10 +176,17 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 		admission:   newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, g.lanes),
 		machineHeld: map[string]bool{planStoreID(reopened.RootID()): true},
 	}
+	engine, err := a.pendingRunEngine(ctx, run, kept)
+	if err != nil {
+		cut()
+		reopened.Close()
+		a.interruptUnrecoverableRun(g, kept, err.Error())
+		return
+	}
 	a.installBeltRun(g, run)
 	kept.State, kept.Waiting = TaskQueued, waitingMachineBusy
 	a.publishRunRow(g, kept)
-	go a.driveBeltRun(ctx, chatRunEngine, run, RunSpec{})
+	go a.driveBeltRun(ctx, engine, run, RunSpec{})
 }
 
 // invalidPendingRun refuses incomplete or obsolete records instead of guessing
@@ -238,4 +250,77 @@ func recoveredJoinedRows(g *TaskGraph, parent uint64) []uint64 {
 		}
 	}
 	return ids
+}
+
+// Remote recovery follows the authoritative sidecar and never starts another worker.
+func (a *Agent) recoverRemoteBeltRun(g *TaskGraph, store *plandb.Store, kept *TaskNotice, found bool) bool {
+	if !found {
+		return false
+	}
+	remote := readRemoteRecord(store, kept.Remote)
+	if remote == nil {
+		return false
+	}
+	kept.Remote = remote
+	if remote.Settled && !remote.Abandoned {
+		return true
+	}
+	if remote.Abandoned {
+		return false
+	}
+	if kept.PendingRun != nil && remote.Attempt == "" {
+		a.resumeRemotePreparation(g, *kept)
+		return true
+	}
+	if remote.StartFailed {
+		kept.State = TaskFailed
+		a.publishRunRow(g, *kept)
+		return true
+	}
+	if kept.State.settled() && kept.State != TaskInterrupted && !kept.EndedAt.IsZero() {
+		// A persisted final row already completed landing; only its acknowledgement can remain.
+		if remote.Finished && remote.Restored {
+			remote.Settled = true
+			remote.AckPending = true
+			_ = writeRemoteRecord(store, *remote)
+			kept.Remote = remote
+		}
+		return true
+	}
+	_, _ = a.continueRemoteRun(a.rootContext(), *kept)
+	return true
+}
+
+// Missing capability leaves the remote intent readable and recoverable without local execution.
+func (a *Agent) resumeRemotePreparation(g *TaskGraph, kept TaskNotice) {
+	if a.config.TaskComputers == nil {
+		kept.State, kept.Report = TaskInterrupted, taskComputersUnavailable
+		a.publishRunRow(g, kept)
+		return
+	}
+	a.resumePendingRun(g, kept)
+}
+
+// Recovery adopts any recorded copy; preparing it again would overwrite retained work.
+func (a *Agent) pendingRunEngine(ctx context.Context, run *beltRun, kept TaskNotice) (RunEngine, error) {
+	if kept.Remote == nil || kept.Remote.Abandoned {
+		return chatRunEngine, nil
+	}
+	if a.config.TaskComputers == nil {
+		return nil, errors.New(taskComputersUnavailable)
+	}
+	remote, err := a.taskExecutorEngine(ctx, kept.Remote.Executor)
+	if err != nil {
+		return nil, err
+	}
+	run.remoteEngine, run.remote = remote, cloneTaskRemote(kept.Remote)
+	run.placement.computer = &TaskComputer{Device: kept.Remote.Executor.Device, Name: kept.Remote.Executor.Name, CanTakeTasks: true}
+	if kept.Copy != nil || kept.WorkspaceSet != nil {
+		tree, err := reopenWorkspaceSet(kept.Copy, kept.WorkspaceSet, a.config.Place)
+		if err != nil {
+			return nil, err
+		}
+		run.tree, run.workspace, run.ground = tree, tree.dir, tree.ground
+	}
+	return remote, nil
 }

@@ -56,6 +56,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Description = "Collapsed keeps completed tool steps behind one summary. Expanded keeps those details visible."
 	case KeyIcons:
 		p.Label = "tool icons"
+	case KeyTeamsShare:
+		p.Scope = "This computer"
+		p.Activation = "Applies immediately"
 	case KeyTaskColumn:
 		p.Label = "task sidebar"
 	case KeyQuickSwitch:

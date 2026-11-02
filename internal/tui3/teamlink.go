@@ -276,7 +276,13 @@ func (a *app) teamLinkPress(link taskLink) tea.Cmd {
 		return a.openTeamFromLink(t)
 	}
 	m, ok := t.Member(link.member)
-	if !ok || m.Key == a.frontTabKey() {
+	if !ok {
+		return nil
+	}
+	if cmd, remote := a.teamsRemoteFront(m.Key); remote {
+		return cmd
+	}
+	if m.Key == a.frontTabKey() {
 		return nil
 	}
 	for _, tab := range a.tabList() {

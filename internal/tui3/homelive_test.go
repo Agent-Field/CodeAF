@@ -58,13 +58,13 @@ func TestHomeLiveSource(t *testing.T) {
 	live := &liveDirectory{dir: here, self: "dev_here", key: key}
 
 	a := machinesHome(t, live, 200)
-	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(text, "running on host-a") {
+	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(text, "held on host-a") {
 		t.Fatalf("a chat running elsewhere is not listed as such:\n%s", text)
 	}
 
 	clock.Advance(directory.LeaseTTL + 1)
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "host-a offline") || strings.Contains(text, "running on host-a") {
+	if text := homeText(a); !strings.Contains(text, "host-a offline") || strings.Contains(text, "held on host-a") {
 		t.Fatalf("the chat went quiet and home did not follow:\n%s", text)
 	}
 
@@ -73,8 +73,10 @@ func TestHomeLiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "2 turns from host-a") {
-		t.Fatalf("a branch that appeared is not listed:\n%s", text)
+	// A branch of the chat folds into the chat's own row (#2070): the row keeps
+	// its state and counts the copy rather than standing a second row beside it.
+	if text := homeText(a); !strings.Contains(text, "host-a offline · 1 copy") || strings.Count(text, "Port the picker") != 1 {
+		t.Fatalf("a branch that appeared is not counted on its chat's row:\n%s", text)
 	}
 
 	live.down = true

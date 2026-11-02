@@ -25,15 +25,16 @@ import (
 // file, or the factory's own copy in its place when st keeps one
 // ([factoryRepoRead]); a job's is the file it was decided on first
 // ([factoryJobFile]). st is nil for a worker's mirror, which keeps no copy:
-// the jobs it runs carry theirs.
+// the jobs it runs carry theirs. These recipes are only shown (the queue, a
+// job's card), so they never wait on GitHub ([factorygithub.ShowOnly]).
 func factoryPipelineOption(st *store.Store) factory.LocalOption {
 	return factory.WithOptions(pipeline.LocalFiles(),
 		factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
-			f, err := factoryRepoRead(context.Background(), st, repo, dir)
+			f, err := factoryRepoRead(factorygithub.ShowOnly(context.Background()), st, repo, dir)
 			return f.Recipe(), f.RecipeProblems(), err
 		}),
 		factory.WithJobRecipeLoader(func(it factory.Item, dir string) (factory.Recipe, []factory.Problem, error) {
-			f, err := factoryJobFile(context.Background(), st, it, it.Repo, dir)
+			f, err := factoryJobFile(factorygithub.ShowOnly(context.Background()), st, it, it.Repo, dir)
 			return f.Recipe(), f.RecipeProblems(), err
 		}))
 }
