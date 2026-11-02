@@ -135,8 +135,12 @@ type FactoryCapabilities struct {
 	// from the shipped defaults (feature factory.pipeline_edit_rules). True
 	// only for an engine that implements [FactoryPipelineRulesEditor].
 	PipelineEditRules bool `json:"pipeline_edit_rules"`
-	MaxConnections    int  `json:"max_connections"`
-	MaxFlows          int  `json:"max_flows"`
+	// SpendByRepo: factory.spend_by_repo is served (feature
+	// factory.spend_by_repo). True only for an engine that implements
+	// [FactorySpender]; a factory older than the route answers not found.
+	SpendByRepo    bool `json:"spend_by_repo"`
+	MaxConnections int  `json:"max_connections"`
+	MaxFlows       int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,
