@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,18 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// freshEngineFactoryStore keeps an in-process engine's factory store, opened
+// once per process, from outliving the temporary home of the test that opened it.
+func freshEngineFactoryStore(t *testing.T) {
+	t.Helper()
+	reset := func() {
+		engineFactoryStore.once = sync.Once{}
+		engineFactoryStore.store = nil
+	}
+	reset()
+	t.Cleanup(reset)
+}
 
 // Retry and giving back replace execution; only an explicit Stop is a stop.
 // The real solo worker runs a failing command and reports into the manager
@@ -27,6 +40,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			t.Setenv("CODEAF_BASE_URL", model.server.URL)
 			g := newRunRig(t)
 			freshEngineProcess(t)
+			freshEngineFactoryStore(t)
 			s.backend.open = appOpenInProcess
 			s.backend.local.parent = func() session.Config {
 				return session.Config{Workspace: g.workspace, Model: "test/model", OneModel: true, APIKey: "test-key", BaseURL: model.server.URL}
