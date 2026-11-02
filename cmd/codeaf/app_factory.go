@@ -166,6 +166,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
@@ -340,12 +341,16 @@ func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {
 	// THE PERSON THIS FACTORY KNOWS IS ITS OPERATOR: a job a start rule
 	// starts here is theirs.
 	return factoryIntakeOwned(st, func(ctx context.Context) string {
-		h.mu.Lock()
-		seam := h.seam
-		h.mu.Unlock()
-		handle, _ := seam.PersonHandle(ctx)
+		handle, _ := h.currentSeam().PersonHandle(ctx)
 		return handle
 	})
+}
+
+// currentSeam is the floor's door the service serves now.
+func (h *appFactoryHost) currentSeam() factory.Seam {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seam
 }
 
 // waitForPollSource is [waitForFactoryGitHub] over the test seam.
@@ -394,7 +399,17 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	} else if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/jobs/"); ok && rest != "" && !strings.Contains(rest, "/") {
 		kinds = append(kinds, "job")
 	}
+	for _, k := range h.firstAnswers(kinds) {
+		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
+		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
+	}
+}
+
+// firstAnswers marks kinds as answered and returns the ones answered for the
+// first time.
+func (h *appFactoryHost) firstAnswers(kinds []string) []string {
 	h.answeredMu.Lock()
+	defer h.answeredMu.Unlock()
 	var fresh []string
 	for _, k := range kinds {
 		if !h.answered[k] {
@@ -408,12 +423,9 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	if len(h.answered) == 3 {
 		h.allAnswered.Store(true)
 	}
-	h.answeredMu.Unlock()
-	for _, k := range fresh {
-		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
-		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
-	}
+	return fresh
 }
+
 func appFactoryProxy(target factoryTarget) http.Handler {
 	address, _ := url.Parse(target.url)
 	proxy := httputil.NewSingleHostReverseProxy(address)

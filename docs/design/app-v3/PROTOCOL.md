@@ -287,7 +287,11 @@ decides which combinations are accepted.
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
+| `factory.estimate_new` | `in.FactoryEstimateNewParams` | `NewEstimate` |
+| `factory.read` | `in.FactoryReadParams` | `ReadResult` |
+| `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
@@ -296,6 +300,7 @@ decides which combinations are accepted.
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
+| `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
 | `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
 | `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
@@ -313,6 +318,142 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+
+An engine whose hello carries `factory.repo_facts` serves
+`factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
+counted by the factory over every job it keeps (`GET
+/v1/repos/{owner}/{repo}/facts`), as `{repo, as_of, time_zone?, days, months,
+facts, truncated?}`. Each fact is `{id, kind, value, phrase, about?, source}`
+with `source` beginning `engine:`: jobs finished and pull requests merged in
+the last `days` (1 to 366, default 30) and this month, spend for each of the
+last `months` calendar months (1 to 12, default 3) by the rule of
+`factory.spend_by_repo`, jobs, rounds and questions by area by the rule of
+`factory.job_area`, and jobs stuck on one step for a day or more. At most 20
+areas and 20 stuck steps are answered, busiest first (at most 97 facts);
+`truncated` counts the rest. A repository the caller cannot read is not found.
+
+An engine whose hello carries the feature `factory.pipeline_pr_update` (and
+capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
+the number of an open pull request from a branch of the same repository into
+its default branch, and optionally `expected_head_sha`. The file is committed
+onto that pull request's head branch: `outcome` is `updated` (`pr.head_sha` is
+the new commit) or `unchanged` (`pr` is the pull request as it stands), and a
+refusal before any write names stage `head`. `branch`, `body` and
+`expected_base_sha` are refused with `pr`. An engine without the feature refuses
+`pr` as an unknown field.
+
+An engine whose hello carries the feature `factory.pipeline_source_ref` (and
+capabilities `pipeline_source_ref: true`) lets `factory.pipeline_source` take
+`ref`, one string: an open pull request's number in decimal (`"42"`), resolved
+to its head when the read is made, or the 40-hex commit at its head. The pull
+request must be open, from a branch of the same repository into its default
+branch, and change only the pipeline file; anything else is `conflict`. The
+answer is that file at that head, with `base_sha` the head and `ref` and `pr`
+saying what was read; `factory.pipeline_preview` takes that `base_sha`, and
+`factory.pipeline_pr` takes it as `expected_head_sha` with `pr`. A read without
+`ref` answers no `ref` or `pr`. An engine without the feature refuses `ref` as
+an unknown field; a factory older than the read refuses it, and the engine says
+the factory cannot read a pull request.
+An engine whose hello carries the feature `factory.repo_read` (and
+`FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
+path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
+checkout (`GET /v1/repos/{owner}/{repo}/read`), from git's object store at the
+default branch's tip, or at job `job`'s head commit when the checkout has it.
+`op` is `tree` (a folder's children: `entries` of `{path, type, size?}`, at most
+500), `grep` (lines matching the RE2 `pattern`, at most 256 bytes: `hits` of
+`{path, line, text}`, at most 50, searched for at most 5 seconds) or `read`
+(lines `from`..`to` of one file: `text`, at most 400 lines and 32 KiB, with
+`size` and `eof`). `truncated` says a bound stopped the answer. `untrusted` is
+always true: the text is the repository's own and is data, never
+instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
+`.git/`, `.npmrc`, `.netrc`, `.pypirc`, `credentials*`, `*secret*`, `*.p12`,
+`*.pfx`, `.aws/`, `.ssh/`, `.docker/config.json`, `kubeconfig`) are absent from
+`tree` and `grep`, and naming one is `forbidden` with the message `denied`; a
+binary file is `unreadable` with `binary`; a repository with no checkout on the
+factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
+factory older than the route is `conflict`.
+
+An engine whose hello carries `factory.job_area` sends `area` on each job of
+`factory.queue` and on `factory.job`: the part of the repository the job's
+change touched most, the repository's declared area or else the top-level
+directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
+`internal`, `pkg`, `lib`, `app`, `apps`, `packages`, `crates`, `cmd`) it is the
+first two segments (`"internal/factory/"`), and a file directly inside one is
+the container (`"internal/"`). Every response that carries the job says the
+same area. It is absent when the job changed no file or only files at the root.
+
+An engine whose hello carries the feature `factory.estimate` reads an issue
+with a complexity rubric and measures cost from its own finished jobs; a model
+never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
+proof, novelty}`, each `{score 0..2, why?, low?}` (`low`: judged without the
+repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
+(`small` 0–3, `medium` 4–6, `large` 7–10), with `band_near` naming the
+neighbouring band when the sum sits on an edge (3 or 4, 6 or 7) so the desk
+shows both; `triage.est` is gone. An open job
+carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?, basis}`:
+the 10th to the 90th percentile of `n` finished jobs (about eight in ten land
+inside), in `repo` (absent: every repository). `basis` is `read` when they are
+the nearest on the job's read, or `kind` when the job has no read or too few
+similar read jobs and they are the latest finished jobs of the same kind, read
+or not (the desk says `from 12 jobs in api, not read`). Every finished job
+counts. The estimate is absent while fewer than five jobs finished on both
+bases. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
+finished jobs spent past this job's spend so far, over the `n` that spent at
+least that much (absent below five; a running job with `left` alone has `n` 0).
+`queue.desk.estimates {jobs, hit, of, basis?}` is how many finished jobs the
+figures see and how many of `of` backtested jobs spent inside their range;
+`basis {read?: {hit, of}, kind?: {hit, of}}` is the same per basis, which is
+backtested and widened on its own.
+
+An engine whose hello carries the feature `factory.estimate_new` serves
+`factory.estimate_new {factory, repo, kind}` (`GET
+/v1/repos/{owner}/{repo}/estimate?kind=K`): what a job of that kind will
+likely cost before it exists, for New job's Start now. It answers
+`NewEstimate {factory, repo, kind, estimate?}`, where `factory` is the
+factory itself (`{name, address, version}`, as in a queue) and `estimate` is the kind
+pool's figure (basis `kind`, the repository first, then every repository),
+from the finished jobs the caller can see, and is absent below five. The
+repository dry run adds `cost_jobs`, that repository's finished jobs.
+
+An engine whose hello carries the feature `factory.scout` serves
+`factory.scout {factory, job, refresh?}` (`POST /v1/jobs/{id}/scout`): Look
+closer. A model with `factory.repo_read`'s read-only tools on the factory's
+own checkout reads the job's issue again, within at most 12 tool calls, one
+minute and $0.10, and answers `ScoutLook {factory, job, cached, scout}`.
+`scout` is `{files [{path, why}], plan [three steps], unknowns [questions],
+tests [paths], rubric (from `scout`, each factor with `cite` "path:line"),
+cited, dropped, calls, usd, model, took_ms, head, at, stale}`. Every path it
+shows exists at `head`; `dropped` counts the paths the model named that did not
+(`cited` is how many it named). The same issue text at the same head answers
+the kept look free (`cached: true`); `stale` on a job's look says the issue
+changed since (a moved head is found by the next look, which then runs anew),
+and `refresh: true` asks for a new one. The look also lands on the job
+(`job.scout`, its rubric replacing the read's), and its cost goes on the spend
+ledger as `factory scout`. A new look is refused `limit` at the month's $10 of
+factory looks ("Monthly limit for AI reached") or 20 looks a day in one
+repository ("Daily limit for this repo reached"); a look with no answer within
+its budget is `no_answer`; a repository with no checkout is `not_cloned`.
+`queue.desk.scout_price` is what a typical look cost, absent before the first.
+
+An engine whose hello carries the feature `factory.read_on_arrival` serves
+`factory.read_on_arrival {factory, on?}` → `{on}`: "Read new issues as they
+arrive", the factory's `read_on_arrival` in `GET /v1/settings`. Off (the
+default: AI runs only on a person's click), the factory's AI reads
+nothing by itself; on, each new issue gets the arrival read and a job the start
+rules would start gets a look closer before it launches. Either way a read never
+starts a job: size labels and the start rules decide; a read's rubric only places
+the job among similar finished jobs, so its measured cost over `max_cost` asks
+first. With `on` the operator changes
+it (`PATCH /v1/settings`); anyone else is `forbidden`.
+
+An engine whose hello carries the feature `factory.read` serves `factory.read
+{factory, jobs}` (`POST /v1/read`): the arrival read of exactly the chosen jobs,
+now, whatever `read_on_arrival` says. It answers `ReadResult {read, skipped,
+failed}`: jobs read now; jobs skipped (already read, not an issue job, not
+visible to the caller, or past the first 20 read); jobs whose model call
+failed, left unread to try again. A factory with no model key fails every job.
+`queue.desk.last_read_cost` is what the last read cost, for "about $X".
 
 An engine whose hello carries the feature `factory.repo_read` (and
 `FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
@@ -638,6 +779,27 @@ a task role and Auto never picks it; a `null` pin gives back the build's own
 small-work model. A pin is checked as the other pins are: a model the provider
 serves, and one the allowed models admit. An engine without the feature leaves
 `roles.auxiliary` out and refuses `pins.auxiliary` as an unknown role.
+
+An engine whose hello carries the feature `settings.models.insight` adds the page
+AI's roles: `insight` and its overrides `insight_notes` (repository notes),
+`insight_ask` (questions about a repository), `insight_themes` (backlog themes),
+`insight_pipeline` (Build with AI on a pipeline), `insight_views` (a factory's
+topic views), `insight_factory_read` (the read of what arrived in a factory) and
+`insight_factory_scout` (a closer look at it). Each is a row under `roles` in
+`settings.models.get` (and `settings.changed`),
+`{pin, warning, eligible_count, default?, follows?, label}`, and
+`settings.models.set` takes the same keys in `pins` as `{id, provider?}` or
+`null`. `label` is the row's name in the person's words (`Page AI`, `Repo notes`,
+`Repo ask`, `Repo themes`, `Build with AI`, `Topic views`, `Factory read`,
+`Factory scout`), so a client can draw a role it does not know yet. They are
+errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
+own pin, then the `insight` pin, then the engine's default for `insight`, then
+the small-work tier. `default` appears on `insight` only while the engine's
+default applies (`deepseek/deepseek-v4.1-flash` on `openrouter`, while OpenRouter
+is connected and the allowed models admit it); it is never written as a pin, and
+its absence means an unpinned `insight` follows its tier. `follows: "insight"`
+marks each override. Pins are stored in the `models.roles` row beside the other
+role pins and checked as the other pins are.
 
 ## setup methods
 

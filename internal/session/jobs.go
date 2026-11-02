@@ -2289,16 +2289,23 @@ func (s *jobSink) lastNonEmptyLine() string {
 
 // ── process plumbing ────────────────────────────────────────────────────────
 
-// jobShell shares bare's shell preference through internal/shell: Unix keeps
-// /bin/bash, bash on PATH, sh, and Windows uses the engine's native bash.
+// jobShell returns the program and its arguments that run command. It shares
+// bare's shell preference through internal/shell: Unix keeps /bin/bash, bash
+// on PATH, sh, and Windows uses the engine's native bash. A bash command runs
+// under [shell.PipefailArgs], as at every other bash door, so a failing stage
+// of a pipe fails the command; sh gets the command unchanged.
 //
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
 // exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
-func jobShell() (string, []string, error) {
-	return shell.Preferred()
+func jobShell(command string) (string, []string, error) {
+	program, flags, err := shell.Preferred()
+	if err != nil {
+		return "", nil, err
+	}
+	return program, shell.PipefailArgs(program, flags, command), nil
 }
 
 // waitExitCode extracts an exit code from cmd.Wait's error, -1 when the process
