@@ -922,3 +922,17 @@ The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
 If that read fails, it keeps the last saved choice, including an armed hold,
 and tries again at the next boundary. The read failure does not fail the job.
+
+## Follow PR — comments that need no code change
+
+A comment can be considered without producing a new diff. Follow PR reads the
+current feedback against the published head and records why no edit is needed.
+A successful assessment returns to monitoring; Merge then uses its ordinary
+checks, review and approved-head gates. Outstanding requested changes and failing
+or pending CI still block Merge.
+
+A no-change report must include `repair.readiness` with the full current head and
+the diff, description, feedback and unfinished-work checks. Missing or incomplete
+fields are returned to the model during `stage_result`, so it can correct the
+report in the same conversation. Prose alone does not complete the assessment.
+The runner still checks that the published head and clean checkout agree.
