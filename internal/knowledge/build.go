@@ -320,21 +320,11 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit')").Scan(&pending); err != nil {
+		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&pending); err != nil {
 			return err
 		}
-		status, err := stateDocument(db, "status")
-		if err != nil {
-			return err
-		}
-		if pending == 0 && !flag(status["needs_update"]) {
-			projection, err := stateDocument(db, "projection")
-			if err != nil {
-				return err
-			}
-			if total == 0 || projection["version"] == knowledgeProjectionVersion {
-				break
-			}
+		if pending == 0 && !flag(job["backfill"]) {
+			break
 		}
 		job["phase"] = string(BuildRunning)
 		if err = saveState(db, "job", job); err != nil {
@@ -344,10 +334,13 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		var remaining int
-		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit')").Scan(&remaining); err != nil {
+		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&remaining); err != nil {
 			return err
 		}
-		if remaining > 0 && remaining >= pending {
+		if remaining == 0 {
+			break
+		}
+		if remaining >= pending {
 			return nil
 		}
 	}

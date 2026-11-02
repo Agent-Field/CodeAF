@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func knowledgeModel(profile string) string { return config.KnowledgeModelAt(profile) }
@@ -24,6 +25,12 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	}
 	if err = ctx.Err(); err != nil {
 		return err
+	}
+	if v.calls != nil {
+		ctx, err = v.calls(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	lock, err := os.OpenFile(filepath.Join(v.root, ".compiler.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -51,7 +58,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	defer db.Close()
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls}
 	defer func() {
 		message := ""
 		if err != nil {
@@ -95,7 +102,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	// First-build organization needs the complete admitted history, rather than
 	// a tree whose page boundaries reflect extraction batches.
 	var pending int
-	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit')", through).Scan(&pending); err != nil {
+	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(payload,'$.job'),0)=0) OR (?<>'' AND json_extract(payload,'$.session')=?))", through, provider.SessionFrom(ctx), provider.SessionFrom(ctx), provider.SessionFrom(ctx)).Scan(&pending); err != nil {
 		return err
 	}
 	if pending > 0 {
@@ -170,7 +177,7 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 		previous = repaired
 		revision++
 	}
-	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') ORDER BY e.arrived,e.id LIMIT 64", partition, through)
+	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') AND ((?='' AND coalesce(json_extract(e.payload,'$.job'),0)=0) OR (?<>'' AND json_extract(e.payload,'$.session')=?)) ORDER BY e.arrived,e.id LIMIT 64", partition, through, provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx), provider.SessionFrom(model.ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +199,7 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 			rows.Close()
 			return nil, err
 		}
+		delete(source, "job")
 		n := utf8.RuneCountInString(textValue(source["text"]))
 		if windowLength > 0 {
 			n = windowLength

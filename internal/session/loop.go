@@ -336,7 +336,12 @@ func (a *Agent) turnCue(user userMessage) string {
 // call, and nobody interrupted and nothing failed. Only that outcome may drain
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
-func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
+	defer func() {
+		if finished {
+			a.finishJobKnowledge(ctx)
+		}
+	}()
 	if user.bash == "" {
 		resolved, ready := a.prepareModel(hub)
 		if !ready {

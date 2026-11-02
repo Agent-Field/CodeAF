@@ -33,6 +33,7 @@ type compilerModel struct {
 	ctx              context.Context
 	root, key, model string
 	db               *sql.DB
+	calls            func(context.Context) (context.Context, error)
 }
 
 func (m compilerModel) call(role string, payload document) (document, error) {
@@ -52,11 +53,26 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx := m.ctx
+	if m.calls != nil {
+		ctx, err = m.calls(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
 	sources := modelsource.Set{}.OrDefault(m.key, config.DefaultBaseURL)
 	settings := config.ClientConfigFor(sources, m.model)
 	settings.Timeout = 240 * time.Second
 	settings.HTTPClient = http.DefaultClient
 	settings.RouteGate = func(ctx context.Context, model, tag string) error {
+		if m.calls != nil {
+			if _, err := m.calls(ctx); err != nil {
+				return err
+			}
+		}
 		if model != m.model {
 			return fmt.Errorf("knowledge requested model %q; refusing fallback %q", m.model, model)
 		}
@@ -67,10 +83,11 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		return nil, err
 	}
 	served := &provider.ServedEndpoint{}
-	ctx := provider.WithRole(m.ctx, lanes.RoleMemory)
+	ctx = provider.WithRole(ctx, lanes.RoleMemory)
+	ctx = memoryBilling(ctx)
 	ctx = provider.WithCacheKey(ctx, "knowledge:"+identity([]any{m.root, m.model, role}))
 	ctx = provider.WithServedEndpoint(ctx, served)
-	ctx = provider.WithCallTag(ctx, "memory")
+	ctx = provider.WithCallTag(ctx, string(lanes.RoleMemory))
 	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
 	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(wire.payload)}}}}
 	started := time.Now()

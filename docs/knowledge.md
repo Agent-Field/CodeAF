@@ -38,6 +38,32 @@ updates affected guides or creates distinct concepts. Source eligibility and
 concept organization are separate responsibilities. Saved task reports can supply
 evidence; internal control traffic and deleted history remain excluded.
 
+## Memory spending and job lifetime
+
+The compiler uses the provider funnel with `lane.RoleMemory`. Session startup
+connects `knowledge.SetUsageRecorder` to the shared usage ledger. The compiler
+arms this sink before sending a request, so paid malformed answers and discarded
+attempts are charged independently of validated compiler-cache receipts.
+An owned handle binds admission and billing through `Vault.WithCalls`; its sink
+banks each provider receipt through the agent's existing ledger and job meter.
+The standalone application worker uses the same ledger with no invented job.
+
+Job journals carry a durable `.knowledge-job` marker. History inventory excludes
+those journals, and source admission retains a scheduling-only `job` flag. The
+process compiler excludes owned sources. Each finished owned turn scans its
+journal and runs one compilation under that turn's cancellation context before
+the event stream closes. The compiler checks owner admission before requests
+and retries. Pause and Close therefore cannot leave an independent worker
+spending on a job. Pending sources remain for a later active turn.
+
+One compilation can need several dependent requests: extraction and discovery
+already require two for a small new concept; guide writing and evidence review
+add their existing bounded stages. Their output and the 8,000-token response
+ceiling are preserved. The process worker does not launch another refinement
+pass merely because the previous pass left editorial work pending. New source
+input or an explicit build can advance that work. Historical unrecorded costs
+are not backfilled.
+
 ## Storage authority
 
 | Stored data | Authority |

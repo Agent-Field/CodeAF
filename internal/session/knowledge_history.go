@@ -96,6 +96,11 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 		if seen[path] {
 			return nil
 		}
+		if _, err := os.Stat(path + ".knowledge-job"); err == nil {
+			return nil
+		} else if !os.IsNotExist(err) {
+			return err
+		}
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			return nil

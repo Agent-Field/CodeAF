@@ -722,8 +722,11 @@ updates the same page, while a distinct concept can receive a new page. Issue
 and work-session details remain linked evidence. Organization follows the actual
 subjects in your chats, without fixed project categories.
 
-The application process owns the background worker. Closing Memory or changing
-chats does not stop it. When codeaf stops, captured sources and checkpoints stay
+Memory model requests appear in Spending under the `memory` role. Requests
+owned by a factory job also count toward that job's spending and budget.
+
+The application process owns the background worker for ordinary saved chats.
+Closing Memory or changing chats does not stop it. When codeaf stops, captured sources and checkpoints stay
 in the database; the next running codeaf process resumes unfinished work.
 
 The initial build processes a fixed collection of admitted history before
@@ -736,15 +739,23 @@ its own step and source-reading budget, so total work grows with the evidence.
 A final pass keeps the core overview concise by selecting reviewed paragraphs;
 the complete source detail stays in linked evidence rather than expanding the
 overview after every update.
-Later updates combine saved turns into
+Factory job conversations use their own turn lifetime instead: one compilation
+runs after a finished turn, before its stream closes. Pause cancels that work;
+completed jobs do not launch background memory requests. Unchanged source input
+reuses completed receipts. Extraction, page organization and evidence review can
+require separate model requests in that compilation. Sources and completed
+progress survive cancellation for a later active turn.
+
+Later updates to ordinary saved chats combine turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible
 after 30 seconds without new sources, when its oldest source reaches 120 seconds,
 or when its context limit is reached. These thresholds do not include provider
 time or retries. Each extraction uses at most 64 source spans and 24,000 source
 characters.
 
-Search runs against the database index. Failed requests retain pending work and
-retry with backoff up to 120 seconds. Unreadable chats do not prevent other chats
+Search runs against the database index. Idle background checks do not launch
+refinement without pending sources. Failed ordinary-chat requests retain pending
+work and retry with backoff up to 120 seconds. Unreadable chats do not prevent other chats
 from being processed; their incomplete status remains visible. The Knowledge
 view over `--host` is not supported.
 
