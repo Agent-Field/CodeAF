@@ -2,6 +2,8 @@ package run
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -124,5 +126,58 @@ func TestFollowPRNoChangeRefusalDoesNotPayForSameSnapshot(t *testing.T) {
 	}
 	if err := AnswerUnheld(&current, false, factory.ChoiceCancel, time.Now()); err != nil {
 		t.Fatalf("Stop refused: %v", err)
+	}
+}
+
+func TestFollowPRCheckoutRefusalRetriesWithoutPayingUntilCheckoutChanges(t *testing.T) {
+	dir := gitRig(t)
+	head := mustGit(t, dir, "rev-parse", "HEAD")
+	dirty := filepath.Join(dir, "untracked.txt")
+	if err := os.WriteFile(dirty, []byte("unfinished work"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+		calls.Add(1)
+		return factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Comment requests no change", Readiness: &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}}}, nil
+	})}, func(o *Options) { o.Workdir = func(factory.Item) (string, error) { return dir, nil } })
+	id := g.add("checkout refusal", chat("proof"))
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.Cap = 10
+		it.State, it.Publish, it.HeadCommit = factory.StateRunning, "pr", head
+		it.PullRequest = &factory.PullRequest{Number: 11, State: factory.PROpen, HeadSHA: head, FeedbackTracked: true, Feedback: "Nothing to change", FeedbackItems: []factory.PRFeedback{{ID: "conversation:1", Revision: "v1"}}}
+		it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "queued", HeadSHA: head, Attempt: 1, Limit: 3, Inspecting: map[string]string{"conversation:1": "v1"}}
+		it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}, Paused: true}
+		factory.EnsureFollowPR(it)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateNeedsYou)
+	if it.FollowUp.Reviewed["conversation:1"] != "" {
+		t.Fatal("dirty checkout acknowledged feedback")
+	}
+	before := calls.Load()
+	if err := g.r.Answer(id, true, factory.ChoiceTryOnceMore); err != nil {
+		t.Fatalf("checkout retry must reach unpaid checkout validation: %v", err)
+	}
+	g.wait(id, "new unpaid refusal", func(i factory.Item) bool {
+		return i.State == factory.StateNeedsYou && i.Stream.Phases[len(i.Stream.Phases)-1].Round > it.Stream.Phases[len(it.Stream.Phases)-1].Round
+	})
+	if calls.Load() != before {
+		t.Fatal("unchanged dirty checkout started another paid model round")
+	}
+	if err := os.Remove(dirty); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Answer(id, true, factory.ChoiceTryOnceMore); err != nil {
+		t.Fatalf("restored checkout still refused: %v", err)
+	}
+	got := g.waitState(id, factory.StateShipped)
+	if calls.Load() != before+1 || got.FollowUp.Reviewed["conversation:1"] != "v1" {
+		t.Fatal("restored checkout did not receive one fresh review")
 	}
 }
