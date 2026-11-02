@@ -131,6 +131,9 @@ func newLiveRecorder(t *testing.T, upstream string) *liveRecorder {
 		out.Header.Set("Accept-Encoding", "identity")
 		resp, err := r.client.Do(out)
 		if err != nil {
+			if req.Context().Err() != nil {
+				return
+			}
 			r.note("upstream unreachable")
 			http.Error(w, "upstream unreachable", http.StatusBadGateway)
 			return

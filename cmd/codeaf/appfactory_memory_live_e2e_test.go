@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,6 +71,16 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 		copy := r.Clone(r.Context())
 		u := *r.URL
 		copy.URL = &u
+		if r.Method == http.MethodGet && u.Host == recorder.server.Listener.Addr().String() && strings.HasSuffix(u.Path, "/generation") {
+			target, err := url.Parse(config.DefaultBaseURL)
+			if err != nil {
+				return nil, err
+			}
+			target.Path = strings.TrimRight(target.Path, "/") + "/generation"
+			target.RawQuery = u.RawQuery
+			copy.URL = target
+			copy.Host = target.Host
+		}
 		if r.Method == http.MethodPost && strings.Contains(u.Host, "openrouter.ai") {
 			copy.URL.Scheme = "http"
 			copy.URL.Host = recorder.server.Listener.Addr().String()
@@ -373,7 +384,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 	if math.Abs(headerUSD-ledgerUSD) > 0.000001 {
 		t.Errorf("job header differs from ledger: %.8f vs %.8f", headerUSD, ledgerUSD)
 	}
-	if providerUSD >= 1 {
+	if providerUSD >= 1 || ledgerUSD >= 1 || headerUSD >= 1 {
 		t.Error("live run reached $1")
 	}
 	if memory == 0 {
@@ -385,25 +396,47 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 // The live fixture does not turn the two-second user wait into a receipt wait.
 func memoryAwaitReceipts(t *testing.T, path string) {
 	t.Helper()
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64<<10), 4<<20)
-	for scanner.Scan() {
-		var row calllog.Record
-		if json.Unmarshal(scanner.Bytes(), &row) != nil {
-			continue
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if row.Phase != "start" && row.Tag == "memory" && row.Cost == 0 && (row.Error != "" || row.Ended != "") {
-			t.Logf("waiting %s for interrupted-call receipts after the job ended", provider.ReceiptWait+time.Second)
-			time.Sleep(provider.ReceiptWait + time.Second)
+		pending := map[string]bool{}
+		unpriced := false
+		scanner := bufio.NewScanner(file)
+		scanner.Buffer(make([]byte, 64<<10), 4<<20)
+		for scanner.Scan() {
+			var row calllog.Record
+			if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
+				file.Close()
+				t.Fatal(err)
+			}
+			if row.Phase == "start" {
+				pending[row.ID] = true
+				continue
+			}
+			delete(pending, row.ID)
+			if row.Cost == 0 && (row.Error != "" || row.Ended != "") {
+				unpriced = true
+			}
+		}
+		scanErr := scanner.Err()
+		file.Close()
+		if scanErr != nil {
+			t.Fatal(scanErr)
+		}
+		if len(pending) == 0 {
+			if unpriced {
+				t.Logf("waiting %s for interrupted-call receipts after the job ended", provider.ReceiptWait+time.Second)
+				time.Sleep(provider.ReceiptWait + time.Second)
+			}
 			return
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatal(err)
+		if time.Now().After(deadline) {
+			t.Errorf("%d model calls still lack terminal records after job end", len(pending))
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
