@@ -16,6 +16,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -28,7 +30,7 @@ import (
 )
 
 func TestATaskNoteCrossesTheAppServerAndTheSocketToTheRealNodeAndIsReadByItsKey(t *testing.T) {
-	model := newHeldModel(t)
+	model := newFinishingNoteModel(t)
 	sources := modelsource.NewSet(modelsource.Connected{
 		Source: modelsource.DefaultSource(model.server.URL), Key: "test-key", Address: model.server.URL,
 	})
@@ -49,10 +51,24 @@ func TestATaskNoteCrossesTheAppServerAndTheSocketToTheRealNodeAndIsReadByItsKey(
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-model.arrived:
-	case <-time.After(30 * time.Second):
-		t.Fatal("the task's worker never reached the model")
+	events, stop, err := engine.WatchTaskRoom(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	// A productive request is not cut by a note. Hold its final answer so all
+	// three notes arrive after its last request and before the turn ends.
+	ready := time.After(30 * time.Second)
+waiting:
+	for {
+		select {
+		case event := <-events:
+			if event.Kind == session.EventTextDelta && event.Text == "working" {
+				break waiting
+			}
+		case <-ready:
+			t.Fatal("the task's worker never streamed its answer")
+		}
 	}
 	local := strconv.FormatUint(id, 10)
 
@@ -145,7 +161,8 @@ func TestATaskNoteCrossesTheAppServerAndTheSocketToTheRealNodeAndIsReadByItsKey(
 	for key, entry := range map[string]appwire.Entry{"k-1": first, "k-2": second} {
 		got, ok := read[key]
 		if !ok || got.ReadAtStep == nil || got.ID != entry.ID {
-			t.Fatalf("no read event for %q from the real producer: %+v", key, read)
+			view, _, pageErr := near.AppTask(local)
+			t.Fatalf("no read event for %q from the real producer: %+v; state=%s notes=%+v page_error=%v model_saw_words=%v", key, read, view.State, view.Notes, pageErr, model.sentWords("same words"))
 		}
 	}
 	// With no key nothing may join the note: not its words, not its place.
@@ -189,4 +206,40 @@ func TestATaskNoteCrossesTheAppServerAndTheSocketToTheRealNodeAndIsReadByItsKey(
 	if got := keys(again.Notes); got != keys(view.Notes) {
 		t.Fatalf("keys after the restart = %q, before %q", got, keys(view.Notes))
 	}
+}
+
+// newFinishingNoteModel streams words before holding the final answer. The
+// task room's text event proves the worker has received them before notes land.
+func newFinishingNoteModel(t *testing.T) *heldModel {
+	t.Helper()
+	model := &heldModel{release: make(chan struct{}), arrived: make(chan struct{})}
+	model.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request recordedRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		model.mu.Lock()
+		model.requests = append(model.requests, request)
+		model.turns++
+		first := model.turns == 1
+		model.mu.Unlock()
+		if !request.Stream {
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"working\"}}]}\n\n")
+		w.(http.Flusher).Flush()
+		if first {
+			select {
+			case <-model.release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	t.Cleanup(model.server.Close)
+	return model
 }
