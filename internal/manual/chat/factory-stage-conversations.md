@@ -224,7 +224,15 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `changes requested: <words>`;
 - the final approval message explains pushing the branch and creating a draft pull request;
 - the publication receipt links the draft PR or issue comment; publication does not mean merged;
-- `stopped`, `paused`, `resumed`.
+- `trying test again` after **Try again**, or `trying write again` after **Send back to Write**;
+- `stopped` after **Stop job** or **Stop step**, and `paused` or `resumed` when pausing or continuing.
+
+Retry and giving the job back to the pipeline withdraw the previous execution. They do
+not report that you stopped it. Taking over automatic work keeps its results for the
+working chat; giving it back checks those changes before continuing.
+
+With several worker slots, a retry waits for the previous worker's local cleanup
+before starting its selected round. Other jobs can keep running during that handover.
 
 A line about one step's round (`started`, `done`, an `asking you:` it waits on, the `stopped`
 that cut it) also names that step and round beside its words, so a surface that draws each round
@@ -232,6 +240,20 @@ as a frame can fold the line into it; the words are the same either way.
 
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
+
+## Stopped and interrupted rounds after Carry on or retry
+
+After you Stop a running step or job and carry on from that step, its earlier
+round says `stopped`. A round cut by a lost runner, including an engine
+restart, says `interrupted` when retried. Neither means the work failed its
+completion rule, so neither says "didn't pass" or "fixing them". A real step
+error remains a failed round and says `failed` when retried. Reported results
+still use their rule's words, such as `clean`, `not clean` or `green`.
+
+The words do not change attempt counting. An explicit retry advances the
+round number and grants that step its configured rounds again. Automatic
+recovery keeps its separate limit of three retries. Saved history from older
+runs keeps its recorded words; there is no history migration.
 
 ## pressing run goes straight to the first step — does the manager reshape the run, manager set, shape steps
 

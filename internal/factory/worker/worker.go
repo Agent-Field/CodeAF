@@ -85,6 +85,35 @@ type capacity struct {
 	limit   int
 	running map[int]bool
 	wake    chan struct{}
+	jobs    map[int]chan struct{}
+}
+
+// takeJob keeps successive leases from sharing a mirror and runner control.
+// The old lease owns both until its worker's deferred cleanup has finished.
+func (c *capacity) takeJob(ctx context.Context, id int) bool {
+	for ctx.Err() == nil {
+		c.mu.Lock()
+		done := c.jobs[id]
+		if done == nil {
+			c.jobs[id] = make(chan struct{})
+			c.mu.Unlock()
+			return true
+		}
+		c.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-done:
+		}
+	}
+	return false
+}
+
+func (c *capacity) releaseJob(id int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	close(c.jobs[id])
+	delete(c.jobs, id)
 }
 
 func clampSlots(n int) int {
@@ -134,7 +163,7 @@ func Run(ctx context.Context, opts Options) {
 	opts.Attach.Slots = opts.Slots
 	// Only a worker that reads the saved number may say it follows changes.
 	opts.Attach.LiveCapacity = opts.Desired != nil
-	opts.cap = &capacity{limit: opts.Slots, running: map[int]bool{}, wake: make(chan struct{}, 1)}
+	opts.cap = &capacity{limit: opts.Slots, running: map[int]bool{}, wake: make(chan struct{}, 1), jobs: map[int]chan struct{}{}}
 	tick := opts.CapacityTick
 	if opts.Desired != nil && tick == nil {
 		every := opts.CapacityEvery
@@ -270,6 +299,7 @@ type job struct {
 	thread       []factory.Message
 	pending      *pendingDelivery
 	blocked      string
+	withdrawn    bool
 	control      *client.PreparedWorkerReport
 	controlTries int
 	controlSent  bool
@@ -278,6 +308,10 @@ type job struct {
 // work runs one pulled job to its end, or until the lease is gone.
 func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.WorkerPull) {
 	it := api.ToItem(pulled.Job)
+	if !o.cap.takeJob(ctx, it.ID) {
+		return
+	}
+	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
@@ -460,7 +494,7 @@ func (j *job) beat(ctx context.Context) bool {
 	beatCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
 	defer cancel()
 	hb, err := j.w.Heartbeat(beatCtx, j.lease)
-	if gone(err) {
+	if j.lostLease(err) {
 		return false
 	}
 	if err == nil {
@@ -600,7 +634,11 @@ const StopWait = 5 * time.Second
 // ending and the lease will expire into the queue for another worker.
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
-	_ = j.o.Runner.Stop(j.id)
+	if j.withdrawn {
+		j.o.Runner.Withdraw(j.id)
+	} else {
+		_ = j.o.Runner.Stop(j.id)
+	}
 	for deadline := time.Now().Add(StopWait); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -644,4 +682,11 @@ func final(it factory.Item) api.WorkerDone {
 
 func gone(err error) bool {
 	return errors.Is(err, client.ErrLeaseGone) || errors.Is(err, client.ErrNotAttached)
+}
+
+func (j *job) lostLease(err error) bool {
+	if errors.Is(err, client.ErrLeaseWithdrawn) {
+		j.withdrawn = true
+	}
+	return gone(err)
 }
