@@ -97,6 +97,7 @@ type draft struct {
 	fixed    []string
 	rules    []string
 	adapt    factory.AdaptMode
+	adaptBy  map[factory.Kind]factory.AdaptMode
 	merge    factory.MergePolicy
 }
 
@@ -138,6 +139,10 @@ func readDoc(root *yaml.Node) draft {
 		case "merge":
 			d.readMerge(p.val)
 		case "adapt":
+			if p.val.Kind == yaml.MappingNode {
+				d.readAdaptKinds(p.val)
+				continue
+			}
 			s, ok := scalar(p.val)
 			word, good := stepWord(s, factory.AdaptWords)
 			if !ok || !good {
@@ -215,6 +220,30 @@ func (d *draft) readStart(n *yaml.Node) {
 // readMerge reads `merge: {auto, method}`. auto is on or off (true and false
 // read the same); method is merge, squash or rebase, and omitted lets the
 // forge's repository settings choose.
+// readAdaptKinds reads `adapt:` written as a map, one word per pipeline. A
+// kind it does not name is adapt, so a pair that says adapt is no pair. Any
+// pair that does not read is a problem and nothing of the map is kept: a
+// reader that half-read it would let a plan reshape what the file holds.
+func (d *draft) readAdaptKinds(n *yaml.Node) {
+	pairs, probs := mapping(n)
+	d.problems = append(d.problems, tag("adapt", probs)...)
+	by := map[factory.Kind]factory.AdaptMode{}
+	for _, p := range pairs {
+		s, ok := scalar(p.val)
+		word, good := stepWord(s, factory.AdaptWords)
+		if !ok || !good || !stepNamed(p.name) {
+			d.problems = append(d.problems, Problem{Line: p.line, Where: "adapt." + p.name, Why: "adapt names a pipeline and one of adapt, ask or fixed"})
+			return
+		}
+		if word != string(factory.AdaptFree) {
+			by[factory.Kind(p.name)] = factory.AdaptMode(word)
+		}
+	}
+	if len(probs) == 0 {
+		d.adaptBy, d.set.adapt = by, true
+	}
+}
+
 func (d *draft) readMerge(n *yaml.Node) {
 	pairs, probs := mapping(n)
 	d.problems = append(d.problems, tag("merge", probs)...)
@@ -535,7 +564,7 @@ func (d draft) file(defaults bool) File {
 		f.Rules = append([]string(nil), d.rules...)
 	}
 	if d.set.adapt {
-		f.Adapt = d.adapt
+		f.Adapt, f.AdaptKinds = d.adapt, d.adaptBy
 	}
 	if d.set.mergeAuto {
 		f.Merge.Auto = d.merge.Auto

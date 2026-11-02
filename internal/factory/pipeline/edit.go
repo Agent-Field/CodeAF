@@ -178,6 +178,9 @@ type Source struct {
 	Labels  []string
 	MaxSize string
 	MaxCost float64
+	// AdaptKinds is the file's adapt per pipeline when it writes one word per
+	// pipeline (Adapt is then ""), never nil: a kind it does not name is adapt.
+	AdaptKinds map[string]string
 }
 
 // StepChange is one step an edit really changed. Fields names what changed, in
@@ -394,6 +397,10 @@ func describe(f File) Source {
 	src.AskFirst = append([]string{}, f.Start.AskFirst...)
 	src.Never = append([]string{}, f.Start.Never...)
 	src.Adapt = string(f.Adapt)
+	src.AdaptKinds = map[string]string{}
+	for kind, mode := range f.AdaptKinds {
+		src.AdaptKinds[string(kind)] = string(mode)
+	}
 	src.Labels = append([]string{}, f.Start.Labels...)
 	src.MaxSize, src.MaxCost = normOr(f.Start.MaxSize, DefaultMaxSize), f.Start.MaxCost
 	return src

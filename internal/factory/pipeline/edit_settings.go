@@ -16,7 +16,11 @@ import (
 //
 //   - set_adapt sets `adapt:`, how much a job's plan may reshape the steps it
 //     runs: adapt (within the bounds, the default, written as no key), ask (a
-//     person approves a reshaped plan) or fixed (the steps as written).
+//     person approves a reshaped plan) or fixed (the steps as written). With
+//     no pipeline it is one word for the whole file; with one, it is that
+//     pipeline's word, and the file then writes `adapt:` as a map of one word
+//     per pipeline ([File.AdaptKinds]), every other pipeline keeping the word
+//     it had. A map whose pipelines all say one word is written as that word.
 //   - set_fixed marks one step required, or not: a step under `fixed:` is one a
 //     plan may never drop or change, and Auto never passes an approve step
 //     that is. Proof is always required, so it is never unmarked here.
@@ -77,13 +81,16 @@ func settingFieldsNamed(op EditOp) bool {
 
 // checkSettings bounds a settings edit without the file.
 func checkSettings(i int, op EditOp) (EditOp, *EditError) {
-	if op.Pipeline != "" || op.After != nil || op.Kind != nil || op.Value != nil || stepFieldsNamed(op) {
+	if op.Op == OpSetAdapt && op.Pipeline != "" && !stepNamed(op.Pipeline) {
+		return op, refuseEdit(EditUnknownStep, i, "that is not a pipeline name")
+	}
+	if (op.Pipeline != "" && op.Op != OpSetAdapt) || op.After != nil || op.Kind != nil || op.Value != nil || stepFieldsNamed(op) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no step words, pipeline, position or value", op.Op)
 	}
 	switch op.Op {
 	case OpSetAdapt:
 		if op.Name != "" || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || op.Who != nil {
-			return op, refuseEdit(EditBadOp, i, "set_adapt takes only adapt")
+			return op, refuseEdit(EditBadOp, i, "set_adapt takes only adapt and a pipeline")
 		}
 		if op.Adapt == nil {
 			return op, refuseEdit(EditBadValue, i, "set_adapt needs adapt")
@@ -156,10 +163,7 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 // settings applies one settings edit. Each setting, and each step's mark, is
 // set once per preview.
 func (st *editState) settings(i int, op EditOp) *EditError {
-	key := op.Op
-	if op.Op == OpSetFixed || op.Op == OpSetApprover {
-		key += "\x00" + op.Name
-	}
+	key := op.Op + "\x00" + op.Name + "\x00" + op.Pipeline
 	if st.settingSeen[key] {
 		return refuseEdit(EditBadOp, i, "%s is set once", strings.TrimPrefix(op.Op, "set_"))
 	}
@@ -167,7 +171,14 @@ func (st *editState) settings(i int, op EditOp) *EditError {
 	st.settingsEdited = true
 	switch op.Op {
 	case OpSetAdapt:
-		st.out.Adapt = factory.AdaptMode(*op.Adapt)
+		if op.Pipeline == "" {
+			st.out.Adapt, st.out.AdaptKinds = factory.AdaptMode(*op.Adapt), nil
+			return nil
+		}
+		if _, listed := st.out.Pipeline[factory.Kind(op.Pipeline)]; !listed {
+			return refuseEdit(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
+		}
+		st.out.Adapt, st.out.AdaptKinds = adaptFor(st.out, factory.Kind(op.Pipeline), factory.AdaptMode(*op.Adapt))
 	case OpSetFixed:
 		if !st.inPipeline[op.Name] && !st.added[op.Name] {
 			return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
@@ -200,10 +211,46 @@ func (st *editState) settings(i int, op EditOp) *EditError {
 	return nil
 }
 
+// adaptFor is f's adapt with one pipeline's word set: the per-pipeline map,
+// every kind of f keeping the word it had, or the one word they all say. "" is
+// adapt.
+func adaptFor(f File, kind factory.Kind, word factory.AdaptMode) (factory.AdaptMode, map[factory.Kind]factory.AdaptMode) {
+	have := f.adaptByKind()
+	by := map[factory.Kind]factory.AdaptMode{}
+	for _, k := range adaptKinds(f) {
+		if m := have[k]; m != "" && m != factory.AdaptFree {
+			by[k] = m
+		}
+	}
+	delete(by, kind)
+	if word != "" {
+		by[kind] = word
+	}
+	if one, same := oneWord(by, adaptKinds(f)); same {
+		return one, nil
+	}
+	return "", by
+}
+
+// oneWord is the word every kind in kinds says in by, when they all say the
+// same one ("" for adapt, when by names none of them).
+func oneWord(by map[factory.Kind]factory.AdaptMode, kinds []factory.Kind) (factory.AdaptMode, bool) {
+	first := by[kinds[0]]
+	for _, k := range kinds[1:] {
+		if by[k] != first {
+			return "", false
+		}
+	}
+	return first, len(by) == 0 || first != ""
+}
+
 // settingOf is one setting of f in the words a preview reports it in.
 func settingOf(f File, name string) string {
 	switch name {
 	case SettingAdapt:
+		if len(f.AdaptKinds) > 0 {
+			return adaptWords(f.AdaptKinds)
+		}
 		if f.Adapt == "" {
 			return string(factory.AdaptFree)
 		}
@@ -250,6 +297,17 @@ func approversOf(f File) string {
 			out = append(out, name+": "+who)
 		}
 	}
+	return strings.Join(out, ", ")
+}
+
+// adaptWords is a per-pipeline adapt in a preview's words, in kind order:
+// "issue: ask, pr: fixed".
+func adaptWords(by map[factory.Kind]factory.AdaptMode) string {
+	out := make([]string, 0, len(by))
+	for kind, mode := range by {
+		out = append(out, string(kind)+": "+string(mode))
+	}
+	slices.Sort(out)
 	return strings.Join(out, ", ")
 }
 
