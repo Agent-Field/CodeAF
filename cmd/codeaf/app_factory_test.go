@@ -199,3 +199,49 @@ func TestAppPowerUsesExistingRunnerCredential(t *testing.T) {
 		t.Fatal(states)
 	}
 }
+
+// A lost wake recovers by itself: the elected runner reads that the factory
+// still has it asleep, and this process, which was never told to sleep or has
+// been told to wake, says it is awake. While this process knows the Mac is
+// going to sleep it keeps quiet.
+func TestARunnerCorrectsAFactoryThatStillHasItAsleep(t *testing.T) {
+	floor, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []bool
+	factory := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/runner/self":
+			_ = json.NewEncoder(w).Encode(map[string]any{"factory": map[string]string{"name": "f"}, "slots": 2, "asleep": true})
+		case "/v1/runners/presence":
+			var body api.RunnerPresence
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			said = append(said, body.Asleep)
+			w.WriteHeader(200)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	defer factory.Close()
+	data, _ := json.Marshal(map[string][]string{factory.URL: {"slot-zero"}})
+	if err := writeFactoryPrivate(filepath.Join(floor.Root(), "worker.json"), data); err != nil {
+		t.Fatal(err)
+	}
+	host := &appFactoryHost{floor: floor}
+	dial := host.runnerDial(factoryTarget{factory.URL, "person"})
+	if n, ok := dial.desiredSlots(context.Background()); !ok || n != 2 {
+		t.Fatalf("capacity read: %d %v", n, ok)
+	}
+	if len(said) != 1 || said[0] {
+		t.Fatalf("an awake runner said %v", said)
+	}
+	said = nil
+	host.asleep.Store(true)
+	if _, ok := dial.desiredSlots(context.Background()); !ok {
+		t.Fatal("capacity read failed")
+	}
+	if len(said) != 0 {
+		t.Fatalf("a Mac going to sleep said it is awake: %v", said)
+	}
+}

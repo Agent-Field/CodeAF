@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -38,6 +39,9 @@ import (
 // appFactoryHost mounts the solo floor without opening a second listener.
 // Service election and worker election use the same files as terminal windows.
 type appFactoryHost struct {
+	// asleep is what this process was last told by the Mac's power door. A new
+	// process starts awake, so its runner corrects what a lost wake left saved.
+	asleep atomic.Bool
 	// seam is the floor's door the service serves, kept for what the app asks
 	// of this machine's factory directly (a job's conversations).
 	seam                               factory.Seam
@@ -555,7 +559,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
 	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
-	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
+	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
 	if runtime.GOOS == "darwin" {
@@ -645,19 +649,33 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 }
 
 // defaultModel is the model this machine's runner opens a step on when the job
-// names none: the parent every stage opens from, settled on the saved Task
-// models policy, exactly as the stage maker reads it.
+// names none: the factory's default model, else the parent every stage opens
+// from, settled on the saved Task models policy, exactly as the stage maker
+// reads it.
 func (h *appFactoryHost) defaultModel() string {
 	source, _, ok := h.parentSource()
 	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(source.Config().Model)
+	// The factory's own default stands in for the launch's, as it does when a
+	// step opens ([stageOpenModel]); a spending file that cannot be read says
+	// nothing here, and the start that reads it refuses.
+	spending, _ := h.floor.Spending()
+	return strings.TrimSpace(stageOpenModel(source.Config(), factoryrun.ConversationSpec{FactoryModel: spending.DefaultModel}))
 }
 
 // Power uses the elected runner's saved registration, so a second process
 // never registers a duplicate merely to report this machine sleeping.
+// runnerDial is the worker door into target for this host's runner, which
+// knows whether this Mac has said it is going to sleep.
+func (h *appFactoryHost) runnerDial(target factoryTarget) *factoryWorkerDial {
+	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
+	dial.awake = func() bool { return !h.asleep.Load() }
+	return dial
+}
+
 func (h *appFactoryHost) power(ctx context.Context, asleep bool) error {
+	h.asleep.Store(asleep)
 	dial := newFactoryWorkerDial(h.floor, nil)
 	all := dial.readCreds()
 	data, err := os.ReadFile(filepath.Join(h.floor.Root(), "attach.json"))

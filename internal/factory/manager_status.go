@@ -16,18 +16,38 @@ var ErrNotManager = errors.New("this conversation is not the manager of any item
 // PendingQuestionID identifies the decision, not the frequently changing job
 // document. Polling or spending updates cannot expire it; a new ask or round can.
 func PendingQuestionID(it Item) string {
-	if it.Asking == nil || it.Asking.With != AskedYou || it.State != StateNeedsYou || it.QKind != "step" {
+	if it.State != StateNeedsYou || strings.TrimSpace(it.Question) == "" || (it.QKind == "step" && it.Asking == nil) {
 		return ""
 	}
-	round := 0
-	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
-		round = it.Stream.Phases[it.Stream.Cur].Round
+	round, stage, at := 0, "", time.Time{}
+	if it.Asking != nil {
+		if it.Asking.With != AskedYou {
+			return ""
+		}
+		stage, at = it.Asking.Stage, it.Asking.At
+	}
+	var rounds []int
+	if it.Stream != nil {
+		if it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+			ph := it.Stream.Phases[it.Stream.Cur]
+			round = ph.Round
+			if stage == "" && it.QKind != "step" {
+				stage = ph.Name
+			}
+		}
+		// A gate's own round can stay zero when the preceding step runs again.
+		if it.QKind != "step" {
+			for _, ph := range it.Stream.Phases {
+				rounds = append(rounds, ph.Round)
+			}
+		}
 	}
 	body, _ := json.Marshal(struct {
 		ID, Round         int
 		Stage, Kind, Text string
 		At                time.Time
-	}{it.ID, round, it.Asking.Stage, it.QKind, it.Question, it.Asking.At})
+		Rounds            []int `json:",omitempty"`
+	}{it.ID, round, stage, it.QKind, it.Question, at, rounds})
 	return fmt.Sprintf("step-%x", sha256.Sum256(body))
 }
 
@@ -47,6 +67,12 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 // thread-only: the manager answering a reply runs no step and takes no
 // execution slot, so it is never described as the step running.
 func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) ManagerStatus {
+	return StatusForManagerWaiting(it, held, threadOnly, "", now)
+}
+
+// StatusForManagerWaiting is [StatusForManagerHold] knowing what a queued job
+// is really waiting for, when the factory can say.
+func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, now time.Time) ManagerStatus {
 	out := ManagerStatus{At: now, QuestionID: PendingQuestionID(it)}
 	var done []string
 	step := "pipeline"
@@ -82,8 +108,12 @@ func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) Manager
 		out.Text += it.FollowUp.Reason
 	case it.Stream != nil && it.Stream.Paused:
 		out.Text += step + " is paused. Resume pipeline to continue."
+	case it.State == StateQueued && waitingFor != "":
+		out.Text += step + " is queued. " + waitingFor
 	case it.State == StateQueued && held && threadOnly:
 		out.Text += step + " is queued; waiting for an available execution slot. Answering a reply in this thread does not take one. Change Jobs at once in Settings → Factory → Your computers."
+	case it.State == StateQueued && it.OverLimit:
+		out.Text += step + " is starting now, above Jobs at once this one time."
 	case it.State == StateQueued:
 		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers. Idle PR monitoring does not use an execution slot."
 	case it.State == StateRunning && held && threadOnly:
@@ -101,7 +131,10 @@ func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) Manager
 		out.Text += "\nLast recorded step progress: " + current.At.UTC().Format(time.RFC3339) + "."
 	}
 	if out.QuestionID != "" {
-		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. A tool failure means the decision was not saved; never describe it as answered."
+		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. Report only the saved outcome the tool confirms. On refusal, explain that the action did not happen. If the outcome is unconfirmed, read status before retrying."
+	}
+	if back, ok := PlanSendsBack(it); ok && out.QuestionID != "" {
+		out.Text += " To request changes, call factory_answer with action=reject_plan, this question_id and the person's words in answer. This sends the plan back to " + back + "; that step runs again with the words and approval is requested again afterward. Report only the outcome the tool confirms."
 	}
 	return out
 }

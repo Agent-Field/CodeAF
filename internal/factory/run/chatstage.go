@@ -86,7 +86,11 @@ type ConversationSpec struct {
 	// (Item.Model), "" for the default the maker's launch already carries.
 	Model           string
 	AutomaticModels *bool
-	Effort          string
+	// FactoryModel is the factory's default model the job was queued under
+	// (Item.FactoryModel), "" for none. The maker opens on it only when Model
+	// is "" and its launch is not pinned to one model for every task.
+	FactoryModel string
+	Effort       string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -232,6 +236,12 @@ func stageAutomatic(job Job) *bool {
 	return job.Item.AutomaticModels
 }
 
+// planFilesMissing is a finished plan report that needs its one bounded
+// correction attempt. Other steps and unfinished reports keep their own path.
+func planFilesMissing(job Job, result factory.StageResult) bool {
+	return strings.EqualFold(stageLabel(job.Stage), planStep) && result.Done && !result.Checkpoint && result.PlanFiles() == nil
+}
+
 // Run opens the round's conversation, forwards steering and captions while it
 // works, and answers the last thing it reported, or the report made for it.
 func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, error) {
@@ -256,6 +266,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
 		Model:             stageModel(job),
 		AutomaticModels:   stageAutomatic(job),
+		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
 		Effort:            job.Item.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
@@ -311,6 +322,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	asker := stageAsker{job: job}
 	walled := false
 	corrections := 0
+	planFilesAsked := false
 	var idleFailure *factory.StageResult
 	wall := time.NewTimer(stageWall)
 	defer wall.Stop()
@@ -406,6 +418,17 @@ loop:
 							}
 						}
 					}
+				}
+			}
+			// A missing plan list uses one existing correction attempt. Keep the
+			// original report if it still cannot supply one, so the plan gate can
+			// explain the unknown list and ask the person without losing the draft.
+			if !planFilesAsked && corrections < stageVerificationCorrections && ctx.Err() == nil && planFilesMissing(job, door.result()) {
+				planFilesAsked = true
+				corrections++
+				if conv.Note(ctx, "The factory could not read a valid plan file list. Keep your plan and call stage_result once more with files: an array of every repository-relative path you will touch or add. Do not guess if the list is unknown; report files: [] instead. "+briefPlanFiles) == nil {
+					go func() { idle <- conv.Wait(ctx) }()
+					continue
 				}
 			}
 			if (!door.empty() && !door.result().Checkpoint) || ctx.Err() != nil {

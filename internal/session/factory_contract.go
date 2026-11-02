@@ -214,6 +214,14 @@ type JobChatDoor interface {
 	Chat(transcript string) JobChat
 }
 
+// JobModelSpend is a job budget that records which model a priced call ran
+// on. SpendModel books the same dollars Spend does, plus the model, the call
+// count and the measured tokens. A budget that is only a JobChat still takes
+// the dollars; the model on that call stays unknown.
+type JobModelSpend interface {
+	SpendModel(usd float64, model string, calls, input, output int)
+}
+
 // JobChat is one job's chat's half of the job's money.
 type JobChat interface {
 	// Spend adds usd, one call's dollars, to the job's spend. THE CALL IS
@@ -223,6 +231,21 @@ type JobChat interface {
 	// Refusal is the sentence a turn is refused with once the job's budget is
 	// spent, and "" while the turn may start.
 	Refusal() string
+}
+
+// JobLedgerName is the optional half of a [JobChat] that names the job its
+// calls are spent for, as `owner/name#number`, so every ledger row of the
+// job's family carries it ([UsageLine.FactoryJob]).
+type JobLedgerName interface {
+	FactoryJob() string
+}
+
+// factoryJobName is the job this agent's calls are spent for, "" for none.
+func (a *Agent) factoryJobName() string {
+	if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+		return strings.TrimSpace(named.FactoryJob())
+	}
+	return ""
 }
 
 // jobChatOf is the job this conversation is the own chat of, asked of the
