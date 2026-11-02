@@ -12,8 +12,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
-// appSearchJobsDeadline bounds all factories together because search runs on keystrokes.
-const appSearchJobsDeadline = 1500 * time.Millisecond
+// appSearchJobsWait bounds all factories together because search runs on keystrokes.
+const appSearchJobsWait = 1500 * time.Millisecond
 
 // appFactoryPassiveRead keeps a search read from resuming a local factory.
 type appFactoryPassiveRead struct{}
@@ -29,7 +29,7 @@ func (b *appBackend) SearchJobs(query string, perGroup int) []appwire.Hit {
 	if perGroup <= 0 {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), appFactoryPassiveRead{}, true), appSearchJobsDeadline)
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), appFactoryPassiveRead{}, true), appSearchJobsWait)
 	defer cancel()
 	h := b.factoryHub()
 	rows, err := h.snapshot()
