@@ -560,6 +560,16 @@ var vocabulary = []Role{
 	RoleVision, RoleWorker,
 }
 
+// mediaRoles are the roles a model is chosen for by what it can DO — see,
+// draw, speak, film — rather than by a text tier.
+var mediaRoles = map[Role]bool{RoleVision: true, RoleImageGen: true, RoleSpeech: true, RoleVideo: true}
+
+// IsMedia reports whether a role is capability-qualified media. A one-model
+// conversation still rides its one model for every OTHER role; a media role
+// keeps its own capability-checked resolver, because a text model handed an
+// image or an audio endpoint is the wrong answer delivered confidently.
+func IsMedia(role Role) bool { return mediaRoles[role] }
+
 // RoleKey is how a role name written by a person is compared: trimmed and
 // lower-cased.
 //

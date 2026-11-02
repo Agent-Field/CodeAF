@@ -8108,7 +8108,7 @@ func (a *Agent) seatTaskModelLocked(node *TaskNode, parent Config, model, on str
 	if !known || supported {
 		return model, nil
 	}
-	fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+	fallback, resolveErr := readerFor(parent, a.model).Resolve(roles.RoleWorker, a.model)
 	if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
 		return "", fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
 	}

@@ -352,7 +352,7 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
 	a.mu.Lock()
 	model, closed := a.model, a.closed
-	source := a.config.RolesSource
+	reader := readerFor(a.config, model)
 	a.mu.Unlock()
 	if closed || !a.hasClient() {
 		return ""
@@ -371,7 +371,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 	// means the cheap rung or silence — a missing name, not a billed retry
 	// on the model that exists to judge work.
 	floor := model
-	if high, ok := roles.TierModel(roles.Source(source), roles.TierHigh); ok {
+	if high, ok := reader.TierModel(roles.TierHigh); ok {
 		if strings.TrimSpace(high) != "" && strings.TrimSpace(model) == strings.TrimSpace(high) {
 			floor = ""
 		}

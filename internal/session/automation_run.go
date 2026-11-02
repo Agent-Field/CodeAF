@@ -535,7 +535,7 @@ func (r *automationRunner) judgeClient(cfg Config, model string) (Completer, str
 // one they did; the check used to stop there with `no API key`, every fifteen
 // minutes, while the model they talk to could have answered it.
 func automationJudgeModels(cfg Config) ([]string, error) {
-	rungs, err := roles.Ladder(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+	rungs, err := readerFor(cfg, cfg.Model).Ladder(roles.RoleSentinel, cfg.Model)
 	if err != nil {
 		return nil, err
 	}
