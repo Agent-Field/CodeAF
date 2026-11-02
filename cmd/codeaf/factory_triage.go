@@ -78,7 +78,16 @@ func runFactoryTriage(ctx context.Context, st *store.Store, newIntake func(*stor
 	in := newIntake(st)
 	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
 		AskFirst: in.AskFirst, AfterTick: in.Once,
+		Off: func() bool { return !factoryReadsOnArrival(st) },
 	})
+}
+
+// factoryReadsOnArrival is the floor's "Read new issues as they arrive",
+// read each time so a change on the settings page takes effect on the next
+// tick. An unreadable settings file reads as the default, off.
+func factoryReadsOnArrival(st *store.Store) bool {
+	settings, _ := st.RunnerSettings()
+	return settings.ReadOnArrival
 }
 
 // waitForFactoryTriage answers the worker's call and the triage lock's
@@ -191,6 +200,12 @@ func factoryTriageModel(settings config.Config) (string, error) {
 //
 // It answers the dollars it wrote, 0 when none were known.
 func recordFactoryTriageUsage(settings config.Config, model string, response *ai.Response) float64 {
+	return recordFactoryAIUsage(settings, model, factoryTriageName, response)
+}
+
+// recordFactoryAIUsage puts one factory AI call's cost on the spend ledger
+// under name in the role column, on the low seat, and answers its dollars.
+func recordFactoryAIUsage(settings config.Config, model, name string, response *ai.Response) float64 {
 	line := session.UsageLine{Model: model, Calls: 1}
 	if response != nil && response.Usage != nil {
 		used := response.Usage
@@ -201,6 +216,6 @@ func recordFactoryTriageUsage(settings config.Config, model string, response *ai
 			line.USD = float64(used.PromptTokens)*prompt + float64(used.CompletionTokens)*completion
 		}
 	}
-	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(factoryTriageName), session.SeatLow))
+	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(name), session.SeatLow))
 	return line.USD
 }
