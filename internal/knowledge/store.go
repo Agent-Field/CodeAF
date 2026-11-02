@@ -548,7 +548,7 @@ func storePages(tx *sql.Tx, pages []Page) error {
 	}
 	return nil
 }
-func (v *Vault) commitPublication(vault, learning, registry document, digest string) error {
+func (v *Vault) commitPublication(vault, learning, registry document, digest, request string) error {
 	if err := validatePublication(vault); err != nil {
 		return err
 	}
@@ -597,7 +597,7 @@ func (v *Vault) commitPublication(vault, learning, registry document, digest str
 	if err = saveState(tx, "topics", registry); err != nil {
 		return err
 	}
-	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion}); err != nil {
+	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion, "build_request": request}); err != nil {
 		return err
 	}
 	return tx.Commit()

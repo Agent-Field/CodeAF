@@ -132,8 +132,23 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	needsLearning := textValue(projection["input_hash"]) != digest || hasPendingRefinement(learning)
+	intent, err := stateDocument(db, "job")
+	if err != nil {
+		return err
+	}
+	request := textValue(intent["request"])
+	explicitBuild := request != "" && request != textValue(projection["build_request"])
+	sameInput := textValue(projection["input_hash"]) == digest
+	if sameInput && projection["version"] == knowledgeProjectionVersion && !explicitBuild {
+		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
+		return err
+	}
+	needsLearning := !sameInput || (explicitBuild && hasPendingRefinement(learning))
 	if !needsLearning && projection["version"] == knowledgeProjectionVersion {
+		projection["build_request"] = request
+		if err = saveState(db, "projection", projection); err != nil {
+			return err
+		}
 		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
 		return err
 	}
@@ -164,7 +179,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	if err = v.commitPublication(published, learning, registry, digest); err != nil {
+	if err = v.commitPublication(published, learning, registry, digest, request); err != nil {
 		return err
 	}
 	_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)

@@ -73,9 +73,6 @@ func (v *Vault) StartBuild() error {
 	if err != nil {
 		return err
 	}
-	if textValue(job["phase"]) == string(BuildRunning) {
-		return nil
-	}
 	job["backfill"] = true
 	job["request"] = time.Now().UTC().Format(time.RFC3339Nano)
 	job["phase"] = string(BuildRunning)

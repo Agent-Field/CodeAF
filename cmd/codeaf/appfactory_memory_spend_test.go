@@ -440,6 +440,16 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		if calls.Load() != before {
 			t.Errorf("unchanged sources launched %d further refinement calls", calls.Load()-before)
 		}
+		if err := v.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		if err := v.Flush(context.Background(), "fixture", true); err != nil {
+			t.Fatal(err)
+		}
+		if calls.Load() == before {
+			t.Error("explicit Build did not advance retained refinement")
+		}
+
 	})
 }
 
