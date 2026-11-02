@@ -355,14 +355,16 @@ The method, reply, `factory.job_actions` hello feature and error codes are uncha
 Factories without the separate-title capability retain their prior behavior.
 
 
-`factory.job_create` keeps `title` trimmed and separate from literal `text`,
-including details whitespace in the job ask and body; empty details stay empty.
-Neither field lifts
-terminal chips or changes budget, approval steps, rounds, effort or security.
-The job title alone supplies the draft PR title. Existing jobs are not rewritten.
-The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
-Factories without the separate-title capability retain their prior behavior.
-
+An engine whose hello carries `factory.stop_any_version` accepts
+`factory.job_stop {factory, job, expect?}` and
+`factory.job_step_stop {factory, job, step, expect?}`. An omitted `expect`
+is accepted; when supplied it retains the existing shape, including a positive
+`version`. On an active job, a mismatching `expect` does not refuse Stop.
+Step Stop still requires the named step to be current and running, and refuses
+finished or publishing jobs. Ended jobs retain their existing `stale` or
+`conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
+and errors retain their existing codes, including `bad_params` for malformed
+requests. Other job actions still require their existing guards.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
