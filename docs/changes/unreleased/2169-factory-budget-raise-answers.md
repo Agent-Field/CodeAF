@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Budget recovery records the answer and requeues jobs without a runner
-pr: 0
+pr: 2169
 surface: [engine]
 invalidates:
   - "Raising a held job's budget could resume its runner without recording answered:continue after budget_changed."
