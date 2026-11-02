@@ -23,10 +23,9 @@ type RunnerSettings struct {
 	KeepOutputDays       int `json:"keep_output_days"`
 	KeepOutputMB         int `json:"keep_output_mb"`
 	// ReadOnArrival is "Read new issues as they arrive": the arrival read of
-	// each new issue and the look closer before an automatic start. OFF UNTIL
-	// THE OPERATOR TURNS IT ON (the owner's rule: AI runs only on a click or
-	// the person's schedule); off, the factory's AI reads nothing by itself
-	// and a person's Read and Look closer still work.
+	// each new issue and the look closer before an automatic start. Off until
+	// the operator turns it on: off, the factory's AI reads nothing by itself
+	// and runs only when a person clicks Read or Look closer.
 	ReadOnArrival bool `json:"read_on_arrival"`
 }
 

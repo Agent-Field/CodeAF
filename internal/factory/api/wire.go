@@ -975,6 +975,12 @@ type ReadResult struct {
 	Failed  []int `json:"failed"`
 }
 
+// ReadMost is the most jobs one POST /v1/read reads; the rest are skipped.
+const ReadMost = 20
+
+// ScoutWall is the most time one look closer runs before it must answer.
+const ScoutWall = time.Minute
+
 // ScoutLook is POST /v1/jobs/{id}/scout's answer: the job's scout, and
 // cached when it is the kept look of the same issue text at the same head,
 // which cost nothing.

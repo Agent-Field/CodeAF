@@ -289,3 +289,16 @@ func TestAClickReadsExactlyTheChosenItems(t *testing.T) {
 		}
 	}
 }
+
+type brokenStore struct{ Store }
+
+func (brokenStore) List() ([]factory.Item, error) { return nil, errors.New("disk gone") }
+
+// A store that cannot list fails the chosen reads, so the person can try
+// again; it never reports them as skipped.
+func TestAClickReadOnABrokenStoreFailsTheChosenJobs(t *testing.T) {
+	got := ReadThese(context.Background(), brokenStore{}, nil, []int{1, 2}, Options{})
+	if !reflect.DeepEqual(got.Failed, []int{1, 2}) || len(got.Skipped) != 0 {
+		t.Fatalf("broken store = %+v", got)
+	}
+}

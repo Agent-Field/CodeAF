@@ -69,9 +69,8 @@ func (d Door) Look(ctx context.Context, id int, refresh bool) (factory.Scout, bo
 		return factory.Scout{}, false, err
 	}
 	s, err := d.Run(ctx, it)
-	_ = d.Floor.NoteScout(it.Repo, s.USD, now)
-	if err != nil {
-		return s, false, err
+	if noted := d.Floor.NoteScout(it.Repo, s.USD, now); noted != nil || err != nil {
+		return s, false, errors.Join(err, noted)
 	}
 	if s.Head == "" {
 		s.Head = head

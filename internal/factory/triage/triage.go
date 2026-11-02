@@ -23,11 +23,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
 // BodyMost is how much of an item's text the prompt carries. The poll already
@@ -118,11 +120,11 @@ func ItemText(it factory.Item) string {
 // tag: a closing tag inside it is broken, so the text cannot end its own
 // wrapping and speak as the prompt.
 func Untrusted(text string) string {
-	for _, tag := range []string{"</item>", "</file>", "</untrusted>"} {
-		text = strings.ReplaceAll(text, tag, strings.Replace(tag, "</", "</ ", 1))
-	}
-	return text
+	return closingTag.ReplaceAllString(text, "</ $1")
 }
+
+// closingTag is a closing wrapper tag in any case or spacing.
+var closingTag = regexp.MustCompile(`(?i)</\s*((?:item|file|untrusted)\s*>)`)
 
 // answerShape is the answer the read asks for.
 const answerShape = `Answer exactly this shape:
@@ -587,7 +589,7 @@ func (w *worker) read(ctx context.Context, it factory.Item, tries int) tick {
 }
 
 // ClickMost is the most items one click reads.
-const ClickMost = 20
+const ClickMost = api.ReadMost
 
 // Clicked is what a person's Read did: the items read, those skipped (already
 // read, not an issue job, or not on the floor) and those whose call failed,
@@ -602,7 +604,11 @@ type Clicked struct {
 func ReadThese(ctx context.Context, st Store, call Call, ids []int, opts Options) Clicked {
 	w := &worker{st: st, call: call, fails: map[int]int{}, opts: opts}
 	out := Clicked{Read: []int{}, Skipped: []int{}, Failed: []int{}}
-	items, _ := st.List()
+	items, err := st.List()
+	if err != nil {
+		out.Failed = append(out.Failed, ids...)
+		return out
+	}
 	byID := make(map[int]factory.Item, len(items))
 	for _, it := range items {
 		byID[it.ID] = it

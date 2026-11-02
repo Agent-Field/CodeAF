@@ -31,12 +31,12 @@ func (r *run) finish(ctx context.Context, raw json.RawMessage) (factory.Scout, e
 		return r.out, ErrNoAnswer
 	}
 	out := &r.out
-	for _, f := range a.Files {
+	for _, f := range a.Files[:min(len(a.Files), FilesMost*2)] {
 		if path, ok := r.exists(ctx, f.Path); ok && len(out.Files) < FilesMost {
 			out.Files = append(out.Files, factory.ScoutFile{Path: path, Why: words(f.Why, ScoutWhyWords)})
 		}
 	}
-	for _, t := range a.Tests {
+	for _, t := range a.Tests[:min(len(a.Tests), TestsMost*2)] {
 		if path, ok := r.exists(ctx, t); ok && len(out.Tests) < TestsMost {
 			out.Tests = append(out.Tests, path)
 		}

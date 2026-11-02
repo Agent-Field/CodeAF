@@ -24,8 +24,7 @@ func TestFactoryRunnerPolicyRoutesValidateAndRequireOperator(t *testing.T) {
 	f.request(t, "PATCH", "/v1/settings", "", api.PatchFactorySettings{RunnerTimeoutSeconds: &seconds}, 401, nil)
 }
 
-// READ NEW ISSUES AS THEY ARRIVE is off until the operator turns it on (the
-// owner's rule: AI runs only on a click or the person's schedule): the
+// Read new issues as they arrive is off until the operator turns it on: the
 // settings answer it off on a factory that never saved it, a patch turns it
 // on, and the other policy stays as it was.
 func TestReadOnArrivalIsOffUntilTheOperatorTurnsItOn(t *testing.T) {
