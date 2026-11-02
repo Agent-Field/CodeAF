@@ -496,6 +496,12 @@ type Item struct {
 	DoneAt      time.Time    `json:",omitempty"`
 	Approval    *Approval    `json:",omitempty"`
 	StopUndo    *StopUndo    `json:",omitempty"`
+
+	// BriefSeen is the Brief revision each person last saw, by normalised
+	// handle (brief_seen.go). It is private to each person: it never crosses
+	// in a job, only as the caller's own brief_seen.
+	BriefSeen map[string]int `json:",omitempty"`
+
 	// MergePolicy is the pipeline's merge settings as they stood when the
 	// proof was approved: approving publishes, and the approval says whether
 	// the pull request it opens may merge on its own. nil is auto-merge off.

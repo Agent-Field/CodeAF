@@ -106,9 +106,7 @@ pkill -f '[s]sh -T .* localhost codeaf engine'
 ```
 
 The status line grows its `connection` segment, the surface redials itself, and the answer
-continues rather than restarting. Send something while it is down and the message is not
-lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
-in a moment`, and pressing enter again once it is back sends it.
+continues rather than restarting. Enter while it is down sends nothing and keeps the full draft in the box. It says `not sent — still reconnecting to localhost; enter sends it once the link is back`. Press Enter again after it is back to send; reconnecting never sends automatically.
 
 ## The far machine says a different version — when the connection cannot be made
 
@@ -944,3 +942,23 @@ resolution. This distinction applies inside tmux too.
 Windows cannot replace the running bridge in place. When a newer engine needs a
 different version, this launch stops cleanly and names the installed program’s
 update command. It leaves the existing conversation and its windows running.
+
+
+## A disconnected message stays in the box — not sent, reconnecting or connection gone
+
+While `chat --host` reconnects, Enter keeps your words and attachments in the
+message box and starts no turn. For localhost it says
+`not sent — still reconnecting to localhost; enter sends it once the link is back`.
+Press Enter after the link returns; it never sends automatically.
+
+When `chat --at` has lost its connection, Enter likewise keeps your draft. With
+a computer named desk-b it says `not sent — the connection to desk-b is gone; your words are still in the box. Run the same command to pick the conversation back up`.
+The computer’s chosen name is used when available.
+
+## An old latency disappears — ping age in --host and --at
+
+A measured round trip appears in the connection bar, for example `desk-b · 1ms`.
+Pings are five seconds apart. After six seconds without an answered ping, the
+latency disappears, including while the next ping is still waiting. The next
+answer restores the reading. This is a link measurement, not proof that sync
+or chat ownership is available.

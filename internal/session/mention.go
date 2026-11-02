@@ -85,7 +85,7 @@ func mentionTeamBlock(profile, self, slug string, now time.Time) string {
 	if !found {
 		return ""
 	}
-	log, _ := teams.ReadTraffic(profile, team.ID, "", 40)
+	log, _ := teams.ReadHistory(profile, team.ID, 40)
 	states := map[string]teams.MemberState{}
 	for _, m := range team.Members {
 		if m.Key == self || m.File == self {

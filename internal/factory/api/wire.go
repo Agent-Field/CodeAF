@@ -362,6 +362,10 @@ type Job struct {
 	Overlap         []string          `json:"overlap,omitempty"`
 	Approval        *factory.Approval `json:"approval,omitempty"`
 
+	// BriefSeen is the Brief revision the CALLER last saw on this job, absent
+	// for none ([ForViewer]). Nobody else's is ever answered.
+	BriefSeen int `json:"brief_seen,omitempty"`
+
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
@@ -515,6 +519,14 @@ type RoundLine struct {
 	At        time.Time `json:"at"`
 	StartedAt time.Time `json:"started_at,omitzero"`
 	Chat      string    `json:"chat,omitempty"`
+	// Result and Reason are how the try ended (factory.TryResult): its
+	// rule's word (clean, not clean, green, not green, proven, not proven,
+	// done, not done, blocked) and a counted reason ("2 findings", "12
+	// passed", "1 of 2 claims shown"). Both are absent on a try recorded
+	// before they were and on one that ended without a report; a surface
+	// shows the try's number alone then, and never guesses from summary.
+	Result string `json:"result,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Can is which verbs this caller may use on this job. It follows the

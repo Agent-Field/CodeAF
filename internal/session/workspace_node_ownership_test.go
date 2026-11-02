@@ -142,11 +142,12 @@ func TestLegacyOwnedTaskUnknownIdentityRefusesFreshWorld(t *testing.T) {
 }
 
 func TestLegacyOwnedWorkerUsesItsAdmittedRuntime(t *testing.T) {
+	// macOS mktemp needs an explicit template to create its file inside the assigned TMPDIR.
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	script := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("runtime", "bash", `{"command":"printf '%s\\n' \"$CODEAF_WORKSPACE_URI\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" > runtime.txt; mktemp >> runtime.txt"}`), nil
+			return toolResponse("runtime", "bash", `{"command":"printf '%s\\n' \"$CODEAF_WORKSPACE_URI\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" > runtime.txt; mktemp \"$TMPDIR/codeaf-runtime.XXXXXX\" >> runtime.txt"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}}
