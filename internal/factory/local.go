@@ -614,9 +614,6 @@ func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, err
 	if title == "" {
 		return Item{}, errors.New("say what the work is, not only how")
 	}
-	if text == "" {
-		text = title
-	}
 	it := Item{
 		Autonomy: AutonomyAuto,
 		Repo:     repo,

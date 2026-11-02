@@ -910,7 +910,7 @@ func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 		return err
 	}
 	ask := body.Text
-	if ask == "" {
+	if ask == "" && (body.Source == "" || body.Source == factory.AskTUI) {
 		ask = strings.TrimSpace(body.Title)
 	}
 	now := h.clock()

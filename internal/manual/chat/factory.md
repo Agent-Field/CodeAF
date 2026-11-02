@@ -446,7 +446,8 @@ Automatic interrupted-step recovery allows three retries, counted in attempts, n
 
 Creating a job with a separate title in the app, or handing off an agent,
 keeps the title as written with outer whitespace removed. Details keep their
-spacing and line breaks in the job's ask and body. Words in either field,
+spacing and line breaks in the job's ask and body; empty details stay empty.
+Words in either field,
 including `auto`, `ship it`, `plan first`, `$5`, `security`, `two review rounds`
 and `cheaper`, do not set a budget or change approval steps, review rounds,
 effort or security. The repository's pipeline remains in effect. A draft pull

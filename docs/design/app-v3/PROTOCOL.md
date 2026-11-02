@@ -321,7 +321,8 @@ decides which combinations are accepted.
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
-including details whitespace in the job ask and body. Neither field lifts
+including details whitespace in the job ask and body; empty details stay empty.
+Neither field lifts
 terminal chips or changes budget, approval steps, rounds, effort or security.
 The job title alone supplies the draft PR title. Existing jobs are not rewritten.
 The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
