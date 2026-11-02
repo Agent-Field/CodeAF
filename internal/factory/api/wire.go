@@ -57,6 +57,20 @@ const ReasonHasRunning = "has_running"
 // [factory.RepoOffWords].
 const ReasonRepoOff = "repo_off"
 
+// ReasonInFlight is the reason on the 409 that refuses a comment on a job's
+// issue while another comment on the same job is still being posted, so a
+// double click posts once. Nothing was posted by the refused call.
+const ReasonInFlight = "in_flight"
+
+// The outcome on a failure of a job's issue comment
+// (POST /v1/jobs/{id}/issue_comment): refused says nothing was posted;
+// unknown says GitHub's answer cannot say, so the person reads the issue
+// before posting again. A factory older than the field sends none.
+const (
+	CommentRefused = "refused"
+	CommentUnknown = "unknown"
+)
+
 // ReasonNeedsCheckout is the reason on the 409 that refuses a start whose
 // repository has no checkout on the factory's machine and cannot be cloned
 // there; the error is [factory.NeedsCheckout]'s sentence, naming why. It is

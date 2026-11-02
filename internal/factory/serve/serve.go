@@ -158,6 +158,9 @@ type Handler struct {
 	setupTimer  *time.Timer
 	accessMu    sync.Mutex
 	accessFlows map[string]accessLinkFlow
+	// commentFlights holds the jobs with a comment on their issue being
+	// posted by this handler (issue_comment.go).
+	commentFlights sync.Map
 
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
