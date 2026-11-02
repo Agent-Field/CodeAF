@@ -217,6 +217,55 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 				t.Fatalf("job memory output lost: %v %v", hits, err)
 			}
 			if n == 0 {
+				t.Run("delegated reports", func(t *testing.T) {
+					place := session.Place{Dir: filepath.Dir(agent.SessionPath())}
+					if err := os.MkdirAll(place.NodeJournals(), 0700); err != nil {
+						t.Fatal(err)
+					}
+					report := `{"type":"message","role":"assistant","content":"Cedar queues jobs.","timestamp":` + fmt.Sprintf("%q", time.Now().UTC().Format(time.RFC3339Nano)) + `,"presentation":{"audience":"operational"}}` + "\n"
+					if err := os.WriteFile(filepath.Join(place.NodeJournals(), "1.jsonl"), []byte(report), 0600); err != nil {
+						t.Fatal(err)
+					}
+					before := calls.Load()
+					events, err := agent.Submit(context.Background(), "Cedar queues jobs.")
+					if err != nil {
+						t.Fatal(err)
+					}
+					for range events {
+					}
+					inventory, err := session.KnowledgeHistory(workspace).Inventory(context.Background())
+					if err != nil {
+						t.Fatal(err)
+					}
+					var task knowledge.Journal
+					for _, journal := range inventory {
+						if strings.HasPrefix(journal.Session, "task:") {
+							task = journal
+						}
+					}
+					if task.ID == "" || !task.Job {
+						t.Fatalf("delegated job report missing ownership: %+v", inventory)
+					}
+					batch, err := session.KnowledgeHistory(workspace).Read(context.Background(), task, knowledge.JournalCursor{})
+					if err != nil || len(batch.Sources) != 1 {
+						t.Fatalf("delegated report: %+v %v", batch, err)
+					}
+					// Re-capturing the same immutable source proves it was consumed by
+					// the owner's finished turn rather than left for idle polling.
+					batch.Sources[0].Job = true
+					if err := vault.Capture(batch.Sources[0]); err != nil {
+						t.Fatal(err)
+					}
+					snapshot, err := vault.Snapshot()
+					if err != nil || snapshot.Pending != 0 {
+						t.Fatalf("delegated report stayed pending after owner's turn: pending=%d error=%v", snapshot.Pending, err)
+					}
+					if calls.Load() <= before {
+						t.Fatal("owner did not compile delegated report")
+					}
+				})
+			}
+			if n == 0 {
 				before := calls.Load()
 				for _, state := range []string{"paused", "published"} {
 					if err := floor.Annotate(item.ID, func(it *factory.Item) error {
