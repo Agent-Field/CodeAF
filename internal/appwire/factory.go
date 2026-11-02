@@ -227,7 +227,11 @@ type FactoryRepo struct {
 	Owner   string    `json:"owner"`
 	Private bool      `json:"private"`
 	Pushed  time.Time `json:"pushed"`
-	Open    int       `json:"open"`
+	// Open is GitHub's open_issues_count: open issues AND pull requests.
+	Open int `json:"open"`
+	// OpenIssues is open issues without pull requests, absent when the
+	// factory did not say (an older factory, or GitHub would not count them).
+	OpenIssues *int `json:"open_issues,omitempty"`
 }
 
 // FactoryRepos is factory.repos' answer.

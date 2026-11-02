@@ -58,7 +58,11 @@ func (f *actionFactory) deskNow() time.Time {
 	return f.clock.now()
 }
 
-func startActionFactory(t *testing.T) *actionFactory {
+func startActionFactory(t *testing.T) *actionFactory { return startActionFactoryWith(t, nil) }
+
+// startActionFactoryWith is startActionFactory whose server config more
+// changes first, for a door the plain factory does not serve.
+func startActionFactoryWith(t *testing.T, more func(*serve.Config)) *actionFactory {
 	t.Helper()
 	f := &actionFactory{clock: &factoryClock{at: time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)}, github: newFakeGitHub()}
 	var err error
@@ -88,11 +92,15 @@ func startActionFactory(t *testing.T) *actionFactory {
 			return it.ID, err
 		},
 	}
-	h := serve.New(seam, serve.Config{
+	config := serve.Config{
 		Version: "test", Name: "Acme factory", ServedBy: "factory", AccessToken: testHostToken, Mode: api.FactoryTeam,
 		GitHubClientID: "client", GitHubHTTPClient: f.github.client(), Now: f.clock.now, Store: f.st, Record: f.rec, Root: f.st.Root(),
 		LeaseOptions: lease.Options{Now: f.deskNow, Record: f.rec},
-	})
+	}
+	if more != nil {
+		more(&config)
+	}
+	h := serve.New(seam, config)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			f.mu.Lock()
