@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
@@ -76,14 +79,32 @@ func assertContinued(t *testing.T, f *peopleV2Fixture) {
 	}
 }
 
+// lockWaiters is how many goroutines wait on mu. sync.Mutex keeps its state
+// word first, with the waiter count above its three flag bits.
+func lockWaiters(mu *sync.Mutex) int32 {
+	return atomic.LoadInt32((*int32)(unsafe.Pointer(mu))) >> 3
+}
+
+func untilLockWaiters(t *testing.T, mu *sync.Mutex, n int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for lockWaiters(mu) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("waiters on the setup lock never reached %d", n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // A window reading setup while Continue stops the reader cannot start the
 // reader again: Continue answers 200 and reading ends. The read is made to
 // arrive in the gap between the stopped reader letting go and Continue
-// taking its step: the reader and then the read queue on the setup lock
-// while the test holds it, and a lock waited on this long is handed to its
-// waiters in order, ahead of Continue.
+// taking its step: with one processor, the stopped reader and then the read
+// queue on the setup lock while the test holds it, and the read, woken last
+// by the reader's unlock, runs before Continue, which the reader woke first.
 func TestFactorySetupContinueHoldsAgainstAConcurrentRead(t *testing.T) {
 	f, cancelled, release := midReadSetup(t)
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 	answer := make(chan int, 1)
 	go func() {
 		answer <- identityRequest(f.h, "POST", "/v1/factory-setup/local", `{"verb":"continue"}`, "operator-secret", nil).Code
@@ -91,13 +112,13 @@ func TestFactorySetupContinueHoldsAgainstAConcurrentRead(t *testing.T) {
 	<-cancelled
 	f.h.setupMu.Lock()
 	close(release)
-	time.Sleep(20 * time.Millisecond)
+	untilLockWaiters(t, &f.h.setupMu, 1)
 	read := make(chan struct{})
 	go func() {
 		defer close(read)
 		identityRequest(f.h, "GET", "/v1/factory-setup/local", "", "operator-secret", nil)
 	}()
-	time.Sleep(20 * time.Millisecond)
+	untilLockWaiters(t, &f.h.setupMu, 2)
 	f.h.setupMu.Unlock()
 	<-read
 	if code := <-answer; code != 200 {
