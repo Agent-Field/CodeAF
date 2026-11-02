@@ -45,6 +45,10 @@ type JobFolders interface {
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// Scout is Look closer on this factory (scout.Door.Look): nil when the
+	// factory has no model to look with, and the route then says so.
+	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
+
 	// GitHubToken supplies the local profile credential only on a solo host.
 	GitHubToken func(context.Context) string
 
@@ -236,6 +240,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/audit", h.audit)
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
+	h.scoutRoutes()
 	h.workerRoutes()
 	h.v2Routes()
 	h.route("/v1/factory-setup/{id}", map[string]http.HandlerFunc{http.MethodGet: h.factorySetup, http.MethodPost: h.factorySetup})

@@ -237,3 +237,25 @@ func TestWorkerGivesAFailingCallItsTriesThenStamps(t *testing.T) {
 		t.Fatal("an item whose call always fails was never stamped")
 	}
 }
+
+// READ NEW ISSUES AS THEY ARRIVE, TURNED OFF, reads nothing: no call and no
+// stamp, and the item is read the first tick after it is turned on again.
+func TestAWorkerWhoseArrivalReadIsOffReadsNothing(t *testing.T) {
+	st := openStore(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "x", State: factory.StateNew, Kind: factory.KindIssue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{asked: make(chan struct{}, 8), answer: func(int) (string, error) { return clean, nil }}
+	off := true
+	opts := Options{Off: func() bool { return off }}
+	ReadOne(context.Background(), st, r.call, opts)
+	if got, _ := st.Get(it.ID); len(r.prompts) != 0 || !got.Triage.TriagedAt.IsZero() {
+		t.Fatalf("read while off: %d calls, %+v", len(r.prompts), got.Triage)
+	}
+	off = false
+	ReadOne(context.Background(), st, r.call, opts)
+	if got, _ := st.Get(it.ID); got.Triage.TriagedAt.IsZero() {
+		t.Fatal("not read once turned on")
+	}
+}

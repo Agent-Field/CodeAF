@@ -22,10 +22,15 @@ type RunnerSettings struct {
 	RunnerTimeoutSeconds int `json:"runner_timeout_s"`
 	KeepOutputDays       int `json:"keep_output_days"`
 	KeepOutputMB         int `json:"keep_output_mb"`
+	// ReadOnArrival is "Read new issues as they arrive": the arrival read of
+	// each new issue and the look closer before an automatic start. On until
+	// the operator turns it off; off, the factory's AI reads nothing by itself
+	// and a person's Look closer still works.
+	ReadOnArrival bool `json:"read_on_arrival"`
 }
 
 func DefaultRunnerSettings() RunnerSettings {
-	return RunnerSettings{DefaultRunnerTimeoutSeconds, DefaultKeepOutputDays, DefaultKeepOutputMB}
+	return RunnerSettings{RunnerTimeoutSeconds: DefaultRunnerTimeoutSeconds, KeepOutputDays: DefaultKeepOutputDays, KeepOutputMB: DefaultKeepOutputMB, ReadOnArrival: true}
 }
 func (v RunnerSettings) Valid() bool {
 	return v.RunnerTimeoutSeconds >= factory.MinRunnerTimeoutSeconds && v.RunnerTimeoutSeconds <= factory.MaxRunnerTimeoutSeconds && v.KeepOutputDays >= factory.MinKeepOutputDays && v.KeepOutputDays <= factory.MaxKeepOutputDays && v.KeepOutputMB >= factory.MinKeepOutputMB && v.KeepOutputMB <= factory.MaxKeepOutputMB

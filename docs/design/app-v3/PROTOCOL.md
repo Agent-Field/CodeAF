@@ -285,6 +285,7 @@ decides which combinations are accepted.
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
+| `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
@@ -294,6 +295,7 @@ decides which combinations are accepted.
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
+| `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
 | `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
 | `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
@@ -327,6 +329,35 @@ least that much (absent below five; a running job with `left` alone has `n` 0).
 `queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
 figures see and how many of `of` backtested jobs spent inside their range. The
 repository dry run adds `cost_jobs`, that repository's finished jobs.
+
+An engine whose hello carries the feature `factory.scout` serves
+`factory.scout {factory, job, refresh?}` (`POST /v1/jobs/{id}/scout`): Look
+closer. A model with `factory.repo_read`'s read-only tools on the factory's
+own checkout reads the job's issue again, within at most 12 tool calls, one
+minute and $0.10, and answers `ScoutLook {factory, job, cached, scout}`.
+`scout` is `{files [{path, why}], plan [three steps], unknowns [questions],
+tests [paths], rubric (from `scout`, each factor with `cite` "path:line"),
+cited, dropped, calls, usd, model, took_ms, head, at, stale}`. Every path it
+shows exists at `head`; `dropped` counts the paths the model named that did not
+(`cited` is how many it named). The same issue text at the same head answers
+the kept look free (`cached: true`); `stale` on a job's look says the issue
+changed since (a moved head is found by the next look, which then runs anew),
+and `refresh: true` asks for a new one. The look also lands on the job
+(`job.scout`, its rubric replacing the read's), and its cost goes on the spend
+ledger as `factory scout`. A new look is refused `limit` at the month's $10 of
+factory looks ("Monthly limit for AI reached") or 20 looks a day in one
+repository ("Daily limit for this repo reached"); a look with no answer within
+its budget is `no_answer`; a repository with no checkout is `not_cloned`.
+`queue.desk.scout_price` is what a typical look cost, absent before the first.
+
+An engine whose hello carries the feature `factory.read_on_arrival` serves
+`factory.read_on_arrival {factory, on?}` → `{on}`: "Read new issues as they
+arrive", the factory's `read_on_arrival` in `GET /v1/settings`. On (the
+default), each new issue gets the arrival read and a job the start rules would
+start gets a look closer before it launches; off, the factory's AI reads
+nothing by itself and a person's Look closer still works. With `on` the
+operator changes it (`PATCH /v1/settings`); anyone else is `forbidden`.
+
 An engine whose hello carries the feature `factory.repo_read` (and
 `FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
 path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own

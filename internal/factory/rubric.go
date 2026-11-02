@@ -25,6 +25,9 @@ type Factor struct {
 	Score int
 	Why   string `json:",omitempty"`
 	Low   bool   `json:",omitempty"`
+	// Cite is the evidence a scout read, as `path:line`, checked to exist in
+	// the repository before it is kept.
+	Cite string `json:",omitempty"`
 }
 
 // Who scored a rubric.
