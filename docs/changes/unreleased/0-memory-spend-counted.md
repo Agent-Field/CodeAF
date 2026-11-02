@@ -21,3 +21,6 @@ entry disappears, so background memory does not spend for them.
 
 Delegated task reports compile with their owning job turn, keep their citation
 identities, and charge the same job instead of remaining pending indefinitely.
+
+Memory spending cannot revoke a successful stage result. Admission to the next
+step still sees the full job spend, including late memory receipts.

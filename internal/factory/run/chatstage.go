@@ -479,7 +479,9 @@ loop:
 		made.Edit = res.Edit
 		res = made
 	}
-	if stop, ok := spendStopOf(waitErr); ok {
+	// A final successful result survives optional work charged as the turn
+	// settles. The next stage still reads the complete live job spend.
+	if stop, ok := spendStopOf(waitErr); ok && !res.Done {
 		res.JobBudgetStopped = stop.Job
 		res.Reports, res.Inferred = 0, false
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()

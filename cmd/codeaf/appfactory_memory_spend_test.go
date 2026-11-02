@@ -247,7 +247,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 					if task.ID == "" || !task.Job {
 						t.Fatalf("delegated job report missing ownership: %+v", inventory)
 					}
-					batch, err := session.KnowledgeHistory(workspace).Read(context.Background(), task, knowledge.JournalCursor{})
+					batch, err := session.KnowledgeHistory(workspace).Read(context.Background(), task, knowledge.JournalCursor{Scope: task.Project})
 					if err != nil || len(batch.Sources) != 1 {
 						t.Fatalf("delegated report: %+v %v", batch, err)
 					}
