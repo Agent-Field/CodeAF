@@ -34,10 +34,7 @@ func workBackend(t *testing.T, conv *fakeConversation) (*appBackend, *appRecorde
 
 // lane puts one event on the fake's task lane.
 func (f *fakeConversation) lane(event session.Event) {
-	f.mu.Lock()
-	lane := f.tasks
-	f.mu.Unlock()
-	lane <- event
+	f.put(&f.tasks, &f.heldTasks, event)
 }
 
 func taskChanged(rec *appRecorder, t *testing.T, match func(appwire.Task) bool) appwire.Task {
