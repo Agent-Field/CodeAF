@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
@@ -112,12 +113,12 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 // This bridge still has a handler-commit/response-cache crash gap; only an
 // acknowledgment committed with the job itself can close it.
 func cacheWorkerResponse(r *http.Request, row replay) bool {
-	if row.Status == http.StatusUnprocessableEntity &&
+	if api.ReportCommittedNothing(row.Status) &&
 		(strings.HasPrefix(r.URL.Path, "/v1/workers/leases/") || strings.HasPrefix(r.URL.Path, "/v1/runners/leases/")) &&
 		strings.HasSuffix(r.URL.Path, "/report") {
 		return false
 	}
-	return !workerPath(r.URL.Path) || (row.Status < 500 && row.Status != http.StatusRequestTimeout && row.Status != http.StatusTooManyRequests)
+	return !workerPath(r.URL.Path) || !api.WorkerResendable(row.Status)
 }
 
 func (h *Handler) capture(r *http.Request) replay {

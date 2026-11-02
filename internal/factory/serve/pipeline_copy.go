@@ -15,9 +15,9 @@ import (
 // save and stop the factory's own copy of one repository's
 // .codeaf/factory.yaml ([factory.PipelineCopy]): the file a person edited in
 // the app, kept in THIS FACTORY'S STORE so the jobs it starts afterwards run it
-// at once, with no push and no pull request. The owner decided this on
-// 2026-10-28, knowing it departs from "team law lives in the repository" (see
-// factory.RecipeSource for who reads what, and the precedence).
+// at once, with no push and no pull request. This is the one place where a
+// team's steps live outside the repository, and only until main's file says
+// the same (see factory.RecipeSource for who reads what, and the precedence).
 //
 // ONE PATH FOR EVERY FACTORY. A solo factory and a team server answer the same
 // route the same way; what differs is only who its operator is. SAVING AND
