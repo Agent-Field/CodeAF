@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -21,6 +22,13 @@ func workerReportHeaders(body *api.WorkerReport, headers http.Header) error {
 				body.Steps[i].Model = model
 			}
 		}
+	}
+	if raw := headers.Get(api.ModelSpendHeader); raw != "" {
+		var rows []factory.ModelUse
+		if len(raw) > 64<<10 || json.Unmarshal([]byte(raw), &rows) != nil {
+			return fmt.Errorf("invalid model spend")
+		}
+		body.Models = rows
 	}
 	if raw := headers.Get(api.StepChatsHeader); raw != "" {
 		var chats map[string]string

@@ -99,6 +99,9 @@ func briefAfterStep(it Item) string {
 // version kept (false when none), and the parts dropped.
 func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDrop, bool) {
 	AddChatSpend(it, w.CostUSD)
+	// THE WRITER IS ONE CALL. Its model is known here; a write with no model
+	// still spends, and that spend stays untied.
+	AddModelUse(it, w.Model, w.CostUSD, 1, 0, 0)
 	after := briefAfterStep(*it)
 	if it.BriefWriting != nil && it.BriefWriting.AfterStep != "" {
 		after = it.BriefWriting.AfterStep

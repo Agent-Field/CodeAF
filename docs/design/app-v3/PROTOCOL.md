@@ -318,7 +318,20 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+
+An engine whose hello carries `factory.spend_by_model` (and capabilities
+`spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
+the same days and the same job spend as `factory.spend_by_repo`, from
+`GET /v1/spend/models`, as `{factory, from, to, time_zone?, models, unknown_usd?}`.
+Each model is `{model, cost_usd, calls, input_tokens?, output_tokens?, jobs}`,
+dearest first and then by name. `unknown_usd` is spend in that range that was
+not recorded against a model, including every job from before model lines
+were kept; it is omitted when there is none. The model costs and
+`unknown_usd` add up to `factory.spend_by_repo`'s `total_usd` for the same
+days. A triage read, a scout, and page AI that is not booked on a job are in
+neither total. A factory older than the route answers not found.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts

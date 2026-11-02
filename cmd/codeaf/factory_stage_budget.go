@@ -28,7 +28,14 @@ func (b *stageBudget) FactoryAuto() bool {
 	return err == nil && factory.Automatic(it)
 }
 
-func (b *stageBudget) Spend(usd float64) {
+func (b *stageBudget) Spend(usd float64) { b.book(usd, "", 0, 0, 0) }
+
+// SpendModel books one priced call and the model that answered it.
+func (b *stageBudget) SpendModel(usd float64, model string, calls, input, output int) {
+	b.book(usd, model, calls, input, output)
+}
+
+func (b *stageBudget) book(usd float64, model string, calls, input, output int) {
 	if usd <= 0 {
 		return
 	}
@@ -44,6 +51,7 @@ func (b *stageBudget) Spend(usd float64) {
 			return errNotThisChat
 		}
 		factory.AddChatSpend(it, usd)
+		factory.AddModelUse(it, model, usd, calls, int64(input), int64(output))
 		return nil
 	}); err != nil {
 		b.failed = true

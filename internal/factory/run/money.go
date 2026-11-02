@@ -140,11 +140,14 @@ func bump(a []int, hours int) []int {
 // new run always has.
 func freshStream(it *factory.Item, now time.Time) *factory.Stream {
 	spent := it.ChatSpent
+	models := it.ChatModels
 	if s := it.Stream; s != nil && !begun(s) {
 		spent += s.Spent
+		models = factory.JoinModelUses(models, s.Models)
 	}
 	it.ChatSpent = 0
-	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent}
+	it.ChatModels = nil
+	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent, Models: models}
 }
 
 // begun says whether any step of the stream has started a round.
