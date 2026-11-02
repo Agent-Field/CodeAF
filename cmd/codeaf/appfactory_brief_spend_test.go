@@ -68,7 +68,7 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			floor := s.backend.local.host.floor
 			var manager *session.Agent
 			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
-				agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: filepath.Join(s.home, "job-profile"), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobChat: jobChatDoorOf(floor), Unattended: true, DeterministicNames: outcome != "manager and title"})
+				agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: filepath.Join(s.home, "job-profile"), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobChat: jobChatDoorOf(floor), Unattended: true, DeterministicNames: true})
 				if err != nil {
 					return nil, err
 				}
@@ -145,12 +145,31 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 						t.Fatal(event.Err)
 					}
 				}
+				// Managers already have a saved factory title. An unnamed owned
+				// stage exercises real naming alongside the manager's turn.
+				named, err := session.New(session.Config{Workspace: t.TempDir(), SessionFile: filepath.Join(t.TempDir(), "stage.jsonl"), ProfileDir: filepath.Join(s.home, "stage-profile"), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobBudget: &stageBudget{floor: floor, item: it}, Unattended: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = named.Close() })
+				events, err = named.Submit(context.Background(), "Repair retry cost accounting in the job header.")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for event := range events {
+					if event.Kind == session.EventError {
+						t.Fatal(event.Err)
+					}
+				}
 				deadline := time.Now().Add(5 * time.Second)
-				for manager.Title() != "Retry accounting" {
+				for named.Title() != "Retry accounting" {
 					if time.Now().After(deadline) {
-						t.Fatalf("title did not finish: %q", manager.Title())
+						t.Fatalf("title did not finish: %q", named.Title())
 					}
 					time.Sleep(10 * time.Millisecond)
+				}
+				if err := named.Close(); err != nil {
+					t.Fatal(err)
 				}
 				if err := manager.Close(); err != nil {
 					t.Fatal(err)
@@ -211,7 +230,7 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 				wantCalls, wantCost = 2, .02
 			}
 			if outcome == "manager and title" {
-				wantCalls, wantCost = 3, .03
+				wantCalls, wantCost = 4, .04
 				if titleCalls != 1 {
 					t.Errorf("title calls=%d, want 1", titleCalls)
 				}
