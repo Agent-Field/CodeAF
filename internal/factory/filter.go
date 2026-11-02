@@ -388,9 +388,6 @@ func matchOne(it Item, t term, viewer string, now time.Time) bool {
 // questions before it is worth running.
 const ThinReadiness = 55
 
-// CheapEst is the largest estimate the word cheap still covers.
-const CheapEst = 2.5
-
 func matchTerm(it Item, t, viewer string) bool {
 	area := strings.ToLower(it.Triage.Area)
 	title := strings.ToLower(it.Title)
@@ -401,7 +398,9 @@ func matchTerm(it Item, t, viewer string) bool {
 		shown, _ := ShownSize(it)
 		return len(it.Triage.Risk) > 0 || shown == "L"
 	case "cheap":
-		return it.Triage.Est > 0 && it.Triage.Est <= CheapEst
+		// A model never writes a price, so cheap is the small complexity
+		// band: the work a finished job of the same band cost least for.
+		return it.Triage.Rubric != nil && it.Triage.Rubric.Band() == BandSmall
 	case "strangers":
 		return it.Tier == TierStranger
 	case "spend":

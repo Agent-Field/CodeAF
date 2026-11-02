@@ -84,7 +84,7 @@ func newReadLoopsWorld(t *testing.T) *readLoopsWorld {
 		w.models = append(w.models, req.Model)
 		w.mu.Unlock()
 		rw.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(rw, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"A read\",\"size\":\"S\",\"est_usd\":1}"},"finish_reason":"stop"}]}`)
+		_, _ = io.WriteString(rw, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"A read\",\"rubric\":{\"scope\":{\"score\":0},\"clarity\":{\"score\":0},\"coupling\":{\"score\":0},\"proof\":{\"score\":1},\"novelty\":{\"score\":0}}}"},"finish_reason":"stop"}]}`)
 	}))
 	t.Cleanup(w.github.Close)
 	t.Cleanup(w.model.Close)
