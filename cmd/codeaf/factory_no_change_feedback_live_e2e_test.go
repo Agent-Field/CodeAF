@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,10 +66,11 @@ func TestLiveFollowPRConsidersNothingToChangeWithoutDiff(t *testing.T) {
 		Stream:      &factory.Stream{Paused: true},
 	}
 	factory.EnsureFollowPR(&item)
-	id, err := g.st.Add(context.Background(), item)
+	made, err := g.st.Create(item)
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := made.ID
 	maker := factoryStageMaker(g.st, g.workspace, profile, launch.Config)
 	r := factoryrun.New(factoryrun.Options{Store: g.st, Workdir: func(factory.Item) (string, error) { return g.workspace, nil }, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryChatStage(g.st, profile, factoryrun.NewChatExecutor(maker))}, Push: func(string, string) error { t.Error("no-change review tried to push"); return factory.ErrReadOnly }})
 	stopAll(t, g.st, r)
