@@ -119,6 +119,10 @@ type FactoryCapabilities struct {
 	// True only for an engine that implements [FactoryPipelineOpener]; whether
 	// THIS caller holds a sign-in and GitHub access is answered by the call.
 	PipelinePR bool `json:"pipeline_pr"`
+	// PipelinePRs: factory.pipeline_prs is served (feature
+	// factory.pipeline_prs). True only for an engine that implements
+	// [FactoryPipelinePRLister]. It reads and writes nothing else.
+	PipelinePRs bool `json:"pipeline_prs"`
 	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
 	// served (feature factory.pipeline_edit). True only for an engine that
 	// implements [FactoryPipelineEditor]. Neither writes anything.

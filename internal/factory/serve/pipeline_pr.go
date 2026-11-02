@@ -287,7 +287,7 @@ func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte
 	// 4. A NEW branch. An existing one is refused, never reused or renamed.
 	if branch == "" {
 		sum := sha256.Sum256(append([]byte(base+"\n"), data...))
-		branch = "codeaf/pipeline-" + hex.EncodeToString(sum[:6])
+		branch = api.PipelinePRBranchPrefix + hex.EncodeToString(sum[:6])
 	}
 	f.branch = branch
 	// A repository may use any valid branch name as its default, including
