@@ -25,7 +25,6 @@
 package session
 
 import (
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"os"
 	"path/filepath"
 	"sort"
@@ -45,6 +44,7 @@ func RecentSessions(dir string, limit int) []Summary {
 		return nil
 	}
 	type candidate struct {
+		id   string
 		file string
 		meta Meta
 		at   time.Time
@@ -52,22 +52,25 @@ func RecentSessions(dir string, limit int) []Summary {
 	files := make([]candidate, 0, len(entries))
 	for _, entry := range entries {
 		name := entry.Name()
-		if !entry.IsDir() {
-			if !strings.HasSuffix(name, ".jsonl") {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				continue
-			}
-			files = append(files, candidate{file: filepath.Join(dir, name), at: info.ModTime()})
+		if entry.IsDir() || !strings.HasSuffix(name, ".jsonl") {
 			continue
 		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, candidate{
+			id:   strings.TrimSuffix(name, ".jsonl"),
+			file: filepath.Join(dir, name),
+			at:   info.ModTime(),
+		})
+	}
+	for _, sessionDir := range BucketSessionDirs(dir) {
 		// A DIRECTORY IS A SESSION WHEN IT HOLDS A TRANSCRIPT, asked through
 		// [Place] so that where a transcript lives inside a folder is decided in
 		// one file. Everything else under the v3 home — locks, the index, a
 		// directory somebody made by hand — simply has no transcript in it.
-		place := Place{Dir: cell.Copied(filepath.Join(dir, name))}
+		place := Place{Dir: sessionDir}
 		info, err := os.Stat(place.Transcript())
 		if err != nil || info.IsDir() {
 			continue
@@ -77,20 +80,32 @@ func RecentSessions(dir string, limit int) []Summary {
 		if at.IsZero() {
 			at = info.ModTime()
 		}
-		files = append(files, candidate{file: place.Transcript(), meta: meta, at: at})
+		files = append(files, candidate{
+			id:   firstWord(meta.ID, place.ID()),
+			file: place.Transcript(),
+			meta: meta,
+			at:   at,
+		})
 	}
 	// The cheap approximation of "newest" decides which files are worth opening,
 	// and what the files themselves said decides the answer's order.
 	sort.Slice(files, func(i, j int) bool { return files[i].at.After(files[j].at) })
 
 	found := make([]Summary, 0, limit)
+	seenID := make(map[string]bool, limit)
 	for read, file := range files {
 		if len(found) >= limit || read >= peekBudget {
 			break
 		}
+		if file.id != "" && seenID[file.id] {
+			continue
+		}
 		summary, ok := Peek(file.file)
 		if !ok {
 			continue
+		}
+		if file.id != "" {
+			seenID[file.id] = true
 		}
 		// Peek records the path it opened. The listing sets it again so the
 		// path a mention resolves is the transcript this walk opened.

@@ -22,6 +22,7 @@ import (
 func (h *Handler) jobScreens() {
 	h.postJob("assignee", h.config.Store != nil, h.changeAssignee)
 	h.postJob("sync", true, h.guarded("sync", h.onlyOwner(h.syncJob)))
+	h.postJob("issue_comment", true, h.issueComment)
 	for _, verb := range []string{"stop", "rerun"} {
 		h.postJob("steps/{sid}/"+verb, h.config.Store != nil, h.stepControl(verb == "rerun"))
 	}
@@ -29,6 +30,7 @@ func (h *Handler) jobScreens() {
 		http.MethodGet: h.readStepEdits, http.MethodPost: h.editSteps,
 	})
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
+	h.read("/v1/jobs/{id}/brief", h.readJobBrief)
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{

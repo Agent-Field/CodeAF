@@ -3,6 +3,8 @@ package tui3
 import (
 	"path/filepath"
 	"sort"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // homeClosedLimit keeps recently closed conversations within easy reach without
@@ -17,13 +19,22 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 		return nil, nil
 	}
 	byFile := map[string]switcherRow{}
+	byID := map[string]switcherRow{}
 	var archived []switcherRow
 	for _, project := range h.world.Projects {
 		for _, row := range project.Sessions {
+			if row.ID == "" {
+				row.ID = homeSessionID(row)
+			}
 			read := switcherRow{kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), age: sinceAt(row.At, h.world.Read), at: switcherSortAt(row), gone: h.gone[switcherWhere(row, project)],
 				place: switcherWhere(row, project)}
 			byFile[filepath.Clean(row.Transcript)] = read
+			if row.ID != "" {
+				if prev, exists := byID[row.ID]; !exists || preferHomeSessionRow(read, prev) {
+					byID[row.ID] = read
+				}
+			}
 			if row.Archived {
 				archived = append(archived, read)
 			}
@@ -31,10 +42,18 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 	}
 	seen := map[string]bool{}
 	fromTab := func(tab chatTab, isOpen bool) switcherRow {
-		row := byFile[filepath.Clean(tab.file)]
+		row, ok := byFile[filepath.Clean(tab.file)]
+		if !ok {
+			if id := homeSessionID(session.SessionRow{Transcript: tab.file}); id != "" {
+				row = byID[id]
+			}
+		}
 		row.kind, row.title, row.here = switcherConversation, tab.word, isOpen && tab.here
 		row.chatKey = tab.key
 		row.session.Transcript = tab.file
+		if row.session.ID == "" {
+			row.session.ID = homeSessionID(row.session)
+		}
 		owned := tab.held || tab.here || h.holding != nil && h.holding(tab.file)
 		row.held = (row.session.Open || row.session.Live) && !owned
 		row.door = row.held && !h.far && row.session.Dir != ""
@@ -52,8 +71,10 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 		if tab.work || tab.start || tab.file == "" {
 			continue
 		}
+		built := fromTab(tab, true)
+		seen[homeSessionKey(built.session)] = true
 		seen[filepath.Clean(tab.file)] = true
-		open = append(open, fromTab(tab, true))
+		open = append(open, built)
 	}
 	if h.closedTabs != nil {
 		tabs := h.closedTabs()
@@ -62,22 +83,27 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 			if tab.work || tab.start || tab.file == "" {
 				continue
 			}
+			built := fromTab(tab, false)
+			key := homeSessionKey(built.session)
 			file := filepath.Clean(tab.file)
-			if seen[file] {
+			if seen[key] || seen[file] {
 				continue
 			}
+			seen[key] = true
 			seen[file] = true
-			closed = append(closed, fromTab(tab, false))
+			closed = append(closed, built)
 		}
 	}
 	// The close stack gives this window's exact close order. Persisted archived
 	// conversations fill any remaining slots after a restart, newest activity first.
 	sort.SliceStable(archived, func(i, j int) bool { return archived[i].at.After(archived[j].at) })
 	for _, row := range archived {
+		key := homeSessionKey(row.session)
 		file := filepath.Clean(row.session.Transcript)
-		if seen[file] || len(closed) >= homeClosedLimit {
+		if seen[key] || seen[file] || len(closed) >= homeClosedLimit {
 			continue
 		}
+		seen[key] = true
 		seen[file] = true
 		closed = append(closed, row)
 	}

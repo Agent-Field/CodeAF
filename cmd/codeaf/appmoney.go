@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // appNearBudget is the share of its budget at which an agent first asks.
@@ -66,6 +67,11 @@ func appParseUSD(text string) (float64, bool) {
 // with any raise for today over it, zero for an agent the person said has no
 // limit, or the profile's own conversation limit when the app holds neither.
 // set says the figure is the app's.
+//
+// THE GLOBAL MANAGER IS NOT A NEW AGENT: the profile's limit is what a new
+// agent may spend, so the root's manager — the app's own assistant — never
+// inherits it. With no figure of its own it has no limit of its own and runs
+// under the day cap.
 func (b *appBackend) agentBudget(id string, now time.Time) (usd float64, set bool) {
 	var record appwire.AgentBudget
 	_ = b.state.read(func(f *appStateFile) { record = f.agentBudgetAt(id, now) })
@@ -75,7 +81,21 @@ func (b *appBackend) agentBudget(id string, now time.Time) (usd float64, set boo
 	case appwire.BudgetUnlimited:
 		return 0, true
 	}
+	if b.isRootManager(id) {
+		return 0, true
+	}
 	return config.SpendRailUSDAt(config.ProfileDir()), false
+}
+
+// isRootManager says id is the root's ("All teams") manager. An unreadable
+// team file says no, so the agent keeps the profile's limit.
+func (b *appBackend) isRootManager(id string) bool {
+	root, ok, err := teamstore.LoadRoot(b.crewProfile())
+	if err != nil || !ok || root.Manager == "" {
+		return false
+	}
+	m, ok := root.Member(root.Manager)
+	return ok && appMemberAgent(m) == id
 }
 
 // spentTodayChecked is admission's reader; display callbacks never turn a

@@ -41,7 +41,46 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// R4 and R3 keep command routes and explicit-choice remedies reachable.
 		{"gh api says not found on Windows", "running-commands-on-windows"},
 		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
+		// Task placement must answer DESIGN contract 16 in the person's words.
+		{"taskdoor empty frame when starting a task", "tasks-on-another-computer"},
+		{"taskdoor a frame needs a type", "tasks-on-another-computer"},
+		{"could not check your devices right now", "tasks-on-another-computer"},
+		{"could not confirm this is my task computer", "tasks-on-another-computer"},
+		{"the task copy could not be sent", "tasks-on-another-computer"},
+		{"the task copy cell or head is not readable", "tasks-on-another-computer"},
+		{"the task destination already contains files", "tasks-on-another-computer"},
+		{"could not put the result in place earlier copy kept", "tasks-on-another-computer"},
+		{"the sent task copy fingerprint is missing", "tasks-on-another-computer"},
+		{"that task attempt id is not readable", "tasks-on-another-computer"},
+		{"that task is already finished", "tasks-on-another-computer"},
+		{"that task request is not readable", "tasks-on-another-computer"},
+		{"the other computer no longer has this task answer", "tasks-on-another-computer"},
+		{"the other computer sent an unreadable task event", "tasks-on-another-computer"},
+		{"the task remote record cannot be saved here", "tasks-on-another-computer"},
+		{"the task was interrupted before it left an answer", "tasks-on-another-computer"},
+		{"could not record the task child", "tasks-on-another-computer"},
+		{"the task saved event is too large", "tasks-on-another-computer"},
+		{"this computer is already taking tasks", "tasks-on-another-computer"},
+		{"can a task run on my other computer", "tasks-on-another-computer"},
+		{"why a task appears before its copy is ready", "tasks-on-another-computer"},
+		{"paired task computers are unavailable here", "tasks-on-another-computer"},
+		{"run a task on my mac mini", "tasks-on-another-computer"},
+		{"what does running on mean", "tasks-on-another-computer"},
+		{"my other computer stopped answering", "tasks-on-another-computer"},
+		{"run it here", "tasks-on-another-computer"},
+		{"run tasks on", "tasks-on-another-computer"},
+		{"codeaf serve --take-tasks takes tasks", "tasks-on-another-computer"},
+		{"does plain codeaf serve take tasks", "tasks-on-another-computer"},
+		{"when does the model get the computer argument", "tasks-on-another-computer"},
+		{"why did my task run here instead", "tasks-on-another-computer"},
+		{"send a task to my dev box", "a-dev-box-on-your-own-railway"},
+		{"can this conversation start other tasks while one runs on another computer", "tasks-on-another-computer"},
 		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
+		{"can I run codeaf on my own server", "a-dev-box-on-your-own-railway"},
+		{"set up a dev box", "a-dev-box-on-your-own-railway"},
+		{"always-on computer in the cloud", "a-dev-box-on-your-own-railway"},
+		{"how do I remove my dev box", "a-dev-box-on-your-own-railway"},
+		{"how much does a dev box cost", "a-dev-box-on-your-own-railway"},
 		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
 		{"can my phone lead", "coordination-and-workers"},
 		{"can my phone be the leader", "coordination-and-workers"},
@@ -58,6 +97,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// R25/R29 keep older-client refusals and failed quit saves reachable.
 		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
 		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},
+		// #2070 keeps continue-here troubleshooting, duplicate Home rows and sync repair reachable.
+		{"continue here does nothing", "continuing-a-chat-on-another-computer"},
+		{"the same chat twice on Home", "home"},
+		{"why do I see the same chat twice on Home", "home"},
+		{"repair sync", "continuing-a-chat-on-another-computer"},
+		{"how do I repair sync", "continuing-a-chat-on-another-computer"},
 		// C29.4/C30.2/C31.5 must be reachable in the person's own words.
 		{"can I rewind an old chat on my new laptop", "continuing-a-chat-on-another-computer"},
 		{"I quit on my laptop and opened my desktop", "continuing-a-chat-on-another-computer"},
@@ -104,6 +149,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"do my teams show on my other computer?", "conversations-and-teams"},
+		{"how do I turn on team sharing", "conversations-and-teams"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams"},
+		{"does Traffic sync between computers?", "conversations-and-teams"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost"},
 		{"create an empty team and add several saved conversations", "teams-page"},
 		{"how do I choose another manager before deleting its conversation", "teams-page"},
 		{"where is the model name and working spinner on team cards", "teams-page"},
@@ -3233,6 +3283,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does leave it there do", "continuing-a-chat-on-another-computer"},
 		{"when was a device last seen", "add-or-remove-a-computer"},
 		{"what does the removed computer see after I remove it", "add-or-remove-a-computer"},
+		{"can I remove a device from settings", "add-or-remove-a-computer"},
+		{"where are my computers in the settings page", "add-or-remove-a-computer"},
+		{"how do I revoke a computer in settings", "add-or-remove-a-computer"},
+		{"add another device from settings", "add-or-remove-a-computer"},
 		{"what happens to node_modules when I move a chat", "home"},
 		{"are my job logs moved with the chat", "home"},
 		{"does the task history come with the chat to another computer", "home"},
@@ -4571,6 +4625,10 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"what is the check number on the new device", add, "Check number 4821. Approve only if"},
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
 		{"how do I remove a computer", add, "r remove"},
+		{"can I remove a device from settings", add, "between `Connections` and `Privacy`"},
+		{"where are my computers in the settings page", add, "between `Connections` and `Privacy`"},
+		{"how do I revoke a computer in settings", add, "between `Connections` and `Privacy`"},
+		{"add another device from settings", add, "`enter add` on `Add another device` leaves `/settings`"},
 		{"what does the dot next to a computer mean", add, "○ desk (offline)"},
 		{"I was told this computer was removed", add, "this device was removed by another of your devices"},
 		{"how do I rename this computer", naming, "codeaf devices rename \"atlas\""},
@@ -4591,9 +4649,35 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	}
 }
 
+func TestTheTeamSharingQuestionExplainsTheLocalOptIn(t *testing.T) {
+	for _, section := range Chat().Search("do my teams show on my other computer?", DefaultResults) {
+		if section.Page != "conversations-and-teams" {
+			continue
+		}
+		complete := true
+		for _, fact := range []string{
+			"Settings → General → share teams", "off by default",
+			"Both paired computers must turn it on", "teams, members",
+			"team settings", "recent Traffic as read-only history",
+		} {
+			complete = complete && strings.Contains(section.Body, fact)
+		}
+		if complete {
+			return
+		}
+	}
+	t.Fatal("the team sharing question must reach one section explaining the local opt-in and what it shares")
+}
+
 // C30.5 replaces the old chat-only memory promise with independent encrypted sync.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
+		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
+		{"how do I turn on team sharing", "conversations-and-teams", "off by default"},
+		{"how do I turn on team sharing", "conversations-and-teams", "Settings → General → share teams"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},
+		{"does Traffic sync between computers?", "conversations-and-teams", "32 lines per team"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost", "provider route and providers you turned off stay on each computer"},
 		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
 		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
 		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},
@@ -4610,6 +4694,9 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
+		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
+		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},
+		{"sync off and my chats are gone", "home", "Home still lists every chat on this computer"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {
@@ -4666,5 +4753,43 @@ func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
 		if !strings.Contains(page, "\""+refusal+"\"") {
 			t.Errorf("Windows manual must quote the shared refusal exactly: %q", refusal)
 		}
+	}
+}
+
+// TestSyncOffManualQuotesExactSentences pins the retrieval probe and exact
+// person-facing sentences for #2072 (sync off keeps every chat).
+func TestSyncOffManualQuotesExactSentences(t *testing.T) {
+	for _, probe := range []struct {
+		asked   string
+		page    string
+		heading string
+		quotes  []string
+	}{
+		{
+			asked:   "sync off and my chats are gone",
+			page:    "home",
+			heading: "Sync off and my chats are gone",
+			quotes: []string{
+				"CODEAF_SYNC_URL=off",
+				"chats from older versions alike",
+				"each once, and each opens and can be written",
+			},
+		},
+	} {
+		t.Run(probe.asked, func(t *testing.T) {
+			results := Chat().Search(probe.asked, DefaultResults)
+			for _, section := range results {
+				if section.Page != probe.page || !strings.HasPrefix(section.Title, probe.heading) {
+					continue
+				}
+				for _, quote := range probe.quotes {
+					if !strings.Contains(section.Body, quote) {
+						t.Errorf("section %q on %s missing exact quote %q", section.Title, section.Page, quote)
+					}
+				}
+				return
+			}
+			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
+		})
 	}
 }

@@ -53,8 +53,9 @@ const manualDescription = "Read codeaf's own manual: what it does, how a mechani
 
 const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A page by name instead of searching; a long one comes back cut, listing its headings"},"section":{"type":"string","description":"One of those headings, returned whole"}}}`
 
-// manualTool is the belt's window onto [manual.Chat]. The corpus it reads is
-// the CHAT's, never the resident's: this program is a conversation you sit in
+// manualTool is the belt's window onto [manual.WithApp]: the chat's pages and,
+// when a desktop app registered its own, those under workaf/. The corpus it
+// reads is the CHAT's, never the resident's: this program is a conversation you sit in
 // front of, and the resident's pages describe an employee that keeps working
 // while the terminal is closed. Answering out of the wrong one would be fluent
 // and wrong, which is the exact failure this tool exists to prevent.
@@ -73,6 +74,9 @@ func (a *Agent) manualTool() bare.Tool {
 				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			name, heading := strings.TrimSpace(parsed.Page), strings.TrimSpace(parsed.Section)
+			// One corpus answers the whole call, so an app set landing midway
+			// cannot make a refusal list pages the lookup did not search.
+			corpus := manual.WithApp()
 
 			// A named page is an exact request and gets an exact answer or an
 			// exact refusal — never a search that quietly returns something
@@ -80,18 +84,18 @@ func (a *Agent) manualTool() bare.Tool {
 			// back is bounded (tools_manual_bound.go says why), and a heading
 			// off the list that bound leaves behind returns that section whole.
 			if name != "" {
-				text, found := manual.Chat().Page(name)
+				text, found := corpus.Page(name)
 				if !found {
 					return "There is no manual page named " + name + ". The pages are:" +
-						manualPageList(), true, nil
+						manualPageList(corpus), true, nil
 				}
 				if heading == "" {
-					return boundedPage(name, text), false, nil
+					return boundedPage(corpus, name, text), false, nil
 				}
-				section, found := manual.Chat().Section(name, heading)
+				section, found := corpus.Section(name, heading)
 				if !found {
 					return "The page " + name + " has no section named " + heading +
-						". Its sections are:" + boundedList(manualHeadings(name)), true, nil
+						". Its sections are:" + boundedList(manualHeadings(corpus, name)), true, nil
 				}
 				return boundedSection(section.Body), false, nil
 			}
@@ -101,7 +105,7 @@ func (a *Agent) manualTool() bare.Tool {
 
 			query := strings.TrimSpace(parsed.Query)
 			if query == "" {
-				return "Give either a query or a page. The pages are:" + manualPageList(), true, nil
+				return "Give either a query or a page. The pages are:" + manualPageList(corpus), true, nil
 			}
 			// AND THE PERSON'S OWN WORDS, taken here rather than asked of
 			// the model. The model composes a query of its own and this
@@ -120,7 +124,7 @@ func (a *Agent) manualTool() bare.Tool {
 			// the person's own words for every node of it, and a steer into a
 			// running node is a course correction rather than a question
 			// about codeaf.
-			sections := manual.Chat().SearchBoth(query, a.taskRequest(), manualSections)
+			sections := corpus.SearchBoth(query, a.taskRequest(), manualSections)
 			if len(sections) == 0 {
 				// NOT AN ERROR, and the difference matters: the manual having
 				// nothing on a topic is a fact about codeaf worth reporting to
@@ -128,7 +132,7 @@ func (a *Agent) manualTool() bare.Tool {
 				// do that" — while an error would invite a retry with rephrased
 				// words that will find nothing either.
 				return "The manual has nothing on that, which usually means codeaf does not do it. The pages are:" +
-					manualPageList(), false, nil
+					manualPageList(corpus), false, nil
 			}
 			return manual.Render(sections), false, nil
 		},
@@ -137,13 +141,13 @@ func (a *Agent) manualTool() bare.Tool {
 
 // manualPageList is the invitation every refusal ends with, built only where a
 // refusal is being written — a lookup that succeeds never pays for it.
-func manualPageList() string { return boundedList(manual.Chat().Pages()) }
+func manualPageList(corpus *manual.Corpus) string { return boundedList(corpus.Pages()) }
 
 // manualHeadings is one page's section titles, which is the whole of what a cut
 // page or a missed heading has to offer: the names of the parts it can be asked
 // for by.
-func manualHeadings(page string) []string {
-	sections := manual.Chat().PageSections(page)
+func manualHeadings(corpus *manual.Corpus, page string) []string {
+	sections := corpus.PageSections(page)
 	headings := make([]string, 0, len(sections))
 	for _, section := range sections {
 		headings = append(headings, section.Title)
