@@ -276,6 +276,9 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 			_ = json.NewDecoder(bufio.NewReader(f)).Decode(&header)
 			f.Close()
 		}
+		if phase.Kind == factory.StageChat && header.ID == "" {
+			t.Errorf("stage %s has no readable conversation identity", phase.Name)
+		}
 		count, usd := 0, 0.0
 		for _, row := range ledger {
 			if row.Session == header.ID && row.Role == "memory" {
@@ -298,7 +301,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 		// this stage's tail rather than adding their request durations.
 		intervals := [][2]time.Time{}
 		for _, row := range calls {
-			if row.Tag != "memory" {
+			if row.Tag != "memory" || (row.Node != "" && row.Node != header.ID) {
 				continue
 			}
 			end, _ := time.Parse(time.RFC3339Nano, row.Time)
