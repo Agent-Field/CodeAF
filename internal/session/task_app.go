@@ -423,16 +423,7 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 			return SteerReceipt{}, err
 		}
 	}
-	// Answers, stopping, hiding and holding work remain available on a viewer.
-	switch intent.Action {
-	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
-	case "decide":
-		if intent.Verb == "not_right" || intent.Verb == "tell" {
-			if err := a.CheckWork(); err != nil {
-				return SteerReceipt{}, err
-			}
-		}
-	default:
+	if appActionNeedsWork(intent) {
 		if err := a.CheckWork(); err != nil {
 			return SteerReceipt{}, err
 		}
@@ -445,6 +436,28 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 	if handled, said, err := a.appBeforeTheList(id, numeric, intent); handled {
 		return said, err
 	}
+	return a.appListedTaskAct(id, numeric, intent)
+}
+
+// appActionNeedsWork says whether an action needs this window to be the one
+// doing the work. Answers, stopping, hiding and holding work remain available
+// on a viewer, and a decision needs the work only when it says the work is not
+// right or tells the worker something.
+func appActionNeedsWork(intent AppTaskIntent) bool {
+	switch intent.Action {
+	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
+		return false
+	case "decide":
+		return intent.Verb == "not_right" || intent.Verb == "tell"
+	}
+	return true
+}
+
+// appListedTaskAct acts on a task the list shows, once the proposal, dismiss
+// and pre-list roads have declined the intent: the row is read and its
+// expectation checked, then the intent goes to the run, the plan, the node's
+// words or the graph, whichever owns the task.
+func (a *Agent) appListedTaskAct(id uint64, numeric error, intent AppTaskIntent) (SteerReceipt, error) {
 	if intent.Action == AppActionProposalModel {
 		// Past its proposal a task's model is RetargetTask's promise, not this card's.
 		return SteerReceipt{}, errors.New("that task must be a proposed task to change its model")

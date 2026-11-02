@@ -74,27 +74,9 @@ func landFilterAttributes(ctx context.Context, root string, config landConfigFac
 	}
 	filtered := map[string]bool{}
 	for _, source := range sources {
-		args := []string{"check-attr", "-z", "--stdin"}
-		if source != "" {
-			args = append(args, "--source="+source)
-		}
-		args = append(args, "filter")
-		out, diagnostics, code, err := landReadInput(ctx, root, landAttributeReadMax, input, args...)
-		unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
-		if err != nil || code != 0 || len(diagnostics) != 0 {
-			return "", landReadFailed(err, unknown)
-		}
-		records := bytes.Split(out, []byte{0})
-		if len(records) != len(paths)*3+1 || len(records[len(records)-1]) != 0 {
-			return "", unknown
-		}
-		for i, path := range paths {
-			if string(records[3*i]) != path || string(records[3*i+1]) != "filter" {
-				return "", unknown
-			}
-			if drivers[string(records[3*i+2])] {
-				filtered[path] = true
-			}
+		out, err := landFilterReading(ctx, root, input, paths, source, drivers, filtered)
+		if err != nil {
+			return "", err
 		}
 		sum.Write(out)
 	}
@@ -110,11 +92,63 @@ func landFilterAttributes(ctx context.Context, root string, config landConfigFac
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
+// landFilterReading is one reading of the filter attribute for every path, in
+// the checkout (source "") or in one tree. It marks each path a driver with a
+// program governs, and answers git's own output so the plan binds it. Output
+// that does not name every path, in order, is a reading nobody can vouch for.
+func landFilterReading(ctx context.Context, root string, input []byte, paths []string, source string, drivers, filtered map[string]bool) ([]byte, error) {
+	args := []string{"check-attr", "-z", "--stdin"}
+	if source != "" {
+		args = append(args, "--source="+source)
+	}
+	args = append(args, "filter")
+	out, diagnostics, code, err := landReadInput(ctx, root, landAttributeReadMax, input, args...)
+	unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
+	if err != nil || code != 0 || len(diagnostics) != 0 {
+		return nil, landReadFailed(err, unknown)
+	}
+	records := bytes.Split(out, []byte{0})
+	if len(records) != len(paths)*3+1 || len(records[len(records)-1]) != 0 {
+		return nil, unknown
+	}
+	for i, path := range paths {
+		if string(records[3*i]) != path || string(records[3*i+1]) != "filter" {
+			return nil, unknown
+		}
+		if drivers[string(records[3*i+2])] {
+			filtered[path] = true
+		}
+	}
+	return out, nil
+}
+
 // landAttributeFiles binds readable attribute files outside the committed
 // trees. Git sometimes silently ignores a read failure (a directory used as
 // core.attributesFile, for example), so a successful check-attr is not enough.
 func landAttributeFiles(ctx context.Context, root string, paths []string, sum io.Writer) error {
 	unknown := refuseLand(LandFilter, "this land cannot determine which files run a filter program")
+	files, err := landGitAttributeFiles(ctx, root, sum, unknown)
+	if err != nil {
+		return err
+	}
+	landNestedAttributeFiles(files, root, paths)
+	ordered := make([]string, 0, len(files))
+	for file := range files {
+		ordered = append(ordered, file)
+	}
+	sort.Strings(ordered)
+	left := int64(landAttributeReadMax)
+	for _, path := range ordered {
+		if err := landBindAttributeFile(path, sum, &left, unknown); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// landGitAttributeFiles is the global, system and info/attributes files git
+// names for this repository, as absolute paths.
+func landGitAttributeFiles(ctx context.Context, root string, sum io.Writer, unknown error) (map[string]bool, error) {
 	files := map[string]bool{}
 	for _, args := range [][]string{
 		{"var", "GIT_ATTR_GLOBAL"},
@@ -123,13 +157,13 @@ func landAttributeFiles(ctx context.Context, root string, paths []string, sum io
 	} {
 		out, diagnostics, code, err := landReadInput(ctx, root, 64<<10, nil, args...)
 		if err != nil || code != 0 || len(diagnostics) != 0 || !bytes.HasSuffix(out, []byte{'\n'}) {
-			return landReadFailed(err, unknown)
+			return nil, landReadFailed(err, unknown)
 		}
 		// Only the final newline belongs to git; whitespace can name a file.
 		path := string(out[:len(out)-1])
 		if path == "" {
 			if args[0] != "var" {
-				return unknown
+				return nil, unknown
 			}
 			// An empty core.attributesFile explicitly disables the global file.
 			fmt.Fprintf(sum, "%s:disabled;", args[1])
@@ -140,6 +174,12 @@ func landAttributeFiles(ctx context.Context, root string, paths []string, sum io
 		}
 		files[path] = true
 	}
+	return files, nil
+}
+
+// landNestedAttributeFiles adds the .gitattributes of every directory from each
+// path up to the root of the checkout.
+func landNestedAttributeFiles(files map[string]bool, root string, paths []string) {
 	for _, path := range paths {
 		for dir := filepath.Dir(filepath.FromSlash(path)); ; dir = filepath.Dir(dir) {
 			file := filepath.Join(root, dir, ".gitattributes")
@@ -152,41 +192,38 @@ func landAttributeFiles(ctx context.Context, root string, paths []string, sum io
 			}
 		}
 	}
-	ordered := make([]string, 0, len(files))
-	for file := range files {
-		ordered = append(ordered, file)
+}
+
+// landBindAttributeFile writes one attribute file's path and contents, or that
+// it is missing, into the sum. Every file comes out of the one read budget left.
+func landBindAttributeFile(path string, sum io.Writer, left *int64, unknown error) error {
+	fmt.Fprintf(sum, "%d:%s;", len(path), path)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		fmt.Fprint(sum, "missing;")
+		return nil
 	}
-	sort.Strings(ordered)
-	left := int64(landAttributeReadMax)
-	for _, path := range ordered {
-		fmt.Fprintf(sum, "%d:%s;", len(path), path)
-		info, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			fmt.Fprint(sum, "missing;")
-			continue
-		}
-		if err != nil || !info.Mode().IsRegular() {
-			return unknown
-		}
-		if info.Size() > left {
-			return refuseLand(LandTooLarge, "this land's attribute files are larger than it reads")
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			return unknown
-		}
-		data, err := io.ReadAll(io.LimitReader(file, left+1))
-		file.Close()
-		if err != nil {
-			return unknown
-		}
-		left -= int64(len(data))
-		if left < 0 {
-			return refuseLand(LandTooLarge, "this land's attribute files are larger than it reads")
-		}
-		fmt.Fprintf(sum, "%d:", len(data))
-		sum.Write(data)
+	if err != nil || !info.Mode().IsRegular() {
+		return unknown
 	}
+	if info.Size() > *left {
+		return refuseLand(LandTooLarge, "this land's attribute files are larger than it reads")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return unknown
+	}
+	data, err := io.ReadAll(io.LimitReader(file, *left+1))
+	file.Close()
+	if err != nil {
+		return unknown
+	}
+	*left -= int64(len(data))
+	if *left < 0 {
+		return refuseLand(LandTooLarge, "this land's attribute files are larger than it reads")
+	}
+	fmt.Fprintf(sum, "%d:", len(data))
+	sum.Write(data)
 	return nil
 }
 
