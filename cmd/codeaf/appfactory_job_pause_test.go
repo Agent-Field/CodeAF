@@ -375,7 +375,9 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 			if busy {
 				b = create("B", false)
 				launch(b)
-				queued := wait(b, "waiting for capacity", func(j api.Job) bool { return j.StatePresentation.Kind == "waiting_for_capacity" })
+				queued := wait(b, "queued behind A", func(j api.Job) bool {
+					return j.State == api.StateQueued && j.StatePresentation.Kind == "waiting_for_runner"
+				})
 				waiting = queued.StatePresentation
 			}
 			act(a, "factory.job_hold")
