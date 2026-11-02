@@ -288,6 +288,7 @@ decides which combinations are accepted.
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
@@ -314,6 +315,19 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+
+An engine whose hello carries `factory.repo_facts` serves
+`factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
+counted by the factory over every job it keeps (`GET
+/v1/repos/{owner}/{repo}/facts`), as `{repo, as_of, time_zone?, days, months,
+facts, truncated?}`. Each fact is `{id, kind, value, phrase, about?, source}`
+with `source` beginning `engine:`: jobs finished and pull requests merged in
+the last `days` (1 to 366, default 30) and this month, spend for each of the
+last `months` calendar months (1 to 12, default 3) by the rule of
+`factory.spend_by_repo`, jobs, rounds and questions by area by the rule of
+`factory.job_area`, and jobs stuck on one step for a day or more. At most 20
+areas and 20 stuck steps are answered, busiest first (at most 97 facts);
+`truncated` counts the rest. A repository the caller cannot read is not found.
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
@@ -364,6 +378,23 @@ directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
 first two segments (`"internal/factory/"`), and a file directly inside one is
 the container (`"internal/"`). Every response that carries the job says the
 same area. It is absent when the job changed no file or only files at the root.
+
+An engine whose hello carries the feature `factory.estimate` reads an issue
+with a complexity rubric and measures cost from its own finished jobs; a model
+never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
+proof, novelty}`, each `{score 0..2, why?, low?}` (`low`: judged without the
+repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
+(`small` 0–3, `medium` 4–6, `large` 7–10); `triage.est` is gone. An open job
+carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?}`: the
+10th to the 90th percentile of the `n` nearest finished jobs (about eight in
+ten land inside), in `repo`
+(absent: every repository), and is absent while fewer than five similar jobs
+finished. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
+finished jobs spent past this job's spend so far, over the `n` that spent at
+least that much (absent below five; a running job with `left` alone has `n` 0).
+`queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
+figures see and how many of `of` backtested jobs spent inside their range. The
+repository dry run adds `cost_jobs`, that repository's finished jobs.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
