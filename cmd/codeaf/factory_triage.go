@@ -156,7 +156,9 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 			return "", err
 		}
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryTriageName))
-		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)})
+		// AT TEMPERATURE 0, so the same issue read twice lands in the same band
+		// (the live eval's read agreement went from 31 of 34 to 17 of 17).
+		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)}, ai.WithTemperature(0))
 		if err != nil {
 			return "", err
 		}

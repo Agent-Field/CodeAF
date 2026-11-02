@@ -9,3 +9,6 @@ invalidates:
 
 Look closer resolves insight_factory_scout the same way. The one-model
 policy still wins over both.
+
+The read now asks at temperature 0, so the same issue read twice lands in
+the same band more often.
