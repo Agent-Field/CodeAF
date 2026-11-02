@@ -27,6 +27,10 @@ func TestMemoryPauseStopsFinishedStageTail(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause tail", 0)
 }
 
+func TestMemoryPauseRetainsPendingForResume(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "pause resume", 0)
+}
+
 func TestMemoryPauseClosesTailAdmission(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause boundary", 0)
 }
@@ -52,8 +56,9 @@ func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *te
 }
 
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
+	pauseResume := end == "pause resume"
 	pauseBoundary := end == "pause boundary"
-	pauseTail := end == "pause tail" || pauseBoundary
+	pauseTail := end == "pause tail" || pauseBoundary || pauseResume
 	settlingQuit := end == "settling quit"
 	stop, quit := end == "stop" || settlingQuit, end == "quit" || settlingQuit
 	quitDone := make(chan struct{})
@@ -91,8 +96,16 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			_ = json.Unmarshal([]byte(body.Messages[1].Content), &payload)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		if payload["messages"] != nil || (pauseBoundary && len(payload) > 0) {
+		if payload["messages"] != nil || ((pauseBoundary || pauseResume) && len(payload) > 0) {
 			n := memoryCalls.Add(1)
+			if pauseResume && n > 1 {
+				var p map[string]any
+				_ = json.Unmarshal([]byte(body.Messages[1].Content), &p)
+				result, _ := json.Marshal(memoryRichReply(p))
+				raw, _ := json.Marshal(map[string]any{"model": knowledge.Model, "choices": []any{map[string]any{"delta": map[string]any{"content": string(result)}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 20, "completion_tokens": 5, "cost": .01}})
+				fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
+				return
+			}
 			select {
 			case started <- struct{}{}:
 			default:
@@ -183,6 +196,10 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	}
 	if pauseTail {
 		stages = append(stages[:1], factory.Stage{Name: "test", Kind: factory.StageCheck, On: true, Ask: "sleep 60"}, stages[1])
+	}
+	if pauseResume {
+		stages[1].Ask = "if test ! -e memory-check-ran; then touch memory-check-ran; sleep 60; fi"
+		stages = append(stages[:2], factory.Stage{Name: "learn", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."}, stages[2])
 	}
 	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar queues jobs", ChatSpent: existing, Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: stages})
 	if err != nil {
@@ -322,6 +339,27 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 					t.Fatalf("pause lost pending memory: %+v %v", snapshot, err)
 				}
 				t.Logf("paused memory calls=%d; ledger=%.4f header=%.4f pending=%d", before, usd, job.Cost, snapshot.Pending)
+				if pauseResume {
+					s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+					s.must("factory.job_resume", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
+					until := time.Now().Add(15 * time.Second)
+					for {
+						snapshot, err = knowledge.Open(profile).Snapshot()
+						s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+						learned := false
+						for _, step := range job.Steps {
+							learned = learned || (step.Name == "learn" && step.State == "done")
+						}
+						if err == nil && learned && snapshot.Pending == 0 && memoryCalls.Load() > before {
+							break
+						}
+						if time.Now().After(until) {
+							t.Fatalf("resume did not compile pending evidence: calls=%d snapshot=%+v error=%v", memoryCalls.Load(), snapshot, err)
+						}
+						time.Sleep(10 * time.Millisecond)
+					}
+					t.Logf("resume compiled retained evidence: memory_calls=%d pending=%d", memoryCalls.Load(), snapshot.Pending)
+				}
 			}
 			return
 		}
