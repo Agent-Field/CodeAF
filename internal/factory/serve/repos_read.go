@@ -3,7 +3,9 @@ package serve
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +17,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
-const reposReadEvery = 5 * time.Minute
+const (
+	reposReadEvery = 5 * time.Minute
+	reposReadRetry = 30 * time.Second
+)
 
 type reposReader struct {
 	mu     sync.Mutex
@@ -74,7 +79,11 @@ func (h *Handler) readRepos(ctx context.Context) ([]string, []factory.RepoInfo, 
 			return nil, nil, time.Time{}, err
 		}
 		known := saved.Identity == identity && saved.Credential == key && !saved.ReadAt.IsZero()
-		if h.reposRead.done == nil && !h.reposRead.closed && (h.reposRead.key != key || h.clock().Sub(h.reposRead.tried) >= reposReadEvery) && (!known || h.clock().Sub(saved.ReadAt) >= reposReadEvery) {
+		wait := reposReadEvery
+		if h.reposRead.err != nil {
+			wait = reposReadRetry
+		}
+		if h.reposRead.done == nil && !h.reposRead.closed && (h.reposRead.key != key || h.clock().Sub(h.reposRead.tried) >= wait) && (!known || h.clock().Sub(saved.ReadAt) >= reposReadEvery) {
 			h.startReposRead(identity, key)
 		}
 		done := h.reposRead.done
@@ -85,7 +94,8 @@ func (h *Handler) readRepos(ctx context.Context) ([]string, []factory.RepoInfo, 
 		h.reposRead.mu.Unlock()
 		if known {
 			watched, err := h.config.Store.Repos()
-			if err == nil {
+			var status githubStatusError
+			if err == nil && readErr != nil && (factorygithub.TroubleWords(readErr) == "token refused" || errors.Is(readErr, errGitHubExpired) || (errors.As(readErr, &status) && int(status) == http.StatusUnauthorized)) {
 				err = readErr
 			}
 			return watched, saved.Repos, saved.ReadAt, err

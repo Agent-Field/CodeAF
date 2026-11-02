@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"slices"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 func TestReposAnswersFromStoreWithoutGitHubRequest(t *testing.T) {
@@ -268,36 +270,123 @@ func TestReposRestartKeepsList(t *testing.T) {
 	}
 }
 
-func TestReposFailedBackgroundWalkKeepsListAndKeepsFailing(t *testing.T) {
-	f := newReposRig(t)
-	if w := f.read(); w.Code != 200 {
-		t.Fatal(w.Body)
-	}
-	f.walk = func(context.Context) ([]factory.RepoInfo, error) { return nil, githubStatusError(401) }
-	f.now.Add(int64(6 * time.Minute))
-	f.read()
-	awaitRepos(t, f.h)
-	for range 3 {
-		w := f.read()
-		if w.Code != 500 || strings.Contains(w.Body.String(), "acme/api") {
-			t.Fatalf("refused refresh: %d %s", w.Code, w.Body)
-		}
-	}
-	if got := f.saved(t); len(got.Repos) != 1 || f.calls.Load() != 2 {
-		t.Fatalf("lost list or repeated walk: %+v calls=%d", got, f.calls.Load())
+func TestReposFailedBackgroundWalkWithRefusedSignInKeepsFailing(t *testing.T) {
+	for _, failure := range []struct {
+		name string
+		err  error
+	}{
+		{"refused", githubStatusError(401)},
+		{"wrapped GitHub refusal", fmt.Errorf("discovery: %w", &forge.APIError{StatusCode: 401})},
+		{"expired", fmt.Errorf("discovery: %w", errGitHubExpired)},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			f := newReposRig(t)
+			if w := f.read(); w.Code != 200 {
+				t.Fatal(w.Body)
+			}
+			f.walk = func(context.Context) ([]factory.RepoInfo, error) { return nil, failure.err }
+			f.now.Add(int64(6 * time.Minute))
+			f.read()
+			awaitRepos(t, f.h)
+			for range 3 {
+				w := f.read()
+				if w.Code != 500 || strings.Contains(w.Body.String(), "acme/api") {
+					t.Fatalf("refused refresh: %d %s", w.Code, w.Body)
+				}
+			}
+			if got := f.saved(t); len(got.Repos) != 1 || f.calls.Load() != 2 {
+				t.Fatalf("lost list or repeated walk: %+v calls=%d", got, f.calls.Load())
+			}
+		})
 	}
 }
 
-func TestReposFirstFailedWalkDoesNotRepeatBeforeSlowTimer(t *testing.T) {
-	f := newReposRig(t)
-	f.walk = func(context.Context) ([]factory.RepoInfo, error) { return nil, githubStatusError(401) }
-	for range 3 {
-		if w := f.read(); w.Code != 500 {
-			t.Fatalf("%d %s", w.Code, w.Body)
-		}
+func TestReposFailedBackgroundWalkWithTransientFailureServesStoredList(t *testing.T) {
+	for _, failure := range []struct {
+		name string
+		err  error
+	}{
+		{"network", errors.New("connection reset")},
+		{"server", &forge.APIError{StatusCode: 503}},
+		{"rate limit", &forge.APIError{StatusCode: 429}},
+		{"secondary rate limit", &forge.APIError{StatusCode: 403}},
+		{"timeout", context.DeadlineExceeded},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			f := newReposRig(t)
+			if w := f.read(); w.Code != 200 {
+				t.Fatal(w.Body)
+			}
+			old := f.saved(t)
+			f.walk = func(context.Context) ([]factory.RepoInfo, error) { return nil, failure.err }
+			f.now.Add(int64(6 * time.Minute))
+			f.read()
+			awaitRepos(t, f.h)
+			for range 3 {
+				w := f.read()
+				var got struct {
+					Available []Repository `json:"available"`
+					ReadAt    time.Time    `json:"available_read_at"`
+				}
+				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || len(got.Available) != 1 || !got.ReadAt.Equal(old.ReadAt) {
+					t.Fatalf("stored read: %d %s", w.Code, w.Body)
+				}
+			}
+			if f.calls.Load() != 2 {
+				t.Fatalf("walks=%d, want 2", f.calls.Load())
+			}
+			f.now.Add(int64(30*time.Second - time.Nanosecond))
+			f.read()
+			awaitRepos(t, f.h)
+			if f.calls.Load() != 2 {
+				t.Fatalf("walk before retry: %d", f.calls.Load())
+			}
+			f.now.Add(1)
+			if w := f.read(); w.Code != 200 {
+				t.Fatalf("retry read: %d %s", w.Code, w.Body)
+			}
+			awaitRepos(t, f.h)
+			if f.calls.Load() != 3 || !f.saved(t).ReadAt.Equal(old.ReadAt) {
+				t.Fatalf("failed retry: walks=%d saved=%+v", f.calls.Load(), f.saved(t))
+			}
+		})
 	}
-	if f.calls.Load() != 1 {
-		t.Fatalf("walks=%d, want 1", f.calls.Load())
+}
+
+func TestReposFirstFailedWalkRetriesAfterShortWait(t *testing.T) {
+	for _, failure := range []struct {
+		name string
+		err  error
+	}{
+		{"refused", githubStatusError(401)},
+		{"network", errors.New("connection reset")},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			f := newReposRig(t)
+			f.walk = func(context.Context) ([]factory.RepoInfo, error) { return nil, failure.err }
+			if w := f.read(); w.Code != 500 {
+				t.Fatalf("first failure: %d %s", w.Code, w.Body)
+			}
+			f.now.Add(int64(30*time.Second - time.Nanosecond))
+			if w := f.read(); w.Code != 500 || f.calls.Load() != 1 {
+				t.Fatalf("before retry: %d %s walks=%d", w.Code, w.Body, f.calls.Load())
+			}
+			f.walk = func(context.Context) ([]factory.RepoInfo, error) { return []factory.RepoInfo{{Full: "acme/api"}}, nil }
+			f.now.Add(1)
+			if w := f.read(); w.Code != 200 || f.calls.Load() != 2 {
+				t.Fatalf("retry: %d %s walks=%d", w.Code, w.Body, f.calls.Load())
+			}
+			f.now.Add(int64(5*time.Minute - time.Nanosecond))
+			if w := f.read(); w.Code != 200 || f.calls.Load() != 2 {
+				t.Fatalf("before successful refresh: %d %s walks=%d", w.Code, w.Body, f.calls.Load())
+			}
+			f.now.Add(1)
+			f.read()
+			awaitRepos(t, f.h)
+			if f.calls.Load() != 3 {
+				t.Fatalf("successful refresh walks=%d, want 3", f.calls.Load())
+			}
+		})
 	}
 }
 

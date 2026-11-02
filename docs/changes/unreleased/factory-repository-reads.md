@@ -9,6 +9,9 @@ invalidates:
 
 The additive `available_read_at` field reports the discovery time through the
 factory HTTP response and app wire. Watched repositories remain live Store
-state. A failed refresh retains the stored list and reports the error; a refused
-GitHub identity cannot receive the stored list. Conditional repository walks
-skip GraphQL when every page answers 304 and previous counts are available.
+state. A transient refresh failure serves the stored list with its unchanged
+`available_read_at`; a lost, expired, revoked or refused GitHub sign-in cannot
+receive the stored list. With nothing stored, the read still reports the failure.
+Failed walks may retry on a read after 30 seconds, rather than waiting five
+minutes; successful walks restore the five-minute interval. Conditional repository
+walks skip GraphQL when every page answers 304 and previous counts are available.

@@ -10,8 +10,12 @@ when no discovery time is known. An older desktop app can ignore the field.
 When the list is at least five minutes old, the next read starts one background
 discovery. Other reads reuse the saved list while discovery runs. The first
 read with no saved list waits for discovery. A failed discovery keeps the saved
-list on disk and subsequent reads report the failure until a retry succeeds.
-Retries start at most once every five minutes while repository reads continue.
+list on disk. Network, server, rate-limit and timeout failures serve that list
+with its unchanged `available_read_at`. A lost, expired, revoked or refused
+GitHub sign-in fails the read and never serves the saved list. With no saved
+list, a failed discovery still reports its error. After a failure, a read may
+start another discovery after 30 seconds; a success restores the five-minute
+refresh interval.
 
 A saved list belongs to the GitHub identity and credential that read it. A
 different connection must read its own list. The existing GitHub identity and
