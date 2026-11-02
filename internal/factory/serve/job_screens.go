@@ -100,7 +100,7 @@ func (h *Handler) stepAct(rerun bool, words, model string, revision *int) jobAct
 			if rerun {
 				return doors.StepRerunExpected(it.ID, name, words, model, revision)
 			}
-			return doors.StepControlExpected(it.ID, name, false, "", revision)
+			return doors.StepControl(it.ID, name, false, "")
 		}))
 	}
 }

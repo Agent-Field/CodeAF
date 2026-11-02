@@ -320,6 +320,17 @@ decides which combinations are accepted.
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
+An engine whose hello carries `factory.stop_any_version` accepts
+`factory.job_stop {factory, job, expect?}` and
+`factory.job_step_stop {factory, job, step, expect?}`. An omitted `expect`
+is accepted; when supplied it retains the existing shape, including a positive
+`version`. On an active job, a mismatching `expect` does not refuse Stop.
+Step Stop still requires the named step to be current and running, and refuses
+finished or publishing jobs. Ended jobs retain their existing `stale` or
+`conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
+and errors retain their existing codes, including `bad_params` for malformed
+requests. Other job actions still require their existing guards.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET

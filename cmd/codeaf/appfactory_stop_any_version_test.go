@@ -2,6 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -20,6 +24,9 @@ func TestFactoryStopAnyVersion(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				s := newLocalSetup(t)
 				st := s.start()
+				if !strings.Contains(s.hello, appwire.FeatureFactoryStopAnyVersion) {
+					t.Fatalf("missing Stop feature: %s", s.hello)
+				}
 				floor := s.backend.local.host.floor
 				job, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateQueued,
 					Stream: &factory.Stream{Phases: []factory.Phase{{Name: "build", State: factory.PhaseRunning}, {Name: "proof", State: factory.PhasePending}}}})
@@ -81,6 +88,46 @@ func TestFactoryStopAnyVersion(t *testing.T) {
 			})
 		}
 	}
+	t.Run("HTTP publishing and ended", func(t *testing.T) {
+		s := newLocalSetup(t)
+		st := s.start()
+		floor := s.backend.local.host.floor
+		job, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning, Publishing: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		post := func(suffix, body string, want int) {
+			t.Helper()
+			req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/v1/jobs/%d/%s", st.URL, job.ID, suffix), strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer "+s.backend.local.host.token)
+			req.Header.Set("Content-Type", "application/json")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			data, _ := io.ReadAll(res.Body)
+			if res.StatusCode != want {
+				t.Fatalf("HTTP %s: %d %s, want %d", suffix, res.StatusCode, data, want)
+			}
+		}
+		post("stop", `{"expect":{"version":40}}`, http.StatusOK)
+		post("stop", `{"expect":{"version":40}}`, http.StatusConflict)
+		post("stop", `{}`, http.StatusConflict)
+		// A step that ended while the desk watched must not stop its successor.
+		if err := floor.Update(job.ID, func(it *factory.Item) error {
+			it.State = factory.StateRunning
+			it.Stream = &factory.Stream{Cur: 1, Phases: []factory.Phase{{Name: "build", State: factory.PhaseDone}, {Name: "proof", State: factory.PhaseRunning}}}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		post("steps/build/stop", `{"expect":{"version":40}}`, http.StatusConflict)
+		post("steps/proof/stop", `{"expect":{"version":40}}`, http.StatusOK)
+	})
 }
 
 func paramsForStopRead(factoryID string, job int) map[string]any {

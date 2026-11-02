@@ -150,8 +150,8 @@ func TestFactoryActionsAbsentWithoutActor(t *testing.T) {
 func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 	eng := &actorEngine{}
 	bad := []struct{ name, params string }{
-		// No version read: the write would run on a job the person never saw.
-		{"factory.job_stop", `{"factory":"f","job":1}`},
+		// Writes other than Stop require the version the person read.
+		{"factory.job_start", `{"factory":"f","job":1}`},
 		{"factory.job_stop", `{"factory":"f","job":1,"expect":{}}`},
 		{"factory.job_stop", `{"factory":"f","job":1,"expect":{"state":"running"}}`},
 		{"factory.job_stop", `{"factory":"f","job":1,"expect":{"version":0}}`},
