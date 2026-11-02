@@ -305,7 +305,7 @@ func TestFactoryPausedJobReleasesCapacity(t *testing.T) {
 					}
 					job.Spend(0.125)
 					result, err := chat.Run(ctx, job)
-					if !busy && ctx.Err() != nil {
+					if !busy && job.Resume == "" && ctx.Err() != nil {
 						// Keep the cancelled executor in flight until Resume has
 						// queued the job, before its final report and lease release.
 						close(cancelledA)
