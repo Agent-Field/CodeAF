@@ -57,6 +57,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	// NO KEY IN THE ENVIRONMENT: the only road to one is the app's memory.
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("CODEAF_MODEL_POOL", "off")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv(factoryPostureEnv, "")

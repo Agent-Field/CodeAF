@@ -157,7 +157,11 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
 	deadline := time.Now().Add(10 * time.Second)
 	for !stop {
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
-		if job.Ready {
+		finished := false
+		for _, step := range job.Steps {
+			finished = finished || (step.Name == "write" && step.State == "done")
+		}
+		if finished {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -173,7 +177,11 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
 	// Give the existing final-report path a chance to return its lease while
 	// the receipt is deliberately still unavailable. A settlement-aware worker
 	// may retain that lease; either way the public job must receive the charge.
-	until := time.Now().Add(750 * time.Millisecond)
+	delay := 750 * time.Millisecond
+	if stop {
+		delay = 6 * time.Second
+	}
+	until := time.Now().Add(delay)
 	for time.Now().Before(until) {
 		var runners api.Runners
 		s.must("factory.runners", map[string]any{"factory": st.Factory}, &runners)
@@ -185,7 +193,9 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
 		}
 		if !busy {
 			t.Log("worker lease ended before receipt was released")
-			break
+			if !stop {
+				break
+			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
