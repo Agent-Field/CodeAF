@@ -18,7 +18,7 @@ func (d *Doors) StepControl(id int, name string, rerun bool, words string) error
 // StepControlExpected compares a human decision inside the item lock; a read
 // followed by a later write must not rewind a step that has already moved on.
 func (d *Doors) StepControlExpected(id int, name string, rerun bool, words string, revision *int) error {
-	return d.rewind(id, revision, func(it *factory.Item, now time.Time) error {
+	return d.rewind(id, revision, rerun, func(it *factory.Item, now time.Time) error {
 		return run.StepControl(it, name, rerun, words, now)
 	})
 }
@@ -27,21 +27,25 @@ func (d *Doors) StepControlExpected(id int, name string, rerun bool, words strin
 // the model the step runs on ([run.StepRerun]): run again from here, with
 // another model.
 func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *int) error {
-	return d.rewind(id, revision, func(it *factory.Item, now time.Time) error {
+	return d.rewind(id, revision, true, func(it *factory.Item, now time.Time) error {
 		return run.StepRerun(it, name, words, model, now)
 	})
 }
 
 // rewind applies one step control under the item lock and revokes the old
 // lease with it.
-func (d *Doors) rewind(id int, revision *int, control func(it *factory.Item, now time.Time) error) error {
+func (d *Doors) rewind(id int, revision *int, rerun bool, control func(it *factory.Item, now time.Time) error) error {
 	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := control(it, now); err != nil {
 			return false, err
 		}
 		delete(doc.Signals, id)
 		if held != nil {
-			release(doc, id)
+			if rerun {
+				withdraw(doc, *held)
+			} else {
+				release(doc, id)
+			}
 		}
 		return true, nil
 	})
@@ -122,4 +126,25 @@ func withdrawForSteps(doc *document, held *Lease, id int, it *factory.Item, chan
 	release(doc, id)
 	delete(doc.Signals, id)
 	return true
+}
+
+// Withdraw revokes automatic execution before manual control takes over. It
+// leaves the recorded results intact and does not record a person's Stop.
+func (d *Doors) Withdraw(id int) error {
+	return d.update(id, func(doc *document, held *Lease, _ *factory.Item, _ time.Time) (bool, error) {
+		if held == nil {
+			return false, nil
+		}
+		withdraw(doc, *held)
+		return true, nil
+	})
+}
+
+// withdraw retains the old lease's meaning until its worker pulls again.
+func withdraw(doc *document, held Lease) {
+	if doc.Withdrawn == nil {
+		doc.Withdrawn = map[string]string{}
+	}
+	doc.Withdrawn[held.Worker] = held.ID
+	release(doc, held.Job)
 }
