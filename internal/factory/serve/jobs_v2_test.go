@@ -1172,3 +1172,21 @@ func TestV2StartNowPassesTheLimitOnceAndHoldWaitsForResume(t *testing.T) {
 		t.Fatalf("recorded %v, want %v", kinds, want)
 	}
 }
+
+// A PERSON'S CONTINUE AT THE CAP QUEUES AN UNHELD JOB AGAIN. No runner holds
+// the job, but its copy still carries the cap question as an open ask (the
+// worker that raised it has let go). The person's continue takes the ask down
+// and queues the job, rather than leaving it waiting on them.
+func TestAPersonsContinueAtTheCapQueuesAnUnheldJobAgain(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 10, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
+	_ = f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+		return nil
+	})
+	f.post(t, it, "answer", `{"yes":true,"words":"continue"}`, 200)
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateQueued || got.Question != "" || got.QKind != "" || got.Asking != nil {
+		t.Fatalf("a person's continue left the job %s with question %q kind %q asking %v", got.State, got.Question, got.QKind, got.Asking != nil)
+	}
+}

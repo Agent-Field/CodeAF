@@ -11,3 +11,7 @@ invalidates:
 
 Manual jobs, any other open ask, and a raise to the spend or lower still
 leave the job parked. Only the cap moves.
+
+Also changed: when a person answers "continue" to a job's budget question and
+no runner holds the job, the job now goes back to the queue. Before, the job
+kept the question and stayed waiting on the person.
