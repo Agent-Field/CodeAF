@@ -23,14 +23,18 @@ import (
 )
 
 func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) {
-	memoryLateReceiptFactoryHeader(t, false)
+	memoryLateReceiptFactoryHeader(t, false, 0)
 }
 
 func TestMemoryLateReceiptReachesFactoryHeaderAfterStop(t *testing.T) {
-	memoryLateReceiptFactoryHeader(t, true)
+	memoryLateReceiptFactoryHeader(t, true, 0)
 }
 
-func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
+func TestMemoryLateReceiptPreservesExistingJobSpend(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, true, .30)
+}
+
+func memoryLateReceiptFactoryHeader(t *testing.T, stop bool, existing float64) {
 	s := newLocalSetup(t)
 	release := make(chan struct{})
 	releaseReceipt := sync.OnceFunc(func() { close(release) })
@@ -133,7 +137,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
 	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 		t.Fatal(err)
 	}
-	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar queues jobs", Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: []factory.Stage{
+	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar queues jobs", ChatSpent: existing, Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: []factory.Stage{
 		{Name: "write", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."},
 		{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
 	}})
@@ -221,7 +225,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, stop bool) {
 			}
 		}
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
-		if memoryUSD >= .02 && math.Abs(job.Cost-usd) < .000001 {
+		if memoryUSD >= .02 && math.Abs(job.Cost-usd-existing) < .000001 {
 			return
 		}
 		if time.Now().After(deadline) {
