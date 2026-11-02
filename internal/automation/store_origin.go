@@ -252,19 +252,14 @@ func madeInTeamOK(id string) bool {
 // a match whose status, wake time or projection cannot be read, refuses the
 // page with [ErrMadeInDamaged].
 func (s *Store) MadeInTeam(ctx context.Context, teamID, cursor string, limit int, projMax int64) (MadeInPage, error) {
-	if !madeInTeamOK(teamID) {
-		return MadeInPage{}, fmt.Errorf("automations: no team asked for")
+	if err := madeInAsk(teamID, limit, projMax); err != nil {
+		return MadeInPage{}, err
 	}
-	if limit < 1 || limit > MadeInTeamMax {
-		return MadeInPage{}, fmt.Errorf("automations: a page is 1 to %d rows", MadeInTeamMax)
-	}
-	if projMax < 1 || projMax > MadeInScanBytesMax {
-		return MadeInPage{}, fmt.Errorf("automations: a projection budget is 1 to %d bytes", MadeInScanBytesMax)
-	}
-	after, rev, continuing := "", int64(0), cursor != ""
-	if continuing {
+	walk := madeInWalk{page: MadeInPage{Team: teamID}, limit: limit, continuing: cursor != ""}
+	after := ""
+	if walk.continuing {
 		var err error
-		if rev, after, err = parseMadeInCursor(cursor, teamID); err != nil {
+		if walk.rev, after, err = parseMadeInCursor(cursor, teamID); err != nil {
 			return MadeInPage{}, err
 		}
 	}
@@ -273,68 +268,133 @@ func (s *Store) MadeInTeam(ctx context.Context, teamID, cursor string, limit int
 		return MadeInPage{}, err
 	}
 	defer rows.Close()
-	page := MadeInPage{Team: teamID}
-	answered, window, matched, stopped := false, 0, 0, false
 	for rows.Next() {
-		var revision, idlen, doclen, running, rank, hit, unknown, carry, next sql.NullInt64
-		var present bool
-		var id, projection, status sql.NullString
-		if err := rows.Scan(&revision, &present, &idlen, &doclen, &running, &id, &hit, &unknown, &rank, &carry, &projection, &status, &next); err != nil {
+		var row madeInScanned
+		if err := row.scan(rows); err != nil {
 			return MadeInPage{}, err
 		}
-		answered = true
-		if !revision.Valid {
-			return MadeInPage{}, fmt.Errorf("%w: the walk revision is missing", ErrMadeInDamaged)
+		done, err := walk.read(row)
+		if err != nil {
+			return MadeInPage{}, err
 		}
-		page.Revision = revision.Int64
-		if continuing && revision.Int64 != rev {
-			return MadeInPage{}, ErrMadeInStale
-		}
-		if !present {
-			// The anchor alone: nothing after the cursor.
+		if done {
 			break
-		}
-		window++
-		if stopped {
-			continue
-		}
-		matches := hit.Int64 == 1
-		if !id.Valid || running.Int64 > MadeInScanBytesMax || (matches && carry.Int64 != 1) {
-			// THE PAGE ENDS BEFORE THIS ROW, never past it and never by
-			// skipping it. Its id is named only when it can be read.
-			page.Stopped, stopped = true, true
-			if id.Valid {
-				page.StopID = id.String
-			}
-			continue
-		}
-		entry := MadeInEntry{ID: id.String, Size: doclen.Int64, Unknown: unknown.Int64 == 1}
-		if matches {
-			a, err := madeInRow(id.String, projection, status, next, teamID)
-			if err != nil {
-				return MadeInPage{}, err
-			}
-			entry.Row = &a
-			matched++
-		}
-		page.Entries = append(page.Entries, entry)
-		if matched == limit {
-			stopped = true
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return MadeInPage{}, err
 	}
-	if !answered {
+	return walk.finish(after)
+}
+
+// madeInAsk refuses a page asked for with no readable team, a limit outside
+// one page or a projection budget outside the scan budget.
+func madeInAsk(teamID string, limit int, projMax int64) error {
+	if !madeInTeamOK(teamID) {
+		return fmt.Errorf("automations: no team asked for")
+	}
+	if limit < 1 || limit > MadeInTeamMax {
+		return fmt.Errorf("automations: a page is 1 to %d rows", MadeInTeamMax)
+	}
+	if projMax < 1 || projMax > MadeInScanBytesMax {
+		return fmt.Errorf("automations: a projection budget is 1 to %d bytes", MadeInScanBytesMax)
+	}
+	return nil
+}
+
+// madeInScanned is one row of [madeInQuery], column for column.
+type madeInScanned struct {
+	revision, idlen, doclen, running, rank, hit, unknown, carry, next sql.NullInt64
+	present                                                           bool
+	id, projection, status                                            sql.NullString
+}
+
+func (r *madeInScanned) scan(rows *sql.Rows) error {
+	return rows.Scan(&r.revision, &r.present, &r.idlen, &r.doclen, &r.running, &r.id, &r.hit, &r.unknown, &r.rank, &r.carry, &r.projection, &r.status, &r.next)
+}
+
+// madeInWalk is one page being read from the statement's rows: what it has
+// covered so far and whether something has already ended it.
+type madeInWalk struct {
+	page       MadeInPage
+	rev        int64
+	continuing bool
+	limit      int
+	answered   bool
+	window     int
+	matched    int
+	stopped    bool
+}
+
+// read takes one answered row. Every row carries the walk revision, so the
+// first one is enough to refuse a missing or stale revision; done says the row
+// was the anchor alone, with nothing after the cursor.
+func (w *madeInWalk) read(row madeInScanned) (done bool, err error) {
+	w.answered = true
+	if !row.revision.Valid {
+		return false, fmt.Errorf("%w: the walk revision is missing", ErrMadeInDamaged)
+	}
+	w.page.Revision = row.revision.Int64
+	if w.continuing && row.revision.Int64 != w.rev {
+		return false, ErrMadeInStale
+	}
+	if !row.present {
+		return true, nil
+	}
+	w.window++
+	if w.stopped {
+		return false, nil
+	}
+	return false, w.cover(row)
+}
+
+// cover adds one row of the window to the page, or ends the page before it
+// when the row cannot be carried.
+func (w *madeInWalk) cover(row madeInScanned) error {
+	matches := row.hit.Int64 == 1
+	if !row.id.Valid || row.running.Int64 > MadeInScanBytesMax || (matches && row.carry.Int64 != 1) {
+		w.stopBefore(row.id)
+		return nil
+	}
+	entry := MadeInEntry{ID: row.id.String, Size: row.doclen.Int64, Unknown: row.unknown.Int64 == 1}
+	if matches {
+		a, err := madeInRow(row.id.String, row.projection, row.status, row.next, w.page.Team)
+		if err != nil {
+			return err
+		}
+		entry.Row = &a
+		w.matched++
+	}
+	w.page.Entries = append(w.page.Entries, entry)
+	if w.matched == w.limit {
+		w.stopped = true
+	}
+	return nil
+}
+
+// stopBefore ends the page before a row it cannot carry: THE PAGE ENDS BEFORE
+// THIS ROW, never past it and never by skipping it. Its id is named only when
+// it can be read.
+func (w *madeInWalk) stopBefore(id sql.NullString) {
+	w.page.Stopped, w.stopped = true, true
+	if id.Valid {
+		w.page.StopID = id.String
+	}
+}
+
+// finish is the page once its rows are read, or the refusal of a page that
+// could not be answered or would start at a row it cannot carry.
+func (w *madeInWalk) finish(after string) (MadeInPage, error) {
+	if !w.answered {
 		return MadeInPage{}, fmt.Errorf("%w: the walk revision is missing", ErrMadeInDamaged)
 	}
-	if len(page.Entries) == 0 && page.Stopped {
-		return MadeInPage{}, madeInTooLarge(page.StopID, after)
+	if len(w.page.Entries) == 0 && w.page.Stopped {
+		return MadeInPage{}, madeInTooLarge(w.page.StopID, after)
 	}
 	// The end is reached only when nothing stopped the page, the window held
 	// fewer rows than it could, and every row it held was covered.
-	page.End = !stopped && window < MadeInScanMax && len(page.Entries) == window
-	return page, nil
+	w.page.End = !w.stopped && w.window < MadeInScanMax && len(w.page.Entries) == w.window
+	return w.page, nil
 }
 
 // madeInRow is a carried match as an automation, from its projection and the

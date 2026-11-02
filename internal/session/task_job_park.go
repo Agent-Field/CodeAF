@@ -130,6 +130,29 @@ func parkBoundNote(one *job) userMessage {
 	return jobNote(text)
 }
 
+// parkOwed says the worker still owes the model the ending of a command or a
+// stage it started, which is the only thing a park waits on.
+func parkOwed(jobs *jobRegistry) bool {
+	return jobs.owedRunning() || jobs.stageRunning()
+}
+
+// jobParkBoundOf is THE PARK'S OWN BOUND, taken from the allowance rather than
+// being it. A run given a sliver of wall still gets a bound shorter than the
+// sliver; a bound that rounds to nothing falls back to the allowance so a wait
+// is never made instantaneous by an arithmetic accident.
+func jobParkBoundOf(allowance time.Duration) time.Duration {
+	if bound := allowance / jobParkBoundShare; bound > 0 {
+		return bound
+	}
+	return allowance
+}
+
+// parkSteered says a person's steering is waiting for this worker, or for the
+// stage it runs, so the park hands the turn back rather than holding it.
+func (a *Agent) parkSteered() bool {
+	return a.steeringHeld() || (a.config.mayStage() && a.stageSteeringHeld())
+}
+
 // parkOnOwedJob holds this worker at a step boundary while a command it started
 // in the foreground is still running, and returns the moment that command's
 // ending is on the queue in front of it.
@@ -167,17 +190,10 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	// read inside the loop and must not be deleted as one: that read is taken
 	// after the generation and is what carries the correctness, while this one is
 	// only the early out.
-	if allowance <= 0 || jobs == nil || !(jobs.owedRunning() || jobs.stageRunning()) {
+	if allowance <= 0 || jobs == nil || !parkOwed(jobs) {
 		return
 	}
-	// THE PARK'S OWN BOUND, taken from the allowance rather than being it. A run
-	// given a sliver of wall still gets a bound shorter than the sliver; a bound
-	// that rounds to nothing falls back to the allowance so a wait is never made
-	// instantaneous by an arithmetic accident.
-	bound := allowance / jobParkBoundShare
-	if bound <= 0 {
-		bound = allowance
-	}
+	bound := jobParkBoundOf(allowance)
 	// IT IS THE RUN'S CLOCK ([Agent.taskClockTimer]), which is what lets a test
 	// drive the bound without a sleep standing in for causality.
 	var timer <-chan time.Time
@@ -190,10 +206,7 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	defer stop()
 	for {
 		news := a.taskNewsWait()
-		if !(jobs.owedRunning() || jobs.stageRunning()) {
-			return
-		}
-		if a.steeringHeld() || (a.config.mayStage() && a.stageSteeringHeld()) {
+		if !parkOwed(jobs) || a.parkSteered() {
 			return
 		}
 		select {

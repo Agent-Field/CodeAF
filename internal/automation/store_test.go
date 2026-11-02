@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,6 +43,22 @@ func TestStoreRefusesAForeignDatabase(t *testing.T) {
 	_ = s.Close()
 	if _, err := Open(root); err == nil {
 		t.Fatal("a database that is not ours was opened")
+	}
+}
+
+func TestStoreRefusesAnUnmarkedDatabaseThatAlreadyHoldsTables(t *testing.T) {
+	root := t.TempDir()
+	other, err := sql.Open("sqlite", filepath.Join(root, DatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Exec(`CREATE TABLE notes (body TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = other.Close()
+	_, err = Open(root)
+	if err == nil || !strings.Contains(err.Error(), "belongs to something else") {
+		t.Fatalf("opening a database that holds another program's tables: %v", err)
 	}
 }
 
