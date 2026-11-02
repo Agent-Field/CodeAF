@@ -182,6 +182,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		}
 	}
 	addCost(it, report.Cost)
+	applyModelUses(it, report.Models)
 	for _, line := range report.Log {
 		loopSay(it, now, line.Tone, line.Text)
 	}
@@ -446,6 +447,17 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 }
 
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
+
+// applyModelUses adds a report's model rows where the job's spend is. The
+// dollars themselves arrived as Cost; these rows only say which model.
+func applyModelUses(it *factory.Item, rows []factory.ModelUse) {
+	if it == nil {
+		return
+	}
+	for _, row := range rows {
+		factory.AddModelUse(it, row.Model, row.USD, row.Calls, row.Input, row.Output)
+	}
+}
 
 // foldResult is the persisted half of fold; the local loop also keeps its
 // in-memory prior results, while a worker carries those in its own runner.

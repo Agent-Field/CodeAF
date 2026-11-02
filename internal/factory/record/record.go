@@ -141,6 +141,10 @@ func (r *Record) Root() string {
 // Append mints identity and time here, never from an agent's reported fields.
 // SYNC BEFORE CONSENT: a returned receipt must already be on disk.
 func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
+	// An approval without a handle must explicitly name the factory as actor.
+	if event.Kind == Approved && factory.NormalizeHandle(event.Handle) == "" && event.Actor.Kind != "factory" {
+		return Event{}, errors.New("factory record: approval requires a forge handle")
+	}
 	enrich(&event)
 	if err := validate(event); err != nil {
 		return Event{}, err
@@ -222,7 +226,7 @@ func validate(e Event) error {
 		return errors.New("factory record: cost must not be negative")
 	}
 	handle := factory.NormalizeHandle(e.Handle)
-	if e.Kind == Approved && handle == "" {
+	if e.Kind == Approved && handle == "" && e.Actor.Kind != "factory" {
 		return errors.New("factory record: approval requires a forge handle")
 	}
 	for _, c := range handle {
@@ -308,7 +312,11 @@ func (r *Record) TrailerFor(ctx context.Context, id int, commit string) (string,
 			if e.Commit != commit {
 				return "", publish.ErrCommitChanged
 			}
-			trailer := "Factory-Approval: " + e.ID + " @" + factory.NormalizeHandle(e.Handle)
+			actor := "@" + factory.NormalizeHandle(e.Handle)
+			if e.Actor.Kind == "factory" {
+				actor = "factory"
+			}
+			trailer := "Factory-Approval: " + e.ID + " " + actor
 			if e.Commit != "" {
 				trailer += " " + e.Commit
 			}
