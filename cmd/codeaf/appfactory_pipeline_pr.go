@@ -26,6 +26,13 @@ package main
 //	typed failure  outcome refused, not_opened or unknown, a known stage, a
 //	               request id, and a status and branch_left that agree with it
 //
+// With pr (adding a commit to that open pull request) the shapes are:
+//
+//	200 updated    that same pull request, its canonical URL and a NEW head
+//	200 unchanged  that same pull request, at the expected head when one was named
+//	typed failure  as above, but never a branch left and never a stage that
+//	               only opening a pull request has
+//
 // Anything else is appwire.CodeUncertain with no repository, branch or number
 // in it: a dropped connection, a timeout, a redirect, an unexpected 2xx, a 4xx
 // or 5xx that is not the flow's own typed failure (a proxy, the shared
@@ -48,7 +55,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
-var _ appwire.FactoryPipelineOpener = (*appBackend)(nil)
+var (
+	_ appwire.FactoryPipelineOpener    = (*appBackend)(nil)
+	_ appwire.FactoryPipelinePRUpdater = (*appBackend)(nil)
+)
+
+// PipelinePRUpdates marks this backend as one whose FactoryPipelinePR adds a
+// commit to an open pull request, which lets hello announce
+// factory.pipeline_pr_update.
+func (b *appBackend) PipelinePRUpdates() {}
 
 const (
 	appFactoryPipelinePRSuffix = "/pipeline/open-pr"
@@ -83,7 +98,8 @@ func (h *appFactoryHub) claimPipelinePR(id, repo string) (release func(), err er
 func (b *appBackend) FactoryPipelinePR(ctx context.Context, p appwire.FactoryPipelinePRParams) (appwire.FactoryPipelinePRDone, error) {
 	// The body is the route's own request type, so a field it does not know can
 	// never be sent from here. Its encoded size is checked before anything leaves.
-	body := api.PipelinePRRequest{Text: p.Text, Title: p.Title, Body: p.Body, Branch: p.Branch, ExpectedBaseSHA: p.ExpectedBaseSHA}
+	body := api.PipelinePRRequest{Text: p.Text, Title: p.Title, Body: p.Body, Branch: p.Branch, ExpectedBaseSHA: p.ExpectedBaseSHA,
+		PR: p.PR, ExpectedHeadSHA: p.ExpectedHeadSHA}
 	raw, err := json.Marshal(body)
 	if err != nil || len(raw) > appwire.PipelinePRRequestMax {
 		return appwire.FactoryPipelinePRDone{}, appwire.Errorf(appwire.CodeBadParams, "that request is too large to send (at most %d bytes encoded)", appwire.PipelinePRRequestMax)
@@ -104,7 +120,14 @@ func (b *appBackend) FactoryPipelinePR(ctx context.Context, p appwire.FactoryPip
 	}
 	// TEXT THAT SPELLS A RUNTIME KEY goes only to a commit the factory attested,
 	// and only after the file is read again (appfactory_pipeline_runtime.go).
-	if err := b.checkPipelineRuntimeText(ctx, who, p); err != nil {
+	// An update names no base commit: the file is read again and must still be
+	// the one attested, as the factory copy's seal does.
+	if p.PR != 0 {
+		err = b.checkPipelineCopyRuntimeText(ctx, who, p.Factory, p.Repo, p.Text)
+	} else {
+		err = b.checkPipelineRuntimeText(ctx, who, p)
+	}
+	if err != nil {
 		return appwire.FactoryPipelinePRDone{}, err
 	}
 	owner, name, _ := strings.Cut(p.Repo, "/")
@@ -116,25 +139,28 @@ func (b *appBackend) FactoryPipelinePR(ctx context.Context, p appwire.FactoryPip
 	case err == errLinkNotSent:
 		return appwire.FactoryPipelinePRDone{}, appwire.Errorf(appwire.CodeUnreachable, "the factory is not answering; nothing was sent")
 	case err != nil:
-		return appwire.FactoryPipelinePRDone{}, pipelinePRUncertain()
+		return appwire.FactoryPipelinePRDone{}, pipelinePRUncertain(p)
 	}
 	// Whatever the factory said describes the caller it was asked as. If that
 	// is no longer the connection's, none of it is used, not even a refusal.
 	if !h.callerIs(p.Factory, who.token) {
-		return appwire.FactoryPipelinePRDone{}, pipelinePRUncertain()
+		return appwire.FactoryPipelinePRDone{}, pipelinePRUncertain(p)
 	}
 	done, failure := classifyPipelinePR(r, p)
 	if done == nil && failure == nil {
-		return appwire.FactoryPipelinePRDone{}, pipelinePRUncertain()
+		return appwire.FactoryPipelinePRDone{}, pipelinePRUncertain(p)
 	}
 	h.touch(p.Factory)
 	if failure != nil {
-		return appwire.FactoryPipelinePRDone{}, pipelinePRFailureError(*failure)
+		return appwire.FactoryPipelinePRDone{}, pipelinePRFailureError(*failure, p.PR != 0)
 	}
 	return *done, nil
 }
 
-func pipelinePRUncertain() error {
+func pipelinePRUncertain(p appwire.FactoryPipelinePRParams) error {
+	if p.PR != 0 {
+		return appwire.Errorf(appwire.CodeUncertain, "the factory did not confirm whether the pull request was updated; it may have been, so check it on GitHub before trying again")
+	}
 	return appwire.Errorf(appwire.CodeUncertain, "the factory did not confirm whether a pull request was opened; it may have been, and a branch may remain, so check the repository on GitHub before trying again")
 }
 
@@ -163,21 +189,52 @@ func classifyPipelinePRSuccess(r linkReply, p appwire.FactoryPipelinePRParams) *
 		return nil
 	}
 	out := appwire.FactoryPipelinePRDone{Factory: p.Factory, Repo: p.Repo, Outcome: got.Outcome, BaseSHA: got.BaseSHA}
+	if p.PR != 0 {
+		return classifyPipelinePRUpdate(r, p, got, out)
+	}
 	switch {
 	case r.status == http.StatusOK && got.Outcome == api.PipelinePRUnchanged && got.PR == nil:
 		return &out
 	case r.status == http.StatusCreated && got.Outcome == api.PipelinePROpened && got.PR != nil:
-		pr := got.PR
-		canonical := "https://github.com/" + p.Repo + "/pull/" + strconv.Itoa(pr.Number)
-		if pr.Number <= 0 || pr.URL != canonical || !appwire.ValidPipelinePRBranch(pr.Branch) ||
-			(p.Branch != "" && pr.Branch != p.Branch) || !plainBranchName(pr.Base) ||
-			pr.BaseSHA != got.BaseSHA || !appwire.ValidPipelinePRCommit(pr.HeadSHA) {
+		if !pipelinePRConfirmed(got, p.Repo, p.Branch) {
 			return nil
 		}
-		out.PR = &appwire.FactoryPipelinePR{Number: pr.Number, URL: pr.URL, Branch: pr.Branch, Base: pr.Base, BaseSHA: pr.BaseSHA, HeadSHA: pr.HeadSHA}
+		out.PR = pipelinePRReceipt(got.PR)
 		return &out
 	}
 	return nil
+}
+
+// classifyPipelinePRUpdate believes an answer to pr only when it is a 200 about
+// that very pull request: "updated" at a head other than the expected one, or
+// "unchanged" at the expected one.
+func classifyPipelinePRUpdate(r linkReply, p appwire.FactoryPipelinePRParams, got api.PipelinePRResponse, out appwire.FactoryPipelinePRDone) *appwire.FactoryPipelinePRDone {
+	if r.status != http.StatusOK || !pipelinePRConfirmed(got, p.Repo, "") || got.PR.Number != p.PR {
+		return nil
+	}
+	moved := got.PR.HeadSHA != p.ExpectedHeadSHA
+	switch {
+	case got.Outcome == api.PipelinePRUpdated && (moved || p.ExpectedHeadSHA == ""):
+	case got.Outcome == api.PipelinePRUnchanged && (!moved || p.ExpectedHeadSHA == ""):
+	default:
+		return nil
+	}
+	out.PR = pipelinePRReceipt(got.PR)
+	return &out
+}
+
+// pipelinePRConfirmed is a reply's pull request in its documented shape: a
+// positive number, the canonical URL of repo, a valid branch (the requested
+// one, when one was), a plain base, and commits that agree.
+func pipelinePRConfirmed(got api.PipelinePRResponse, repo, branch string) bool {
+	pr := got.PR
+	return pr != nil && pr.Number > 0 && pr.URL == "https://github.com/"+repo+"/pull/"+strconv.Itoa(pr.Number) &&
+		appwire.ValidPipelinePRBranch(pr.Branch) && (branch == "" || pr.Branch == branch) && plainBranchName(pr.Base) &&
+		pr.BaseSHA == got.BaseSHA && appwire.ValidPipelinePRCommit(pr.HeadSHA)
+}
+
+func pipelinePRReceipt(pr *api.PipelinePRResult) *appwire.FactoryPipelinePR {
+	return &appwire.FactoryPipelinePR{Number: pr.Number, URL: pr.URL, Branch: pr.Branch, Base: pr.Base, BaseSHA: pr.BaseSHA, HeadSHA: pr.HeadSHA}
 }
 
 // plainBranchName is a non-empty one-line name of a bounded size.
@@ -208,6 +265,9 @@ func classifyPipelinePRFailure(r linkReply, p appwire.FactoryPipelinePRParams) *
 	if left && got.Branch == "" {
 		return nil
 	}
+	if !pipelinePRStageFits(p, got.Stage, left) {
+		return nil
+	}
 	switch got.Outcome {
 	case api.PipelinePRRefused:
 		// Nothing was written: a refusal that left a branch, or that names a
@@ -216,15 +276,16 @@ func classifyPipelinePRFailure(r linkReply, p appwire.FactoryPipelinePRParams) *
 			return nil
 		}
 	case api.PipelinePRNotOpened:
-		// A write stage cannot have been reached without a branch to leave.
-		if (got.Stage == "commit" || got.Stage == "pull_request") && !left {
+		// When opening, a write stage cannot have been reached without a
+		// branch to leave.
+		if (got.Stage == "commit" || got.Stage == "pull_request") && !left && p.PR == 0 {
 			return nil
 		}
 		if r.status != http.StatusBadGateway && r.status >= 500 {
 			return nil
 		}
 	case api.PipelinePRUnknown:
-		if r.status != http.StatusBadGateway || !left {
+		if r.status != http.StatusBadGateway || left == (p.PR != 0) {
 			return nil
 		}
 		if got.Stage != "branch" && got.Stage != "commit" && got.Stage != "pull_request" {
@@ -235,6 +296,17 @@ func classifyPipelinePRFailure(r linkReply, p appwire.FactoryPipelinePRParams) *
 	}
 	return &appwire.FactoryPipelinePRFailure{Factory: p.Factory, Repo: p.Repo, Outcome: got.Outcome, Stage: got.Stage,
 		GitHubStatus: got.GitHubStatus, Branch: got.Branch, BranchLeft: left, RequestID: got.RequestID}
+}
+
+// pipelinePRStageFits is false for a failure that cannot belong to the request
+// that was sent: an update never leaves a branch and never reaches a stage
+// only opening has, and opening never reads an existing pull request.
+func pipelinePRStageFits(p appwire.FactoryPipelinePRParams, stage string, left bool) bool {
+	opening := stage == "base" || stage == "branch" || stage == "pull_request"
+	if p.PR != 0 {
+		return !left && !opening
+	}
+	return stage != "head"
 }
 
 func knownPipelinePRStage(stage string) bool {
@@ -248,19 +320,23 @@ func knownPipelinePRStage(stage string) bool {
 
 // pipelinePRFailureError is the wire error for a typed failure. The words are
 // fixed here from the outcome and stage; the factory's own are never passed on.
-func pipelinePRFailureError(f appwire.FactoryPipelinePRFailure) error {
-	left := ""
+// update says the call was adding a commit to an open pull request.
+func pipelinePRFailureError(f appwire.FactoryPipelinePRFailure, update bool) error {
+	left, verb := "", "opened"
 	if f.BranchLeft {
 		left = " A branch was left on GitHub; codeaf does not delete branches."
+	}
+	if update {
+		verb = "updated"
 	}
 	var code, words string
 	switch f.Outcome {
 	case api.PipelinePRRefused:
 		code, words = pipelinePRRefusedCode(f), pipelinePRRefusedWords(f.Stage)+" Nothing was written."
 	case api.PipelinePRNotOpened:
-		code, words = appwire.CodeEngine, "The pull request was not opened."+left
+		code, words = appwire.CodeEngine, "The pull request was not "+verb+"."+left
 	default:
-		code, words = appwire.CodeUncertain, "The factory cannot say whether the pull request was opened; check the repository on GitHub before trying again."+left
+		code, words = appwire.CodeUncertain, "The factory cannot say whether the pull request was "+verb+"; check the repository on GitHub before trying again."+left
 	}
 	err := appwire.Errorf(code, "%s", words)
 	err.Detail = f
@@ -276,7 +352,7 @@ func pipelinePRRefusedCode(f appwire.FactoryPipelinePRFailure) string {
 		return appwire.CodeGitHubExpired
 	case "permission":
 		return appwire.CodeForbidden
-	case "base", "branch":
+	case "base", "head", "branch":
 		return appwire.CodeConflict
 	case "request":
 		return appwire.CodeBadParams
@@ -300,6 +376,8 @@ func pipelinePRRefusedWords(stage string) string {
 		return "Your GitHub access cannot push to that repository."
 	case "base":
 		return "The default branch has moved since this draft started."
+	case "head":
+		return "That pull request is not open, has new commits since this draft started, or is not from a branch of this repository."
 	case "branch":
 		return "That branch name already exists or was refused; choose another."
 	case "request":

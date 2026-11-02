@@ -50,6 +50,19 @@ type prGitHub struct {
 	drop           map[string]bool   // stage -> transport error
 	body           map[string]string // stage -> forced 2xx body
 	cancel         map[string]context.CancelFunc
+	// pull is the pull request GET /repos/acme/api/pulls/{n} answers; nil
+	// answers 404.
+	pull *prPull
+}
+
+// prPull is the part of a GitHub pull request the update flow reads.
+type prPull struct {
+	number           int
+	state            string
+	headRef, headSHA string
+	headRepo         string // "" answers a null head repository (a deleted fork)
+	baseRef, baseSHA string
+	baseRepo         string
 }
 
 func newPRGitHub(t *testing.T) *prGitHub {
@@ -73,6 +86,8 @@ func (g *prGitHub) stage(r *http.Request) string {
 		return "commit"
 	case r.Method == "POST" && p == "/repos/acme/api/pulls":
 		return "pull_request"
+	case r.Method == "GET" && strings.HasPrefix(p, "/repos/acme/api/pulls/"):
+		return "pull"
 	}
 	return ""
 }
@@ -142,7 +157,7 @@ func (g *prGitHub) transport(next http.RoundTripper) http.RoundTripper {
 			}
 			return reply(200, fmt.Sprintf(`{"object":{"type":"commit","sha":%q}}`, prTip)), nil
 		case "file":
-			if r.URL.Query().Get("ref") != prTip {
+			if want := g.fileRef(); r.URL.Query().Get("ref") != want {
 				g.t.Errorf("file read is not pinned to the base commit: %s", r.URL.RawQuery)
 			}
 			if g.file == nil {
@@ -160,12 +175,41 @@ func (g *prGitHub) transport(next http.RoundTripper) http.RoundTripper {
 		case "commit":
 			g.puts = append(g.puts, in)
 			return reply(201, fmt.Sprintf(`{"commit":{"sha":%q}}`, prHead)), nil
+		case "pull":
+			return g.pullReply(r.URL.Path), nil
 		case "pull_request":
 			g.posts["pulls"] = in
 			return reply(201, `{"number":820,"html_url":"https://github.com/acme/api/pull/820"}`), nil
 		}
 		return reply(500, `{}`), nil
 	})
+}
+
+// fileRef is the commit the flow must read the file at: the pull request's
+// head when one is being updated, else the default branch's tip.
+func (g *prGitHub) fileRef() string {
+	if g.pull != nil {
+		return g.pull.headSHA
+	}
+	return prTip
+}
+
+func (g *prGitHub) pullReply(path string) *http.Response {
+	if g.pull == nil || path != fmt.Sprintf("/repos/acme/api/pulls/%d", g.pull.number) {
+		return reply(404, `{}`)
+	}
+	repo := func(name string) any {
+		if name == "" {
+			return nil
+		}
+		return map[string]string{"full_name": name}
+	}
+	data, _ := json.Marshal(map[string]any{
+		"number": g.pull.number, "state": g.pull.state, "html_url": fmt.Sprintf("https://github.com/acme/api/pull/%d", g.pull.number),
+		"head": map[string]any{"ref": g.pull.headRef, "sha": g.pull.headSHA, "repo": repo(g.pull.headRepo)},
+		"base": map[string]any{"ref": g.pull.baseRef, "sha": g.pull.baseSHA, "repo": repo(g.pull.baseRepo)},
+	})
+	return reply(200, string(data))
 }
 
 func reply(status int, body string) *http.Response {

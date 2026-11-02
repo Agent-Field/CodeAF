@@ -307,6 +307,16 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries the feature `factory.pipeline_pr_update` (and
+capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
+the number of an open pull request from a branch of the same repository into
+its default branch, and optionally `expected_head_sha`. The file is committed
+onto that pull request's head branch: `outcome` is `updated` (`pr.head_sha` is
+the new commit) or `unchanged` (`pr` is the pull request as it stands), and a
+refusal before any write names stage `head`. `branch`, `body` and
+`expected_base_sha` are refused with `pr`. An engine without the feature refuses
+`pr` as an unknown field.
+
 ## files methods
 
 | method | params | result |
