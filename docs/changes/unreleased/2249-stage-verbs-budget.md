@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Factory steps carry only the answer fields they can use
-pr: 0
+pr: 2249
 surface: [engine]
 invalidates:
   - "Every factory step's stage verbs carried the pull request repair report, which only the step following a pull request can write. That step alone is offered it now."
