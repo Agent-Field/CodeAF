@@ -841,7 +841,7 @@ func (b *appBackend) setupView(in api.FactorySetup) appwire.FactorySetupView {
 		out.GitHub.Error = trimWords(*in.GitHub.Error)
 	}
 	for _, r := range in.Repos {
-		repo := appwire.FactorySetupRepo{ID: r.ID, OpenIssues: r.OpenIssues, Archived: r.Archived, Selected: r.Selected, Read: r.Read, ReadCount: r.ReadCount, WaitingS: r.WaitingS, ResumesAt: r.ResumesAt, Clone: r.Clone, CloneMB: r.CloneMB, SuggestedFolder: b.shownFolder(r.SuggestedCheckout)}
+		repo := appwire.FactorySetupRepo{ID: r.ID, OpenIssues: r.OpenIssues, OpenIssuesExact: r.OpenIssuesExact, Archived: r.Archived, Selected: r.Selected, Read: r.Read, ReadCount: r.ReadCount, WaitingS: r.WaitingS, ResumesAt: r.ResumesAt, Clone: r.Clone, CloneMB: r.CloneMB, SuggestedFolder: b.shownFolder(r.SuggestedCheckout)}
 		if r.Pipeline != nil {
 			repo.Pipeline = *r.Pipeline
 		}

@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -131,6 +132,32 @@ func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*
 	return resp, err
 }
 
+// setupGraphQL posts one GraphQL payload as the setup's token and answers the
+// body of a 200; anything else is an error and its body is not read.
+func (h *Handler) setupGraphQL(ctx context.Context, token string, payload any) ([]byte, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.github.com/graphql", bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "codeaf-factory")
+	client := h.githubClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errors.New("GitHub is unavailable")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, githubStatusError(resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+}
+
 // commonOwner names the owner every discovered repository shares, or "" when
 // there are none or they differ. THE LABEL IS A FACT ABOUT THE ROWS, never a claim of
 // organization membership: owners compare case-insensitively and the first spelling is kept.
@@ -228,7 +255,17 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 		if _, err = h.setupJSON(ctx, fmt.Sprintf("/user/repos?per_page=100&sort=pushed&page=%d", page), token, &rows); err != nil {
 			return err
 		}
-		for _, row := range rows {
+		// ONE GraphQL request per page counts issues apart from pull
+		// requests; a repository it does not count keeps open_issues_count,
+		// marked not exact, because a desk needs the number.
+		names := make([]string, len(rows))
+		for i, row := range rows {
+			names[i] = row.FullName
+		}
+		exact := forge.OpenIssueCounts(ctx, names, func(ctx context.Context, payload any) ([]byte, error) {
+			return h.setupGraphQL(ctx, token, payload)
+		})
+		for i, row := range rows {
 			if !store.RepoName(row.FullName) {
 				continue
 			}
@@ -237,6 +274,9 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 				return err
 			}
 			repo := api.SetupRepo{ID: row.FullName, FullName: row.FullName, OpenIssues: row.Open, Archived: row.Archived, Selected: slices.Contains(watched, row.FullName), Read: "next", Clone: "missing", CloneMB: (row.SizeKB + githubKBPerMB - 1) / githubKBPerMB, SuggestedCheckout: filepath.Join(userHome, "code", strings.ReplaceAll(row.FullName, "/", "-"))}
+			if n := exact[i]; n != nil {
+				repo.OpenIssues, repo.OpenIssuesExact = *n, true
+			}
 			if dir := dirs[strings.ToLower(row.FullName)]; dir != "" {
 				repo.Checkout = &dir
 				repo.Clone = "found"
@@ -844,7 +884,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			return nil, err
 		}
 		if len(rows) < 100 {
-			repo.OpenIssues = count
+			repo.OpenIssues, repo.OpenIssuesExact = count, true
 			return nil, nil
 		}
 	}

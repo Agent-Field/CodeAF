@@ -143,8 +143,11 @@ type FactorySetupGitHub struct {
 // checkout is chosen or found. Read counts issues read so far; Clone has no
 // percentage because the factory reports none.
 type FactorySetupRepo struct {
-	ID              string     `json:"id"`
-	OpenIssues      int        `json:"open_issues"`
+	ID         string `json:"id"`
+	OpenIssues int    `json:"open_issues"`
+	// OpenIssuesExact is true when OpenIssues counts issues alone; false is
+	// GitHub's count of issues and pull requests together.
+	OpenIssuesExact bool       `json:"open_issues_exact"`
 	Pipeline        string     `json:"pipeline,omitempty" enum:"file,defaults"`
 	Archived        bool       `json:"archived"`
 	Selected        bool       `json:"selected"`
