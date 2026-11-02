@@ -536,6 +536,12 @@ func appFactoryFailure(r appFactoryReply) error {
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:
 		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+	case r.status == http.StatusConflict && body.Reason == api.ReasonNotCloned:
+		return appwire.Errorf(appwire.CodeNotCloned, "%s", words)
+	case r.status == http.StatusForbidden && body.Reason == api.ReasonDenied:
+		return appwire.Errorf(appwire.CodeForbidden, "denied")
+	case r.status == http.StatusUnprocessableEntity && body.Reason == api.ReasonBinary:
+		return appwire.Errorf(appwire.CodeUnreadable, "binary")
 	case r.status == http.StatusNotFound:
 		if words == "" {
 			words = "the factory has no such thing"
@@ -792,8 +798,8 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, PipelineEdit: true, PipelineEditRuntime: true,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
@@ -1030,6 +1036,8 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 			Private bool      `json:"private"`
 			Pushed  time.Time `json:"pushed"`
 			Open    int       `json:"open"`
+			// OpenIssues is believed only as a whole number from 0.
+			OpenIssues *int `json:"open_issues"`
 		} `json:"available"`
 	}
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
@@ -1041,6 +1049,9 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 	}
 	for i, r := range body.Available {
 		out.Available[i] = appwire.FactoryRepo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open}
+		if r.OpenIssues != nil && *r.OpenIssues >= 0 {
+			out.Available[i].OpenIssues = r.OpenIssues
+		}
 	}
 	return out, nil
 }

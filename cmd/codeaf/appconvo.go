@@ -35,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -973,9 +974,25 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 	}
 	full = filepath.Clean(full)
 	stat := appwire.FileStat{Path: path, State: appwire.FileExists}
-	if rel, err := filepath.Rel(workspace, full); workspace == "" || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		stat.State = appwire.FileOutside
-		return stat
+	// One folder can be spelled two ways. macOS reaches /tmp and /var through
+	// links, and a project can sit under a linked folder, so a file a picker or
+	// a drag names /private/tmp/demo/notes.md is inside a workspace typed as
+	// /tmp/demo. The spelled test stays first, so nothing inside by spelling is
+	// newly called outside; only a path outside by spelling is resolved, and it
+	// is inside when its resolved place is. same is that file in the
+	// workspace's own spelling and rel its path inside the workspace: the keys a
+	// change recorded under another spelling of it is found by.
+	same, rel := full, ""
+	if appWithin(workspace, full) {
+		rel, _ = filepath.Rel(workspace, full)
+	} else {
+		root, place := appCanonical(workspace), appCanonical(full)
+		inside, err := filepath.Rel(root, place)
+		if err != nil || !appWithin(root, place) {
+			stat.State = appwire.FileOutside
+			return stat
+		}
+		same, rel = filepath.Join(workspace, inside), inside
 	}
 	info, err := os.Stat(full)
 	if err != nil {
@@ -984,12 +1001,12 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 	}
 	size := info.Size()
 	stat.Size = &size
-	if !info.IsDir() {
-		if file, err := os.Open(full); err == nil {
-			head := make([]byte, 8000)
-			n, _ := io.ReadFull(file, head)
-			_ = file.Close()
-			stat.Binary = bytes.IndexByte(head[:n], 0) >= 0
+	// The first bytes are read only from a regular file, through the opener
+	// that also refuses a FIFO or a device put in its place between the stat
+	// and the open: opening either would wait for a writer and hold the request.
+	if info.Mode().IsRegular() {
+		if head, err := skills.ReadRegularHead(full, 8000); err == nil {
+			stat.Binary = bytes.IndexByte(head, 0) >= 0
 		}
 	}
 	if change, ok := changed[full]; ok {
@@ -997,6 +1014,14 @@ func (b *appBackend) statFile(workspace string, changed map[string]appwire.FileC
 		add, del := change.Add, change.Del
 		stat.Add, stat.Del = &add, &del
 	} else if change, ok := changed[path]; ok {
+		stat.State = appwire.FileChanged
+		add, del := change.Add, change.Del
+		stat.Add, stat.Del = &add, &del
+	} else if change, ok := changed[same]; ok {
+		stat.State = appwire.FileChanged
+		add, del := change.Add, change.Del
+		stat.Add, stat.Del = &add, &del
+	} else if change, ok := changed[rel]; ok && rel != "" {
 		stat.State = appwire.FileChanged
 		add, del := change.Add, change.Del
 		stat.Add, stat.Del = &add, &del
