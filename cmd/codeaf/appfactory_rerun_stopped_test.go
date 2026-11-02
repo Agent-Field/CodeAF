@@ -67,7 +67,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 						return
 					}
 					if time.Now().After(deadline) {
-						t.Fatalf("%s: state=%s job=%+v", what, job.State, job)
+						t.Fatalf("%s: state=%s", what, job.State)
 					}
 					time.Sleep(20 * time.Millisecond)
 				}
@@ -116,11 +116,25 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			}
 			stopping := strings.HasPrefix(action, "stop ")
 			if stopping {
-				wait("Stop returns the job to backlog", func(j api.Job) bool { return j.State == api.StateBacklog })
+				wait("Stop returns the job to backlog", func(j api.Job) bool {
+					if j.State != api.StateBacklog {
+						return false
+					}
+					for _, e := range entries() {
+						if !baseline[e.ID] && e.Text == "stopped" {
+							return true
+						}
+					}
+					return false
+				})
 			} else {
-				wait("replacement reaches the failed check", func(j api.Job) bool {
-					cur, _ := floor.Get(id)
-					return j.State == api.StateNeedsYou && cur.Stream != nil && (action == "give back" && !cur.Manual || cur.Stream.Phases[0].Round > before.Stream.Phases[0].Round || cur.Stream.Phases[1].Round > before.Stream.Phases[1].Round)
+				wait("replacement reports into the manager conversation", func(api.Job) bool {
+					for _, e := range entries() {
+						if !baseline[e.ID] && (e.Text == "resumed" || strings.HasPrefix(e.Text, "trying ")) {
+							return true
+						}
+					}
+					return false
 				})
 			}
 			// Reporting notices are asynchronous; the wire read below also drains
