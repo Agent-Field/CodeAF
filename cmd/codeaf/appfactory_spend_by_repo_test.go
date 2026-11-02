@@ -34,7 +34,7 @@ func TestAppFactorySpendByRepoReadsTheFactorysJobSpendByRepository(t *testing.T)
 	var got appwire.FactorySpendByRepo
 	alice.w.must("factory.spend_by_repo", map[string]any{"factory": alice.conn.ID, "from": "2026-10-01", "to": "2026-10-31"}, &got)
 	want := appwire.FactorySpendByRepo{Factory: alice.conn.ID, SpendByRepo: api.SpendByRepo{
-		From: "2026-10-01", To: "2026-10-31", TotalUSD: 1.75, Repos: []api.RepoSpend{{Repo: "acme/api", SpentUSD: 1.75, Jobs: 2}},
+		From: "2026-10-01", To: "2026-10-31", TimeZone: "UTC", TotalUSD: 1.75, Repos: []api.RepoSpend{{Repo: "acme/api", SpentUSD: 1.75, Jobs: 2}},
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("spend_by_repo = %+v, want %+v", got, want)
