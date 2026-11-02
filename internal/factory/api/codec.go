@@ -35,7 +35,7 @@ func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
 			}
 		}
 		jobs[i] = FromItem(it)
-		InRepoAreas(&jobs[i], it, s.Repos)
+		AreaIn(&jobs[i], s.Repos)
 		jobs[i].Display = DisplayFor(jobs[i], now)
 		jobs[i].Can = CanFor(it, me, now)
 		ForViewer(&jobs[i], it, me)
@@ -166,7 +166,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
-	j.Area = jobArea(it, nil)
+	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)

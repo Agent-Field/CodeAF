@@ -237,6 +237,7 @@ decides which combinations are accepted.
 | `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
 | `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
+| `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -328,8 +329,11 @@ areas and 20 stuck steps are answered, busiest first (at most 97 facts);
 An engine whose hello carries `factory.job_area` sends `area` on each job of
 `factory.queue` and on `factory.job`: the part of the repository the job's
 change touched most, the repository's declared area or else the top-level
-directory with a trailing slash (`"cli/"`). It is absent when the job changed
-no file or only files at the root.
+directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
+`internal`, `pkg`, `lib`, `app`, `apps`, `packages`, `crates`, `cmd`) it is the
+first two segments (`"internal/factory/"`), and a file directly inside one is
+the container (`"internal/"`). Every response that carries the job says the
+same area. It is absent when the job changed no file or only files at the root.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
@@ -343,6 +347,22 @@ checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
 `changed_since_seen` lists the keys (`verdict`, a fact's `key`, a block's
 `kind/heading`) changed after rev `since`, or by the newest version when
 `since` is absent. A factory older than the route is `conflict`.
+
+An engine whose hello carries `factory.job_brief_writer` writes the briefs of
+this machine's factory: after a step reports and when a step waits on its
+person, each job's news taken as one after 10 seconds. The write is one errand
+on the job's agent under the `brief` role (the small-work tier the small-jobs
+model pins). The factory checks the answer against the job (`POST
+/v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
+that names a step and try the job has, and every number in a claim found in its
+evidence. It keeps what passes and books the call's cost to the job's spend. A
+failing verdict keeps the previous version and marks the brief `failed`. Without
+a person's ask, a version is written only when the last one cost at most $0.03
+and the brief's spend stays within 5% of the job's; an ask opening, the job's
+end and a retry are written regardless, and unchanged inputs are never written
+twice. `factory.job_brief_write {factory, job}` is the page's Retry: it answers
+`{skip?, kept, drops: [{part, reason}], model?, cost_usd?, current:
+FactoryJobBrief}`, with `skip` `writing` while another write is under way.
 
 ## files methods
 

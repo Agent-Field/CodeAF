@@ -253,6 +253,13 @@ const (
 	// that is invisible to everything that reads roles.
 	RoleSpellOut Role = "spellout"
 
+	// RoleBrief writes a factory job's brief: the verdict and the blocks of
+	// the job's state in one screen, from the job's own records. It is a small
+	// call a person reads but does not wait on, so it sits on the small-work
+	// tier, the one the app's small-jobs model pins. Registered from
+	// cmd/codeaf/appfactory_brief_writer.go, which owns the call.
+	RoleBrief Role = "brief"
+
 	// RoleDivision reviews a DIVISION as a plan. A worker halfway through its
 	// own work has named the parts it wants to hand out, and this is the one
 	// call that reads them TOGETHER — the evidence, the parent's own brief, and
@@ -551,7 +558,7 @@ func Known(name string) bool {
 }
 
 var vocabulary = []Role{
-	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
+	RoleAuditor, RoleBrief, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
