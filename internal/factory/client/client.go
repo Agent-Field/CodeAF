@@ -36,10 +36,6 @@ type Client struct {
 // as http://127.0.0.1:7420. token is the bearer access token; leave it
 // empty for a loopback factory, which does not ask.
 func Open(base, token string) *Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// The address is the factory the person named. An ambient proxy would
-	// carry the access token to whatever HTTP_PROXY points at.
-	transport.Proxy = nil
 	return &Client{
 		base:  strings.TrimRight(strings.TrimSpace(base), "/"),
 		token: token,
@@ -48,6 +44,23 @@ func Open(base, token string) *Client {
 		http: &http.Client{Transport: transport, CheckRedirect: refuseRedirect},
 	}
 }
+
+// transport is every client's connection pool. ONE POOL FOR THE PROCESS: a
+// runner slot opens a client for every pull, and a pool per client left each
+// one's idle connection open until its idle timeout, hundreds of sockets on a
+// machine with many slots. The bearer rides on each request, never on the
+// pool, so sharing it across factories and credentials shares only sockets.
+var transport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	// The address is the factory the person named. An ambient proxy would
+	// carry the access token to whatever HTTP_PROXY points at.
+	t.Proxy = nil
+	// Every slot of a runner holds a pull open to the same factory, and the
+	// pulls end together when their waits do; the default of two idle
+	// connections per host would close and redial the rest each time.
+	t.MaxIdleConnsPerHost = api.MaxRunnerSlots
+	return t
+}()
 
 func refuseRedirect(*http.Request, []*http.Request) error {
 	return http.ErrUseLastResponse
@@ -122,7 +135,7 @@ func (c *Client) repos(ctx context.Context) ([]string, []factory.RepoInfo, error
 	for i, r := range body.Available {
 		available[i] = factory.RepoInfo{
 			Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private,
-			Pushed: r.Pushed, Open: r.Open, Dir: r.Checkout,
+			Pushed: r.Pushed, Open: r.Open, OpenIssues: r.OpenIssues, Dir: r.Checkout,
 		}
 	}
 	return body.Watched, available, nil
@@ -131,13 +144,14 @@ func (c *Client) repos(ctx context.Context) ([]string, []factory.RepoInfo, error
 // repoWire is the repository list as /v1/repos says it. Checkout is the
 // directory the seam calls Dir.
 type repoWire struct {
-	Full     string    `json:"full"`
-	Name     string    `json:"name"`
-	Owner    string    `json:"owner"`
-	Private  bool      `json:"private"`
-	Pushed   time.Time `json:"pushed"`
-	Open     int       `json:"open"`
-	Checkout string    `json:"checkout,omitempty"`
+	Full       string    `json:"full"`
+	Name       string    `json:"name"`
+	Owner      string    `json:"owner"`
+	Private    bool      `json:"private"`
+	Pushed     time.Time `json:"pushed"`
+	Open       int       `json:"open"`
+	OpenIssues *int      `json:"open_issues,omitempty"`
+	Checkout   string    `json:"checkout,omitempty"`
 }
 
 func (c *Client) github(ctx context.Context) (factory.GitHubLink, error) {

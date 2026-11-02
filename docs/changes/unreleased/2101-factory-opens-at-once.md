@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The factory on this Mac opens at once, whatever old jobs and GitHub do
-pr: 0
+pr: 2101
 surface: [engine]
 invalidates:
   - "Was true: opening the app cleaned up old pull-request jobs before the factory on this Mac served, and one job it could not clean stopped it at every launch; the saved address then pointed at the last launch's port and every page said the factory isn't answering. Is true now: the factory serves first, the clean-up runs behind it, a job it cannot clean is kept for the next launch, and the saved address is this launch's."

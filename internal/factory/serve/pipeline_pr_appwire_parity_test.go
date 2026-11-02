@@ -41,12 +41,12 @@ func TestAppwirePipelinePRBoundsAreTheRoutesOwn(t *testing.T) {
 	for _, s := range appwire.PipelinePRStages {
 		known[s] = true
 	}
-	for _, s := range []string{"request", "credential", "repository", "permission", "base", "file", "branch", "commit", "pull_request"} {
+	for _, s := range []string{"request", "credential", "repository", "permission", "base", "head", "file", "branch", "commit", "pull_request"} {
 		if !known[s] {
 			t.Errorf("stage %q is not believed by the wire", s)
 		}
 	}
-	if len(known) != 9 {
-		t.Errorf("the wire believes %d stages, the route names 9", len(known))
+	if len(known) != 10 {
+		t.Errorf("the wire believes %d stages, the route names 10", len(known))
 	}
 }
