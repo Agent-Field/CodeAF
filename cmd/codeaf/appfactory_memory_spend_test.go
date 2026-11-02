@@ -199,6 +199,31 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 				t.Fatalf("job memory output lost: %v %v", hits, err)
 			}
 			if n == 0 {
+				before := calls.Load()
+				for _, state := range []string{"paused", "published"} {
+					if err := floor.Annotate(item.ID, func(it *factory.Item) error {
+						if state == "paused" {
+							it.Stream = &factory.Stream{Paused: true}
+						} else {
+							it.State = factory.StateShipped
+							it.Stream = nil
+						}
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+					if err := vault.Flush(context.Background(), "fixture", true); err == nil {
+						t.Errorf("%s job admitted memory compilation", state)
+					}
+				}
+				if calls.Load() != before {
+					t.Error("memory spent for a paused or published job")
+				}
+				if err := floor.Annotate(item.ID, func(it *factory.Item) error { it.State = factory.StateNew; it.Stream = nil; return nil }); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if n == 0 {
 				inventory, err := session.KnowledgeHistory(workspace).Inventory(context.Background())
 				if err != nil || len(inventory) != 1 {
 					t.Fatalf("job inventory: %v %v", inventory, err)
