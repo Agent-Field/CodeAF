@@ -323,6 +323,7 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
 | `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
@@ -366,7 +367,7 @@ Step Stop still requires the named step to be current and running, and refuses
 finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
-requests. Other job actions still require their existing guards.
+requests. Other job actions retain their guards except Pause and Resume, described below.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
@@ -378,7 +379,12 @@ its conversation when available. Pause releases the worker lease and capacity
 slot after the cancelled round's final work and spending are saved. Resume queues
 the saved run for a worker: it continues as soon as a slot is free, or reads as
 an ordinary queued job with the existing waiting presentation while slots are busy.
-No model round starts while it waits.
+No model round starts while it waits. Progress alone never makes Pause or Resume
+stale: both accept an outdated `expect.version`. A stopped or finished job refuses
+Pause with `conflict` and “<job> is not running”; a stopped job refuses Resume
+with `conflict` and “<job> is not paused”. A refusal changes neither the job nor
+its activity record and starts no model round. Stop committed before Resume wins.
+No additional hello feature is needed; desks still send the same `expect` shape.
 
 The job's person may use these actions. `can.hold` permits a queued or running
 job, excluding a job waiting for a person, finished or publishing; `can.resume`
@@ -387,8 +393,10 @@ after its lease is released, with `can.resume: true`,
 `state_presentation.kind: "paused"`, title `Paused`, and no new question.
 After Resume, `state` is `queued` until a worker takes a free slot; its paused
 flag is cleared and the ordinary queue presentation applies. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
-name the caller. Existing errors apply: `forbidden` for another person's job,
-`conflict` for an inapplicable state, `stale` for an outdated version, and
+name the caller. Explicit Resume also writes exactly one `resumed` line into the
+manager chat, including while the old lease drains; a repeated Resume adds none.
+Automatic continuation does not add this explicit-action note. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, and
 `bad_params` for an
 invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
 uses a new chat.
@@ -438,6 +446,17 @@ manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its ol
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
 
+An engine whose hello carries `factory.spend_by_model` (and capabilities
+`spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
+the same days and the same job spend as `factory.spend_by_repo`, from
+`GET /v1/spend/models`, as `{factory, from, to, time_zone?, models, unknown_usd?}`.
+Each model is `{model, cost_usd, calls, input_tokens?, output_tokens?, jobs}`,
+dearest first and then by name. `unknown_usd` is spend in that range that was
+not recorded against a model, including every job from before model lines
+were kept; it is omitted when there is none. The model costs and
+`unknown_usd` add up to `factory.spend_by_repo`'s `total_usd` for the same
+days. A triage read, a scout, and page AI that is not booked on a job are in
+neither total. A factory older than the route answers not found.
 The job manager's model tools also expose the plan send-back: `factory_status`
 includes the exact pending `question_id` in its text at every waiting gate.
 `factory_answer {action: "reject_plan", question_id, answer}` sends the requested
@@ -478,6 +497,17 @@ existing step budget. A provider that ignores the schema can still omit it;
 the protected-path gate then pauses safely. The stored unknown-list hold suffix
 remains `the plan names no files`; visible words describe the missing checkable
 list rather than claiming the plan names no files in prose.
+
+`factory.activity` records automatic approvals and their publications with
+`actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
+approval keeps `actor: {kind: "person", name: "@handle"}` and their handle.
+Automatic approval has an empty `approval.decided_by`. A stale action after
+an automatic approval says `approved automatically at HH:MM` (UTC), with no
+`by` or `approved_by`; `reason: "stale"`, the receipt event and commit remain.
+Saved events keep their original attribution. Automatic approval trailers
+use `Factory-Approval: evt_<id> factory <commit>`; personal trailers keep
+`@handle`. Workers must accept the factory actor to publish automatic approvals.
+No method, parameter, reply field, error code or hello feature is added.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
@@ -683,14 +713,39 @@ checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
 `kind/heading`) changed after rev `since`, or by the newest version when
 `since` is absent. A factory older than the route is `conflict`.
 
+With hello feature `factory.job_brief_verdict_behind`, the reply also carries
+`verdict_behind: bool`, including in `factory.job_brief_write.current`. The engine
+compares the newest kept version's input hash with the current job input: a
+changed state, approval, publication receipt or newer step makes it true until a
+new version is kept. A failed write keeps the old verdict and its hash. The desk
+shows that verdict as out of date when this flag is true. A stub is false; a kept
+legacy version without an input hash is true until refreshed. Params and error
+codes are unchanged.
+
 An engine whose hello carries `factory.job_brief_writer` writes the briefs of
-this machine's factory: after a step reports and when a step waits on its
-person, each job's news taken as one after 10 seconds. The write is one errand
+this machine's factory: after a step reports, when a step waits on its person,
+when proof waits for publication approval, and at publication or the job's end.
+Publication includes a PR opened or updated and a comment posted; end outcomes
+include shipped, merged, closed without merge, stopped and failed runs, plus a
+failed publication. Each job's news is taken as one after 10 seconds. Lifecycle
+triggers come from committed store updates, separately from chat step metadata.
+Auto's routine proof approval does not force an intermediate write; an exception
+waiting on a person does. A normal manual job gets two additional forced writes:
+at proof approval and after publication, folded when they share a burst. A
+forced update that finds an earlier write generating remains in the debounce
+until the writer is available. Stops before a round starts refresh too; they
+need no failed-step record. The write is one errand
 on the job's agent under the `brief` role (the small-work tier the small-jobs
 model pins). The factory checks the answer against the job (`POST
 /v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
 that names a step and try the job has, and every number in a claim found in its
-evidence. It keeps what passes and books the call's cost to the job's spend. A
+evidence. The writer's input includes the job state in words, whether proof
+approval waits, the approval kind and state, the PR number and state, publication
+attempt and outcome, comment receipt and how the job ended. These facts enter the
+input hash, so a lifecycle change cannot skip as unchanged. Evidence kind `pr`
+refers to the published PR with no step and supports its number; an unrelated or
+unsupported number is still rejected. It keeps what passes and books the call's
+cost to the job's spend. A
 failing verdict keeps the previous version and marks the brief `failed`. Without
 a person's ask, a version is written only when the last one cost at most $0.03
 and the brief's spend stays within 5% of the job's; an ask opening, the job's
@@ -1393,7 +1448,7 @@ are ignored):
 Response: `{text, model, provider, role, usage: {in, out, cost_usd?}, ms,
 cached?}`. `model` is the model that answered, as the provider named it. When
 `text` is `""`, `reason` says why: `closed`, `stopped`, `over_budget`, `busy`,
-`deadline`, `cancelled`, `model_failed`, `invalid_json`, `not_open` or
+`deadline`, `cancelled`, `model_failed`, `invalid_json`, `no_answer` (the call was made and billed and said nothing; its usage is kept and it is not cached), `not_open` or
 `unavailable` (an owner without the errand door). One errand per (agent,
 purpose) runs at a time; a second answers `busy` at once and never queues.
 Closing or stopping the agent, or its job running out of money, cancels one in

@@ -389,6 +389,7 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
+	floor.ObserveWrites(b.briefJobChanged)
 	mount, err := host.mountSolo(ctx)
 	if err != nil {
 		listener.Close()
