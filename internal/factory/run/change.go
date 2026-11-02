@@ -46,7 +46,10 @@ func changeBase(dir string, it factory.Item) (string, error) {
 		return it.ChangeBase, nil
 	}
 	git := ExecGit{}
-	branch, _ := git.Run(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	branch, err := git.Run(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		branch = ""
+	}
 	key := "branch." + branch + ".codeaf-change-base"
 	if branch != "" {
 		if base, err := git.Run(dir, "config", "--local", "--get", key); err == nil && base != "" {
@@ -55,10 +58,16 @@ func changeBase(dir string, it factory.Item) (string, error) {
 	}
 	var base string
 	if isPull(it) {
-		base, _ = git.Run(dir, "merge-base", "HEAD", PullBase(it))
+		base, err = git.Run(dir, "merge-base", "HEAD", PullBase(it))
+		if err != nil {
+			base = ""
+		}
 	}
 	if base == "" {
-		base, _ = git.Run(dir, "rev-parse", "HEAD")
+		base, err = git.Run(dir, "rev-parse", "HEAD")
+		if err != nil {
+			return "", nil
+		}
 	}
 	if branch != "" && base != "" {
 		if _, err := git.Run(dir, "config", "--local", key, base); err != nil {
