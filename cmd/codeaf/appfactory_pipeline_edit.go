@@ -449,6 +449,9 @@ func pipelineStructure(ed pipeline.Edited) *appwire.FactoryPipelineStructure {
 	for _, g := range ed.Gates {
 		s.Gates = append(s.Gates, appwire.FactoryPipelineGateChange{Pipeline: g.Pipeline, Gate: g.Gate, Before: append([]string{}, g.Before...), After: append([]string{}, g.After...)})
 	}
+	for _, rn := range ed.Renamed {
+		s.Renamed = append(s.Renamed, appwire.FactoryPipelineRename{From: rn.From, To: rn.To})
+	}
 	return s
 }
 

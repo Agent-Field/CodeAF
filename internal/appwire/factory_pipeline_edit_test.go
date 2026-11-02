@@ -269,7 +269,7 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
 			"default_budget", "budget_in_file", "pipelines", "steps", "fixed", "rules", "ask_first", "never", "adapt", "labels", "max_size", "max_cost",
 			"factory_copy", "copy_version", "can"},
-		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "pipeline", "after", "kind", "prompt", "until", "max", "when", "effort", "fanout", "value", "list", "lines", "adapt", "fixed", "max_size", "max_cost", "who"},
+		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "pipeline", "after", "kind", "prompt", "until", "max", "when", "effort", "fanout", "value", "list", "lines", "adapt", "fixed", "max_size", "max_cost", "who", "to"},
 		reflect.TypeFor[FactoryPipelinePreviewParams](): {"factory", "repo", "base_sha", "base_text", "edits"},
 		reflect.TypeFor[FactoryPipelineStepValues]():    {"prompt", "until", "max", "when", "effort", "fanout"},
 		reflect.TypeFor[FactoryPipelineStepChange]():    {"name", "fields", "before", "after"},
@@ -277,7 +277,8 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 		reflect.TypeFor[FactoryPipelinePreview]():       {"factory", "repo", "base_sha", "path", "text", "changed", "format_rewritten", "comments_dropped", "steps", "budget", "structure", "lists", "settings"},
 		reflect.TypeFor[FactoryPipelineListChange]():    {"list", "before", "after"},
 		reflect.TypeFor[FactoryPipelineSettingChange](): {"setting", "before", "after"},
-		reflect.TypeFor[FactoryPipelineStructure]():     {"order", "added", "counts", "gates"},
+		reflect.TypeFor[FactoryPipelineStructure]():     {"order", "added", "counts", "gates", "renamed"},
+		reflect.TypeFor[FactoryPipelineRename]():        {"from", "to"},
 		reflect.TypeFor[FactoryPipelineOrderChange]():   {"pipeline", "before", "after"},
 		reflect.TypeFor[FactoryPipelineCount]():         {"pipeline", "steps"},
 		reflect.TypeFor[FactoryPipelineGateChange]():    {"pipeline", "gate", "before", "after"},
@@ -308,19 +309,19 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 	if caps["pipeline_edit_rules"] == nil {
 		t.Fatal("capabilities do not carry pipeline_edit_rules")
 	}
-	// The six verbs, and no loop, reorder or kind verb.
+	// The step verbs, and no loop, reorder or kind verb.
 	def, ok := defs["in.FactoryPipelineEdit"].(map[string]any)
 	if !ok {
 		t.Fatalf("schema has no definition of an edit: %v", defs)
 	}
 	edit := def["properties"].(map[string]any)
 	op, _ := json.Marshal(edit["op"])
-	for _, verb := range []string{"set_step", "set_budget", "add_step", "remove_step", "move_step", "set_list"} {
+	for _, verb := range []string{"set_step", "set_budget", "add_step", "remove_step", "move_step", "set_list", "rename_step"} {
 		if !strings.Contains(string(op), `"`+verb+`"`) {
 			t.Fatalf("op = %s lacks %s", op, verb)
 		}
 	}
-	if strings.Contains(string(op), "loop") || strings.Contains(string(op), "reorder") || strings.Contains(string(op), "kind") || strings.Count(string(op), "_step") != 4 {
+	if strings.Contains(string(op), "loop") || strings.Contains(string(op), "reorder") || strings.Contains(string(op), "kind") || strings.Count(string(op), "_step") != 5 {
 		t.Fatalf("op = %s", op)
 	}
 }

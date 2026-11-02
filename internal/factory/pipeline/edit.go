@@ -127,6 +127,8 @@ type EditOp struct {
 	MaxCost *float64
 	// Who belongs to set_approver, with Name.
 	Who *string
+	// To belongs to rename_step, with Name: the step's new name.
+	To string
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -225,9 +227,11 @@ type Edited struct {
 
 	Structural bool
 	Order      []OrderChange
-	Added      []string
-	Counts     []KindCount
-	Gates      []GateChange
+	// Renamed is every rename_step, in edit order; set only with Structural.
+	Renamed []Rename
+	Added   []string
+	Counts  []KindCount
+	Gates   []GateChange
 
 	Listed bool
 	Lists  []ListChange
@@ -458,6 +462,9 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 		}
 		checked[i] = c
 	}
+	if bad := renameAlone(checked); bad != nil {
+		return Edited{}, bad
+	}
 	st := newEditState(f)
 	for i, op := range checked {
 		if bad := st.apply(i, op); bad != nil {
@@ -490,6 +497,7 @@ type editState struct {
 	setAt      map[string]int
 	firstOp    map[factory.Kind]int
 	newSteps   []string
+	renames    []Rename
 	budgetSeen bool
 	structural bool
 	// listSeen is every list a set_list replaced, and listed says one did.
@@ -533,6 +541,8 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return st.setList(i, op)
 	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
 		return st.settings(i, op)
+	case OpRenameStep:
+		return st.rename(i, op)
 	}
 	return st.structure(i, op)
 }
@@ -635,7 +645,7 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 	// is new, and nothing of the repository's own is lost on the way.
 	res.FormatRewritten = base != "" && base != string(canonical)
 	res.CommentsDropped = hasComments(base)
-	res.Steps = stepChanges(describe(st.base), out)
+	res.Steps = stepChanges(describe(st.base), out, st.renamedTo())
 	if before, after := st.base.DefaultBudget, out.DefaultBudget; before != after {
 		res.Budget = &BudgetChange{Before: before, After: after}
 	}
@@ -643,11 +653,17 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 }
 
 // stepChanges is every step of the base whose words an edit changed, in the
-// base's order, with the fields that differ.
-func stepChanges(before Source, out File) []StepChange {
+// base's order, with the fields that differ. A renamed step is compared under
+// its new name, so a rename alone changes no words.
+func stepChanges(before Source, out File, renamed map[string]string) []StepChange {
 	var changes []StepChange
 	for _, b := range before.Steps {
-		a := stepView(out, b.Name)
+		name := b.Name
+		if to, ok := renamed[name]; ok {
+			name = to
+		}
+		a := stepView(out, name)
+		a.Name = b.Name
 		var fields []string
 		for _, c := range []struct {
 			name string
@@ -676,6 +692,9 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 	if op.Op != OpSetList && (op.List != "" || op.Lines != nil) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}
+	if op.Op != OpRenameStep && op.To != "" {
+		return op, refuseEdit(EditBadOp, i, "only rename_step takes to")
+	}
 	if !settingsOp(op.Op) && settingFieldsNamed(op) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size or max_cost", op.Op)
 	}
@@ -684,6 +703,8 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 		return checkSettings(i, op)
 	case OpSetList:
 		return checkSetList(i, op)
+	case OpRenameStep:
+		return checkRename(i, op)
 	case OpAddStep, OpRemoveStep, OpMoveStep:
 		return checkStructure(i, op)
 	case OpSetBudget, OpSetStep:
@@ -691,7 +712,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start and set_approver")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start, set_approver and rename_step")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)

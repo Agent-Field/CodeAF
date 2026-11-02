@@ -107,6 +107,12 @@ const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
 // file its factory attested. The source's steps then carry their who.
 const FeatureFactoryPipelineEditApprovers = "factory.pipeline_edit_approvers"
 
+// FeatureFactoryPipelineEditRename is announced beside FeatureFactoryPipelineEditStructure
+// when this engine previews rename_step {name, to}: one step under a new name
+// in every pipeline that lists it, in the required list and in its own
+// definition. The preview's structure then carries renamed.
+const FeatureFactoryPipelineEditRename = "factory.pipeline_edit_rename"
+
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
 	// whose own limit is sixty seconds.
@@ -136,6 +142,7 @@ const (
 	PipelineEditSetFixed    = pipeline.OpSetFixed
 	PipelineEditSetStart    = pipeline.OpSetStart
 	PipelineEditSetApprover = pipeline.OpSetApprover
+	PipelineEditRenameStep  = pipeline.OpRenameStep
 
 	PipelineListRules    = pipeline.ListRules
 	PipelineListAskFirst = pipeline.ListAskFirst
@@ -246,7 +253,7 @@ type FactoryPipelineSource struct {
 // is in the list once (ignoring case for rules and ask_first, exactly for
 // never); a list holds at most 40 lines and is set once per preview.
 type FactoryPipelineEdit struct {
-	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver"`
+	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver,rename_step"`
 	Name     string   `json:"name,omitempty"`
 	Pipeline string   `json:"pipeline,omitempty"`
 	After    *string  `json:"after,omitempty"`
@@ -271,6 +278,11 @@ type FactoryPipelineEdit struct {
 	// Who belongs to set_approver, with Name (feature
 	// factory.pipeline_edit_approvers): "@handle", operator, or "".
 	Who *string `json:"who,omitempty"`
+	// To belongs to rename_step, with Name (feature
+	// factory.pipeline_edit_rename): the step's new name, spelled as a step
+	// is (2 to 32 of a-z, 0-9 and inner hyphens; 2 to 12 once hyphens are
+	// removed), and no step the file or the shipped steps define.
+	To string `json:"to,omitempty"`
 }
 
 // FactoryPipelinePreviewParams is the file as factory.pipeline_source gave it
@@ -339,17 +351,25 @@ type FactoryPipelineGateChange struct {
 	After    []string `json:"after"`
 }
 
+// FactoryPipelineRename is one step a rename_step gave a new name.
+type FactoryPipelineRename struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 // FactoryPipelineStructure is the structural half of a preview, present only
-// when an edit was add_step, remove_step or move_step. Order is every pipeline
+// when an edit was add_step, remove_step, move_step or rename_step. Renamed is
+// every rename_step, in edit order, and absent when there was none. Order is every pipeline
 // whose list changed, Added every step definition the file did not hold before,
 // Counts every pipeline's length after the edit, Gates every person whose
 // run-up changed. All four are always arrays, empty when nothing applies. There
 // is no loop count: the file has no loop.
 type FactoryPipelineStructure struct {
-	Order  []FactoryPipelineOrderChange `json:"order"`
-	Added  []string                     `json:"added"`
-	Counts []FactoryPipelineCount       `json:"counts"`
-	Gates  []FactoryPipelineGateChange  `json:"gates"`
+	Order   []FactoryPipelineOrderChange `json:"order"`
+	Added   []string                     `json:"added"`
+	Counts  []FactoryPipelineCount       `json:"counts"`
+	Gates   []FactoryPipelineGateChange  `json:"gates"`
+	Renamed []FactoryPipelineRename      `json:"renamed,omitempty"`
 }
 
 // FactoryPipelineListChange is one list whose lines the edit changed: every
@@ -466,6 +486,13 @@ type FactoryPipelineChecksEditor interface {
 	PipelineCheckEdits()
 }
 
+// FactoryPipelineRenameEditor is implemented ONLY by a structure editor whose
+// preview applies rename_step. Without it rename_step is refused before the
+// engine is asked, and the feature is not announced.
+type FactoryPipelineRenameEditor interface {
+	PipelineRenameEdits()
+}
+
 // FactoryPipelineApproversEditor is implemented ONLY by a settings editor whose
 // preview applies set_approver. Without it set_approver is refused before the
 // engine is asked, and the feature is not announced.
@@ -486,6 +513,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryPipelineEditStructure)
 			if _, checks := e.(FactoryPipelineChecksEditor); checks {
 				hello = withFeature(hello, FeatureFactoryPipelineEditChecks)
+			}
+			if _, rename := e.(FactoryPipelineRenameEditor); rename {
+				hello = withFeature(hello, FeatureFactoryPipelineEditRename)
 			}
 		}
 		if _, rules := e.(FactoryPipelineRulesEditor); rules {
@@ -514,7 +544,7 @@ func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 		}
 		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
 			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
-			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who}
+			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, To: e.To}
 	}
 	return ops
 }
@@ -644,6 +674,9 @@ func pipelinePreviewMethod(name string) method {
 		if err := checkStructureServed(e, p.Edits); err != nil {
 			return nil, err
 		}
+		if err := checkRenameServed(e, p.Edits); err != nil {
+			return nil, err
+		}
 		if err := checkChecksServed(e, p.Edits); err != nil {
 			return nil, err
 		}
@@ -693,6 +726,22 @@ func checkStructureServed(e Engine, edits []FactoryPipelineEdit) error {
 		switch edit.Op {
 		case PipelineEditAddStep, PipelineEditRemoveStep, PipelineEditMoveStep:
 			return Errorf(CodeBadParams, "edit %d: this engine does not add, remove or move a step", i)
+		}
+	}
+	return nil
+}
+
+// checkRenameServed refuses rename_step to an editor that has not said it
+// previews one.
+func checkRenameServed(e Engine, edits []FactoryPipelineEdit) error {
+	_, rename := e.(FactoryPipelineRenameEditor)
+	_, structural := e.(FactoryPipelineStructureEditor)
+	if rename && structural {
+		return nil
+	}
+	for i, edit := range edits {
+		if edit.Op == PipelineEditRenameStep {
+			return Errorf(CodeBadParams, "edit %d: this engine does not rename a step", i)
 		}
 	}
 	return nil
