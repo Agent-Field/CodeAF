@@ -25,7 +25,7 @@ func TestAppFactoryRepoFactsReadsOneRepositorysFactsFromTheFactory(t *testing.T)
 	if !caps.RepoFacts {
 		t.Fatalf("capabilities = %+v, want repo_facts", caps)
 	}
-	month := time.Now().UTC()
+	month := f.clock.now()
 	f.create(t, factory.Item{Repo: "acme/api", State: factory.StateShipped, Change: &factory.Change{Files: []factory.ChangedFile{{Path: "cli/main.go"}}},
 		Stream: &factory.Stream{Started: month.Add(-time.Minute), Spent: 1.5}})
 

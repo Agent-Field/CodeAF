@@ -133,7 +133,7 @@ func spendFacts(items []factory.Item, thisMonth time.Time, months int) []Fact {
 			}
 		}
 		facts = append(facts, Fact{ID: "usd.month:" + start.Format("2006-01"), Kind: "usd", Value: usd,
-			Phrase: fmt.Sprintf("$%.2f spent on %s in %s", usd, counted(jobs, "job", "jobs"), start.Format("January 2006")),
+			Phrase: dollars(usd) + " spent on " + counted(jobs, "job", "jobs") + " in " + start.Format("January 2006"),
 			About:  "each job's whole spend on the day its run started", Source: "engine:repo_facts.spend"})
 	}
 	return facts
@@ -251,4 +251,13 @@ func counted(n int, one, many string) string {
 		return "1 " + one
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// dollars is usd in cents, and a spend under half a cent is "less than
+// $0.01" so a run that cost something never reads as $0.00.
+func dollars(usd float64) string {
+	if usd > 0 && usd < 0.005 {
+		return "less than $0.01"
+	}
+	return fmt.Sprintf("$%.2f", usd)
 }

@@ -129,3 +129,17 @@ func TestRepoFactsKeepTheBusiestAreasAndSayHowManyWereLeftOut(t *testing.T) {
 		t.Fatalf("first area fact = %+v, want the busiest", first)
 	}
 }
+
+// A SPEND TOO SMALL TO SHOW IN CENTS IS NOT SAID AS NOTHING: one cheap run
+// reads "less than $0.01", never "$0.00 spent on 1 job".
+func TestRepoFactsSayASpendUnderACentAsLessThanACent(t *testing.T) {
+	now := time.Date(2026, time.November, 20, 12, 0, 0, 0, time.UTC)
+	items := []factory.Item{{Repo: "acme/api", State: factory.StateRunning, Stream: &factory.Stream{Started: now.Add(-time.Hour), Spent: 0.0037}}}
+	got := RepoFactsOf(items, nil, "acme/api", now, 30, 1)
+	for _, f := range got.Facts {
+		if f.ID == "usd.month:2026-11" && f.Phrase == "less than $0.01 spent on 1 job in November 2026" && f.Value == 0.0037 {
+			return
+		}
+	}
+	t.Fatalf("facts = %+v", got.Facts)
+}
