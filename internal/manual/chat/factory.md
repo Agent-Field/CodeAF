@@ -595,3 +595,15 @@ of date when its saved inputs differ from the job's current inputs, including a
 changed state or newer step. The desk uses `verdict_behind` to show this. Retry
 asks for a fresh Brief. The writer receives the approval, PR and outcome facts;
 a PR number in its claims must be supported by the job's recorded PR evidence.
+
+## Job brief cost — one charge per model call
+
+Writing the job's brief adds the model call's cost to Spending and the job's
+header once. A rejected draft, a dropped claim or a failure to save the brief
+still costs what the provider charged; saving the brief adds no second charge.
+This also applies when a runner on another computer runs the job.
+
+Automatic brief writes keep their existing limit: the last kept version must
+cost at most $0.03, and the kept versions plus one more at that cost must fit
+within 5% of the job's actual spend. Correcting a duplicate charge can therefore
+hold back an automatic write sooner. A requested retry still bypasses this guard.
