@@ -826,10 +826,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			recipe = f.Recipe()
 			copied, decided = f.Copy, true
 		}
-		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
-		if body.Pipeline == "issue" {
-			selected = recipe.For(factory.KindIssue)
-		}
+		selected = pipelineStages(recipe, body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return

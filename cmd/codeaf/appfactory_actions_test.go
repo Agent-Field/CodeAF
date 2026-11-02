@@ -605,11 +605,11 @@ func TestAppFactoryJobActionOnAClosedFactoryIsUnreachable(t *testing.T) {
 	// Force a fresh dial: an idle connection closed during shutdown can instead
 	// return EOF, which is correctly uncertain after a write might have left.
 	b.factoryHub().client.CloseIdleConnections()
-	_, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobActionParams{Factory: conn.ID, Job: 1, Expect: &api.Expect{Version: ptr(1)}})
+	_, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobStartParams{Factory: conn.ID, Job: 1, Expect: &api.Expect{Version: ptr(1)}})
 	if got := wireCodeOf(t, err); got != appwire.CodeUnreachable {
 		t.Fatalf("code %q (%v)", got, err)
 	}
-	if _, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobActionParams{Factory: "factory_nope", Job: 1, Expect: &api.Expect{Version: ptr(1)}}); wireCodeOf(t, err) != appwire.CodeNotFound {
+	if _, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobStartParams{Factory: "factory_nope", Job: 1, Expect: &api.Expect{Version: ptr(1)}}); wireCodeOf(t, err) != appwire.CodeNotFound {
 		t.Fatalf("an unknown factory: %v", err)
 	}
 }
@@ -636,7 +636,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	ctx := context.Background()
 	v := &api.Expect{Version: ptr(7)}
 	f := conn.ID
-	b.FactoryJobStart(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
+	b.FactoryJobStart(ctx, appwire.FactoryJobStartParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Discard: true, Expect: v})
 	b.FactoryJobRestore(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobRunAgain(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})

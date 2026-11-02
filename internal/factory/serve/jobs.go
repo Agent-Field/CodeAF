@@ -24,7 +24,7 @@ import (
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
-	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
+	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
@@ -63,7 +63,63 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 	if h.startRefused(w, r, it) {
 		return
 	}
-	h.launchJob(w, r, it, nil)
+	h.launchJob(w, r, it, "", nil)
+}
+
+// guardedStart is start_now's guard: the version read, as for every guarded
+// verb, and the pipeline the person picked, "" for the steps the job has.
+//
+// A PICKED PIPELINE IS ONE THE REPOSITORY'S FILE LISTS, read from the file the
+// start decides on the job ([Handler.jobPipeline]), and it replaces the steps
+// of a job that never ran in the start's one write. pr and ci are not an
+// issue job's to run, as at creation. A job that ran, or waits in the queue
+// already, keeps its steps. Every refusal comes before any write.
+func (h *Handler) guardedStart() jobAction {
+	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+		var body struct {
+			Expect   *api.Expect `json:"expect,omitempty"`
+			Pipeline string      `json:"pipeline,omitempty"`
+		}
+		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "start_now", body.Expect) {
+			return
+		}
+		h.onlyOwner(func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+			if h.pickRefused(w, it, body.Pipeline) || h.startRefused(w, r, it) {
+				return
+			}
+			h.launchJob(w, r, it, body.Pipeline, nil)
+		})(w, r, it)
+	}
+}
+
+// pickRefused answers every refusal of a picked pipeline that the file is not
+// needed for, and true when it refused.
+func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick string) bool {
+	switch {
+	case pick == "":
+		return false
+	case !pipeline.KindNamed(pick):
+		h.fail(w, 422, "pipeline must be a pipeline name of the repository's file")
+	case pick == string(factory.KindPR) || pick == string(factory.KindCI):
+		h.fail(w, 422, "factory jobs support the issue pipeline only")
+	case it.Stream != nil || len(it.Adapted) > 0:
+		h.refuse(w, 409, "This job has already run, so it keeps its steps.", "conflict", "", nil, factory.JobState(it))
+	case it.State == factory.StateQueued:
+		h.refuse(w, 409, "This job is already in the queue, so its steps are decided.", "conflict", "", nil, factory.JobState(it))
+	default:
+		return !h.requireVerb(w, h.config.Pipeline != nil && h.config.Store != nil)
+	}
+	return true
+}
+
+// pipelineStages is the steps one kind's pipeline runs: the issue pipeline as
+// the runner reads it (its fallback included), any other kind only when the
+// file lists it.
+func pipelineStages(recipe factory.Recipe, kind string) []factory.Stage {
+	if kind == string(factory.KindIssue) {
+		return recipe.For(factory.KindIssue)
+	}
+	return recipe.ByKind[factory.Kind(kind)]
 }
 
 // startRefused answers every refusal a start makes before it writes, and true
@@ -83,14 +139,16 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 }
 
 // launchJob is the start's one write and its launch, for a job startRefused
-// has passed. also is what else the start changes on the job in that same
-// write (run_again's clearing of the run before it), nil for nothing.
+// has passed. pick is the pipeline the start runs instead of the job's own
+// steps, "" for none ([Handler.guardedStart]). also is what else the start
+// changes on the job in that same write (run_again's clearing of the run
+// before it), nil for nothing.
 //
 // START NOW ON A JOB ALREADY IN THE QUEUE IS NOT A SECOND LAUNCH: it lets the
 // job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),
 // lifts a hold in the same write, and launches nothing. A start from Backlog
 // queues the job at the top and waits for a slot like any other.
-func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) {
+func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, pick string, also func(*factory.Item)) {
 	mark, queued := false, false
 	if st := h.config.Store; st != nil {
 		cur, err := st.Get(it.ID)
@@ -130,6 +188,19 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			rules.Unread = err != nil
 			file, fileErr = &f, err
 		}
+		var picked []factory.Stage
+		if pick != "" {
+			// A PICK IS READ FROM THE FILE OR NOT AT ALL: a read that failed
+			// refuses it, where a plain start would run on the defaults.
+			if file == nil || fileErr != nil {
+				h.fail(w, 503, "The repository's pipeline file could not be read, so this job cannot start on a picked pipeline yet.")
+				return
+			}
+			if picked = pipelineStages(file.Recipe(), pick); len(picked) == 0 {
+				h.fail(w, 422, "pipeline not found")
+				return
+			}
+		}
 		var budget float64
 		if file != nil && cur.Cap <= 0 {
 			// The budget comes from the same read, and a read that failed
@@ -144,10 +215,16 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return
 		}
-		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
+		if mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
+				}
+				if picked != nil {
+					if cur.Stream != nil || len(cur.Adapted) > 0 {
+						return fmt.Errorf("%s has already run, so it keeps its steps", cur.Ref())
+					}
+					cur.Stages = factory.CopyStages(picked)
 				}
 				if file != nil {
 					cur.DecidePipeline(file.Copy, h.clock())
@@ -340,7 +417,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 	if h.startRefused(w, r, it) {
 		return
 	}
-	h.launchJob(w, r, it, func(cur *factory.Item) {
+	h.launchJob(w, r, it, "", func(cur *factory.Item) {
 		cur.State = factory.StateNew
 		cur.DoneHow = ""
 		cur.DoneAt = time.Time{}

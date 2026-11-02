@@ -23,7 +23,7 @@ func (a *actorEngine) did(name string, p any) (FactoryJobActed, error) {
 	return FactoryJobActed{Action: name, Job: 1}, nil
 }
 
-func (a *actorEngine) FactoryJobStart(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
+func (a *actorEngine) FactoryJobStart(_ context.Context, p FactoryJobStartParams) (FactoryJobActed, error) {
 	return a.did("start", p)
 }
 func (a *actorEngine) FactoryJobStop(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {

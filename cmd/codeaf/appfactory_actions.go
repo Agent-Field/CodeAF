@@ -256,9 +256,20 @@ type guardBody struct {
 	Expect *api.Expect `json:"expect,omitempty"`
 }
 
-func (b *appBackend) FactoryJobStart(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
-	return b.jobWrite(ctx, p.Factory, appwire.JobActStart, p.Job, factoryVerbStart, guardBody{p.Expect})
+// FactoryJobStart is Start. A picked pipeline goes to the factory with it,
+// which reads its file and refuses one it does not list; a factory older than
+// the pick refuses the unknown field, so a pick is never dropped on the way.
+func (b *appBackend) FactoryJobStart(ctx context.Context, p appwire.FactoryJobStartParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActStart, p.Job, factoryVerbStart, struct {
+		Expect   *api.Expect `json:"expect,omitempty"`
+		Pipeline string      `json:"pipeline,omitempty"`
+	}{p.Expect, p.Pipeline})
 }
+
+// FactoryJobPipelineStarts marks this backend as one that sends a picked
+// pipeline on start and create, which is what lets hello announce
+// factory.start_pipeline.
+func (b *appBackend) FactoryJobPipelineStarts() {}
 
 func (b *appBackend) FactoryJobStop(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStop, p.Job, factoryVerbStop, guardBody{p.Expect})
@@ -391,7 +402,7 @@ func stepSegment(name string) string { return url.PathEscape(name) }
 // "now", opens no GitHub issue, and asks no model for anything.
 func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobCreateParams) (appwire.FactoryJobActed, error) {
 	h := b.factoryHub()
-	body := api.NewJob{Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp, Assignee: p.Assignee}
+	body := api.NewJob{Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp, Assignee: p.Assignee, Pipeline: p.Pipeline}
 	if p.Start == "now" {
 		body.Start = "now"
 	}

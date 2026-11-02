@@ -739,6 +739,10 @@ func checkSetBudget(i int, op EditOp) (EditOp, *EditError) {
 	return op, nil
 }
 
+// KindNamed says whether a name is spelled as the file spells a pipeline's
+// kind, the key under pipeline: the same spelling as a step's name.
+func KindNamed(name string) bool { return stepNamed(name) }
+
 // stepNamed says whether a name is spelled as the file spells a step: exactly,
 // lowercase, 2 to 32 letters, digits and inner hyphens.
 func stepNamed(name string) bool {
