@@ -236,12 +236,14 @@ decides which combinations are accepted.
 | `factory.job_assign_to_me` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
+| `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
+| `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
@@ -261,6 +263,7 @@ decides which combinations are accepted.
 | `factory.job_step_stop` | `in.FactoryJobStepParams` | `FactoryJobActed` |
 | `factory.job_stop` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_unassign` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommented` |
 | `factory.job_undo` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.link_copy` | `in.FactoryLinkCopyParams` | `FactoryLinkMade` |
 | `factory.link_create` | `in.FactoryLinkCreateParams` | `FactoryLinkMade` |
@@ -316,6 +319,19 @@ the new commit) or `unchanged` (`pr` is the pull request as it stands), and a
 refusal before any write names stage `head`. `branch`, `body` and
 `expected_base_sha` are refused with `pr`. An engine without the feature refuses
 `pr` as an unknown field.
+
+An engine whose hello carries the feature `factory.job_brief` serves
+`factory.job_brief {factory, job, since?}`: the job's newest brief version as
+its factory keeps it (`GET /v1/jobs/{id}/brief`). `status` is `ready`,
+`generating`, `failed` (with `failure` and `failed_after`) or `stub`; a stub
+(`brief.stub: true`, `rev: 0`) is made from engine data alone before the job
+has a version: the issue's line, `steps_done` of `steps_total`, the facts and
+no blocks. `brief.facts` are computed by the factory from the steps' structured
+results (test counts or exit, findings, proof claims shown of total, rule
+checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
+`changed_since_seen` lists the keys (`verdict`, a fact's `key`, a block's
+`kind/heading`) changed after rev `since`, or by the newest version when
+`since` is absent. A factory older than the route is `conflict`.
 
 ## files methods
 
