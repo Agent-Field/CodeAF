@@ -32,6 +32,10 @@ func factoryPolicyProfile(t *testing.T, rows map[string]any) string {
 		"models.tiers.mastermind": "tier/mastermind",
 		"task.model":              "task/model",
 		"models.fallbacks":        "fallback/one,fallback/two",
+		// A task started here must start: a busy or short-of-memory host
+		// otherwise holds it queued, and the stage that started it never ends.
+		config.KeyTaskMaxLoad:   0,
+		config.KeyTaskMinFreeMB: 0,
 	}
 	for k, v := range rows {
 		base[k] = v

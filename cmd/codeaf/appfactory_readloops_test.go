@@ -186,6 +186,7 @@ func readLoopsSetup(t *testing.T, w *readLoopsWorld, pin string) *localSetup {
 	readLoopsProfile(t, w, pin)
 	s.backend.local.pollSource = w.source()
 	s.backend.local.newIntake = w.intake
+	closeQuietly(t, s.backend)
 	return s
 }
 
@@ -264,6 +265,7 @@ func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	// A RESTART BRINGS THE POLL BACK, and still no model.
 	s.backend.Close()
 	w, _ := reopened(t, s.backend.factoryHub())
+	closeQuietly(t, w.backend)
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var resumed appwire.FactoryLocalStatus
@@ -365,6 +367,7 @@ func TestANewHostInTheSameProcessStartsItsOwnPoll(t *testing.T) {
 	s.backend.Close()
 
 	w, _ := reopened(t, s.backend.factoryHub())
+	closeQuietly(t, w.backend)
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var st appwire.FactoryLocalStatus
@@ -394,9 +397,11 @@ func TestAJoinedFactoryGetsNoReadLoops(t *testing.T) {
 	world := newReadLoopsWorld(t)
 	world.file(1)
 	a := newLocalSetup(t)
+	closeQuietly(t, a.backend)
 	readLoopsProfile(t, world, readLoopsPin)
 	a.start()
 	b := newFactoryWire(t, testFactoryHub(t))
+	closeQuietly(t, b.backend)
 	offlineLocal(b.backend, &setupGitHub{}, t)
 	b.backend.local.pollSource = world.source()
 	b.backend.local.newIntake = world.intake

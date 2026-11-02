@@ -121,7 +121,10 @@ type QueueDesk struct {
 
 // Estimate is one job's measured range (desk): dollars and minutes from the
 // 10th to the 90th percentile of N similar finished jobs, in Repo (absent:
-// every repository). Widened says misses widened it.
+// every repository). Widened says misses widened it. Basis is "read" when
+// the jobs were matched on the job's read, or "kind" when they are the latest
+// finished jobs of the same kind, read or not ("from 12 jobs in api, not
+// read").
 type Estimate struct {
 	USDLo   float64 `json:"usd_lo"`
 	USDHi   float64 `json:"usd_hi"`
@@ -130,11 +133,23 @@ type Estimate struct {
 	N       int     `json:"n"`
 	Repo    string  `json:"repo,omitempty"`
 	Widened bool    `json:"widened,omitempty"`
+	Basis   string  `json:"basis,omitempty"`
 	// Left is a running job's likely spend from here to its end, from the
 	// similar finished jobs that spent at least what it has so far; absent
 	// below five such jobs. A running job with Left but no whole figure has
 	// n 0 and no usd_lo or usd_hi to read.
 	Left *Left `json:"left,omitempty"`
+}
+
+// NewEstimate is GET /v1/repos/{owner}/{repo}/estimate?kind=K's answer:
+// what a job of that kind in that repository is likely to cost before it
+// exists, from the latest finished jobs of the kind (basis "kind"). Estimate
+// is absent while fewer than five such jobs finished.
+type NewEstimate struct {
+	Factory  Factory   `json:"factory"`
+	Repo     string    `json:"repo"`
+	Kind     string    `json:"kind"`
+	Estimate *Estimate `json:"estimate,omitempty"`
 }
 
 // Left is what a running job will likely spend from now (desk).
@@ -145,11 +160,19 @@ type Left struct {
 }
 
 // Calibration is the measured ranges' record (desk): Jobs finished jobs
-// seen, Hit of Of backtested ones inside their range.
+// seen, Hit of Of backtested ones inside their range, and the same per basis
+// ("read", "kind"), so a job's range shows the record of its own basis.
 type Calibration struct {
-	Jobs int `json:"jobs"`
-	Hit  int `json:"hit"`
-	Of   int `json:"of"`
+	Jobs  int                `json:"jobs"`
+	Hit   int                `json:"hit"`
+	Of    int                `json:"of"`
+	Basis map[string]HitRate `json:"basis,omitempty"`
+}
+
+// HitRate is Hit of Of backtested ranges inside (desk).
+type HitRate struct {
+	Hit int `json:"hit"`
+	Of  int `json:"of"`
 }
 
 // Since is the handover: what happened since the person last looked.
@@ -360,6 +383,9 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	FromJob     int    `json:"from_job,omitempty"`
+	SourceIssue string `json:"source_issue,omitempty"`
+
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
 	Following bool `json:"following,omitempty"`
@@ -402,22 +428,27 @@ type Job struct {
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
-	Size     string       `json:"size,omitempty"`
-	ReadSize *JobReadSize `json:"read_size,omitempty"`
-	Budget   float64      `json:"budget,omitempty"`
+	Size          string       `json:"size,omitempty"`
+	ReadSize      *JobReadSize `json:"read_size,omitempty"`
+	Budget        float64      `json:"budget,omitempty"`
+	StopAfterStep bool         `json:"stop_after_step,omitempty"`
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
-	Model           string            `json:"model,omitempty"`
-	AutomaticModels *bool             `json:"automatic_models,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	DoneHow         string            `json:"done_how,omitempty"`
-	DoneAt          time.Time         `json:"done_at"`
-	Dismissed       bool              `json:"dismissed"`
-	DismissedBy     []string          `json:"dismissed_by,omitempty"`
-	WaitingFor      string            `json:"waiting_for,omitempty"`
-	Overlap         []string          `json:"overlap,omitempty"`
-	Approval        *factory.Approval `json:"approval,omitempty"`
+	Model           string `json:"model,omitempty"`
+	AutomaticModels *bool  `json:"automatic_models,omitempty"`
+	// FactoryModel is the factory's default model the job was last queued
+	// under (factory.Spending), which a step that names no model, on a job
+	// that names none, runs on; absent when the factory sets none.
+	FactoryModel string            `json:"factory_model,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	DoneHow      string            `json:"done_how,omitempty"`
+	DoneAt       time.Time         `json:"done_at"`
+	Dismissed    bool              `json:"dismissed"`
+	DismissedBy  []string          `json:"dismissed_by,omitempty"`
+	WaitingFor   string            `json:"waiting_for,omitempty"`
+	Overlap      []string          `json:"overlap,omitempty"`
+	Approval     *factory.Approval `json:"approval,omitempty"`
 	// Estimate is what jobs like this one cost and took, measured from the
 	// factory's finished jobs; absent on a finished job, on one nobody
 	// scored, and while too few similar jobs finished ("no cost history yet").
@@ -597,9 +628,9 @@ type RoundLine struct {
 	// Result and Reason are how the try ended (factory.TryResult): its
 	// rule's word (clean, not clean, green, not green, proven, not proven,
 	// done, not done, blocked) and a counted reason ("2 findings", "12
-	// passed", "1 of 2 claims shown"). Both are absent on a try recorded
-	// before they were and on one that ended without a report; a surface
-	// shows the try's number alone then, and never guesses from summary.
+	// passed", "1 of 2 claims shown"). A failure closed on retry says stopped,
+	// interrupted or failed from its failure code. Older tries may omit both;
+	// a surface never guesses their outcome from summary.
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
@@ -620,10 +651,13 @@ type Can struct {
 	Unassign       bool `json:"unassign"`
 	Nudge          bool `json:"nudge"`
 	RaiseBudget    bool `json:"raise_budget"`
+	StopAfterStep  bool `json:"stop_after_step"`
+	SpendAnswer    bool `json:"spend_answer"`
 	Undo           bool `json:"undo"`
 
 	Approve      bool `json:"approve"`
 	RunAgain     bool `json:"run_again"`
+	RunAsNew     bool `json:"run_as_new"`
 	CancelJob    bool `json:"cancel_job"`
 	RetryPublish bool `json:"retry_publish"`
 	Answer       bool `json:"answer"`
@@ -756,6 +790,10 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	// Files is the plan answer. An explicit empty list stays (it means unknown,
+	// and prose can't fill it in). With no list the field is left out, as an
+	// older factory refuses unknown fields.
+	Files        []string                  `json:"files,omitzero"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Tests        *factory.TestCounts       `json:"tests,omitempty"`
@@ -857,6 +895,8 @@ type PR struct {
 	Mergeable   string `json:"mergeable,omitempty"`
 	ChecksRead  bool   `json:"checks_read,omitempty"`
 	ReviewsRead bool   `json:"reviews_read,omitempty"`
+	// HeadBranch is the branch the pull request comes from.
+	HeadBranch string `json:"head_branch,omitempty"`
 }
 
 // JobMerge is a job's merging: the pipeline's settings pinned when its proof
@@ -1188,4 +1228,10 @@ type PublishFailedEvent = live.FailedPayload
 type BriefMark struct {
 	Rev    int    `json:"rev"`
 	Status string `json:"status"`
+}
+
+// SpendAnswer answers only a spending hold at the revision the person read.
+type SpendAnswer struct {
+	CarryOn *bool   `json:"carry_on"`
+	Expect  *Expect `json:"expect"`
 }
