@@ -38,8 +38,13 @@ func TestMemoryLateReceiptReachesFactoryHeaderAfterQuit(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "quit", 0)
 }
 
+func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "settling quit", 0)
+}
+
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
-	stop, quit := end == "stop", end == "quit"
+	settlingQuit := end == "settling quit"
+	stop, quit := end == "stop" || settlingQuit, end == "quit" || settlingQuit
 	quitDone := make(chan struct{})
 	s := newLocalSetup(t)
 	release := make(chan struct{})
@@ -161,7 +166,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		case <-time.After(10 * time.Second):
 			t.Fatal("memory did not start")
 		}
-		if quit {
+		if quit && !settlingQuit {
 			go func() { s.backend.closeLocalFactory(); close(quitDone) }()
 		} else {
 			s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
@@ -216,6 +221,12 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if settlingQuit {
+		// Stop has revoked the lease and the worker's five-second drop wait
+		// has elapsed. Quit now interrupts its already-running settlement.
+		go func() { s.backend.closeLocalFactory(); close(quitDone) }()
+		time.Sleep(100 * time.Millisecond)
 	}
 	releaseReceipt()
 	if quit {
