@@ -87,7 +87,7 @@ func TestFactoryStopAfterStep(t *testing.T) {
 						worker.Run(ctx, worker.Options{
 							Dial:   func(int) *client.WorkerClient { return client.Open(srv.URL, "").Worker("") },
 							Attach: api.WorkerAttach{Machine: "fixture", Name: "fixture", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
-							Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 5 * time.Millisecond, BeatEvery: time.Hour,
+							Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 5 * time.Millisecond, BeatEvery: 5 * time.Millisecond,
 						})
 					}()
 					t.Cleanup(func() { cancel(); <-done })

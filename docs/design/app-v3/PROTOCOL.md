@@ -255,6 +255,7 @@ decides which combinations are accepted.
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_stop_after_step` | `in.FactoryJobStopAfterStepParams` | `FactoryJobActed` |
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
@@ -1190,3 +1191,29 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+## Stop spending after this step
+
+Hello feature `factory.job_stop_after_step` enables
+`factory.job_stop_after_step {factory, job, on: bool, expect?}`. It returns
+`FactoryJobActed` with action `stop_after_step`. The write is
+`POST /v1/jobs/{id}/stop-after-step {on, expect?}`. The job read carries
+`stop_after_step: true` while armed, and `can.stop_after_step` grants the owner
+this toggle on a running or queued job. Missing or nonboolean `on` is
+`bad_params`; another owner is `forbidden`, a stale guard is `stale`, and an
+inactive job is refused. An unconfirmed write is `uncertain` and is never retried.
+
+The current step finishes. Before the next step, or before landing when there
+is no next step, the job waits in `needs_you`, question kind `spend_stopped`:
+"Stopped spending after <Step> as you asked · $<spent> so far. Carry on?"
+The existing answer door takes yes to clear the flag and continue at the next
+step, or no to stop the job as the person's stop. Off before the boundary
+withdraws the hold. A step's own question or failure comes first and leaves
+the flag armed. A queued job without a started step runs its first step before
+holding. Landing and any automatic publication remain behind the hold.
+
+Each accepted toggle records `stop_after_step_changed`, the person's identity,
+and `stop_after_step=true` or `stop_after_step=false`. Workers read the saved
+choice at every step boundary through their own live lease:
+`GET /v1/workers/leases/{lease}/stop-after-step` returns `{on: bool}`.
+An unreadable choice stops the run before more work starts.

@@ -349,6 +349,9 @@ func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, r
 // mayAnswer refuses a job-person kind when the caller is not that person.
 // A job with no person yet, and a free question, are not this check.
 func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if it.QKind == factory.QKindSpendStopped {
+		return h.owns(w, r, it)
+	}
 	if h.mode() == api.FactorySolo {
 		return true
 	}

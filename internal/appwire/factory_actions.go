@@ -344,6 +344,9 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryGiveBackChecks)
 			hello = withFeature(hello, FeatureFactoryJobAutonomy)
 		}
+		if _, ok := e.(FactoryStepSpending); ok {
+			hello = withFeature(hello, FeatureFactoryJobStopAfterStep)
+		}
 		if _, ok := e.(FactoryJobHolder); ok {
 			hello = withFeature(hello, FeatureFactoryJobHold)
 		}

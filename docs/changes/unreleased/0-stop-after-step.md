@@ -1,0 +1,14 @@
+---
+kind: added
+title: codeaf jobs can stop spending after the current step
+pr: 0
+surface: [engine]
+invalidates:
+  - "A job's Spend controls could only change its dollar budget. The owner can now let the current step finish and hold before the next step or landing."
+---
+
+"Stop spending after this step" saves a reversible choice on running and queued
+jobs. At the boundary, yes carries on without rerunning completed work; no
+stops the job and keeps its work. A step's own question or failure comes first.
+The app wire and HTTP door carry the choice, including to a leased runner, and
+the record names the person who changed it.

@@ -425,9 +425,10 @@ type Job struct {
 	Priority          *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
-	Size     string       `json:"size,omitempty"`
-	ReadSize *JobReadSize `json:"read_size,omitempty"`
-	Budget   float64      `json:"budget,omitempty"`
+	Size          string       `json:"size,omitempty"`
+	ReadSize      *JobReadSize `json:"read_size,omitempty"`
+	Budget        float64      `json:"budget,omitempty"`
+	StopAfterStep bool         `json:"stop_after_step,omitempty"`
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
@@ -643,6 +644,7 @@ type Can struct {
 	Unassign       bool `json:"unassign"`
 	Nudge          bool `json:"nudge"`
 	RaiseBudget    bool `json:"raise_budget"`
+	StopAfterStep  bool `json:"stop_after_step"`
 	Undo           bool `json:"undo"`
 
 	Approve      bool `json:"approve"`

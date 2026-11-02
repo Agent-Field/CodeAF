@@ -13,7 +13,7 @@ type Verb struct {
 // exactly these doors; the server answers exactly these names.
 var Verbs = []Verb{
 	{"start_now", nil}, {"run_again", nil}, {"restore", nil}, {"close", nil}, {"reopen", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
-	{"unassign", nil}, {"nudge", nil}, {"priority", nil}, {"raise_budget", nil}, {"undo", nil},
+	{"unassign", nil}, {"nudge", nil}, {"priority", nil}, {"raise_budget", nil}, {"stop-after-step", nil}, {"undo", nil},
 	{"queue", []string{"Load"}},
 	{"job", []string{"Load"}},
 	{"repos", []string{"Repos"}},

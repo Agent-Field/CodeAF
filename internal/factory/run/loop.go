@@ -493,6 +493,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		if err != nil || it.Stream == nil {
 			return
 		}
+		if !lp.stopSpending(c, it) {
+			return
+		}
 		i := nextPhase(it.Stream.Phases)
 		if i >= 0 && it.Stream.Phases[i].Name == factory.FollowPRStep && it.PullRequest == nil {
 			lp.land(c)
@@ -1906,6 +1909,9 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	var cut *factory.StepProgress
 	it.Failure = why
+	if why == nil {
+		it.StopAfterStep = false
+	}
 	it.Recovery = nil
 	it.Approval = nil
 	it.PublishError = ""

@@ -462,7 +462,7 @@ over before any check or review ran carries on from its step, and so does one wh
 budget is spent, until Budget is raised and the check is run again. With a pull request
 open, resuming asks the PR's follow-up to inspect and verify the changes instead.
 
-The manager's `factory_follow_pr` tool turns an explicit request such as “fix it anyway”
+The manager's `factory_follow_pr` tool turns an explicit request such as "fix it anyway"
 into another maintenance investigation. It needs an open linked PR and the original
 publication approval; it refuses manual mode or work already running. It does not merge.
 
@@ -695,13 +695,13 @@ whether the manager is idle or working, even at its spending rail.
 This does not open or finish a turn, interrupt a provider request, drain queued
 follow-ups, change the foreground model, retry work or answer a decision. The app
 keeps the exchange in human history outside the model transcript. Other wording
-can use the status tool. Combined requests such as “Are we stuck? Please fix it” stay on
+can use the status tool. Combined requests such as "Are we stuck? Please fix it" stay on
 ordinary conversation so the requested work is retained. In Auto this read is routine;
 explicit tool denials still apply. The desktop also hides old producer-marked steering
 acknowledgements; the original user message, ordinary model replies and internal audit stay.
 
 The manager can use `factory_answer` with `question_id` and the person's answer,
-including an engineering choice delegated with “you decide”, after the temporary
+including an engineering choice delegated with "you decide", after the temporary
 inbox turn or after a restart. Only this job's current manager can answer; its binding is rechecked under the
 job's write lock. The exact ask and round must still match; polling and spending
 updates do not invalidate it.
@@ -793,6 +793,23 @@ recover a confirmed rejected report on the original machine, only while the job'
 round and ownership still match. Stale results remain blocked with the recorded reason;
 recovery does not apply them to different work or bypass a real user decision.
 
-An accepted “no code change needed” assessment (`repair.decision: no_change`) is a
+An accepted "no code change needed" assessment (`repair.decision: no_change`) is a
 successful outcome: Follow PR returns to
 watching GitHub for new activity. No code change does not require a new approval.
+
+## Stop spending after this step in a job's Spend menu
+
+**Stop spending after this step** lets the current step finish before you
+decide whether to continue. The job waits before starting the next step and asks:
+"Stopped spending after <Step> as you asked · $<spent> so far. Carry on?"
+
+Answer **yes** to continue at the next step. Answer **no** to stop the job and
+keep its work. Switch the choice off before the current step ends to let the
+job continue without this question. A queued job runs its first step before
+holding. The choice belongs to the job's owner.
+
+If the current step asks a question or fails first, resolve that first. Your
+spending choice stays armed for the next step boundary. After the final step,
+the job holds before landing, so automatic publication cannot pass this hold.
+The choice adds no dollar limit and does not interrupt a model call already
+under way. A leased worker checks the saved choice before each step and landing.
