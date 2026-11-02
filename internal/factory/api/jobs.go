@@ -58,6 +58,9 @@ type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
+	// Max maps a conversation step's name to how many tries it gets, 1 to 3.
+	// Only the job's person sends it.
+	Max map[string]int `json:"max,omitempty"`
 	// Model maps a step name to the model it runs on for this job; "" gives
 	// it back to the job's model. Only the job's person sends it.
 	Model  map[string]string `json:"model,omitempty"`

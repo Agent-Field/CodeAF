@@ -56,7 +56,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 		return appwire.FactoryJobStepEdited{}, err
 	}
 	body := api.StepEditsRequest{
-		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Model: models, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
+		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Max: p.Edit.Max, Model: models, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
 	}
 	for _, mv := range p.Edit.Move {
 		body.Move = append(body.Move, api.StepMove{Step: mv.Step, After: mv.After})
@@ -70,7 +70,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 	h := b.factoryHub()
 	data, err := h.post(ctx, p.Factory, stepEditsPath(p.Job), body)
 	if err != nil {
-		if (len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Model) > 0) && unknownStepEditField(err) {
+		if (len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Max) > 0 || len(body.Model) > 0) && unknownStepEditField(err) {
 			return appwire.FactoryJobStepEdited{}, factoryTooOld()
 		}
 		return appwire.FactoryJobStepEdited{}, err
@@ -102,7 +102,7 @@ func unknownStepEditField(err error) bool {
 	if !errors.As(err, &e) || e.Code != appwire.CodeBadParams {
 		return false
 	}
-	return strings.Contains(e.Message, `unknown field "remove"`) || strings.Contains(e.Message, `unknown field "move"`) || strings.Contains(e.Message, `unknown field "model"`)
+	return strings.Contains(e.Message, `unknown field "remove"`) || strings.Contains(e.Message, `unknown field "move"`) || strings.Contains(e.Message, `unknown field "model"`) || strings.Contains(e.Message, `unknown field "max"`)
 }
 
 // offeredStepModels is each step's picked model in models.list's own spelling,
