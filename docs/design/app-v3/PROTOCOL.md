@@ -314,6 +314,16 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries the feature `factory.repo_checkout` answers
+`factory.queue` with `checkout_state` on each of `repos[]`: how a run of that
+repository gets its folder on the factory's machine, in the words a job's own
+`checkout` says and from the same check a start makes. It is `here` (a
+checkout is known), `will_clone` (the runner clones it on the first job's
+first step; the normal state of a repository no job has run on yet) or
+`missing` (a start is refused 409 `needs_checkout`), and it never names a path.
+It is absent on a factory that does not know its machine's checkouts and on an
+attached factory older than the field, which says nothing rather than a guess.
+
 An engine whose hello carries the feature `factory.repo_read` (and
 `FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
 path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
