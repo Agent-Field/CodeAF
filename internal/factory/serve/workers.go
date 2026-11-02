@@ -23,9 +23,11 @@ import (
 const workerPollLimit = 30 * time.Second
 
 // workerPollEvery is how often an open pull looks when the factory root has
-// no filesystem watch (the process is out of descriptors, say), and so only
-// a timed look can see a job arrive within the wait.
-const workerPollEvery = 100 * time.Millisecond
+// no filesystem watch (the user's inotify instances are spent, say), and so
+// only a timed look can see a job arrive within the wait. Every runner slot
+// holds a pull open and a look reads every job, so a second keeps an idle
+// machine cool; a job queued meanwhile waits at most that long.
+const workerPollEvery = time.Second
 
 type workerService struct {
 	st          *store.Store
