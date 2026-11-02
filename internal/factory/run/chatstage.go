@@ -86,7 +86,11 @@ type ConversationSpec struct {
 	// (Item.Model), "" for the default the maker's launch already carries.
 	Model           string
 	AutomaticModels *bool
-	Effort          string
+	// FactoryModel is the factory's default model the job was queued under
+	// (Item.FactoryModel), "" for none. The maker opens on it only when Model
+	// is "" and its launch is not pinned to one model for every task.
+	FactoryModel string
+	Effort       string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -256,6 +260,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
 		Model:             stageModel(job),
 		AutomaticModels:   stageAutomatic(job),
+		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
 		Effort:            job.Item.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,

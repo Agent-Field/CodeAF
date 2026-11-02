@@ -95,6 +95,12 @@ func (d *Doors) Launch(id int) error {
 	if err != nil {
 		return err
 	}
+	// THE FACTORY'S DEFAULT MODEL GOES WITH THE JOB on the same terms, and a
+	// spending file that cannot be read refuses the start the same way.
+	spending, err := d.desk.store.Spending()
+	if err != nil {
+		return err
+	}
 	// THE REPOSITORY IS READ AS A PERSON'S START READS IT: with the factory's
 	// rules unread nothing starts; with only the repository's file unread the
 	// job keeps the steps it has and is marked so its plan waits for a person.
@@ -161,6 +167,7 @@ func (d *Doors) Launch(id int) error {
 			return false, err
 		}
 		it.House = &house
+		it.FactoryModel = spending.DefaultModel
 		_, stale := doc.Signals[id]
 		delete(doc.Signals, id)
 		return stale, nil
