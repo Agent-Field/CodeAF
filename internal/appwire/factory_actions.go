@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -194,6 +195,30 @@ type FactoryJobStepParams struct {
 	// Words are the person's for a rerun (optional): what to do differently,
 	// kept on the job's notes. A step stop takes none.
 	Words string `json:"words,omitempty"`
+	// Model is, on a rerun, the model the step runs on from now (run again
+	// from here with another model), one of models.list's ids; "" keeps the
+	// step's own. Sent only where [FeatureFactoryJobStepRerunModel] is
+	// announced. A step stop takes none.
+	Model string `json:"model,omitempty"`
+}
+
+// FeatureFactoryJobStepRerunModel is announced beside
+// [FeatureFactoryJobActions] when factory.job_step_rerun carries `model`.
+// factory.job_step_rerun is RUN AGAIN FROM HERE: the step and every step after
+// it go back to pending, so the later steps run again and an approval after it
+// asks again, while earlier steps and money spent are kept. With a model the
+// step runs on it, checked against this engine's models.list; a check, an
+// approval and a fixed step refuse one.
+const FeatureFactoryJobStepRerunModel = "factory.job_step_rerun_model"
+
+func withFactoryJobStepRerunModelFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(Factory); !ok {
+		return hello
+	}
+	if _, ok := e.(FactoryActor); ok {
+		hello = withFeature(hello, FeatureFactoryJobStepRerunModel)
+	}
+	return hello
 }
 
 // FactoryJobCreateParams makes a job. WITHOUT Start THE JOB IS ONLY ADDED TO
@@ -483,17 +508,21 @@ func prepStepRerun(p *FactoryJobStepParams) error {
 	if err != nil {
 		return err
 	}
-	p.Words = ""
+	model := strings.TrimSpace(p.Model)
+	if !factory.ModelID(model) {
+		return Errorf(CodeBadParams, "%s", factory.ErrModelID.Error())
+	}
+	p.Words, p.Model = "", ""
 	if err := prepStep(p); err != nil {
 		return err
 	}
-	p.Words = words
+	p.Words, p.Model = words, model
 	return nil
 }
 
 func prepStep(p *FactoryJobStepParams) error {
-	if strings.TrimSpace(p.Words) != "" {
-		return Errorf(CodeBadParams, "only a rerun takes words")
+	if strings.TrimSpace(p.Words) != "" || strings.TrimSpace(p.Model) != "" {
+		return Errorf(CodeBadParams, "only a rerun takes words or a model")
 	}
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
