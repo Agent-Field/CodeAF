@@ -389,6 +389,7 @@ func (c *RecordCache) parseLocked(path string, size int64, stamp recordStamp, st
 		c.mu.Lock()
 		c.reserved -= cost
 		c.mu.Unlock()
+		releaseAfterLargeRead(size)
 	}, nil
 }
 

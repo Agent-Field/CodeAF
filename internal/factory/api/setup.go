@@ -40,7 +40,7 @@ type SetupRepo struct {
 	Checkout          *string    `json:"checkout"`
 	SuggestedCheckout string     `json:"suggested_checkout"`
 	CloneMB           int        `json:"clone_mb"`
-	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited"`
+	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited,enum=skipped"`
 	ReadCount         int        `json:"read_count"`
 	WaitingS          int        `json:"waiting_s"`
 	ResumesAt         *time.Time `json:"resumes_at"`
@@ -49,7 +49,7 @@ type SetupRepo struct {
 }
 type FactorySetupRequest struct {
 	ID      string   `json:"id,omitempty"`
-	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done"`
+	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done,enum=continue"`
 	Source  string   `json:"source,omitempty" jsonschema:"enum=gh,enum=token"`
 	Token   string   `json:"token,omitempty"`
 	RepoIDs []string `json:"repo_ids,omitempty"`
@@ -137,4 +137,30 @@ type RepoSpend struct {
 	Repo     string  `json:"repo"`
 	SpentUSD float64 `json:"spent_usd"`
 	Jobs     int     `json:"jobs"`
+}
+
+// SpendByModel is GET /v1/spend/models: the same jobs and the same days as
+// [SpendByRepo], split by the model recorded on each priced call. A dollar
+// with no recorded model is unknown_usd, never guessed and never dropped.
+// Models is dearest first, then by name, and is [] when nothing was spent
+// on a named model. The sum of cost_usd and unknown_usd is [SpendByRepo]'s
+// total_usd for the same days. Factory AI that is not booked on a job
+// (a triage read, a scout, a page AI call that only reached the session
+// ledger) is in neither figure.
+type SpendByModel struct {
+	From       string       `json:"from"`
+	To         string       `json:"to"`
+	TimeZone   string       `json:"time_zone,omitempty"`
+	Models     []ModelSpend `json:"models"`
+	UnknownUSD float64      `json:"unknown_usd,omitempty"`
+}
+
+// ModelSpend is one model's line over the range.
+type ModelSpend struct {
+	Model        string  `json:"model"`
+	CostUSD      float64 `json:"cost_usd"`
+	Calls        int     `json:"calls"`
+	InputTokens  int64   `json:"input_tokens,omitempty"`
+	OutputTokens int64   `json:"output_tokens,omitempty"`
+	Jobs         int     `json:"jobs"`
 }
