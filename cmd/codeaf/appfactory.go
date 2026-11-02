@@ -581,8 +581,14 @@ func (h *appFactoryHub) credentialed(ctx context.Context, id string) (appFactory
 		return row, "", appwire.Errorf(appwire.CodeUnreachable, "the local factory is not running for this app; start it again")
 	case row.Mode != "" && row.Mode != api.FactorySolo:
 		// Learned while a credential was held: refuse without sending a thing.
-	case h.probeMode(ctx, row) == api.FactorySolo:
-		return row, "", nil
+	default:
+		// A probe that reaches nothing is the list's unreachable, never a
+		// sign-out: the desktop keeps a down factory's rows and drops a
+		// signed-out one's.
+		mode, err := h.probeMode(ctx, row)
+		if err != nil || mode == api.FactorySolo {
+			return row, "", err
+		}
 	}
 	return row, "", appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
 }
@@ -601,21 +607,22 @@ func (h *appFactoryHub) learnModeLocked(id, mode string) {
 
 // probeMode asks a factory with no bearer which mode it runs in and keeps
 // nothing else of the answer: on a loopback team service that answer is the
-// host's own identity, which no caller may be shown.
-func (h *appFactoryHub) probeMode(ctx context.Context, row appFactoryRow) string {
+// host's own identity, which no caller may be shown. The error is the send's
+// own, so a factory that cannot be reached is unreachable here as in the list.
+func (h *appFactoryHub) probeMode(ctx context.Context, row appFactoryRow) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, appFactoryProbe)
 	defer cancel()
 	r, err := h.send(ctx, row.URL, "", http.MethodGet, "/v1/me", nil, appFactorySmall, nil)
 	if err != nil || r.status < 200 || r.status >= 300 {
-		return ""
+		return "", err
 	}
 	var me struct {
 		Mode string `json:"mode"`
 	}
 	if json.Unmarshal(r.body, &me) != nil {
-		return ""
+		return "", nil
 	}
-	return me.Mode
+	return me.Mode, nil
 }
 
 // staleCredential is the refusal for a reply that came back after the
