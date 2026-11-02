@@ -19,7 +19,7 @@ import (
 )
 
 func TestMemoryCompileTailLifecycle(t *testing.T) {
-	for _, end := range []string{"pause", "job end", "quit"} {
+	for _, end := range []string{"pause", "job end", "session close"} {
 		t.Run(end, func(t *testing.T) {
 			s := newLocalSetup(t)
 			s.start()
@@ -143,7 +143,7 @@ func TestMemoryCompileTailLifecycle(t *testing.T) {
 				if err := floor.Annotate(item.ID, func(it *factory.Item) error { it.State = factory.StateShipped; return nil }); err != nil {
 					t.Fatal(err)
 				}
-			case "quit":
+			case "session close":
 				if err := agent.Close(); err != nil {
 					t.Fatal(err)
 				}
@@ -167,20 +167,18 @@ func TestMemoryCompileTailLifecycle(t *testing.T) {
 						calls += line.Calls
 					}
 				}
-				if calls == 1 && math.Abs(usd-.02) < .000001 {
+				job, err := floor.Get(item.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				spent := factory.JobSpent(job)
+				if calls == 1 && math.Abs(usd-.02) < .000001 && math.Abs(spent-.04) < .000001 {
 					break
 				}
 				if time.Now().After(deadline) {
-					t.Fatalf("late memory receipt missing from job ledger: calls=%d USD=%.4f", calls, usd)
+					t.Fatalf("late memory accounting incomplete: calls=%d ledger=%.4f job=%.4f want .02/.04", calls, usd, spent)
 				}
 				time.Sleep(10 * time.Millisecond)
-			}
-			job, err := floor.Get(item.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := factory.JobSpent(job); math.Abs(got-.04) > .000001 {
-				t.Fatalf("late memory charge missing from job: USD=%.4f want .04", got)
 			}
 			if err := vault.Flush(context.Background(), "fixture", true); err == nil {
 				t.Fatal("ended owner admitted memory")
