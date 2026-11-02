@@ -122,7 +122,6 @@ type loopCtl struct {
 	// Guarded by floorLoop.mu.
 	pending     string // the question the item waits on: "" is none
 	paused      bool
-	resume      chan struct{}
 	roundCancel context.CancelFunc
 	// opened is the chat the round now running opened, and carry the chat a
 	// pause cut short, which the next round continues rather than replaces.
@@ -493,6 +492,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		if err != nil || it.Stream == nil {
 			return
 		}
+		if !lp.stopSpending(c, it) {
+			return
+		}
 		i := nextPhase(it.Stream.Phases)
 		if i >= 0 && it.Stream.Phases[i].Name == factory.FollowPRStep && it.PullRequest == nil {
 			lp.land(c)
@@ -697,7 +699,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			said = "Auto requested routine approval to continue after " + prevName + "."
 		}
 	}
-	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)
+	question := factory.ApproveQuestion(prevName)
+	if hold != "" && it.StartRules != nil && it.StartRules.UnreadWhy != "" {
+		question += " · " + it.StartRules.UnreadWhy
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, question, factory.PhaseWaiting, "", said)
 	if !ok {
 		return false
 	}
@@ -713,6 +719,25 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 		return false
 	}
 	return lp.back(c, i, prev, a.words)
+}
+
+// askBeforeStep is Manual's word before step i. A yes leaves the step running,
+// so the drive loop's next pass runs it without asking again; a no sends back
+// the work before it. Either way the drive loop carries on from the store.
+func (lp *floorLoop) askBeforeStep(c *loopCtl, i int, name string) bool {
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.NextStepQuestion(name), factory.PhaseWaiting, "", "")
+	if !ok {
+		return false
+	}
+	if a.yes {
+		lp.addNote(c.id, a.words)
+		return true
+	}
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || it.Stream == nil {
+		return false
+	}
+	return lp.back(c, i, factory.PreviousWork(it.Stream.Phases, i), a.words)
 }
 
 // back sends the run from the approve step at i to the step at prev with the
@@ -830,6 +855,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
 		return lp.approve(c, i, name)
+	}
+	if factory.AsksBeforeStep(it, i) {
+		return lp.askBeforeStep(c, i, name)
 	}
 
 	exec := lp.r.opts.Exec[kindOf(st)]
@@ -1280,20 +1308,13 @@ func shortfall(res factory.StageResult) string {
 	return factory.Shortfall(res)
 }
 
-// held waits while the item is paused, and answers false when it stopped.
+// held ends a paused drive so its bench and worker lease can serve another
+// job. The saved stream keeps the interrupted step for the ordinary resume path.
 func (lp *floorLoop) held(c *loopCtl) bool {
 	lp.mu.Lock()
-	paused, resume := c.paused, c.resume
+	paused := c.paused
 	lp.mu.Unlock()
-	if !paused {
-		return c.ctx.Err() == nil
-	}
-	select {
-	case <-resume:
-		return c.ctx.Err() == nil
-	case <-c.ctx.Done():
-		return false
-	}
+	return !paused && c.ctx.Err() == nil
 }
 
 // round runs one round under its own ctx, which a pause cancels. again is a
@@ -1548,10 +1569,16 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 		return false
 	}
 	now := lp.r.now()
-	return lp.write(c, func(it *factory.Item) error {
+	line := ""
+	if err := lp.write(c, func(it *factory.Item) error {
 		NoteContinue(it, now)
+		line = "budget raised to " + loopUSD(it.Cap) + " · carrying on"
 		return nil
-	}) == nil
+	}); err != nil {
+		return false
+	}
+	lp.tell(c.id, line)
+	return true
 }
 
 // NoteContinue raises this job's cap when the spend has reached it, and says
@@ -1561,13 +1588,13 @@ func NoteContinue(it *factory.Item, now time.Time) bool {
 	if !factory.ContinueJob(it) {
 		return false
 	}
-	NoteRaised(it, now)
+	NoteBudgetRaised(it, now)
 	return true
 }
 
-// NoteRaised says on the job's timeline that its budget now stands at its
-// cap and the job carries on.
-func NoteRaised(it *factory.Item, now time.Time) {
+// NoteBudgetRaised records the selected cap at the door that changes it.
+// The waiting runner separately says this confirmation into the conversation.
+func NoteBudgetRaised(it *factory.Item, now time.Time) {
 	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 }
 
@@ -1853,6 +1880,26 @@ func (lp *floorLoop) stop(c *loopCtl) {
 	}
 }
 
+// Withdraw cancels execution whose lease was replaced, without recording a
+// person's Stop or changing the replacement's state. Cleanup keeps its bench
+// until the executor has finished, just as Stop does.
+func (r *Runner) Withdraw(id int) {
+	lp := r.loop()
+	c := lp.ctl(id)
+	if c == nil {
+		return
+	}
+	c.wmu.Lock()
+	c.cancel()
+	c.wmu.Unlock()
+	lp.mu.Lock()
+	queued := c.benchNo == 0 && !c.reverify
+	lp.mu.Unlock()
+	if queued {
+		lp.release(c)
+	}
+}
+
 // Stop ends a stream and keeps its branch; the item returns to new.
 func (r *Runner) Stop(id int) error {
 	lp := r.loop()
@@ -1912,6 +1959,9 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	var cut *factory.StepProgress
 	it.Failure = why
+	if why == nil {
+		it.StopAfterStep = false
+	}
 	it.Recovery = nil
 	it.Approval = nil
 	it.PublishError = ""
@@ -1920,7 +1970,10 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	it.Question, it.QKind = "", ""
 	s := it.Stream
 	if s == nil {
-		return nil
+		// A stop at the start gate still needs an end record, even though
+		// no step began and there is no step failure to keep.
+		s = &factory.Stream{}
+		it.Stream = s
 	}
 	if s.Cur >= 0 && s.Cur < len(s.Phases) {
 		ph := &s.Phases[s.Cur]
@@ -2023,13 +2076,9 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 		}
 		c.paused = next
 		if next {
-			c.resume = make(chan struct{})
 			if c.roundCancel != nil {
 				c.roundCancel()
 			}
-		} else if c.resume != nil {
-			close(c.resume)
-			c.resume = nil
 		}
 		return next, true
 	}()
@@ -2121,20 +2170,37 @@ func (r *Runner) revive(it factory.Item) error {
 		}
 	}
 	lp.mu.Unlock()
+	// The lease door already said an explicit Resume before queueing this run.
+	log := it.Stream.Log
+	resumeSaid := len(log) > 0 && log[len(log)-1].Text == sayResumed
+	line := sayResumed
+	if i := nextPhase(it.Stream.Phases); i >= 0 {
+		ph := it.Stream.Phases[i]
+		// The saved action also identifies retries that retain a running
+		// Plan chat. Ordinary continuation keeps its resumed wording.
+		log := it.Stream.Log
+		if len(log) > 0 && strings.HasPrefix(log[len(log)-1].Text, stepRerunLog) {
+			line = fmt.Sprintf(sayTrying, ph.Name)
+		}
+	}
 	now := r.now()
-	err := lp.move(c, "", EventResumed, sayResumed, func(it *factory.Item) error {
+	err := lp.move(c, "", EventResumed, line, func(it *factory.Item) error {
 		if !storedPaused(*it) {
 			return fmt.Errorf("%s is not paused", it.Ref())
 		}
 		it.Stream.Paused = false
-		loopSay(it, now, "said", sayResumed)
+		if !resumeSaid {
+			loopSay(it, now, "said", line)
+		}
 		return nil
 	})
 	if err != nil {
 		lp.forget(c)
 		return err
 	}
-	lp.tell(id, sayResumed)
+	if !resumeSaid {
+		lp.tell(id, line)
+	}
 	lp.enqueue(c)
 	return nil
 }
@@ -2169,6 +2235,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		it, err := r.opts.Store.Get(id)
 		if err != nil {
 			return err
+		}
+		if c == nil && it.QKind == factory.QKindSpendStopped {
+			return r.answerStoppedSpending(id, yes, words)
 		}
 		// A STEP'S QUESTION THE PERSON HOLDS outlives the round that asked
 		// it (a pause, a restart): the answer is kept for the step's next

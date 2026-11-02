@@ -73,6 +73,9 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if keeper, ok := st.(ReadCoster); ok && err == nil {
 				snap.LastReadCost, _, _ = keeper.ReadCost()
 			}
+			if keeper, ok := st.(ScoutCoster); ok && err == nil {
+				snap.ScoutPrice, _ = keeper.ScoutPrice()
+			}
 			// WHERE EACH REPOSITORY IS CHECKED OUT is read with the floor, so
 			// `r` can see an item has nowhere to run before it starts one
 			// ([Snapshot.Checkouts]). Only a seam told where repositories are
@@ -84,6 +87,14 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		},
 		New: func(repo, words string) (int, error) {
 			return localNew(st, repo, words, time.Now(), o.recipe(strings.TrimSpace(repo)))
+		},
+		NewJob: func(repo, title, text string) (int, error) {
+			it, err := localJob(repo, title, text, time.Now(), o.recipe(strings.TrimSpace(repo)))
+			if err != nil {
+				return 0, err
+			}
+			made, err := st.Create(it)
+			return made.ID, err
 		},
 		Dismiss: func(id int) error {
 			return st.Update(id, func(it *Item) error {
@@ -330,6 +341,11 @@ type BusyKeeper interface {
 // and the average of every one it was told about. Zero is not known.
 type ReadCoster interface {
 	ReadCost() (last, avg float64, err error)
+}
+
+// ScoutCoster is a store that keeps what Look closer costs.
+type ScoutCoster interface {
+	ScoutPrice() (float64, error)
 }
 
 // annotator is a store that can write an item without stamping Changed,
@@ -589,21 +605,14 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	return snap, nil
 }
 
-// localNew makes an item from words typed on the floor. The chips lift out
-// (a cap, a gate word, a round count, an effort, a security pass) and what is left,
-// tidied, is the title. The stages are the repo's recipe for an issue, with
-// the chips written onto them: rounds onto review, the effort onto write,
-// security switched on or added.
-func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
-	repo = strings.TrimSpace(repo)
+// localJob keeps separate fields literal; only localNew reads terminal chips.
+func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, error) {
+	repo, title = strings.TrimSpace(repo), strings.TrimSpace(title)
 	if repo == "" {
-		return 0, errors.New("say which repository the work is on")
+		return Item{}, errors.New("say which repository the work is on")
 	}
-	c := Lift(words)
-	security, rest := LiftSecurity(c.Rest)
-	title := TidyWords(rest)
 	if title == "" {
-		return 0, errors.New("say what the work is, not only how")
+		return Item{}, errors.New("say what the work is, not only how")
 	}
 	it := Item{
 		Autonomy: AutonomyAuto,
@@ -616,11 +625,30 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		State:    StateNew,
 		Created:  now,
 		Changed:  now,
-		Cap:      c.Cap,
-		Ask:      &JobAsk{Text: title, At: now, Source: AskTUI},
+		Body:     text,
+		Ask:      &JobAsk{Text: text, At: now, Source: AskTUI},
 		Triage:   Triage{Type: GuessType(title)},
 		Stages:   CopyStages(recipe.For(KindIssue)),
 	}
+	return it, nil
+}
+
+// localNew makes an item from words typed on the floor. The chips lift out
+// (a cap, a gate word, a round count, an effort, a security pass) and what is left,
+// tidied, is the title. The stages are the repo's recipe for an issue, with
+// the chips written onto them: rounds onto review, the effort onto write,
+// security switched on or added.
+func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
+	c := Lift(words)
+	security, rest := LiftSecurity(c.Rest)
+	title := TidyWords(rest)
+	it, err := localJob(repo, title, title, now, recipe)
+	if err != nil {
+		return 0, err
+	}
+	// Terminal input keeps its existing body and ask shape.
+	it.Body = ""
+	it.Cap = c.Cap
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`
 	// one after plan, `ship it` one before the result, `self-ship` none, so
 	// the item ships itself on green proof. A fixed approve stays.
@@ -908,6 +936,11 @@ func localRunner(seam *Seam, o localOptions) {
 		seam.Hold = h.Hold
 	}
 	seam.Answer = r.Answer
+	if s, ok := r.(interface {
+		SpendAnswer(int, int, bool, func(Item) error) (Item, error)
+	}); ok {
+		seam.SpendAnswer = s.SpendAnswer
+	}
 	seam.Steer = r.Steer
 	seam.SignOff = r.SignOff
 	seam.SendBack = r.SendBack

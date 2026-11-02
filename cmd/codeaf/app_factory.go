@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -38,6 +39,9 @@ import (
 // appFactoryHost mounts the solo floor without opening a second listener.
 // Service election and worker election use the same files as terminal windows.
 type appFactoryHost struct {
+	// asleep is what this process was last told by the Mac's power door. A new
+	// process starts awake, so its runner corrects what a lost wake left saved.
+	asleep atomic.Bool
 	// seam is the floor's door the service serves, kept for what the app asks
 	// of this machine's factory directly (a job's conversations).
 	seam                               factory.Seam
@@ -166,6 +170,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
@@ -340,12 +345,16 @@ func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {
 	// THE PERSON THIS FACTORY KNOWS IS ITS OPERATOR: a job a start rule
 	// starts here is theirs.
 	return factoryIntakeOwned(st, func(ctx context.Context) string {
-		h.mu.Lock()
-		seam := h.seam
-		h.mu.Unlock()
-		handle, _ := seam.PersonHandle(ctx)
+		handle, _ := h.currentSeam().PersonHandle(ctx)
 		return handle
 	})
+}
+
+// currentSeam is the floor's door the service serves now.
+func (h *appFactoryHost) currentSeam() factory.Seam {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seam
 }
 
 // waitForPollSource is [waitForFactoryGitHub] over the test seam.
@@ -394,7 +403,17 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	} else if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/jobs/"); ok && rest != "" && !strings.Contains(rest, "/") {
 		kinds = append(kinds, "job")
 	}
+	for _, k := range h.firstAnswers(kinds) {
+		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
+		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
+	}
+}
+
+// firstAnswers marks kinds as answered and returns the ones answered for the
+// first time.
+func (h *appFactoryHost) firstAnswers(kinds []string) []string {
 	h.answeredMu.Lock()
+	defer h.answeredMu.Unlock()
 	var fresh []string
 	for _, k := range kinds {
 		if !h.answered[k] {
@@ -408,12 +427,9 @@ func (h *appFactoryHost) traceAnswer(r *http.Request, took time.Duration) {
 	if len(h.answered) == 3 {
 		h.allAnswered.Store(true)
 	}
-	h.answeredMu.Unlock()
-	for _, k := range fresh {
-		what := map[string]string{"any": "first answer", "queue": "first queue", "job": "first job"}[k]
-		traceStartup(filepath.Join(h.floor.Root(), "startup.log"), "factory: %s %s %s in %d ms", what, r.Method, traceRoute(r.URL.Path), ms(took))
-	}
+	return fresh
 }
+
 func appFactoryProxy(target factoryTarget) http.Handler {
 	address, _ := url.Parse(target.url)
 	proxy := httputil.NewSingleHostReverseProxy(address)
@@ -543,7 +559,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
 	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, h.stepMaker(mirror, source), turns)
-	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
+	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI
 	if runtime.GOOS == "darwin" {
@@ -633,19 +649,33 @@ func (h *appFactoryHost) parentSource() (*factoryParentSource, func() session.Co
 }
 
 // defaultModel is the model this machine's runner opens a step on when the job
-// names none: the parent every stage opens from, settled on the saved Task
-// models policy, exactly as the stage maker reads it.
+// names none: the factory's default model, else the parent every stage opens
+// from, settled on the saved Task models policy, exactly as the stage maker
+// reads it.
 func (h *appFactoryHost) defaultModel() string {
 	source, _, ok := h.parentSource()
 	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(source.Config().Model)
+	// The factory's own default stands in for the launch's, as it does when a
+	// step opens ([stageOpenModel]); a spending file that cannot be read says
+	// nothing here, and the start that reads it refuses.
+	spending, _ := h.floor.Spending()
+	return strings.TrimSpace(stageOpenModel(source.Config(), factoryrun.ConversationSpec{FactoryModel: spending.DefaultModel}))
 }
 
 // Power uses the elected runner's saved registration, so a second process
 // never registers a duplicate merely to report this machine sleeping.
+// runnerDial is the worker door into target for this host's runner, which
+// knows whether this Mac has said it is going to sleep.
+func (h *appFactoryHost) runnerDial(target factoryTarget) *factoryWorkerDial {
+	dial := newFactoryWorkerDial(h.floor, func() (factoryTarget, error) { return target, nil })
+	dial.awake = func() bool { return !h.asleep.Load() }
+	return dial
+}
+
 func (h *appFactoryHost) power(ctx context.Context, asleep bool) error {
+	h.asleep.Store(asleep)
 	dial := newFactoryWorkerDial(h.floor, nil)
 	all := dial.readCreds()
 	data, err := os.ReadFile(filepath.Join(h.floor.Root(), "attach.json"))

@@ -275,7 +275,10 @@ func TestARunResumedOnAnotherWorkerKeepsEarlierStepsDoneNotesAndClaims(t *testin
 		t.Fatal(err)
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
-	g.r.loop().ctl(id).cancel()
+	// A pause ends the drive and frees its slot; it may already have gone.
+	if c := g.r.loop().ctl(id); c != nil {
+		c.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 
 	// The pull, on the wire.

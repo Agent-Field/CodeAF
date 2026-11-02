@@ -25,6 +25,7 @@ import (
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
 	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
+	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
@@ -37,6 +38,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
+	h.postJob("stop-after-step", stored, h.onlyOwner(h.stopAfterStep))
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
 	h.postJob("control", stored, h.onlyOwner(h.controlJob))
@@ -85,21 +87,23 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 // launchJob is the start's one write and its launch, for a job startRefused
 // has passed. also is what else the start changes on the job in that same
 // write (run_again's clearing of the run before it), nil for nothing.
+// The result says whether launch accepted, even if recording its receipt failed;
+// run-as-new must retain an accepted job when the receipt could not be written.
 //
 // START NOW ON A JOB ALREADY IN THE QUEUE IS NOT A SECOND LAUNCH: it lets the
 // job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),
 // lifts a hold in the same write, and launches nothing. A start from Backlog
 // queues the job at the top and waits for a slot like any other.
-func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) {
+func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) bool {
 	mark, queued := false, false
 	if st := h.config.Store; st != nil {
 		cur, err := st.Get(it.ID)
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		who, err := h.callerHandle(r)
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		now := strings.HasSuffix(r.URL.Path, "/start_now")
 		mark = now && !cur.Marked
@@ -124,25 +128,27 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			f, err := h.jobPipeline(r.Context(), cur, "")
 			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
-				return
+				return false
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
+			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
 			file, fileErr = &f, err
 		}
 		var budget float64
 		if file != nil && cur.Cap <= 0 {
-			// The budget comes from the same read, and a read that failed
-			// refuses the start as the budget's own read would.
-			err = fileErr
-			if err == nil {
+			// An unread repository takes a bounded default. A clean read
+			// must still supply its own positive budget.
+			if fileErr != nil {
+				budget = factory.DefaultJobBudget
+			} else {
 				budget, err = h.budgetOf(file.Recipe())
 			}
 		} else {
 			budget, err = h.startBudget(r, cur)
 		}
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
@@ -182,21 +188,24 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				return nil
 			})
 			if h.failed(w, err) {
-				return
+				return false
 			}
 		}
 	}
 	if queued {
 		h.finish(w, h.recordAction(r, it, record.Started, startedOverLimit, func() error { return nil }))
-		return
+		return true
 	}
+	started := false
 	h.finish(w, h.recordAction(r, it, record.Started, "", func() error {
 		err := h.seam.Launch(it.ID)
+		started = err == nil
 		if err != nil && mark {
 			_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Marked = false; return nil })
 		}
 		return err
 	}))
+	return started
 }
 
 // startedOverLimit is the detail of a Start now that let a queued job take a
@@ -671,11 +680,17 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	var atCap *factory.Item // the job as its cap question stood, when the raise resumes it
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			if body.Budget < factory.JobSpent(*cur) {
+			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
 				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
+			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobSpent(*cur) {
+				cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
+				if cur.Asking != nil {
+					cur.Asking.Question = cur.Question
+				}
+			}
 			if capResumes(*cur) {
 				asked := *cur
 				atCap = &asked
@@ -714,7 +729,7 @@ func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
 		return err
 	}
 	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-		run.NoteRaised(cur, h.now())
+		run.NoteBudgetRaised(cur, h.now())
 		return nil
 	})
 }
@@ -964,8 +979,13 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 				it.Starter = starter
 			}
 		}
+		// Ownership authorizes this replay; it is not the automatic decision's actor.
+		handle := a.DecidedBy
+		if a.Automatic {
+			handle = it.Person()
+		}
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
-		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: a.DecidedBy}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
+		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: handle}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
 		r.SetPathValue("id", strconv.Itoa(it.ID))
 		w := &replayWriter{header: make(http.Header)}
 		h.commitApproval(w, r, it)

@@ -31,6 +31,9 @@ func (s environmentSeat) Interrupted() Interrupted        { return InterruptedOn
 func (s environmentSeat) Settle(ctx context.Context)      { Settle(ctx, s.Seat) }
 func (s environmentSeat) Drain(ctx context.Context) error { return Drain(ctx, s.Seat) }
 
+// CheckWork keeps the ownership gate beneath answering user admission.
+func (s environmentSeat) CheckWork() error { return CheckWork(s.Seat) }
+
 type environmentRunner struct {
 	Runner
 	environment []string

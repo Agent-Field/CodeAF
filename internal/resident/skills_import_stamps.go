@@ -99,6 +99,13 @@ func importStamps(key importKey) ([]importStamp, bool) {
 	return stamps, valid
 }
 
+// countScan records one full scan of the shelf's skill folders.
+func (m *importMemory) countScan() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.scans++
+}
+
 func (m *importMemory) remember(key importKey, stamps []importStamp) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
