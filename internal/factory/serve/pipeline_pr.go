@@ -105,11 +105,7 @@ func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
 	// The person's own GitHub credential. A team never falls back to the
 	// host's read grant or any host token; only a solo host may use its own
 	// profile token, because there the host is the person.
-	session, _ := h.credential(r)
-	f.token, f.viaSes = session.githubToken, session.githubToken != ""
-	if f.token == "" && h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
-		f.token = h.config.GitHubToken(r.Context())
-	}
+	f.token, f.viaSes = h.personGitHubToken(r)
 	if f.token == "" {
 		f.refuse(401, "credential", "Reconnect GitHub to open a pull request")
 		return
@@ -387,9 +383,30 @@ var (
 	errGitHubUnreadable  = errors.New("GitHub answered unreadably")
 )
 
-// call sends one request with the caller's token in the Authorization header
-// only. An error means there is no usable answer; a non-2xx status is an answer.
+// personGitHubToken is the person's own GitHub credential, and whether it came
+// from their factory sign-in. A team never falls back to the host's read
+// grant or any host token; only a solo host may use its own profile token,
+// because there the host is the person.
+func (h *Handler) personGitHubToken(r *http.Request) (string, bool) {
+	session, _ := h.credential(r)
+	if session.githubToken != "" {
+		return session.githubToken, true
+	}
+	if h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
+		return h.config.GitHubToken(r.Context()), false
+	}
+	return "", false
+}
+
 func (f *pipelinePRFlow) call(method, path string, in, out any) (int, error) {
+	return f.h.githubREST(f.ctx, f.token, method, path, in, out, pipelinePRReadLimit)
+}
+
+// githubREST sends one request to GitHub's REST API with the person's token
+// in the Authorization header only, and decodes at most limit bytes of a 2xx
+// answer into out. An error means there is no usable answer; a non-2xx status
+// is an answer, and its body is never read.
+func (h *Handler) githubREST(ctx context.Context, token, method, path string, in, out any, limit int) (int, error) {
 	var raw []byte
 	if in != nil {
 		var err error
@@ -397,16 +414,16 @@ func (f *pipelinePRFlow) call(method, path string, in, out any) (int, error) {
 			return 0, errGitHubUnreadable
 		}
 	}
-	req, err := http.NewRequestWithContext(f.ctx, method, githubAPI+path, ioBody(raw))
+	req, err := http.NewRequestWithContext(ctx, method, githubAPI+path, ioBody(raw))
 	if err != nil {
 		return 0, errGitHubUnreachable
 	}
-	req.Header.Set("Authorization", "Bearer "+f.token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
-	client := f.h.githubClient()
+	client := h.githubClient()
 	response, err := client.Do(req)
 	if err != nil {
 		return 0, errGitHubUnreachable
@@ -416,8 +433,8 @@ func (f *pipelinePRFlow) call(method, path string, in, out any) (int, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<16))
 		return response.StatusCode, nil
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, pipelinePRReadLimit+1))
-	if err != nil || len(data) > pipelinePRReadLimit || json.Unmarshal(data, out) != nil {
+	data, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
+	if err != nil || len(data) > limit || json.Unmarshal(data, out) != nil {
 		return response.StatusCode, errGitHubUnreadable
 	}
 	return response.StatusCode, nil

@@ -4,6 +4,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 
 // ForViewer adds facts that depend on the authenticated caller, never on UI state.
 func ForViewer(job *Job, it factory.Item, viewer string) {
+	job.Following = factory.IsFollowing(it, viewer)
 	job.Dismissed = factory.IsDismissed(it, viewer)
 	if job.State == StateNeedsYou && it.Person() != "" && factory.NormalizeHandle(viewer) != it.Person() {
 		job.WaitingFor = "@" + it.Person()
@@ -42,6 +43,14 @@ type AssigneeRequest struct {
 	Expect   *Expect `json:"expect,omitempty"`
 }
 
+// FollowRequest switches the caller's following of a job. On is required, so
+// a body that forgot it is refused rather than read as off. It carries no
+// expect: following changes nothing another reader sees, and the factory
+// keeps the job's version as it was.
+type FollowRequest struct {
+	On *bool `json:"on"`
+}
+
 // StepEditsRequest uses the same bounded edit language as the job's manager.
 // Remove takes steps out of this job by name; Move puts one after another, or
 // first. Neither touches the repository's pipeline.
@@ -49,12 +58,15 @@ type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
-	On       []string          `json:"on,omitempty"`
-	Skip     []string          `json:"skip,omitempty"`
-	Remove   []string          `json:"remove,omitempty"`
-	Move     []StepMove        `json:"move,omitempty"`
-	Why      string            `json:"why,omitempty"`
-	Expect   *Expect           `json:"expect,omitempty"`
+	// Model maps a step name to the model it runs on for this job; "" gives
+	// it back to the job's model. Only the job's person sends it.
+	Model  map[string]string `json:"model,omitempty"`
+	On     []string          `json:"on,omitempty"`
+	Skip   []string          `json:"skip,omitempty"`
+	Remove []string          `json:"remove,omitempty"`
+	Move   []StepMove        `json:"move,omitempty"`
+	Why    string            `json:"why,omitempty"`
+	Expect *Expect           `json:"expect,omitempty"`
 }
 
 // StepMove is one step moved in one job: Step is its name, and After the step
@@ -214,11 +226,14 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/steps/{sid}/rerun", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/assignee", AssigneeRequest{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/sync", JobAction{}, ActionResult{}},
+	{"POST", "/v1/jobs/{id}/issue_comment", IssueCommentRequest{}, IssueCommentPosted{}},
 	{"POST", "/v1/jobs/{id}/brief_seen", BriefSeenRequest{}, ActionResult{}},
 	{"GET", "/v1/jobs/{id}/step-edits", nil, StepEdits{}},
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
+	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
+	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/prs", nil, PipelinePRs{}},
 	{"POST", "/v1/repos/{owner}/{repo}/pipeline/open-pr", PipelinePRRequest{}, PipelinePRResponse{}},
@@ -230,4 +245,21 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs", NewJob{}, JobCreated{}},
 	{"DELETE", "/v1/auth/device", DevicePoll{}, ActionResult{}},
 	{"POST", "/v1/github/poll", nil, ActionResult{}},
+}
+
+// JobBrief is GET /v1/jobs/{id}/brief: the job's newest brief version (its
+// stub, made from engine data alone, before any is kept), the reader's status
+// of it, and the keys that changed since the rev the caller saw (`?since=`),
+// or since the version before when the caller names none. Failure and
+// FailedAfter say why and after which step the last write failed, while
+// Status is failed.
+type JobBrief struct {
+	Factory          Factory              `json:"factory"`
+	Job              int                  `json:"job"`
+	Status           string               `json:"status"`
+	Failure          string               `json:"failure,omitempty"`
+	FailedAfter      string               `json:"failed_after,omitempty"`
+	Since            int                  `json:"since,omitempty"`
+	Brief            factory.BriefVersion `json:"brief"`
+	ChangedSinceSeen []string             `json:"changed_since_seen"`
 }
