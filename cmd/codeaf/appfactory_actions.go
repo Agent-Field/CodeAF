@@ -304,7 +304,7 @@ func (b *appBackend) FactoryJobHold(ctx context.Context, p appwire.FactoryJobAct
 }
 
 // FactoryJobResume continues a paused step in its conversation when possible.
-// A job without a live worker waits in the queue again.
+// It takes a free slot through the queue, waiting when all slots are busy.
 func (b *appBackend) FactoryJobResume(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActResume, p.Job, factoryVerbResume, guardBody{p.Expect})
 }

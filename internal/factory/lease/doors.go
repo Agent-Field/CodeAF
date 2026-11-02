@@ -235,7 +235,9 @@ func (d *Doors) Hold(id int, on bool) error {
 			return false, run.HoldQueued(it, now)
 		case held == nil && on:
 			return false, run.PauseItem(it, now)
-		case held == nil:
+		case !on:
+			// Resume queues even while the old worker drains its cancelled
+			// round. It must take capacity through Pull again.
 			return false, run.ResumeItem(it, now)
 		}
 		it.Stream.Paused = on

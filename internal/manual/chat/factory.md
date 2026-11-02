@@ -277,14 +277,18 @@ conversation and spending stay. No further model round starts while it is
 paused; costs already incurred by the cancelled call still count.
 
 **Resume** continues the step and round where they paused, in the same
-conversation when it can be reopened. A job with no live worker goes back into
-the queue for a worker to continue it. The activity says `paused`, then
-`resumed`; both actions record who made them.
+conversation when it can be reopened. It takes a free Jobs at once slot, or
+waits in the ordinary queue until a slot is available. No model round starts
+while it waits. Completed steps are kept and are not run again. The activity
+says `paused`, then `resumed`; both actions record who made them.
 
 Only the job's person may pause or resume it. A job waiting for you, finished
-or publishing cannot be paused. A paused running job keeps its Jobs at once
-slot; **Stop** releases it. A queued job's **Hold** still keeps it from starting
-and uses no running slot.
+or publishing cannot be paused. Pause releases its Jobs at once slot after
+the cancelled round's work and spending are saved, so another job can run.
+The app wire keeps the paused job's `state` as `running`, with the Paused
+presentation and Resume available. Resume changes `state` to `queued` until a
+worker takes it. A queued job's **Hold** still keeps it from starting and uses
+no running slot.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
