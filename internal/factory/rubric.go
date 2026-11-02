@@ -25,6 +25,9 @@ type Factor struct {
 	Score int
 	Why   string `json:",omitempty"`
 	Low   bool   `json:",omitempty"`
+	// Cite is the evidence a scout read, as `path:line`, checked to exist in
+	// the repository before it is kept.
+	Cite string `json:",omitempty"`
 }
 
 // Who scored a rubric.
@@ -73,6 +76,21 @@ func BandOf(complexity int) string {
 	default:
 		return BandLarge
 	}
+}
+
+// BandNear is the band one point away when complexity sits on a band's
+// edge (3 or 4, 6 or 7), else "". Two reads of one issue often land a point
+// apart, so on an edge the desk shows both bands rather than a guess at one.
+func BandNear(complexity int) string {
+	switch complexity {
+	case 3, 7:
+		return BandMedium
+	case 4:
+		return BandSmall
+	case 6:
+		return BandLarge
+	}
+	return ""
 }
 
 // BandSize is the size letter a band stands for, so start rules written in
