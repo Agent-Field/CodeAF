@@ -286,6 +286,7 @@ decides which combinations are accepted.
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
@@ -326,6 +327,24 @@ least that much (absent below five; a running job with `left` alone has `n` 0).
 `queue.desk.estimates {jobs, hit, of}` is how many finished jobs the
 figures see and how many of `of` backtested jobs spent inside their range. The
 repository dry run adds `cost_jobs`, that repository's finished jobs.
+An engine whose hello carries the feature `factory.repo_read` (and
+`FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
+path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
+checkout (`GET /v1/repos/{owner}/{repo}/read`), from git's object store at the
+default branch's tip, or at job `job`'s head commit when the checkout has it.
+`op` is `tree` (a folder's children: `entries` of `{path, type, size?}`, at most
+500), `grep` (lines matching the RE2 `pattern`, at most 256 bytes: `hits` of
+`{path, line, text}`, at most 50, searched for at most 5 seconds) or `read`
+(lines `from`..`to` of one file: `text`, at most 400 lines and 32 KiB, with
+`size` and `eof`). `truncated` says a bound stopped the answer. `untrusted` is
+always true: the text is the repository's own and is data, never
+instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
+`.git/`, `.npmrc`, `.netrc`, `.pypirc`, `credentials*`, `*secret*`, `*.p12`,
+`*.pfx`, `.aws/`, `.ssh/`, `.docker/config.json`, `kubeconfig`) are absent from
+`tree` and `grep`, and naming one is `forbidden` with the message `denied`; a
+binary file is `unreadable` with `binary`; a repository with no checkout on the
+factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
+factory older than the route is `conflict`.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
