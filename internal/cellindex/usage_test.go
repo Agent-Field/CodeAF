@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -37,10 +37,7 @@ func totalOf(t *testing.T) (sum total) {
 // Deleting the ledger and rebuilding it from the receipts gives back exactly
 // what the live rows said, and a rewind afterwards changes nothing.
 func TestUsageRebuildsFromReceiptsAndSurvivesARewind(t *testing.T) {
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	t.Setenv(home.EnvVar, t.TempDir())
 	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
@@ -112,10 +109,7 @@ func contains(list []string, s string) bool {
 // The log a take carries does not name the newest turn, but that turn's receipt
 // is in the tree: its calls are still the chat's spend.
 func TestUsageCountsTheReceiptOfATurnTheCarriedLogDoesNotName(t *testing.T) {
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	t.Setenv(home.EnvVar, t.TempDir())
 	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})

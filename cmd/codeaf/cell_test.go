@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,18 +11,16 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestCellLogAndRewindThroughTheDoor(t *testing.T) {
 	celltest.RequireEngine(t)
-	if _, err := furrow.ResolveBinary(); err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	celltest.Engine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
@@ -68,9 +65,7 @@ func TestCellDoorRefusesShortCommands(t *testing.T) {
 
 func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
 	celltest.RequireEngine(t)
-	if _, err := furrow.ResolveBinary(); err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	celltest.Engine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
@@ -106,9 +101,7 @@ func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
 
 func TestCellResolveClosesACrashedCallAndFindsBucketedCells(t *testing.T) {
 	celltest.RequireEngine(t)
-	if _, err := furrow.ResolveBinary(); err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	celltest.Engine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
 	c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
@@ -181,9 +174,7 @@ func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
 // E2 finishes each opened seat's initial capture before testing later failures.
 func TestEachSeatOwnsItsSealWatch(t *testing.T) {
 	celltest.RequireEngine(t)
-	if _, err := furrow.ResolveBinary(); err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	celltest.Engine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
 	seatOf := func() *cellstore.SealWatch {
