@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -251,7 +252,7 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	if recorder.cost > liveFactoryBudget {
 		t.Fatalf("cost $%.4f exceeds the $%.2f budget", recorder.cost, liveFactoryBudget)
 	}
-	readsSurviveAStop(t, local, id)
+	readsSurviveAStop(t, floor, id)
 	// The key never reached a file: not the profile, not the app home.
 	for _, dir := range []string{ambient, appHome, userHome} {
 		for path, data := range snapshotTree(t, dir) {
@@ -262,23 +263,34 @@ func TestLiveLocalRunReachesTheApproveGateOnOneModel(t *testing.T) {
 	}
 }
 
-// readsSurviveAStop is a second app that reaches the solo factory by its address
-// and holds no credential for it, as after a restart. While the factory's
-// service is stopped, queue and job answer unreachable, the word the list
-// uses, never signed_out, which would make the desktop drop its kept rows.
-// Served again on the same address, the rows come back.
-func readsSurviveAStop(t *testing.T, local *appLocalFactory, id int) {
+// readsSurviveAStop serves the floor the job ran on as a terminal window does,
+// solo on loopback with no token, to a second app that holds no credential for
+// it, as after a restart. While that service is stopped, queue and job answer
+// unreachable, the word the list uses, never signed_out, which would make the
+// desktop drop its kept rows. Served again on the same address, the rows come
+// back.
+func readsSurviveAStop(t *testing.T, floor *store.Store, id int) {
 	t.Helper()
+	serve := func(address string) *factoryService {
+		l, err := net.Listen("tcp", address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := startFactoryService(context.Background(), floor, factory.LocalSeam(floor, time.Now()), l, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(s.close)
+		return s
+	}
+	window := serve("127.0.0.1:0")
 	other := newFactoryWire(t, testFactoryHub(t))
 	var conn appwire.FactoryConnection
-	other.must("factory.attach", map[string]any{"url": local.host.address}, &conn)
+	other.must("factory.attach", map[string]any{"url": window.url}, &conn)
 	at := map[string]any{"factory": conn.ID, "job": id}
 	other.must("factory.job", at, nil)
 
-	stopped := local.server
-	if err := stopped.Close(); err != nil {
-		t.Fatal(err)
-	}
+	window.close()
 	other.mustFail("factory.queue", at, appwire.CodeUnreachable)
 	other.mustFail("factory.job", at, appwire.CodeUnreachable)
 	var list appwire.FactoryList
@@ -287,19 +299,12 @@ func readsSurviveAStop(t *testing.T, local *appLocalFactory, id int) {
 		t.Fatalf("list while stopped: %+v", list.Factories)
 	}
 
-	listener, err := net.Listen("tcp", strings.TrimPrefix(local.host.address, "http://"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	again := &http.Server{Handler: stopped.Handler, BaseContext: stopped.BaseContext}
-	go func() { _ = again.Serve(listener) }()
-	t.Cleanup(func() { again.Close() })
-	var q api.Queue
-	other.must("factory.queue", at, &q)
+	serve(strings.TrimPrefix(window.url, "http://"))
+	other.must("factory.queue", at, nil)
 	var job api.Job
 	other.must("factory.job", at, &job)
 	if job.ID != id {
 		t.Fatalf("job after restart: %+v", job)
 	}
-	t.Logf("solo factory stopped: queue and job unreachable; served again: job %d reads", job.ID)
+	t.Logf("solo factory stopped: queue and job unreachable; served again: job %d %q reads", job.ID, job.Title)
 }
