@@ -9,7 +9,7 @@ invalidates:
 ---
 
 Brief updates now follow proof approval, publication, merged or closed PRs,
-shipping, and stopped or failed runs. Auto avoids an intermediate write while
+shipping, and stopped or failed runs, including a stop before any step starts. Auto avoids an intermediate write while
 routine proof approval proceeds. A normal manual job gets two extra writes,
 charged to its existing spend. Failed updates keep the old verdict and mark it
 out of date until a fresh version is kept. PR numbers still require evidence.

@@ -450,7 +450,8 @@ after publication opens or updates a pull request or posts a comment. It also
 refreshes when the job ships, its PR merges or closes without merge, or the run
 stops or fails. A publication failure refreshes it too. Updates within 10 seconds
 are taken as one. An approval or end update waits if an earlier Brief is still
-being written. Stopping a queued job refreshes it too. Auto skips the intermediate proof update when approval can
+being written. Stopping a queued job or declining to continue at the start gate refreshes it
+too, even before a step has run. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
 
 These approval and end updates bypass the ordinary brief cost guard, and their
