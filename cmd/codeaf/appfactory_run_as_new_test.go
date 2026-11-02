@@ -14,6 +14,8 @@ import (
 func TestAppFactoryRunAsNew(t *testing.T) {
 	for _, ending := range []string{"failed", "stopped", "closed", "done", "running", "repo off", "no checkout", "launch refused"} {
 		t.Run(ending, func(t *testing.T) {
+			// The start guard can read this fixture credential; no runner is started.
+			t.Setenv("OPENROUTER_API_KEY", "sk-test-not-real")
 			s := newLocalSetup(t)
 			if ending == "launch refused" {
 				hook := s.backend.local.seamHook
@@ -68,12 +70,11 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 				before = read(old.ID)
 			}
 			params := map[string]any{"factory": st.Factory, "job": old.ID, "expect": map[string]any{"version": before["version"]}}
+			if ending == "stopped" {
+				delete(params, "expect")
+			}
 			if ending == "running" || ending == "repo off" || ending == "no checkout" || ending == "launch refused" {
-				code := appwire.CodeConflict
-				if ending == "repo off" {
-					code = appwire.CodeConflict
-				}
-				s.mustFail("factory.job_run_as_new", params, code)
+				s.mustFail("factory.job_run_as_new", params, appwire.CodeConflict)
 				s.mustFail("factory.job", map[string]any{"factory": st.Factory, "job": old.ID + 1}, appwire.CodeNotFound)
 			} else {
 				can := before["can"].(map[string]any)
