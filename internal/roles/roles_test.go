@@ -25,10 +25,15 @@ func restore(t *testing.T) {
 	for role, tier := range registry {
 		saved[role] = tier
 	}
+	savedFamilies := make(map[Role]Role, len(families))
+	for role, family := range families {
+		savedFamilies[role] = family
+	}
 	registryMu.RUnlock()
 	t.Cleanup(func() {
 		registryMu.Lock()
 		registry = saved
+		families = savedFamilies
 		registryMu.Unlock()
 	})
 }
