@@ -91,6 +91,22 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 	return sh
 }
 
+// DailySpent is what items spent on runs whose job last changed today, in
+// now's location: the day's spend a floor shows, whoever is reading it.
+func DailySpent(items []Item, now time.Time) float64 {
+	y, m, d := now.Date()
+	var spent float64
+	for _, it := range items {
+		if it.Stream == nil {
+			continue
+		}
+		if cy, cm, cd := it.Changed.In(now.Location()).Date(); cy == y && cm == m && cd == d {
+			spent += it.Stream.Spent
+		}
+	}
+	return spent
+}
+
 // MergedCounts is how many pull requests this factory opened that GitHub has
 // merged, by merged_at: today, and this calendar week starting Monday, both
 // in now's location. A merge with no time is not counted. A future time is
