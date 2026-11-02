@@ -48,6 +48,7 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if spent := cs.Spent - ps.Spent; spent > 0 {
 		r.Cost = spent
 	}
+	r.Models = modelDelta(ps.Models, cs.Models)
 	r.Claims = append(claimsMoved(prev.Proof, cur.Proof), claimsMoved(prev.Policy, cur.Policy)...)
 	r.Question, r.QuestionKind = asked(prev, cur, r.Log)
 	if cur.PullRequest != nil && !reflect.DeepEqual(prev.PullRequest, cur.PullRequest) {
@@ -80,6 +81,40 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
+}
+
+// modelDelta is what cur recorded since prev, per model. A model whose
+// figures did not grow is left out. A drop is not reported: a new run starts
+// its own split on the server when the run is queued.
+func modelDelta(prev, cur []factory.ModelUse) []factory.ModelUse {
+	old := map[string]factory.ModelUse{}
+	for _, row := range prev {
+		old[row.Model] = row
+	}
+	var out []factory.ModelUse
+	for _, row := range cur {
+		was := old[row.Model]
+		d := factory.ModelUse{
+			Model: row.Model, USD: row.USD - was.USD, Calls: row.Calls - was.Calls,
+			Input: row.Input - was.Input, Output: row.Output - was.Output,
+		}
+		if d.USD < 0 {
+			d.USD = 0
+		}
+		if d.Calls < 0 {
+			d.Calls = 0
+		}
+		if d.Input < 0 {
+			d.Input = 0
+		}
+		if d.Output < 0 {
+			d.Output = 0
+		}
+		if d.USD > 0 || d.Calls > 0 || d.Input > 0 || d.Output > 0 {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // echoes are the log lines the server writes itself when it applies r (a

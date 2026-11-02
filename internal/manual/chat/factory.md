@@ -573,3 +573,25 @@ request takes its title from the job title alone.
 Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
+
+## Job Brief after proof, publishing and an out of date line
+
+The job's Brief refreshes when proof waits for your publication approval and
+after publication opens or updates a pull request or posts a comment. It also
+refreshes when the job ships, its PR merges or closes without merge, or the run
+stops or fails. A publication failure refreshes it too. Updates within 10 seconds
+are taken as one. An approval or end update waits if an earlier Brief is still
+being written. Stopping a queued job or declining to continue at the start gate refreshes it
+too, even before a step has run. Auto skips the intermediate proof update when approval can
+proceed automatically; an exception that waits on you still gets an update.
+
+These approval and end updates bypass the ordinary brief cost guard, and their
+model cost still counts toward the job's spend. A normal manual job gets two
+additional writes: at proof approval and after publication. Ordinary step
+updates remain subject to the $0.03 per-version and 5% spend-share guard.
+
+If a refresh fails, the Brief's previous top line stays visible. The engine marks it out
+of date when its saved inputs differ from the job's current inputs, including a
+changed state or newer step. The desk uses `verdict_behind` to show this. Retry
+asks for a fresh Brief. The writer receives the approval, PR and outcome facts;
+a PR number in its claims must be supported by the job's recorded PR evidence.

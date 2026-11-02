@@ -56,12 +56,16 @@ const (
 const stageResultDescription = "This IS one stage of a factory item. Follow its brief; independent parts may go to tasks. Report this step's result. Successful done ends the step immediately; use final false for an intermediate report. Findings count unresolved problems; until clean needs zero. Claims need evidence in their stated medium. Nothing is posted anywhere."
 const planEditDescription = "Propose stage changes: add sentences, skip or on named stages. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
 
-func stageResultSchemaJSON(plan bool) string {
+func stageResultSchemaJSON(plan, repair bool) string {
 	// A plan names its files and publishes nothing; every other stage does the
 	// reverse. Words here cost money on every call, so each carries only its own.
 	required, ownField := `["done"]`, stagePublishSummaryField
 	if plan {
 		required, ownField = `["done","files"]`, stageFilesField()
+	}
+	repairField := ""
+	if repair {
+		repairField = stageRepairField
 	}
 	return `{"type":"object","properties":{` +
 		`"final":{"type":"boolean","description":"Defaults to done; false keeps working."},` +
@@ -73,10 +77,12 @@ func stageResultSchemaJSON(plan bool) string {
 		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
 		ownField +
 		`"notes":{"type":"array","items":{"type":"string"},"description":"Sentences for the stages after this one."},` +
-		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},` +
+		repairField +
 		`"output":{"type":"string","description":"What changed and what was verified; omit guessed test totals."}` +
 		`},"required":` + required + `,"additionalProperties":false}`
 }
+
+const stageRepairField = `"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},`
 
 const stagePublishSummaryField = `"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},`
 
@@ -186,7 +192,7 @@ func parseStageResult(args json.RawMessage) (factory.StageResult, string) {
 // and a refusal is read back as `not reported: <why>` in the same turn, so the
 // model can put the report right and call again.
 func (a *Agent) stageResultTool() bare.Tool {
-	schema := stageResultSchemaJSON(a.config.PlanStage)
+	schema := stageResultSchemaJSON(a.config.PlanStage, a.config.RepairStage)
 	return bare.Tool{
 		Name:        stageResultToolName,
 		Description: stageResultDescription,
