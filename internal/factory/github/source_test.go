@@ -111,7 +111,7 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 	case key == "GET /repos/acme/api/pulls/9":
 		js(map[string]any{"number": 9, "draft": f.pullDraft, "additions": 30, "deletions": 25, "changed_files": 2, "head": map[string]any{"sha": "abc"}, "updated_at": at(2),
 			"title": "feat: tree rails", "body": "rails", "user": map[string]any{"login": "santosh"}, "labels": []map[string]any{{"name": "ui"}},
-			"created_at": at(0), "html_url": "https://github.com/acme/api/pull/9", "comments": 1})
+			"created_at": at(0), "html_url": "https://github.com/acme/api/pull/9", "comments": 2})
 	case key == "GET /repos/acme/api/issues/7":
 		js(f.issue7(at))
 	case key == "GET /repos/acme/api/issues/7/comments":
@@ -121,7 +121,10 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		js(rows)
 	case key == "GET /repos/acme/api/issues/9/comments":
-		js([]map[string]any{{"user": map[string]any{"login": "bob"}, "body": "looks right", "created_at": at(2)}})
+		js([]map[string]any{
+			{"id": 901, "html_url": "https://github.com/acme/api/pull/9#issuecomment-901", "user": map[string]any{"login": "bob"}, "body": "looks right", "created_at": at(2)},
+			{"id": 902, "user": map[string]any{"login": "santosh"}, "body": "<!-- codeaf:publication -->\nproof", "created_at": at(3)},
+		})
 	case key == "GET /repos/acme/api/pulls/9/files":
 		js([]map[string]any{
 			{"filename": "small.go", "additions": 1, "deletions": 1},
