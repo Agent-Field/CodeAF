@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf Auto reads the plan model's structured file list
-pr: 0
+pr: 2234
 surface: [engine]
 invalidates:
   - "A plan's file list was read only from a Files: declaration in its prose output. Plan answers now carry files in stage_result, saved and carried with the step."
