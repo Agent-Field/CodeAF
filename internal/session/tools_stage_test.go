@@ -295,6 +295,7 @@ func TestThePlanStagesVerbsCostNoMoreThanAnyOtherStages(t *testing.T) {
 	belt := func(plan bool) int {
 		a := stageAgent(t, &fakeStageDoor{})
 		a.config.PlanStage = plan
+		a.tools = a.belt()
 		total := 0
 		for _, name := range []string{"stage_result", "plan_edit"} {
 			tool := stageToolNamed(t, a, name)
