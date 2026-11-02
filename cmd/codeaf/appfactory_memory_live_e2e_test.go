@@ -272,6 +272,9 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item) {
 			}
 		}
 		workEnd := phase.Started
+		if phase.Kind == factory.StageCheck {
+			workEnd = phase.At
+		}
 		for _, row := range calls {
 			at, _ := time.Parse(time.RFC3339Nano, row.Time)
 			if row.Tag != "memory" && at.After(workEnd) && !at.After(phase.At) {

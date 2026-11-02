@@ -24,3 +24,6 @@ identities, and charge the same job instead of remaining pending indefinitely.
 
 Memory spending cannot revoke a successful stage result. Admission to the next
 step still sees the full job spend, including late memory receipts.
+
+Pending provider receipt recovery still has the ordinary-chat quit limit: it is
+not durable, and quitting before the receipt arrives can leave a charge unpriced.

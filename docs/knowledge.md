@@ -48,11 +48,14 @@ An owned handle binds admission and billing through `Vault.WithCalls`; its sink
 banks each provider receipt through the agent's existing ledger and job meter.
 The standalone application worker uses the same ledger with no invented job.
 
-Job journals carry a durable `.knowledge-job` marker. History inventory marks
+Job journals carry a durable `.knowledge-job` marker. Pre-upgrade
+`factory-owner.json` markers also retain ownership without a roster entry. History inventory marks
 those journals as owned, and source admission retains a scheduling-only `job` flag. The
 process compiler excludes owned sources. Persisted factory team memberships
 also identify older job journals, including closed teams, so existing pending
-sources are reclassified without model calls. Each finished owned turn scans its
+sources are reclassified without model calls. Delegated `task:<owner>:...`
+reports keep their source identities and compile with the owner’s finished turn,
+charged to that job. Each finished owned turn scans its
 journal and runs one compilation under that turn's cancellation context before
 the event stream closes. The compiler checks owner admission before requests
 and retries. Pause and Close therefore cannot leave an independent worker
@@ -68,6 +71,17 @@ Build request it consumed, so a forced flush alone cannot buy another refinement
 pass on unchanged sources. Failed input is attempted once;
 new sources or an explicit Build permit another attempt. Historical unrecorded costs
 are not backfilled.
+
+A successful stage result is retained even when deferred memory spending reaches
+its cap. The runner records the finished phase before checking admission for the
+next unfinished step. Existing admission checks measured spend, not a prediction
+of the next call's price, so an admitted call can cross the remaining budget.
+
+Receipt recovery has the ordinary turn's existing quit limit: generation IDs and
+pending recovery live in the provider client's in-memory queue. Neither ordinary
+turns nor memory persist that queue or join it during application shutdown. A
+receipt arriving while the process remains alive is charged to its owner; quitting
+before recovery finishes can leave that paid call unpriced in the ledger.
 
 ## Storage authority
 

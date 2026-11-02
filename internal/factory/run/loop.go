@@ -997,7 +997,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 		}
 		lp.fold(c, it, st, i, res)
-		if !lp.capCheck(c, i, name) {
+		// Completed work is recorded before the next step asks for admission.
+		// Optional memory charges cannot turn this phase back into waiting.
+		if !factory.Met(st, res) && !lp.capCheck(c, i, name) {
 			return false
 		}
 		if res.JobBudgetStopped {

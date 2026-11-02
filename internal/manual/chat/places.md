@@ -727,6 +727,16 @@ subjects in your chats, without fixed project categories.
 Memory model requests appear in Spending under the `memory` role. Requests
 owned by a factory job also count toward that job's spending and budget.
 
+A memory charge cannot undo a successful step. Completed work stays done;
+the next unfinished step checks the job's full spending before it starts.
+Delegated task reports feed their owning job's memory pass and keep their citations.
+Older job ownership markers still exclude paused and ended jobs from idle learning.
+
+If a call is interrupted before its price arrives, codeaf asks for the provider's
+receipt in the background. Quitting before that recovery finishes can leave the
+charge missing from Spending. This limit also applies to ordinary chat calls;
+pending receipt recovery does not survive application quit.
+
 The application process owns the background worker for ordinary saved chats.
 Closing Memory or changing chats does not stop it. When codeaf stops, captured sources and checkpoints stay
 in the database; the next running codeaf process resumes unfinished work.
