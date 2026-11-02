@@ -323,6 +323,18 @@ func TestFactoryStepRerunFromApproveGate(t *testing.T) {
 			lines := append([]string(nil), s.lines...)
 			s.mu.Unlock()
 			for _, line := range lines {
+				if strings.Contains(line, `"runner_offline"`) {
+					t.Errorf("runner_offline event: %s", line)
+				}
+				var envelope struct {
+					Event string `json:"event"`
+				}
+				if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Event != appwire.EventTurnDone && envelope.Event != appwire.EventEntryAdded {
+					continue
+				}
 				var ev struct {
 					Event string `json:"event"`
 					Data  struct {
@@ -339,9 +351,6 @@ func TestFactoryStepRerunFromApproveGate(t *testing.T) {
 				}
 				if ev.Event == appwire.EventEntryAdded && ev.Data.Entry.Agent == chats.Agent && (ev.Data.Entry.ErrorKind == appwire.ErrorStopped || ev.Data.Entry.Text == "stopped" || ev.Data.Entry.Progress != nil && ev.Data.Entry.Progress.Event == string(factory.ProgressStopped)) {
 					t.Errorf("rerun emitted a stopped row: %s", line)
-				}
-				if strings.Contains(line, `"runner_offline"`) {
-					t.Errorf("runner_offline event: %s", line)
 				}
 			}
 			read()
