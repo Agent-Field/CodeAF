@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +21,7 @@ type briefDoor struct {
 	*fakeConversation
 	mu     sync.Mutex
 	answer session.ErrandAnswer
+	fail   error
 	asks   []session.ErrandAsk
 }
 
@@ -26,7 +29,7 @@ func (d *briefDoor) RunErrand(_ context.Context, ask session.ErrandAsk) (session
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.asks = append(d.asks, ask)
-	return d.answer, nil
+	return d.answer, d.fail
 }
 
 const briefDraft = `{"verdict":"Fixed. Retries no longer double-send; 3 tests pass.","verdict_evidence":[{"step":"test","try":1,"kind":"tests"}],` +
@@ -85,6 +88,19 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 		t.Fatalf("failed write = %+v", got)
 	}
 	s.mustFail("factory.job_brief_write", map[string]any{"factory": "f-elsewhere", "job": it.ID}, appwire.CodeNotFound)
+
+	// A refused ask is model_failed on the brief, and its words are logged.
+	var log bytes.Buffer
+	was := errandLog
+	errandLog = &log
+	defer func() { errandLog = was }()
+	door.mu.Lock()
+	door.answer, door.fail = session.ErrandAnswer{}, fmt.Errorf("%w: system and messages are over 49152 bytes", session.ErrErrandAsk)
+	door.mu.Unlock()
+	s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &got)
+	if got.Current.Failure != session.ErrandModelFailed || !strings.Contains(log.String(), "over 49152 bytes") {
+		t.Fatalf("refused write = %+v, log %q", got, log.String())
+	}
 }
 
 // A BURST OF NEWS IS ONE WRITE, of the burst's strongest trigger.
