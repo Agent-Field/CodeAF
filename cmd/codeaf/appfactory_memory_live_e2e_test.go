@@ -210,6 +210,9 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	if gh.count() != 0 {
 		t.Errorf("GitHub requests: %d", gh.count())
 	}
+	// Let the real app's final debounced brief enter the measured call log.
+	t.Logf("allowing %s for the final automatic brief", factory.BriefDebounce+time.Second)
+	time.Sleep(factory.BriefDebounce + time.Second)
 	memoryAwaitReceipts(t, callPath)
 	it, err = floor.Get(id)
 	if err != nil {
@@ -331,7 +334,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 		}
 		for _, row := range calls {
 			at, _ := time.Parse(time.RFC3339Nano, row.Time)
-			if row.Tag != "memory" && at.After(workEnd) && !at.After(phase.At) {
+			if row.Tag == "turn" && at.After(workEnd) && !at.After(phase.At) {
 				workEnd = at
 			}
 		}
@@ -398,7 +401,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD fl
 // The live fixture does not turn the two-second user wait into a receipt wait.
 func memoryAwaitReceipts(t *testing.T, path string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(provider.ReceiptWait)
 	for {
 		file, err := os.Open(path)
 		if err != nil {
