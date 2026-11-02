@@ -319,6 +319,9 @@ func compilerSourceSelection(ctx context.Context, payload string) (string, []any
 	if !bound && provider.SessionFrom(ctx) != "" {
 		owners = []string{provider.SessionFrom(ctx)}
 	}
+	if bound && len(owners) == 0 {
+		return "0", nil
+	}
 	if len(owners) == 0 {
 		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0", nil
 	}
