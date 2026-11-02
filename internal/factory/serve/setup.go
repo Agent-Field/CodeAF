@@ -29,6 +29,18 @@ import (
 
 const setupWait = 40 * time.Second
 
+// setupVerbContinue ends reading before every selected repository is read.
+const setupVerbContinue = "continue"
+
+// setupReadSkipped is the read state of a selected repository whose reading
+// Continue ended: whatever it already brought stays held in Backlog, and the
+// rest of its issues were never read.
+const setupReadSkipped = "skipped"
+
+// githubKBPerMB turns the repository size GitHub quotes in kilobytes into the
+// megabytes setup shows.
+const githubKBPerMB = 1024
+
 // setupState keeps only public facts. Credentials remain behind the host's existing GitHub door.
 type setupState struct {
 	View    api.FactorySetup     `json:"view"`
@@ -238,6 +250,7 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 			FullName string `json:"full_name"`
 			Open     int    `json:"open_issues_count"`
 			Archived bool   `json:"archived"`
+			SizeKB   int    `json:"size"`
 		}
 		if _, err = h.setupJSON(ctx, fmt.Sprintf("/user/repos?per_page=100&sort=pushed&page=%d", page), token, &rows); err != nil {
 			return err
@@ -260,7 +273,7 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 			if err != nil {
 				return err
 			}
-			repo := api.SetupRepo{ID: row.FullName, FullName: row.FullName, OpenIssues: row.Open, Archived: row.Archived, Selected: slices.Contains(watched, row.FullName), Read: "next", Clone: "missing", SuggestedCheckout: filepath.Join(userHome, "code", strings.ReplaceAll(row.FullName, "/", "-"))}
+			repo := api.SetupRepo{ID: row.FullName, FullName: row.FullName, OpenIssues: row.Open, Archived: row.Archived, Selected: slices.Contains(watched, row.FullName), Read: "next", Clone: "missing", CloneMB: (row.SizeKB + githubKBPerMB - 1) / githubKBPerMB, SuggestedCheckout: filepath.Join(userHome, "code", strings.ReplaceAll(row.FullName, "/", "-"))}
 			if n := exact[i]; n != nil {
 				repo.OpenIssues, repo.OpenIssuesExact = *n, true
 			}
@@ -295,24 +308,20 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOperator(w, r) || !h.requireVerb(w, h.config.Store != nil) {
 		return
 	}
+	var body api.FactorySetupRequest
+	if r.Method == "POST" && !h.decode(w, r, &body, false) {
+		return
+	}
+	id, err := setupID(r.PathValue("id"), body.ID)
+	if err != nil {
+		h.fail(w, 422, err.Error())
+		return
+	}
+	continuing := body.Verb == setupVerbContinue && h.stopSetupReader(id)
 	h.setupMu.Lock()
 	defer h.setupMu.Unlock()
-	id := r.PathValue("id")
-	var body api.FactorySetupRequest
-	if r.Method == "POST" {
-		if !h.decode(w, r, &body, false) {
-			return
-		}
-		if id == "" {
-			id = body.ID
-		} else if body.ID != "" && body.ID != id {
-			h.fail(w, 422, "setup id does not match the route")
-			return
-		}
-	}
-	if id == "" {
-		h.fail(w, 422, "setup needs a factory id")
-		return
+	if continuing {
+		h.setupContinuing = false
 	}
 	out, err := h.loadSetup(id)
 	if h.failed(w, err) {
@@ -353,6 +362,51 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 	}
 	h.startSetup(out)
 	h.write(w, 200, out.View)
+}
+
+// setupID is the setup the request names, by its route or its body, which
+// must agree when both name one.
+func setupID(route, body string) (string, error) {
+	switch {
+	case route != "" && body != "" && body != route:
+		return "", errors.New("setup id does not match the route")
+	case route != "":
+		return route, nil
+	case body != "":
+		return body, nil
+	}
+	return "", errors.New("setup needs a factory id")
+}
+
+// stopSetupReader stops a reader that is still reading issues and waits until
+// it has saved its last page and let go of the poller lock, so Continue
+// decides from what was really read. A clone is never stopped by it. It
+// answers whether it stopped one; the caller then holds setupContinuing and
+// gives it up once it holds setupMu again.
+func (h *Handler) stopSetupReader(id string) bool {
+	cancel, done := h.setupReader(id)
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	<-done
+	return true
+}
+
+// setupReader is the running reader's stop and finish, or nothing when no
+// reader is reading issues, another Continue is already stopping it, or
+// Continue would be refused anyway, so a refused Continue leaves reading
+// running. Taking the stop also takes setupContinuing, which keeps any other
+// request from starting a reader before this Continue saves its step.
+func (h *Handler) setupReader(id string) (context.CancelFunc, chan struct{}) {
+	h.setupMu.Lock()
+	defer h.setupMu.Unlock()
+	saved, err := h.loadSetup(id)
+	if !h.setupBusy || h.setupContinuing || err != nil || saved.View.State != "reading" || !slices.ContainsFunc(saved.View.Repos, setupReadWhole) {
+		return nil, nil
+	}
+	h.setupContinuing = true
+	return h.setupCancel, h.setupDone
 }
 
 func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.FactorySetupRequest) error {
@@ -462,6 +516,8 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 		}
 		// New repositories become watched only after their imports are held, so a poll cannot start them first.
 		out.View.State = "reading"
+	case setupVerbContinue:
+		return h.continueSetup(out)
 	case "retry_read", "retry":
 		if out.View.State != "reading" || repo == nil || repo.Read != "waiting" || h.clock().Sub(out.Waiting[repo.ID]) < setupWait {
 			return errors.New("This repo is still waiting")
@@ -538,7 +594,7 @@ func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) erro
 
 // startSetup keeps ingestion and cloning alive when a window leaves. Each completed step is saved before the next.
 func (h *Handler) startSetup(out setupState) {
-	if h.setupBusy || h.setupClosed {
+	if h.setupBusy || h.setupClosed || h.setupContinuing {
 		return
 	}
 	todo := out.View.State == "reading" && slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && (r.Read == "next" || r.Read == "reading") })
@@ -636,28 +692,69 @@ func (h *Handler) runSetup(ctx context.Context, out setupState) {
 			return
 		}
 	}
-	if out.View.State == "reading" && !slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && r.Read != "done" && r.Read != "empty" }) {
-		selected := []string{}
-		for _, repo := range out.View.Repos {
-			if repo.Selected {
-				selected = append(selected, repo.ID)
-			}
-		}
-		h.reposMu.Lock()
-		err := h.config.Store.SetRepos(selected)
-		h.reposMu.Unlock()
-		if err != nil {
+	if out.View.State == "reading" && !slices.ContainsFunc(out.View.Repos, setupReadPending) {
+		if err := h.finishSetupReading(&out); err != nil {
 			words := redact.Secrets(err.Error())
 			out.View.GitHub.Error = &words
-			_ = h.setupProgress(out)
-			return
-		}
-		out.View.State = "done"
-		if slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && r.Clone != "found" }) {
-			out.View.State = "checkouts"
 		}
 	}
 	_ = h.setupProgress(out)
+}
+
+// setupReadWhole is a selected repository whose open issues were all read.
+func setupReadWhole(r api.SetupRepo) bool {
+	return r.Selected && (r.Read == "done" || r.Read == "empty")
+}
+
+// setupReadPending is a selected repository not yet read whole.
+func setupReadPending(r api.SetupRepo) bool { return r.Selected && !setupReadWhole(r) }
+
+// continueSetup ends reading now. Repositories already read keep their state;
+// every other selected one stops being read and says skipped. At least one
+// repository must be read whole, because setup watches only those.
+func (h *Handler) continueSetup(out *setupState) error {
+	if out.View.State != "reading" {
+		return errors.New("Continue ends reading; setup is not reading")
+	}
+	if !slices.ContainsFunc(out.View.Repos, setupReadWhole) {
+		return errors.New("Wait until one repo is read")
+	}
+	for i := range out.View.Repos {
+		repo := &out.View.Repos[i]
+		if setupReadPending(*repo) {
+			repo.Read, repo.ResumesAt, repo.WaitingS = setupReadSkipped, nil, 0
+			delete(out.Waiting, repo.ID)
+		}
+	}
+	return h.finishSetupReading(out)
+}
+
+// finishSetupReading watches the repositories read whole and moves setup on
+// to checkouts, or to done when every selected one already has its checkout.
+// New repositories become watched only after their imports are held, so a
+// poll cannot start them first: a repository whose reading was skipped stays
+// unwatched, because a poll would bring its unread issues in unheld.
+func (h *Handler) finishSetupReading(out *setupState) error {
+	watched := []string{}
+	for _, repo := range out.View.Repos {
+		if setupReadWhole(repo) {
+			watched = append(watched, repo.ID)
+		}
+	}
+	if err := h.setSetupRepos(watched); err != nil {
+		return err
+	}
+	out.View.State = "done"
+	if slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && r.Clone != "found" }) {
+		out.View.State = "checkouts"
+	}
+	return nil
+}
+
+func (h *Handler) setSetupRepos(repos []string) error {
+	h.reposMu.Lock()
+	defer h.reposMu.Unlock()
+	return h.config.Store.SetRepos(repos)
 }
 
 // setupPipelineSource reads the one selected repository's pipeline through the

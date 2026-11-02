@@ -343,6 +343,12 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
+## first-run setup in the app — Continue before every repository is read, skipped, checkout folder room
+
+**Continue ends reading early.** While setup reads open issues into Backlog, Continue stops the read in progress once at least one chosen repository is read, and moves on to checkouts, or straight to done when every chosen repository already has a checkout; before then it is refused with `Wait until one repo is read`. Repositories already read stay read and are watched. Each one still reading or waiting says skipped: the issues it already brought stay in Backlog, held until you start them, and it is not watched, so it is off until you turn it on in Repos. Back from checkouts reads every chosen repository again.
+
+**Setup shows each repository's size** in megabytes, as GitHub quotes it, and checks a checkout folder before cloning: whether you can write there and how much free space its disk has, measured at the nearest folder that already exists. A file in the way says `~/notes.txt is a file, not a folder`, and a folder you may not open says `codeaf cannot look inside ~/private`. Checking makes no folder; on Windows it makes and removes one small check file to learn whether you can write there.
+
 ## how big is a job — size of a job, complexity, the size: filter, why there is no size, risky, no price guess
 
 A job's size comes from the first of these that exists, and nothing else is a size:
