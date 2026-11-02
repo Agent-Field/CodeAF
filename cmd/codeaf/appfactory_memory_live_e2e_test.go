@@ -109,6 +109,7 @@ func TestLiveMemoryStageMeasure(t *testing.T) {
 	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
 
 	w := newFactoryWire(t, testFactoryHub(t))
+	w.backend.open = appOpenInProcess
 	gh := &refusingGitHub{}
 	local := &w.backend.local
 	local.githubHTTP = gh.client()
