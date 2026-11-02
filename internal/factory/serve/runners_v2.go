@@ -234,7 +234,13 @@ func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
 		}
 		over = n
 	}
-	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over})
+	asleep := false
+	if h.workers != nil {
+		h.workers.mu.RLock()
+		asleep = h.workers.machineAsleepLocked(self)
+		h.workers.mu.RUnlock()
+	}
+	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over, Asleep: asleep})
 }
 
 // registryFile is the runner registry's document under the factory root.
@@ -268,19 +274,28 @@ func (s *workerService) saveRegistry() error {
 	return os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile))
 }
 
+// readRegistry is the saved registry, empty when none was ever saved.
+func readRegistry(root string) (map[string]registeredWorker, error) {
+	rows := map[string]registeredWorker{}
+	data, err := os.ReadFile(filepath.Join(root, registryFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return rows, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(data, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (s *workerService) loadRegistry() error {
 	if s.st == nil {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(s.st.Root(), registryFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	rows, err := readRegistry(s.st.Root())
 	if err != nil {
-		return err
-	}
-	rows := map[string]registeredWorker{}
-	if err = json.Unmarshal(data, &rows); err != nil {
 		return err
 	}
 	for key, row := range rows {
