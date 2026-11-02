@@ -23,9 +23,9 @@ import (
 // doors, because they only write files under the desk's lock: no process owns
 // the floor.
 type Doors struct {
-	desk *Desk
-	read StartRead
-	talk run.Talk
+	desk    *Desk
+	read    StartRead
+	resumed func(int)
 }
 
 // StartRead is one job's pipeline read with the factory's own rules in it, as
@@ -50,7 +50,7 @@ func (d *Doors) WithStartRead(read StartRead) *Doors {
 
 // WithTalk gives explicit Resume the same manager conversation writer as the runner.
 func (d *Doors) WithTalk(talk run.Talk) *Doors {
-	d.talk = talk
+	d.resumed = run.ResumeReporter(d.desk.store, talk)
 	return d
 }
 
@@ -237,7 +237,7 @@ func (d *Doors) Pause(id int) error {
 // queued job nobody holds yet is held where it is: no worker takes it until a
 // person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
-	var transcript string
+	resumed := false
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if !on && !factory.UnderWay(*it) {
 			return false, fmt.Errorf("%s is not paused", it.Ref())
@@ -259,7 +259,7 @@ func (d *Doors) Hold(id int, on bool) error {
 			if err := run.ResumeItem(it, now); err != nil {
 				return false, err
 			}
-			transcript = it.Talk
+			resumed = true
 			return false, nil
 		}
 		it.Stream.Paused = on
@@ -269,12 +269,8 @@ func (d *Doors) Hold(id int, on bool) error {
 	if err != nil {
 		return err
 	}
-	if d.talk != nil && transcript != "" {
-		err := d.talk.Say(transcript, run.ResumeNote, nil)
-		if errors.Is(err, run.ErrTalkGone) {
-			return nil
-		}
-		return err
+	if resumed && d.resumed != nil {
+		d.resumed(id)
 	}
 	return nil
 }

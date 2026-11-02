@@ -555,11 +555,23 @@ func TestFactoryPauseResumeRule(t *testing.T) {
 		t.Run(method+" after stop", func(t *testing.T) {
 			s, status := newPauseSetup(t)
 			floor := s.backend.local.host.floor
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning,
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateRunning, Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Until: factory.UntilDone}},
 				Stream: &factory.Stream{Paused: true, Spent: .25, Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1, Chat: "saved-chat"}}}})
 			if err != nil {
 				t.Fatal(err)
 			}
+			mirror, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var calls atomic.Int32
+			maker := &factoryrun.FakeMaker{Script: func(ctx context.Context, c *factoryrun.FakeConversation) {
+				calls.Add(1)
+				<-ctx.Done()
+			}}
+			runner := factoryrun.New(factoryrun.Options{Store: mirror, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.NewChatExecutor(maker)}})
+			startPauseWorker(t, s, status, runner, mirror)
+
 			params := map[string]any{"factory": status.Factory, "job": it.ID}
 			var before api.Job
 			s.must("factory.job", params, &before)
@@ -577,11 +589,16 @@ func TestFactoryPauseResumeRule(t *testing.T) {
 			if code != appwire.CodeConflict || !strings.Contains(words, want) {
 				t.Errorf("%s: code=%s words=%q, want conflict containing %q", method, code, words, want)
 			}
+			time.Sleep(100 * time.Millisecond)
+			if calls.Load() != 0 {
+				t.Fatalf("refused action started %d model calls", calls.Load())
+			}
+
 			var after api.Job
 			s.must("factory.job", params, &after)
 			var recorded appwire.FactoryActivity
 			s.must("factory.activity", map[string]any{"factory": status.Factory}, &recorded)
-			if !reflect.DeepEqual(stopped, after) || !reflect.DeepEqual(activity, recorded) {
+			if !reflect.DeepEqual(stopped, after) || !reflect.DeepEqual(jobActivity(activity, it.ID), jobActivity(recorded, it.ID)) {
 				t.Fatal("refused action changed job or record")
 			}
 			desk, err := lease.Open(floor, lease.Options{})
@@ -703,4 +720,14 @@ func TestFactoryResumeChatRetries(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+func jobActivity(activity appwire.FactoryActivity, id int) []record.Event {
+	var events []record.Event
+	for _, event := range activity.Events {
+		if event.Job == id {
+			events = append(events, event)
+		}
+	}
+	return events
 }
