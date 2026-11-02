@@ -138,7 +138,11 @@ type FactoryCapabilities struct {
 	// SpendByRepo: factory.spend_by_repo is served (feature
 	// factory.spend_by_repo). True only for an engine that implements
 	// [FactorySpender]; a factory older than the route answers not found.
-	SpendByRepo    bool `json:"spend_by_repo"`
+	SpendByRepo bool `json:"spend_by_repo"`
+	// RepoFacts: factory.repo_facts is served (feature factory.repo_facts).
+	// True only for an engine that implements [FactoryRepoFactsReader]; a
+	// factory older than the route answers not found.
+	RepoFacts      bool `json:"repo_facts"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }

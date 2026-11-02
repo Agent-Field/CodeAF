@@ -221,6 +221,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
+	h.read("/v1/repos/{owner}/{repo}/facts", h.repoFacts)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
 	h.route("/v1/github/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollGitHub})

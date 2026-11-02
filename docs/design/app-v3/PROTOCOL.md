@@ -285,6 +285,7 @@ decides which combinations are accepted.
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
@@ -310,6 +311,19 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+
+An engine whose hello carries `factory.repo_facts` serves
+`factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
+counted by the factory over every job it keeps (`GET
+/v1/repos/{owner}/{repo}/facts`), as `{repo, as_of, time_zone?, days, months,
+facts, truncated?}`. Each fact is `{id, kind, value, phrase, about?, source}`
+with `source` beginning `engine:`: jobs finished and pull requests merged in
+the last `days` (1 to 366, default 30) and this month, spend for each of the
+last `months` calendar months (1 to 12, default 3) by the rule of
+`factory.spend_by_repo`, jobs, rounds and questions by area by the rule of
+`factory.job_area`, and jobs stuck on one step for a day or more. At most 20
+areas and 20 stuck steps are answered, busiest first (at most 97 facts);
+`truncated` counts the rest. A repository the caller cannot read is not found.
 
 An engine whose hello carries `factory.job_area` sends `area` on each job of
 `factory.queue` and on `factory.job`: the part of the repository the job's

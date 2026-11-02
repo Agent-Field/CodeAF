@@ -71,7 +71,7 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 			sh.noteHour(it.Created, now)
 		}
 		if it.State == StateShipped {
-			if at := shippedAt(it); at.After(started) {
+			if at := ShippedAt(it); at.After(started) {
 				sh.Shipped++
 				sh.Shipping = append(sh.Shipping, it.Ref())
 				sh.noteHour(at, now)
@@ -129,7 +129,9 @@ func (sh *Shift) noteHour(t, now time.Time) {
 	sh.Hours[t.In(now.Location()).Hour()]++
 }
 
-func shippedAt(it Item) time.Time {
+// ShippedAt is when a shipped job finished: its run's end, or its last
+// change when the run kept no end.
+func ShippedAt(it Item) time.Time {
 	if it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended
 	}
@@ -207,6 +209,14 @@ func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err 
 		return start, end, fmt.Errorf("a spend read covers at most %d days", SpendDaysMax)
 	}
 	return start, last.AddDate(0, 0, 1), nil
+}
+
+// SpentIn is the job's whole spend ([JobSpent]) when it is placed ([SpentAt])
+// in [start, end), and false when it spent nothing or is placed outside. It is
+// the one placement rule every spend-by-day read counts by.
+func SpentIn(it Item, start, end time.Time) (float64, bool) {
+	usd, at := JobSpent(it), SpentAt(it)
+	return usd, usd > 0 && !at.Before(start) && at.Before(end)
 }
 
 // SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its

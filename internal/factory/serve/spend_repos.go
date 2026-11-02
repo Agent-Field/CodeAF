@@ -40,8 +40,9 @@ func (h *Handler) spendRepos(w http.ResponseWriter, r *http.Request) {
 	out := api.SpendByRepo{From: q.Get("from"), To: q.Get("to"), TimeZone: zoneName(zone, os.LookupEnv, os.Readlink), Repos: []api.RepoSpend{}}
 	index := map[string]int{}
 	for _, it := range snap.Items {
-		repo, usd, at := factory.RepoOf(it), factory.JobSpent(it), factory.SpentAt(it)
-		if repo == "" || usd <= 0 || at.Before(start) || !at.Before(end) {
+		repo := factory.RepoOf(it)
+		usd, in := factory.SpentIn(it, start, end)
+		if repo == "" || !in {
 			continue
 		}
 		i, ok := index[repo]
