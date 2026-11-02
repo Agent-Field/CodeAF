@@ -20,6 +20,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 	for _, action := range []string{"try again", "send back to Write", "give back", "stop job", "stop step"} {
 		t.Run(action, func(t *testing.T) {
 			s := newLocalSetup(t)
+			s.backend.emit = s.server
 			t.Setenv(factoryBenchesEnv, "1")
 			model := newStageModel(t)
 			t.Setenv("OPENROUTER_API_KEY", "test-key")
