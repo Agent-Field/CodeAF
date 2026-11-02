@@ -253,7 +253,7 @@ decides which combinations are accepted.
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
-| `factory.job_start` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_start` | `in.FactoryJobStartParams` | `FactoryJobActed` |
 | `factory.job_step_edit` | `in.FactoryJobStepEditParams` | `FactoryJobStepEdited` |
 | `factory.job_step_edits_read` | `in.FactoryJobStepEditsParams` | `FactoryJobStepEdits` |
 | `factory.job_step_rerun` | `in.FactoryJobStepParams` | `FactoryJobActed` |
