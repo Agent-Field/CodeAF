@@ -313,6 +313,7 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
