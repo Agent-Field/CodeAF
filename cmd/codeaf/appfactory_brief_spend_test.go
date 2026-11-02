@@ -86,7 +86,14 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			if outcome == "remote worker" {
 				var chats appwire.FactoryJobChats
 				s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
-				if err := floor.Annotate(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; cur.Assignee = "owner"; return nil }); err != nil {
+				// local_start also runs this app's worker. Only the simulated
+				// remote machine may take this job, independent of test order.
+				if err := floor.Annotate(it.ID, func(cur *factory.Item) error {
+					cur.State = factory.StateQueued
+					cur.Assignee = "owner"
+					cur.WorktreeMachine = "remote-fixture"
+					return nil
+				}); err != nil {
 					t.Fatal(err)
 				}
 				service := httptest.NewServer(s.backend.local.host.handler)
@@ -100,7 +107,8 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 				var ok bool
 				held, ok, err = worker.Pull(ctx)
 				if err != nil || !ok || held.Job.ID != it.ID {
-					t.Fatalf("pull: %+v ok=%v err=%v", held, ok, err)
+					current, _ := floor.Get(it.ID)
+					t.Fatalf("pull: job=%d ok=%v err=%v; current state=%s machine=%s", held.Job.ID, ok, err, current.State, current.WorktreeMachine)
 				}
 				baseline, err = floor.Get(it.ID)
 				if err != nil {
