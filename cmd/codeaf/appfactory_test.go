@@ -171,6 +171,9 @@ type fakeGitHub struct {
 	started int
 	granted map[string]bool
 	logins  map[string]string
+	// rest, when set, answers a GitHub REST request the switch below does not
+	// know, with its status and body; ok false falls through to the default.
+	rest func(r *http.Request) (status int, body string, ok bool)
 }
 
 func newFakeGitHub() *fakeGitHub {
@@ -185,6 +188,11 @@ func (g *fakeGitHub) client() *http.Client {
 		defer g.mu.Unlock()
 		_ = r.ParseForm()
 		body := `{}`
+		if g.rest != nil {
+			if status, answer, ok := g.rest(r); ok {
+				return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(answer))}, nil
+			}
+		}
 		switch r.URL.String() {
 		case "https://github.com/login/device/code":
 			g.started++

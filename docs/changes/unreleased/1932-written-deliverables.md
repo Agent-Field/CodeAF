@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Conversation writes and edits record deliverables with stable identities
-pr: 0
+pr: 1932
 surface: [engine, chat, docs]
 invalidates:
   - "The conversation's write observer discarded overwrites, and edit had no observer, so a successful mutation could leave Files empty or its content hash stale. Its own writes, appends and edits now record their exact authored bytes inside deliverable roots and retain the ID on rewrites."

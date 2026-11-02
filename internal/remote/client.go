@@ -1834,7 +1834,7 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 // ([Welcome.QueuedMarks]); to any other the words go without it, so the record
 // reads "not known to be queued" rather than carrying a fact it dropped.
 func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
-	if err := a.refuseUnkeptClientID(message); err != nil {
+	if err := a.refuseUnkeptMarks(message); err != nil {
 		return nil, err
 	}
 	message.Queued = message.Queued && a.QueuedMarksKnown()
@@ -1859,7 +1859,7 @@ func (a *Agent) SubmitComposed(ctx context.Context, message session.Submission) 
 	if !a.ComposedKnown() {
 		return session.SubmissionReceipt{}, nil, errors.New("engine: this engine cannot take pictures with a message; update it before sending")
 	}
-	if err := a.refuseUnkeptClientID(message); err != nil {
+	if err := a.refuseUnkeptMarks(message); err != nil {
 		return session.SubmissionReceipt{}, nil, err
 	}
 	args := argsOf(message)
@@ -1893,7 +1893,7 @@ func (a *Agent) ComposedKnown() bool {
 // alone it would lose what the person read, and the correction would already be
 // in the turn. A submission with no mark is Steer.
 func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, error) {
-	if err := a.refuseUnkeptClientID(message); err != nil {
+	if err := a.refuseUnkeptMarks(message); err != nil {
 		return nil, err
 	}
 	if argsOf(message).composed() {
@@ -1913,7 +1913,7 @@ func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, 
 // to an engine that has not said it keeps a follow-up's mark. Its stream is
 // remembered for the take-back exactly as a plain follow-up's is.
 func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Event, error) {
-	if err := a.refuseUnkeptClientID(message); err != nil {
+	if err := a.refuseUnkeptMarks(message); err != nil {
 		return nil, err
 	}
 	if argsOf(message).composed() {
@@ -2975,11 +2975,21 @@ func (a *Agent) MessageClientIDsKnown() bool {
 	return a.welcomeSays(func(w Welcome) bool { return w.MessageClientIDs })
 }
 
-// refuseUnkeptClientID is the refusal for a message whose ClientID this engine
-// cannot keep, and nil for one that carries none or whose engine can.
-func (a *Agent) refuseUnkeptClientID(message session.Submission) error {
+// MessageFromKnown is whether the engine keeps who sent a message on the
+// person's behalf ([Welcome.MessageFrom]).
+func (a *Agent) MessageFromKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageFrom })
+}
+
+// refuseUnkeptMarks is the refusal for a message carrying a client id, a
+// sender or an attachment source this engine cannot keep, and nil for one that
+// carries none or whose engine can.
+func (a *Agent) refuseUnkeptMarks(message session.Submission) error {
 	if message.ClientID != "" && !a.MessageClientIDsKnown() {
 		return errors.New("engine: this engine cannot keep a message's client id; update it before sending")
+	}
+	if message.From != "" && !a.MessageFromKnown() {
+		return errors.New("engine: this engine cannot keep who sent a message; update it before sending")
 	}
 	for _, attachment := range message.Attachments {
 		if attachment.Source != nil && !a.AttachmentSourcesKnown() {
