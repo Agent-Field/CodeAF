@@ -2503,6 +2503,9 @@ type Config struct {
 	// context ends. A standalone job conversation uses its own close lifetime.
 	JobContext context.Context
 
+	// JobPendingSpend keeps the worker report path open for paid memory receipts.
+	JobPendingSpend func() func()
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.

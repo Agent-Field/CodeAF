@@ -84,6 +84,10 @@ its cap. The runner records the finished phase before checking admission for the
 next unfinished step. Existing admission checks measured spend, not a prediction
 of the next call's price, so an admitted call can cross the remaining budget.
 
+After job work finishes, the existing worker report path stays open while memory
+receipts settle, up to the provider recovery ceiling plus one second. This keeps
+late prices in the job header without extending a step’s two-second memory wait.
+
 Receipt recovery has the ordinary turn's existing quit limit: generation IDs and
 pending recovery live in the provider client's in-memory queue. Neither ordinary
 turns nor memory persist that queue or join it during application shutdown. A

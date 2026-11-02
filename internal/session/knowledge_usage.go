@@ -52,6 +52,9 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 		a.stampSpend()
 	}
 	ctx = provider.WithBilling(ctx, bill)
+	if a.config.JobPendingSpend != nil {
+		ctx = provider.WithReceiptPending(ctx, a.config.JobPendingSpend)
+	}
 	ctx = provider.WithReconcile(ctx, func(r provider.Reconciled) {
 		if r.Found {
 			bill(r.Billed)
@@ -113,7 +116,12 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	j.mu.Lock()
 	j.compile = work
 	j.mu.Unlock()
+	settled := func() {}
+	if a.config.JobPendingSpend != nil {
+		settled = a.config.JobPendingSpend()
+	}
 	go func() {
+		defer settled()
 		defer close(work.done)
 		defer cancel()
 		defer detach()

@@ -32,3 +32,6 @@ not durable, and quitting before the receipt arrives can leave a charge unpriced
 
 The next admitted job pass includes earlier steps skipped while another pass was
 running, preserving their searchable evidence and original citations.
+
+The worker keeps reporting while final memory receipts settle, so late prices
+reach the job header as well as Spending without extending a step’s memory wait.
