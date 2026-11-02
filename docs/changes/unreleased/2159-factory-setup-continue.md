@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Factory setup can continue before every repository is read, check a checkout folder, and quote repository sizes
+title: Factory setup can continue past reading, check a checkout folder, and show repository sizes
 pr: 2159
 surface: [engine]
 invalidates:
