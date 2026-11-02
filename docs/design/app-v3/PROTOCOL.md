@@ -319,7 +319,8 @@ proof, novelty}`, each `{score 0..2, why?, low?}` (`low`: judged without the
 repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
 (`small` 0–3, `medium` 4–6, `large` 7–10); `triage.est` is gone. An open job
 carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?}`: the
-median to the 80th percentile of the `n` nearest finished jobs, in `repo`
+10th to the 90th percentile of the `n` nearest finished jobs (about eight in
+ten land inside), in `repo`
 (absent: every repository), and is absent while fewer than five similar jobs
 finished. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
 finished jobs spent past this job's spend so far, over the `n` that spent at

@@ -354,7 +354,7 @@ Limits: items read before this change show no size until their text changes or s
 
 ## what will a job cost — estimate, cost range, from N jobs, no cost history yet, max_cost
 
-A job's cost and time are measured from the factory's own finished jobs, never guessed by a model. An open job's range is the median to the 80th percentile of up to 12 finished jobs nearest to it: the same repository first, then every repository; near means close on the five complexity factors and the same kind of work. The app shows it with its basis, as `$0.40–1.10 · from 12 jobs in api`, and minutes the same way. A dropped job is not counted, because it spent only what it spent before it was dropped; a job run again counts once, with its latest run.
+A job's cost and time are measured from the factory's own finished jobs, never guessed by a model. An open job's range is the 10th to the 90th percentile of up to 12 finished jobs nearest to it, so about eight in ten similar jobs spent inside it: the same repository first, then every repository; near means close on the five complexity factors and the same kind of work. The app shows it with its basis, as `$0.40–1.10 · from 12 jobs in api`, and minutes the same way. A dropped job is not counted, because it spent only what it spent before it was dropped; a job run again counts once, with its latest run.
 
 A running job also has what is likely left: what similar finished jobs spent past this job's spend so far, over those that got that far (`about $4 more to finish`).
 
