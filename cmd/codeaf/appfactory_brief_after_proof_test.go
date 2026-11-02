@@ -1,0 +1,175 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
+
+// The wire reads a real solo factory; the real runner finishes proof. Only
+// the brief model is scripted, so these checks prove inputs and scheduling.
+func TestAppFactoryBriefAfterProof(t *testing.T) {
+	t.Run("publish wait refreshes despite cost guard", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateNew)
+		proof := make(chan struct{})
+		release := make(chan struct{})
+		defer close(release)
+		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor, Exec: map[factory.StageKind]factoryrun.Executor{
+			factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+				if job.Stage.Name == "proof" {
+					close(proof)
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return factory.StageResult{}, ctx.Err()
+					}
+				}
+				return factory.StageResult{Done: true, Output: "Checked the change", Claims: []factory.Claim{{Text: "The change works", OK: true, Evidence: "scripted check", Medium: "test"}}}, nil
+			}),
+		}})
+		if err := r.Launch(id); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-proof:
+		case <-time.After(5 * time.Second):
+			t.Fatal("runner never reached proof")
+		}
+		var written appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &written)
+		if !written.Kept || written.Current.Brief.AfterStep != "review" {
+			t.Fatalf("seed brief = %+v", written)
+		}
+		cur, _ := s.backend.local.host.floor.Get(id)
+		if factory.BriefCostAllowed(cur) {
+			t.Fatal("fixture does not refuse step writes")
+		}
+		// Keep release owned by the defer, and let the executor continue now.
+		release <- struct{}{}
+		read := briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+		if briefBody(read)["after_step"] != "proof" {
+			t.Fatalf("after_step = %v", briefBody(read)["after_step"])
+		}
+		door.mu.Lock()
+		input := door.asks[len(door.asks)-1].Messages[0].Text
+		door.mu.Unlock()
+		if !strings.Contains(input, `"waiting_on_proof_approval":true`) {
+			t.Fatalf("writer lacks proof approval wait: %s", input)
+		}
+	})
+	t.Run("publication refresh names the PR", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateLanded)
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		// A publication must change the input even when proof already finished.
+		before, _ := s.backend.local.host.floor.Get(id)
+		briefPublishReceipt(t, s, id)
+		after, _ := s.backend.local.host.floor.Get(id)
+		if factory.BriefInputHash(factory.BriefInputOf(before)) == factory.BriefInputHash(factory.BriefInputOf(after)) {
+			t.Error("publication leaves brief input hash unchanged")
+		}
+		read := briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+		if read["verdict_behind"] != false {
+			t.Errorf("fresh verdict_behind = %v", read["verdict_behind"])
+		}
+		door.mu.Lock()
+		input := door.asks[len(door.asks)-1].Messages[0].Text
+		door.mu.Unlock()
+		if !strings.Contains(input, `"number":73`) || !strings.Contains(input, `"state":"open"`) {
+			t.Fatalf("writer lacks PR receipt: %s", input)
+		}
+	})
+	t.Run("failed end write keeps an out of date verdict", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateLanded)
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		door.mu.Lock()
+		door.answer = session.ErrandAnswer{Reason: session.ErrandDeadline}
+		door.mu.Unlock()
+		briefPublishReceipt(t, s, id)
+		read := briefAfterProofRead(t, s, params, func(g map[string]any) bool { return g["status"] == factory.BriefStatusFailed })
+		if briefRev(read) != 1 || briefBody(read)["verdict"] != first.Current.Brief.Verdict || read["verdict_behind"] != true {
+			t.Fatalf("old verdict not marked behind: %+v", read)
+		}
+	})
+	t.Run("plain step still costs too much", func(t *testing.T) {
+		it := factory.Item{Stream: &factory.Stream{Spent: 0.01}, Briefs: []factory.BriefVersion{{CostUSD: 0.02, InputHash: "old"}}}
+		if factory.BriefCostAllowed(it) {
+			t.Fatal("plain step allowed over the spend share")
+		}
+		if got := factory.BriefBeginSkip(it, factory.BriefTriggerStep, "new", time.Now()); got != factory.BriefSkipCost {
+			t.Fatalf("step skip = %q", got)
+		}
+	})
+	t.Run("PR number requires PR evidence", func(t *testing.T) {
+		it := factory.Item{PullRequest: &factory.PullRequest{Number: 73, State: factory.PROpen}}
+		for _, c := range []struct {
+			draft string
+			valid bool
+		}{
+			{`{"verdict":"PR 73 is open.","verdict_evidence":[{"kind":"pr"}],"blocks":[]}`, true},
+			{`{"verdict":"PR 74 is open.","verdict_evidence":[{"kind":"pr"}],"blocks":[]}`, false},
+			{`{"verdict":"PR 73 is open.","blocks":[]}`, false},
+		} {
+			_, _, fault := factory.CheckBriefDraft(it, []byte(c.draft))
+			if (fault == "") != c.valid {
+				t.Errorf("valid=%v fault=%q", c.valid, fault)
+			}
+		}
+	})
+}
+
+func briefAfterProofSetup(t *testing.T, state factory.State) (*localSetup, *briefDoor, int, map[string]any) {
+	t.Helper()
+	s := newLocalSetup(t)
+	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: `{"verdict":"The change is checked.","blocks":[]}`, Model: "scripted", Usage: session.ErrandUsage{CostUSD: 0.02}}}
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: door, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	st := s.start()
+	s.backend.briefs.stop()
+	s.backend.briefs = newBriefDebounce(5*time.Millisecond, s.backend.writeBriefLater)
+	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: state, Autonomy: factory.AutonomyManual,
+		Stages: []factory.Stage{{Name: "review", Kind: factory.StageChat, On: true}, {Name: "proof", Kind: factory.StageChat, Until: factory.UntilProven, On: true}},
+		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, door, it.ID, map[string]any{"factory": st.Factory, "job": it.ID}
+}
+
+func briefPublishReceipt(t *testing.T, s *localSetup, id int) {
+	t.Helper()
+	if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
+		it.PullRequest = &factory.PullRequest{Number: 73, URL: "https://github.com/acme/api/pull/73", State: factory.PROpen}
+		return factoryrun.ShipPublished(it, time.Now())
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func briefBody(g map[string]any) map[string]any { return g["brief"].(map[string]any) }
+func briefRev(g map[string]any) float64         { return briefBody(g)["rev"].(float64) }
+func briefAfterProofRead(t *testing.T, s *localSetup, params map[string]any, ok func(map[string]any) bool) map[string]any {
+	t.Helper()
+	var got map[string]any
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.must("factory.job_brief", params, &got)
+		if ok(got) {
+			return got
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	raw, _ := json.Marshal(got)
+	t.Fatalf("brief never reached expected version/status: %s", raw)
+	return nil
+}
