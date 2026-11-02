@@ -644,7 +644,7 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 	}
 	req := api.FactorySetupRequest{Verb: act.Verb}
 	switch act.Verb {
-	case appwire.SetupVerbDiscover, appwire.SetupVerbBack, appwire.SetupVerbDone:
+	case appwire.SetupVerbDiscover, appwire.SetupVerbBack, appwire.SetupVerbDone, appwire.SetupVerbContinue:
 	case appwire.SetupVerbConnect:
 		req.Source = act.Source
 		if act.Source == appwire.SetupSourceToken {
@@ -748,6 +748,34 @@ func (b *appBackend) setupFolder(raw string) (string, error) {
 		}
 	}
 	return path, nil
+}
+
+// FactorySetupFolderCheck measures the folder a person chose on this machine,
+// where the clone would be made, before anything is cloned. It needs no
+// started factory and changes nothing on disk.
+func (b *appBackend) FactorySetupFolderCheck(_ context.Context, _ string, folder string) (appwire.FactorySetupFolder, error) {
+	path, err := b.setupFolder(folder)
+	if err != nil {
+		return appwire.FactorySetupFolder{}, err
+	}
+	checked := nearestFolder(path)
+	out := appwire.FactorySetupFolder{Folder: b.shownFolder(path), Exists: checked == path, Checked: b.shownFolder(checked)}
+	out.Writable, out.FreeBytes = folderRoom(checked)
+	return out, nil
+}
+
+// nearestFolder is path when it is a folder, else the nearest folder above it.
+func nearestFolder(path string) string {
+	for {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path
+		}
+		path = parent
+	}
 }
 
 // shownFolder is path as a person is shown it: "~/…" under their home, only

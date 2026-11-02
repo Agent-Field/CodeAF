@@ -79,12 +79,17 @@ const (
 	SetupVerbSkip       = "skip"
 	SetupVerbBack       = "back"
 	SetupVerbDone       = "done"
+	SetupVerbContinue   = "continue"
 	SetupSourceGH       = "gh"
 	SetupSourceToken    = "token"
 	MaxFactorySetupRepo = 100
 	MaxSetupFolder      = 1024
 	MaxSetupToken       = 512
 )
+
+// FeatureFactorySetupContinue is announced in hello when factory.setup_continue
+// ends reading before every selected repository is read.
+const FeatureFactorySetupContinue = "factory.setup_continue"
 
 // FactoryLocalParams is the whole request of the local methods that take no
 // more than who is asking.
@@ -142,7 +147,7 @@ type FactorySetupRepo struct {
 	Pipeline        string     `json:"pipeline,omitempty" enum:"file,defaults"`
 	Archived        bool       `json:"archived"`
 	Selected        bool       `json:"selected"`
-	Read            string     `json:"read" enum:"next,reading,done,empty,waiting,rate_limited"`
+	Read            string     `json:"read" enum:"next,reading,done,empty,waiting,rate_limited,skipped"`
 	ReadCount       int        `json:"read_count"`
 	WaitingS        int        `json:"waiting_s,omitempty"`
 	ResumesAt       *time.Time `json:"resumes_at,omitempty"`
@@ -228,6 +233,13 @@ func withFactoryLocalFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryLocal); ok {
 		hello = withFeature(hello, FeatureFactoryLocal)
+	}
+	return hello
+}
+
+func withFactorySetupContinueFeature(hello Hello, e Engine) Hello {
+	if _, err := factoryLocalOf(e, "factory.setup_continue"); err == nil {
+		hello = withFeature(hello, FeatureFactorySetupContinue)
 	}
 	return hello
 }
@@ -378,6 +390,7 @@ func init() {
 		"factory.setup_discover": factorySetupCall("factory.setup_discover", plainSetup(SetupVerbDiscover)),
 		"factory.setup_back":     factorySetupCall("factory.setup_back", plainSetup(SetupVerbBack)),
 		"factory.setup_done":     factorySetupCall("factory.setup_done", plainSetup(SetupVerbDone)),
+		"factory.setup_continue": factorySetupCall("factory.setup_continue", plainSetup(SetupVerbContinue)),
 		"factory.setup_connect": factorySetupCall("factory.setup_connect", func(p FactorySetupConnectParams) (string, FactorySetupAct, error) {
 			caller, err := factoryCaller(p.Caller)
 			if err != nil {

@@ -337,6 +337,12 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
+## first-run setup in the app — Continue before every repository is read, skipped, checkout folder room
+
+**Continue ends reading early.** While setup reads open issues into Backlog, Continue stops the read in progress and moves on to checkouts once at least one chosen repository is read; before then it is refused with `Wait until one repo is read`. Repositories already read stay read and are watched. Each one still reading or waiting says skipped: the issues it already brought stay in Backlog, held until you start them, and it is not watched, so it is off until you turn it on in Repos. Back from checkouts reads every chosen repository again.
+
+**Setup shows each repository's size** in megabytes, as GitHub quotes it, and checks a checkout folder before cloning: whether you can write there and how much free space its disk has, measured at the nearest folder that already exists. Checking makes no folder.
+
 ## how big is a job — size of a job, the size: filter, why there is no size, risky
 
 A job's size comes from the first of these that exists, and nothing else is a size:
