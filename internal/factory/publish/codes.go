@@ -47,7 +47,7 @@ func Known(code string) bool {
 // Failure classifies the forge's message at the operation that failed.
 // Permission to push and permission to open a PR are different remedies.
 func Failure(err error, operation string) string {
-	msg := strings.ToLower(withoutURL(err))
+	msg := strings.ToLower(messageWithoutURL(err))
 	switch {
 	case errors.Is(err, fs.ErrNotExist), operation == "worktree":
 		return "worktree_missing"
@@ -71,10 +71,10 @@ func Failure(err error, operation string) string {
 	}
 }
 
-// withoutURL is the message with the address of a GitHub reply taken out.
-// An address can hold a port such as 35021, and those digits must not read
+// messageWithoutURL is the error message with the URL of a GitHub reply taken out.
+// The URL can hold a port such as 35021, and those digits must not read
 // as a 502 that GitHub never sent.
-func withoutURL(err error) string {
+func messageWithoutURL(err error) string {
 	var api *github.APIError
 	if errors.As(err, &api) && api.URL != "" {
 		return strings.ReplaceAll(err.Error(), api.URL, "")
