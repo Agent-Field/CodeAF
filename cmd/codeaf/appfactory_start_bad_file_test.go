@@ -43,7 +43,7 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			}
 		}
 	})
-	for _, road := range []string{"app", "chat", "house rules unread", "clean file without budget"} {
+	for _, road := range []string{"app", "chat", "no line", "house rules unread", "clean file without budget"} {
 		t.Run(road, func(t *testing.T) {
 			s := newLocalSetup(t)
 			config.AppCredentialSource().Set("openrouter", "test-key-no-network")
@@ -71,6 +71,9 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 					return pipeline.Defaults(), err
 				}
 				f, err := pipeline.Parse(string(b))
+				if road == "no line" {
+					return f, errors.New("access denied")
+				}
 				if road == "clean file without budget" {
 					f.DefaultBudget = 0
 				}
@@ -148,10 +151,19 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				StartRules struct {
 					Unread bool   `json:"unread"`
 					Why    string `json:"unread_why"`
+					File   string `json:"unread_file"`
+					Line   *int   `json:"unread_line"`
 				} `json:"start_rules"`
 			}
 			s.must("factory.job", params, &got)
-			if !got.StartRules.Unread || got.StartRules.Why != ".codeaf/factory.yaml line 3: mapping values are not allowed in this context" {
+			wantWhy := ".codeaf/factory.yaml line 3: mapping values are not allowed in this context"
+			if road == "no line" {
+				wantWhy = pipeline.RepoFile + ": could not read repository rules; check the file's syntax and access"
+			}
+			if got.StartRules.File != pipeline.RepoFile || (road == "no line" && got.StartRules.Line != nil) || (road != "no line" && (got.StartRules.Line == nil || *got.StartRules.Line != 3)) {
+				t.Errorf("structured read location: %+v", got.StartRules)
+			}
+			if !got.StartRules.Unread || got.StartRules.Why != wantWhy {
 				t.Errorf("start rules: %+v", got.StartRules)
 			}
 			if got.Desk == nil || got.Desk.Cap != factory.DefaultJobBudget || got.Desk.Cap <= 0 {
@@ -192,6 +204,18 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				s.must("factory.job", params, &job)
 				return job.State == api.StateNeedsYou && job.RuleHold == factory.StartRulesUnreadHold
 			})
+			for until := time.Now().Add(time.Second); time.Now().Before(until); {
+				var held api.Job
+				s.must("factory.job", params, &held)
+				if held.State != api.StateNeedsYou || held.NeedsYou == nil || held.NeedsYou.Question == nil || !strings.Contains(held.NeedsYou.Question.Text, wantWhy) {
+					t.Errorf("person must see unread reason: %+v", held.NeedsYou)
+					break
+				}
+				if len(held.Steps) != 3 || held.Steps[0].State != string(factory.PhaseDone) || held.Steps[2].StartedAt != nil || writes.Load() != 0 {
+					t.Fatal("later step started before consent")
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
 			if writes.Load() != 0 {
 				t.Fatal("work continued past the unread rules plan hold")
 			}
@@ -200,6 +224,12 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			if code != "" || json.Unmarshal(raw, &got) != nil || got.StartRules.Why == "" {
 				t.Fatalf("read after plan: %s %s %s", code, msg, raw)
 			}
+			var held api.Job
+			s.must("factory.job", params, &held)
+			params["expect"] = map[string]any{"version": held.Version}
+			var approved appwire.FactoryJobActed
+			s.must("factory.job_approve", params, &approved)
+			eventually(t, "approval releases the next step", func() bool { return writes.Load() > 0 })
 		})
 	}
 }
