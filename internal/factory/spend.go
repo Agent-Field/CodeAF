@@ -1,6 +1,8 @@
 package factory
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -89,6 +91,22 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 	}
 	sh.MergedToday, sh.MergedWeek = MergedCounts(items, now)
 	return sh
+}
+
+// DailySpent is what items spent on runs whose job last changed today, in
+// now's location: the day's spend a floor shows, whoever is reading it.
+func DailySpent(items []Item, now time.Time) float64 {
+	y, m, d := now.Date()
+	var spent float64
+	for _, it := range items {
+		if it.Stream == nil {
+			continue
+		}
+		if cy, cm, cd := it.Changed.In(now.Location()).Date(); cy == y && cm == m && cd == d {
+			spent += it.Stream.Spent
+		}
+	}
+	return spent
 }
 
 // MergedCounts is how many pull requests this factory opened that GitHub has
@@ -180,4 +198,38 @@ func handledSince(it Item, started time.Time) (int, time.Time) {
 		}
 	}
 	return n, at
+}
+
+// SpendDaysMax is the most calendar days one spend read may span.
+const SpendDaysMax = 366
+
+// SpendRange reads from and to, both YYYY-MM-DD and inclusive, as days in loc:
+// start is from's midnight and end the midnight after to. A missing or
+// malformed day, to before from, or more than [SpendDaysMax] days is refused
+// in words a person can act on.
+func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err error) {
+	start, err = time.ParseInLocation(time.DateOnly, from, loc)
+	if err != nil {
+		return start, end, errors.New("from is a day, as 2026-10-01")
+	}
+	last, err := time.ParseInLocation(time.DateOnly, to, loc)
+	if err != nil {
+		return start, end, errors.New("to is a day, as 2026-10-31")
+	}
+	if last.Before(start) {
+		return start, end, errors.New("to is before from")
+	}
+	if start.AddDate(0, 0, SpendDaysMax).Before(last.AddDate(0, 0, 1)) {
+		return start, end, fmt.Errorf("a spend read covers at most %d days", SpendDaysMax)
+	}
+	return start, last.AddDate(0, 0, 1), nil
+}
+
+// SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
+// run's start, or its creation when it has no run that started.
+func SpentAt(it Item) time.Time {
+	if it.Stream != nil && !it.Stream.Started.IsZero() {
+		return it.Stream.Started
+	}
+	return it.Created
 }

@@ -123,14 +123,23 @@ type BriefTable struct {
 }
 
 // BriefSpot is one place to look in the change. ID is what
-// factory.job_brief_spot is asked for.
+// factory.job_brief_spot is asked for; the engine numbers each version's
+// spots ("1", "2", "3") as it keeps them. Notes are the writer's one-line
+// notes on the spot's hunks, each naming its hunk as "file:start".
 type BriefSpot struct {
 	ID       string          `json:"id,omitempty"`
 	File     string          `json:"file"`
 	Symbol   string          `json:"symbol,omitempty"`
 	Lines    int             `json:"lines"`
 	Why      string          `json:"why"`
+	Notes    []BriefNote     `json:"notes,omitempty"`
 	Evidence []BriefEvidence `json:"evidence"`
+}
+
+// BriefNote is one sentence on one hunk of a spot.
+type BriefNote struct {
+	Hunk string `json:"hunk"`
+	Text string `json:"text"`
 }
 
 // BriefProof is the proof step's command and its numbers.

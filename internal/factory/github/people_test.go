@@ -66,7 +66,8 @@ func TestCodeOwnersDefaultBranchPrecedenceAndNextPoll(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]string{"type": "file", "encoding": "base64", "sha": "owners", "content": base64.StdEncoding.EncodeToString([]byte(text))})
 	}))
 	defer srv.Close()
-	loader := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) }, nil)
+	clock := time.Unix(1_800_000_000, 0)
+	loader := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) }, func() time.Time { return clock })
 	ctx := context.Background()
 	rules, err := loader.Owners(ctx, "acme/api")
 	if err != nil || len(rules) != 1 || rules[0].Handles[0] != "outside" || reads != 2 {
@@ -76,7 +77,10 @@ func TestCodeOwnersDefaultBranchPrecedenceAndNextPoll(t *testing.T) {
 	if rules, _ := loader.Owners(ctx, "acme/api"); rules[0].Handles[0] != "outside" || reads != 2 {
 		t.Fatal("cache mutated or re-read")
 	}
+	// A file added where the forge last said there was none is read once
+	// that answer is stale.
 	path, text = ".github/CODEOWNERS", "* @mei\n"
+	clock = clock.Add(factorygithub.MissingFresh)
 	loader.RefreshOwners(ctx, "acme/api")
 	if rules, _ := loader.Owners(ctx, "acme/api"); len(rules) != 1 || rules[0].Handles[0] != "mei" || reads != 3 {
 		t.Fatalf("next poll = %+v reads %d", rules, reads)
