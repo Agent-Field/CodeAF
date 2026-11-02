@@ -15,20 +15,15 @@ import (
 // run's change says which files a job touched: a pull request's own files sit
 // on pull-request items, which are never jobs ([factory.IssueJobs]).
 func AreaIn(j *Job, repos []factory.Repo) {
-	j.Area = changeArea(j.Change, declaredAreas(repos, j.Repo))
-}
-
-// changeArea is the area of a run's change against declared areas, "" for
-// no change.
-func changeArea(c *factory.Change, areas []string) string {
-	if c == nil {
-		return ""
+	j.Area = ""
+	if j.Change == nil {
+		return
 	}
-	paths := make([]string, len(c.Files))
-	for i, f := range c.Files {
+	paths := make([]string, len(j.Change.Files))
+	for i, f := range j.Change.Files {
 		paths[i] = f.Path
 	}
-	return factory.JobArea(areas, paths)
+	j.Area = factory.JobArea(declaredAreas(repos, j.Repo), paths)
 }
 
 func declaredAreas(repos []factory.Repo, name string) []string {

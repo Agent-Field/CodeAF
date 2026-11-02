@@ -89,7 +89,7 @@ func RepoFactsOf(items []factory.Item, repos []factory.Repo, repo string, now ti
 	out.Facts = append(out.Facts, spendFacts(mine, month.start, months)...)
 	stuck, cut := stuckFacts(mine, now)
 	out.Facts = append(out.Facts, stuck...)
-	area, cutAreas := areaFacts(mine, declaredAreas(repos, repo), recent)
+	area, cutAreas := areaFacts(mine, repos, recent)
 	out.Facts = append(out.Facts, area...)
 	out.Truncated = cut + cutAreas
 	return out
@@ -181,14 +181,17 @@ func stepSince(it factory.Item) (string, time.Time, bool) {
 
 type areaTally struct{ jobs, rounds, asks int }
 
-// areaFacts is, per area, the jobs whose spend is placed in w, the rounds
-// their steps ran and the questions they asked a person.
-func areaFacts(items []factory.Item, areas []string, w window) ([]Fact, int) {
+// areaFacts is, per area ([AreaIn], the one rule job.area is said by), the
+// jobs whose spend is placed in w, the rounds their steps ran and the
+// questions they asked a person.
+func areaFacts(items []factory.Item, repos []factory.Repo, w window) ([]Fact, int) {
 	const source = "engine:repo_facts.area"
 	tally := map[string]areaTally{}
 	jobs := map[string]int{}
 	for _, it := range items {
-		area := changeArea(it.Change, areas)
+		j := Job{Repo: it.Repo, Change: it.Change}
+		AreaIn(&j, repos)
+		area := j.Area
 		if area == "" || !factory.IsIssueJob(it) || !w.holds(factory.SpentAt(it)) {
 			continue
 		}
