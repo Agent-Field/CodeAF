@@ -141,22 +141,13 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		return fmt.Errorf("automations: %w", err)
 	}
 	defer tx.Rollback()
-	var app, version int
-	if err := tx.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app); err != nil {
-		return fmt.Errorf("automations: %w", err)
-	}
-	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return fmt.Errorf("automations: %w", err)
+	app, version, err := readSchemaMark(ctx, tx)
+	if err != nil {
+		return err
 	}
 	switch {
 	case app == applicationID && version == schemaVersion:
-		if err := ensureOriginRevision(ctx, tx); err != nil {
-			return err
-		}
-		if err := ensureRunAsked(ctx, tx); err != nil {
-			return err
-		}
-		return tx.Commit()
+		return finishSchema(ctx, tx)
 	case app != 0 || version != 0:
 		return fmt.Errorf("automations: %s is not an automations database this build can read (application %d, version %d)", filepath.Join(s.root, DatabaseName), app, version)
 	}
@@ -167,7 +158,40 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if tables != 0 {
 		return fmt.Errorf("automations: %s belongs to something else", filepath.Join(s.root, DatabaseName))
 	}
-	_, err = tx.ExecContext(ctx, `
+	if err := createSchema(ctx, tx); err != nil {
+		return err
+	}
+	return finishSchema(ctx, tx)
+}
+
+// readSchemaMark is the application id and schema version the database file
+// carries; both are zero for a file nothing has marked yet.
+func readSchemaMark(ctx context.Context, tx *sql.Tx) (app, version int, err error) {
+	if err := tx.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app); err != nil {
+		return 0, 0, fmt.Errorf("automations: %w", err)
+	}
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return 0, 0, fmt.Errorf("automations: %w", err)
+	}
+	return app, version, nil
+}
+
+// finishSchema brings a marked database up to the tables later builds added
+// beside the first schema, then commits.
+func finishSchema(ctx context.Context, tx *sql.Tx) error {
+	if err := ensureOriginRevision(ctx, tx); err != nil {
+		return err
+	}
+	if err := ensureRunAsked(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// createSchema lays the first schema into an empty database and marks it as
+// this store's.
+func createSchema(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
 CREATE TABLE counter (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL);
 INSERT INTO counter (id, seq) VALUES (1, 0);
 CREATE TABLE automations (
@@ -209,13 +233,7 @@ CREATE INDEX runs_by_seq ON runs(seq);
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
 		return fmt.Errorf("automations: %w", err)
 	}
-	if err := ensureOriginRevision(ctx, tx); err != nil {
-		return err
-	}
-	if err := ensureRunAsked(ctx, tx); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 // ── automations ─────────────────────────────────────────────────────────────

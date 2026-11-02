@@ -736,38 +736,49 @@ func landTaskCopies(ctx context.Context, root, branch, branchHead string) (strin
 		case strings.HasPrefix(line, "HEAD "):
 			head = strings.TrimPrefix(line, "HEAD ")
 		case line == "branch refs/heads/"+branch:
-			if head != branchHead {
-				return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" is not where the branch is")
-			}
-			if info, err := os.Stat(path); err != nil || !info.IsDir() {
-				bound = append(bound, path+"\x00missing")
-				continue
-			}
-			config, err := landConfig(ctx, path)
+			entry, err := landTaskCopy(ctx, path, head, branch, branchHead)
 			if err != nil {
 				return "", err
 			}
-			attributes := ""
-			if len(landFilterDrivers(config)) > 0 {
-				compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
-				if err != nil {
-					return "", err
-				}
-				if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
-					return "", err
-				}
-			}
-			paths, err := landStatus(ctx, path)
-			if err != nil {
-				return "", err
-			}
-			if len(paths) > 0 {
-				return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
-			}
-			bound = append(bound, path+"\x00clean\x00"+config.digest+"\x00"+attributes)
+			bound = append(bound, entry)
 		}
 	}
 	return strings.Join(bound, "\x01"), nil
+}
+
+// landTaskCopy binds one worktree the branch is checked out in: a copy that is
+// gone is bound as missing, and one that is present must sit at the branch's
+// head with no work beside it, bound with its configuration and the attributes
+// that could run a filter in it.
+func landTaskCopy(ctx context.Context, path, head, branch, branchHead string) (string, error) {
+	if head != branchHead {
+		return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" is not where the branch is")
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return path + "\x00missing", nil
+	}
+	config, err := landConfig(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	attributes := ""
+	if len(landFilterDrivers(config)) > 0 {
+		compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
+		if err != nil {
+			return "", err
+		}
+		if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
+			return "", err
+		}
+	}
+	paths, err := landStatus(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if len(paths) > 0 {
+		return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
+	}
+	return path + "\x00clean\x00" + config.digest + "\x00" + attributes, nil
 }
 
 // landBranchChange reads what the branch changes from its base: a submodule
