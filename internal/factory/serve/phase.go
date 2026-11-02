@@ -25,6 +25,10 @@ func markPreMutation(r *http.Request) bool {
 			}
 		}
 	}
+	// The factory's spending defaults: exactly /v1/spending.
+	if r.Method == http.MethodPatch && r.URL.Path == "/v1/spending" {
+		return true
+	}
 	switch r.Method {
 	case http.MethodPost:
 		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
