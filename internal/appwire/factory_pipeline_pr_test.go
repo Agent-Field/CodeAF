@@ -153,7 +153,7 @@ func TestFactoryPipelinePRPassesTheEnginesErrorAndAsksOnce(t *testing.T) {
 // names the method, the capability and the feature.
 func TestFactoryPipelinePRSchemaIsTheRoutesFieldsAndNothingElse(t *testing.T) {
 	if got := fieldNames(reflect.TypeFor[FactoryPipelinePRParams]()); !reflect.DeepEqual(got,
-		[]string{"factory", "repo", "text", "title", "body", "branch", "expected_base_sha"}) {
+		[]string{"factory", "repo", "text", "title", "body", "branch", "expected_base_sha", "pr", "expected_head_sha"}) {
 		t.Fatalf("param fields: %v", got)
 	}
 	if got := fieldNames(reflect.TypeFor[FactoryPipelinePRDone]()); !reflect.DeepEqual(got, []string{"factory", "repo", "outcome", "pr", "base_sha"}) {

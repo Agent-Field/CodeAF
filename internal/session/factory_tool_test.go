@@ -60,7 +60,7 @@ func newFactoryAgent(t *testing.T, door FactoryDoor, window time.Duration) *Agen
 	return agent
 }
 
-const factoryArgs = `{"title":"retry the flaky upload test","body":"the upload test fails one run in ten on CI; find why and make it deterministic","repo":"web","kind":"bug","size":"S","estimate_usd":0.4}`
+const factoryArgs = `{"title":"retry the flaky upload test","body":"the upload test fails one run in ten on CI; find why and make it deterministic","repo":"web","kind":"bug","size":"S"}`
 
 // runFactoryAdd calls the tool on its own goroutine and hands back the result
 // channel.
@@ -210,7 +210,7 @@ func TestFactoryApproveWritesExactlyOneItemAndTellsTheWatchers(t *testing.T) {
 	it := items[0]
 	if it.State != factory.StateNew || it.Origin != factory.OriginChat || it.Tier != factory.TierOwner ||
 		it.Author != "" || it.Repo != "web" || it.Kind != factory.KindIssue || it.Title != "retry the flaky upload test" ||
-		it.Triage.Type != "bug" || it.Triage.Size != "S" || it.Triage.Est != 0.4 || len(it.Stages) != 0 || it.Created.IsZero() {
+		it.Triage.Type != "bug" || it.Triage.Size != "S" || len(it.Stages) != 0 || it.Created.IsZero() {
 		t.Errorf("item = %+v", it)
 	}
 
@@ -370,7 +370,7 @@ func TestFactoryCardIsReplayedToALateTaskLaneUntilItSettles(t *testing.T) {
 // A card the chat model adds carries its size guess as a CHAT guess: it is not
 // the read, it shows as nothing, and the read replaces it when it lands.
 func TestFactoryAddTagsItsSizeAsAChatGuess(t *testing.T) {
-	it := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "bug", Title: "t", Size: "S", Estimate: 0.4}, time.Now())
+	it := factoryItem(FactoryNotice{Repo: "acme/api", Kind: "bug", Title: "t", Size: "S"}, time.Now())
 	if it.Triage.Size != "S" || it.Triage.SizeFrom != factory.SizeFromChat {
 		t.Fatalf("triage %+v", it.Triage)
 	}
