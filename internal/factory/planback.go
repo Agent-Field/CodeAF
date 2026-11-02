@@ -22,8 +22,11 @@ func ApproveBackTarget(s *Stream) (gate, prev int) {
 		return -1, -1
 	}
 	ph := s.Phases[s.Cur]
-	if ph.Kind == StageGate || WaitingToStart(ph) {
+	if ph.Kind == StageGate {
 		return s.Cur, PreviousWork(s.Phases, s.Cur)
+	}
+	if prev := PreviousWork(s.Phases, s.Cur); WaitingToStart(ph) && prev >= 0 {
+		return s.Cur, prev
 	}
 	if ph.Result != nil && ph.Result.Done && s.Cur+1 < len(s.Phases) && s.Phases[s.Cur+1].Kind == StageGate && s.Phases[s.Cur+1].State == PhasePending {
 		return s.Cur + 1, s.Cur

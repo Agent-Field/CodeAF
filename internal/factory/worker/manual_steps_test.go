@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -155,5 +156,49 @@ func TestManualAsksOnlyBeforeAStepsFirstRound(t *testing.T) {
 	it.Autonomy = ""
 	if factory.AsksBeforeStep(it, 2) {
 		t.Fatal("a record with no saved mode gained asks it never had")
+	}
+}
+
+// The job page's Request changes goes through the revision door, with the job's
+// version, and the step sent back runs again and the ask comes back.
+func TestManualRequestChangesThroughTheRevisionDoorAsksAgain(t *testing.T) {
+	g := newRig(t)
+	id := manualJob(t, g, named("write"), named("verify"), named("review"))
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitFor(t, id, factory.StateNeedsYou)
+	if err := g.doors.Answer(id, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	var held factory.Item
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		held, _ = g.st.Get(id)
+		if held.Question == factory.NextStepQuestion("review") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("never asked before review: %s %+v", held.State, held.Stream)
+		}
+	}
+	desk, err := lease.Open(g.st, lease.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := g.st.Revision(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lease.NewDoors(desk).RejectPlan(id, version, "check it once more", nil); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		it, _ := g.st.Get(id)
+		if it.State == factory.StateNeedsYou && it.Question == factory.NextStepQuestion("review") && it.Stream.Phases[1].Round == 2 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("never asked again: %s %q %+v", it.State, it.Question, it.Stream)
+		}
 	}
 }

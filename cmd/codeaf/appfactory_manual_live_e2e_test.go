@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,7 +103,16 @@ func TestLiveManualAsksBeforeEveryStepOnOneModel(t *testing.T) {
 				return it
 			}
 			if time.Now().After(end) {
-				t.Fatalf("never %s: %+v question %q failure %+v", what, it.State, it.Question, it.Failure)
+				var lines []string
+				if it.Stream != nil {
+					for _, ph := range it.Stream.Phases {
+						lines = append(lines, fmt.Sprintf("%s %s round %d of %d note %q", ph.Name, ph.State, ph.Round, ph.RoundLimit, ph.Note))
+					}
+					for _, l := range it.Stream.Log[max(0, len(it.Stream.Log)-12):] {
+						lines = append(lines, l.Tone+": "+l.Text)
+					}
+				}
+				t.Fatalf("never %s: %+v question %q failure %+v\n%s", what, it.State, it.Question, it.Failure, strings.Join(lines, "\n"))
 			}
 		}
 	}
