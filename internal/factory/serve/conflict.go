@@ -127,6 +127,13 @@ func (h *Handler) approvedSentence(r *http.Request, it factory.Item) (string, st
 		when = it.Changed
 		commit = it.HeadCommit
 	}
+	if ok && handle == "" {
+		if when.IsZero() {
+			return "approved automatically", "", nil, eventID, commit
+		}
+		stamp := when.UTC()
+		return "approved automatically at " + stamp.Format("15:04"), "", &stamp, eventID, commit
+	}
 	if handle == "" {
 		handle = "someone"
 	}
@@ -148,7 +155,7 @@ func (h *Handler) latestApproval(ctx context.Context, id int) (handle, eventID, 
 	}
 	for i := len(events) - 1; i >= 0; i-- {
 		e := events[i]
-		if e.Job == id && e.Kind == record.Approved && e.Handle != "" {
+		if e.Job == id && e.Kind == record.Approved {
 			return e.Handle, e.ID, e.Commit, e.At, true
 		}
 	}

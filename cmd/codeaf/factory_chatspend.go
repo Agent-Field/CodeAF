@@ -152,13 +152,21 @@ func (r chatRead) sameFile(info os.FileInfo) bool {
 }
 
 // Spend books usd on the job where its budget is checked now.
-func (c *jobChat) Spend(usd float64) {
+func (c *jobChat) Spend(usd float64) { c.book(usd, "", 0, 0, 0) }
+
+// SpendModel books one priced call and the model that answered it.
+func (c *jobChat) SpendModel(usd float64, model string, calls, input, output int) {
+	c.book(usd, model, calls, input, output)
+}
+
+func (c *jobChat) book(usd float64, model string, calls, input, output int) {
 	for _, st := range c.holders() {
 		err := st.Annotate(c.id, func(it *factory.Item) error {
 			if !c.talk.is(it.Talk) && !ownsStageChat(*it, c.talk) {
 				return errNotThisChat
 			}
 			factory.AddChatSpend(it, usd)
+			factory.AddModelUse(it, model, usd, calls, int64(input), int64(output))
 			return nil
 		})
 		if err == nil {
