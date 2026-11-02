@@ -62,6 +62,8 @@ var surfaces = map[string]string{
 	"remote":   "--host, --at, attachments",
 	"build":    "the Makefile, CI, the branch rules, the shipped binary",
 	"docs":     "prose, the manual, the rules",
+	"app":      "the desktop app and its backend, codeaf app",
+	"factory":  "the Factory: its jobs, pipelines and repositories",
 }
 
 var (

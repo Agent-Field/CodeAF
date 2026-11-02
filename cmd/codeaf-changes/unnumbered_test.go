@@ -54,3 +54,11 @@ func TestAnUnnumberedEntryRendersWithoutALink(t *testing.T) {
 		t.Fatalf("an entry with no pull request links one: %q", line)
 	}
 }
+
+// The desktop app and the Factory are surfaces of their own.
+func TestTheAppAndTheFactoryAreSurfaces(t *testing.T) {
+	body := strings.Replace(good, "surface: [build, docs]", "surface: [app, factory]", 1)
+	if _, errs := ParseEntry(write(t, t.TempDir(), "82-the-trunk-moved.md", body)); len(errs) != 0 {
+		t.Fatalf("app and factory were refused as surfaces: %v", errs)
+	}
+}
