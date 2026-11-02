@@ -127,12 +127,8 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 // it, or the factory's operator when the request names nobody (a script's
 // credential), and the time of the write to the second.
 func (h *Handler) rulesChange(r *http.Request) factory.RulesChange {
-	handle, err := h.callerHandle(r)
-	if err != nil || factory.NormalizeHandle(handle) == "" {
-		handle = h.operatorLogin(r)
-	}
 	at := h.clock().UTC().Truncate(time.Second)
-	return factory.RulesChange{ChangedBy: factory.NormalizeHandle(handle), ChangedAt: &at}
+	return factory.RulesChange{ChangedBy: factory.NormalizeHandle(h.operatorLogin(r)), ChangedAt: &at}
 }
 
 // sameRules says whether a writer's read is what the factory keeps. The adapt
