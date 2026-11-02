@@ -138,6 +138,7 @@ var Lost = map[string]string{
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	j := Job{
+		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
@@ -316,7 +317,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	// job offers no Stop beside its Run again ([factory.UnderWay]).
 	active := factory.UnderWay(it)
 	if it.DoneHow == "closed_locally" {
-		return Can{Reopen: owner}
+		return Can{Reopen: owner, RunAsNew: owner}
 	}
 	held := heldInQueue(it)
 	// START NOW ON A QUEUED JOB IS THE ONE PASS ABOVE JOBS AT ONCE, so a job
@@ -328,7 +329,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
 		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner,
 		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
-		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
+		Approve: approve, RunAgain: a.RunAgain, RunAsNew: owner && factory.CanRunAsNew(it), CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		RejectPlan: answer && planSendsBack(it),
 		Merge:      owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
@@ -457,6 +458,7 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
+		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld,
 		Owners:    append([]string(nil), j.Owners...),

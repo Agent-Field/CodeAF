@@ -383,6 +383,9 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	FromJob     int    `json:"from_job,omitempty"`
+	SourceIssue string `json:"source_issue,omitempty"`
+
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
 	Following bool `json:"following,omitempty"`
@@ -651,6 +654,7 @@ type Can struct {
 
 	Approve      bool `json:"approve"`
 	RunAgain     bool `json:"run_again"`
+	RunAsNew     bool `json:"run_as_new"`
 	CancelJob    bool `json:"cancel_job"`
 	RetryPublish bool `json:"retry_publish"`
 	Answer       bool `json:"answer"`

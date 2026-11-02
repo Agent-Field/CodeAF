@@ -337,6 +337,9 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryActor); ok {
 		hello = withFeature(hello, FeatureFactoryJobActions)
+		if _, ok := e.(FactoryJobNewRunner); ok {
+			hello = withFeature(hello, FeatureFactoryJobRunAsNew)
+		}
 		if _, ok := e.(FactoryCloser); ok {
 			hello = withFeature(hello, FeatureFactoryJobClose)
 		}
@@ -367,7 +370,7 @@ var factoryCommit = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
 // checkJob trims the factory id and checks the job number and the read the
 // action stands on.
-func checkJob(factory *string, job int, expect *api.Expect) error {
+func checkJobTarget(factory *string, job int) error {
 	id, err := factoryID(strings.TrimSpace(*factory))
 	if err != nil {
 		return err
@@ -375,6 +378,14 @@ func checkJob(factory *string, job int, expect *api.Expect) error {
 	*factory = id
 	if job < 1 {
 		return Errorf(CodeBadParams, "job must be a whole number from 1")
+	}
+	return nil
+}
+
+// checkJob requires the version the person read for writes that act in place.
+func checkJob(factory *string, job int, expect *api.Expect) error {
+	if err := checkJobTarget(factory, job); err != nil {
+		return err
 	}
 	if expect == nil || expect.Version == nil || *expect.Version < 1 {
 		return Errorf(CodeBadParams, "expect.version is required: send the version of the job the person read")

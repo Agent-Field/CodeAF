@@ -488,6 +488,11 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// FromJob is the ended job whose request this person started afresh.
+	FromJob int `json:",omitempty"`
+	// SourceIssue is a reference only; it never gives this job a forge identity.
+	SourceIssue string `json:",omitempty"`
+
 	// Followers are the people who follow this job, by normalised handle
 	// (followers.go). Each person reads only whether they follow it.
 	Followers []string `json:",omitempty"`

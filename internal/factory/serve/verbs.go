@@ -61,7 +61,7 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if !ok {
 				return
 			}
-			if it.DoneHow == "closed_locally" && verb != "reopen" && verb != "close" {
+			if it.DoneHow == "closed_locally" && verb != "reopen" && verb != "close" && verb != "run-as-new" {
 				h.refuse(w, 409, "Job closed locally; Reopen keeps its work and spending.", "conflict", "", nil, "done")
 				return
 			}

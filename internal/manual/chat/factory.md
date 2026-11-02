@@ -478,6 +478,16 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
 
+## Run again as a new job — copy failed, stopped, closed or done work
+
+**Run again as a new job** starts a separate job with a new job number. It is available after work has ended: failed, stopped, closed or done. A job still running cannot be copied this way. The old job stays as it was.
+
+The new job keeps the repository, title and details exactly as saved, autonomy, budget limit, steps, the decided pipeline copy and step models. Words such as “cheaper” or “ship it” in those details stay words; they do not change the steps or budget. A source issue stays a reference link only. The new job does not claim its issue number or automatically close that issue.
+
+The new job gets its own branch and conversations when it runs. It starts with nothing spent and no earlier pull request, failure or run history. Its page links to the old job, and both jobs' records name who started the copy.
+
+This is a person's Start: the same model, checkout, repository switch and start refusals apply. If Start is refused, no new job remains. Accepted work waits for runner capacity under the usual Jobs at once limit. Omitting an assignee starts it as the caller's job; an explicit assignee names the new job's person.
+
 ## App job title and details — literal words, auto-save, budgets and hand-off
 
 Creating a job with a separate title in the app, or handing off an agent,

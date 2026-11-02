@@ -254,6 +254,7 @@ decides which combinations are accepted.
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
@@ -344,6 +345,15 @@ the model. Only the factory's operator may set them (`forbidden` otherwise).
 `expect` is the three values as last read; a factory that keeps others answers
 `stale` and changes nothing. A refused value is `bad_params` before anything is
 sent; an unconfirmed write is `uncertain`.
+
+`factory.job_create` keeps `title` trimmed and separate from literal `text`,
+including details whitespace in the job ask and body; empty details stay empty.
+Neither field lifts
+terminal chips or changes budget, approval steps, rounds, effort or security.
+The job title alone supplies the draft PR title. Existing jobs are not rewritten.
+The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
+Factories without the separate-title capability retain their prior behavior.
+
 
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
 including details whitespace in the job ask and body; empty details stay empty.
@@ -1247,3 +1257,35 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Run an ended job as a new job
+
+Hello feature `factory.job_run_as_new` adds
+`factory.job_run_as_new {factory, job, assignee?, expect?}`. When supplied,
+`expect.version` must be positive and guards the source job. The engine
+sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
+applies the same ownership and repository guards as `run_again`, and accepts
+failed, stopped, closed and done jobs. Running work is refused.
+
+The reply is `FactoryJobActed` with `action: "run_as_new"` and `job` naming the
+NEW job; `current` reads that job. The HTTP answer is `{factory, id}` with the
+new document ID. Job reads add `can.run_as_new`, `from_job` (the original job's
+document ID) and `source_issue` (an optional reference URL). Both jobs' records
+carry `run_as_new` receipts with the actor and both document IDs.
+
+The factory copies repo, title, Body and Ask.Text verbatim, autonomy, Cap,
+Stages, the decided pipeline and model choices. It creates an ordinary issue
+pipeline job with `number: 0` and a fresh run. The forge merge index uses repo,
+kind and issue number, so retaining the source's number would claim its
+identity. `source_issue` carries only the reference, never that identity.
+Omitting assignee uses the caller as starter; an explicit assignee names the
+new job's person. A person's ordinary Start queues it under the usual capacity
+limits. The original document is never changed.
+
+Errors follow other job writes: `bad_params` for malformed requests,
+`forbidden` for ownership, `stale` for a changed source, `conflict` for ongoing
+work or start refusals (`repo_off` or `needs_checkout` in refusal.reason),
+`not_found` for a missing job, and `uncertain` when the outcome is unconfirmed.
+A start refusal removes a provisional copy; its allocated document ID is not
+reused. Storage or receipt failures after a successful start remain uncertain;
+the engine never repeats the write automatically.
