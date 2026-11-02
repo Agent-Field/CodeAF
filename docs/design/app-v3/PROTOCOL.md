@@ -323,6 +323,7 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
 | `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
@@ -366,7 +367,7 @@ Step Stop still requires the named step to be current and running, and refuses
 finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
-requests. Other job actions still require their existing guards.
+requests. Other job actions retain their guards except Pause and Resume, described below.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
@@ -378,7 +379,12 @@ its conversation when available. Pause releases the worker lease and capacity
 slot after the cancelled round's final work and spending are saved. Resume queues
 the saved run for a worker: it continues as soon as a slot is free, or reads as
 an ordinary queued job with the existing waiting presentation while slots are busy.
-No model round starts while it waits.
+No model round starts while it waits. Progress alone never makes Pause or Resume
+stale: both accept an outdated `expect.version`. A stopped or finished job refuses
+Pause with `conflict` and “<job> is not running”; a stopped job refuses Resume
+with `conflict` and “<job> is not paused”. A refusal changes neither the job nor
+its activity record and starts no model round. Stop committed before Resume wins.
+No additional hello feature is needed; desks still send the same `expect` shape.
 
 The job's person may use these actions. `can.hold` permits a queued or running
 job, excluding a job waiting for a person, finished or publishing; `can.resume`
@@ -387,8 +393,10 @@ after its lease is released, with `can.resume: true`,
 `state_presentation.kind: "paused"`, title `Paused`, and no new question.
 After Resume, `state` is `queued` until a worker takes a free slot; its paused
 flag is cleared and the ordinary queue presentation applies. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
-name the caller. Existing errors apply: `forbidden` for another person's job,
-`conflict` for an inapplicable state, `stale` for an outdated version, and
+name the caller. Explicit Resume also writes exactly one `resumed` line into the
+manager chat, including while the old lease drains; a repeated Resume adds none.
+Automatic continuation does not add this explicit-action note. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, and
 `bad_params` for an
 invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
 uses a new chat.
@@ -438,6 +446,17 @@ manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its ol
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
 
+An engine whose hello carries `factory.spend_by_model` (and capabilities
+`spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
+the same days and the same job spend as `factory.spend_by_repo`, from
+`GET /v1/spend/models`, as `{factory, from, to, time_zone?, models, unknown_usd?}`.
+Each model is `{model, cost_usd, calls, input_tokens?, output_tokens?, jobs}`,
+dearest first and then by name. `unknown_usd` is spend in that range that was
+not recorded against a model, including every job from before model lines
+were kept; it is omitted when there is none. The model costs and
+`unknown_usd` add up to `factory.spend_by_repo`'s `total_usd` for the same
+days. A triage read, a scout, and page AI that is not booked on a job are in
+neither total. A factory older than the route answers not found.
 The job manager's model tools also expose the plan send-back: `factory_status`
 includes the exact pending `question_id` in its text at every waiting gate.
 `factory_answer {action: "reject_plan", question_id, answer}` sends the requested
@@ -478,6 +497,17 @@ existing step budget. A provider that ignores the schema can still omit it;
 the protected-path gate then pauses safely. The stored unknown-list hold suffix
 remains `the plan names no files`; visible words describe the missing checkable
 list rather than claiming the plan names no files in prose.
+
+`factory.activity` records automatic approvals and their publications with
+`actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
+approval keeps `actor: {kind: "person", name: "@handle"}` and their handle.
+Automatic approval has an empty `approval.decided_by`. A stale action after
+an automatic approval says `approved automatically at HH:MM` (UTC), with no
+`by` or `approved_by`; `reason: "stale"`, the receipt event and commit remain.
+Saved events keep their original attribution. Automatic approval trailers
+use `Factory-Approval: evt_<id> factory <commit>`; personal trailers keep
+`@handle`. Workers must accept the factory actor to publish automatic approvals.
+No method, parameter, reply field, error code or hello feature is added.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
@@ -1418,7 +1448,7 @@ are ignored):
 Response: `{text, model, provider, role, usage: {in, out, cost_usd?}, ms,
 cached?}`. `model` is the model that answered, as the provider named it. When
 `text` is `""`, `reason` says why: `closed`, `stopped`, `over_budget`, `busy`,
-`deadline`, `cancelled`, `model_failed`, `invalid_json`, `not_open` or
+`deadline`, `cancelled`, `model_failed`, `invalid_json`, `no_answer` (the call was made and billed and said nothing; its usage is kept and it is not cached), `not_open` or
 `unavailable` (an owner without the errand door). One errand per (agent,
 purpose) runs at a time; a second answers `busy` at once and never queues.
 Closing or stopping the agent, or its job running out of money, cancels one in
