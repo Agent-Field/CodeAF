@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Pause and resume a running factory job
-pr: 0
+pr: 2217
 surface: [engine, chat]
 invalidates:
   - "Was true: the app offered Hold and Resume only for queued jobs. Is true: a job's person can also pause a running step and resume it with its work, conversation and spending kept."
