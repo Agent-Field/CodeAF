@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Jobs without a GitHub issue no longer borrow an issue number
-pr: 0
+pr: 2239
 surface: [engine]
 invalidates:
   - "Was true: a job without an issue displayed its local id as a GitHub number, and step briefs called it an issue. Is true now: it displays as job 21 and its steps are told it has no GitHub issue; real issue references stay unchanged."
