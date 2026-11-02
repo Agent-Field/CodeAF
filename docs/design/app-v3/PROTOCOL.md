@@ -505,7 +505,10 @@ failed publication. Each job's news is taken as one after 10 seconds. Lifecycle
 triggers come from committed store updates, separately from chat step metadata.
 Auto's routine proof approval does not force an intermediate write; an exception
 waiting on a person does. A normal manual job gets two additional forced writes:
-at proof approval and after publication, folded when they share a burst. The write is one errand
+at proof approval and after publication, folded when they share a burst. A
+forced update that finds an earlier write generating remains in the debounce
+until the writer is available. Stops before a round starts refresh too; they
+need no failed-step record. The write is one errand
 on the job's agent under the `brief` role (the small-work tier the small-jobs
 model pins). The factory checks the answer against the job (`POST
 /v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence

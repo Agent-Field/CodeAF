@@ -12,8 +12,8 @@ package main
 //
 // TRIGGERS are the runner's progress news for a job on this machine (a step
 // done, failed or stopped is a step result, and a step waiting on its person
-// is an ask) and a person's change to a job's steps or model through this
-// engine. A GitHub comment read is not a trigger yet: nothing in the engine
+// is an ask), the store's committed lifecycle changes (proof approval and
+// publication or end), and a person's step or model edits through this engine. A GitHub comment read is not a trigger yet: nothing in the engine
 // says when the manager has read one. Each job's news is taken as one after factory.BriefDebounce,
 // the strongest trigger of the burst kept, so a burst of results is one
 // version. A person's Retry is factory.job_brief_write.
@@ -252,8 +252,15 @@ func (b *appBackend) writeBriefLater(job int, trigger string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), appwire.BriefWriteBudget)
 	defer cancel()
-	if _, err := b.writeBrief(ctx, id, job, trigger); err != nil {
+	written, err := b.writeBrief(ctx, id, job, trigger)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "codeaf app: job %d brief not written: %v\n", job, err)
+		return
+	}
+	// A forced transition still matters when an earlier model call holds the
+	// writer. Keep it in the debounce until that call lets the next one begin.
+	if written.Skip == factory.BriefSkipWriting && factory.BriefForced(trigger) && b.briefs != nil {
+		b.briefs.note(job, trigger)
 	}
 }
 

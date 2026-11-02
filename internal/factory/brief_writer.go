@@ -162,6 +162,9 @@ func BriefEndOf(it Item) string {
 		}
 		return "failed: " + clip(it.Failure.Detail, briefOutputMost)
 	}
+	if it.State == StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		return "stopped"
+	}
 	if it.State == StateShipped {
 		if it.CommentURL != "" {
 			return "comment posted"
