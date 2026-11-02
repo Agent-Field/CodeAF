@@ -759,6 +759,10 @@ Factory jobs wait at most two seconds for memory after a finished turn. An
 unfinished pass continues with that job while the next step works. A job has at
 most one pass running; later turns do not queue more. Pause, Stop and the job's
 end cancel it, including a request in flight. Paid receipts still charge the job.
+While a job stays paused, no new paid memory request is admitted. This also
+applies to memory from the job's own conversation outside a stage. Resume does
+not start a memory burst: pending sources wait for the next finished job turn,
+using the same one-pass rule.
 The worker can remain occupied briefly after work finishes to report those prices.
 Paid memory that finishes after its stage closes stays in that stage’s saved
 spending total. Reopening after that memory finishes restores the full paid total.
@@ -771,6 +775,10 @@ includes earlier steps skipped while another pass was running. Unchanged source 
 reuses completed receipts. Extraction, page organization and evidence review can
 require separate model requests in that compilation. Sources and completed
 progress survive cancellation for a later active turn.
+
+Ordinary memory with no owning job belongs to the application process. Closing
+one chat does not stop its background build; quitting the application cancels
+that build. Its saved sources remain available for recovery on a later launch.
 
 ## Ordinary saved chat memory batching
 

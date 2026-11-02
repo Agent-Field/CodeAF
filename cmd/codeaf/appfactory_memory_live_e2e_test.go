@@ -78,6 +78,8 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 
 	recorder := newLiveRecorder(t, config.DefaultBaseURL)
 	recorder.budget, recorder.maxCalls = 1, 250
+	memoryReady := make(chan struct{})
+	memoryResponse := sync.OnceFunc(func() { close(memoryReady) })
 	var receiptMu sync.Mutex
 	receipts := map[string]float64{}
 	originalClient := http.DefaultClient
@@ -113,6 +115,22 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 				receiptMu.Lock()
 				receipts[u.Query().Get("id")] = *receipt.Data.Cost
 				receiptMu.Unlock()
+			}
+		}
+		if err == nil && r.Method == http.MethodPost && r.GetBody != nil {
+			body, bodyErr := r.GetBody()
+			if bodyErr == nil {
+				var request struct {
+					Messages []struct{ Content string } `json:"messages"`
+				}
+				_ = json.NewDecoder(body).Decode(&request)
+				body.Close()
+				if len(request.Messages) > 1 {
+					var payload map[string]json.RawMessage
+					if json.Unmarshal([]byte(request.Messages[1].Content), &payload) == nil && payload["messages"] != nil {
+						response.Body = &memoryGenerationBody{ReadCloser: response.Body, ready: memoryResponse}
+					}
+				}
 			}
 		}
 		return response, err
@@ -217,7 +235,13 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 	var pausedAt time.Time
 	for {
 		it, _ = floor.Get(id)
-		if pause && pausedAt.IsZero() && memoryCallsAfter(t, callPath, time.Time{}).active > 0 {
+		ready := false
+		select {
+		case <-memoryReady:
+			ready = true
+		default:
+		}
+		if pause && ready && pausedAt.IsZero() && memoryCallsAfter(t, callPath, time.Time{}).active > 0 {
 			var current api.Job
 			w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &current)
 			w.must("factory.job_hold", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": current.Version}}, &appwire.FactoryJobActed{})
@@ -545,4 +569,23 @@ func memoryCallsAfter(t *testing.T, path string, since time.Time) memoryCallWind
 	}
 	count.active = len(pending)
 	return count
+}
+
+// Wait for a generation identity so cancellation exercises paid receipt recovery.
+type memoryGenerationBody struct {
+	io.ReadCloser
+	seen  []byte
+	ready func()
+}
+
+func (b *memoryGenerationBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if b.ready != nil {
+		b.seen = append(b.seen, p[:n]...)
+		if bytes.Contains(b.seen, []byte("gen-")) {
+			b.ready()
+			b.ready, b.seen = nil, nil
+		}
+	}
+	return n, err
 }
