@@ -788,6 +788,10 @@ func (b *appBackend) PipelineCheckEdits() {}
 // factory.pipeline_edit_approvers.
 func (b *appBackend) PipelineApproverEdits() {}
 
+// PipelineAdaptKindEdits marks this backend as one whose preview applies
+// set_adapt for one pipeline and whose source carries each pipeline's word.
+func (b *appBackend) PipelineAdaptKindEdits() {}
+
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,

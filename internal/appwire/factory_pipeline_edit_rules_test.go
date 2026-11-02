@@ -250,3 +250,5 @@ func TestSetListVerbAndListsAreThePipelinePackages(t *testing.T) {
 		t.Fatal("the verb and lists are not the engine's own")
 	}
 }
+
+func (r *structureEditEngine) setSource(s FactoryPipelineSource) { r.source = s }

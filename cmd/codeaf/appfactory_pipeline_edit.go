@@ -44,6 +44,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -401,7 +402,11 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 func pipelineSettings(out *appwire.FactoryPipelineSource, src pipeline.Source) {
 	adapt, size, cost := src.Adapt, src.MaxSize, src.MaxCost
 	labels := append([]string{}, src.Labels...)
-	out.Adapt, out.Labels, out.MaxSize, out.MaxCost = &adapt, &labels, &size, &cost
+	kinds := maps.Clone(src.AdaptKinds)
+	if kinds == nil {
+		kinds = map[string]string{}
+	}
+	out.Adapt, out.Labels, out.MaxSize, out.MaxCost, out.AdaptKinds = &adapt, &labels, &size, &cost, &kinds
 }
 
 // pipelineSettingChanges is the settings half of a preview on the wire, nil for
@@ -457,11 +462,12 @@ func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
 }
 
 // firstRuntimeEdit is the position of the first edit that names when, effort or
-// fanout, or adds a step of a kind other than chat (it writes `kind`), or -1. An explicit empty value counts: clearing a word is a runtime
+// fanout, adds a step of a kind other than chat (it writes `kind`), or sets
+// adapt for one pipeline (it writes `adapt:` as a map), or -1. An explicit empty value counts: clearing a word is a runtime
 // edit too, and so does an add_step that spells one for the step it adds.
 func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 	for i, e := range edits {
-		if e.When != nil || e.Effort != nil || e.Fanout != nil || (e.Kind != nil && *e.Kind != "" && *e.Kind != "chat") || (e.Who != nil && *e.Who != "") {
+		if e.When != nil || e.Effort != nil || e.Fanout != nil || (e.Kind != nil && *e.Kind != "" && *e.Kind != "chat") || (e.Who != nil && *e.Who != "") || (e.Op == appwire.PipelineEditSetAdapt && e.Pipeline != "") {
 			return i
 		}
 	}

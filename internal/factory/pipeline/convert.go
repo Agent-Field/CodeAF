@@ -85,9 +85,25 @@ func Encode(f File) ([]byte, error) {
 		Steps         any       `yaml:"steps"`
 		Fixed         []string  `yaml:"fixed"`
 		Rules         []string  `yaml:"rules"`
-		Adapt         string    `yaml:"adapt,omitempty"`
+		Adapt         any       `yaml:"adapt,omitempty"`
 		Merge         *mergeKey `yaml:"merge,omitempty"`
-	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, string(f.Adapt), merge})
+	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, adaptKey(f), merge})
+}
+
+// adaptKey is `adapt:` as the file writes it: one word, a map of one word per
+// pipeline, or nothing (adapt everywhere).
+func adaptKey(f File) any {
+	if len(f.AdaptKinds) > 0 {
+		out := make(map[string]string, len(f.AdaptKinds))
+		for kind, mode := range f.AdaptKinds {
+			out[string(kind)] = string(mode)
+		}
+		return out
+	}
+	if f.Adapt != "" {
+		return string(f.Adapt)
+	}
+	return nil
 }
 
 // Convert renders a Markdown recipe as YAML without writing either file.

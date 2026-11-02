@@ -107,6 +107,14 @@ const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
 // file its factory attested. The source's steps then carry their who.
 const FeatureFactoryPipelineEditApprovers = "factory.pipeline_edit_approvers"
 
+// FeatureFactoryPipelineEditAdaptKind is announced beside FeatureFactoryPipelineEditSettings
+// when this engine previews set_adapt with a pipeline (one word for one
+// pipeline, the file then writing `adapt:` as a map of kind to word) and its
+// sources carry adapt_kinds. A map is a key a factory older than it does not
+// read, so a preview that writes or keeps one is taken only for a file its
+// factory attested, as the other runtime keys are.
+const FeatureFactoryPipelineEditAdaptKind = "factory.pipeline_edit_adapt_kind"
+
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
 	// whose own limit is sixty seconds.
@@ -197,6 +205,11 @@ type FactoryPipelineSource struct {
 	Labels  *[]string `json:"labels,omitempty"`
 	MaxSize *string   `json:"max_size,omitempty"`
 	MaxCost *float64  `json:"max_cost,omitempty"`
+	// AdaptKinds, behind feature factory.pipeline_edit_adapt_kind, for the
+	// states file and missing, always present: each pipeline's adapt word
+	// when the file writes one per pipeline (Adapt is then ""), `{}` when it
+	// writes one word or none. A kind it does not name is adapt.
+	AdaptKinds *map[string]string `json:"adapt_kinds,omitempty"`
 
 	// Behind feature factory.pipeline_copy (factory_pipeline_copy.go):
 	//
@@ -263,7 +276,10 @@ type FactoryPipelineEdit struct {
 	// Behind feature factory.pipeline_edit_settings: Adapt belongs to set_adapt
 	// (adapt, ask or fixed); Fixed, with Name, to set_fixed (true marks the step
 	// required); MaxSize and MaxCost to set_start, which names one or both. The
-	// list labels (start.labels) is set_list's under the same feature.
+	// list labels (start.labels) is set_list's under the same feature. With
+	// feature factory.pipeline_edit_adapt_kind, set_adapt may name a Pipeline
+	// the file lists: that pipeline alone takes the word and every other keeps
+	// its own. Without Pipeline the word is the whole file's again.
 	Adapt   *string  `json:"adapt,omitempty"`
 	Fixed   *bool    `json:"fixed,omitempty"`
 	MaxSize *string  `json:"max_size,omitempty"`
@@ -473,6 +489,14 @@ type FactoryPipelineApproversEditor interface {
 	PipelineApproverEdits()
 }
 
+// FactoryPipelineAdaptKindEditor is implemented ONLY by a settings editor whose
+// preview applies set_adapt with a pipeline and whose source carries
+// adapt_kinds. Without it a pipeline on set_adapt is refused before the engine
+// is asked, adapt_kinds is not on a source, and the feature is not announced.
+type FactoryPipelineAdaptKindEditor interface {
+	PipelineAdaptKindEdits()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
@@ -494,6 +518,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 				hello = withFeature(hello, FeatureFactoryPipelineEditSettings)
 				if _, approvers := e.(FactoryPipelineApproversEditor); approvers {
 					hello = withFeature(hello, FeatureFactoryPipelineEditApprovers)
+				}
+				if _, kinds := e.(FactoryPipelineAdaptKindEditor); kinds {
+					hello = withFeature(hello, FeatureFactoryPipelineEditAdaptKind)
 				}
 			}
 		}
@@ -656,6 +683,9 @@ func pipelinePreviewMethod(name string) method {
 		if err := checkApproversServed(e, p.Edits); err != nil {
 			return nil, err
 		}
+		if err := checkAdaptKindServed(e, p.Edits); err != nil {
+			return nil, err
+		}
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := ed.FactoryPipelinePreview(ctx, p)
@@ -762,6 +792,20 @@ func checkApproversServed(e Engine, edits []FactoryPipelineEdit) error {
 	return nil
 }
 
+// checkAdaptKindServed refuses set_adapt for one pipeline to an editor that
+// has not said it previews one.
+func checkAdaptKindServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelineAdaptKindEditor); ok {
+		return nil
+	}
+	for i, edit := range edits {
+		if edit.Op == PipelineEditSetAdapt && edit.Pipeline != "" {
+			return Errorf(CodeBadParams, "edit %d: this engine sets one adapt word for the whole file, not one per pipeline", i)
+		}
+	}
+	return nil
+}
+
 func settingOp(op string) bool {
 	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart || op == PipelineEditSetApprover
 }
@@ -781,9 +825,16 @@ func anySetting(edits []FactoryPipelineEdit) bool {
 func shapeSettingsSource(e Engine, out FactoryPipelineSource) FactoryPipelineSource {
 	_, settings := e.(FactoryPipelineSettingsEditor)
 	_, rules := e.(FactoryPipelineRulesEditor)
+	_, kinds := e.(FactoryPipelineAdaptKindEditor)
 	if !settings || !rules || (out.State != PipelineSourceFile && out.State != PipelineSourceMissing) || !out.Editable {
-		out.Adapt, out.Labels, out.MaxSize, out.MaxCost = nil, nil, nil, nil
+		out.Adapt, out.Labels, out.MaxSize, out.MaxCost, out.AdaptKinds = nil, nil, nil, nil, nil
 		return out
+	}
+	switch {
+	case !kinds:
+		out.AdaptKinds = nil
+	case out.AdaptKinds == nil || *out.AdaptKinds == nil:
+		out.AdaptKinds = &map[string]string{}
 	}
 	if out.Adapt == nil {
 		out.Adapt = new(string)
