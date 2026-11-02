@@ -241,6 +241,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/factory-setup", map[string]http.HandlerFunc{http.MethodPost: h.factorySetup})
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
+	h.read("/v1/spend/repos", h.spendRepos)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
