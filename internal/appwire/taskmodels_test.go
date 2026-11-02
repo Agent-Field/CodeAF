@@ -113,3 +113,89 @@ func TestTheHelloSaysTheAuxiliaryPinOnlyWhereTaskModelsAreServed(t *testing.T) {
 		t.Fatalf("features = %v", h.Features)
 	}
 }
+
+// The page AI's four roles travel as pins like the others, null for "follow
+// the family", and the hello says the engine serves them.
+func TestTaskModelsPatchCarriesTheInsightPins(t *testing.T) {
+	patch, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"insight":{"id":"deepseek/deepseek-v4.1-flash","provider":"openrouter"},"insight_notes":{"id":"vendor/notes"},"insight_ask":null,"insight_themes":null}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref := patch.Pins[RoleInsight]; ref == nil || ref.ID != "deepseek/deepseek-v4.1-flash" || ref.Provider != "openrouter" {
+		t.Fatalf("pins = %+v", patch.Pins)
+	}
+	if ref := patch.Pins[RoleInsightNotes]; ref == nil || ref.ID != "vendor/notes" {
+		t.Fatalf("pins = %+v", patch.Pins)
+	}
+	for _, role := range []string{RoleInsightAsk, RoleInsightThemes} {
+		if ref, ok := patch.Pins[role]; !ok || ref != nil {
+			t.Fatalf("a null %s pin = %+v", role, patch.Pins)
+		}
+	}
+	more, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"insight_pipeline":{"id":"vendor/p"},"insight_views":null,"insight_factory_read":null,"insight_factory_scout":{"id":"vendor/s"}}}`))
+	if err != nil || more.Pins["insight_pipeline"] == nil || more.Pins["insight_factory_scout"] == nil || len(more.Pins) != 4 {
+		t.Fatalf("the page roles' pins = %+v, %v", more.Pins, err)
+	}
+	if _, err := decodeTaskModelsPatch(json.RawMessage(`{"pins":{"insight_other":null}}`)); err == nil {
+		t.Fatal("an unknown insight role was accepted")
+	}
+}
+
+func TestTheHelloSaysTheInsightRolesOnlyWhereTaskModelsAreServed(t *testing.T) {
+	if h := withTaskModelsInsightFeature(Hello{}, &sendEngine{}); len(h.Features) != 0 {
+		t.Fatalf("an engine without task models said %v", h.Features)
+	}
+	h := withTaskModelsInsightFeature(Hello{}, &taskModelsEngine{})
+	if len(h.Features) != 1 || h.Features[0] != "settings.models.insight" {
+		t.Fatalf("features = %v", h.Features)
+	}
+}
+
+// An insight role's row says what an unpinned role runs on: the engine's
+// default for insight, or that an override follows insight.
+func TestTheInsightRowsTravelWithTheirDefaultAndFamily(t *testing.T) {
+	roles := TaskModelRoles{
+		Insight:      &TaskModelRole{Default: &ModelRef{ID: "deepseek/deepseek-v4.1-flash", Provider: "openrouter"}, EligibleCount: 3},
+		InsightNotes: &TaskModelRole{Follows: RoleInsight, EligibleCount: 3},
+	}
+	raw, err := json.Marshal(roles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"insight":{"pin":null,"warning":null,"eligible_count":3,"default":{"id":"deepseek/deepseek-v4.1-flash","provider":"openrouter"}}`,
+		`"insight_notes":{"pin":null,"warning":null,"eligible_count":3,"follows":"insight"}`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("roles = %s, want %s", raw, want)
+		}
+	}
+	if strings.Contains(string(raw), "insight_ask") || strings.Contains(string(raw), `"default":null`) {
+		t.Errorf("an absent row or default was sent: %s", raw)
+	}
+}
+
+// EVERY PAGE-AI ROW CARRIES ITS NAME IN THE PERSON'S WORDS, so a desk draws a
+// role it has never heard of with no work of its own. An older desk ignores it.
+func TestEveryInsightRoleHasALabel(t *testing.T) {
+	want := map[string]string{
+		"insight": "Page AI", "insight_notes": "Repo notes", "insight_ask": "Repo ask", "insight_themes": "Repo themes",
+		"insight_pipeline": "Build with AI", "insight_views": "Topic views",
+		"insight_factory_read": "Factory read", "insight_factory_scout": "Factory scout",
+	}
+	if len(InsightRoleKeys) != len(want) {
+		t.Fatalf("InsightRoleKeys = %v", InsightRoleKeys)
+	}
+	for _, key := range InsightRoleKeys {
+		if got := InsightLabel(key); got != want[key] {
+			t.Errorf("InsightLabel(%q) = %q, want %q", key, got, want[key])
+		}
+	}
+	raw, err := json.Marshal(TaskModelRole{Label: "Build with AI", Follows: RoleInsight})
+	if err != nil || !strings.Contains(string(raw), `"label":"Build with AI"`) {
+		t.Fatalf("a labelled row = %s, %v", raw, err)
+	}
+	if raw, _ := json.Marshal(TaskModelRole{}); strings.Contains(string(raw), "label") {
+		t.Fatalf("an unlabelled row sends a label: %s", raw)
+	}
+}

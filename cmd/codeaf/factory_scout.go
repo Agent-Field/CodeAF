@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // factoryScoutName is what a look's cost is called on the spend ledger, in
@@ -54,7 +55,7 @@ func factoryScoutChat(load func() (config.Config, error)) scout.Chat {
 		if err != nil {
 			return scout.Reply{}, err
 		}
-		model, err := factoryTriageModel(settings)
+		model, err := factoryRoleModel(settings, roles.RoleInsightFactoryScout)
 		if err != nil {
 			return scout.Reply{}, err
 		}
