@@ -1,3 +1,4 @@
+---
 kind: added
 title: a picture a shell command makes can be published as a source of the answer
 pr: 0
