@@ -69,7 +69,7 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 			if tc.size != "" {
 				labels = append(labels, "size:"+tc.size)
 			}
-			src := source{[]factory.Item{{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner, Title: "Incoming job", Body: tc.body, Labels: labels, Triage: factory.Triage{Size: "XL", Est: 999, Priority: 1, StartJudged: true, StartMatched: []string{}}}}}
+			src := source{[]factory.Item{{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner, Title: "Incoming job", Body: tc.body, Labels: labels, Triage: factory.Triage{Size: "XL", Priority: 1, StartJudged: true, StartMatched: []string{}}}}}
 			if _, err := github.PollOnce(ctx, src, st, "", func() time.Time { return time.Unix(100, 0) }); err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func TestStoppedJobStaysStoppedUntilPersonRunsIt(t *testing.T) {
 	now := time.Unix(100, 0)
 	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue,
 		State: factory.StateNew, Labels: []string{"agent-ready", "size:S"},
-		Triage: factory.Triage{TriagedAt: now, Size: "S", Est: 1}})
+		Triage: factory.Triage{TriagedAt: now, Size: "S"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestFirstRunImportsNeverStartFromMatchingLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(100, 0)
-	_, err = st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, State: factory.StateNew, SetupHeld: true, Labels: []string{"ready", "size:S"}, Triage: factory.Triage{Size: "S", TriagedAt: now, Est: 0.1}})
+	_, err = st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, State: factory.StateNew, SetupHeld: true, Labels: []string{"ready", "size:S"}, Triage: factory.Triage{Size: "S", TriagedAt: now}})
 	if err != nil {
 		t.Fatal(err)
 	}

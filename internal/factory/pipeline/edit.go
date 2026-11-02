@@ -65,7 +65,7 @@ const (
 	EditPromptMax = 8 << 10   // bytes
 	EditUntilMax  = 200       // characters
 	EditRoundsMax = 99
-	EditBudgetMax = 10000.0
+	EditBudgetMax = factory.BudgetMostUSD
 	EditOpsMax    = 64
 )
 

@@ -234,13 +234,18 @@ decides which combinations are accepted.
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
 | `factory.job_assign_to_me` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
+| `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
+| `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
+| `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
+| `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
@@ -249,7 +254,10 @@ decides which combinations are accepted.
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_stop_after_step` | `in.FactoryJobStopAfterStepParams` | `FactoryJobActed` |
+| `factory.job_spend_answer` | `in.FactoryJobSpendAnswerParams` | `FactoryJobActed` |
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
@@ -260,6 +268,7 @@ decides which combinations are accepted.
 | `factory.job_step_stop` | `in.FactoryJobStepParams` | `FactoryJobActed` |
 | `factory.job_stop` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_unassign` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommented` |
 | `factory.job_undo` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.link_copy` | `in.FactoryLinkCopyParams` | `FactoryLinkMade` |
 | `factory.link_create` | `in.FactoryLinkCreateParams` | `FactoryLinkMade` |
@@ -276,11 +285,17 @@ decides which combinations are accepted.
 | `factory.pipeline_copy_clear` | `in.FactoryPipelineCopyClearParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_copy_set` | `in.FactoryPipelineCopySetParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_pr` | `in.FactoryPipelinePRParams` | `FactoryPipelinePRDone` |
+| `factory.pipeline_prs` | `in.FactoryPipelinePRsParams` | `FactoryPipelinePRs` |
 | `factory.pipeline_preview` | `in.FactoryPipelinePreviewParams` | `FactoryPipelinePreview` |
 | `factory.pipeline_source` | `in.FactoryPipelineSourceParams` | `FactoryPipelineSource` |
 | `factory.queue` | `in.FactoryRef` | `Queue` |
 | `factory.refresh` | `in.FactoryRefreshParams` | `Empty` |
+| `factory.estimate_new` | `in.FactoryEstimateNewParams` | `NewEstimate` |
+| `factory.read` | `in.FactoryReadParams` | `ReadResult` |
+| `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
+| `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
+| `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
@@ -288,14 +303,17 @@ decides which combinations are accepted.
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
+| `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
 | `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
 | `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_clone` | `in.FactorySetupFolderParams` | `FactorySetupView` |
 | `factory.setup_connect` | `in.FactorySetupConnectParams` | `FactorySetupView` |
+| `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
 | `factory.setup_select` | `in.FactorySetupSelectParams` | `FactorySetupView` |
@@ -305,6 +323,438 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
+| `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
+| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
+| `factory.spending` | `in.FactoryRef` | `FactorySpending` |
+| `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
+
+An engine whose hello carries the features `factory.default_budget`,
+`factory.auto_start_cap` and `factory.default_model` serves
+`factory.spending {factory}` and `factory.spending_set {factory,
+default_budget_usd?, auto_start_max_usd?, default_model?, expect?}`. Both answer
+`{factory, default_budget_usd, auto_start_max_usd, default_model}`, the values the
+factory keeps for every repository it watches (`GET` and `PATCH /v1/spending`).
+`default_budget_usd` is the budget a job gets when it has none and its
+repository's file names no `default_budget`: a positive amount, or `null` for the
+built-in $5. `auto_start_max_usd` is the most a job may be budgeted and still
+start on its own: zero or more, or `null` for the built-in $5; a repository's
+stricter `start.max_cost` still holds, and zero makes every such job ask first.
+`default_model` is the model a step runs on when neither the step nor its job
+names one: a `models.list` id, or `""` for the runner's own default; a runner on
+one model for every task keeps that model. Each figure is at most $10,000. A set
+changes only the fields it sends (at least one); `null` clears a figure and `""`
+the model. Only the factory's operator may set them (`forbidden` otherwise).
+`expect` is the three values as last read; a factory that keeps others answers
+`stale` and changes nothing. A refused value is `bad_params` before anything is
+sent; an unconfirmed write is `uncertain`.
+
+`factory.job_create` keeps `title` trimmed and separate from literal `text`,
+including details whitespace in the job ask and body; empty details stay empty.
+Neither field lifts
+terminal chips or changes budget, approval steps, rounds, effort or security.
+The job title alone supplies the draft PR title. Existing jobs are not rewritten.
+The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
+Factories without the separate-title capability retain their prior behavior.
+
+
+An engine whose hello carries `factory.stop_any_version` accepts
+`factory.job_stop {factory, job, expect?}` and
+`factory.job_step_stop {factory, job, step, expect?}`. An omitted `expect`
+is accepted; when supplied it retains the existing shape, including a positive
+`version`. On an active job, a mismatching `expect` does not refuse Stop.
+Step Stop still requires the named step to be current and running, and refuses
+finished or publishing jobs. Ended jobs retain their existing `stale` or
+`conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
+and errors retain their existing codes, including `bad_params` for malformed
+requests. Other job actions retain their guards except Pause and Resume, described below.
+
+`factory.job_pause` in hello features says `factory.job_hold` also pauses a
+running job. Both `factory.job_hold` and `factory.job_resume` take
+`{factory, job, expect: {version}}` (`FactoryJobActionParams`) and return
+`FactoryJobActed`, with action `hold` or `resume`. Hold keeps a queued job from
+starting or cancels a running step's current model round. Its work, conversation
+and recorded spending stay. Resume continues the same step and round, reopening
+its conversation when available. Pause releases the worker lease and capacity
+slot after the cancelled round's final work and spending are saved. Resume queues
+the saved run for a worker: it continues as soon as a slot is free, or reads as
+an ordinary queued job with the existing waiting presentation while slots are busy.
+No model round starts while it waits. Progress alone never makes Pause or Resume
+stale: both accept an outdated `expect.version`. A stopped or finished job refuses
+Pause with `conflict` and “<job> is not running”; a stopped job refuses Resume
+with `conflict` and “<job> is not paused”. A refusal changes neither the job nor
+its activity record and starts no model round. Stop committed before Resume wins.
+No additional hello feature is needed; desks still send the same `expect` shape.
+
+The job's person may use these actions. `can.hold` permits a queued or running
+job, excluding a job waiting for a person, finished or publishing; `can.resume`
+permits a paused job. A paused running job keeps `state: "running"` even
+after its lease is released, with `can.resume: true`,
+`state_presentation.kind: "paused"`, title `Paused`, and no new question.
+After Resume, `state` is `queued` until a worker takes a free slot; its paused
+flag is cleared and the ordinary queue presentation applies. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
+name the caller. Explicit Resume also writes exactly one `resumed` line into the
+manager chat, including while the old lease drains; a repeated Resume adds none.
+Automatic continuation does not add this explicit-action note. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, and
+`bad_params` for an
+invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
+uses a new chat.
+
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+An engine whose hello carries `factory.spend_by_model` (and capabilities
+`spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
+the same days and the same job spend as `factory.spend_by_repo`, from
+`GET /v1/spend/models`, as `{factory, from, to, time_zone?, models, unknown_usd?}`.
+Each model is `{model, cost_usd, calls, input_tokens?, output_tokens?, jobs}`,
+dearest first and then by name. `unknown_usd` is spend in that range that was
+not recorded against a model, including every job from before model lines
+were kept; it is omitted when there is none. The model costs and
+`unknown_usd` add up to `factory.spend_by_repo`'s `total_usd` for the same
+days. A triage read, a scout, and page AI that is not booked on a job are in
+neither total. A factory older than the route answers not found.
+The job manager's model tools also expose the plan send-back: `factory_status`
+includes the exact pending `question_id` in its text at every waiting gate.
+`factory_answer {action: "reject_plan", question_id, answer}` sends the requested
+changes (1–4,000 characters) through the same typed plan-revision door as
+`factory.job_reject_plan`. It checks the manager binding and exact decision on
+the locked job; a stale decision changes nothing. The prior step runs again with
+the words in a new round, then approval is requested again. Omitting `action`
+retains persisted step replies; other gates keep their existing job controls.
+These model tools add no app-wire method, hello feature or wire error code.
+A confirmed send-back reports acceptance, not worker startup; an unconfirmed
+result directs the manager to read status before retrying and explain the
+outcome to the person without internal identifiers.
+
+`factory.job_set_budget` keeps its existing params (`factory`, `job`, `budget`,
+required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
+$30. Raising the cap above recorded spend resolves a `cap` question and resumes
+the interrupted step in the same conversation and round, with spend retained,
+in Auto or Manual on local and leased runners. Chat records one
+`budget raised to $10 · carrying on` line for a $10 cap. An increase at or below
+spend updates the question and keeps work waiting. A decrease below spend is
+still refused (`bad_params`). Other questions and publication approvals are
+unchanged. This corrects existing behavior; method names, errors and hello
+feature identifiers are unchanged.
+An engine whose hello carries `factory.plan_files_answer` reads structured plan
+files. `factory.job` keeps its existing `{factory, job}` request and `Job` reply;
+`steps[].files` carries the plan step's answer (`null` for an absent field, `[]`
+for an explicit unknown list). Worker step reports and pulls carry the same
+`files` array in `StepResult`. `planned_files` is derived from the current finished
+plan, never from prose or a cache. No method or error code changes.
+
+The plan's model fills `stage_result.files` as part of its answer, alongside
+`output`; the plan schema requires the field. At most 200 entries, 512 bytes per
+path, with the strict repository-relative declaration path rules. Any invalid
+entry, empty list or disagreement with a `Files:` declaration makes the list
+unknown. An absent field falls back to the strict declaration for older plans.
+One existing correction attempt asks for a missing or invalid list within the
+existing step budget. A provider that ignores the schema can still omit it;
+the protected-path gate then pauses safely. The stored unknown-list hold suffix
+remains `the plan names no files`; visible words describe the missing checkable
+list rather than claiming the plan names no files in prose.
+
+`factory.activity` records automatic approvals and their publications with
+`actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
+approval keeps `actor: {kind: "person", name: "@handle"}` and their handle.
+Automatic approval has an empty `approval.decided_by`. A stale action after
+an automatic approval says `approved automatically at HH:MM` (UTC), with no
+`by` or `approved_by`; `reason: "stale"`, the receipt event and commit remain.
+Saved events keep their original attribution. Automatic approval trailers
+use `Factory-Approval: evt_<id> factory <commit>`; personal trailers keep
+`@handle`. Workers must accept the factory actor to publish automatic approvals.
+No method, parameter, reply field, error code or hello feature is added.
+
+An engine whose hello carries `factory.repo_facts` serves
+`factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
+counted by the factory over every job it keeps (`GET
+/v1/repos/{owner}/{repo}/facts`), as `{repo, as_of, time_zone?, days, months,
+facts, truncated?}`. Each fact is `{id, kind, value, phrase, about?, source}`
+with `source` beginning `engine:`: jobs finished and pull requests merged in
+the last `days` (1 to 366, default 30) and this month, spend for each of the
+last `months` calendar months (1 to 12, default 3) by the rule of
+`factory.spend_by_repo`, jobs, rounds and questions by area by the rule of
+`factory.job_area`, and jobs stuck on one step for a day or more. At most 20
+areas and 20 stuck steps are answered, busiest first (at most 97 facts);
+`truncated` counts the rest. A repository the caller cannot read is not found.
+
+An engine whose hello carries the feature `factory.pipeline_pr_update` (and
+capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
+the number of an open pull request from a branch of the same repository into
+its default branch, and optionally `expected_head_sha`. The file is committed
+onto that pull request's head branch: `outcome` is `updated` (`pr.head_sha` is
+the new commit) or `unchanged` (`pr` is the pull request as it stands), and a
+refusal before any write names stage `head`. `branch`, `body` and
+`expected_base_sha` are refused with `pr`. An engine without the feature refuses
+`pr` as an unknown field.
+
+An engine whose hello carries the feature `factory.pipeline_source_ref` (and
+capabilities `pipeline_source_ref: true`) lets `factory.pipeline_source` take
+`ref`, one string: an open pull request's number in decimal (`"42"`), resolved
+to its head when the read is made, or the 40-hex commit at its head. The pull
+request must be open, from a branch of the same repository into its default
+branch, and change only the pipeline file; anything else is `conflict`. The
+answer is that file at that head, with `base_sha` the head and `ref` and `pr`
+saying what was read; `factory.pipeline_preview` takes that `base_sha`, and
+`factory.pipeline_pr` takes it as `expected_head_sha` with `pr`. A read without
+`ref` answers no `ref` or `pr`. An engine without the feature refuses `ref` as
+an unknown field; a factory older than the read refuses it, and the engine says
+the factory cannot read a pull request.
+An engine whose hello carries the feature `factory.repo_read` (and
+`FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
+path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
+checkout (`GET /v1/repos/{owner}/{repo}/read`), from git's object store at the
+default branch's tip, or at job `job`'s head commit when the checkout has it.
+`op` is `tree` (a folder's children: `entries` of `{path, type, size?}`, at most
+500), `grep` (lines matching the RE2 `pattern`, at most 256 bytes: `hits` of
+`{path, line, text}`, at most 50, searched for at most 5 seconds) or `read`
+(lines `from`..`to` of one file: `text`, at most 400 lines and 32 KiB, with
+`size` and `eof`). `truncated` says a bound stopped the answer. `untrusted` is
+always true: the text is the repository's own and is data, never
+instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
+`.git/`, `.npmrc`, `.netrc`, `.pypirc`, `credentials*`, `*secret*`, `*.p12`,
+`*.pfx`, `.aws/`, `.ssh/`, `.docker/config.json`, `kubeconfig`) are absent from
+`tree` and `grep`, and naming one is `forbidden` with the message `denied`; a
+binary file is `unreadable` with `binary`; a repository with no checkout on the
+factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
+factory older than the route is `conflict`.
+
+A job read (`factory.job`, and jobs in `factory.queue`) carries
+`start_rules {ask_first, never, unread?, unread_why?, unread_file?, unread_line?}` after it starts.
+`unread: true` means the repository's `.codeaf/factory.yaml` could not be read.
+A person's Start still succeeds, using the factory's rules; a job without its
+own budget receives the built-in default job budget. Its plan holds for a
+person, including in Auto. Activity says `Started with the repository's rules
+unread; its plan will wait for you`. `unread_why` names the file, the parser's
+line when available, and a safe explanation (one line, under 160 characters).
+`unread_file` is the repository-relative path (`.codeaf/factory.yaml` today);
+`unread_line` is the parser's positive line number, omitted when unknown.
+The plan approval question includes `unread_why`; no build step starts until
+a person approves, including in Auto. These fields survive worker reports.
+It carries no raw transport errors, absolute paths or credentials. Fix the
+named file before reviewing the plan. A clean read without a positive default
+budget still refuses a job without its own budget. Unread factory rules still
+refuse Start and leave the job new. These are additive job fields under the
+existing factory features; method parameters and replies otherwise stay the
+same.
+A job's `steps[].rounds[]` carries the engine's optional `result` word:
+`done`, `not done`, `clean`, `not clean`, `green`, `not green`, `proven`,
+`not proven`, or `blocked` for a reported result. When a retry closes a step
+that ended on a recorded failure, failure code `stopped` sends
+`result: "stopped"`, and `machine_lost` (including a runner lost across an
+engine restart) sends `result: "interrupted"`. Both have `rejected: false`
+(the false field may be omitted). Other step errors send `result: "failed"`
+and `rejected: true`. Display an explicit result word when present;
+otherwise `rejected: true` can read as "didn't pass". Only rejected rounds
+with a later round warrant "fixing them". Summary text never classifies an
+outcome. Existing saved lines are not migrated.
+
+This corrects outcomes carried by the existing `factory.job` and
+`factory.queue` replies; method parameters, hello features and error codes
+are unchanged. Round numbering and limits are unchanged: an explicit rerun
+advances the round and grants the step's configured allowance anew; automatic
+recovery still consumes its separate bounded retry allowance. Result words
+and the rejected flag do not determine those allowances.
+
+An engine whose hello carries `factory.job_area` sends `area` on each job of
+`factory.queue` and on `factory.job`: the part of the repository the job's
+change touched most, the repository's declared area or else the top-level
+directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
+`internal`, `pkg`, `lib`, `app`, `apps`, `packages`, `crates`, `cmd`) it is the
+first two segments (`"internal/factory/"`), and a file directly inside one is
+the container (`"internal/"`). Every response that carries the job says the
+same area. It is absent when the job changed no file or only files at the root.
+
+An engine whose hello carries the feature `factory.estimate` reads an issue
+with a complexity rubric and measures cost from its own finished jobs; a model
+never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
+proof, novelty}`, each `{score 0..2, why?, low?}` (`low`: judged without the
+repository), plus `from` (`read` or `scout`), `complexity` (0..10) and `band`
+(`small` 0–3, `medium` 4–6, `large` 7–10), with `band_near` naming the
+neighbouring band when the sum sits on an edge (3 or 4, 6 or 7) so the desk
+shows both; `triage.est` is gone. An open job
+carries `estimate {usd_lo, usd_hi, min_lo, min_hi, n, repo?, widened?, basis}`:
+the 10th to the 90th percentile of `n` finished jobs (about eight in ten land
+inside), in `repo` (absent: every repository). `basis` is `read` when they are
+the nearest on the job's read, or `kind` when the job has no read or too few
+similar read jobs and they are the latest finished jobs of the same kind, read
+or not (the desk says `from 12 jobs in api, not read`). Every finished job
+counts. The estimate is absent while fewer than five jobs finished on both
+bases. A running job's `estimate.left {usd_lo, usd_hi, n}` is what similar
+finished jobs spent past this job's spend so far, over the `n` that spent at
+least that much (absent below five; a running job with `left` alone has `n` 0).
+`queue.desk.estimates {jobs, hit, of, basis?}` is how many finished jobs the
+figures see and how many of `of` backtested jobs spent inside their range;
+`basis {read?: {hit, of}, kind?: {hit, of}}` is the same per basis, which is
+backtested and widened on its own.
+
+An engine whose hello carries the feature `factory.estimate_new` serves
+`factory.estimate_new {factory, repo, kind}` (`GET
+/v1/repos/{owner}/{repo}/estimate?kind=K`): what a job of that kind will
+likely cost before it exists, for New job's Start now. It answers
+`NewEstimate {factory, repo, kind, estimate?}`, where `factory` is the
+factory itself (`{name, address, version}`, as in a queue) and `estimate` is the kind
+pool's figure (basis `kind`, the repository first, then every repository),
+from the finished jobs the caller can see, and is absent below five. The
+repository dry run adds `cost_jobs`, that repository's finished jobs.
+
+An engine whose hello carries the feature `factory.scout` serves
+`factory.scout {factory, job, refresh?}` (`POST /v1/jobs/{id}/scout`): Look
+closer. A model with `factory.repo_read`'s read-only tools on the factory's
+own checkout reads the job's issue again, within at most 12 tool calls, one
+minute and $0.10, and answers `ScoutLook {factory, job, cached, scout}`.
+`scout` is `{files [{path, why}], plan [three steps], unknowns [questions],
+tests [paths], rubric (from `scout`, each factor with `cite` "path:line"),
+cited, dropped, calls, usd, model, took_ms, head, at, stale}`. Every path it
+shows exists at `head`; `dropped` counts the paths the model named that did not
+(`cited` is how many it named). The same issue text at the same head answers
+the kept look free (`cached: true`); `stale` on a job's look says the issue
+changed since (a moved head is found by the next look, which then runs anew),
+and `refresh: true` asks for a new one. The look also lands on the job
+(`job.scout`, its rubric replacing the read's), and its cost goes on the spend
+ledger as `factory scout`. A new look is refused `limit` at the month's $10 of
+factory looks ("Monthly limit for AI reached") or 20 looks a day in one
+repository ("Daily limit for this repo reached"); a look with no answer within
+its budget is `no_answer`; a repository with no checkout is `not_cloned`.
+`queue.desk.scout_price` is what a typical look cost, absent before the first.
+
+An engine whose hello carries the feature `factory.read_on_arrival` serves
+`factory.read_on_arrival {factory, on?}` → `{on}`: "Read new issues as they
+arrive", the factory's `read_on_arrival` in `GET /v1/settings`. Off (the
+default: AI runs only on a person's click), the factory's AI reads
+nothing by itself; on, each new issue gets the arrival read and a job the start
+rules would start gets a look closer before it launches. Either way a read never
+starts a job: size labels and the start rules decide; a read's rubric only places
+the job among similar finished jobs, so its measured cost over `max_cost` asks
+first. With `on` the operator changes
+it (`PATCH /v1/settings`); anyone else is `forbidden`.
+
+An engine whose hello carries the feature `factory.read` serves `factory.read
+{factory, jobs}` (`POST /v1/read`): the arrival read of exactly the chosen jobs,
+now, whatever `read_on_arrival` says. It answers `ReadResult {read, skipped,
+failed}`: jobs read now; jobs skipped (already read, not an issue job, not
+visible to the caller, or past the first 20 read); jobs whose model call
+failed, left unread to try again. A factory with no model key fails every job.
+`queue.desk.last_read_cost` is what the last read cost, for "about $X".
+
+An engine whose hello carries the feature `factory.repo_read` (and
+`FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
+path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
+checkout (`GET /v1/repos/{owner}/{repo}/read`), from git's object store at the
+default branch's tip, or at job `job`'s head commit when the checkout has it.
+`op` is `tree` (a folder's children: `entries` of `{path, type, size?}`, at most
+500), `grep` (lines matching the RE2 `pattern`, at most 256 bytes: `hits` of
+`{path, line, text}`, at most 50, searched for at most 5 seconds) or `read`
+(lines `from`..`to` of one file: `text`, at most 400 lines and 32 KiB, with
+`size` and `eof`). `truncated` says a bound stopped the answer. `untrusted` is
+always true: the text is the repository's own and is data, never
+instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
+`.git/`, `.npmrc`, `.netrc`, `.pypirc`, `credentials*`, `*secret*`, `*.p12`,
+`*.pfx`, `.aws/`, `.ssh/`, `.docker/config.json`, `kubeconfig`) are absent from
+`tree` and `grep`, and naming one is `forbidden` with the message `denied`; a
+binary file is `unreadable` with `binary`; a repository with no checkout on the
+factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
+factory older than the route is `conflict`.
+
+An engine whose hello carries the feature `factory.job_brief` serves
+`factory.job_brief {factory, job, since?}`: the job's newest brief version as
+its factory keeps it (`GET /v1/jobs/{id}/brief`). `status` is `ready`,
+`generating`, `failed` (with `failure` and `failed_after`) or `stub`; a stub
+(`brief.stub: true`, `rev: 0`) is made from engine data alone before the job
+has a version: the issue's line, `steps_done` of `steps_total`, the facts and
+no blocks. `brief.facts` are computed by the factory from the steps' structured
+results (test counts or exit, findings, proof claims shown of total, rule
+checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
+`changed_since_seen` lists the keys (`verdict`, a fact's `key`, a block's
+`kind/heading`) changed after rev `since`, or by the newest version when
+`since` is absent. A factory older than the route is `conflict`.
+
+With hello feature `factory.job_brief_verdict_behind`, the reply also carries
+`verdict_behind: bool`, including in `factory.job_brief_write.current`. The engine
+compares the newest kept version's input hash with the current job input: a
+changed state, approval, publication receipt or newer step makes it true until a
+new version is kept. A failed write keeps the old verdict and its hash. The desk
+shows that verdict as out of date when this flag is true. A stub is false; a kept
+legacy version without an input hash is true until refreshed. Params and error
+codes are unchanged.
+
+An engine whose hello carries `factory.job_brief_writer` writes the briefs of
+this machine's factory: after a step reports, when a step waits on its person,
+when proof waits for publication approval, and at publication or the job's end.
+Publication includes a PR opened or updated and a comment posted; end outcomes
+include shipped, merged, closed without merge, stopped and failed runs, plus a
+failed publication. Each job's news is taken as one after 10 seconds. Lifecycle
+triggers come from committed store updates, separately from chat step metadata.
+Auto's routine proof approval does not force an intermediate write; an exception
+waiting on a person does. A normal manual job gets two additional forced writes:
+at proof approval and after publication, folded when they share a burst. A
+forced update that finds an earlier write generating remains in the debounce
+until the writer is available. Stops before a round starts refresh too; they
+need no failed-step record. The write is one errand
+on the job's agent under the `brief` role (the small-work tier the small-jobs
+model pins). The factory checks the answer against the job (`POST
+/v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
+that names a step and try the job has, and every number in a claim found in its
+evidence. The writer's input includes the job state in words, whether proof
+approval waits, the approval kind and state, the PR number and state, publication
+attempt and outcome, comment receipt and how the job ended. These facts enter the
+input hash, so a lifecycle change cannot skip as unchanged. Evidence kind `pr`
+refers to the published PR with no step and supports its number; an unrelated or
+unsupported number is still rejected. The session books each provider call to the ledger and job's spend
+once, including rejected drafts and calls whose keep request fails. Keeping a
+version records its cost for the brief guard without charging the job again.
+An app-side brief's charge remains on the factory when a remote worker reports
+its additional spending. A failing verdict keeps the previous version and marks the brief `failed`. Without
+a person's ask, a version is written only when the last one cost at most $0.03
+and the brief's spend stays within 5% of the job's; an ask opening, the job's
+end and a retry are written regardless, and unchanged inputs are never written
+twice. `factory.job_brief_write {factory, job}` is the page's Retry: it answers
+`{skip?, kept, drops: [{part, reason}], model?, cost_usd?, current:
+FactoryJobBrief}`, with `skip` `writing` while another write is under way.
 
 ## files methods
 
@@ -537,6 +987,29 @@ $0.10 goes out as `0.1`.
 |---|---|---|
 | `search.all` | `{limit_per_group, query}` | `GroupsResult2` |
 
+With hello feature `search.jobs`, `search.all` includes a `job` group alongside
+`agent`, `crew`, `task` and `message`, including empty groups (`hits: []`).
+Each job hit has `{kind: "job", id: "<factory>#<document_id>", title,
+factory, document_id, repo?, number?, state?}`. `factory` is the connection id;
+`document_id` is the queue job's document id; `number` is its issue or PR number
+when known. The state is the factory's wire state. `agent` is absent. Older
+clients must ignore unknown groups; existing hit kinds retain their JSON shape.
+
+Search ignores case and matches words in titles, then queue request text
+(`ask.text`, when carried), then repository names. Numbers match `12`, `#12`,
+`repo#12` or `owner/repo#12`. Title and number matches precede request text,
+which precedes repository-only matches; newest creation time wins within each
+rank, with stable id breaking ties. `limit_per_group` bounds jobs across all
+factories (default 8, allowed 1–50).
+
+All connected factory queues are read concurrently under one 1.5-second total
+job-search deadline, using the caller's existing authority and visibility.
+Search never starts or resumes a local factory. A failed or timed-out factory
+adds no hits and no error. Dismissed and dropped jobs are excluded; other closed
+jobs are included only for the week they closed, and only with a known close
+time. `search.all` retains its existing `bad_params` error for an empty query.
+
+
 ## services methods
 
 | method | params | result |
@@ -582,6 +1055,27 @@ a task role and Auto never picks it; a `null` pin gives back the build's own
 small-work model. A pin is checked as the other pins are: a model the provider
 serves, and one the allowed models admit. An engine without the feature leaves
 `roles.auxiliary` out and refuses `pins.auxiliary` as an unknown role.
+
+An engine whose hello carries the feature `settings.models.insight` adds the page
+AI's roles: `insight` and its overrides `insight_notes` (repository notes),
+`insight_ask` (questions about a repository), `insight_themes` (backlog themes),
+`insight_pipeline` (Build with AI on a pipeline), `insight_views` (a factory's
+topic views), `insight_factory_read` (the read of what arrived in a factory) and
+`insight_factory_scout` (a closer look at it). Each is a row under `roles` in
+`settings.models.get` (and `settings.changed`),
+`{pin, warning, eligible_count, default?, follows?, label}`, and
+`settings.models.set` takes the same keys in `pins` as `{id, provider?}` or
+`null`. `label` is the row's name in the person's words (`Page AI`, `Repo notes`,
+`Repo ask`, `Repo themes`, `Build with AI`, `Topic views`, `Factory read`,
+`Factory scout`), so a client can draw a role it does not know yet. They are
+errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
+own pin, then the `insight` pin, then the engine's default for `insight`, then
+the small-work tier. `default` appears on `insight` only while the engine's
+default applies (`deepseek/deepseek-v4.1-flash` on `openrouter`, while OpenRouter
+is connected and the allowed models admit it); it is never written as a pin, and
+its absence means an unpinned `insight` follows its tier. `follows: "insight"`
+marks each override. Pins are stored in the `models.roles` row beside the other
+role pins and checked as the other pins are.
 
 ## setup methods
 
@@ -956,7 +1450,7 @@ are ignored):
 Response: `{text, model, provider, role, usage: {in, out, cost_usd?}, ms,
 cached?}`. `model` is the model that answered, as the provider named it. When
 `text` is `""`, `reason` says why: `closed`, `stopped`, `over_budget`, `busy`,
-`deadline`, `cancelled`, `model_failed`, `invalid_json`, `not_open` or
+`deadline`, `cancelled`, `model_failed`, `invalid_json`, `no_answer` (the call was made and billed and said nothing; its usage is kept and it is not cached), `not_open` or
 `unavailable` (an owner without the errand door). One errand per (agent,
 purpose) runs at a time; a second answers `busy` at once and never queues.
 Closing or stopping the agent, or its job running out of money, cancels one in
@@ -972,3 +1466,88 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Job note receipts and pull request comments
+
+A manager's `factory_item` note remains saved on the job after all steps finish.
+The tool result is computed from the saved job: it names the next remaining
+conversation step that reads notes, or says no remaining step will read the note and it is not in the pull
+request. The approval question is `save a note on the job?`. A running round
+already has its brief; a subsequent round can read the note if it runs again.
+Deterministic checks, publication steps and approval gates are not note readers.
+
+No app method, parameters, reply fields, hello feature or error codes change.
+`factory.issue_comment` still targets the source issue, not the job's created
+pull request. The note receipt directs the person to comment on the PR in
+GitHub, using its saved URL when present; it does not claim that a manager has
+a PR comment tool. No comment or PR body edit is performed by saving a note.
+## Stop spending after this step
+
+Hello feature `factory.job_stop_after_step` enables
+`factory.job_stop_after_step {factory, job, on: bool, expect?}`. It returns
+`FactoryJobActed` with action `stop_after_step`. The write is
+`POST /v1/jobs/{id}/stop-after-step {on, expect?}`. The job read carries
+`stop_after_step: true` while armed, and `can.stop_after_step` grants the owner
+this toggle on a running or queued job. Missing or nonboolean `on` is
+`bad_params`; another owner is `forbidden`, a stale guard is `stale`, and an
+inactive job is refused. An unconfirmed write is `uncertain` and is never retried.
+
+The current step finishes. Before the next step, or before landing when there
+is no next step, the job waits in `needs_you`, question kind `spend_stopped`:
+"Stopped spending after <Step> as you asked · $<spent> so far. Carry on?"
+Hello advertises `factory.job_spend_answer` exactly when it advertises
+`factory.job_stop_after_step`. The narrow door is
+`factory.job_spend_answer {factory, job, carry_on: bool, expect}` and returns
+`FactoryJobActed` with action `spend_answer`. It sends one
+`POST /v1/jobs/{id}/spend_answer {carry_on, expect}`. Missing or nonboolean
+`carry_on`, or missing `expect.version`, is `bad_params`. Under the revision
+lock the factory requires the current question to be `spend_stopped` and the
+caller to own the job: another question is `conflict`, a changed revision is
+`stale`, and another owner is `forbidden`. Refusals record nothing.
+`can.spend_answer` is true only for the owner while that question waits.
+`carry_on: true` behaves like yes on `/answer`, clearing the flag and continuing
+at the next step; false behaves like no, stopping as the person's stop. Both
+keep the same `answered` event and saved answer as `/answer`. An unconfirmed
+write is `uncertain` and is never retried. This door cannot answer another
+question, approve a plan or decline a start. Off before the boundary
+withdraws the hold. A step's own question or failure comes first and leaves
+the flag armed. A queued job without a started step runs its first step before
+holding. Landing and any automatic publication remain behind the hold.
+
+Each accepted toggle records `stop_after_step_changed`, the person's identity,
+and `stop_after_step=true` or `stop_after_step=false`. Workers read the saved
+choice at every step boundary through their own live lease:
+`GET /v1/workers/leases/{lease}/stop-after-step` returns `{on: bool}`.
+An unreadable choice falls back to the last value the runner saved; the next boundary reads it again.
+
+### Run an ended job as a new job
+
+Hello feature `factory.job_run_as_new` adds
+`factory.job_run_as_new {factory, job, assignee?, expect?}`. When supplied,
+`expect.version` must be positive and guards the source job. The engine
+sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
+applies the same ownership and repository guards as `run_again`, and accepts
+failed, stopped, closed and done jobs. Running work is refused.
+
+The reply is `FactoryJobActed` with `action: "run_as_new"` and `job` naming the
+NEW job; `current` reads that job. The HTTP answer is `{factory, id}` with the
+new document ID. Job reads add `can.run_as_new`, `from_job` (the original job's
+document ID) and `source_issue` (an optional reference URL). Both jobs' records
+carry `run_as_new` receipts with the actor and both document IDs.
+
+The factory copies repo, title, Body and Ask.Text verbatim, autonomy, Cap,
+Stages, the decided pipeline and model choices. It creates an ordinary issue
+pipeline job with `number: 0` and a fresh run. The forge merge index uses repo,
+kind and issue number, so retaining the source's number would claim its
+identity. `source_issue` carries only the reference, never that identity.
+Omitting assignee uses the caller as starter; an explicit assignee names the
+new job's person. A person's ordinary Start queues it under the usual capacity
+limits. The original document is never changed.
+
+Errors follow other job writes: `bad_params` for malformed requests,
+`forbidden` for ownership, `stale` for a changed source, `conflict` for ongoing
+work or start refusals (`repo_off` or `needs_checkout` in refusal.reason),
+`not_found` for a missing job, and `uncertain` when the outcome is unconfirmed.
+A start refusal removes a provisional copy; its allocated document ID is not
+reused. Storage or receipt failures after a successful start remain uncertain;
+the engine never repeats the write automatically.

@@ -2,11 +2,6 @@ package factory
 
 import "strings"
 
-// thinBelow is the readiness under which an item is thin: it wants questions
-// answered before anybody writes code on it. [Triage.Readiness] says the same
-// number in its comment, and this is the one place it is a value.
-const thinBelow = 55
-
 // Fits says whether a stage's [Stage.When] fits an item, which is how a
 // banked recipe adapts to the item in front of it without anybody touching the
 // recipe. It reads [Stage.When] alone; an approve step's when is the same
@@ -30,7 +25,7 @@ func whenFits(cond string, it Item) bool {
 	case "", "always":
 		return true
 	case "thin":
-		return it.Triage.Readiness < thinBelow
+		return it.Triage.Thin()
 	case "large":
 		shown, _ := ShownSize(it)
 		return shown == "L"

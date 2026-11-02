@@ -558,7 +558,12 @@ func (s *Source) lastComments(ctx context.Context, owner, name string, number, c
 	}
 	list := make([]factory.Comment, 0, len(got))
 	for _, c := range got {
-		list = append(list, factory.Comment{Author: c.User, Body: clip(strings.TrimSpace(c.Body), commentLimit), At: c.Created})
+		body := strings.TrimSpace(c.Body)
+		// The author's standing is asked here, once per login and repository
+		// for the process ([Source.tier]), because the job's manager treats a
+		// comment from someone without write access as context only.
+		list = append(list, factory.Comment{Author: c.User, Body: clip(body, commentLimit), At: c.Created, ID: c.ID, URL: c.URL,
+			Tier: s.tier(ctx, owner, name, c.User), ByFactory: strings.HasPrefix(body, forge.PublicationMarker)})
 	}
 	s.mu.Lock()
 	s.comments[key] = seenComments{count: count, list: list}

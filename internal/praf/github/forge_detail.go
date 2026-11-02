@@ -20,6 +20,9 @@ type Comment struct {
 	User    string
 	Body    string
 	Created time.Time
+	// ID is GitHub's comment id and URL its page; "" when GitHub left them out.
+	ID  string
+	URL string
 }
 
 // FileChange is one file a pull request changes.
@@ -80,6 +83,8 @@ func (c *client) IssueComments(ctx context.Context, owner, repo string, number, 
 			return nil, err
 		}
 		var rows []struct {
+			ID        int64     `json:"id"`
+			HTMLURL   string    `json:"html_url"`
 			User      userJSON  `json:"user"`
 			Body      string    `json:"body"`
 			CreatedAt time.Time `json:"created_at"`
@@ -89,7 +94,11 @@ func (c *client) IssueComments(ctx context.Context, owner, repo string, number, 
 		}
 		out := make([]Comment, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, Comment{User: r.User.Login, Body: r.Body, Created: r.CreatedAt})
+			c := Comment{User: r.User.Login, Body: r.Body, Created: r.CreatedAt, URL: r.HTMLURL}
+			if r.ID > 0 {
+				c.ID = strconv.FormatInt(r.ID, 10)
+			}
+			out = append(out, c)
 		}
 		return out, nil
 	}

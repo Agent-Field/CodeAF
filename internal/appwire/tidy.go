@@ -27,23 +27,46 @@ const (
 	HitCrew    = "crew"
 	HitTask    = "task"
 	HitMessage = "message"
+	HitJob     = "job"
 )
 
 // Hit is one search result: what it is, the agent it belongs to, its title,
 // and for a message the words around the match.
 type Hit struct {
-	Kind    string     `json:"kind"`
-	ID      string     `json:"id"`
-	Agent   string     `json:"agent,omitempty"`
-	Title   string     `json:"title"`
-	Excerpt string     `json:"excerpt,omitempty"`
-	At      *time.Time `json:"at,omitempty"`
+	Kind       string     `json:"kind" enum:"agent,crew,task,message,job"`
+	ID         string     `json:"id"`
+	Agent      string     `json:"agent,omitempty"`
+	Title      string     `json:"title"`
+	Excerpt    string     `json:"excerpt,omitempty"`
+	At         *time.Time `json:"at,omitempty"`
+	Factory    string     `json:"factory,omitempty"`
+	DocumentID int        `json:"document_id,omitempty"`
+	Repo       string     `json:"repo,omitempty"`
+	Number     int        `json:"number,omitempty"`
+	State      string     `json:"state,omitempty"`
 }
 
 // HitGroup is the hits of one kind.
 type HitGroup struct {
-	Kind string `json:"kind"`
+	Kind string `json:"kind" enum:"agent,crew,task,message,job"`
 	Hits []Hit  `json:"hits"`
+}
+
+// FeatureSearchJobs announces factory queue jobs in search.all.
+const FeatureSearchJobs = "search.jobs"
+
+// JobSearcher finds jobs without starting a factory or bypassing its visibility.
+type JobSearcher interface {
+	SearchJobs(query string, perGroup int) []Hit
+}
+
+func withSearchJobsFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(JobSearcher); ok {
+		if _, ok := e.(Tidier); ok {
+			hello = withFeature(hello, FeatureSearchJobs)
+		}
+	}
+	return hello
 }
 
 // Tidier is an engine that closes, archives, reopens, renames and finds. It is

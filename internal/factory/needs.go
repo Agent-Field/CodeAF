@@ -19,6 +19,7 @@ const (
 	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
 	// Persisted question kinds keep their bytes across wire contracts.
+	QKindSpendStopped     = "spend_stopped"
 	QKindOutOfAttempts    = "out_of_attempts"
 	NeedsFailed           = "failed"
 	NeedsChangesRequested = "changes_requested"
@@ -127,6 +128,13 @@ type RoundLine struct {
 	At       time.Time `json:",omitempty"`
 	Started  time.Time `json:",omitempty"`
 	Chat     string    `json:",omitempty"`
+	// Result and Reason are how the try ended ([TryResult]): its rule's word
+	// (clean, not clean, green, proven, blocked…) and a counted reason ("2
+	// findings"). A failure closed on retry says stopped, interrupted or failed
+	// from its failure code. Absent on older tries, whose outcome must not be
+	// guessed from their summary.
+	Result string `json:",omitempty"`
+	Reason string `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.
@@ -284,6 +292,9 @@ func WhoCanAnswer(kind string) string {
 // QuestionForm is the question object for a free question or an
 // out-of-attempts ask. Other needs-you kinds have no question object.
 func QuestionForm(it Item) (kind string, options []string, who string) {
+	if it.QKind == QKindSpendStopped {
+		return AskYesNo, []string{"yes", "no"}, WhoJobPerson
+	}
 	switch NeedsKind(it) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
@@ -457,6 +468,14 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 	replaced := false
 	for i := range ph.Rounds {
 		if (line.Chat != "" && ph.Rounds[i].Chat == line.Chat) || (line.Chat == "" && ph.Rounds[i].Chat == "" && ph.Rounds[i].Round == line.Round) {
+			// A LINE THAT DOES NOT SAY HOW THE TRY ENDED KEEPS WHAT WAS SAID: a
+			// worker's report and a rerun's note carry the try again without
+			// its word, which the factory judged from the report it folded.
+			// A line that says the try was rejected never keeps a word that said
+			// it passed, so only a line that agrees with the old one keeps it.
+			if old := ph.Rounds[i]; line.Result == "" && old.Round == line.Round && old.Rejected == line.Rejected {
+				line.Result, line.Reason = old.Result, old.Reason
+			}
 			ph.Rounds[i] = line
 			replaced = true
 			break
@@ -511,6 +530,9 @@ func MayAct(it Item, caller string) Acts {
 	case NeedsQuestion:
 		answer = true
 	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+		answer = owner
+	}
+	if it.QKind == QKindSpendStopped {
 		answer = owner
 	}
 	assign := person == ""
