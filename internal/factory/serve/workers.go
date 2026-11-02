@@ -1,11 +1,13 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -518,6 +520,9 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
+	var raw bytes.Buffer
+	defer r.Body.Close()
+	r.Body = io.NopCloser(io.TeeReader(r.Body, &raw))
 	var body api.WorkerReport
 	if !h.decode(w, r, &body, false) {
 		return
@@ -541,10 +546,30 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		h.applyWorker(w, r, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
 		return
 	}
+	headers := http.Header{}
+	for _, name := range []string{"Idempotency-Key", api.StepModelsHeader, api.StepChatsHeader, api.StepRuntimeHeader} {
+		if value := r.Header.Get(name); value != "" {
+			headers.Set(name, value)
+		}
+	}
+	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
 	h.applyWorker(w, r, false, func(it *factory.Item) error {
 		before := failureKey(it.Failure)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
 			return err
+		}
+		if digest != "" {
+			// Advance earlier acknowledgments with ordinary deltas too. Recovery
+			// can then name cumulative spend despite an ambiguous later response.
+			for i := range it.ReportReceipts {
+				if it.ReportReceipts[i].Lease == r.PathValue("lease") {
+					it.ReportReceipts[i].AdditionalCost += report.Cost
+				}
+			}
+			it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: r.PathValue("lease"), At: h.workers.now()})
+			if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
+				it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
+			}
 		}
 		after := it.Failure
 		// A PERSON'S STOP IS NOT A STEP THAT ERRORED: a worker whose run

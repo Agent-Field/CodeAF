@@ -86,7 +86,12 @@ of the next call's price, so an admitted call can cross the remaining budget.
 
 After job work finishes, the existing worker report path stays open while memory
 receipts settle, up to the provider recovery ceiling plus one second. This keeps
-late prices in the job header without extending a step’s two-second memory wait.
+late prices in the job header without extending a step's two-second memory wait.
+Ordinary worker report acknowledgments retain their existing recovery digest.
+After Stop revokes a lease, that digest admits only outstanding accounting through
+the existing recovery route; stopped work is not resumed or replaced. Ordinary
+reported deltas advance the same receipt atomically, so a lost report response
+cannot cause recovery to charge its cost twice.
 
 Receipt recovery has the ordinary turn's existing quit limit: generation IDs and
 pending recovery live in the provider client's in-memory queue. Neither ordinary

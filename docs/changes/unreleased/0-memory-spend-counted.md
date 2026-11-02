@@ -35,3 +35,6 @@ running, preserving their searchable evidence and original citations.
 
 The worker keeps reporting while final memory receipts settle, so late prices
 reach the job header as well as Spending without extending a step’s memory wait.
+
+Stop also reconciles final paid memory through the existing accounting receipt,
+without reopening the stopped work or counting an acknowledged price twice.

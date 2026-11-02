@@ -6,6 +6,7 @@ import "time"
 // payloads or machine-local paths. It is not writable through worker reports.
 type WorkerReportReceipt struct {
 	Digest         string
+	Lease          string `json:",omitempty"`
 	At             time.Time
 	AdditionalCost float64 `json:",omitempty"`
 }
