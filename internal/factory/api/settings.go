@@ -14,9 +14,10 @@ import (
 type FactorySettings = store.RunnerSettings
 
 type PatchFactorySettings struct {
-	RunnerTimeoutSeconds *int `json:"runner_timeout_s,omitempty"`
-	KeepOutputDays       *int `json:"keep_output_days,omitempty"`
-	KeepOutputMB         *int `json:"keep_output_mb,omitempty"`
+	RunnerTimeoutSeconds *int  `json:"runner_timeout_s,omitempty"`
+	KeepOutputDays       *int  `json:"keep_output_days,omitempty"`
+	KeepOutputMB         *int  `json:"keep_output_mb,omitempty"`
+	ReadOnArrival        *bool `json:"read_on_arrival,omitempty"`
 }
 
 // Spending is GET /v1/spending and the answer to a PATCH of it: the factory's

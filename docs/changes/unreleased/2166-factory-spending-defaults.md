@@ -1,7 +1,7 @@
 ---
 kind: added
-title: A factory keeps a default job budget, a cap on what starts on its own, and a default model for every repository
-pr: 0
+title: A factory keeps a default job budget, a cap on automatic starts, and a default model
+pr: 2166
 surface: [engine]
 invalidates:
   - "Was true: a job with no budget and a repository with no default_budget always got the built-in $5, a job started on its own was held only above its repository's start.max_cost or the built-in $5, and a step with no model of its own ran on the runner's launch default. Is true now: a factory's operator can set each of those for every repository (factory.spending_set, PATCH /v1/spending); a repository's own default_budget still stands, its stricter start.max_cost still holds, and a runner on one model for every task keeps that model."
