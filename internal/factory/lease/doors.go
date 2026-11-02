@@ -558,3 +558,29 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 	})
 	return saved, err
 }
+
+// SpendAnswer answers only the spending question on the locked revision.
+// Refusals leave both the item and its worker signal unchanged.
+func (d *Doors) SpendAnswer(id, revision int, yes bool, may func(factory.Item) error) (factory.Item, error) {
+	var before factory.Item
+	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.SpendingAnswer(*it); err != nil {
+			return false, err
+		}
+		if may != nil {
+			if err := may(*it); err != nil {
+				return false, err
+			}
+		}
+		var err error
+		before, err = copyItem(*it)
+		if err != nil {
+			return false, err
+		}
+		return answerLocked(doc, held, id, it, yes, "", now)
+	})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	return before, nil
+}

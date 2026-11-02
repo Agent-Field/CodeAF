@@ -38,6 +38,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
+	h.postJob("stop-after-step", stored, h.onlyOwner(h.stopAfterStep))
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
 	h.postJob("control", stored, h.onlyOwner(h.controlJob))
