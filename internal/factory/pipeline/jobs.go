@@ -4,9 +4,24 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// Measured is what jobs like this one cost, measured from the factory's own
+// finished jobs (the 80th percentile of the nearest ones), and Known false
+// when there are too few of them to say. It is never a model's guess.
+type Measured struct {
+	USD   float64
+	Known bool
+}
+
 // DecideJob applies the v2 intake rules to explicit job facts. No AI estimate,
 // inferred priority or rule judgment can grant permission to start a job.
-func (f File) DecideJob(it factory.Item, paths []string) Decision {
+//
+// THE MEASURED COST CAN ONLY HOLD A JOB. Jobs like it that cost more than
+// max_cost ask first. An unknown cost asks first only when the file WRITES
+// max_cost: the person named a ceiling and nothing shows this job is under
+// it. Under the unwritten default an unknown cost starts, because the job's
+// budget still stops a running job, and a new factory would otherwise start
+// nothing until five jobs had finished.
+func (f File) DecideJob(it factory.Item, paths []string, cost Measured) Decision {
 	budget := it.Cap
 	if budget <= 0 {
 		budget = f.DefaultBudget
@@ -35,6 +50,9 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 	if budget > f.Start.MaxCost {
 		reasons = append(reasons, "job budget "+money(budget)+" is over "+money(f.Start.MaxCost))
 	}
+	if why := f.costWhy(cost); why != "" {
+		reasons = append(reasons, why)
+	}
 	// One reason per protected path the issue names (ask-first path lines and
 	// never paths alike), then one per ask-first sentence, which nothing here
 	// can judge, so it always asks.
@@ -54,18 +72,34 @@ func (f File) DecideJob(it factory.Item, paths []string) Decision {
 	return Decision{Start: true}
 }
 
+// costWhy is the measured cost's reason to ask first, or "".
+func (f File) costWhy(cost Measured) string {
+	switch {
+	case cost.Known && !badMoney(cost.USD) && cost.USD > f.Start.MaxCost:
+		return "jobs like it cost up to " + money(cost.USD) + " · over " + money(f.Start.MaxCost)
+	case !cost.Known && f.set.maxCost:
+		return "no cost history yet · max_cost " + money(f.Start.MaxCost) + " asks first"
+	}
+	return ""
+}
+
 // DryItems is the settings sentence for the backlog, decided by [File.DecideJob]
 // itself: the same explicit labels and budget ceiling real intake applies, never
 // the triage guess. pathsOf supplies the paths intake would hand DecideJob, so a
-// preview and a start read the same facts. It reads and writes nothing.
-func (f File) DryItems(items []factory.Item, pathsOf func(factory.Item) []string) DryRun {
+// preview and a start read the same facts; costOf the measured cost, nil when
+// none is known. It reads and writes nothing.
+func (f File) DryItems(items []factory.Item, pathsOf func(factory.Item) []string, costOf func(factory.Item) Measured) DryRun {
 	d := DryRun{WouldStart: []int{}, WouldAsk: []int{}, WouldWait: []Wait{}, Why: map[int][]string{}}
 	for _, it := range items {
 		var paths []string
 		if pathsOf != nil {
 			paths = pathsOf(it)
 		}
-		switch dec := f.DecideJob(it, paths); {
+		var cost Measured
+		if costOf != nil {
+			cost = costOf(it)
+		}
+		switch dec := f.DecideJob(it, paths, cost); {
 		case dec.Start:
 			d.WouldStart = append(d.WouldStart, it.ID)
 		case dec.Ask:
