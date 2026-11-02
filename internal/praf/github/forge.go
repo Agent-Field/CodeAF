@@ -620,12 +620,11 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 	return out, nil
 }
 
-// openIssuesBatch is how many repositories one GraphQL request counts, so a
+// OpenIssuesBatch is how many repositories one GraphQL request counts, so a
 // list costs one more request per REST page it took.
-const openIssuesBatch = 100
+const OpenIssuesBatch = 100
 
-// fillOpenIssues sets each repository's OpenIssues from GraphQL, which counts
-// issues apart from pull requests where REST's open_issues_count cannot. A
+// fillOpenIssues sets each repository's OpenIssues from [OpenIssueCounts]. A
 // batch GitHub refuses, or a repository it does not answer, stays nil: the
 // count is an extra, and the list never fails or guesses for want of it.
 func (c *client) fillOpenIssues(ctx context.Context, repos []RepoInfo) {
@@ -633,19 +632,41 @@ func (c *client) fillOpenIssues(ctx context.Context, repos []RepoInfo) {
 		return
 	}
 	headers, _ := c.headersForRepo(ctx, "", "")
-	for start := 0; start < len(repos); start += openIssuesBatch {
-		batch := repos[start:min(start+openIssuesBatch, len(repos))]
+	names := make([]string, len(repos))
+	for i, r := range repos {
+		names[i] = r.Owner + "/" + r.Name
+	}
+	counts := OpenIssueCounts(ctx, names, func(ctx context.Context, payload any) ([]byte, error) {
+		return c.request(ctx, http.MethodPost, c.baseURL+"/graphql", headers, payload, 30*time.Second)
+	})
+	for i := range repos {
+		repos[i].OpenIssues = counts[i]
+	}
+}
+
+// OpenIssueCounts is how many issues alone are open in each "owner/name" of
+// repos, counted by GraphQL where REST's open_issues_count adds pull
+// requests in. post sends one GraphQL payload and answers its body; it is
+// called once per [OpenIssuesBatch] repositories with aliases over
+// repository(owner,name){issues(states:OPEN){totalCount}}, never once per
+// repository. A count GitHub did not give, because the batch failed or the
+// repository was not answered, is nil.
+func OpenIssueCounts(ctx context.Context, repos []string, post func(ctx context.Context, payload any) ([]byte, error)) []*int {
+	out := make([]*int, len(repos))
+	for start := 0; start < len(repos); start += OpenIssuesBatch {
+		batch := repos[start:min(start+OpenIssuesBatch, len(repos))]
 		params := make([]string, len(batch))
 		fields := make([]string, len(batch))
 		vars := make(map[string]any, 2*len(batch))
-		for i, r := range batch {
+		for i, full := range batch {
 			k := strconv.Itoa(i)
+			owner, name, _ := strings.Cut(full, "/")
 			params[i] = "$o" + k + ":String!,$n" + k + ":String!"
 			fields[i] = "r" + k + ":repository(owner:$o" + k + ",name:$n" + k + "){issues(states:OPEN){totalCount}}"
-			vars["o"+k], vars["n"+k] = r.Owner, r.Name
+			vars["o"+k], vars["n"+k] = owner, name
 		}
 		query := "query(" + strings.Join(params, ",") + "){" + strings.Join(fields, " ") + "}"
-		raw, err := c.request(ctx, http.MethodPost, c.baseURL+"/graphql", headers, map[string]any{"query": query, "variables": vars}, 30*time.Second)
+		raw, err := post(ctx, map[string]any{"query": query, "variables": vars})
 		var reply struct {
 			Data map[string]*struct {
 				Issues struct {
@@ -659,10 +680,11 @@ func (c *client) fillOpenIssues(ctx context.Context, repos []RepoInfo) {
 		for i := range batch {
 			if r := reply.Data["r"+strconv.Itoa(i)]; r != nil {
 				n := r.Issues.TotalCount
-				batch[i].OpenIssues = &n
+				out[start+i] = &n
 			}
 		}
 	}
+	return out
 }
 
 // Comment posts body as a comment on issue or pull request number.

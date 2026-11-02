@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,10 +35,15 @@ type setupGitHub struct {
 
 func (g *setupGitHub) client(t *testing.T) *http.Client {
 	return &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		// A GraphQL query is recorded as QUERY: it reads, though it is a POST.
+		verb, query := r.Method, graphQLRead(r)
+		if query {
+			verb = "QUERY"
+		}
 		g.mu.Lock()
-		g.requests = append(g.requests, r.Method+" "+r.URL.Path)
+		g.requests = append(g.requests, verb+" "+r.URL.Path)
 		g.mu.Unlock()
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && !query {
 			t.Errorf("setup wrote to GitHub: %s %s", r.Method, r.URL)
 		}
 		if r.URL.Host != "api.github.com" {
@@ -270,7 +277,7 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 		t.Fatalf("expected the two issues as Backlog jobs: %+v", q.Jobs)
 	}
 	for _, r := range s.github.seen() {
-		if !strings.HasPrefix(r, "GET ") {
+		if !strings.HasPrefix(r, "GET ") && !strings.HasPrefix(r, "QUERY ") {
 			t.Fatalf("GitHub request %q", r)
 		}
 	}
@@ -553,4 +560,20 @@ func TestLocalFactoryRefusesBadCallersAndForbiddenFolders(t *testing.T) {
 		t.Fatalf("a refused folder changed the repo: %+v", r)
 	}
 	s.neverSaid(setupSecret, "another-secret")
+}
+
+// graphQLRead is whether r is a GraphQL QUERY, which reads (discovery's
+// open-issue counts); a mutation, or anything else posted, is a write. The
+// body is put back for the request to be sent.
+func graphQLRead(r *http.Request) bool {
+	if r.Method != http.MethodPost || r.URL.Path != "/graphql" || r.Body == nil {
+		return false
+	}
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	var ask struct {
+		Query string `json:"query"`
+	}
+	return json.Unmarshal(raw, &ask) == nil && strings.HasPrefix(strings.TrimSpace(ask.Query), "query")
 }
