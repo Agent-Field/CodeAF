@@ -416,7 +416,7 @@ func Recall(options Options) *Catalog {
 	if !ok {
 		return &Catalog{ready: newRows(nil)}
 	}
-	return &Catalog{ready: cachedRows(cached, options, time.Now())}
+	return &Catalog{ready: cachedRows(cached, options, nowOf(options)())}
 }
 
 // cachedRows is the rows a cache file holds, with the standing of the dedicated
