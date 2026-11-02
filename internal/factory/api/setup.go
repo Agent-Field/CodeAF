@@ -119,8 +119,11 @@ type JobDisplay struct {
 // counted, and only jobs with an owner/name repository. Repos is sorted by
 // name and is [] when nothing was spent; total_usd is their sum.
 type SpendByRepo struct {
-	From     string      `json:"from"`
-	To       string      `json:"to"`
+	From string `json:"from"`
+	To   string `json:"to"`
+	// TimeZone is the IANA name of the zone the days are read in, such as
+	// "Europe/London". It is absent when the factory cannot name its zone.
+	TimeZone string      `json:"time_zone,omitempty"`
 	Repos    []RepoSpend `json:"repos"`
 	TotalUSD float64     `json:"total_usd"`
 }

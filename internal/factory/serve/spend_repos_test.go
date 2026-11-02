@@ -2,6 +2,7 @@ package serve
 
 import (
 	"encoding/json"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -18,7 +19,10 @@ import (
 func TestSpendByRepoPlacesEachJobOnItsRunsStartDayForWhatTheCallerCanSee(t *testing.T) {
 	h, clock, g := visibilityFloor(t, map[string]map[string]bool{"priya": {"acme/api": true}})
 	priya := signViewer(t, h, g, clock, "priya")
-	zone := time.FixedZone("factory", -5*3600)
+	zone, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Skipf("no zone database: %v", err)
+	}
 	at := func(month time.Month, day, hour, minute int) time.Time {
 		return time.Date(2026, month, day, hour, minute, 0, 0, zone)
 	}
@@ -45,18 +49,18 @@ func TestSpendByRepoPlacesEachJobOnItsRunsStartDayForWhatTheCallerCanSee(t *test
 		return out
 	}
 	october := "?from=2026-10-01&to=2026-10-31"
-	want := api.SpendByRepo{From: "2026-10-01", To: "2026-10-31", TotalUSD: 2.125, Repos: []api.RepoSpend{
+	want := api.SpendByRepo{From: "2026-10-01", To: "2026-10-31", TimeZone: "America/Chicago", TotalUSD: 2.125, Repos: []api.RepoSpend{
 		{Repo: "acme/api", SpentUSD: 1.375, Jobs: 2},
 		{Repo: "acme/web", SpentUSD: 0.75, Jobs: 1},
 	}}
 	if got := read("floor-secret", october, 200); !reflect.DeepEqual(got, want) {
 		t.Fatalf("owner's October = %+v, want %+v", got, want)
 	}
-	want = api.SpendByRepo{From: "2026-10-01", To: "2026-10-31", TotalUSD: 1.375, Repos: []api.RepoSpend{{Repo: "acme/api", SpentUSD: 1.375, Jobs: 2}}}
+	want = api.SpendByRepo{From: "2026-10-01", To: "2026-10-31", TimeZone: "America/Chicago", TotalUSD: 1.375, Repos: []api.RepoSpend{{Repo: "acme/api", SpentUSD: 1.375, Jobs: 2}}}
 	if got := read(priya, october, 200); !reflect.DeepEqual(got, want) {
 		t.Fatalf("priya's October = %+v, want %+v", got, want)
 	}
-	want = api.SpendByRepo{From: "2026-09-01", To: "2026-09-30", TotalUSD: 2, Repos: []api.RepoSpend{{Repo: "acme/api", SpentUSD: 2, Jobs: 1}}}
+	want = api.SpendByRepo{From: "2026-09-01", To: "2026-09-30", TimeZone: "America/Chicago", TotalUSD: 2, Repos: []api.RepoSpend{{Repo: "acme/api", SpentUSD: 2, Jobs: 1}}}
 	if got := read("floor-secret", "?from=2026-09-01&to=2026-09-30", 200); !reflect.DeepEqual(got, want) {
 		t.Fatalf("September = %+v, want %+v", got, want)
 	}
@@ -68,6 +72,19 @@ func TestSpendByRepoPlacesEachJobOnItsRunsStartDayForWhatTheCallerCanSee(t *test
 	}
 	for _, bad := range []string{"", "?from=2026-10-01", "?to=2026-10-31", "?from=2026-10-31&to=2026-10-01", "?from=2025-11-01&to=2026-11-02", "?from=10/01/2026&to=2026-10-31"} {
 		read("floor-secret", bad, 422)
+	}
+	// A clock in the process's Local zone names the zone it was read from;
+	// a name nothing can resolve is left off rather than answered as "Local".
+	h.config.Now = func() time.Time { return time.Now().In(time.Local) }
+	t.Setenv("TZ", "Europe/London")
+	if got := read("floor-secret", october, 200); got.TimeZone != "Europe/London" {
+		t.Fatalf("Local with TZ=Europe/London answered time_zone %q", got.TimeZone)
+	}
+	if got := zoneName(time.FixedZone("Local", 0), func(string) (string, bool) { return "", false }, func(string) (string, error) { return "", os.ErrNotExist }); got != "" {
+		t.Fatalf("an unresolvable Local answered %q, want it omitted", got)
+	}
+	if got := zoneName(time.FixedZone("Local", 0), func(string) (string, bool) { return "", false }, func(string) (string, error) { return "/usr/share/zoneinfo/Asia/Kolkata", nil }); got != "Asia/Kolkata" {
+		t.Fatalf("Local read from /etc/localtime answered %q", got)
 	}
 	if w := identityRequest(h, "POST", "/v1/spend/repos"+october, "", "floor-secret", nil); w.Code != 405 {
 		t.Fatalf("POST = %d", w.Code)
