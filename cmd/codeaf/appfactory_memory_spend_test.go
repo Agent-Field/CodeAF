@@ -165,7 +165,8 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(workspace, "bucket"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			agent, err := session.New(session.Config{Workspace: workspace, SessionFile: filepath.Join(workspace, "bucket", "chat.jsonl"), ProfileDir: filepath.Join(s.home, "job-profile"), Model: model, APIKey: "fixture", BaseURL: server.URL, JobBudget: meter, Unattended: true, DeterministicNames: true})
+			place := session.Place{Dir: filepath.Join(workspace, "bucket", session.NewSessionID())}
+			agent, err := session.New(session.Config{Workspace: workspace, Place: place, SessionFile: place.Transcript(), ProfileDir: filepath.Join(s.home, "job-profile"), Model: model, APIKey: "fixture", BaseURL: server.URL, JobBudget: meter, Unattended: true, DeterministicNames: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -292,11 +293,17 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 			}
 			if n == 0 {
 				inventory, err := session.KnowledgeHistory(workspace).Inventory(context.Background())
-				if err != nil || len(inventory) != 1 {
+				if err != nil || len(inventory) < 1 {
 					t.Fatalf("job inventory: %v %v", inventory, err)
 				}
+				var parent string
+				for _, journal := range inventory {
+					if !strings.HasPrefix(journal.Session, "task:") {
+						parent = journal.Session
+					}
+				}
 				for extra := 0; extra < 65; extra++ {
-					if err := vault.Capture(knowledge.Source{ID: fmt.Sprintf("large-%d", extra), Session: inventory[0].Session, Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: "Cedar queues jobs.", Job: true}); err != nil {
+					if err := vault.Capture(knowledge.Source{ID: fmt.Sprintf("large-%d", extra), Session: parent, Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: "Cedar queues jobs.", Job: true}); err != nil {
 						t.Fatal(err)
 					}
 				}
