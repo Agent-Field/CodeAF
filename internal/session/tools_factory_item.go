@@ -102,7 +102,7 @@ const itemAddedMark = "+"
 // knee, which the floor stores as nothing.
 var itemEfforts = []string{"cheap", "strong", "default"}
 
-const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\", \"remove pretest\", \"run docs after write\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the conversation steps think (the field is effort; the person calls it \"thinking\": cheap, strong, default; only steps that have not begun and are not fixed change, and the answer says which), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
+const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\", \"remove pretest\", \"run docs after write\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the conversation steps think (the field is effort; the person calls it \"thinking\": cheap, strong, default; only steps that have not begun and are not fixed change, and the answer says which), or a note saved on the job whose next reader is named in the answer (\"the fixture in testdata is flaky\"). " +
 	"This conversation is the item's hub: change it with this tool, leave notes here, and once the item runs, its stages report into this conversation. " +
 	"Use it only for the item this conversation was opened for; never for another item. The factory id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its factory id. " +
 	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has; remove takes a stage out of the item altogether (skip only switches it off), and move puts a stage after another (after \"\" is first). When the person asks to remove or delete a stage, remove it; do not skip it. Give only what changes. " +
@@ -130,7 +130,7 @@ func factoryItemSchemaJSON() string {
 		`},"required":["stage","after"],"additionalProperties":false}},` +
 		`"cap":{"type":"number","description":"The item's budget in dollars: the most it may spend; the person calls this \"budget\"."},` +
 		`"effort":{"type":"string","enum":[` + quoted(itemEfforts) + `],"description":"How hard the conversation steps think; the person calls this \"thinking\". Only steps that have not begun and are not fixed by the recipe change, and they keep their own if not (the answer names which); a conversation step after proof, a job whose proof has started and a landed job refuse the whole card. default is the usual amount."},` +
-		`"note":{"type":"string","description":"One sentence the item's stages will read."},` +
+		`"note":{"type":"string","description":"One sentence to save on the job; the answer says which remaining step can read it."},` +
 		`"why":{"type":"string","description":"One sentence saying why."}` +
 		`},"required":["item"],"additionalProperties":false}`
 }
@@ -524,7 +524,7 @@ func itemQuestionWords(n ItemNotice) string {
 		}
 		return "think " + n.After.Effort + "?"
 	case "note":
-		return "add a note for the stages?"
+		return "save a note on the job?"
 	}
 	return "change the plan?"
 }
@@ -725,9 +725,53 @@ func itemNow(n ItemNotice) string {
 	// pressed, because the tool's description says nothing changes until then.
 	out := itemRef(n) + itemNowLead + strings.Join(parts, DecisionSep) + "\n" + itemDone
 	if itemHasNote(n) {
-		out += " The note is kept on the item for its stages."
+		out += " " + itemNoteReceipt(n.Now)
 	}
 	return out
+}
+
+// itemNoteReceipt names a reader from the saved run, not from the recipe's
+// list of steps that may already have finished. Failed phases are finished
+// too, as in the runner's nextPhase rule. A running round has its brief already.
+func itemNoteReceipt(it *factory.Item) string {
+	const saved = "The note was saved on the job; "
+	if it == nil {
+		return saved + "no next reader is known. It is not in the pull request. You can comment on the pull request in GitHub."
+	}
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || !itemNotePhaseIsChat(*it, ph) {
+				continue
+			}
+			if ph.State == factory.PhaseRunning {
+				return saved + ph.Name + " can read it on its next round; its current round already has its brief. It is not in the pull request."
+			}
+			return saved + ph.Name + " reads it next when it runs. It is not in the pull request."
+		}
+	} else if it.State == factory.StateNew || it.State == factory.StateQueued {
+		for _, st := range it.Stages {
+			if st.On && factory.Fits(st, *it) && itemChatStage(st) {
+				return saved + st.Name + " reads it next when it runs. It is not in the pull request."
+			}
+		}
+	}
+	out := saved + "no remaining step will read it. It is not in the pull request. You can comment on the pull request in GitHub"
+	if it.PullRequest != nil && it.PullRequest.URL != "" {
+		out += ": " + it.PullRequest.URL
+	} else {
+		out += " once a pull request exists"
+	}
+	return out + ". This tool does not post PR comments."
+}
+
+// itemNotePhaseIsChat resolves the stage as the runner's stageAt does: the
+// saved stage wins over phase metadata. Checks, posts and gates read no notes.
+func itemNotePhaseIsChat(it factory.Item, ph factory.Phase) bool {
+	st := factory.Stage{Kind: ph.Kind}
+	if i := factory.StageIndex(it.Stages, ph.Name); i >= 0 {
+		st = it.Stages[i]
+	}
+	return itemChatStage(st)
 }
 
 // itemThinkingReceipt is what a yes says about thinking, compared with the item

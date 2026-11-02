@@ -256,6 +256,8 @@ decides which combinations are accepted.
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_stop_after_step` | `in.FactoryJobStopAfterStepParams` | `FactoryJobActed` |
+| `factory.job_spend_answer` | `in.FactoryJobSpendAnswerParams` | `FactoryJobActed` |
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
@@ -355,14 +357,127 @@ The method, reply, `factory.job_actions` hello feature and error codes are uncha
 Factories without the separate-title capability retain their prior behavior.
 
 
-`factory.job_create` keeps `title` trimmed and separate from literal `text`,
-including details whitespace in the job ask and body; empty details stay empty.
-Neither field lifts
-terminal chips or changes budget, approval steps, rounds, effort or security.
-The job title alone supplies the draft PR title. Existing jobs are not rewritten.
-The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
-Factories without the separate-title capability retain their prior behavior.
+An engine whose hello carries `factory.stop_any_version` accepts
+`factory.job_stop {factory, job, expect?}` and
+`factory.job_step_stop {factory, job, step, expect?}`. An omitted `expect`
+is accepted; when supplied it retains the existing shape, including a positive
+`version`. On an active job, a mismatching `expect` does not refuse Stop.
+Step Stop still requires the named step to be current and running, and refuses
+finished or publishing jobs. Ended jobs retain their existing `stale` or
+`conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
+and errors retain their existing codes, including `bad_params` for malformed
+requests. Other job actions still require their existing guards.
 
+`factory.job_pause` in hello features says `factory.job_hold` also pauses a
+running job. Both `factory.job_hold` and `factory.job_resume` take
+`{factory, job, expect: {version}}` (`FactoryJobActionParams`) and return
+`FactoryJobActed`, with action `hold` or `resume`. Hold keeps a queued job from
+starting or cancels a running step's current model round. Its work, conversation
+and recorded spending stay. Resume continues the same step and round, reopening
+its conversation when available. Pause releases the worker lease and capacity
+slot after the cancelled round's final work and spending are saved. Resume queues
+the saved run for a worker: it continues as soon as a slot is free, or reads as
+an ordinary queued job with the existing waiting presentation while slots are busy.
+No model round starts while it waits.
+
+The job's person may use these actions. `can.hold` permits a queued or running
+job, excluding a job waiting for a person, finished or publishing; `can.resume`
+permits a paused job. A paused running job keeps `state: "running"` even
+after its lease is released, with `can.resume: true`,
+`state_presentation.kind: "paused"`, title `Paused`, and no new question.
+After Resume, `state` is `queued` until a worker takes a free slot; its paused
+flag is cleared and the ordinary queue presentation applies. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
+name the caller. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, `stale` for an outdated version, and
+`bad_params` for an
+invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
+uses a new chat.
+
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+The job manager's model tools also expose the plan send-back: `factory_status`
+includes the exact pending `question_id` in its text at every waiting gate.
+`factory_answer {action: "reject_plan", question_id, answer}` sends the requested
+changes (1–4,000 characters) through the same typed plan-revision door as
+`factory.job_reject_plan`. It checks the manager binding and exact decision on
+the locked job; a stale decision changes nothing. The prior step runs again with
+the words in a new round, then approval is requested again. Omitting `action`
+retains persisted step replies; other gates keep their existing job controls.
+These model tools add no app-wire method, hello feature or wire error code.
+A confirmed send-back reports acceptance, not worker startup; an unconfirmed
+result directs the manager to read status before retrying and explain the
+outcome to the person without internal identifiers.
+
+`factory.job_set_budget` keeps its existing params (`factory`, `job`, `budget`,
+required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
+$30. Raising the cap above recorded spend resolves a `cap` question and resumes
+the interrupted step in the same conversation and round, with spend retained,
+in Auto or Manual on local and leased runners. Chat records one
+`budget raised to $10 · carrying on` line for a $10 cap. An increase at or below
+spend updates the question and keeps work waiting. A decrease below spend is
+still refused (`bad_params`). Other questions and publication approvals are
+unchanged. This corrects existing behavior; method names, errors and hello
+feature identifiers are unchanged.
+An engine whose hello carries `factory.plan_files_answer` reads structured plan
+files. `factory.job` keeps its existing `{factory, job}` request and `Job` reply;
+`steps[].files` carries the plan step's answer (`null` for an absent field, `[]`
+for an explicit unknown list). Worker step reports and pulls carry the same
+`files` array in `StepResult`. `planned_files` is derived from the current finished
+plan, never from prose or a cache. No method or error code changes.
+
+The plan's model fills `stage_result.files` as part of its answer, alongside
+`output`; the plan schema requires the field. At most 200 entries, 512 bytes per
+path, with the strict repository-relative declaration path rules. Any invalid
+entry, empty list or disagreement with a `Files:` declaration makes the list
+unknown. An absent field falls back to the strict declaration for older plans.
+One existing correction attempt asks for a missing or invalid list within the
+existing step budget. A provider that ignores the schema can still omit it;
+the protected-path gate then pauses safely. The stored unknown-list hold suffix
+remains `the plan names no files`; visible words describe the missing checkable
+list rather than claiming the plan names no files in prose.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
@@ -417,6 +532,43 @@ instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
 binary file is `unreadable` with `binary`; a repository with no checkout on the
 factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
+
+A job read (`factory.job`, and jobs in `factory.queue`) carries
+`start_rules {ask_first, never, unread?, unread_why?, unread_file?, unread_line?}` after it starts.
+`unread: true` means the repository's `.codeaf/factory.yaml` could not be read.
+A person's Start still succeeds, using the factory's rules; a job without its
+own budget receives the built-in default job budget. Its plan holds for a
+person, including in Auto. Activity says `Started with the repository's rules
+unread; its plan will wait for you`. `unread_why` names the file, the parser's
+line when available, and a safe explanation (one line, under 160 characters).
+`unread_file` is the repository-relative path (`.codeaf/factory.yaml` today);
+`unread_line` is the parser's positive line number, omitted when unknown.
+The plan approval question includes `unread_why`; no build step starts until
+a person approves, including in Auto. These fields survive worker reports.
+It carries no raw transport errors, absolute paths or credentials. Fix the
+named file before reviewing the plan. A clean read without a positive default
+budget still refuses a job without its own budget. Unread factory rules still
+refuse Start and leave the job new. These are additive job fields under the
+existing factory features; method parameters and replies otherwise stay the
+same.
+A job's `steps[].rounds[]` carries the engine's optional `result` word:
+`done`, `not done`, `clean`, `not clean`, `green`, `not green`, `proven`,
+`not proven`, or `blocked` for a reported result. When a retry closes a step
+that ended on a recorded failure, failure code `stopped` sends
+`result: "stopped"`, and `machine_lost` (including a runner lost across an
+engine restart) sends `result: "interrupted"`. Both have `rejected: false`
+(the false field may be omitted). Other step errors send `result: "failed"`
+and `rejected: true`. Display an explicit result word when present;
+otherwise `rejected: true` can read as "didn't pass". Only rejected rounds
+with a later round warrant "fixing them". Summary text never classifies an
+outcome. Existing saved lines are not migrated.
+
+This corrects outcomes carried by the existing `factory.job` and
+`factory.queue` replies; method parameters, hello features and error codes
+are unchanged. Round numbering and limits are unchanged: an explicit rerun
+advances the round and grants the step's configured allowance anew; automatic
+recovery still consumes its separate bounded retry allowance. Result words
+and the rejected flag do not determine those allowances.
 
 An engine whose hello carries `factory.job_area` sends `area` on each job of
 `factory.queue` and on `factory.job`: the part of the repository the job's
@@ -1257,6 +1409,59 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Job note receipts and pull request comments
+
+A manager's `factory_item` note remains saved on the job after all steps finish.
+The tool result is computed from the saved job: it names the next remaining
+conversation step that reads notes, or says no remaining step will read the note and it is not in the pull
+request. The approval question is `save a note on the job?`. A running round
+already has its brief; a subsequent round can read the note if it runs again.
+Deterministic checks, publication steps and approval gates are not note readers.
+
+No app method, parameters, reply fields, hello feature or error codes change.
+`factory.issue_comment` still targets the source issue, not the job's created
+pull request. The note receipt directs the person to comment on the PR in
+GitHub, using its saved URL when present; it does not claim that a manager has
+a PR comment tool. No comment or PR body edit is performed by saving a note.
+## Stop spending after this step
+
+Hello feature `factory.job_stop_after_step` enables
+`factory.job_stop_after_step {factory, job, on: bool, expect?}`. It returns
+`FactoryJobActed` with action `stop_after_step`. The write is
+`POST /v1/jobs/{id}/stop-after-step {on, expect?}`. The job read carries
+`stop_after_step: true` while armed, and `can.stop_after_step` grants the owner
+this toggle on a running or queued job. Missing or nonboolean `on` is
+`bad_params`; another owner is `forbidden`, a stale guard is `stale`, and an
+inactive job is refused. An unconfirmed write is `uncertain` and is never retried.
+
+The current step finishes. Before the next step, or before landing when there
+is no next step, the job waits in `needs_you`, question kind `spend_stopped`:
+"Stopped spending after <Step> as you asked · $<spent> so far. Carry on?"
+Hello advertises `factory.job_spend_answer` exactly when it advertises
+`factory.job_stop_after_step`. The narrow door is
+`factory.job_spend_answer {factory, job, carry_on: bool, expect}` and returns
+`FactoryJobActed` with action `spend_answer`. It sends one
+`POST /v1/jobs/{id}/spend_answer {carry_on, expect}`. Missing or nonboolean
+`carry_on`, or missing `expect.version`, is `bad_params`. Under the revision
+lock the factory requires the current question to be `spend_stopped` and the
+caller to own the job: another question is `conflict`, a changed revision is
+`stale`, and another owner is `forbidden`. Refusals record nothing.
+`can.spend_answer` is true only for the owner while that question waits.
+`carry_on: true` behaves like yes on `/answer`, clearing the flag and continuing
+at the next step; false behaves like no, stopping as the person's stop. Both
+keep the same `answered` event and saved answer as `/answer`. An unconfirmed
+write is `uncertain` and is never retried. This door cannot answer another
+question, approve a plan or decline a start. Off before the boundary
+withdraws the hold. A step's own question or failure comes first and leaves
+the flag armed. A queued job without a started step runs its first step before
+holding. Landing and any automatic publication remain behind the hold.
+
+Each accepted toggle records `stop_after_step_changed`, the person's identity,
+and `stop_after_step=true` or `stop_after_step=false`. Workers read the saved
+choice at every step boundary through their own live lease:
+`GET /v1/workers/leases/{lease}/stop-after-step` returns `{on: bool}`.
+An unreadable choice falls back to the last value the runner saved; the next boundary reads it again.
 
 ### Run an ended job as a new job
 

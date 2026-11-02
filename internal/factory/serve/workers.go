@@ -90,6 +90,7 @@ func (h *Handler) workerRoutes() {
 	h.workers = svc
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
+	h.route("/v1/workers/leases/{lease}/stop-after-step", map[string]http.HandlerFunc{http.MethodGet: h.workerStopAfterStep})
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
@@ -711,6 +712,10 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, lease.ErrWorker):
 		h.fail(w, http.StatusForbidden, "lease belongs to another worker")
+		return true
+	case errors.Is(err, lease.ErrWithdrawn):
+		w.Header().Set(api.LeaseWithdrawnHeader, "1")
+		h.fail(w, http.StatusConflict, "lease was withdrawn")
 		return true
 	case errors.Is(err, lease.ErrNoLease):
 		h.fail(w, http.StatusConflict, "lease is no longer live")

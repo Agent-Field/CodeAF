@@ -77,6 +77,20 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 	return nil
 }
 
+// PauseItem holds a running job that no worker holds. Its work, step and
+// conversation stay in place until ResumeItem queues that same step again.
+func PauseItem(it *factory.Item, now time.Time) error {
+	if it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing {
+		return fmt.Errorf("%s is not running", it.Ref())
+	}
+	if it.Stream == nil {
+		it.Stream = freshStream(it, now)
+	}
+	it.Stream.Paused = true
+	loopSay(it, now, "said", sayPaused)
+	return nil
+}
+
 // HoldQueued holds a queued job that no worker holds yet where it is: it
 // keeps its place, and no worker takes it until [ResumeItem] lets it go on.
 // A Start now waiting on it is withdrawn, because the hold is the later word.
@@ -102,6 +116,15 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	if qkind == factory.QKindSpendStopped {
+		it.StopAfterStep = false
+		it.Question, it.QKind, it.Asking = "", "", nil
+		it.State = factory.StateRunning
+		if !yes {
+			stopSpendingItem(it, now)
+		}
+		return nil
+	}
 	answer := ""
 	if len(words) > 0 {
 		answer = words[0]
@@ -160,6 +183,15 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if it.QKind == factory.QKindSpendStopped {
+		if err := AnswerHeld(it, yes, now, words); err != nil {
+			return err
+		}
+		if yes {
+			it.State = factory.StateQueued
+		}
+		return nil
+	}
 	if it.QKind == factory.QKindOutOfAttempts && it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 		i := it.Stream.Cur
 		ph := &it.Stream.Phases[i]

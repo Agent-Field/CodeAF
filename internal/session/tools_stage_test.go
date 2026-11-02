@@ -288,3 +288,26 @@ func TestFactoryManagerDoesNotOwnOrPollPipelineCompletion(t *testing.T) {
 		t.Fatal("manager completion checker polls the runner")
 	}
 }
+
+// A PLAN'S FILE LIST COSTS NO OTHER STAGE ANYTHING, AND COSTS THE PLAN NO MORE:
+// it takes the place of the publish summary a plan never writes.
+func TestThePlanStagesVerbsCostNoMoreThanAnyOtherStages(t *testing.T) {
+	belt := func(plan bool) int {
+		a := stageAgent(t, &fakeStageDoor{})
+		a.config.PlanStage = plan
+		total := 0
+		for _, name := range []string{"stage_result", "plan_edit"} {
+			tool := stageToolNamed(t, a, name)
+			total += len(tool.Name) + len(tool.Description) + len(tool.Schema)
+			if !json.Valid(tool.Schema) {
+				t.Errorf("%s's schema is not JSON", name)
+			}
+		}
+		return total
+	}
+	other, plan := belt(false), belt(true)
+	t.Logf("other stages %d bytes, plan %d bytes", other, plan)
+	if plan > other {
+		t.Fatalf("a plan's verbs are %d bytes, over the other stages' %d", plan, other)
+	}
+}
