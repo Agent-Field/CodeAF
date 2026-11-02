@@ -57,3 +57,22 @@ func TestAppFactoryJobStepEditSendsOnlyAModelThisEngineOffers(t *testing.T) {
 		t.Fatalf("an older factory said %q", msg)
 	}
 }
+
+// A FACTORY OLDER THAN A RERUN'S MODEL refuses the field; the engine says so
+// as not supported, not as a broken request.
+func TestAppFactoryRerunOnAModelSaysAnOlderFactoryIsTooOld(t *testing.T) {
+	old := startStepFactory(t)
+	old.status, old.reply = 422, `{"error":"invalid JSON body: json: unknown field \"model\""}`
+	wire, id := attachStep(t, old)
+	wire.backend.listModels = func() ([]appwire.Model, error) {
+		return []appwire.Model{{ID: "vendor/new", Provider: "openrouter"}}, nil
+	}
+	msg := wire.mustFail("factory.job_step_rerun", map[string]any{"factory": id, "job": 7, "step": "review", "model": "vendor/new", "expect": map[string]any{"version": 4}}, appwire.CodeConflict)
+	if !strings.Contains(msg, "doesn't support that yet") {
+		t.Fatalf("an older factory said %q", msg)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(old.bodies[0]), &body); err != nil || body["model"] != "vendor/new" {
+		t.Fatalf("body = %v, %v", old.bodies, err)
+	}
+}
