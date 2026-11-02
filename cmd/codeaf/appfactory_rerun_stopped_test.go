@@ -73,7 +73,6 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 				}
 			}
 			var chats appwire.FactoryJobChats
-			s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": id}, &chats)
 			entries := func() []appwire.Entry {
 				var page appwire.EntriesResult
 				s.must("agents.entries", map[string]any{"id": chats.Agent, "limit": 200}, &page)
@@ -81,6 +80,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			}
 			act("factory.job_start", nil)
 			wait("failed command waits for Try again", func(j api.Job) bool { return j.State == api.StateNeedsYou })
+			s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": id}, &chats)
 			before, err := floor.Get(id)
 			if err != nil {
 				t.Fatal(err)
@@ -116,8 +116,8 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			}
 			stopping := strings.HasPrefix(action, "stop ")
 			if stopping {
-				wait("Stop returns the job to backlog", func(j api.Job) bool {
-					if j.State != api.StateBacklog {
+				wait("Stop records the person’s stop", func(j api.Job) bool {
+					if j.Failure == nil || j.Failure.Code != factory.CodeStopped {
 						return false
 					}
 					for _, e := range entries() {
