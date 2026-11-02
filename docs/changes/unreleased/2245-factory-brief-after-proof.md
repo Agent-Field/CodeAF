@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Job Brief follows proof approval and publication
-pr: 0
+pr: 2245
 surface: [engine]
 invalidates:
   - "Was true: a Brief could keep saying proof was waiting after the job reached Publish or opened its pull request. Is true now: proof approval and publication force a refresh with the current approval, PR and outcome facts; ordinary step updates keep their cost guard."
