@@ -101,7 +101,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 				t.Fatal(err)
 			}
 			if before.Stream == nil || before.Stream.Cur != 1 || before.Stream.Phases[1].Result == nil || before.Stream.Phases[1].Result.Exit == 0 {
-				t.Fatalf("did not reproduce a failed command: %+v", before.Stream)
+				t.Fatalf("did not reproduce a failed command: question=%q stream=%+v", before.Question, before.Stream)
 			}
 			initialWaiting := false
 			for _, e := range entries() {
