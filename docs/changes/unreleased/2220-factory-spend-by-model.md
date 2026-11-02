@@ -1,7 +1,7 @@
 ---
 kind: added
 title: App clients can read a factory's spend by model over the same days as by repository
-pr: 0
+pr: 2220
 surface: [engine]
 invalidates:
   - "Was true: a factory's spend reads had no model, and a job kept one spend figure with no record of which model the calls ran on. Is true now: factory.spend_by_model splits that same figure by the model recorded on each new call, and spend with no recorded model is unknown_usd."
