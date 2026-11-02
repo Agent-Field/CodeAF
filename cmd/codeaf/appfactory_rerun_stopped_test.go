@@ -21,6 +21,8 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			s := newLocalSetup(t)
 			model := newStageModel(t)
+			t.Setenv("OPENROUTER_API_KEY", "test-key")
+			t.Setenv("CODEAF_BASE_URL", model.server.URL)
 			g := newRunRig(t)
 			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
 				return &appConn{Conv: &fakeConversation{model: "test/model"}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
