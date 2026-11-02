@@ -235,6 +235,8 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
 	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
+	{"POST", "/v1/jobs/{id}/brief/begin", BriefBeginRequest{}, BriefBegin{}},
+	{"POST", "/v1/jobs/{id}/brief/keep", BriefKeepRequest{}, BriefKept{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
@@ -264,4 +266,42 @@ type JobBrief struct {
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
+}
+
+// BriefBeginRequest is POST /v1/jobs/{id}/brief/begin: why the brief may be
+// written now (factory.BriefTriggers).
+type BriefBeginRequest struct {
+	Trigger string `json:"trigger"`
+}
+
+// BriefBegin is the factory's answer to a write: Skip says why none begins
+// (unchanged, cost, writing); otherwise System and Input are the writer's
+// prompt and the job as it reads it, and Hash names those inputs for the
+// keep that ends the write.
+type BriefBegin struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Skip    string  `json:"skip,omitempty"`
+	Hash    string  `json:"hash,omitempty"`
+	System  string  `json:"system,omitempty"`
+	Input   string  `json:"input,omitempty"`
+}
+
+// BriefKeepRequest is POST /v1/jobs/{id}/brief/keep: the writer's answer
+// (Draft, the model's JSON as it came) or why there is none (Failure), with
+// what the call cost. The factory checks the draft against the job itself.
+type BriefKeepRequest struct {
+	Hash    string  `json:"hash"`
+	Model   string  `json:"model,omitempty"`
+	CostUSD float64 `json:"cost_usd,omitempty"`
+	Draft   string  `json:"draft,omitempty"`
+	Failure string  `json:"failure,omitempty"`
+}
+
+// BriefKept is the job's brief after a write ended: Kept says a new version
+// was kept, and Drops are the draft's parts its check dropped.
+type BriefKept struct {
+	JobBrief
+	Kept  bool                `json:"kept"`
+	Drops []factory.BriefDrop `json:"drops"`
 }
