@@ -483,7 +483,7 @@ func codexCatalogModels(dir string) []Model {
 	if !found {
 		return nil
 	}
-	return surfaceModels(config.CodexRememberedModels(connected, dir))
+	return surfaceModels(config.CodexRememberedModels(connected, dir), false)
 }
 
 func codexFailureReason(err error) string {
@@ -806,7 +806,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					options := config.CatalogOptionsFor(connected, dir)
 					_ = modelcatalog.Remember(options, seed)
 					catalog, refreshErr := modelcatalog.Refresh(ctx, options)
-					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
+					if refreshed := surfaceModels(catalog.ModelsNow(), true); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}
 					_ = WriteModelCacheFor(instance, connected.Address, models)
@@ -829,7 +829,12 @@ func modelsFromListedIDs(ids []string) []Model {
 	return cleanModels(models)
 }
 
-func surfaceModels(rows []modelcatalog.Model) []Model {
+// surfaceModels is a catalog's rows as the rows this surface draws. listed
+// says the rows came from the service's own listing just read, where a row
+// that is not PriceUnknown published its figures, so a zero is free; rows a
+// cache may have kept from ids alone know no price, and their zeros are
+// absences ([modelcatalog.Model.PriceUnknown]).
+func surfaceModels(rows []modelcatalog.Model, listed bool) []Model {
 	models := make([]Model, 0, len(rows))
 	for _, row := range rows {
 		model := Model{
@@ -843,6 +848,8 @@ func surfaceModels(rows []modelcatalog.Model) []Model {
 		if !row.PriceUnknown {
 			model.PromptPrice = row.PromptPrice
 			model.CompletionPrice = row.CompletionPrice
+			model.RequestPrice = row.RequestPrice
+			model.PriceKnown = listed
 			model.CacheReadPrice = row.CacheReadPrice
 		}
 		models = append(models, model)

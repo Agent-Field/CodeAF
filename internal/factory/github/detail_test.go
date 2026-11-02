@@ -40,8 +40,17 @@ func TestReadCarriesThePageCommentsFilesAndChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pr.URL != "https://github.com/acme/api/pull/9" || len(pr.Comments) != 1 || pr.Comments[0].Body != "looks right" {
+	if pr.URL != "https://github.com/acme/api/pull/9" || len(pr.Comments) != 2 || pr.Comments[0].Body != "looks right" {
 		t.Fatalf("the pull request's page or comments: %+v", pr)
+	}
+	// Each comment keeps its id, page and its author's standing, which is
+	// what the job's manager reads it by; the factory's own is marked.
+	bob, own := pr.Comments[0], pr.Comments[1]
+	if bob.ID != "901" || bob.URL != "https://github.com/acme/api/pull/9#issuecomment-901" || bob.Tier != factory.TierStranger || bob.ByFactory {
+		t.Fatalf("a comment lost its id, page or standing: %+v", bob)
+	}
+	if own.ID != "902" || !own.ByFactory || own.Tier == "" {
+		t.Fatalf("the factory's own comment is not marked: %+v", own)
 	}
 	wantFiles := []factory.FileChange{{Path: "big.go", Added: 29, Removed: 24}, {Path: "small.go", Added: 1, Removed: 1}}
 	if !reflect.DeepEqual(pr.Files, wantFiles) {
@@ -107,7 +116,7 @@ func TestCommentsAreReadOnlyWhenTheCountMoves(t *testing.T) {
 func read(t *testing.T, st *store.Store, id int, words string) {
 	t.Helper()
 	if err := st.Annotate(id, func(it *factory.Item) error {
-		it.Triage.Read, it.Triage.Est, it.Triage.Priority = words, 3, 2
+		it.Triage.Read, it.Triage.Rubric, it.Triage.Priority = words, &factory.Rubric{}, 2
 		it.Triage.TriagedAt = time.Now()
 		return nil
 	}); err != nil {
@@ -163,7 +172,7 @@ func TestAnUpstreamChangeIsReadAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = st.Get(issue.ID)
-	if got.Triage.Read != "" || !got.Triage.TriagedAt.IsZero() || got.Triage.Est != 0 || got.Triage.Priority != 0 {
+	if got.Triage.Read != "" || !got.Triage.TriagedAt.IsZero() || got.Triage.Rubric != nil || got.Triage.Priority != 0 {
 		t.Fatalf("a body change kept the old read: %+v", got.Triage)
 	}
 	want := []string{factory.EventArrived, factory.EventRead, factory.EventChanged, factory.EventChanged}

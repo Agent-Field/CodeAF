@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -180,4 +181,105 @@ func TestC29LinkedFolderCannotAliasTheOriginal(t *testing.T) {
 	if !reflect.DeepEqual(before, copyFingerprint(t, original)) {
 		t.Fatal("copy through a folder link changed the original")
 	}
+}
+
+// TestTheCopyFolderSaysItIsTheLiveStore pins #2072: the folder holding moved
+// chats is named for a move in progress, so it says, to anyone who looks, that
+// it holds the chats themselves and must not be removed.
+func TestTheCopyFolderSaysItIsTheLiveStore(t *testing.T) {
+	original := olderFixture(t)
+	if _, err := CopyLegacy(t.Context(), original, func(context.Context, Cell) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(CopyRoot(original)), CopyFolderReadme))
+	if err != nil || !strings.Contains(string(raw), "Do not delete it") {
+		t.Fatalf("the copy folder does not explain itself: %q, %v", raw, err)
+	}
+}
+
+// TestCopyLegacyRefusesToWipePopulatedDestination verifies the second line of
+// defence when a destination copy already holds sealed turns (either in
+// turns.jsonl or adopted.json) without copy-ready: CopyLegacy opens and
+// re-stamps a valid cell without rerunning prepare or removing the destination,
+// and fails loudly without removing the destination if OpenAt fails.
+func TestCopyLegacyRefusesToWipePopulatedDestination(t *testing.T) {
+	for _, marker := range []string{"turns.jsonl", "adopted.json"} {
+		t.Run(marker, func(t *testing.T) {
+			original := olderFixture(t)
+			c, err := CopyLegacy(t.Context(), original, func(context.Context, Cell) error { return nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Append precious post-copy content and record a sealed turn marker.
+			transcriptPath := filepath.Join(c.Root, filepath.FromSlash(TranscriptPath))
+			if err := os.WriteFile(transcriptPath, []byte("whole conversation\nprecious turn\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			switch marker {
+			case "turns.jsonl":
+				if err := os.WriteFile(filepath.Join(c.Root, StateDir, "turns.jsonl"),
+					[]byte(`{"V":1,"id":"1111111111111111111111111111111111111111111111111111111111111111"}`+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			case "adopted.json":
+				if err := os.WriteFile(filepath.Join(c.Root, StateDir, "adopted.json"),
+					[]byte(`{"V":1,"head":"2222222222222222222222222222222222222222222222222222222222222222"}`+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Remove copy-ready to simulate an older build's restore or take-back stripping it.
+			readyFile := filepath.Join(c.Root, StateDir, "copy-ready")
+			if err := os.Remove(readyFile); err != nil {
+				t.Fatal(err)
+			}
+
+			reopened, err := CopyLegacy(t.Context(), original, func(context.Context, Cell) error {
+				t.Fatal("CopyLegacy re-ran prepare on an already-populated copy")
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("CopyLegacy failed instead of opening populated copy: %v", err)
+			}
+			if reopened.Root != c.Root {
+				t.Fatalf("CopyLegacy returned root %s, want %s", reopened.Root, c.Root)
+			}
+			after, err := os.ReadFile(transcriptPath)
+			if err != nil || !strings.Contains(string(after), "precious turn") {
+				t.Fatalf("populated copy transcript lost precious turn: err=%v body=%q", err, string(after))
+			}
+			if Copied(original) != c.Root {
+				t.Fatalf("Copied(original) = %s, want %s", Copied(original), c.Root)
+			}
+		})
+	}
+
+	t.Run("unopenable_populated_destination_fails_loudly_without_removal", func(t *testing.T) {
+		original := olderFixture(t)
+		c, err := CopyLegacy(t.Context(), original, func(context.Context, Cell) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		transcriptPath := filepath.Join(c.Root, filepath.FromSlash(TranscriptPath))
+		if err := os.WriteFile(transcriptPath, []byte("precious unopenable turn\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(c.Root, StateDir, "turns.jsonl"),
+			[]byte(`{"V":1,"id":"1111111111111111111111111111111111111111111111111111111111111111"}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(c.Root, StateDir, "copy-ready")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(c.Root, filepath.FromSlash(MetaPath)), []byte("{corrupt"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := CopyLegacy(t.Context(), original, func(context.Context, Cell) error { return nil }); err == nil {
+			t.Fatal("expected CopyLegacy to fail loudly when populated destination cannot be opened")
+		}
+		after, err := os.ReadFile(transcriptPath)
+		if err != nil || !strings.Contains(string(after), "precious unopenable turn") {
+			t.Fatalf("CopyLegacy deleted or altered populated unopenable destination: err=%v body=%q", err, string(after))
+		}
+	})
 }

@@ -1229,6 +1229,11 @@ var tuiWords = map[string]tuiWord{
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
 			"a person who declined is told the next direct road rather than left on an empty screen",
 	},
+	"addMachinePitch": {
+		screen: "Pick up your work anywhere, exactly where you left it.",
+		why: "the pitch on home's add-another-device card (homeband_addmachine.go's addMachinePitch), " +
+			"read by the pairing journey so a respelled card fails the untagged word gate before tmux runs",
+	},
 }
 
 // say is how the tmux suite reaches a literal, and THE ONLY WAY IT MAY.

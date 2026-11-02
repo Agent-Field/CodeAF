@@ -115,7 +115,7 @@ func (a *Agent) provenCreation(creation *CreationContext) *CreationContext {
 		return nil
 	}
 	keys := creationKeys(a.config.transcriptPath())
-	file, err := teams.Load(profile)
+	file, err := teams.LoadTeams(profile, creation.Team)
 	if err != nil {
 		return nil
 	}

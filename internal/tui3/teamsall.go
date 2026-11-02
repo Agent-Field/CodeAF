@@ -248,13 +248,21 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 			if preview.missing {
 				words = "Conversation unavailable"
 			}
+			elsewhere := a.teamsElsewhere(m)
+			if elsewhere != "" {
+				words = "Chat is on " + elsewhere
+			}
 			parts := wrap(words, inner)
 			for i := 0; i < 2; i++ {
 				line := ""
 				if i < len(parts) {
 					line = parts[i]
 				}
-				add(a.pal.ink(line))
+				if elsewhere != "" {
+					add(a.pal.dim(line))
+				} else {
+					add(a.pal.ink(line))
+				}
 			}
 		}
 	} else if !t.Closed() {

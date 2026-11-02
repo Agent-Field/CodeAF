@@ -208,11 +208,12 @@ func (h *hostedTailChat) saved() bool {
 }
 
 func (h *hostedTailChat) quit(g *tailPublishGate) string {
-	return h.quitAfter(g, 3*time.Second)
+	return h.quitAfter(g, 0)
 }
 
 func (h *hostedTailChat) quitAfter(g *tailPublishGate, delay time.Duration) string {
 	h.t.Helper()
+	h.t.Cleanup(stopFinalSaveProgress)
 	oldRun, oldOut, oldFlush := runSurfaceProgram, os.Stdout, flushFinalSaves
 	out, err := os.CreateTemp(h.t.TempDir(), "quit-output")
 	if err != nil {
@@ -278,15 +279,18 @@ func quittingTailChat(t *testing.T) (*hostedTailChat, *tailPublishGate, string) 
 	case <-time.After(cellstore.SealWithin):
 		t.Fatal("next publish never committed")
 	}
-	output := h.quit(g)
+	output := h.quitAfter(g, 0)
 	return h, g, output
 }
 
 // Contract 1 requires quitting after work to save the latest head quietly and release its hold.
-func TestHostedQuitAfterWorkSavesNewestHeadQuietly(t *testing.T) {
+// L4-H4a allows progress while waiting, without turning a successful save into a failure.
+func TestL4HostedQuitAfterWorkSavesNewestHead(t *testing.T) {
 	h, _, output := quittingTailChat(t)
-	if output != "" {
-		t.Errorf("successful quit printed %q", output)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if line != "" && line != quitSavingWord && line != quitStillSavingWord && line != quitStillLocalWord {
+			t.Errorf("successful quit printed an unexpected receipt: %q", output)
+		}
 	}
 	if !h.saved() {
 		t.Error("quit left the newest sealed head local")
@@ -301,7 +305,8 @@ func TestHostedQuitAfterWorkSavesNewestHeadQuietly(t *testing.T) {
 }
 
 // Contract 2 requires a closing publish to join a committed request without conflicting with itself.
-func TestHostedQuitJoinsCommittedPublishWithoutSelfConflict(t *testing.T) {
+// L4-H4b preserves the joined publish when its reply is released at the close boundary.
+func TestL4HostedQuitJoinsCommittedPublishWithoutSelfConflict(t *testing.T) {
 	_, gate, _ := quittingTailChat(t)
 	if got := gate.conflicts.Load(); got != 0 {
 		t.Fatalf("one computer conflicted with itself %d times", got)
@@ -312,7 +317,8 @@ func TestHostedQuitJoinsCommittedPublishWithoutSelfConflict(t *testing.T) {
 }
 
 // Contract 3 requires the publication record to name the head accepted by the relay.
-func TestHostedQuitRecordsTheHeadAcceptedByRelay(t *testing.T) {
+// L4-H4b keeps the accepted head while the final upload reply joins closing.
+func TestL4HostedQuitRecordsTheHeadAcceptedByRelay(t *testing.T) {
 	h, _, _ := quittingTailChat(t)
 	raw, err := os.ReadFile(filepath.Join(h.c.Root, cell.StateDir, "published.json"))
 	if err != nil {
@@ -331,7 +337,8 @@ func TestHostedQuitRecordsTheHeadAcceptedByRelay(t *testing.T) {
 }
 
 // Contract 6 requires the first take back to restore the newest history without a kept branch.
-func TestHostedQuitThenTakeBackRestoresNewestHistoryFirstTry(t *testing.T) {
+// L4-H4b preserves newest-history continuation after the joined final save.
+func TestL4HostedQuitThenTakeBackRestoresNewestHistoryFirstTry(t *testing.T) {
 	h, _, _ := quittingTailChat(t)
 	rootB := func(id string) string { return filepath.Join(h.bRoots, id) }
 	got, err := h.taker(h.b, h.eb, rootB, nil).Take(t.Context(), h.c.ID)
@@ -439,7 +446,8 @@ func TestHostedLaunchNeverSealsAnEmptyTurn(t *testing.T) {
 }
 
 // Contract 7 requires an auxiliary-only local tail to adopt the remote history without making unsaved edits.
-func TestHostedTakeBackNeverBranchesBookkeepingOnlyTurns(t *testing.T) {
+// L4-H4b retains local bookkeeping after an upload-only failure and permits later continuation.
+func TestL4HostedTakeBackNeverBranchesBookkeepingOnlyTurns(t *testing.T) {
 	for _, kind := range []string{"auxiliary usage", "reconciled cost"} {
 		t.Run(kind, func(t *testing.T) {
 			g := &tailPublishGate{committed: make(chan struct{}), reply: make(chan struct{})}
@@ -476,8 +484,8 @@ func TestHostedTakeBackNeverBranchesBookkeepingOnlyTurns(t *testing.T) {
 
 func assertBookkeepingTakeBack(t *testing.T, h *hostedTailChat, g *tailPublishGate) {
 	t.Helper()
-	output := h.quit(g)
-	if !strings.Contains(output, "could not save") {
+	output := h.quitAfter(g, 0)
+	if !strings.Contains(output, "saved here; it reaches your other devices when the sync service at ") || strings.Contains(output, "could not save") {
 		raw, _ := os.ReadFile(session.Place{Dir: h.c.Root}.Transcript())
 		t.Fatalf("offline fixture did not retain local work: %q\n%s", output, raw)
 	}
@@ -517,7 +525,8 @@ func assertBookkeepingTakeBack(t *testing.T, h *hostedTailChat, g *tailPublishGa
 }
 
 // Contract 4 requires a failed quit to retain its hold and retry on restart while it still owns the chat.
-func TestHostedFailedQuitRetriesOnNextStartWhileStillHolding(t *testing.T) {
+// L4-H4b keeps the hold and retries uploading after a successful local-only quit.
+func TestL4HostedLocalSaveRetriesUploadOnNextStartWhileStillHolding(t *testing.T) {
 	g := &tailPublishGate{committed: make(chan struct{}), reply: make(chan struct{}), titleRelease: make(chan struct{})}
 	h := newHostedTailChat(t, g)
 	h.say("Save this answer on the other computer.")
@@ -528,9 +537,9 @@ func TestHostedFailedQuitRetriesOnNextStartWhileStillHolding(t *testing.T) {
 		raw, err := os.ReadFile(session.Place{Dir: h.c.Root}.Transcript())
 		return err == nil && strings.Contains(string(raw), `"title":"a saved conversation title"`)
 	})
-	output := h.quit(g)
-	if !strings.Contains(output, "could not save") || !strings.Contains(output, "if this computer still holds the chat") {
-		t.Errorf("failed quit made an unconditional recovery promise: %q", output)
+	output := h.quitAfter(g, 0)
+	if !strings.Contains(output, "saved here; it reaches your other devices when the sync service at ") || strings.Contains(output, "could not save") {
+		t.Errorf("an upload-only failure lost its local-save receipt: %q", output)
 	}
 	if _, fence, err := h.a.SendLease(h.c.ID); err != nil || fence == 0 {
 		t.Fatalf("failed quit lost its hold: %v", err)
@@ -544,7 +553,8 @@ func TestHostedFailedQuitRetriesOnNextStartWhileStillHolding(t *testing.T) {
 }
 
 // Contract 4b requires a removed computer to finish its local save quietly without a relay save.
-func TestHostedRemovedComputerQuitsQuietlyAndKeepsLocalHistory(t *testing.T) {
+// L4-H4b leaves a completed local quit quiet when removal has disabled uploads.
+func TestL4HostedRemovedComputerQuitsQuietlyAndKeepsLocalHistory(t *testing.T) {
 	g := &tailPublishGate{committed: make(chan struct{}), reply: make(chan struct{})}
 	h := newHostedTailChat(t, g)
 	h.say("Keep this answer on this computer.")

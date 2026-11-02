@@ -144,7 +144,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   has three or more earlier conversations. Retired the first time the automations place
   opens, by any door (`/automations`, `alt+7`, a row that leads there), or the first time
   an automation is proposed to you on a card in a conversation.
-- `space space takes you back to home` — after the first exchange, in a conversation only
+- `space space brings you back to home` — after the first exchange, in a conversation only
   (never on home itself). Retired the first time two spaces in an empty box open home,
   from a conversation or from a place; reaching home by `/home` or the tab does not retire
   it. It is the first tip a conversation says, ahead of `/task`.

@@ -505,6 +505,11 @@ func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
 	if quirks.recorded(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model) {
 		return EffortNone
 	}
+	if c.config.DropRefusedEffort {
+		if _, refused := c.refusedEffort.Load(normalizeModel(model)); refused {
+			return EffortNone
+		}
+	}
 	if c.config.SupportsParameter != nil {
 		if supported, known := c.config.SupportsParameter(model, "reasoning"); known && !supported {
 			return EffortNone

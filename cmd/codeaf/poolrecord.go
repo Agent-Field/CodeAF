@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -68,6 +69,15 @@ func poolJudgeHook(settings config.Config, profileDir, workspace string, models 
 		defer guard.Recover("pool/judge")
 		poolJudgeLanding(settings, profileDir, models, ask, now, door, landing)
 	}
+}
+
+// poolJudgeStandsDown says whether the profile's task models are in one-model
+// mode, read at the moment each landing would be judged, by the live hook and
+// by the sweep alike. The judge exists to ask a model outside the crew, and
+// one-model mode allows no other model, so it stands down exactly as it does
+// under `--one-model`: nothing is asked and no judged marker is written.
+func poolJudgeStandsDown(profileDir string) bool {
+	return config.TaskModelsModeAt(profileDir) == crewroute.ModeOne
 }
 
 // judgeLast is the small record the hook leaves after every landing it
@@ -136,6 +146,9 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 }
 
 func poolJudgeLandingContext(ctx context.Context, settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
+	if poolJudgeStandsDown(profileDir) {
+		return
+	}
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	// A seat's id enters the pool spelled bare (poolSeatID): the sheet, the
@@ -531,7 +544,7 @@ var poolJudgeSweepRun = poolJudgeSweepContext
 
 func poolJudgeSweepContext(ctx context.Context, settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
 	defer guard.Recover("pool/judge-sweep")
-	if !config.ModelPoolAt(profileDir).CanRead() {
+	if !config.ModelPoolAt(profileDir).CanRead() || poolJudgeStandsDown(profileDir) {
 		return
 	}
 	if strings.TrimSpace(settings.APIKey) == "" {

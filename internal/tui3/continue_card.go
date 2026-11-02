@@ -28,6 +28,18 @@ func (a *app) continueCardFor(row chatlist.Row, fromWindow bool) *continueCard {
 		if line.row.Origin != "" {
 			card.project = filepath.Base(line.row.Origin) + session.MovedCopyWord
 		}
+		return card
+	}
+	for _, project := range a.home.world.Projects {
+		for _, s := range project.Sessions {
+			if homeSessionID(s) == row.Cell {
+				card.project = a.hostedPath(tildePath(s.Workspace, a.tilde))
+				if s.Origin != "" {
+					card.project = filepath.Base(s.Origin) + session.MovedCopyWord
+				}
+				return card
+			}
+		}
 	}
 	return card
 }

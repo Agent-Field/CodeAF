@@ -79,3 +79,12 @@ func SetPortableSymlinkModeAt(parentFD int, name string, mode fs.FileMode) error
 	}
 	return unix.Fchmodat(parentFD, name, uint32(mode.Perm()), unix.AT_SYMLINK_NOFOLLOW)
 }
+
+// OSManagedAttribute reports whether an extended attribute is one macOS
+// stamps on its own and that portable apply may leave behind. macOS 15 adds
+// com.apple.provenance to every file a process tree started from certain apps
+// creates, and it cannot be removed by its owner; the replacements apply
+// writes are created by the same process tree and are stamped the same way,
+// so nothing a person set is lost. Every other attribute, quarantine included,
+// is still refused.
+func OSManagedAttribute(name string) bool { return name == "com.apple.provenance" }

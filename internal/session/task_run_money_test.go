@@ -124,3 +124,99 @@ func TestARunsDollarsAreStampedOnTheConversationWhenItSettles(t *testing.T) {
 		t.Fatalf("meta.json says the conversation spent %v with no turn sealed since the run, want the run's $2.30", meta.SpentUSD)
 	}
 }
+
+// A SETTLED RUN ROW IS ON DISK BEFORE ITS UPDATE GOES OUT, AND CLOSE JOINS THE
+// ENDING DRIVER. Announcing the settled row ahead of its checkpoint and index
+// write let a caller or test close the conversation on the announcement and
+// sweep the bucket directory while the index lockfile was still being created.
+func TestSettledRunRowIsRecordedBeforeTaskUpdateAndJoinedOnClose(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the run ended")
+	double.summary.USD = 0.42
+	registerBeltRunEngine(t, double)
+
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run ended"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+		config.SessionFile = Place{Dir: dir}.Transcript()
+		config.AskConsent = false
+	})
+	updates, stopUpdates := agent.WatchTaskUpdates()
+	defer stopUpdates()
+
+	id, _, _, err := agent.StartTask(context.Background(), "account for this run", false)
+	if err != nil {
+		t.Fatalf("StartTask: %v", err)
+	}
+	<-double.entered
+	agent.beltMu.Lock()
+	over := agent.beltRun.over
+	agent.beltMu.Unlock()
+
+	writing := make(chan struct{}, 1)
+	releaseWrite := make(chan struct{})
+	agent.graph().store.duringWrite = func() {
+		select {
+		case writing <- struct{}{}:
+		default:
+		}
+		<-releaseWrite
+	}
+
+	settled := make(chan TaskNotice, 1)
+	doneWatching := make(chan struct{})
+	defer close(doneWatching)
+	go func() {
+		for {
+			select {
+			case <-doneWatching:
+				return
+			case event, ok := <-updates:
+				if !ok {
+					return
+				}
+				if event.Task != nil && (event.Task.State == TaskDone || event.Task.State == TaskFailed) {
+					settled <- *event.Task
+					return
+				}
+			}
+		}
+	}()
+
+	close(double.release)
+	select {
+	case <-writing:
+	case <-time.After(10 * time.Second):
+		t.Fatal("settled checkpoint write did not begin")
+	}
+	select {
+	case got := <-settled:
+		close(releaseWrite)
+		t.Fatalf("settled update %+v arrived before its checkpoint finished writing", got)
+	default:
+	}
+	close(releaseWrite)
+
+	var notice TaskNotice
+	select {
+	case notice = <-settled:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no final update reached the standing lane")
+	}
+	if notice.ID != id || notice.State != TaskDone {
+		t.Fatalf("settled notice = %+v, want done row %d", notice, id)
+	}
+	rows := ReadTaskIndex(agent.config.taskIndexFile())
+	if len(rows) != 1 || rows[0].Status != string(TaskDone) || rows[0].Cost != 0.42 {
+		t.Fatalf("task index at settled update = %+v, want one done row at $0.42", rows)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	select {
+	case <-over:
+	default:
+		t.Fatal("Close returned before the ending run driver released its store")
+	}
+}

@@ -52,6 +52,7 @@ func (b *appBackend) listenProgress() func() {
 			(*next)(news)
 		}
 		b.progressSaid(news)
+		b.briefNews(news)
 	})
 	reader.previous.Store(&previous)
 	return func() { session.OnProgress(previous) }

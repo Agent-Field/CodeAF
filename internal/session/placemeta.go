@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 )
 
@@ -434,16 +435,64 @@ func (a *Agent) stampMeta() {
 // file of a few hundred bytes, once per turn of a conversation, beside a
 // provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
 // stated reason: the total is a citation and the transcript is the record.
-func (a *Agent) stampSpend() {
+func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
+
+// stampSealed is [Agent.stampSpend] at a turn's seal, which also says when the
+// conversation last answered the person ([Meta.LastReplyAt]) if this turn
+// ended on an answer. It is the same one write, so a turn still owes meta.json
+// one write and not two.
+//
+// AN ANSWER IS THE TURN'S LAST WORD TO THE PERSON: an answer was recorded
+// since the last seal and the journal still ends on it, an assistant message
+// with words and no tool call. A turn that stopped on a tool step, on
+// thinking, or before saying anything leaves the stamp where it was, and so
+// does one that ends on a partial reply a stop cut short or on a line the
+// harness wrote in the model's place ([Agent.answeredLocked]).
+func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
+
+func (a *Agent) stampTurnEnd(sealed bool) {
 	a.mu.Lock()
 	dir := a.config.Place.Dir
 	snapshot := a.fillMetaLocked(Meta{})
 	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
+	replied := false
+	if sealed {
+		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
+		a.answeredSinceSeal = false
+	}
 	a.mu.Unlock()
-	if spent <= 0 && tokens <= 0 {
+	if !replied {
+		if spent <= 0 && tokens <= 0 {
+			return
+		}
+		a.writeSpendSnapshot(dir, snapshot, spent, tokens)
 		return
 	}
-	a.writeSpendSnapshot(dir, snapshot, spent, tokens)
+	at := time.Now()
+	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		if spent > 0 || tokens > 0 {
+			meta.SpentUSD, meta.Tokens = spent, tokens
+		}
+		meta.LastReplyAt = at
+	})
+}
+
+// answeredLocked says a recorded message answered the person: [isAnswer], and
+// not marked as a reply cut short (a stop, a steer) or as an operational line
+// (a checkpoint's hand-over note), which the model did not finish saying to
+// them. Callers hold a.mu.
+func (a *Agent) answeredLocked(message ai.Message) bool {
+	if !isAnswer(message) {
+		return false
+	}
+	mark := a.presentation.of(message)
+	return mark == nil || (!mark.Interrupted && mark.Audience != "operational")
+}
+
+// isAnswer says a message is an answer: the assistant's words, with no tool
+// call waiting on them.
+func isAnswer(message ai.Message) bool {
+	return message.Role == "assistant" && len(message.ToolCalls) == 0 && strings.TrimSpace(messageContentText(message)) != ""
 }
 
 // stampRestoredSpend fills the total in for a conversation resumed from a

@@ -58,6 +58,7 @@ func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 
 // ListAgentsIn is agents.list with its state and query.
 func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Agent, error) {
+	b.keepUnreadFrom()
 	all, err := b.ListAgents(workspace)
 	if err != nil {
 		return nil, err
@@ -85,6 +86,9 @@ func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Age
 			continue
 		}
 		out = append(out, a)
+	}
+	for i := range out {
+		b.dressUnread(&out[i])
 	}
 	return out, nil
 }
@@ -270,6 +274,9 @@ func (b *appBackend) Rename(id, title string) (appwire.Agent, error) {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
 	})
+	// The answer says unread as agent.changed does, so a window that takes
+	// it over its row keeps the agent's dot.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 
@@ -302,6 +309,7 @@ func (b *appBackend) sayAgent(a *appAgent) appwire.Agent {
 	var view appwire.Agent
 	b.locked(func() { view = a.view })
 	b.tidyMarks(&view, view.State == appwire.StateArchived)
+	b.dressUnread(&view)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	return view
 }
@@ -392,6 +400,13 @@ type appSearchWords func(terms string, limit int) ([]store.ConversationHit, erro
 // was made, so it is dressed with the state as it is when it goes out; it is
 // only ever moved up from idle, never down from what a road said.
 func (b *appBackend) dress(view *appwire.Agent) {
+	b.dressState(view)
+	b.dressUnread(view)
+}
+
+// dressState is [appBackend.dress] short of unread, which an agent.changed
+// works out in the same step it is said in (appInboxTap.Emit).
+func (b *appBackend) dressState(view *appwire.Agent) {
 	view.Crews = b.crewsOf(view.ID)
 	// Its own budget as the app's file keeps it (appbudget.go); the open
 	// conversation's own reading is agents.budget.get's, never a list's.

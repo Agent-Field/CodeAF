@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1414,6 +1415,8 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 	if err := catalog.Remember(options, []catalog.Model{
 		{ID: "deepseek/deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", Created: 1760000000, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 		{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder", Created: -100, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "z-ai/glm-5.3", Name: "GLM 5.3", ContextLength: 202752, ArenaElo: 1312.5, PromptPrice: 0.0000006, CompletionPrice: 0.0000022, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "openrouter/auto", Name: "Auto Router", PromptPrice: -1, CompletionPrice: -1, PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1439,6 +1442,14 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 	}
 	if m := byID["qwen/qwen3-coder"]; m.Provider != "openrouter" || m.Default || m.ListedAt != 0 {
 		t.Fatalf("models = %+v", models)
+	}
+	// The catalog's facts ride along: prices per million tokens, the window and
+	// the Arena Elo. A router whose price nobody knows sends none of them, never $0.
+	if m := byID["z-ai/glm-5.3"]; m.PriceInPerM == nil || m.PriceOutPerM == nil || math.Abs(*m.PriceInPerM-0.6) > 1e-9 || math.Abs(*m.PriceOutPerM-2.2) > 1e-9 || m.ContextLength != 202752 || m.ArenaElo != 1312.5 {
+		t.Fatalf("model facts = %+v", m)
+	}
+	if m, ok := byID["openrouter/auto"]; ok && (m.PriceInPerM != nil || m.PriceOutPerM != nil || m.ContextLength != 0 || m.ArenaElo != 0) {
+		t.Fatalf("unknown price became a figure: %+v", m)
 	}
 	if err := os.WriteFile(config.BudgetConfigPath(settings.ProfileDir), []byte(`{"model.talk":"unlisted/model-2099-12-31"}`), 0600); err != nil {
 		t.Fatal(err)

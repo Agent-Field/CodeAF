@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // Brancher turns turns that lost their lease into a new cell (L12). Nothing is
@@ -56,7 +57,7 @@ func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns 
 		ParentCell: from.ID(), OrphanTurns: turns, Frames: plan,
 	})
 	if err != nil {
-		return "", err
+		return "", syncwords.UploadFailure(err)
 	}
 	if err := b.Map.Set(from.ID(), id); err != nil {
 		return "", err

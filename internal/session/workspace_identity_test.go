@@ -128,6 +128,7 @@ func TestOneConversationCanOwnRunsForDifferentProjects(t *testing.T) {
 }
 
 func TestOwnedBeltWorkerUsesRealScratchWithoutChangingHome(t *testing.T) {
+	// macOS mktemp needs an explicit template to create its file inside the assigned TMPDIR.
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv("CODEAF_TASK_BELT", "bash")
@@ -148,7 +149,7 @@ func TestOwnedBeltWorkerUsesRealScratchWithoutChangingHome(t *testing.T) {
 	defer store.Close()
 	script := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("scratch", "bash", `{"command":"printf '%s\n' \"$HOME\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" \"$CODEAF_WORKSPACE_URI\" > runtime.txt; mktemp >> runtime.txt"}`), nil
+			return toolResponse("scratch", "bash", `{"command":"printf '%s\n' \"$HOME\" \"$TMPDIR\" \"$XDG_CACHE_HOME\" \"$CODEAF_WORKSPACE_URI\" > runtime.txt; mktemp \"$TMPDIR/codeaf-runtime.XXXXXX\" >> runtime.txt"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
 	}}
@@ -426,11 +427,16 @@ func TestOwnedCopyCannotLandInAnotherConversationsKnownRun(t *testing.T) {
 }
 
 func TestExplicitInPlaceWorkerRoutesScratchWithoutOwningTheProject(t *testing.T) {
+	// macOS mktemp needs an explicit template to create its file inside the assigned TMPDIR.
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv(planCLIBinEnv, filepath.Join(t.TempDir(), "stub-codeaf"))
-	project := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	// A symlink alias exercises the canonical path comparison used with macOS temp directories.
+	if err := os.Symlink(t.TempDir(), project); err != nil {
+		t.Fatal(err)
+	}
 	place := Place{Dir: t.TempDir()}
 	tree, err := registerOwnedWorkspace(taskTree{dir: project, ground: project, mode: TaskModeInPlace}, place)
 	if err != nil {
@@ -443,7 +449,7 @@ func TestExplicitInPlaceWorkerRoutesScratchWithoutOwningTheProject(t *testing.T)
 	defer store.Close()
 	script := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			arguments, _ := json.Marshal(map[string]string{"command": `pwd > placement.txt; printf '%s\n' "$TMPDIR" "$XDG_CACHE_HOME" "$CODEAF_WORKSPACE_URI" >> placement.txt; mktemp >> placement.txt`})
+			arguments, _ := json.Marshal(map[string]string{"command": `pwd > placement.txt; printf '%s\n' "$TMPDIR" "$XDG_CACHE_HOME" "$CODEAF_WORKSPACE_URI" >> placement.txt; mktemp "$TMPDIR/codeaf-runtime.XXXXXX" >> placement.txt`})
 			return toolResponse("runtime", "bash", string(arguments)), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
@@ -459,7 +465,7 @@ func TestExplicitInPlaceWorkerRoutesScratchWithoutOwningTheProject(t *testing.T)
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	if len(lines) != 5 || canonicalPath(lines[0]) != project || lines[3] != tree.projectURI || filepath.Dir(lines[4]) != lines[1] {
+	if len(lines) != 5 || canonicalPath(lines[0]) != canonicalPath(project) || lines[3] != tree.projectURI || filepath.Dir(lines[4]) != lines[1] {
 		t.Fatalf("in-place worker changed placement: %q", raw)
 	}
 	registry, err := workspaceidentity.Open(home.Join("workspace-identities"))

@@ -251,7 +251,7 @@ func TestTheWayHomeTipIsSaidAwayFromHomeOnly(t *testing.T) {
 	if row.id == "" {
 		t.Fatal("the way-home tip is not on the table")
 	}
-	if row.text != "space space takes you back to home" || row.retire != eventHomeGesture {
+	if row.text != "space space brings you back to home" || row.retire != eventHomeGesture {
 		t.Fatalf("the way-home tip reads %q and retires on %q", row.text, row.retire)
 	}
 	a, _ := chatTipLab(t)

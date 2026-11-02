@@ -558,6 +558,7 @@ func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
 		ID: appOrderAskID(run.ID), Agent: view.Agent, Kind: appwire.AskQuestion, Subkind: appwire.SubkindOrderRun,
 		Title: "Run " + view.Title + " now?", Detail: view.Does,
 		Subject: &appwire.AskSubject{Kind: appwire.SubjectAutomation, Ref: view.ID},
+		Asked:   appOrderRunAskedAt(run),
 		Options: []appwire.AskOption{
 			{ID: appwire.VerdictGo, Label: "Go"},
 			{ID: appwire.VerdictSkip, Label: "Skip this one"},
@@ -568,6 +569,16 @@ func appOrderRunAsk(view appwire.Order, run automation.Run) appwire.Ask {
 		ask.Reason = "it asks before each run until it has earned trust"
 	}
 	return ask
+}
+
+// appOrderRunAskedAt is when a run began to wait on the person: when the
+// clock parked it, which for a run parked late after codeaf was away is long
+// after its slot, or its slot for one an older build parked.
+func appOrderRunAskedAt(run automation.Run) time.Time {
+	if !run.Asked.IsZero() {
+		return run.Asked
+	}
+	return run.Due
 }
 
 // orderAsksOf is the runs waiting on the person for an agent's orders, as

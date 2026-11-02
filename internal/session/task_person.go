@@ -88,7 +88,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	// A TYPED TASK IS ITS OWN SOURCE: the command's words, captured here once so
 	// both roads below record the same directive (task_source.go).
 	ctx = withTaskSource(ctx, a.directiveSource(brief))
-	if bashBeltAsked() {
+	if bashBeltAsked() || a.taskComputerPreference() {
 		return a.startTaskRun(ctx, brief, solo, "")
 	}
 	return a.startTaskLegacy(ctx, brief, solo)

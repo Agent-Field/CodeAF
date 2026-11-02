@@ -544,7 +544,7 @@ func v3NextSessionFrom(current session.Place, workspace, launchDir string) (sess
 			// cannot be inherited: it is minted with the folder, below.
 			root = workspace
 		}
-		return v3MintSession(filepath.Dir(dir), root,
+		return v3MintSession(session.BucketOf(current.Transcript()), root,
 			v3StampLaunchDir(launchDir, root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
@@ -659,16 +659,11 @@ type v3Folder struct {
 // deliverables is never empty whatever its journal says — those are somebody's
 // content, and no groom of a bookkeeping file may take them.
 func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
-	entries, err := os.ReadDir(bucket)
-	if err != nil {
+	sessionDirs := session.BucketSessionDirs(bucket)
+	if len(sessionDirs) == 0 {
 		return nil, nil
 	}
-	protected, known := v3TeamConversations()
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := cell.Copied(filepath.Join(bucket, entry.Name()))
+	for _, dir := range sessionDirs {
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
 			continue
@@ -677,12 +672,13 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 		folder.meta, _ = session.LoadMeta(dir)
 		folder.at = folder.meta.LastUserAt
 		if folder.at.IsZero() {
-			if info, err := entry.Info(); err == nil {
+			if info, err := os.Stat(dir); err == nil {
 				folder.at = info.ModTime()
 			}
 		}
 		if v3EmptyUnassignedSession(dir) {
-			if known && !protected[teams.ConversationIdentity(place.Transcript())] {
+			// A team's reference keeps it, and so does a store that cannot say.
+			if referenced, err := teams.ConversationReferenced(config.ProfileDir(), place.Transcript()); err == nil && !referenced {
 				empty = append(empty, folder)
 			}
 			continue
@@ -711,18 +707,12 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 // [session.Peek]: Peek folds "read it all, nobody spoke" and "could not read
 // it" into one false, which is right for a picker row and fatal for a delete.
 // Only the first of the two is emptiness.
-// A team reference makes an empty conversation intentional, not reusable litter.
-func v3TeamConversations() (map[string]bool, bool) {
-	f, err := teams.Snapshot(config.ProfileDir())
-	if err != nil {
-		return nil, false
-	}
-	return f.ReferencedConversations(), true
-}
-
+// A team reference makes an empty conversation intentional, not reusable
+// litter. Only the teams that name this conversation are read (the store's
+// index), and a store that cannot say keeps the folder.
 func v3EmptySession(dir string) bool {
-	protected, known := v3TeamConversations()
-	if !known || protected[teams.ConversationIdentity(session.Place{Dir: dir}.Transcript())] {
+	referenced, err := teams.ConversationReferenced(config.ProfileDir(), session.Place{Dir: dir}.Transcript())
+	if err != nil || referenced {
 		return false
 	}
 	return v3EmptyUnassignedSession(dir)
@@ -755,17 +745,18 @@ func v3EmptyUnassignedSession(dir string) bool {
 func v3ReapEmpty(empty []v3Folder, keep string) {
 	// Recheck the record and emptiness under the team writer's lock. Unknown
 	// membership is a reason to keep a folder, never a reason to remove it.
-	_ = teams.Inspect(config.ProfileDir(), func(f *teams.File) error {
-		protected := f.ReferencedConversations()
-		for _, folder := range empty {
-			transcript := session.Place{Dir: folder.dir}.Transcript()
-			if folder.dir == keep || protected[teams.ConversationIdentity(transcript)] || session.InUse(transcript) || !v3EmptyUnassignedSession(folder.dir) {
-				continue
-			}
-			_ = os.RemoveAll(folder.dir)
+	for _, folder := range empty {
+		if folder.dir == keep {
+			continue
 		}
-		return nil
-	})
+		transcript := session.Place{Dir: folder.dir}.Transcript()
+		_ = teams.InspectConversation(config.ProfileDir(), transcript, func(referenced bool) error {
+			if !referenced && !session.InUse(transcript) && v3EmptyUnassignedSession(folder.dir) {
+				_ = os.RemoveAll(folder.dir)
+			}
+			return nil
+		})
+	}
 }
 
 // v3Migrated readies an existing cell without changing a legacy chat's layout.
@@ -848,9 +839,9 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 		class = executor.HostBound
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
-	watch := &cellstore.SealWatch{Say: say}
+	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}

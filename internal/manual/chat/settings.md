@@ -3,13 +3,13 @@
 ## Find a setting — categories, search and advanced controls
 
 Open `/settings` or press `ctrl+,`. Settings is organized into General, Models,
-Memory, Tasks, AI teams, Permissions, Spending, Connections and Privacy. Wide
+Memory, Tasks, AI teams, Permissions, Spending, Connections, Devices and Privacy. Wide
 terminals keep the categories beside the controls; narrow terminals show a
 category bar. Left and right change category, up and down choose a row, and
 Enter changes it. The pointer can select the same controls.
 
-Type to search across categories, including advanced controls and connection
-services. Old setting names and configuration keys remain searchable. Clear the
+Type to search across categories, including advanced controls, connection
+services and paired devices. Old setting names and configuration keys remain searchable. Clear the
 query to return to browsing; Escape clears it first, then closes settings. Model
 pickers have their own **Filter models** box. Each category keeps uncommon controls behind
 `Advanced`; search can find them without opening that section first.
@@ -82,6 +82,11 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
+**Settings → General → share teams** is off until turned on. Both paired computers
+must turn it on to share teams, their members and settings, and recent Traffic as
+read-only history. The choice stays on each computer. Turning it off stops sharing
+and keeps teams already received.
+
 ## AI teams settings versus an individual AI team
 
 **AI teams** contains defaults for groups of AI chats, including questions to an
@@ -130,6 +135,17 @@ changed cap to already-open chats. Changing this preference does not stop a
 running task. An unset task model follows the configured worker, falling back to
 the current chat model when no worker model is set.
 
+**Run tasks on**, immediately after **Task model** in Tasks, chooses where a
+task goes when you do not name a computer. It defaults to `this computer` and
+reads eligible paired computers by shown name only when opened. The row
+is absent on unpaired, quiet or Windows homes. An explicit `/task --on`, proposal-card choice or `computer`
+argument wins. Quick tasks and work without an independent copy still run here.
+Both ends need Linux or macOS, and the other computer must run `codeaf serve --take-tasks`. Plain `codeaf serve`
+does not take tasks. The model's `computer` argument and a proposal's computer
+line and cycle key appear only after the setting names a computer, or (for the
+card) the proposal already names one.
+See *Tasks on another computer* for limits and `run it here`.
+
 ## Connect a service, change models or manage privacy
 
 **Connections** contains service sign-in and provider credentials, web search
@@ -137,6 +153,10 @@ configuration and advanced remote-connection or custom OAuth application setting
 Ordinary account connection does not require you to create your own OAuth app.
 **Models** selects supported models and reasoning effort; advanced controls hold
 routing, internal role overrides and context limits.
+
+**Devices** lists your paired computers in the same words and order as `/devices`,
+renames this device with `n`, removes another with `r`, and starts `/pair` from
+`Add another device`.
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
 and **shared model recommendations** (formerly Model Pool). Recommendations can

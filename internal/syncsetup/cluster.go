@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func (s *Sync) clusterClient() clusterctl.Client {
@@ -201,4 +203,34 @@ func saveLeadership(path string, v any) error {
 	}
 	defer d.Close()
 	return d.Sync()
+}
+
+// ClusterNames opens device names with this computer's keys. The service's
+// bootstrap members are one sync service in the person's vocabulary.
+func (s *Sync) ClusterNames(ctx context.Context, status clusterctl.Status) map[uint64]string {
+	names := map[uint64]string{}
+	listing, err := s.Dir.List(ctx)
+	key := directory.MetadataKey(s.Identity.CellKey())
+	for _, member := range status.Members {
+		if member.Anchor {
+			names[member.Node] = "the sync service"
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		dev, ok := listing.Devices[member.Device]
+		if !ok || dev.Revoked {
+			// An empty mapped name records positive absence; an unmapped node is unknown.
+			names[member.Node] = ""
+			continue
+		}
+		if name, e := directory.OpenName(key, dev.Name); e == nil && strings.TrimSpace(name) != "" {
+			names[member.Node] = devname.Shown(name)
+		}
+	}
+	if status.Self != 0 {
+		names[status.Self] = devname.Name(s.Home)
+	}
+	return names
 }

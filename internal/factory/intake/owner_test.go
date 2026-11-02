@@ -42,7 +42,7 @@ func TestARuleStartedJobBelongsToTheFactoryOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [ready]\n  max_cost: 2\n  ask_first: [touch auth/]\n")
+	rules, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [ready]\n  ask_first: [touch auth/]\n")
 	if err != nil {
 		t.Fatal(err)
 	}

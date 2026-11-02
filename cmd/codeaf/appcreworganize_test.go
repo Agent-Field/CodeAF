@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 type appOrganizeFake struct {
@@ -44,11 +45,8 @@ func TestCrewsOrganizeBothPassesLeaveTheTeamsFileAlone(t *testing.T) {
 		b.agents[id] = &appAgent{view: appwire.Agent{ID: id, Title: "title " + id, Workspace: folder, State: appwire.StateIdle}, opening: true, users: 1}
 	}
 	old := teamstore.Team{ID: "old", Name: "release", Made: now.Add(-9 * 24 * time.Hour), Members: []teamstore.Member{{Key: filepath.Join(dir, "held", "transcript.jsonl")}}}
-	body := ovTeams(t, old)
-	path := filepath.Join(dir, teamstore.FileName)
-	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Write(t, dir, []byte(ovTeams(t, old)))
+	body, stamp := teamstest.JSON(t, dir), teamstore.Stamp(dir)
 	usd := 0.021
 	fake := &appOrganizeFake{res: session.TeamProposal{Model: "cheap/namer", CostUSD: &usd, New: []session.ProposedTeam{{Name: "topic", Members: []string{"a", "c", "d"}, Reason: "related"}}, Additions: []session.ProposedAddition{{TeamID: "old", Members: []string{"b", "e"}, Reason: "release"}}}}
 	b.organizeProposer = fake
@@ -66,9 +64,8 @@ func TestCrewsOrganizeBothPassesLeaveTheTeamsFileAlone(t *testing.T) {
 	if fake.calls != 1 || len(fake.in.Conversations) != 5 || len(fake.in.Teams) != 1 || len(model.New) != 1 || !reflect.DeepEqual(model.New[0].Agents, []string{"c", "d"}) || len(model.Additions) != 1 || !reflect.DeepEqual(model.Additions[0].Agents, []string{"e"}) || model.CostUSD == nil || *model.CostUSD != usd || model.Model != "cheap/namer" {
 		t.Fatalf("model %+v; input %+v", model, fake.in)
 	}
-	after, err := os.ReadFile(path)
-	if err != nil || string(after) != body {
-		t.Fatalf("teams changed: %s (%v)", after, err)
+	if after := teamstest.JSON(t, dir); string(after) != string(body) || teamstore.Stamp(dir) != stamp {
+		t.Fatalf("teams changed: %s", after)
 	}
 	if b.crewRun != nil {
 		t.Fatal("organizing started the crew watch")
@@ -97,15 +94,11 @@ func TestCrewsOrganizeProductionNamingLeavesRepairableStoreAlone(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(profile, "config.json"), []byte(`{"models.tiers.low":"test/model"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	body := ovTeams(t, teamstore.Team{ID: "old", Name: "old", Members: []teamstore.Member{{Key: "/elsewhere/transcript.jsonl", Word: "missing handle"}}})
-	path := filepath.Join(profile, teamstore.FileName)
-	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Write(t, profile, []byte(ovTeams(t, teamstore.Team{ID: "old", Name: "old", Members: []teamstore.Member{{Key: "/elsewhere/transcript.jsonl", Word: "missing handle"}}})))
+	body, stamp := teamstest.JSON(t, profile), teamstore.Stamp(profile)
 	out, err := b.CrewsOrganize(t.Context(), appwire.OrganizeAsk{Pass: "model"})
-	after, readErr := os.ReadFile(path)
-	if readErr != nil || string(after) != body {
-		t.Fatalf("naming repaired teams.json before Apply: %s (%v)", after, readErr)
+	if after := teamstest.JSON(t, profile); string(after) != string(body) || teamstore.Stamp(profile) != stamp {
+		t.Fatalf("naming repaired the teams before Apply: %s", after)
 	}
 	if err != nil || out.Model == "" {
 		t.Fatalf("production naming: %+v (%v), workspace %s", out, err, workspace)

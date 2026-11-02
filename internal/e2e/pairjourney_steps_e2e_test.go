@@ -34,7 +34,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 		a.keys("Space")
 		screen, ok := waitPlain(a, 12*time.Second, "Add another device")
 		j.check(ok, "the home screen never offered another machine")
-		j.check(strings.Contains(screen, "pick up your work anywhere"), "pitch missing")
+		j.check(strings.Contains(screen, say(t, "addMachinePitch")), "pitch missing")
 		j.see(a)
 	})
 

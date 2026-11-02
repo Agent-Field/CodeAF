@@ -346,6 +346,9 @@ func ReaskStart(it *Item) bool {
 		return false
 	}
 	it.State, it.QKind, it.Question, it.AskedFirstReason = StateNew, "", "", ""
+	if it.RuleChecks != nil {
+		it.RuleChecks.Start = ""
+	}
 	return true
 }
 
