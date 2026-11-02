@@ -92,8 +92,8 @@ func (f File) Decide(j Job) Decision {
 
 // JobFromItem is one floor item as a job the file can decide.
 //
-// Cost is the triage estimate, and only after a triage has been stamped:
-// an unread cost is not over the cap. A pull request's size is its changed
+// A read writes no price, so the item alone knows no cost: CostKnown stays
+// false, and an unknown cost is not over the cap. A pull request's size is its changed
 // lines, which exist only once its files were read; a letter someone typed
 // is not that measurement. Ask-first sentences are judged by a model, and
 // nothing on the item stores that judgment, so Judged stays false and a
@@ -101,11 +101,9 @@ func (f File) Decide(j Job) Decision {
 func JobFromItem(it factory.Item) Job {
 	j := Job{
 		ID: it.ID, Kind: it.Kind, Tier: it.Tier,
-		Labels:    append([]string(nil), it.Labels...),
-		Size:      it.Triage.Size,
-		Cap:       it.Cap,
-		Cost:      it.Triage.Est,
-		CostKnown: !it.Triage.TriagedAt.IsZero(),
+		Labels: append([]string(nil), it.Labels...),
+		Size:   it.Triage.Size,
+		Cap:    it.Cap,
 	}
 	if it.Files == nil {
 		return j

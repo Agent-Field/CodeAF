@@ -480,17 +480,14 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	// and declaring its ends whole would refuse "0 to 1, default 0.3" outright.
 	//
 	// AND AN AUTOMATION'S `usd` IS MONEY, where fifty cents a run is an ordinary
-	// limit to set. `factory_add`'s `estimate_usd` is money for the same reason:
-	// it decodes into a float64 and lands as the item's triage estimate, where
-	// forty cents is an ordinary guess (tools_factory.go). `factory_item`'s `cap`
+	// limit to set. `factory_item`'s `cap`
 	// is the item's budget in dollars, a float64 too, where two dollars fifty
 	// is an ordinary ceiling (tools_factory_item.go).
 	fractional := map[string]bool{"usd": true, "level": true, "fade": true,
 		"min": true, "max": true, "default": true}
-	// THESE TWO ARE EXCUSED IN THEIR OWN FILE ONLY, so a future `cap` or
-	// `estimate_usd` declared whole-number-shaped anywhere else is still caught.
+	// IT IS EXCUSED IN ITS OWN FILE ONLY, so a future `cap` declared
+	// whole-number-shaped anywhere else is still caught.
 	fractionalIn := map[string]map[string]bool{
-		"tools_factory.go":      {"estimate_usd": true},
 		"tools_factory_item.go": {"cap": true},
 	}
 	for _, path := range toolArgumentSources(t) {
