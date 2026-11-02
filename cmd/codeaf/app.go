@@ -1100,34 +1100,39 @@ func appRowView(row session.SessionRow) appwire.Agent {
 
 // remember files what the disk said about an agent, without touching one this
 // process is holding: a held conversation's own facts are newer than the disk's.
-func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
+func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	b.watchCloseClaim(row.Dir)
 	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
-	// Publish cannot miss an agent first remembered from a saved row.
-	// Holding both locks makes its initial location agree with the inventory;
-	// a later publication will see the new agent and send its location change.
-	lockRememberedLocation := func() *appwire.Location {
-		b.chats.mu.Lock()
-		defer b.chats.mu.Unlock()
-		// The backend lock stays held after the inventory lock is released.
-		// The remainder of remember owns its existing deferred release.
-		b.mu.Lock()
-		if cached, ok := b.chats.byAgent[row.ID]; ok {
-			return chatLocation(cached)
-		}
-		return nil
+	a, view := b.rememberHeld(row, createdBy)
+	b.flushSync(a)
+	b.locked(func() { view.Location = a.view.Location })
+	return view
+}
+
+// rememberHeld files the row under both the chat inventory's lock and the
+// backend's. Publish cannot miss an agent first remembered from a saved row:
+// holding both makes its initial location agree with the inventory, and a later
+// publication will see the new agent and send its location change.
+func (b *appBackend) rememberHeld(row session.SessionRow, createdBy string) (*appAgent, appwire.Agent) {
+	b.chats.mu.Lock()
+	defer b.chats.mu.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var location *appwire.Location
+	if cached, ok := b.chats.byAgent[row.ID]; ok {
+		location = chatLocation(cached)
 	}
-	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
 	a.noteRowLocked(row.ReplyAt, appRowAskedAt(row))
-	defer func() {
-		b.mu.Unlock()
-		b.flushSync(a)
-		b.locked(func() { view.Location = a.view.Location })
-	}()
+	return a, b.rememberRowLocked(a, row, location, createdBy)
+}
+
+// rememberRowLocked lays the disk's row over the agent's record and answers
+// the view it settles on. Callers hold b.mu.
+func (b *appBackend) rememberRowLocked(a *appAgent, row session.SessionRow, location *appwire.Location, createdBy string) appwire.Agent {
 	if a.transcript == "" {
 		a.transcript = row.Transcript
 		if a.view.Location == nil {
@@ -2345,6 +2350,14 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	return b.startLocked(a, text, clientID, shown)
 }
 
+// knownWorkRefusalGated asks knownWorkRefusal holding the agent's gate, so the
+// answer is not read mid-way through an open or a let-go.
+func (b *appBackend) knownWorkRefusalGated(a *appAgent) error {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	return b.knownWorkRefusal(a)
+}
+
 // Retry sends the words of the agent's last failed turn again.
 func (b *appBackend) Retry(id string) (uint64, error) {
 	b.resetCloseResumes(id)
@@ -2352,10 +2365,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	a.gate.Lock()
-	err = b.knownWorkRefusal(a)
-	a.gate.Unlock()
-	if err != nil {
+	if err := b.knownWorkRefusalGated(a); err != nil {
 		return 0, err
 	}
 	var text, clientID string
