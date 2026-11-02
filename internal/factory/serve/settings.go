@@ -29,7 +29,7 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	settings, err := h.config.Store.ChangeRunnerSettings(func(out *api.FactorySettings) error {
-		if body.RunnerTimeoutSeconds == nil && body.KeepOutputDays == nil && body.KeepOutputMB == nil {
+		if body.RunnerTimeoutSeconds == nil && body.KeepOutputDays == nil && body.KeepOutputMB == nil && body.ReadOnArrival == nil {
 			return errors.New("needs at least one runner setting")
 		}
 		if body.RunnerTimeoutSeconds != nil {
@@ -40,6 +40,9 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		}
 		if body.KeepOutputMB != nil {
 			out.KeepOutputMB = *body.KeepOutputMB
+		}
+		if body.ReadOnArrival != nil {
+			out.ReadOnArrival = *body.ReadOnArrival
 		}
 		return nil
 	})

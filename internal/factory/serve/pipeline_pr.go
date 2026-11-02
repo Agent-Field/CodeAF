@@ -46,9 +46,28 @@ import (
 // GitHub. A server restart mid-flight can likewise leave a branch behind.
 // A write whose effect is unknown is never retried and never repeated.
 //
+// WITH "pr" IT ADDS ONE COMMIT TO AN OPEN PULL REQUEST instead, so a person
+// never has a second pull request for the same file while the first is open.
+// The sequence is read, read, read, then one write:
+//
+//	GET  /repos/{o}/{r}                       default branch and push permission
+//	GET  /repos/{o}/{r}/pulls/{n}             open, into the default branch, from a branch of THIS repository
+//	GET  /repos/{o}/{r}/git/ref/heads/{head}  the head branch's tip, pinned as a commit SHA
+//	GET  /repos/{o}/{r}/contents/{file}?ref=<head sha>   the file at that commit
+//	PUT  /repos/{o}/{r}/contents/{file}       commit the file on the head branch, naming the blob read
+//
+// THE HEAD IS THE BRANCH'S OWN REF, never the pull request read's head.sha:
+// GitHub answers that a few seconds late after a push, so a caller pinning the
+// commit an update just answered would be refused as "moved".
+//
+// The pull request's head branch was there before the call, so a failure never
+// leaves a branch. GitHub's contents API guards the FILE (the blob sha), not
+// the branch: expected_head_sha refuses a head that moved before the read, and
+// a push between the read and the write that left the file alone is built on.
+//
 // DEFERRED, and refused as unknown request fields rather than ignored:
-// requesting reviewers, and adding a commit to an existing pull request.
-// Monorepo sub-roots are not supported: the one file is factory.PipelineFile.
+// requesting reviewers. Monorepo sub-roots are not supported: the one file is
+// factory.PipelineFile.
 const (
 	pipelinePRTimeout   = 60 * time.Second
 	pipelinePRMaxText   = 256 << 10
@@ -79,6 +98,12 @@ type pipelinePRFlow struct {
 	branch string
 	// left is true once the new branch exists or may exist on GitHub.
 	left bool
+	// update is true when the call adds a commit to an existing pull request:
+	// its branch was never this call's to leave.
+	update bool
+	// source is true on the edit-source read, which answers a failure in its
+	// own shape (sourceFail) from the same steps.
+	source bool
 }
 
 func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +118,7 @@ func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	title, text, branchWanted, wanted, ok := f.validate(body)
-	if !ok {
+	if !ok || !f.validateUpdate(body) {
 		return
 	}
 	data, refused := pipelineFileFor(body.Text)
@@ -119,6 +144,10 @@ func (h *Handler) pipelinePR(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), pipelinePRTimeout)
 	defer cancel()
 	f.ctx = ctx
+	if f.update {
+		f.runUpdate(body.PR, strings.ToLower(strings.TrimSpace(body.ExpectedHeadSHA)), title, data)
+		return
+	}
 	f.run(title, text, branchWanted, wanted, data)
 }
 
@@ -187,6 +216,26 @@ func (f *pipelinePRFlow) validate(body api.PipelinePRRequest) (title, text, bran
 	return title, text, branch, base, true
 }
 
+// validateUpdate bounds the fields of a commit to an existing pull request.
+// Those that only shape a NEW pull request are refused with pr, never ignored.
+func (f *pipelinePRFlow) validateUpdate(body api.PipelinePRRequest) bool {
+	head := strings.ToLower(strings.TrimSpace(body.ExpectedHeadSHA))
+	switch {
+	case body.PR == 0 && head == "":
+		return true
+	case body.PR <= 0:
+		f.refuse(422, "request", "pr must be the number of an open pull request")
+	case body.Branch != "" || body.Body != "" || body.ExpectedBaseSHA != "":
+		f.refuse(422, "request", "branch, body and expected_base_sha are for a new pull request; leave them out with pr")
+	case head != "" && !gitCommitSHA.MatchString(head):
+		f.refuse(422, "request", "expected_head_sha must be a 40-character commit SHA")
+	default:
+		f.update = true
+		return true
+	}
+	return false
+}
+
 func validPipelineBranch(name string) bool {
 	if name == "" || len(name) > pipelinePRMaxBranch || name == "@" || name == "HEAD" ||
 		strings.HasPrefix(name, "-") || strings.HasSuffix(name, ".") ||
@@ -206,8 +255,9 @@ func validPipelineBranch(name string) bool {
 	return true
 }
 
-func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte) {
-	// 1. The repository: its default branch and whether this token can push.
+// repository reads the default branch and whether this token can push, or
+// ends the call.
+func (f *pipelinePRFlow) repository() (string, bool) {
 	var repo struct {
 		DefaultBranch string `json:"default_branch"`
 		Archived      bool   `json:"archived"`
@@ -216,15 +266,24 @@ func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte
 		} `json:"permissions"`
 	}
 	if !f.read("repository", f.repoAt, &repo) {
-		return
+		return "", false
 	}
 	def := repo.DefaultBranch
 	if def == "" || len(def) > 255 || strings.HasPrefix(def, "-") || strings.ContainsAny(def, "\x00\r\n\\") {
 		f.fail(502, api.PipelinePRNotOpened, "repository", 0, "GitHub did not name a usable default branch")
-		return
+		return "", false
 	}
 	if repo.Archived || !repo.Permissions.Push {
 		f.fail(403, api.PipelinePRRefused, "permission", 0, "Your GitHub access cannot push to "+f.owner+"/"+f.repo+"; nothing was written")
+		return "", false
+	}
+	return def, true
+}
+
+func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte) {
+	// 1. The repository: its default branch and whether this token can push.
+	def, ok := f.repository()
+	if !ok {
 		return
 	}
 
@@ -250,33 +309,13 @@ func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte
 	}
 
 	// 3. The file at the pinned commit. Missing means this PR creates it.
-	var current struct {
-		Type     string `json:"type"`
-		Encoding string `json:"encoding"`
-		Content  string `json:"content"`
-		SHA      string `json:"sha"`
-	}
-	blob := ""
-	status, err := f.get(f.repoAt+"/contents/"+factory.PipelineFile+"?ref="+base, &current)
-	switch {
-	case err != nil:
-		f.readFailed("file", status, err)
+	blob, same, ok := f.fileAt(base, data)
+	if !ok {
 		return
-	case status == 404:
-	case status == 200:
-		old, ok := decodeBase64(current.Content)
-		if current.Type != "file" || current.Encoding != "base64" || !gitCommitSHA.MatchString(current.SHA) || !ok {
-			f.fail(502, api.PipelinePRNotOpened, "file", 0, "GitHub returned an unreadable "+factory.PipelineFile)
-			return
-		}
-		if bytes.Equal(old, data) {
-			f.h.write(f.w, 200, api.PipelinePRResponse{Factory: f.h.factory, Outcome: api.PipelinePRUnchanged, BaseSHA: base,
-				Note: "The default branch already has this pipeline; no pull request was opened."})
-			return
-		}
-		blob = current.SHA
-	default:
-		f.readFailed("file", status, nil)
+	}
+	if same {
+		f.h.write(f.w, 200, api.PipelinePRResponse{Factory: f.h.factory, Outcome: api.PipelinePRUnchanged, BaseSHA: base,
+			Note: "The default branch already has this pipeline; no pull request was opened."})
 		return
 	}
 
@@ -292,7 +331,7 @@ func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte
 		f.refuse(409, "branch", "Choose a new branch; the default branch cannot be a pipeline proposal")
 		return
 	}
-	status, err = f.get(f.repoAt+"/git/ref/heads/"+escapeRef(branch), &struct{}{})
+	status, err := f.get(f.repoAt+"/git/ref/heads/"+escapeRef(branch), &struct{}{})
 	switch {
 	case err != nil:
 		f.readFailed("branch", status, err)
@@ -323,23 +362,8 @@ func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte
 	}
 
 	// 5. Commit the file on the new branch (never the default branch).
-	put := map[string]string{"message": title, "content": base64.StdEncoding.EncodeToString(data), "branch": branch}
-	if blob != "" {
-		put["sha"] = blob
-	}
-	var commit struct {
-		Commit struct {
-			SHA string `json:"sha"`
-		} `json:"commit"`
-	}
-	status, err = f.call(http.MethodPut, f.repoAt+"/contents/"+factory.PipelineFile, put, &commit)
-	if (status != 200 && status != 201) || err != nil {
-		f.writeFailed("commit", status, err)
-		return
-	}
-	head := strings.ToLower(commit.Commit.SHA)
-	if !gitCommitSHA.MatchString(head) {
-		f.fail(502, api.PipelinePRUnknown, "commit", status, "GitHub did not confirm the pipeline commit; check GitHub before trying again"+f.branchWords())
+	head, ok := f.commit(title, blob, data)
+	if !ok {
 		return
 	}
 
@@ -361,6 +385,153 @@ func (f *pipelinePRFlow) run(title, text, branch, wantedBase string, data []byte
 	f.h.write(f.w, 201, api.PipelinePRResponse{Factory: f.h.factory, Outcome: api.PipelinePROpened,
 		PR:      &api.PipelinePRResult{Number: pr.Number, URL: canonical, Branch: branch, Base: def, BaseSHA: base, HeadSHA: head},
 		BaseSHA: base, Note: fmt.Sprintf("Pull request #%d opened with your GitHub access.", pr.Number)})
+}
+
+// runUpdate adds one commit of the file to the open pull request number, on its
+// own head branch, or ends the call. Nothing is written until the pull request
+// is known to be open, into the default branch, from a branch of this same
+// repository, and (when the caller pinned one) still at the expected head.
+func (f *pipelinePRFlow) runUpdate(number int, wantedHead, title string, data []byte) {
+	def, ok := f.repository()
+	if !ok {
+		return
+	}
+	pr, ok := f.openPull(number, def, wantedHead)
+	if !ok {
+		return
+	}
+	f.branch = pr.Branch
+	blob, same, ok := f.fileAt(pr.HeadSHA, data)
+	if !ok {
+		return
+	}
+	if same {
+		f.h.write(f.w, 200, api.PipelinePRResponse{Factory: f.h.factory, Outcome: api.PipelinePRUnchanged, PR: &pr, BaseSHA: pr.BaseSHA,
+			Note: fmt.Sprintf("Pull request #%d already has this pipeline; nothing was written.", number)})
+		return
+	}
+	if pr.HeadSHA, ok = f.commit(title, blob, data); !ok {
+		return
+	}
+	f.h.write(f.w, 200, api.PipelinePRResponse{Factory: f.h.factory, Outcome: api.PipelinePRUpdated, PR: &pr, BaseSHA: pr.BaseSHA,
+		Note: fmt.Sprintf("Pull request #%d updated with your GitHub access.", number)})
+}
+
+// openPull reads pull request number and answers it only when this flow may
+// write to it; every other answer ends the call at stage "head".
+func (f *pipelinePRFlow) openPull(number int, def, wantedHead string) (api.PipelinePRResult, bool) {
+	type side struct {
+		Ref  string `json:"ref"`
+		SHA  string `json:"sha"`
+		Repo *struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
+	}
+	var pull struct {
+		Number int    `json:"number"`
+		State  string `json:"state"`
+		Head   side   `json:"head"`
+		Base   side   `json:"base"`
+	}
+	if !f.read("head", f.repoAt+"/pulls/"+strconv.Itoa(number), &pull) {
+		return api.PipelinePRResult{}, false
+	}
+	here := func(s side) bool { return s.Repo != nil && strings.EqualFold(s.Repo.FullName, f.owner+"/"+f.repo) }
+	base := strings.ToLower(pull.Base.SHA)
+	switch {
+	case pull.Number != number || !gitCommitSHA.MatchString(base):
+		f.fail(502, api.PipelinePRNotOpened, "head", 0, "GitHub returned an unreadable pull request; nothing was written")
+	case pull.State != "open":
+		f.refuse(409, "head", fmt.Sprintf("Pull request #%d is not open; nothing was written", number))
+	case !here(pull.Base) || pull.Base.Ref != def:
+		f.refuse(409, "head", fmt.Sprintf("Pull request #%d does not merge into this repository's default branch; nothing was written", number))
+	case !here(pull.Head) || pull.Head.Ref == def || !validPipelineBranch(pull.Head.Ref):
+		f.refuse(409, "head", fmt.Sprintf("Pull request #%d is not from a branch of this repository; nothing was written", number))
+	default:
+		head, ok := f.headTip(pull.Head.Ref)
+		switch {
+		case !ok:
+		case wantedHead != "" && wantedHead != head:
+			f.refuse(409, "head", fmt.Sprintf("Pull request #%d has new commits since this draft started; nothing was written", number))
+		default:
+			return api.PipelinePRResult{Number: number, URL: "https://github.com/" + f.owner + "/" + f.repo + "/pull/" + strconv.Itoa(number),
+				Branch: pull.Head.Ref, Base: def, BaseSHA: base, HeadSHA: head}, true
+		}
+	}
+	return api.PipelinePRResult{}, false
+}
+
+// headTip pins the head branch's tip as a commit SHA, or ends the call.
+func (f *pipelinePRFlow) headTip(branch string) (string, bool) {
+	var tip struct {
+		Object struct {
+			Type string `json:"type"`
+			SHA  string `json:"sha"`
+		} `json:"object"`
+	}
+	if !f.read("head", f.repoAt+"/git/ref/heads/"+escapeRef(branch), &tip) {
+		return "", false
+	}
+	head := strings.ToLower(tip.Object.SHA)
+	if tip.Object.Type != "commit" || !gitCommitSHA.MatchString(head) {
+		f.fail(502, api.PipelinePRNotOpened, "head", 0, "GitHub did not return a commit for the pull request's branch; nothing was written")
+		return "", false
+	}
+	return head, true
+}
+
+// fileAt reads the pipeline file at commit ref. It answers the blob to name
+// when replacing it ("" when it is missing) and whether it already holds data,
+// or ends the call.
+func (f *pipelinePRFlow) fileAt(ref string, data []byte) (blob string, same, ok bool) {
+	var current struct {
+		Type     string `json:"type"`
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+		SHA      string `json:"sha"`
+	}
+	status, err := f.get(f.repoAt+"/contents/"+factory.PipelineFile+"?ref="+ref, &current)
+	switch {
+	case err != nil:
+		f.readFailed("file", status, err)
+		return "", false, false
+	case status == 404:
+		return "", false, true
+	case status != 200:
+		f.readFailed("file", status, nil)
+		return "", false, false
+	}
+	old, decoded := decodeBase64(current.Content)
+	if current.Type != "file" || current.Encoding != "base64" || !gitCommitSHA.MatchString(current.SHA) || !decoded {
+		f.fail(502, api.PipelinePRNotOpened, "file", 0, "GitHub returned an unreadable "+factory.PipelineFile)
+		return "", false, false
+	}
+	return current.SHA, bytes.Equal(old, data), true
+}
+
+// commit puts the file on f.branch, naming blob when it replaces one, and
+// answers the new commit, or ends the call. It is sent once.
+func (f *pipelinePRFlow) commit(title, blob string, data []byte) (string, bool) {
+	put := map[string]string{"message": title, "content": base64.StdEncoding.EncodeToString(data), "branch": f.branch}
+	if blob != "" {
+		put["sha"] = blob
+	}
+	var commit struct {
+		Commit struct {
+			SHA string `json:"sha"`
+		} `json:"commit"`
+	}
+	status, err := f.call(http.MethodPut, f.repoAt+"/contents/"+factory.PipelineFile, put, &commit)
+	if (status != 200 && status != 201) || err != nil {
+		f.writeFailed("commit", status, err)
+		return "", false
+	}
+	head := strings.ToLower(commit.Commit.SHA)
+	if !gitCommitSHA.MatchString(head) {
+		f.fail(502, api.PipelinePRUnknown, "commit", status, "GitHub did not confirm the pipeline commit; check GitHub before trying again"+f.branchWords())
+		return "", false
+	}
+	return head, true
 }
 
 // read is a GET that must answer 200; anything else ends the call.
@@ -457,7 +628,7 @@ func (f *pipelinePRFlow) readFailed(stage string, status int, err error) {
 // left because it may exist. Only a definitive 4xx says the write did not happen.
 func (f *pipelinePRFlow) writeFailed(stage string, status int, err error) {
 	if err != nil || status < 400 || status >= 500 {
-		f.left = true
+		f.left = !f.update
 		f.fail(502, api.PipelinePRUnknown, stage, status, "GitHub's answer to "+stageWords(stage)+" is unknown; check "+f.owner+"/"+f.repo+" on GitHub before trying again"+f.branchWords())
 		return
 	}
@@ -466,7 +637,7 @@ func (f *pipelinePRFlow) writeFailed(stage string, status int, err error) {
 		return
 	}
 	httpStatus, outcome := upstreamStatus(status, false)
-	if f.left && outcome == api.PipelinePRRefused {
+	if (f.left || f.update) && outcome == api.PipelinePRRefused {
 		outcome = api.PipelinePRNotOpened
 	}
 	f.fail(httpStatus, outcome, stage, status, fmt.Sprintf("GitHub refused to %s (HTTP %d)%s", stageWords(stage), status, f.branchWords()))
@@ -515,6 +686,10 @@ func (f *pipelinePRFlow) refuse(status int, stage, words string) {
 }
 
 func (f *pipelinePRFlow) fail(status int, outcome, stage string, github int, words string) {
+	if f.source {
+		f.sourceFail(status, stage, github, words)
+		return
+	}
 	if status == 401 && f.viaSes {
 		f.h.endGitHub(f.r, f.token)
 	}
