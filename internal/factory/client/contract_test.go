@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/factorytest"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 type contractVerb struct {
@@ -244,4 +245,36 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 			t.Errorf("%s has no direct/client contract case", verb.Name)
 		}
 	}
+}
+
+// Terminal New stays a sentence even when it contains a blank line.
+func TestSeparateJobTitleIsLiteral(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := factorytest.ServeInProcess(t, factory.LocalSeam(st, floorNow))
+	id, err := remote.New("owner/repo", "Fix tests\n\nauto $5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := remote.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range snap.Items {
+		if it.ID != id {
+			continue
+		}
+		if it.Title != "Fix tests" || it.Cap != 5 {
+			t.Fatalf("terminal job = %q cap %v", it.Title, it.Cap)
+		}
+		for _, step := range it.Stages {
+			if factory.IsApprove(step) {
+				t.Fatal("terminal auto chip did not remove approvals")
+			}
+		}
+		return
+	}
+	t.Fatal("new terminal job absent from floor")
 }

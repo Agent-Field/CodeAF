@@ -451,3 +451,18 @@ The new job keeps the repository, title and details exactly as saved, autonomy, 
 The new job gets its own branch and conversations when it runs. It starts with nothing spent and no earlier pull request, failure or run history. Its page links to the old job, and both jobs' records name who started the copy.
 
 This is a person's Start: the same model, checkout, repository switch and start refusals apply. If Start is refused, no new job remains. Accepted work waits for runner capacity under the usual Jobs at once limit. Omitting an assignee starts it as the caller's job; an explicit assignee names the new job's person.
+
+## App job title and details — literal words, auto-save, budgets and hand-off
+
+Creating a job with a separate title in the app, or handing off an agent,
+keeps the title as written with outer whitespace removed. Details keep their
+spacing and line breaks in the job's ask and body; empty details stay empty.
+Words in either field,
+including `auto`, `ship it`, `plan first`, `$5`, `security`, `two review rounds`
+and `cheaper`, do not set a budget or change approval steps, review rounds,
+effort or security. The repository's pipeline remains in effect. A draft pull
+request takes its title from the job title alone.
+
+Terminal factory sentences still read those words as chips. Existing jobs are
+not rewritten; this applies when a new job is created. Factories without the
+separate-title creation capability retain their existing creation behavior.

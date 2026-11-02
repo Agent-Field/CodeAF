@@ -173,7 +173,7 @@ func verbCases(seam factory.Seam) []verbCase {
 			func() error { return seam.Mark([]int{7}, true) }},
 		{"reply", "POST", "/v1/jobs/2/reply", `{"words":"keep the tests"}`, actionSentence,
 			func() error { return seam.Say(ctx, 2, "keep the tests") }},
-		{"new", "POST", "/v1/jobs", `{"repo":"owner/repo","title":"fix tests","text":"keep the fixture"}`, actionSentence,
+		{"new", "POST", "/v1/jobs", `{"repo":"owner/repo","title":"fix tests\n\nkeep the fixture"}`, actionSentence,
 			func() error {
 				id, err := seam.New("owner/repo", "fix tests\n\nkeep the fixture")
 				if id != 0 {

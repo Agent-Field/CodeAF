@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 func (c *Client) launch(id int) error  { return c.postID(id, "run", nil) }
@@ -68,14 +67,13 @@ func (c *Client) mark(ids []int, on bool) error {
 	return nil
 }
 
-// make posts a new job. The server joins title and text with a blank line,
-// so the split is that join undone and a title with no brief stays one string.
+// make carries a terminal sentence as one field so the server still lifts
+// chips. Separate title and details belong to the structured creation road.
 func (c *Client) make(repo, words string) (int, error) {
-	title, text, _ := strings.Cut(words, "\n\n")
 	var out struct {
 		ID int `json:"id"`
 	}
-	err := c.call(context.Background(), http.MethodPost, "/v1/jobs", newJobBody{Repo: repo, Title: title, Text: text}, &out)
+	err := c.call(context.Background(), http.MethodPost, "/v1/jobs", newJobBody{Repo: repo, Title: words}, &out)
 	if err != nil {
 		return 0, err
 	}
