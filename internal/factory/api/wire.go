@@ -121,7 +121,10 @@ type QueueDesk struct {
 
 // Estimate is one job's measured range (desk): dollars and minutes from the
 // 10th to the 90th percentile of N similar finished jobs, in Repo (absent:
-// every repository). Widened says misses widened it.
+// every repository). Widened says misses widened it. Basis is "read" when
+// the jobs were matched on the job's read, or "kind" when they are the latest
+// finished jobs of the same kind, read or not ("from 12 jobs in api, not
+// read").
 type Estimate struct {
 	USDLo   float64 `json:"usd_lo"`
 	USDHi   float64 `json:"usd_hi"`
@@ -130,11 +133,23 @@ type Estimate struct {
 	N       int     `json:"n"`
 	Repo    string  `json:"repo,omitempty"`
 	Widened bool    `json:"widened,omitempty"`
+	Basis   string  `json:"basis,omitempty"`
 	// Left is a running job's likely spend from here to its end, from the
 	// similar finished jobs that spent at least what it has so far; absent
 	// below five such jobs. A running job with Left but no whole figure has
 	// n 0 and no usd_lo or usd_hi to read.
 	Left *Left `json:"left,omitempty"`
+}
+
+// NewEstimate is GET /v1/repos/{owner}/{repo}/estimate?kind=K's answer:
+// what a job of that kind in that repository is likely to cost before it
+// exists, from the latest finished jobs of the kind (basis "kind"). Estimate
+// is absent while fewer than five such jobs finished.
+type NewEstimate struct {
+	Factory  Factory   `json:"factory"`
+	Repo     string    `json:"repo"`
+	Kind     string    `json:"kind"`
+	Estimate *Estimate `json:"estimate,omitempty"`
 }
 
 // Left is what a running job will likely spend from now (desk).
@@ -145,11 +160,19 @@ type Left struct {
 }
 
 // Calibration is the measured ranges' record (desk): Jobs finished jobs
-// seen, Hit of Of backtested ones inside their range.
+// seen, Hit of Of backtested ones inside their range, and the same per basis
+// ("read", "kind"), so a job's range shows the record of its own basis.
 type Calibration struct {
-	Jobs int `json:"jobs"`
-	Hit  int `json:"hit"`
-	Of   int `json:"of"`
+	Jobs  int                `json:"jobs"`
+	Hit   int                `json:"hit"`
+	Of    int                `json:"of"`
+	Basis map[string]HitRate `json:"basis,omitempty"`
+}
+
+// HitRate is Hit of Of backtested ranges inside (desk).
+type HitRate struct {
+	Hit int `json:"hit"`
+	Of  int `json:"of"`
 }
 
 // Since is the handover: what happened since the person last looked.
