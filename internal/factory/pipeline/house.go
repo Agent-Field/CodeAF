@@ -224,3 +224,17 @@ func touchesAny(globs []string, path string) bool {
 	}
 	return false
 }
+
+// ProtectedNamed is every protected path of f's start rules (its ask-first
+// path lines and its never paths, [ProtectedPaths]) that one of paths
+// touches, by the matcher a start uses, in the rules' order; empty, never
+// nil, when none is touched.
+func (f File) ProtectedNamed(paths []string) []string {
+	out := []string{}
+	for _, rule := range ProtectedPaths(f.Start.AskFirst, f.Start.Never) {
+		if protectedWhy([]string{rule}, paths) != "" {
+			out = append(out, rule)
+		}
+	}
+	return out
+}

@@ -418,6 +418,11 @@ type Job struct {
 	// (factory.RuleChecks), for its two ◆ rows; absent before either was
 	// judged.
 	RuleChecks *RuleChecks `json:"rule_checks,omitempty"`
+	// Protected is which protected paths a Backlog job names, judged on every
+	// queue read by the start rules it would start under (JobProtected).
+	// Absent is not judged: a job past the Backlog, or rules nobody could
+	// read; the hello word `factory.job_protected` says a client may read it.
+	Protected *JobProtected `json:"protected,omitempty"`
 	// Brief is the job's brief mark: the rev of its newest kept version and
 	// the brief's status, so a reader that polls the job reads the brief
 	// itself (GET /v1/jobs/{id}/brief) only when one of them moves. Absent
@@ -838,6 +843,15 @@ type RuleChecks struct {
 	Start       string `json:"start,omitempty"`
 	Publish     string `json:"publish,omitempty"`
 	PublishHead string `json:"publish_head,omitempty"`
+}
+
+// JobProtected is the protected paths (the rules' ask-first path lines and
+// never paths, as written) that the paths a job names touch: its issue, its
+// comments, its plan and its pull request's files, matched as a start
+// matches them. Empty paths is a job that names none, which is not proof its
+// change will touch none: a job's plan is checked again before it goes on.
+type JobProtected struct {
+	Paths []string `json:"paths"`
 }
 
 // PRChecks is the check-run summary. A zero count is omitted.
