@@ -408,6 +408,12 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 						}
 						time.Sleep(10 * time.Millisecond)
 					}
+					// One pass through this scripted evidence takes at most ten calls.
+					// The interrupted pre-pause call is the eleventh provider request.
+					time.Sleep(250 * time.Millisecond)
+					if got := memoryCalls.Load(); got > 11 {
+						t.Fatalf("resume exceeded one normal memory pass: calls=%d, limit=11", got)
+					}
 					t.Logf("resume compiled retained evidence: memory_calls=%d pending=%d", memoryCalls.Load(), snapshot.Pending)
 				}
 			}
