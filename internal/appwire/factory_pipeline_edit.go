@@ -107,6 +107,14 @@ const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
 // file its factory attested. The source's steps then carry their who.
 const FeatureFactoryPipelineEditApprovers = "factory.pipeline_edit_approvers"
 
+// FeatureFactoryPipelineEditGates is announced beside FeatureFactoryPipelineEditStructure
+// when this engine previews an add_step of kind gate: an approval put in one
+// pipeline, with an optional prompt the person reads. A gate spells `kind`, a
+// runtime key, so the preview takes it only for a file its factory attested.
+// Who on that add_step ("@handle", operator, or "" for the job's person) is
+// taken only when FeatureFactoryPipelineEditApprovers is announced too.
+const FeatureFactoryPipelineEditGates = "factory.pipeline_edit_gates"
+
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
 	// whose own limit is sixty seconds.
@@ -227,8 +235,9 @@ type FactoryPipelineSource struct {
 // FactoryPipelineEdit is one structured edit. set_step names a step and at
 // least one of prompt, until, max, when, effort and fanout; set_budget names
 // only value. A field the verb does not take is bad_params. Kind belongs to
-// add_step alone (feature factory.pipeline_edit_checks): chat, the default, or
-// check, whose prompt is the command it runs; no edit changes a step's kind. An omitted field is not sent: until ""
+// add_step alone: chat, the default; check, whose prompt is the command it runs
+// (feature factory.pipeline_edit_checks); or gate, an approval whose prompt is
+// optional (feature factory.pipeline_edit_gates). No edit changes a step's kind. An omitted field is not sent: until ""
 // is a request to clear it, which the file format may refuse, and when, effort or
 // fanout "" clears that word back to the default.
 //
@@ -250,7 +259,7 @@ type FactoryPipelineEdit struct {
 	Name     string   `json:"name,omitempty"`
 	Pipeline string   `json:"pipeline,omitempty"`
 	After    *string  `json:"after,omitempty"`
-	Kind     *string  `json:"kind,omitempty" enum:"chat,check"`
+	Kind     *string  `json:"kind,omitempty" enum:"chat,check,gate"`
 	Prompt   *string  `json:"prompt,omitempty"`
 	Until    *string  `json:"until,omitempty"`
 	Max      *int     `json:"max,omitempty"`
@@ -268,8 +277,9 @@ type FactoryPipelineEdit struct {
 	Fixed   *bool    `json:"fixed,omitempty"`
 	MaxSize *string  `json:"max_size,omitempty"`
 	MaxCost *float64 `json:"max_cost,omitempty"`
-	// Who belongs to set_approver, with Name (feature
-	// factory.pipeline_edit_approvers): "@handle", operator, or "".
+	// Who belongs to set_approver, with Name, and to an add_step of kind gate
+	// (feature factory.pipeline_edit_approvers, and factory.pipeline_edit_gates
+	// for the add_step): "@handle", operator, or "".
 	Who *string `json:"who,omitempty"`
 }
 
@@ -466,6 +476,13 @@ type FactoryPipelineChecksEditor interface {
 	PipelineCheckEdits()
 }
 
+// FactoryPipelineGatesEditor is implemented ONLY by a structure editor whose
+// preview applies an add_step of kind gate. Without it a gate is refused
+// before the engine is asked, and the feature is not announced.
+type FactoryPipelineGatesEditor interface {
+	PipelineGateEdits()
+}
+
 // FactoryPipelineApproversEditor is implemented ONLY by a settings editor whose
 // preview applies set_approver. Without it set_approver is refused before the
 // engine is asked, and the feature is not announced.
@@ -486,6 +503,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 			hello = withFeature(hello, FeatureFactoryPipelineEditStructure)
 			if _, checks := e.(FactoryPipelineChecksEditor); checks {
 				hello = withFeature(hello, FeatureFactoryPipelineEditChecks)
+			}
+			if _, gates := e.(FactoryPipelineGatesEditor); gates {
+				hello = withFeature(hello, FeatureFactoryPipelineEditGates)
 			}
 		}
 		if _, rules := e.(FactoryPipelineRulesEditor); rules {
@@ -699,15 +719,23 @@ func checkStructureServed(e Engine, edits []FactoryPipelineEdit) error {
 }
 
 // checkChecksServed refuses a kind to an editor that has not said it previews
-// a check, and a kind on any verb but add_step to every editor.
+// that kind (a check, a gate), and a kind on any verb but add_step to every
+// editor. Chat, the default, needs no word.
 func checkChecksServed(e Engine, edits []FactoryPipelineEdit) error {
 	_, checks := e.(FactoryPipelineChecksEditor)
+	_, gates := e.(FactoryPipelineGatesEditor)
 	for i, edit := range edits {
+		var kind string
+		if edit.Kind != nil {
+			kind = strings.ToLower(strings.TrimSpace(*edit.Kind))
+		}
 		switch {
 		case edit.Kind == nil:
 		case edit.Op != PipelineEditAddStep:
 			return Errorf(CodeBadParams, "edit %d: only add_step names a kind", i)
-		case !checks:
+		case kind == "gate" && !gates:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add an approval", i)
+		case kind != "gate" && kind != "chat" && kind != "" && !checks:
 			return Errorf(CodeBadParams, "edit %d: this engine does not add a check", i)
 		}
 	}
@@ -748,14 +776,14 @@ func checkSettingsServed(e Engine, edits []FactoryPipelineEdit) error {
 	return nil
 }
 
-// checkApproversServed refuses set_approver to an editor that has not said it
-// previews one.
+// checkApproversServed refuses who, on set_approver or on an added gate, to an
+// editor that has not said it previews one.
 func checkApproversServed(e Engine, edits []FactoryPipelineEdit) error {
 	if _, ok := e.(FactoryPipelineApproversEditor); ok {
 		return nil
 	}
 	for i, edit := range edits {
-		if edit.Op == PipelineEditSetApprover {
+		if edit.Op == PipelineEditSetApprover || edit.Who != nil {
 			return Errorf(CodeBadParams, "edit %d: this engine does not name who an approval waits on", i)
 		}
 	}

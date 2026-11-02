@@ -125,7 +125,8 @@ type EditOp struct {
 	Fixed   *bool
 	MaxSize *string
 	MaxCost *float64
-	// Who belongs to set_approver, with Name.
+	// Who belongs to set_approver, with Name, and to an add_step of kind
+	// gate: who the added person waits on.
 	Who *string
 }
 
@@ -677,7 +678,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}
 	if !settingsOp(op.Op) && settingFieldsNamed(op) {
-		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size or max_cost", op.Op)
+		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost or who", op.Op)
 	}
 	switch op.Op {
 	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:

@@ -70,9 +70,10 @@ func settingsOp(verb string) bool {
 }
 
 // settingFieldsNamed says whether an edit names a field only a settings edit
-// takes.
+// takes. Who is add_step's too, for the gate it adds ([checkGateWords]).
 func settingFieldsNamed(op EditOp) bool {
-	return op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || op.Who != nil
+	who := op.Who != nil && op.Op != OpAddStep
+	return op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || who
 }
 
 // checkSettings bounds a settings edit without the file.
