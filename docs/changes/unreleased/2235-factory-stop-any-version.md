@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf accepts Stop after a running job moves on
-pr: 0
+pr: 2235
 surface: [engine]
 invalidates:
   - "Stop required the version the desk last read and could refuse while the job kept running. Stop now accepts an old version or no version while the job is active."
