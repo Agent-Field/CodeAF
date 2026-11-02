@@ -33,10 +33,15 @@ type setupGitHub struct {
 
 func (g *setupGitHub) client(t *testing.T) *http.Client {
 	return &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		// A GraphQL query is recorded as QUERY: it reads, though it is a POST.
+		verb, query := r.Method, graphQLRead(r)
+		if query {
+			verb = "QUERY"
+		}
 		g.mu.Lock()
-		g.requests = append(g.requests, r.Method+" "+r.URL.Path)
+		g.requests = append(g.requests, verb+" "+r.URL.Path)
 		g.mu.Unlock()
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && !query {
 			t.Errorf("setup wrote to GitHub: %s %s", r.Method, r.URL)
 		}
 		if r.URL.Host != "api.github.com" {
@@ -270,7 +275,7 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 		t.Fatalf("expected the two issues as Backlog jobs: %+v", q.Jobs)
 	}
 	for _, r := range s.github.seen() {
-		if !strings.HasPrefix(r, "GET ") {
+		if !strings.HasPrefix(r, "GET ") && !strings.HasPrefix(r, "QUERY ") {
 			t.Fatalf("GitHub request %q", r)
 		}
 	}

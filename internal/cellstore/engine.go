@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -409,13 +411,50 @@ func (e Engine) target(c cell.Cell) Target {
 	return Target{Tree: canonicalTree(e.tree(c)), DataDir: dir, CellDir: e.cellDir(c), Timeline: timeline}
 }
 
+// canonicalTree is the physical spelling of tree, so one folder is one tree
+// whichever spelling named it: macOS reaches /tmp and /var through links, and a
+// home or project folder can sit under a linked folder too.
+//
+// A tree that does not exist yet still resolves its ancestors. Its longest
+// existing ancestor is resolved and the missing rest is kept as written. Were
+// the spelled path returned instead, the same folder would change spelling the
+// moment it was created: a binding recorded before creation would read as
+// another folder after it, and a chat's own absent work/ would compare as
+// outside the chat's resolved folder. Only components that are truly absent
+// are kept as written; a link whose target is missing is not a missing folder,
+// so a path through one keeps its absolute spelling, as does any other failure.
 func canonicalTree(tree string) string {
 	absolute, err := filepath.Abs(tree)
 	if err != nil {
 		return filepath.Clean(tree)
 	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err == nil {
 		return resolved
 	}
-	return absolute
+	if !errors.Is(err, os.ErrNotExist) {
+		return absolute
+	}
+	existing, missing := absolute, []string(nil)
+	for {
+		_, err := os.Lstat(existing)
+		if err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if !errors.Is(err, os.ErrNotExist) || parent == existing {
+			return absolute
+		}
+		missing = append(missing, filepath.Base(existing))
+		existing = parent
+	}
+	if len(missing) == 0 {
+		return absolute
+	}
+	resolved, err = filepath.EvalSymlinks(existing)
+	if err != nil {
+		return absolute
+	}
+	slices.Reverse(missing)
+	return filepath.Join(append([]string{resolved}, missing...)...)
 }

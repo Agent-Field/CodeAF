@@ -2,11 +2,14 @@ package serve
 
 import (
 	"context"
+	"errors"
+	"log"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/live"
@@ -40,6 +43,12 @@ type rootWatch struct {
 	snap  fileSnap
 }
 
+// newFSWatcher opens the filesystem watch; tests stand in a host without one.
+var newFSWatcher = fsnotify.NewWatcher
+
+// watchWarned says the missing watch once per process.
+var watchWarned sync.Once
+
 func watchRoot(root string) *rootWatch {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &rootWatch{
@@ -52,16 +61,34 @@ func watchRoot(root string) *rootWatch {
 		due:    make(chan struct{}, 1),
 		snap:   snapshot(root),
 	}
-	if fs, err := fsnotify.NewWatcher(); err == nil {
-		if err := fs.Add(root); err != nil {
+	fs, err := newFSWatcher()
+	if err == nil {
+		if err = fs.Add(root); err != nil {
 			_ = fs.Close()
 		} else {
 			w.fs = fs
 			go w.readFS()
 		}
 	}
+	if err != nil {
+		watchWarned.Do(func() {
+			log.Printf("factory: no filesystem watch on %s (%s); open pulls look once a second instead", root, watchCause(err))
+		})
+	}
 	go w.loop()
 	return w
+}
+
+// watchCause names why a watch could not be made. The inotify pool is per
+// user and shared by every process, so a busy machine runs out of it.
+func watchCause(err error) string {
+	switch {
+	case errors.Is(err, syscall.EMFILE):
+		return "inotify instances exhausted: raise fs.inotify.max_user_instances"
+	case errors.Is(err, syscall.ENOSPC):
+		return "inotify watches exhausted: raise fs.inotify.max_user_watches"
+	}
+	return err.Error()
 }
 
 func (w *rootWatch) stop() {

@@ -1,8 +1,11 @@
 package run_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
 // TestMain keeps subprocess workers made by this suite out of the plan that
@@ -15,6 +18,10 @@ import (
 func TestMain(m *testing.M) {
 	if code, child := runAsDelegateChild(); child {
 		os.Exit(code)
+	}
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	_ = os.Unsetenv("PLANDB_DB")
 	_ = os.Unsetenv("PLANDB_RUN")

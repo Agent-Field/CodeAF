@@ -14,19 +14,22 @@ import (
 // I0 and N3 pin unchanged argv through the executor at every shell door. Together with the
 // injected Unix preference tests, this does not require an installed /bin/bash.
 func TestUnixDoorArgv(t *testing.T) {
-	// Bash doors keep pipefail so a failed pipeline stage cannot look successful.
+	// Bash doors run under PipefailArgs so a failed pipeline stage cannot look
+	// successful while a reader that stopped early is not a failure.
 	for _, tc := range []struct{ file, function, call string }{
-		{"exec/tools.go", "runShell", `[]string{bash, "-o", "pipefail", "-lc", command}`},
+		{"exec/tools.go", "runShell", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
 		{"exec/jobs.go", "startBackground", `detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)`},
-		{"exec/services.go", "detachedCommand", `[]string{bash, "-o", "pipefail", "-lc", command}`},
+		{"exec/services.go", "detachedCommand", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.Preferred()`},
+		{"exec/bare/tools.go", "getShellConfig", `shell.PipefailArgs(program, flags, command)`},
 		{"exec/bare/tools.go", "newBashTool", `append([]string{shell}, shellArgs...)`},
-		{"exec/bare/streaming.go", "StreamingShell", `append(append([]string{}, shellArgs...), command)`},
+		{"exec/bare/streaming.go", "StreamingShell", `getShellConfig(command)`},
 		{"session/jobs.go", "jobShell", `shell.Preferred()`},
+		{"session/jobs.go", "jobShell", `shell.PipefailArgs(program, flags, command)`},
 		// Job spawning moved under the cancellable admission door without changing its argv.
 		{"session/jobs.go", "startInUnder", `append([]string{program}, shellArgs...)`},
-		{"session/tools_watch.go", "runTick", `append([]string{shell}, append(shellArgs, spec.command)...)`},
-		{"session/automation_run.go", "automationLookCommand", `append([]string{shell}, append(args, command)...)`},
+		{"session/tools_watch.go", "runTick", `append([]string{shell}, shellArgs...)`},
+		{"session/automation_run.go", "automationLookCommand", `append([]string{shell}, args...)`},
 		{"session/principal_audit.go", "runOneCheck", `[]string{bash, "-c", check}`},
 		{"verify/run.go", "RunReading", `[]string{bash, "-c", strictPreamble + strategy.Command}`},
 	} {
