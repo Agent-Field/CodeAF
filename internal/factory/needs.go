@@ -19,6 +19,7 @@ const (
 	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
 	// Persisted question kinds keep their bytes across wire contracts.
+	QKindSpendStopped     = "spend_stopped"
 	QKindOutOfAttempts    = "out_of_attempts"
 	NeedsFailed           = "failed"
 	NeedsChangesRequested = "changes_requested"
@@ -291,6 +292,9 @@ func WhoCanAnswer(kind string) string {
 // QuestionForm is the question object for a free question or an
 // out-of-attempts ask. Other needs-you kinds have no question object.
 func QuestionForm(it Item) (kind string, options []string, who string) {
+	if it.QKind == QKindSpendStopped {
+		return AskYesNo, []string{"yes", "no"}, WhoJobPerson
+	}
 	switch NeedsKind(it) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
@@ -526,6 +530,9 @@ func MayAct(it Item, caller string) Acts {
 	case NeedsQuestion:
 		answer = true
 	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+		answer = owner
+	}
+	if it.QKind == QKindSpendStopped {
 		answer = owner
 	}
 	assign := person == ""

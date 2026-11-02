@@ -38,6 +38,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
+	h.postJob("stop-after-step", stored, h.onlyOwner(h.stopAfterStep))
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
 	h.postJob("control", stored, h.onlyOwner(h.controlJob))
@@ -131,14 +132,16 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
+			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
 			file, fileErr = &f, err
 		}
 		var budget float64
 		if file != nil && cur.Cap <= 0 {
-			// The budget comes from the same read, and a read that failed
-			// refuses the start as the budget's own read would.
-			err = fileErr
-			if err == nil {
+			// An unread repository takes a bounded default. A clean read
+			// must still supply its own positive budget.
+			if fileErr != nil {
+				budget = factory.DefaultJobBudget
+			} else {
 				budget, err = h.budgetOf(file.Recipe())
 			}
 		} else {
@@ -678,21 +681,25 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	resumeCap := false
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			if body.Budget < factory.JobSpent(*cur) {
+			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
 				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && body.Budget > factory.JobSpent(*cur) && factory.Automatic(*cur) && !cur.Publishing && cur.Asking == nil {
-				resumeCap = true
-				cur.State = factory.StateQueued
-				if held {
-					cur.State = factory.StateRunning
-				}
-				cur.Question = ""
-				cur.QKind = ""
-				if cur.Stream != nil && cur.Stream.Cur >= 0 && cur.Stream.Cur < len(cur.Stream.Phases) && cur.Stream.Phases[cur.Stream.Cur].State == factory.PhaseWaiting {
-					cur.Stream.Phases[cur.Stream.Cur].State = factory.PhaseRunning
+			if cur.QKind == "cap" && !cur.Publishing {
+				if body.Budget <= factory.JobSpent(*cur) {
+					cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
+					if cur.Asking != nil {
+						cur.Asking.Question = cur.Question
+					}
+				} else if !cur.Manual {
+					// Take over keeps the job in the person's hands; a raise doesn't
+					// hand it back.
+					resumeCap = true
+					run.NoteBudgetRaised(cur, time.Now())
+					if held {
+						return run.AnswerHeld(cur, true, time.Now())
+					}
 				}
 			}
 			return nil
@@ -710,6 +717,14 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	_ = h.config.Store.NudgePoll()
 	if h.workers != nil && h.workers.desk != nil {
 		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: resumeCap})
+	}
+	if err == nil && resumeCap && !held {
+		if h.seam.Answer != nil {
+			err = h.seam.Answer(it.ID, true, factory.ChoiceContinue)
+		}
+		if h.seam.Answer == nil || (err != nil && strings.Contains(err.Error(), "is not waiting on you")) {
+			err = h.releaseCapWait(it.ID)
+		}
 	}
 	h.finish(w, err)
 }
