@@ -116,6 +116,15 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	if qkind == factory.QKindSpendStopped {
+		it.StopAfterStep = false
+		it.Question, it.QKind, it.Asking = "", "", nil
+		it.State = factory.StateRunning
+		if !yes {
+			stopSpendingItem(it, now)
+		}
+		return nil
+	}
 	answer := ""
 	if len(words) > 0 {
 		answer = words[0]
@@ -174,6 +183,15 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if it.QKind == factory.QKindSpendStopped {
+		if err := AnswerHeld(it, yes, now, words); err != nil {
+			return err
+		}
+		if yes {
+			it.State = factory.StateQueued
+		}
+		return nil
+	}
 	if it.QKind == factory.QKindOutOfAttempts && it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 		i := it.Stream.Cur
 		ph := &it.Stream.Phases[i]
