@@ -18,8 +18,17 @@ import (
 // The scripted model calls the real tool and keeps the tool message on its
 // next request. Its final answer is fixed; only the tool's words are tested.
 func TestAppFactoryNoteNamesItsNextReader(t *testing.T) {
-	for _, remaining := range []bool{false, true} {
-		t.Run(map[bool]string{false: "all steps done", true: "review remains"}[remaining], func(t *testing.T) {
+	for _, c := range []struct {
+		name                     string
+		remaining, deterministic bool
+	}{
+		{name: "all steps done"},
+		{name: "review remains", remaining: true},
+		{name: "only check and publish remain", deterministic: true},
+		{name: "check before review", remaining: true, deterministic: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			remaining := c.remaining
 			s := newLocalSetup(t)
 			status := s.start()
 			phases := []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone}, {Name: "review", Kind: factory.StageChat, State: factory.PhaseDone}, {Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}
@@ -27,7 +36,15 @@ func TestAppFactoryNoteNamesItsNextReader(t *testing.T) {
 				phases[1].State = factory.PhasePending
 				phases[2].State = factory.PhasePending
 			}
-			it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 21, Kind: factory.KindIssue, Title: "Fix the ledger", State: factory.StateNeedsYou, Stages: []factory.Stage{{Name: "write", On: true}, {Name: "review", On: true}, {Name: "proof", On: true}}, Stream: &factory.Stream{Phases: phases}, PullRequest: &factory.PullRequest{Number: 42, URL: "https://github.com/acme/api/pull/42"}})
+			stages := []factory.Stage{{Name: "write", On: true}, {Name: "review", On: true}, {Name: "proof", On: true}}
+			if c.deterministic {
+				stages = append(stages, factory.Stage{Name: "ci", Kind: factory.StageCheck, On: true}, factory.Stage{Name: "publish", Kind: factory.StagePost, On: true}, factory.Stage{Name: "approve", Kind: factory.StageGate, On: true})
+				// Kind comes from the saved stage, as the runner resolves it, even
+				// when the phase's old kind is absent.
+				phases = append([]factory.Phase{{Name: "ci", State: factory.PhasePending}}, phases...)
+				phases = append(phases, factory.Phase{Name: "publish", Kind: factory.StagePost, State: factory.PhasePending}, factory.Phase{Name: "approve", Kind: factory.StageGate, State: factory.PhaseWaiting})
+			}
+			it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 21, Kind: factory.KindIssue, Title: "Fix the ledger", State: factory.StateNeedsYou, Stages: stages, Stream: &factory.Stream{Phases: phases}, PullRequest: &factory.PullRequest{Number: 42, URL: "https://github.com/acme/api/pull/42"}})
 			if err != nil {
 				t.Fatal(err)
 			}
