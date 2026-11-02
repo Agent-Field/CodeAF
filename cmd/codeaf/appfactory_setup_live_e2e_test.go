@@ -90,7 +90,7 @@ type readOnlyGitHub struct {
 func (g *readOnlyGitHub) client() *http.Client {
 	return &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
 		g.mu.Lock()
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && !graphQLRead(r) {
 			g.refused = append(g.refused, r.Method+" "+r.URL.Path)
 			g.mu.Unlock()
 			return nil, errors.New("the live setup lane makes no GitHub write")

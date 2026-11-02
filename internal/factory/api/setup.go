@@ -27,9 +27,13 @@ type SetupGH struct {
 	Path  string `json:"path"`
 }
 type SetupRepo struct {
-	ID                string     `json:"id"`
-	FullName          string     `json:"full_name"`
-	OpenIssues        int        `json:"open_issues"`
+	ID         string `json:"id"`
+	FullName   string `json:"full_name"`
+	OpenIssues int    `json:"open_issues"`
+	// OpenIssuesExact is true when OpenIssues counts issues alone. False is
+	// GitHub's open_issues_count, issues and pull requests together, kept
+	// when GraphQL did not count the repository.
+	OpenIssuesExact   bool       `json:"open_issues_exact"`
 	Pipeline          *string    `json:"pipeline" jsonschema:"enum=file,enum=defaults"`
 	Archived          bool       `json:"archived"`
 	Selected          bool       `json:"selected"`
