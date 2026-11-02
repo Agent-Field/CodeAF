@@ -82,6 +82,18 @@ func TestSeparateJobTitleIsLiteralWithoutDetails(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := f.read(t, factory.Item{ID: made.ID})
+			if source == "app" || source == "hand-off" {
+				if got.Ask == nil || got.Ask.Text != "" {
+					t.Errorf("empty details became ask %+v", got.Ask)
+				}
+				saved, err := f.st.Get(made.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if saved.Body != "" {
+					t.Errorf("empty details became body %q", saved.Body)
+				}
+			}
 			title, budget := "Fix auto-save $5", float64(0)
 			if source == "" || source == "tui" {
 				title, budget = "Fix -save", 5
