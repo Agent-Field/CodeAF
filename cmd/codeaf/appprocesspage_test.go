@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -265,11 +264,15 @@ func TestProcessPageServiceRowReadsNoTail(t *testing.T) {
 	_ = os.WriteFile(marker, []byte("SECRET-MARKER\n"), 0o600)
 	link := filepath.Join(dir, "link.log")
 	_ = os.Symlink(marker, link)
+	paths := []string{link}
 	fifo := filepath.Join(dir, "fifo.log")
-	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+	switch err := mkfifo(fifo, 0o600); {
+	case err == nil:
+		paths = append(paths, fifo)
+	case !errors.Is(err, errors.ErrUnsupported):
 		t.Fatal(err)
 	}
-	for _, path := range []string{link, fifo} {
+	for _, path := range paths {
 		done := make(chan appwire.Process, 1)
 		go func() {
 			done <- appServiceProcessBase(service.Row{ID: "s1", Owner: "a", Name: "web", LogPath: path}, false)

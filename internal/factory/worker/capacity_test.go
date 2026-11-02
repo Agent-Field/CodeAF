@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -216,7 +217,9 @@ func (g *capRig) tick(t *testing.T) {
 func (g *capRig) job(t *testing.T) int {
 	t.Helper()
 	fifo := filepath.Join(g.dir, "fifo-"+time.Now().Format("150405.000000000"))
-	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+	if err := mkfifo(fifo, 0o600); errors.Is(err, errors.ErrUnsupported) {
+		t.Skip("no named pipes")
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	id, err := g.st.Add(context.Background(), factory.Item{Autonomy: factory.AutonomyManual, Title: "hold a slot", Repo: "api", Tier: factory.TierOwner, Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "cat " + fifo + " >/dev/null", On: true}}})
