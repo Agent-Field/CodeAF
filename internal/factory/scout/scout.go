@@ -101,14 +101,8 @@ func Run(ctx context.Context, it factory.Item, look Look, chat Chat, b Budget) (
 		msgs = append(msgs, Message{Role: "assistant", Text: reply.Text})
 		act := parseTurn(reply.Text)
 		if act.Answer != nil {
-			out, err := r.finish(ctx, act.Answer)
-			if err == nil {
-				r.score(ctx, it, chat)
-				out = r.out
-			}
 			r.out.Took = time.Since(started)
-			out.Took = r.out.Took
-			return out, err
+			return r.finish(ctx, act.Answer)
 		}
 		if final {
 			return r.out, ErrNoAnswer
@@ -158,10 +152,8 @@ Rubric: score each factor 0, 1 or 2 and cite the file and line that shows it whe
 - novelty: how far it leaves existing code (0 follows existing code, 1 some new ground, 2 new design).
 Name only paths you saw in a tool result. Never estimate cost or time. Plan in exactly three short steps. Unknowns are what the issue does not say, as questions; [] when it says enough.`
 
-func opening(it factory.Item) string { return issueText(it) + "\n\nStart with a tool call." }
-
-func issueText(it factory.Item) string {
-	return "The issue:\n<untrusted source=\"issue\">\n" + triage.Untrusted(triage.ItemText(it)) + "</untrusted>"
+func opening(it factory.Item) string {
+	return "The issue:\n<untrusted source=\"issue\">\n" + triage.Untrusted(triage.ItemText(it)) + "</untrusted>\n\nStart with a tool call."
 }
 
 // turn is one model turn: a tool call or the answer.
@@ -188,9 +180,6 @@ func parseTurn(text string) turn {
 type run struct {
 	look Look
 	out  factory.Scout
-	// evidence is every tool result the look read, wrapped as untrusted, for
-	// the rubric's own scoring call.
-	evidence []string
 }
 
 // tool runs one tool call and says its result, wrapped as untrusted.
@@ -207,9 +196,7 @@ func (r *run) tool(ctx context.Context, t turn) string {
 	if r.out.Head == "" {
 		r.out.Head = got.Commit
 	}
-	result := fmt.Sprintf("<untrusted source=\"repo\" op=%q path=%q>\n%s</untrusted>", op, got.Path, triage.Untrusted(clip(render(got))))
-	r.evidence = append(r.evidence, result)
-	return result
+	return fmt.Sprintf("<untrusted source=\"repo\" op=%q path=%q>\n%s</untrusted>", op, got.Path, triage.Untrusted(clip(render(got))))
 }
 
 func refusal(err error) string {

@@ -71,12 +71,7 @@ func factoryScoutChat(load func() (config.Config, error)) scout.Chat {
 			sent[i] = judgeMessage(m.Role, m.Text)
 		}
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryScoutName))
-		var opts []ai.Option
-		if scout.Scoring(ctx) {
-			// The rubric's own call is asked at temperature 0 (scout/score.go).
-			opts = append(opts, ai.WithTemperature(0))
-		}
-		response, err := client.CompleteWithMessages(ctx, sent, opts...)
+		response, err := client.CompleteWithMessages(ctx, sent)
 		if err != nil {
 			return scout.Reply{}, err
 		}
