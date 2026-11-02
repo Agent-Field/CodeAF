@@ -170,6 +170,7 @@ type Handler struct {
 	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
+	areas   repoAreas
 	config  Config
 	factory api.Factory
 	mux     *http.ServeMux
@@ -196,8 +197,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
-	h := &Handler{seam: seam, config: config,
+	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
