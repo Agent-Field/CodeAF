@@ -65,7 +65,8 @@ func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job 
 // fresh is true when expect is absent or still matches the job. A mismatch
 // is the page the person was looking at, not the job as it is now.
 func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item, verb string, exp *api.Expect) bool {
-	if exp == nil {
+	// Stop expresses the same intent after any progress on an active run.
+	if exp == nil || ((verb == "stop" || verb == "step_stop") && factory.UnderWay(it)) {
 		return true
 	}
 	job := h.withVersion(api.FromItem(it))
