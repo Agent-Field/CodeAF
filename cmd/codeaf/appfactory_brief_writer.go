@@ -8,7 +8,7 @@ package main
 // decides whether to write, marks the brief generating and hands back the
 // prompt and the job as the writer reads it), ONE errand on the job's agent
 // under the brief role, and the factory's POST brief/keep (which checks the
-// answer against the job, keeps what passes and books the cost).
+// answer against the job and keeps what passes with its already-booked cost).
 //
 // TRIGGERS are the runner's progress news for a job on this machine (a step
 // done, failed or stopped is a step result, and a step waiting on its person
