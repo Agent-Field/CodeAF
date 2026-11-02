@@ -69,6 +69,12 @@ Budgets, ownership, publication consent and duplicate-repair protection still ap
 
 The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir` and `trusted_proxies`. Unknown keys are refused. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
 
+## GitHub rate limit on a team factory — "GitHub is rate-limited until", github_limited, operator access link after the reset
+
+When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
+
+The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+
 ## give someone access — codeaf factory token, revoke, revoke-sessions and name
 
 The service is joined with an access link, which the operator creates for one person and which can expire. Commands on the machine that hosts it:
@@ -180,6 +186,12 @@ Proof is the step named proof, a send-back's prove step, or any step that runs u
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
 
+## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs
+
+On the app's job page, the job's person can set how many tries one conversation step of that job gets, from 1 to 3, before the step runs. A try that does not meet the step's rule (until clean, until proven) goes again until the step runs out of tries, then the job asks you. The change is for this job only, never the repository's steps.
+
+It is refused above three or below one (`a step gets 1 to 3 tries`), for a check or an approval (`test is a check or an approval; only a conversation step's tries change here`; a check says its rounds when it is added), for a step that has run, a fixed step or a step after proof, and from anyone but the job's person (`only the person sets how many tries a step gets`). A factory older than the change answers that it doesn't support that yet.
+
 ## remove or move a step of one job — delete a step, reorder, run it after, skip versus remove
 
 Skipping a step leaves it in the job, switched off. Removing it takes it out of the job's steps altogether; moving it puts it after another step, or first. Both change this job only, never the repository's pipeline, and both go through the same edit and bounds as every other change: tell the job's manager (`remove pretest`, `run docs after write`), or use the step's menu on the job's tab.
@@ -285,6 +297,18 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 **Anything of the old run still here goes first**, before the job is back: a folder or branch something made again after the drop, and the conversations and team of a job dropped before drops deleted them. If one cannot be deleted, the job still comes back and its activity says `brought back · the local branch and folder were kept:` or `brought back · its conversations were not all deleted:` and why; the job no longer names it, so its next run never reads it.
 
+## comment on a job's issue — teammates' comments, does the manager read GitHub comments, write access
+
+A comment typed on a job's Issue tab is posted to the job's GitHub issue as you, with your own GitHub sign-in; a solo factory uses its host's sign-in. Only a job from a GitHub issue takes one, up to 8000 characters. A sign-in GitHub will not let comment there is refused with "Your GitHub sign-in can't comment on owner/repo", and nothing is posted. If GitHub's answer is lost, the comment may have posted: read the issue before posting again.
+
+The job's manager reads every new comment on the issue once the factory's next GitHub read brings it, about a minute. Comments already there when the job first read the issue are its context. Under each comment it read, one line says what it did:
+
+- from someone without write access to the repository: "read as context · no write access to the repo";
+- on a job with a run under way: "asked you in the manager chat whether the plan should change", and the manager conversation quotes the comment and asks. Reply there with what to do;
+- on a job that has not started, or has finished: nothing changes, and the line says why.
+
+The manager never changes the plan from a comment on its own yet, even one that only narrows the work.
+
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
 The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
@@ -332,6 +356,15 @@ Factory reads, manager turns and step conversations follow Task models. With one
 
 An explicit `--one-model` launch keeps its pin. Interactive chats keep their own model. Under the saved one-model policy, a factory manager turn uses its governed factory conversation. If an open chat holds that manager conversation, close it before the background turn can proceed. A running conversation keeps the model it started with.
 
+
+
+## pick one step's model for one job — a step's own model, the job's model, use_model
+
+On the app's job page, the job's person can pick the model one conversation step of that job runs on, before the step runs. The step then opens on that model and does not choose models automatically; a model chosen for the whole job does not move it. Choosing the job's model again gives the step back. The pick changes only this job, never the repository's steps.
+
+A pick is refused when the step has already run (`you may not change review, which has already run`), when it is a check or an approval (`test is a check or an approval and runs no model`), when the recipe fixes the step, when the step comes after proof, and when anyone but the job's person makes it (`only the person picks the model a step runs on`). The app offers only models it lists; another is refused as `vendor/x is not a model this engine offers now; models.list names them`. A factory older than the pick answers that it doesn't support that yet. The manager and the plan cannot pick a step's model.
+
+A step that has run takes another model only through Run again from here: that step and every step after it run again (an approval after it asks again), and that step runs on the model you named, in a fresh conversation. The job's log says `Rerun from <step> on <model>`. A check, an approval and a fixed step take no model there either.
 
 ## budget recovery and external PR commits
 

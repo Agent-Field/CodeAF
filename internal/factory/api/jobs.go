@@ -4,10 +4,12 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 
 // ForViewer adds facts that depend on the authenticated caller, never on UI state.
 func ForViewer(job *Job, it factory.Item, viewer string) {
+	job.Following = factory.IsFollowing(it, viewer)
 	job.Dismissed = factory.IsDismissed(it, viewer)
 	if job.State == StateNeedsYou && it.Person() != "" && factory.NormalizeHandle(viewer) != it.Person() {
 		job.WaitingFor = "@" + it.Person()
 	}
+	job.BriefSeen = factory.BriefSeenBy(it, viewer)
 }
 
 // NewJob keeps hand-off metadata in the binary; the app sends no store shape.
@@ -29,9 +31,24 @@ type JobAction struct {
 	Expect *Expect `json:"expect,omitempty"`
 }
 
+// BriefSeenRequest is the Brief revision the caller saw. It carries no
+// expect: a seen mark changes nothing another reader sees, and the factory
+// keeps the job's version as it was.
+type BriefSeenRequest struct {
+	Rev int `json:"rev"`
+}
+
 type AssigneeRequest struct {
 	Assignee string  `json:"assignee"`
 	Expect   *Expect `json:"expect,omitempty"`
+}
+
+// FollowRequest switches the caller's following of a job. On is required, so
+// a body that forgot it is refused rather than read as off. It carries no
+// expect: following changes nothing another reader sees, and the factory
+// keeps the job's version as it was.
+type FollowRequest struct {
+	On *bool `json:"on"`
 }
 
 // StepEditsRequest uses the same bounded edit language as the job's manager.
@@ -41,12 +58,18 @@ type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
-	On       []string          `json:"on,omitempty"`
-	Skip     []string          `json:"skip,omitempty"`
-	Remove   []string          `json:"remove,omitempty"`
-	Move     []StepMove        `json:"move,omitempty"`
-	Why      string            `json:"why,omitempty"`
-	Expect   *Expect           `json:"expect,omitempty"`
+	// Max maps a conversation step's name to how many tries it gets, 1 to 3.
+	// Only the job's person sends it.
+	Max map[string]int `json:"max,omitempty"`
+	// Model maps a step name to the model it runs on for this job; "" gives
+	// it back to the job's model. Only the job's person sends it.
+	Model  map[string]string `json:"model,omitempty"`
+	On     []string          `json:"on,omitempty"`
+	Skip   []string          `json:"skip,omitempty"`
+	Remove []string          `json:"remove,omitempty"`
+	Move   []StepMove        `json:"move,omitempty"`
+	Why    string            `json:"why,omitempty"`
+	Expect *Expect           `json:"expect,omitempty"`
 }
 
 // StepMove is one step moved in one job: Step is its name, and After the step
@@ -206,10 +229,17 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/steps/{sid}/rerun", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/assignee", AssigneeRequest{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/sync", JobAction{}, ActionResult{}},
+	{"POST", "/v1/jobs/{id}/issue_comment", IssueCommentRequest{}, IssueCommentPosted{}},
+	{"POST", "/v1/jobs/{id}/brief_seen", BriefSeenRequest{}, ActionResult{}},
 	{"GET", "/v1/jobs/{id}/step-edits", nil, StepEdits{}},
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
+	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
+	{"POST", "/v1/jobs/{id}/brief/begin", BriefBeginRequest{}, BriefBegin{}},
+	{"POST", "/v1/jobs/{id}/brief/keep", BriefKeepRequest{}, BriefKept{}},
+	{"GET", "/v1/jobs/{id}/brief/spots/{spot}", nil, JobBriefSpot{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
+	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
 	{"POST", "/v1/repos/{owner}/{repo}/pipeline/open-pr", PipelinePRRequest{}, PipelinePRResponse{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", nil, PipelineCopyAnswer{}},
@@ -220,4 +250,76 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs", NewJob{}, JobCreated{}},
 	{"DELETE", "/v1/auth/device", DevicePoll{}, ActionResult{}},
 	{"POST", "/v1/github/poll", nil, ActionResult{}},
+}
+
+// JobBrief is GET /v1/jobs/{id}/brief: the job's newest brief version (its
+// stub, made from engine data alone, before any is kept), the reader's status
+// of it, and the keys that changed since the rev the caller saw (`?since=`),
+// or since the version before when the caller names none. Failure and
+// FailedAfter say why and after which step the last write failed, while
+// Status is failed.
+type JobBrief struct {
+	Factory          Factory              `json:"factory"`
+	Job              int                  `json:"job"`
+	Status           string               `json:"status"`
+	Failure          string               `json:"failure,omitempty"`
+	FailedAfter      string               `json:"failed_after,omitempty"`
+	Since            int                  `json:"since,omitempty"`
+	Brief            factory.BriefVersion `json:"brief"`
+	ChangedSinceSeen []string             `json:"changed_since_seen"`
+}
+
+// BriefBeginRequest is POST /v1/jobs/{id}/brief/begin: why the brief may be
+// written now (factory.BriefTriggers).
+type BriefBeginRequest struct {
+	Trigger string `json:"trigger"`
+}
+
+// BriefBegin is the factory's answer to a write: Skip says why none begins
+// (unchanged, cost, writing); otherwise System and Input are the writer's
+// prompt and the job as it reads it, and Hash names those inputs for the
+// keep that ends the write.
+type BriefBegin struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Skip    string  `json:"skip,omitempty"`
+	Hash    string  `json:"hash,omitempty"`
+	System  string  `json:"system,omitempty"`
+	Input   string  `json:"input,omitempty"`
+}
+
+// BriefKeepRequest is POST /v1/jobs/{id}/brief/keep: the writer's answer
+// (Draft, the model's JSON as it came) or why there is none (Failure), with
+// what the call cost. The factory checks the draft against the job itself.
+type BriefKeepRequest struct {
+	Hash    string  `json:"hash"`
+	Model   string  `json:"model,omitempty"`
+	CostUSD float64 `json:"cost_usd,omitempty"`
+	Draft   string  `json:"draft,omitempty"`
+	Failure string  `json:"failure,omitempty"`
+}
+
+// BriefKept is the job's brief after a write ended: Kept says a new version
+// was kept, and Drops are the draft's parts its check dropped.
+type BriefKept struct {
+	JobBrief
+	Kept  bool                `json:"kept"`
+	Drops []factory.BriefDrop `json:"drops"`
+}
+
+// JobBriefSpot is GET /v1/jobs/{id}/brief/spots/{spot}: one spot of the
+// job's newest brief (Rev) with its hunks from the job's change and the
+// writer's notes on them.
+type JobBriefSpot struct {
+	Factory     Factory            `json:"factory"`
+	Job         int                `json:"job"`
+	Rev         int                `json:"rev"`
+	Spot        string             `json:"spot"`
+	File        string             `json:"file"`
+	Symbol      string             `json:"symbol,omitempty"`
+	Why         string             `json:"why"`
+	Lines       int                `json:"lines"`
+	Hunks       []factory.SpotHunk `json:"hunks"`
+	Annotations []factory.SpotNote `json:"annotations"`
+	Truncated   bool               `json:"truncated,omitempty"`
 }
