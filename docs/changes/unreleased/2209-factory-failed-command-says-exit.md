@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A failed command step says its exit when it asks
-pr: 0
+pr: 2209
 surface: [engine]
 invalidates: []
 ---
