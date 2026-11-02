@@ -966,8 +966,13 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 				it.Starter = starter
 			}
 		}
+		// Ownership authorizes this replay; it is not the automatic decision's actor.
+		handle := a.DecidedBy
+		if a.Automatic {
+			handle = it.Person()
+		}
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
-		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: a.DecidedBy}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
+		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: handle}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
 		r.SetPathValue("id", strconv.Itoa(it.ID))
 		w := &replayWriter{header: make(http.Header)}
 		h.commitApproval(w, r, it)

@@ -233,6 +233,18 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			s.must("factory.job", map[string]any{"factory": st.Factory, "job": it.ID}, &header)
 			provider := float64(calls.Load()) * .01
 			t.Logf("calls=%d provider=%.4f ledger=%.4f header=%.4f", calls.Load(), provider, ledger, header.Cost)
+			// The model split is the same money, so it charges once too.
+			final, err := floor.Get(it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var split float64
+			for _, row := range factory.ModelUses(final) {
+				split += row.USD
+			}
+			if math.Abs(split-header.Cost) > 1e-9 {
+				t.Errorf("model split %.4f, header %.4f: %+v", split, header.Cost, factory.ModelUses(final))
+			}
 			wantCalls, wantCost := int64(1), .01
 			if worker != nil {
 				wantCalls, wantCost = 2, .02
