@@ -616,7 +616,11 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 		defer c.mu.Unlock()
 		if c.budget != nil {
 			if why := c.budget.Refusal(); why != "" {
-				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Memory: c.budget.memoryCap(), Said: why}
+				// A daily refusal already recorded was not caused by memory, so
+				// the stop keeps its ordinary meaning: an early report is rejected.
+				var refused factoryrun.SpendStop
+				daily := errors.As(c.failure, &refused) && refused.Daily
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Memory: !daily && c.budget.memoryCap(), Said: why}
 			}
 		}
 		return c.failure
