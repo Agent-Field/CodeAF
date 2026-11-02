@@ -32,6 +32,8 @@ func PresentJob(j *Job) {
 		}
 	case j.SpendingLimit != nil:
 		p.Kind, p.Title = "spending", "Spending limit reached"
+	case j.State == StateRunning && j.Desk != nil && j.Desk.Run != nil && j.Desk.Run.Paused:
+		p.Kind, p.Title, p.Detail = "paused", "Paused", "Work and step conversation kept. Resume continues this step."
 	case j.State == StateQueued && j.Held:
 		p.Kind, p.Title, p.Detail = "held", "Held", "Held in the queue. It starts only when you resume it."
 	case j.State == StateQueued && j.StatePresentation.Kind == WaitingForComputer:

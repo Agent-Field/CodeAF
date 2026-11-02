@@ -355,14 +355,86 @@ The method, reply, `factory.job_actions` hello feature and error codes are uncha
 Factories without the separate-title capability retain their prior behavior.
 
 
-`factory.job_create` keeps `title` trimmed and separate from literal `text`,
-including details whitespace in the job ask and body; empty details stay empty.
-Neither field lifts
-terminal chips or changes budget, approval steps, rounds, effort or security.
-The job title alone supplies the draft PR title. Existing jobs are not rewritten.
-The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
-Factories without the separate-title capability retain their prior behavior.
+An engine whose hello carries `factory.stop_any_version` accepts
+`factory.job_stop {factory, job, expect?}` and
+`factory.job_step_stop {factory, job, step, expect?}`. An omitted `expect`
+is accepted; when supplied it retains the existing shape, including a positive
+`version`. On an active job, a mismatching `expect` does not refuse Stop.
+Step Stop still requires the named step to be current and running, and refuses
+finished or publishing jobs. Ended jobs retain their existing `stale` or
+`conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
+and errors retain their existing codes, including `bad_params` for malformed
+requests. Other job actions still require their existing guards.
 
+`factory.job_pause` in hello features says `factory.job_hold` also pauses a
+running job. Both `factory.job_hold` and `factory.job_resume` take
+`{factory, job, expect: {version}}` (`FactoryJobActionParams`) and return
+`FactoryJobActed`, with action `hold` or `resume`. Hold keeps a queued job from
+starting or cancels a running step's current model round. Its work, conversation
+and recorded spending stay. Resume continues the same step and round, reopening
+its conversation when available. Pause releases the worker lease and capacity
+slot after the cancelled round's final work and spending are saved. Resume queues
+the saved run for a worker: it continues as soon as a slot is free, or reads as
+an ordinary queued job with the existing waiting presentation while slots are busy.
+No model round starts while it waits.
+
+The job's person may use these actions. `can.hold` permits a queued or running
+job, excluding a job waiting for a person, finished or publishing; `can.resume`
+permits a paused job. A paused running job keeps `state: "running"` even
+after its lease is released, with `can.resume: true`,
+`state_presentation.kind: "paused"`, title `Paused`, and no new question.
+After Resume, `state` is `queued` until a worker takes a free slot; its paused
+flag is cleared and the ordinary queue presentation applies. Its activity says `paused`, then `resumed`, and Held/Resumed receipts
+name the caller. Existing errors apply: `forbidden` for another person's job,
+`conflict` for an inapplicable state, `stale` for an outdated version, and
+`bad_params` for an
+invalid request. Neither action resets spending. If the saved chat cannot be reopened, the step
+uses a new chat.
+
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
+
+`factory.job_step_rerun` records retry progress as `trying <step> again` in the
+manager conversation. Retry and `factory.job_control` handovers do not emit a
+person's `stopped` progress fact. `factory.job_stop` and `factory.job_step_stop`
+retain that fact. Their parameters, replies, hello features and error codes are
+unchanged.
+
+On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
+manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
+execution without reporting a person's Stop. The latest withdrawn lease is
+retained per worker until that worker pulls again.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
@@ -436,6 +508,24 @@ budget still refuses a job without its own budget. Unread factory rules still
 refuse Start and leave the job new. These are additive job fields under the
 existing factory features; method parameters and replies otherwise stay the
 same.
+A job's `steps[].rounds[]` carries the engine's optional `result` word:
+`done`, `not done`, `clean`, `not clean`, `green`, `not green`, `proven`,
+`not proven`, or `blocked` for a reported result. When a retry closes a step
+that ended on a recorded failure, failure code `stopped` sends
+`result: "stopped"`, and `machine_lost` (including a runner lost across an
+engine restart) sends `result: "interrupted"`. Both have `rejected: false`
+(the false field may be omitted). Other step errors send `result: "failed"`
+and `rejected: true`. Display an explicit result word when present;
+otherwise `rejected: true` can read as "didn't pass". Only rejected rounds
+with a later round warrant "fixing them". Summary text never classifies an
+outcome. Existing saved lines are not migrated.
+
+This corrects outcomes carried by the existing `factory.job` and
+`factory.queue` replies; method parameters, hello features and error codes
+are unchanged. Round numbering and limits are unchanged: an explicit rerun
+advances the round and grants the step's configured allowance anew; automatic
+recovery still consumes its separate bounded retry allowance. Result words
+and the rejected flag do not determine those allowances.
 
 An engine whose hello carries `factory.job_area` sends `area` on each job of
 `factory.queue` and on `factory.job`: the part of the repository the job's
