@@ -43,7 +43,8 @@ import (
 // bound these methods end to end.
 
 // FeatureFactoryJobActions is announced in hello when the engine serves
-// factory.job_*.
+// factory.job_*. Job creation keeps separate title and details literal;
+// neither field sets budget or edits the pipeline.
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FeatureFactoryStopAnyVersion says Stop accepts no expect and ignores an
@@ -341,6 +342,9 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryActor); ok {
 		hello = withFeature(hello, FeatureFactoryJobActions)
 		hello = withFeature(hello, FeatureFactoryStopAnyVersion)
+		if _, ok := e.(FactoryJobNewRunner); ok {
+			hello = withFeature(hello, FeatureFactoryJobRunAsNew)
+		}
 		if _, ok := e.(FactoryCloser); ok {
 			hello = withFeature(hello, FeatureFactoryJobClose)
 		}
@@ -369,8 +373,8 @@ var factoryLogin = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0
 
 var factoryCommit = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
-// checkJobRef trims the factory id and checks the job number.
-func checkJobRef(factory *string, job int) error {
+// checkJobTarget trims the factory id and checks the job number.
+func checkJobTarget(factory *string, job int) error {
 	id, err := factoryID(strings.TrimSpace(*factory))
 	if err != nil {
 		return err
@@ -382,8 +386,9 @@ func checkJobRef(factory *string, job int) error {
 	return nil
 }
 
+// checkJob requires the version the person read for writes that act in place.
 func checkJob(factory *string, job int, expect *api.Expect) error {
-	if err := checkJobRef(factory, job); err != nil {
+	if err := checkJobTarget(factory, job); err != nil {
 		return err
 	}
 	if expect == nil || expect.Version == nil || *expect.Version < 1 {
@@ -439,7 +444,7 @@ func prepAction(p *FactoryJobActionParams) error { return checkJob(&p.Factory, p
 // checkStop accepts old desks' guards and lets a person stop without a read.
 func checkStop(factory *string, job int, expect *api.Expect) error {
 	if expect == nil {
-		return checkJobRef(factory, job)
+		return checkJobTarget(factory, job)
 	}
 	return checkJob(factory, job, expect)
 }
@@ -578,7 +583,7 @@ func prepCreate(p *FactoryJobCreateParams) error {
 	if p.Title, err = words("title", p.Title, MaxFactoryJobTitle, true); err != nil {
 		return err
 	}
-	if p.Text, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
+	if _, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
 		return err
 	}
 	if p.Assignee != nil {
