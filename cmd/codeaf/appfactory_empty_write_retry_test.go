@@ -23,11 +23,16 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			s := newLocalSetup(t)
 			s.backend.emit = s.server
 			t.Setenv(factoryBenchesEnv, "1")
+			model := newStageModel(t)
+			t.Setenv("OPENROUTER_API_KEY", "test-key")
+			t.Setenv("CODEAF_BASE_URL", model.server.URL)
 			g := newRunRig(t)
 			freshEngineProcess(t)
 			freshEngineFactoryStore(t)
 			s.backend.open = appOpenInProcess
-			s.backend.local.parent = func() session.Config { return session.Config{Workspace: g.workspace} }
+			s.backend.local.parent = func() session.Config {
+				return session.Config{Workspace: g.workspace, Model: "test/model", OneModel: true, APIKey: "test-key", BaseURL: model.server.URL}
+			}
 			st := s.start()
 			floor := s.backend.local.host.floor
 			if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
@@ -50,6 +55,7 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 				Stages: []factory.Stage{
 					{Name: "write", Kind: factory.StageCheck, On: true, Ask: command, Until: factory.UntilGreen, Max: 1},
 					{Name: "approve-test", Kind: factory.StageGate, On: true},
+					{Name: "test", Kind: factory.StageCheck, On: true, Ask: "true", Until: factory.UntilGreen, Max: 1},
 				},
 			})
 			if err != nil {
@@ -89,10 +95,13 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			act("factory.job_start", nil)
 			if action == "resume after stop" {
 				wait("earlier attempt commits before Stop", func(api.Job) bool { _, err := os.Stat(entered); return err == nil })
-				act("factory.job_stop", nil)
+				act("factory.job_step_stop", map[string]any{"step": "write"})
 				wait("Stop ends the earlier attempt", func(job api.Job) bool { return job.Failure != nil && job.Failure.Code == factory.CodeStopped })
 			} else {
 				first := wait("first attempt finishes", waiting)
+				if action == "try again" && (first.NeedsYou == nil || first.NeedsYou.Kind != factory.NeedsOutOfAttempts || first.Steps[0].State != "waiting") {
+					t.Fatalf("first write did not reproduce a failed command: %+v", first)
+				}
 				if action == "rerun" && !gate(first) {
 					t.Fatalf("write did not finish against its committed change: %+v", first)
 				}
@@ -103,15 +112,20 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 			if err := os.WriteFile(ready, nil, 0600); err != nil {
 				t.Fatal(err)
 			}
-			before := read().Steps[0].Round
+			before := read()
 			act("factory.job_step_rerun", map[string]any{"step": "write"})
-			after := wait("replacement attempt finishes", func(job api.Job) bool { return waiting(job) && job.Steps[0].Round > before })
+			after := wait("replacement attempt finishes", func(job api.Job) bool { return waiting(job) && job.Steps[0].Round > before.Steps[0].Round })
 			if action == "empty rerun" {
 				if after.Steps[0].State != "waiting" || after.Steps[1].State != "pending" || after.NeedsYou == nil || after.NeedsYou.Question == nil || !strings.Contains(after.NeedsYou.Question.Text, "the checkout has no change from where the run began") {
 					t.Fatalf("empty rerun passed: %+v", after)
 				}
-			} else if !gate(after) {
-				t.Fatalf("earlier committed change was called empty on %s: %+v", action, after)
+			} else {
+				if !gate(after) {
+					t.Fatalf("earlier committed change was called empty on %s: %+v", action, after)
+				}
+				if after.HeadCommit == "" || before.HeadCommit != "" && after.HeadCommit != before.HeadCommit || after.Change == nil || len(after.Change.Files) != 1 || after.Change.Files[0].Path != "CHANGE.txt" {
+					t.Fatalf("replacement did not retain the earlier change and commit: before=%s after=%s change=%+v", before.HeadCommit, after.HeadCommit, after.Change)
+				}
 			}
 			t.Logf("%s: write=%s round=%d next=%s", action, after.Steps[0].State, after.Steps[0].Round, after.Steps[1].State)
 		})
