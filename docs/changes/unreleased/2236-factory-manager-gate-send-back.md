@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A job manager can send a waiting plan back with your changes
-pr: 0
+pr: 2236
 surface: [engine]
 invalidates:
   - "The manager's saved status exposed a question identity only for step questions, leaving approval gates without one."
