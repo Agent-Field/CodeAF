@@ -378,10 +378,13 @@ var callSiteRoles = map[string]lane.Role{
 	"taskname": lane.RoleAuxiliary,
 	"jobname":  lane.RoleAuxiliary,
 	"caption":  lane.RoleAuxiliary,
-	"shaper":   lane.RoleAuxiliary,
-	"intake":   lane.RoleAuxiliary,
-	"careful":  lane.RoleAuxiliary,
-	"distill":  lane.RoleAuxiliary,
+	// cmd/codeaf/appfactory_brief_writer.go writes a factory job's brief as an
+	// errand nobody waits on: the page keeps the previous version meanwhile.
+	"brief":   lane.RoleAuxiliary,
+	"shaper":  lane.RoleAuxiliary,
+	"intake":  lane.RoleAuxiliary,
+	"careful": lane.RoleAuxiliary,
+	"distill": lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.
