@@ -571,6 +571,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// briefs takes the progress news of this machine's factory's jobs as
+	// writes of their briefs (appfactory_brief_writer.go).
+	briefs *briefDebounce
 	// factories is the attached-factory registry (appfactory.go), made by the
 	// first factory.* call.
 	factories   *appFactoryHub
@@ -581,6 +584,11 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// startedAt is when this backend was made, and lastResume what its start
+	// carried on after the last quit, nil for nothing (apphealth.go). Both
+	// are guarded by mu.
+	startedAt  time.Time
+	lastResume *appwire.HealthResume
 	// stoppingAll is the agents a processes.stop_all is in flight for; a
 	// second for the same agent is answered busy (appprocessactions.go).
 	stoppingAll map[string]bool
@@ -593,6 +601,9 @@ type appBackend struct {
 	crewRun    *appCrewRun
 	emit       appwire.Emitter
 	open       appOpener
+	// listModels answers models.list for checks that must agree with it (a
+	// factory step's model); nil is [appBackend.ListModels]. Tests set it.
+	listModels func() ([]appwire.Model, error)
 	now        func() time.Time
 	// after is the claim-expiry clock, replaceable without sleeping in tests.
 	after         func(time.Duration, func()) func()
@@ -1007,10 +1018,12 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		left:      make(chan struct{}),
 		mint:      appMint,
 	}
+	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
+	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
@@ -1093,6 +1106,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	b.watchCloseClaim(row.Dir)
+	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
@@ -1126,6 +1140,10 @@ func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
 	}
 	disk := appRowView(row)
 	disk.Location = a.view.Location
+	disk.CreatedBy = createdBy
+	if a.view.CreatedBy == "" {
+		a.view.CreatedBy = createdBy
+	}
 	disk.Retryable = a.failed != "" && a.live == nil
 	busyElsewhere := a.live == nil && (disk.State == appwire.StateWorking || disk.State == appwire.StateNeedsYou)
 	// An agent this process is opening is its own word too: the disk has not
@@ -1408,6 +1426,10 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			return appwire.Agent{}, nil, appEngineError(err)
 		}
 	}
+	createdBy, err := b.keepCreatedBy(appAgentID(transcript), ask.CreatedBy)
+	if err != nil {
+		return appwire.Agent{}, nil, appEngineError(err)
+	}
 	var view appwire.Agent
 	first := appFirst{clientID: ask.ClientID}
 	b.locked(func() {
@@ -1452,6 +1474,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 		}
 		a.view.Workspace = resolved
 		a.view.Model = model
+		a.view.CreatedBy = createdBy
 		a.view.State = appwire.StateIdle
 		if first.words != "" {
 			// STARTING, NOT WORKING: no turn runs until the conversation is open,
@@ -2577,6 +2600,9 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})
 	userEntry := appwire.Entry{
 		ID: appUserEntryID(n), Agent: id, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: entryText, ClientID: clientID, Attachments: attachments, Reads: reads,
+	}
+	if shown != nil {
+		userEntry.From = shown.from
 	}
 	userEntry.Queued = shown != nil && shown.queued && appKeepsQueued(live.conn.Conv)
 	appComposedFields(&userEntry, composedMark)
@@ -3839,6 +3865,9 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil && item.Person.ClientID != "" {
 			entry.ClientID = item.Person.ClientID
 		}
+		if entry.Kind == appwire.EntryUser && item.Person != nil {
+			entry.From = item.Person.From
+		}
 		entries = append(entries, entry)
 		from = append(from, i)
 	}
@@ -4453,6 +4482,9 @@ func (b *appBackend) Close() error {
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()
+	}
+	if b.briefs != nil {
+		b.briefs.stop()
 	}
 	if warmed != nil {
 		<-warmed

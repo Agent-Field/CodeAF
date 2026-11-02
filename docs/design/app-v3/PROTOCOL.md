@@ -69,7 +69,7 @@ decides which combinations are accepted.
 | `agents.rewind.points` | `in.IDParams` | `ConversationPoints` |
 | `agents.rewind.undo` | `{id, token}` | `Empty` |
 | `agents.run_harness` | `in.RunHarnessParams` | `TurnResult` |
-| `agents.send` | `{attachments, client_id, id, reads, said, submission, text}` | `TurnResult` |
+| `agents.send` | `{attachments, client_id, from, id, reads, said, submission, text}` | `TurnResult` |
 | `agents.set_approval_posture` | `{id, posture}` | `agentResult` |
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
@@ -234,13 +234,18 @@ decides which combinations are accepted.
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
 | `factory.job_assign_to_me` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_brief_seen` | `in.FactoryJobBriefSeenParams` | `FactoryJobActed` |
 | `factory.job_change_assignee` | `in.FactoryJobAssigneeParams` | `FactoryJobActed` |
+| `factory.job_brief` | `in.FactoryJobBriefParams` | `FactoryJobBrief` |
+| `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
+| `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
+| `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
@@ -260,6 +265,7 @@ decides which combinations are accepted.
 | `factory.job_step_stop` | `in.FactoryJobStepParams` | `FactoryJobActed` |
 | `factory.job_stop` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_unassign` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommented` |
 | `factory.job_undo` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.link_copy` | `in.FactoryLinkCopyParams` | `FactoryLinkMade` |
 | `factory.link_create` | `in.FactoryLinkCreateParams` | `FactoryLinkMade` |
@@ -288,6 +294,8 @@ decides which combinations are accepted.
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
+| `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
+| `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_clone` | `in.FactorySetupFolderParams` | `FactorySetupView` |
@@ -304,6 +312,35 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 
+An engine whose hello carries the feature `factory.job_brief` serves
+`factory.job_brief {factory, job, since?}`: the job's newest brief version as
+its factory keeps it (`GET /v1/jobs/{id}/brief`). `status` is `ready`,
+`generating`, `failed` (with `failure` and `failed_after`) or `stub`; a stub
+(`brief.stub: true`, `rev: 0`) is made from engine data alone before the job
+has a version: the issue's line, `steps_done` of `steps_total`, the facts and
+no blocks. `brief.facts` are computed by the factory from the steps' structured
+results (test counts or exit, findings, proof claims shown of total, rule
+checks), never by a model; each names its `evidence {step, try, kind, ref?}`.
+`changed_since_seen` lists the keys (`verdict`, a fact's `key`, a block's
+`kind/heading`) changed after rev `since`, or by the newest version when
+`since` is absent. A factory older than the route is `conflict`.
+
+An engine whose hello carries `factory.job_brief_writer` writes the briefs of
+this machine's factory: after a step reports and when a step waits on its
+person, each job's news taken as one after 10 seconds. The write is one errand
+on the job's agent under the `brief` role (the small-work tier the small-jobs
+model pins). The factory checks the answer against the job (`POST
+/v1/jobs/{id}/brief/begin` and `/brief/keep`): the palette's limits, evidence
+that names a step and try the job has, and every number in a claim found in its
+evidence. It keeps what passes and books the call's cost to the job's spend. A
+failing verdict keeps the previous version and marks the brief `failed`. Without
+a person's ask, a version is written only when the last one cost at most $0.03
+and the brief's spend stays within 5% of the job's; an ask opening, the job's
+end and a retry are written regardless, and unchanged inputs are never written
+twice. `factory.job_brief_write {factory, job}` is the page's Retry: it answers
+`{skip?, kept, drops: [{part, reason}], model?, cost_usd?, current:
+FactoryJobBrief}`, with `skip` `writing` while another write is under way.
+
 ## files methods
 
 | method | params | result |
@@ -319,6 +356,22 @@ decides which combinations are accepted.
 | method | params | result |
 |---|---|---|
 | `harness.list` | `{}` | `HarnessListResult` |
+
+## health methods
+
+| method | params | result |
+|---|---|---|
+| `health.check` | `{}` | `HealthResult` |
+
+`health.check` answers plain facts an assistant can cite: `version` and
+`build`, `started_at` and `uptime_s` for this engine process, `resume` when
+this start carried on replies or tasks the last quit stopped (`at`,
+`replies_resumed`, `replies`, `tasks`; absent when there was nothing),
+`disks` with `free_bytes` and `total_bytes` for the filesystem of the work
+folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
+`error` instead when it could not be read, and `factory`, the local factory's
+status as `factory.local_status` shapes it. It reads memory, the app state and
+one filesystem call per disk; it starts nothing. hello says `health.check`.
 
 ## inbox methods
 
@@ -338,6 +391,19 @@ decides which combinations are accepted.
 | `keys.check` | `in.KeyParams` | `KeyCheck` |
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
+
+## manual methods
+
+| method | params | result |
+|---|---|---|
+| `manual.corpus.set` | `in.ManualCorpusParams` | `ManualCorpusResult` |
+
+`manual.corpus.set` registers the app's own manual pages, replacing every page
+an earlier call set. Each page is `{name, markdown}`: a lowercase slug and its non-empty
+Markdown, at most 64 pages, 32 KiB a page and 512 KiB in all; an empty list
+removes them. The engine keeps them in memory for its lifetime and the chat's
+`manual` tool searches them beside codeaf's own pages, filed as
+`workaf/<name>`. The answer lists those names. hello says `manual.corpus.set`.
 
 ## media methods
 
@@ -659,6 +725,7 @@ serves, and one the allowed models admit. An engine without the feature leaves
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |

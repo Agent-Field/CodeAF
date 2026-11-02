@@ -778,7 +778,7 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 		}
 		team, _ := file.Team(id)
 		manager, _ := team.Member(team.Manager)
-		backend.crewStart(team, manager, e)
+		backend.crewStart(team, manager, e, appMemberAgent(manager))
 		listed, err := backend.ListAgents("")
 		if err != nil {
 			t.Fatal(err)

@@ -1206,6 +1206,11 @@ reaches, even when the question was looked up in different words.
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means codeaf does not do it.`
 
+**In the desktop app, the app's own pages are in it too.** The app registers its
+pages when it starts, and `manual` searches them beside codeaf's own. Their names
+start with `workaf/`, such as `workaf/inbox`, so an answer always says whether it
+came from the app's pages or from codeaf's. They last until the app quits.
+
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
 

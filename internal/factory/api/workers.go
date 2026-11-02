@@ -239,6 +239,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		}
 		out.Steps = append(out.Steps, step)
 	}
+	withoutTryResults(out.Pipeline, out.Steps)
 	if q := r.Question; q != nil {
 		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind, At: timeOrNil(q.At)}
 	}
