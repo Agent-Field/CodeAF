@@ -29,7 +29,7 @@ func TestAStepThatEndsInProseTwiceReportsOnTheTurnThatMust(t *testing.T) {
 			mu.Unlock()
 			// A MODEL THAT HONOURS tool_choice: it can only call the verb.
 			if c.Required() == stageResultTool {
-				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "planned two edits"})
+				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "planned two edits", Files: []string{"ledger.md"}})
 				return
 			}
 			c.Answer("all done")
