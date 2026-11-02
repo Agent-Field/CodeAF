@@ -133,10 +133,10 @@ func (a *app) probeWatch() {
 	}
 }
 
-// devicesCardOpen says /devices is on screen, which wants the feed on any page.
+// devicesCardOpen says the device list is on screen — as /devices or on the
+// /settings sheet — which wants the feed on any page.
 func (a *app) devicesCardOpen() bool {
-	_, open := a.pair.card.(*deviceCard)
-	return a.pair.open && open
+	return a.openDevicesCard() != nil
 }
 
 // letGoOffHome leaves the feed once the card that joined it away from home has

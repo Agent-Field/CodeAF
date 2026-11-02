@@ -1184,7 +1184,7 @@ func appSubmission(text string, shown *appSending) session.Submission {
 	said := shown.text
 	submission := session.Submission{
 		Text: text, Said: &said, Attachments: shown.described, Reads: shown.reads,
-		Queued: shown.queued, Creation: shown.creation,
+		Queued: shown.queued, Creation: shown.creation, From: shown.from,
 	}
 	if shown.composed != nil {
 		submission.Media, submission.Annotation = shown.composed.media, shown.composed.annotation
@@ -1440,11 +1440,11 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		said = *message.Said
 	}
 	shown := appAttachShown(said, kept)
-	if shown == nil && (message.Said != nil || len(reads) > 0) {
+	if shown == nil && (message.Said != nil || len(reads) > 0 || message.From != "") {
 		shown = &appSending{text: said}
 	}
 	if shown != nil {
-		shown.reads = reads
+		shown.reads, shown.from = reads, message.From
 	}
 	// THE PICTURES ARE RESOLVED AND CHECKED WHOLE BEFORE THE CONVERSATION IS
 	// OPENED: a message the engine would refuse leaves every chip staged.
@@ -1456,7 +1456,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 	}
 	if composed != nil {
 		if shown == nil {
-			shown = &appSending{text: said, reads: reads}
+			shown = &appSending{text: said, reads: reads, from: message.From}
 		}
 		shown.composed = composed
 	}
@@ -1467,7 +1467,7 @@ func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, 
 		shown.creation = creation
 	}
 	attempted := b.referenceAttempt(kept)
-	turn, err := b.sendLocked(a, appAttachWords(message.Text, kept), message.ClientID, shown)
+	turn, err := b.sendLocked(a, appAttributed(message.From, appAttachWords(message.Text, kept)), message.ClientID, shown)
 	if err != nil {
 		b.referenceRefused(attempted, err)
 		return 0, nil, err
@@ -1509,11 +1509,31 @@ type appSending struct {
 	// retry; never inferred from membership. Shared, never written after it is
 	// set.
 	creation *session.CreationContext
+	// from names who sent the message on the person's behalf
+	// ([appAttributed]); "" is the person's own.
+	from string
 	// bare says the sending exists only to carry creation: the door gave no
 	// words of the person's apart from text, so Said stays nil and the line
 	// reads as the plain message it is. A sending the door built for Said,
 	// reads or attachments is never bare, even when its words equal text.
 	bare bool
+}
+
+// appAttribution is the one line the model reads above a message someone sent
+// on the person's behalf. It is the least the model needs: who wrote the words,
+// and that they speak for the person, so it neither mistakes them for the
+// person's own nor treats them as a stranger's.
+func appAttribution(from string) string {
+	return "[sent by " + from + " on the person's behalf]"
+}
+
+// appAttributed is words as the model is sent them: under the attribution line
+// when from names a sender, else unchanged.
+func appAttributed(from, words string) string {
+	if from == "" {
+		return words
+	}
+	return appAttribution(from) + "\n" + words
 }
 
 // appNoTeam is the explicit none the person's own send states.

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
@@ -198,17 +197,20 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			if err = ctx.Err(); err != nil {
 				return nil, err
 			}
-			path := filepath.Join(dir, entry.Name())
-			if !entry.IsDir() {
-				if strings.HasSuffix(entry.Name(), ".jsonl") {
-					owners[strings.TrimSuffix(entry.Name(), ".jsonl")] = path
-					if err = add(path, strings.TrimSuffix(entry.Name(), ".jsonl"), "", false); err != nil {
-						return nil, err
-					}
-				}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 				continue
 			}
-			place := Place{Dir: cell.Copied(path)}
+			path := filepath.Join(dir, entry.Name())
+			owners[strings.TrimSuffix(entry.Name(), ".jsonl")] = path
+			if err = add(path, strings.TrimSuffix(entry.Name(), ".jsonl"), "", false); err != nil {
+				return nil, err
+			}
+		}
+		for _, sessionDir := range BucketSessionDirs(dir) {
+			if err = ctx.Err(); err != nil {
+				return nil, err
+			}
+			place := Place{Dir: sessionDir}
 			owners[place.ID()] = place.Transcript()
 			if _, err = os.Stat(filepath.Join(place.Dir, conversationDeletedFile)); err == nil {
 				deletedOwners[place.ID()] = true

@@ -99,6 +99,9 @@ type appFactoryFile struct {
 type appFactorySession struct {
 	token   string
 	expires time.Time
+	// restored marks a sign-in the app handed back from an earlier launch
+	// (appfactory_sessions.go): the factory refusing it forgets it once.
+	restored bool
 }
 
 // appFactorySignIn is one pending device sign-in. code is GitHub's device
@@ -156,6 +159,10 @@ type appFactoryHub struct {
 	// runtimeOK is what the engine remembers of a factory's own say-so that it
 	// runs kind, when, effort and fanout (appfactory_pipeline_runtime.go).
 	runtimeOK map[string]appFactoryRuntimeRecord
+	// kept is the sign-ins the app's core is owed, to keep or to forget
+	// (appfactory_sessions.go); keptChanged announces that there are some.
+	kept        []keptChange
+	keptChanged func()
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
 	linkSt *linkState
@@ -190,6 +197,7 @@ func (b *appBackend) factoryHub() *appFactoryHub {
 	b.factoryOnce.Do(func() {
 		b.factories = newAppFactoryHub()
 		b.factories.resume = b.resumeLocal
+		b.factories.keptChanged = func() { b.emit.Emit(appwire.EventFactorySessionsChanged, appwire.Empty{}) }
 	})
 	return b.factories
 }
@@ -430,7 +438,11 @@ func (h *appFactoryHub) tokenLocked(id string) string {
 }
 
 // hold keeps a session in memory and tells the redactors it is a secret.
-func (h *appFactoryHub) hold(id, token string, lives time.Duration) {
+func (h *appFactoryHub) hold(id, token string, lives time.Duration) { h.holdAt(id, "", token, lives) }
+
+// holdAt is hold for a sign-in to a factory at url, which is also queued for
+// the app to keep (appfactory_sessions.go). With no url nothing is queued.
+func (h *appFactoryHub) holdAt(id, url, token string, lives time.Duration) {
 	if token == "" {
 		return
 	}
@@ -444,6 +456,7 @@ func (h *appFactoryHub) hold(id, token string, lives time.Duration) {
 	defer h.mu.Unlock()
 	if !h.closed {
 		h.sessions[id] = s
+		h.keepSessionLocked(id, url, s)
 		// A different caller does not inherit an invitation held for the last.
 		if h.linkSt != nil {
 			if l := h.linkSt.held[id]; l != nil && l.digest != bearerDigest(token) {
@@ -523,6 +536,12 @@ func appFactoryFailure(r appFactoryReply) error {
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:
 		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+	case r.status == http.StatusConflict && body.Reason == api.ReasonNotCloned:
+		return appwire.Errorf(appwire.CodeNotCloned, "%s", words)
+	case r.status == http.StatusForbidden && body.Reason == api.ReasonDenied:
+		return appwire.Errorf(appwire.CodeForbidden, "denied")
+	case r.status == http.StatusUnprocessableEntity && body.Reason == api.ReasonBinary:
+		return appwire.Errorf(appwire.CodeUnreadable, "binary")
 	case r.status == http.StatusNotFound:
 		if words == "" {
 			words = "the factory has no such thing"
@@ -633,7 +652,11 @@ func (h *appFactoryHub) read(ctx context.Context, id, path string, limit int64, 
 		return err
 	}
 	if r.status < 200 || r.status >= 300 {
-		return appFactoryFailure(r)
+		err := appFactoryFailure(r)
+		if w, ok := err.(*appwire.Error); ok && w.Code == appwire.CodeSignedOut {
+			h.refused(id, token)
+		}
+		return err
 	}
 	if json.Unmarshal(r.body, out) != nil {
 		return appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
@@ -704,6 +727,8 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) (out appwir
 		out.State = appwire.FactorySignedOut
 		if appFactoryFailure(r).(*appwire.Error).Code == appwire.CodeGitHubExpired {
 			out.State = appwire.FactoryGitHubExpired
+		} else {
+			h.refusedLocked(row.ID, token)
 		}
 	case r.status >= 200 && r.status < 300:
 		var me api.Me
@@ -773,8 +798,8 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 	return appwire.FactoryCapabilities{
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, PipelineEdit: true, PipelineEditRuntime: true,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
@@ -848,7 +873,7 @@ func (b *appBackend) FactoryAttach(ctx context.Context, raw, token string) (appw
 		name = about.Factory.Name
 	}
 	if token != "" {
-		h.hold(id, token, 0)
+		h.holdAt(id, origin, token, 0)
 	}
 	row := appFactoryRow{ID: id, URL: origin, Name: name}
 	if err := h.saveAttached(row, known); err != nil {
@@ -965,6 +990,7 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 	}
 	h.rows = kept
 	delete(h.sessions, id)
+	h.forgetKeptLocked(id)
 	delete(h.seen, id)
 	h.dropHeldLocked(id)
 	for key, flow := range h.signIns {
@@ -1010,6 +1036,8 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 			Private bool      `json:"private"`
 			Pushed  time.Time `json:"pushed"`
 			Open    int       `json:"open"`
+			// OpenIssues is believed only as a whole number from 0.
+			OpenIssues *int `json:"open_issues"`
 		} `json:"available"`
 	}
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
@@ -1021,6 +1049,9 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 	}
 	for i, r := range body.Available {
 		out.Available[i] = appwire.FactoryRepo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open}
+		if r.OpenIssues != nil && *r.OpenIssues >= 0 {
+			out.Available[i].OpenIssues = r.OpenIssues
+		}
 	}
 	return out, nil
 }
@@ -1284,6 +1315,7 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 		// An explicit completed sign-in changes the caller, including when a
 		// local authority was previously reached through its operator bearer.
 		h.sessions[id] = appFactorySession{token: granted}
+		h.keepSessionLocked(id, origin, h.sessions[id])
 	}
 	if joined {
 		delete(h.links, key)
@@ -1515,7 +1547,7 @@ func (b *appBackend) FactorySignInPoll(ctx context.Context, caller, flow string)
 			h.forgetSignIn(flow)
 			return appwire.FactorySignInState{}, appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 		}
-		h.hold(factoryID, signed.AccessToken, time.Duration(signed.ExpiresIn)*time.Second)
+		h.holdAt(factoryID, row.URL, signed.AccessToken, time.Duration(signed.ExpiresIn)*time.Second)
 		h.forgetSignIn(flow)
 		me := signed.Me
 		me.SessionID = ""

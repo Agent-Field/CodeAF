@@ -18,9 +18,11 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 )
 
-// LinkOrigin is where a short link points. The page there hands a visitor to the
-// installed app, or shows what to run.
-const LinkOrigin = "https://codeaf.agentfield.ai"
+// LinkOrigin is where a short link points for this binary's release channel,
+// set at startup from internal/syncsetup/relayurl.go so the hosted addresses
+// are spelled in one place. The page there hands a visitor to the installed
+// app, or shows what to run.
+var LinkOrigin string
 
 // linkKeySize is the secret in the link's fragment, which no server ever sees.
 const linkKeySize = 16

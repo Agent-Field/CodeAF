@@ -2,13 +2,17 @@ package serve
 
 import (
 	"context"
+	"errors"
+	"log"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -31,11 +35,19 @@ type rootWatch struct {
 	once   sync.Once
 	fs     *fsnotify.Watcher
 	hub    *hub
-	kick   chan struct{}
-	due    chan struct{}
-	timer  *time.Timer
-	snap   fileSnap
+	// floor hears only changes a worker's look reads ([touchesFloor]).
+	floor *hub
+	kick  chan struct{}
+	due   chan struct{}
+	timer *time.Timer
+	snap  fileSnap
 }
+
+// newFSWatcher opens the filesystem watch; tests stand in a host without one.
+var newFSWatcher = fsnotify.NewWatcher
+
+// watchWarned says the missing watch once per process.
+var watchWarned sync.Once
 
 func watchRoot(root string) *rootWatch {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -44,20 +56,39 @@ func watchRoot(root string) *rootWatch {
 		ctx:    ctx,
 		cancel: cancel,
 		hub:    newHub(),
+		floor:  newHub(),
 		kick:   make(chan struct{}, 1),
 		due:    make(chan struct{}, 1),
 		snap:   snapshot(root),
 	}
-	if fs, err := fsnotify.NewWatcher(); err == nil {
-		if err := fs.Add(root); err != nil {
+	fs, err := newFSWatcher()
+	if err == nil {
+		if err = fs.Add(root); err != nil {
 			_ = fs.Close()
 		} else {
 			w.fs = fs
 			go w.readFS()
 		}
 	}
+	if err != nil {
+		watchWarned.Do(func() {
+			log.Printf("factory: no filesystem watch on %s (%s); open pulls look once a second instead", root, watchCause(err))
+		})
+	}
 	go w.loop()
 	return w
+}
+
+// watchCause names why a watch could not be made. The inotify pool is per
+// user and shared by every process, so a busy machine runs out of it.
+func watchCause(err error) string {
+	switch {
+	case errors.Is(err, syscall.EMFILE):
+		return "inotify instances exhausted: raise fs.inotify.max_user_instances"
+	case errors.Is(err, syscall.ENOSPC):
+		return "inotify watches exhausted: raise fs.inotify.max_user_watches"
+	}
+	return err.Error()
 }
 
 func (w *rootWatch) stop() {
@@ -139,8 +170,33 @@ func (w *rootWatch) publish() {
 		return
 	}
 	data := changedData(w.snap.files, next.files)
+	if touchesFloor(w.snap.files, next.files) {
+		w.floor.send(data)
+	}
 	w.snap = next
 	w.hub.send(data)
+}
+
+// touchesFloor says whether a change reached a file other than the ones a
+// pull's own bookkeeping writes: the runner registry, where a pull records
+// its heartbeat, and the live record. Neither is read by a look, and waking
+// the open pulls on them made every pull wake every other one, forever.
+func touchesFloor(before, after map[string]string) bool {
+	return changedBeyond(before, after) || changedBeyond(after, before)
+}
+
+// changedBeyond says whether a file of from, other than the bookkeeping, is
+// missing from to or differs there.
+func changedBeyond(from, to map[string]string) bool {
+	for name, sig := range from {
+		if name == registryFile || name == live.File {
+			continue
+		}
+		if other, ok := to[name]; !ok || other != sig {
+			return true
+		}
+	}
+	return false
 }
 
 // fileSnap is one look at the root. sig is the whole look, so a second look

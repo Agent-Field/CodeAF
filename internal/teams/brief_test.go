@@ -29,6 +29,12 @@ func briefsOf(t *testing.T, dir, key string) Member {
 	must(t, err)
 	team, _ := f.Team("t1")
 	m, _ := team.Member(key)
+	// A load leaves briefs out; they are read where they are shown.
+	if len(m.Briefs) != 0 {
+		t.Fatalf("a load carried %d brief revisions", len(m.Briefs))
+	}
+	m, err = WithBriefs(dir, "t1", m)
+	must(t, err)
 	return m
 }
 

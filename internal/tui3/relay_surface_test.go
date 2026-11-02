@@ -213,7 +213,7 @@ func TestHolderReportsRenewalOutageAndRecovery(t *testing.T) {
 	for range 3 {
 		a.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
 	}
-	outage := "this chat is not syncing because other machines are unreachable; it keeps working here"
+	outage := "the sync service is not answering; this chat keeps working here and catches up when it is back"
 	if got := plain(frame(a)); strings.Count(got, outage) != 1 {
 		t.Fatalf("outage notice count is wrong: %s", got)
 	}

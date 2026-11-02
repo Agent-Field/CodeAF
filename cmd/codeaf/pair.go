@@ -111,9 +111,9 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 		fmt.Fprintln(usageOut, reason)
 	}
 	flags := commandFlags("pair")
-	via := flags.String("via", "", "the sync address to pair through; empty is the one this device already uses")
+	via := flags.String("via", "", "the sync service to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")
-	code := flags.Bool("code", false, "show a six-digit code that shares this device's chats, instead of asking to join")
+	code := flags.Bool("code", false, "show a code such as "+pair.ExampleChatCode+" that shares this device's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")
 	name := flags.String("name", "", "what your devices call this one; empty keeps its current name, which starts as the host name")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
@@ -122,6 +122,12 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	if err := d.naming(ctx, *name, flags.Args(), *code); err != nil {
 		return err
 	}
+	progressAddress := *via
+	if progressAddress == "" {
+		progressAddress = syncsetup.Resolve(home.Dir()).URL
+	}
+	d.term.waitingStop = terminalSyncProgress(progressAddress)
+	defer d.term.stopProgress()
 	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code), *via)
 }
 
@@ -208,12 +214,17 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 	if err != nil {
 		return err
 	}
+	if d.ownRecord != nil {
+		if err := d.ownRecord(ctx, route); err != nil {
+			return err
+		}
+	}
 	label, err := pair.Offer(ctx, route, grant, offerScreen{d.term})
 	if err != nil {
 		return d.endedByPerson(ctx, err)
 	}
-	d.term.say(pair.PairedChatsLine(label))
 	d.recordOwnDeviceOrSay(ctx, route)
+	d.term.say(pair.PairedChatsLine(label))
 	return nil
 }
 
@@ -225,6 +236,9 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {
+		return err
+	}
+	if err := d.pairingStatus(ctx, route, replace); err != nil {
 		return err
 	}
 	joining := d.joining(replace)
@@ -240,9 +254,14 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 			return err
 		}
 	}
+	if !joined.Already {
+		if f, err := pullFleet(joining.Home, route)(ctx); err == nil {
+			joined.With = f.With
+		}
+		d.recordOwnDeviceOrSay(ctx, route)
+	}
 	d.term.say(joinedSentence(joined))
 	if !joined.Already {
-		d.recordOwnDeviceOrSay(ctx, route)
 		d.term.say(terminalSharingLine)
 	}
 	return nil

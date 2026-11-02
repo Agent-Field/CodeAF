@@ -1083,6 +1083,9 @@ func (a *app) holding(file string) bool {
 // conversation in the keeper is not something to open. It is something to look
 // at again.
 func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
+	if !a.homeTakeOpening {
+		a.abandonAutomaticTake()
+	}
 	if a.startingChat() {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()
@@ -1279,6 +1282,7 @@ func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
 		return cmd, more
 	}
 	a.conversationClosing = true
+	a.retainSavingDurability([]Agent{leaving})
 	desk := a.outsideDesk
 	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func() {
 		desk.Say(name + ": " + closeSaveFailedWord)
@@ -1416,36 +1420,54 @@ func (a *app) leavingWork() func() {
 			errands = append(errands, errandClose{agent: ex.agent, working: ex.working})
 		}
 	}
+	departures := a.retainSavingDurability(agents)
+	errandsDone := make([][]func(error), len(errands))
+	for i, ex := range errands {
+		errandsDone[i] = a.retainSavingDurability([]Agent{ex.agent})
+	}
 	a.exchanges, a.home.exchanges = nil, nil
 	waitForRelease, report := a.waitForRelease, a.saveFailure
 	return func() {
 		waitRelease := waitForRelease != nil && waitForRelease()
 		var wg sync.WaitGroup
-		for _, agent := range agents {
+		for i, agent := range agents {
 			wg.Add(1)
 			go func(agent Agent) {
+				complete := func(err error) {
+					if len(departures) > i {
+						departures[i](err)
+					}
+				}
 				defer wg.Done()
 				if waitRelease {
 					if hosted, ok := agent.(interface{ DetachAndWait() error }); ok {
-						if err := hosted.DetachAndWait(); err != nil && report != nil {
+						err := hosted.DetachAndWait()
+						complete(err)
+						if err != nil && report != nil {
 							report(err)
 						}
 						return
 					}
 				}
-				if err := leaveAgentError(agent); err != nil && report != nil {
+				err := leaveAgentError(agent)
+				complete(err)
+				if err != nil && report != nil {
 					report(err)
 				}
 			}(agent)
 		}
-		for _, ex := range errands {
+		for i, ex := range errands {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				if ex.working {
 					ex.agent.InterruptFor(session.StopByLeaving)
 				}
-				if err := ex.agent.Close(); err != nil && report != nil {
+				err := ex.agent.Close()
+				if len(errandsDone[i]) > 0 {
+					errandsDone[i][0](err)
+				}
+				if err != nil && report != nil {
 					report(err)
 				}
 			}()
@@ -1747,4 +1769,32 @@ func (a *app) keptQuiet(held *kept, now time.Time) bool {
 	// And it has to have been left alone for long enough that letting go of it is
 	// not a surprise. An undated sidecar is not evidence of age, so it waits.
 	return !side.since.IsZero() && now.Sub(side.since) >= keptIdleGrace
+}
+
+// retainSavingDurability captures only thread-safe receipt readers, before the
+// update loop forgets the conversations whose closing work remains pending.
+func (a *app) retainSavingDurability(agents []Agent) []func(error) {
+	if a.savingCompatibility != nil {
+		for _, agent := range agents {
+			if receipts, ok := agent.(interface{ SavingReceipts() bool }); ok {
+				a.savingCompatibility(receipts.SavingReceipts)
+			}
+		}
+	}
+	if a.savingDurability == nil {
+		return nil
+	}
+	completed := make([]func(error), 0, len(agents))
+	for _, agent := range agents {
+		// A successful detach is this chat's completed departure, even when
+		// its work stays hosted and no local close receipt is expected.
+		var departed atomic.Bool
+		local := func() bool { return false }
+		if receipt, ok := agent.(interface{ LocalDurable() bool }); ok {
+			local = receipt.LocalDurable
+		}
+		a.savingDurability(func() bool { return departed.Load() || local() })
+		completed = append(completed, func(err error) { departed.Store(err == nil) })
+	}
+	return completed
 }

@@ -26,6 +26,10 @@ func TestAStartStampsTheRulesTheJobStartsUnder(t *testing.T) {
 		t.Fatal(err)
 	}
 	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", RuleHold: "left over"})
+	// What an earlier start by the factory itself found, before this person's.
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.SetStartCheck(factory.CheckPassed); return nil }); err != nil {
+		t.Fatal(err)
+	}
 	f.post(t, it, "run", "", 200)
 	cur, err := f.st.Get(it.ID)
 	if err != nil {
@@ -36,6 +40,9 @@ func TestAStartStampsTheRulesTheJobStartsUnder(t *testing.T) {
 	}
 	if cur.RuleHold != "" {
 		t.Fatalf("an earlier hold survived the start: %q", cur.RuleHold)
+	}
+	if cur.RuleChecks != nil && cur.RuleChecks.Start != "" {
+		t.Fatalf("the factory's earlier start finding survived a person's start: %+v", cur.RuleChecks)
 	}
 	if cur.House == nil || !reflect.DeepEqual(cur.House.Rules, []string{"no new dependencies without asking"}) {
 		t.Fatalf("house rules %#v", cur.House)

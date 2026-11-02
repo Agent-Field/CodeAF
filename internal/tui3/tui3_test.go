@@ -1985,8 +1985,8 @@ func TestNewOnAFreshConversationReplacesIt(t *testing.T) {
 		t.Fatalf("replacing a fresh conversation left %d open", a.openCount())
 	}
 	got := plain(frame(a))
-	if !strings.Contains(got, "new session · /tmp/next.jsonl") {
-		t.Fatalf("/new has to name the file:\n%s", got)
+	if !strings.Contains(got, "new conversation · lab") {
+		t.Fatalf("/new has to name the project:\n%s", got)
 	}
 }
 

@@ -106,6 +106,12 @@ func (b *appBackend) resumeAfterQuit() {
 		f.ResumeAfterQuit, f.QuitReplies, f.QuitTasks = nil, nil, nil
 		return nil
 	})
+	if len(resume) > 0 {
+		at := b.now()
+		b.locked(func() {
+			b.lastResume = &appwire.HealthResume{At: at, RepliesResumed: len(replies) > 0, Replies: len(replies), Tasks: len(tasks)}
+		})
+	}
 	for _, id := range resume {
 		reply := false
 		var mine []string

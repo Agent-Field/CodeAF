@@ -57,6 +57,9 @@ func AutonomyBlockReason(it Item) string {
 	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
 	// to be asked, so Auto asks.
 	if it.QKind == QKindApprove && it.RuleHold != "" {
+		if words, ok := planNoFilesWords(it.RuleHold); ok {
+			return words + ". Approve, or send it back to list them."
+		}
 		return ruleHoldWords(it.RuleHold) + ". Review the plan, then press Approve."
 	}
 	if it.State == StateLanded && it.RuleHold != "" {
@@ -106,8 +109,35 @@ func AutonomyBlockReason(it Item) string {
 // (`protected · auth/ · auth/login.go`) is "A protected path: auth/ ·
 // auth/login.go"; any other hold is said as the rule that asks first.
 func ruleHoldWords(hold string) string {
+	if words, ok := planNoFilesWords(hold); ok {
+		return words
+	}
 	if rest, ok := strings.CutPrefix(hold, "protected · "); ok {
 		return "A protected path: " + rest
 	}
 	return "A rule asks first: " + hold
+}
+
+// planNoFilesWords is a hold for a plan that listed no files ([PlanNoFiles])
+// as what happened, in a person's words: `protected · auth/ · the plan names
+// no files` is "The plan didn't list its files, so the factory couldn't check
+// them against auth/". False for any other hold.
+//
+// "A PROTECTED PATH: THE PLAN NAMES NO FILES" SAID NEITHER. Until 2026-10-28
+// that was the whole sentence, and a person read it as a plan touching a
+// protected path; it means the factory could not tell whether it did.
+func planNoFilesWords(hold string) (string, bool) {
+	rest, ok := strings.CutPrefix(hold, "protected · ")
+	if !ok {
+		return "", false
+	}
+	paths, ok := strings.CutSuffix(rest, PlanNoFiles)
+	if !ok {
+		return "", false
+	}
+	against := "its protected paths"
+	if paths = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(paths), "·")); paths != "" {
+		against = paths
+	}
+	return "The plan didn't list its files, so the factory couldn't check them against " + against, true
 }

@@ -467,6 +467,11 @@ type TaskNotice struct {
 	// (a writer's lease, a claim) lets it go when the task ends.
 	Worker string `json:"worker,omitempty"`
 
+	// Placement is separate from the state word: empty Computer means here.
+	Computer     string            `json:",omitempty"`
+	Unreachable  bool              `json:",omitempty"`
+	RanElsewhere bool              `json:",omitempty"`
+	Remote       *TaskRemoteRecord `json:",omitempty"`
 	// Thinking is the effective setup, including a saved continuation choice.
 	Thinking string
 	// ID is the proposal's token: a surface hands it back to
@@ -889,6 +894,9 @@ type TaskAnswer struct {
 	Approved bool
 	Redirect string
 	Model    string
+	// Computer is an explicit card choice. Empty preserves the proposal and
+	// default; the local alias overrides both without naming another device.
+	Computer string `json:",omitempty"`
 }
 
 // ── the phases of a running node ────────────────────────────────────────────

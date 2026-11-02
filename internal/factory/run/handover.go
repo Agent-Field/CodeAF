@@ -55,6 +55,18 @@ const (
 	// briefPlanWrite is the plan step's own instruction: the plan goes where
 	// the steps after it will read it.
 	briefPlanWrite = "Write the plan in output: what you'll change, in which files, and how you'll know it works."
+	// briefPlanFiles is the shape of the one list the factory reads from a
+	// plan ([factory.ParsePlanFiles]), said so the plan writes it that way.
+	//
+	// A PLAN NOBODY TOLD THE SHAPE LISTS ITS FILES IN ITS OWN. On 2026-10-28 a
+	// plan named every file under "CHANGE, PER FILE", as numbered prose, the
+	// parser found no list, and Auto paused a job that touched nothing
+	// protected. The parser stays strict; the plan is told what it reads.
+	briefPlanFiles = "End the plan with its file list, exactly in this shape, the only part of a plan the factory reads to check it against protected paths:\n" +
+		"Files:\n" +
+		"- cmd/app/main.go\n" +
+		"- docs/usage.md\n" +
+		"The Files: line alone, then one line per file you will touch or add: a dash, a space, its path from the repository root, nothing else on the line. Files, not folders; no globs; a path with a space goes in backticks. Not inside a code block, and only one such list. A plan without it waits for a person whenever a protected path is in force."
 	// briefPlanAbove stands for the plan's words on its own line, which the
 	// plan's paragraph already carries whole.
 	briefPlanAbove = "its plan is above"
@@ -70,12 +82,16 @@ const (
 	writeStep = "write"
 )
 
-// planBrief is the plan step's instruction, "" for every other step.
+// planBrief is the plan step's instruction, "" for every other step: where
+// the plan goes and the shape of its file list. IT IS EVERY PLAN STEP'S, NOT
+// THE SHIPPED ONE'S ASK: a pipeline file's own plan step is read by the same
+// parser ([factory.PlanFilesOf] finds the step by this name), so it is told
+// the same.
 func planBrief(job Job) string {
 	if !strings.EqualFold(stageLabel(job.Stage), planStep) {
 		return ""
 	}
-	return briefPlanWrite
+	return briefPlanWrite + "\n" + briefPlanFiles
 }
 
 // earlier is one step that ran before this one, as the brief names it.

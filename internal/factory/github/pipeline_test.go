@@ -220,3 +220,79 @@ func TestPipelineOfflineFallbackReadsNewLocalRules(t *testing.T) {
 		t.Fatalf("offline edits stayed cached: %+v, %v", f, err)
 	}
 }
+
+// hangingContents is a forge that never answers until it is given up on.
+type hangingContents struct{ asked chan struct{} }
+
+func (h hangingContents) Contents(ctx context.Context, _, _, _, _, _ string) (string, string, string, error) {
+	h.asked <- struct{}{}
+	<-ctx.Done()
+	return "", "", "", ctx.Err()
+}
+
+// A READ THAT ONLY SHOWS THE FILE NEVER WAITS ON GITHUB: a forge that does not
+// answer once held every queue read of the factory on this Mac until the app
+// gave up and called it "not answering". A first read answers from the
+// checkout in a moment, and a stale one keeps the last file while the forge is
+// asked behind.
+func TestAPipelineReadNeverWaitsOnASilentForge(t *testing.T) {
+	text, sha := "start:\n  labels: [one]\n", "blob-one"
+	hang := false
+	asked := make(chan struct{}, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", sha)
+		json.NewEncoder(w).Encode(map[string]any{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(text)), "sha": sha})
+	}))
+	defer srv.Close()
+	now := time.Unix(1000, 0)
+	loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI {
+		if hang {
+			return hangingContents{asked}
+		}
+		return forge.NewClient("stub").WithBaseURL(srv.URL)
+	}).WithClock(func() time.Time { return now })
+	timed := func(repo string) (pipeline.File, time.Duration) {
+		t.Helper()
+		began := time.Now()
+		f, _ := loader.Load(factorygithub.ShowOnly(context.Background()), repo, "", "")
+		return f, time.Since(began)
+	}
+	if f, _ := timed("owner/repo"); strings.Join(f.Start.Labels, ",") != "one" {
+		t.Fatalf("first read: %+v", f)
+	}
+	hang = true
+	now = now.Add(factorygithub.PipelineFresh + time.Second)
+	f, took := timed("owner/repo")
+	if strings.Join(f.Start.Labels, ",") != "one" || took > time.Second {
+		t.Fatalf("a stale read with the forge silent took %v: %+v", took, f.Start.Labels)
+	}
+	if _, took := timed("owner/other"); took > time.Second {
+		t.Fatalf("a first read with the forge silent took %v", took)
+	}
+	select {
+	case <-asked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the forge was never asked behind the read")
+	}
+}
+
+func (h hangingContents) User(ctx context.Context, _, _ string) (forge.UserProfile, string, error) {
+	<-ctx.Done()
+	return forge.UserProfile{}, "", ctx.Err()
+}
+
+// The queue and a job's card read a repository's CODEOWNERS; a forge that
+// does not answer once held them, under one lock, for its whole timeout.
+func TestCodeOwnersNeverHoldAReadOnASilentForge(t *testing.T) {
+	asked := make(chan struct{}, 16)
+	people := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return hangingContents{asked} }, time.Now)
+	began := time.Now()
+	for range 5 {
+		if owners, err := people.Owners(context.Background(), "owner/repo"); err != nil || len(owners) != 0 {
+			t.Fatalf("owners %v %v", owners, err)
+		}
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Fatalf("five owner reads with the forge silent took %v", took)
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // proposingAgent is an agent whose model pass answers what it is loaded with,
@@ -207,10 +207,7 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	// and the member's handle and the stored time come back with it.
 	teamsFlush(t, a)
 	prior := teamsClone(a.wall.teams)
-	before, err := os.ReadFile(teamsPath(a.profileDir))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := teamstest.JSON(t, a.profileDir)
 	a.wallOrganizeOpen()
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if a.wall.org.on || len(a.wall.teams) != 2 || a.wall.teams[1].Name != "lab" || len(a.wall.teams[1].Members) != 2 {
@@ -242,11 +239,7 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 		t.Fatalf("Undo left %+v\nwant %+v", a.wall.teams, prior)
 	}
 	teamsFlush(t, a)
-	after, err := os.ReadFile(teamsPath(a.profileDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(after) != string(before) {
+	if after := teamstest.JSON(t, a.profileDir); string(after) != string(before) {
 		t.Fatalf("the file after Undo:\n%s\nbefore:\n%s", after, before)
 	}
 	if frame := orgFrame(a); strings.Contains(frame, "Undo") {

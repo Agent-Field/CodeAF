@@ -5,7 +5,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -80,10 +82,14 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		cur.Question, cur.QKind = "", ""
 		cur.Failure = nil
 		cur.Asking = nil
+		prOpen := cur.PullRequest != nil && cur.PullRequest.State == factory.PROpen
+		if wasManual && !prOpen && cur.Stream != nil && !slices.Contains(cur.Notes, factory.GaveBackNote) {
+			cur.Notes = append(cur.Notes, factory.GaveBackNote)
+		}
 		if words := strings.TrimSpace(body.Words); words != "" {
 			cur.Notes = append(cur.Notes, words)
 		}
-		if cur.PullRequest != nil && cur.PullRequest.State == factory.PROpen {
+		if prOpen {
 			if cur.FollowUp == nil {
 				factory.WatchPublishedPR(cur)
 			}
@@ -109,6 +115,9 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 			cur.State = factory.StateShipped
 			factory.QueueCIFollowUp(cur, time.Now().UTC())
 		} else if cur.Stream != nil {
+			if wasManual && checkAgain(cur, time.Now().UTC()) {
+				return nil
+			}
 			cur.Stream.Paused = false
 			cur.Stream.Ended = time.Time{}
 			cur.State = factory.StateQueued
@@ -122,4 +131,17 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		return nil
 	})
 	h.finish(w, err)
+}
+
+// checkAgain is giving back a taken-over job: THE PERSON'S COMMITS ARE CHECKED
+// AGAIN, so the run goes on from the first check or review that had already
+// passed, with every step after it ([factory.CheckAgainFrom]). It says false
+// when there is none to go back to, or when the rerun is refused (a spent
+// budget): the job then resumes from its step as before.
+func checkAgain(it *factory.Item, now time.Time) bool {
+	from := factory.CheckAgainFrom(it.Stages, it.Stream.Phases, it.Stream.Cur)
+	if from >= it.Stream.Cur {
+		return false
+	}
+	return run.StepControl(it, it.Stream.Phases[from].Name, true, "", now) == nil
 }

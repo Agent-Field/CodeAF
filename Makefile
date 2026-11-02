@@ -217,6 +217,9 @@ test-tooling:
 	bash scripts/touched-verdict_test.sh
 	bash scripts/one-suite_test.sh
 	bash scripts/shard-test_test.sh
+	bash scripts/relay-fingerprint_test.sh
+	bash scripts/relay-wrangler-config_test.sh
+	bash scripts/relay-deploy_test.sh
 	bash bench/canary/lib/repo_test.sh
 
 manual-gates:

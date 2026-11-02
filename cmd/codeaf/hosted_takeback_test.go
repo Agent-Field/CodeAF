@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,7 @@ type hostedMoveRig struct {
 	mu         sync.Mutex
 	requests   []string
 	acquires   []time.Time
+	resumes    []time.Time
 	changes    chan struct{}
 }
 
@@ -86,6 +88,9 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 		h.requests = append(h.requests, r.Method+" "+r.URL.Path)
 		if strings.HasSuffix(r.URL.Path, "/acquire") {
 			h.acquires = append(h.acquires, time.Now())
+		}
+		if strings.HasSuffix(r.URL.Path, "/heartbeat") {
+			h.resumes = append(h.resumes, time.Now())
 		}
 		h.mu.Unlock()
 		service.ServeHTTP(w, r)
@@ -321,7 +326,7 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("take-back card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
 	h.mu.Lock()
 	h.requests = nil
-	h.acquires = nil
+	h.acquires, h.resumes = nil, nil
 	h.mu.Unlock()
 	started = time.Now()
 	if _, err := io.WriteString(typed, "1\r"); err != nil {
@@ -330,8 +335,18 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("hosted take-back arrival", func() bool { return strings.Contains(screen.String(), "Moved from other computer") })
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.acquires) < 2 {
-		t.Fatalf("take and reopened hosted writer made %d acquires; want both", len(h.acquires))
+	if len(h.acquires) == 0 {
+		t.Fatal("take-back made no acquire")
+	}
+	// The reopened writer resumes the hold the take acquired (F1, #2009): it
+	// renews that fence rather than acquiring another.
+	resumed := slices.IndexFunc(h.resumes, func(at time.Time) bool { return !at.Before(h.acquires[0]) })
+	if resumed < 0 {
+		t.Fatal("the reopened hosted writer never resumed the taken hold")
+	}
+	t.Logf("relay resume after first acquire: %s", h.resumes[resumed].Sub(h.acquires[0]))
+	if gap := h.resumes[resumed].Sub(h.acquires[0]); gap >= 5*time.Second {
+		t.Errorf("resume gap=%s", gap)
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {
@@ -493,7 +508,11 @@ func TestKilledComputerTakesBackFromHomeAndLocalCard(t *testing.T) {
 				if _, err := io.WriteString(typed, "  "); err != nil {
 					t.Fatal(err)
 				}
-				h.wait("Home continuation offer", func() bool { return strings.Contains(screen.String(), "alt+c") })
+				// The question and its continue chord must be visible in the same offer.
+				h.wait("Home continuation offer", func() bool {
+					text := screen.String()
+					return strings.Contains(text, "Continue other computer's latest chat here?") && (strings.Contains(text, "alt+c") || strings.Contains(text, "opt+c"))
+				})
 				if _, err := io.WriteString(typed, "\x1bc"); err != nil {
 					t.Fatal(err)
 				}

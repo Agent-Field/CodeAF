@@ -129,7 +129,7 @@ func (a *Agent) teamWrapUpNote(profile string) {
 		if bound <= 0 {
 			bound = wrapUpFor
 		}
-		if _, _, err := teams.Change(profile, func(f *teams.File) error {
+		if err := teams.UpdateOpen(profile, func(f *teams.File) error {
 			return f.SetWrap(w.team, w.started, bound)
 		}); err != nil {
 			continue
@@ -180,7 +180,7 @@ func (a *Agent) teamWrapUpResume(profile string, now time.Time) {
 // clearTeamWrap forgets a wrap-up the clock has finished with. A missing team
 // is not an error worth the report's road.
 func clearTeamWrap(profile, id string) {
-	_, _, _ = teams.Change(profile, func(f *teams.File) error {
+	_ = teams.UpdateOpen(profile, func(f *teams.File) error {
 		return f.ClearWrap(id)
 	})
 }

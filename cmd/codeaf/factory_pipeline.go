@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
@@ -25,15 +26,16 @@ import (
 // file, or the factory's own copy in its place when st keeps one
 // ([factoryRepoRead]); a job's is the file it was decided on first
 // ([factoryJobFile]). st is nil for a worker's mirror, which keeps no copy:
-// the jobs it runs carry theirs.
+// the jobs it runs carry theirs. These recipes are only shown (the queue, a
+// job's card), so they never wait on GitHub ([factorygithub.ShowOnly]).
 func factoryPipelineOption(st *store.Store) factory.LocalOption {
 	return factory.WithOptions(pipeline.LocalFiles(),
 		factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
-			f, err := factoryRepoRead(context.Background(), st, repo, dir)
+			f, err := factoryRepoRead(factorygithub.ShowOnly(context.Background()), st, repo, dir)
 			return f.Recipe(), f.RecipeProblems(), err
 		}),
 		factory.WithJobRecipeLoader(func(it factory.Item, dir string) (factory.Recipe, []factory.Problem, error) {
-			f, err := factoryJobFile(context.Background(), st, it, it.Repo, dir)
+			f, err := factoryJobFile(factorygithub.ShowOnly(context.Background()), st, it, it.Repo, dir)
 			return f.Recipe(), f.RecipeProblems(), err
 		}))
 }
@@ -77,9 +79,19 @@ func factoryIntake(st *store.Store) *intake.Intake {
 // owner: the factory's operator, as the host that runs the intake knows them.
 func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
+	look := factoryScoutLook(st, config.Load)
 	return intake.New(st, intake.Options{
 		Owner:  owner,
 		Record: history,
+		// An automatic start is looked at closer first, while Read new issues
+		// as they arrive is on.
+		Scout: func(ctx context.Context, id int) error {
+			if !factoryReadsOnArrival(st) {
+				return errors.New("read on arrival is off")
+			}
+			_, _, err := look(ctx, id, false)
+			return err
+		},
 		Refresh: func(ctx context.Context) error {
 			repos, err := st.Repos()
 			if err != nil {

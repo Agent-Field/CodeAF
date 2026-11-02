@@ -74,7 +74,7 @@ func TestAnOlderHostIsRefusedBeforeAnAttachmentSourceCrossesTheWire(t *testing.T
 	}
 	// An ordinary attachment is never held back by this word.
 	plain := session.Submission{Text: "x", Attachments: []session.MessageAttachment{{ID: "at1", Kind: "file", Path: "a.txt"}}}
-	if err := agent.refuseUnkeptClientID(plain); err != nil {
+	if err := agent.refuseUnkeptMarks(plain); err != nil {
 		t.Fatalf("an ordinary attachment was refused: %v", err)
 	}
 	if !(&Agent{c: &Client{welcome: Welcome{AttachmentSources: true}}}).AttachmentSourcesKnown() {

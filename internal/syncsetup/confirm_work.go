@@ -49,7 +49,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		d.mu.Lock()
-		d.viewer = Viewer{}
+		d.viewer, d.lost = Viewer{}, false
 		d.mu.Unlock()
 		if err := d.recordSendLease(); err != nil {
 			d.available()
@@ -115,8 +115,8 @@ func (d *Drive) resumeViewer() {
 		d.mu.Unlock()
 		return
 	}
-	changed := d.viewer.Line != ""
-	d.viewer = Viewer{}
+	changed := d.viewer.Line != "" || d.lost
+	d.viewer, d.lost = Viewer{}, false
 	d.mu.Unlock()
 	if changed && d.opt.OnDriving != nil {
 		d.opt.OnDriving()

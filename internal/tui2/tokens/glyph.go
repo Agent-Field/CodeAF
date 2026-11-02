@@ -24,6 +24,13 @@ const (
 	GlyphMapUp   = "▲"
 	GlyphMapDown = "▼"
 
+	// Platform floors distinguish systems without borrowing shell or model marks.
+	GlyphPlatformMac     = "⌘"
+	GlyphPlatformLinux   = "△"
+	GlyphPlatformWindows = "⊞"
+	GlyphPlatformMobile  = "▯"
+	GlyphPlatformOther   = "□"
+
 	// State vocabulary. Shape encodes state CATEGORY and may change at a true
 	// state transition; shape never animates on a long-lived row (8.1.6).
 	GlyphQueued  = "○"
@@ -458,6 +465,11 @@ type GlyphInfo struct {
 // Tests, the `?` help surface, and a glyph-preview screen all walk it.
 func Glyphs() []GlyphInfo {
 	return []GlyphInfo{
+		{"PlatformMac", GlyphPlatformMac, '⌘', false},
+		{"PlatformLinux", GlyphPlatformLinux, '△', true},
+		{"PlatformWindows", GlyphPlatformWindows, '⊞', false},
+		{"PlatformMobile", GlyphPlatformMobile, '▯', false},
+		{"PlatformOther", GlyphPlatformOther, '□', true},
 		{"MapLeft", GlyphMapLeft, '◀', true},
 		{"MapUp", GlyphMapUp, '▲', true},
 		{"MapDown", GlyphMapDown, '▼', true},

@@ -257,6 +257,9 @@ func TestResumedStageKeepsItsOpeningBriefThroughTheRealMaker(t *testing.T) {
 		t.Fatal(err)
 	}
 	tm, _ := f.Team(team)
+	if len(tm.Members) == 1 {
+		tm.Members[0] = stageBriefs(t, "", team, tm.Members[0])
+	}
 	if len(tm.Members) != 1 || !tm.Members[0].FactoryStage || tm.Members[0].FactoryBrief != "Look it over. End by calling stage_result once." {
 		t.Fatalf("members = %+v", tm.Members)
 	}
@@ -330,7 +333,7 @@ func TestStoredPhaseChatStampsOnlyTheRecordedStageMembers(t *testing.T) {
 	got := map[string]teamstore.Member{}
 	for _, tm := range f.Teams {
 		for _, m := range tm.Members {
-			got[tm.ID+"/"+m.Handle] = m
+			got[tm.ID+"/"+m.Handle] = stageBriefs(t, profile, tm.ID, m)
 		}
 	}
 	if m := got[id+"/legacy"]; !m.FactoryStage || m.FactoryBrief != "" {
@@ -369,7 +372,20 @@ func TestFactoryStageBriefRedactsBeforeStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	tm, _ := f.Team(room)
+	if len(tm.Members) == 1 {
+		tm.Members[0] = stageBriefs(t, profile, room, tm.Members[0])
+	}
 	if len(tm.Members) != 1 || !strings.HasPrefix(tm.Members[0].FactoryBrief, "Review the diff.") || strings.Contains(tm.Members[0].FactoryBrief, secret) {
 		t.Fatal("opening brief missing or secret persisted in team storage")
 	}
+}
+
+// stageBriefs is m with its briefs, which a load of the teams leaves out.
+func stageBriefs(t *testing.T, profile, team string, m teamstore.Member) teamstore.Member {
+	t.Helper()
+	m, err := teamstore.WithBriefs(profile, team, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
 }

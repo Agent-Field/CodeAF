@@ -305,10 +305,7 @@ func (b *appBackend) workAllowed(a *appAgent) error {
 	b.locked(func() { transcript, drives = a.transcript, b.drives })
 	dir, folder := session.FolderOf(transcript)
 	if drives != nil && folder {
-		drives.mu.Lock()
-		d := drives.drive[filepath.Base(dir)]
-		drives.mu.Unlock()
-		if gate := driveWorkGate(d); gate != nil {
+		if gate := driveWorkGate(drives.renewalsOf(filepath.Base(dir))); gate != nil {
 			if err := gate(); err != nil {
 				return appEngineError(err)
 			}
@@ -356,6 +353,9 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 		}
 		a.live, a.windowMoved = nil, true
 		a.lastLive = b.now()
+		// Its conversation's open questions go with the window; the new
+		// holder's presence says them now.
+		b.dropAsksLocked(a.view.ID, live.asks)
 		a.view.State = appwire.StateIdle
 		live.stopping, mine = true, true
 	})
@@ -375,6 +375,7 @@ func (b *appBackend) moveWindow(id string, live *appLive, takeover bool, line st
 		}
 	}
 	b.finish(live)
+	b.forgetAsksOf(id, live)
 }
 
 func (b *appBackend) windowMoved(id string, live *appLive, takeover bool, line string) {

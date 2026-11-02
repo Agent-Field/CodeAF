@@ -660,7 +660,7 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-**`codeaf pair approve <link>`** compares the four-digit check number and asks `a / d`: only `a` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
+**`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
 **`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and ordinary pairing keeps and shares a solo computer's own chats, history, saved keys, memory and preferences. Terminal pairing prints “Sharing finishes the next time codeaf runs.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A used computer already sharing another set refuses and changes nothing. Only explicit `--replace` chooses a clean slate, with its existing confirmation. The page *Pairing your chats with a second computer* has the whole story.
 
@@ -769,18 +769,22 @@ key the first time the identity is made on that machine.
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
-each: id, title, device, where it runs (`running on <device>`, `<device> offline`,
+each: id, title, device, where it runs (`held on <device>`, `<device> offline`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
-`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
+`sync is off: set CODEAF_SYNC_URL to your sync service's address` and lists nothing. With a relay
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
-other machines cannot be reached it starts with `other machines unreachable`.
+other machines cannot be reached it starts with `the sync service is not answering`.
 
 ## A different sync setting on an existing engine
 
-The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run codeaf engine --stop --workspace <folder>`. The command names the exact folder. Let that work finish or stop the engine explicitly before reopening with the new setting.
+The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the background engine for this folder started with a different environment than this terminal and is still in use — codeaf chat --no-host opens this window on its own and leaves the other one running; or, after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run codeaf engine --stop --workspace <folder>`. The command names the exact folder.
+
+To use the new setting at once without touching the other window, run `codeaf chat --no-host`, with `--session <path>` to open a particular chat; for example `CODEAF_SYNC_URL=off codeaf chat --no-host`. That window runs its own engine in this terminal and ends with it.
+
+Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different relay. A window with the variable unset — `codeaf chat --host` reaching this computer over ssh, whose shell usually does not carry what you exported, or a terminal you never set it in — joins the running engine and its relay as it is. It restarts the engine only when the relay a pairing saved on this computer has changed since the engine started.
 
 ## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
 
@@ -819,7 +823,7 @@ show your chats on the other machines once both machines share an identity and t
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
 other machine can pick it up at once. If this machine sleeps or loses its connection, presence stops answering; the other computers mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds, and an explicit continue can take it sooner.
-You do not have to wait for that: press enter on a chat that says `running on <device>` on another
+You do not have to wait for that: press enter on a chat that says `held on <device>` on another
 machine and continue it there, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
 
@@ -1578,6 +1582,10 @@ own keypair, and `CODEAF_MODEL_POOL_RELAY_URL` with `models.pool.public_key`
 server, a watcher — one per line, tab separated: the name, the status, how long it has been
 up, what is watched for health, and where its log is.
 
+A shell command that has already finished keeps any background server or watcher
+it left running when the turn ends. Interrupting a command that is still running
+stops the command and its child processes.
+
 ```
 dev-server	running	2h	port:5173	/tmp/dev.log
 ```
@@ -1929,7 +1937,7 @@ a negative count is refused too. The command's own usage follows the line, and t
 short block of labelled rows. It needs no key and spends nothing.
 
 ```
-codeaf doctor [--db path]
+codeaf doctor [--db path] [--fix]
 ```
 
 Every row is labelled in the words a developer would search for:
@@ -1960,6 +1968,22 @@ machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
+
+## I deleted my codeaf home while the engine was stopping
+
+A running process remembers its original home directory. If you remove it or
+replace it with a different directory, attempts to make an identity or device
+refuse with `codeaf home was removed or replaced; restart codeaf to use the current folder`.
+Late saving work does not make a new identity there. If the engine is already
+stopping and still closing chats, it exits promptly when its original home is
+removed. With the home intact, stopping keeps its usual saving order and limits.
+A new process can still create a home on first use.
+
+## Repair a busy engine store or sync state — codeaf doctor --fix
+
+When an engine store lock or cross-computer sync issue exists on this computer, `codeaf doctor` adds `engine store` and `sync` rows naming a busy store holder (`busy · held by <command>, pid <pid>`), an `unfinished continue · chat <id>`, `duplicate rows · chat <id>`, or a `lapsed hold on this computer · chat <id>`. Healthy stores and clean sync state print nothing.
+
+Without `--fix`, `codeaf doctor` changes nothing. `codeaf doctor --fix` releases unfinished continues started by this computer, and retires duplicate branch copies whose turns are all already in the main chat, printing one `fixed:` line for each repair. A store lock whose process has ended is already free, so doctor neither reports nor removes it, and a busy store waits for its holder to finish or quit. It never touches another computer's live hold and never deletes a turn that exists only in the copy or scratch folder it inspects.
 
 ## codeaf help, and the verbs that take no flags at all
 

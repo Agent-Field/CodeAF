@@ -45,6 +45,13 @@ func newFactoryWire(t *testing.T, hub *appFactoryHub) *factoryWire {
 	backend := newFakeBackend(newAppRecorder(), nil)
 	backend.factoryOnce.Do(func() { backend.factories = hub; hub.resume = backend.resumeLocal })
 	t.Cleanup(func() { backend.Close() })
+	return wireOver(t, backend)
+}
+
+// wireOver serves backend behind one more real appwire server and reads its
+// lines. The backend's owner closes it.
+func wireOver(t *testing.T, backend *appBackend) *factoryWire {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	server := appwire.NewServer(outW)
@@ -171,6 +178,9 @@ type fakeGitHub struct {
 	started int
 	granted map[string]bool
 	logins  map[string]string
+	// rest, when set, answers a GitHub REST request the switch below does not
+	// know, with its status and body; ok false falls through to the default.
+	rest func(r *http.Request) (status int, body string, ok bool)
 }
 
 func newFakeGitHub() *fakeGitHub {
@@ -181,9 +191,19 @@ func (g *fakeGitHub) grant(code string) { g.mu.Lock(); g.granted[code] = true; g
 
 func (g *fakeGitHub) client() *http.Client {
 	return &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		// rest is asked without the lock, so a test may hold one request in
+		// it while others are answered.
+		g.mu.Lock()
+		rest := g.rest
+		g.mu.Unlock()
+		_ = r.ParseForm()
+		if rest != nil {
+			if status, answer, ok := rest(r); ok {
+				return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(answer))}, nil
+			}
+		}
 		g.mu.Lock()
 		defer g.mu.Unlock()
-		_ = r.ParseForm()
 		body := `{}`
 		switch r.URL.String() {
 		case "https://github.com/login/device/code":

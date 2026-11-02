@@ -36,15 +36,15 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(got.Teams, want) {
 		t.Fatalf("round trip:\n got %#v\nwant %#v", got.Teams, want)
 	}
-	// The write is a rename, so nothing temporary is left beside the file;
-	// the lock is the only other thing there.
+	// The store is the database and its own WAL files; the lock is the only
+	// other thing there.
 	entries, _ := os.ReadDir(dir)
-	var names []string
 	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	if strings.Join(names, ",") != FileName+","+FileName+".lock" {
-		t.Fatalf("profile holds %v", names)
+		switch e.Name() {
+		case FileName, FileName + "-wal", FileName + "-shm", FileName + ".lock":
+		default:
+			t.Fatalf("profile holds %s", e.Name())
+		}
 	}
 }
 
@@ -80,16 +80,16 @@ func TestTheOrdinaryLaunchIsTheProfilesOwn(t *testing.T) {
 
 func TestCorruptFileErrorsIsNotClobberedAndCanBeSetAside(t *testing.T) {
 	dir := t.TempDir()
-	bad := []byte("{not json")
+	bad := []byte("{not a database")
 	if err := os.WriteFile(Path(dir), bad, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(dir); err == nil {
-		t.Fatal("corrupt file loaded without error")
+	if _, err := Load(dir); !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("corrupt store loaded with %v", err)
 	}
 	called := false
 	if err := Update(dir, func(*File) error { called = true; return nil }); err == nil || called {
-		t.Fatalf("update over a corrupt file: err %v, fn called %v", err, called)
+		t.Fatalf("update over a corrupt store: err %v, fn called %v", err, called)
 	}
 	if raw, _ := os.ReadFile(Path(dir)); string(raw) != string(bad) {
 		t.Fatalf("the file became %q", raw)
@@ -101,114 +101,51 @@ func TestCorruptFileErrorsIsNotClobberedAndCanBeSetAside(t *testing.T) {
 	if raw, _ := os.ReadFile(aside); string(raw) != string(bad) || !strings.HasPrefix(aside, Path(dir)+".unreadable-") {
 		t.Fatalf("set aside to %s holding %q", aside, raw)
 	}
-}
-
-// THE FIRST BUILD'S FILE BECOMES TEAMS, ONCE, AND NOTHING IS LOST.
-func TestMigratesTheFirstBuildsFile(t *testing.T) {
-	dir := t.TempDir()
-	v1 := `{"spaces":[` +
-		`{"name":"harbor","members":[{"key":"k1","file":"f1","where":"/w/a","word":"one"}],"made":"2026-09-20T10:00:00Z"},` +
-		`{"name":"orbit","members":[{"key":"k2"}],"made":"2026-09-21T10:00:00Z","hue":200,"tier":0},` +
-		`{"name":"lumen","members":[]}]}`
-	legacy := filepath.Join(dir, LegacyFileName)
-	if err := os.WriteFile(legacy, []byte(v1), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// The colours the first build gave this file, worked out the way it did.
-	first := &File{}
-	if err := json.Unmarshal([]byte(`[{"name":"harbor"},{"name":"orbit","hue":200},{"name":"lumen"}]`), &first.Teams); err != nil {
-		t.Fatal(err)
-	}
-	first.Colour(reservedForTest)
-
-	f, err := LoadHued(dir, reservedForTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := f.Teams
-	if len(got) != 3 || got[0].Name != "harbor" || got[1].Name != "orbit" || got[2].Name != "lumen" {
-		t.Fatalf("migrated %+v", got)
-	}
-	if !reflect.DeepEqual(got[0].Members, []Member{{Key: "k1", File: "f1", Where: "/w/a", Word: "one", Handle: "one", HandleBy: HandleByWords}}) {
-		t.Fatalf("members lost: %+v", got[0].Members)
-	}
-	seen := map[string]bool{}
-	for i, tm := range got {
-		if len(tm.ID) != 12 || strings.Trim(tm.ID, "0123456789abcdef") != "" || seen[tm.ID] {
-			t.Fatalf("team %d has id %q", i, tm.ID)
-		}
-		seen[tm.ID] = true
-		if tm.Parent != "" || tm.Manager != "" {
-			t.Fatalf("team %d came up with parent %q manager %q", i, tm.Parent, tm.Manager)
-		}
-		if tm.HueSpec() != first.Teams[i].HueSpec() {
-			t.Fatalf("team %d drawn %v before and %v after", i, first.Teams[i].HueSpec(), tm.HueSpec())
-		}
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("spaces.json is still there: %v", err)
-	}
-	if raw, err := os.ReadFile(legacy + ".migrated"); err != nil || string(raw) != v1 {
-		t.Fatalf("the old file was not kept as it was: %q %v", raw, err)
-	}
-	raw, err := os.ReadFile(Path(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var d struct {
-		Version int               `json:"version"`
-		Teams   []json.RawMessage `json:"teams"`
-	}
-	if err := json.Unmarshal(raw, &d); err != nil || d.Version != 2 || len(d.Teams) != 3 {
-		t.Fatalf("teams.json is %s", raw)
-	}
-	again, err := LoadHued(dir, reservedForTest)
-	if err != nil || !reflect.DeepEqual(again.Teams, got) {
-		t.Fatalf("reloaded %+v, %v", again, err)
+	// Starting again is an empty store that takes writes.
+	must(t, Update(dir, func(f *File) error { f.Teams = append(f.Teams, Team{ID: "aaaaaaaaaaaa", Name: "a"}); return nil }))
+	if f := mustLoad(t, dir); len(f.Teams) != 1 {
+		t.Fatalf("after setting aside: %+v", f.Teams)
 	}
 }
 
-// A MIGRATION THROUGH Update is the same migration: the writer that gets there
-// first carries the old list over.
-func TestUpdateMigratesTheFirstBuildsFile(t *testing.T) {
+// A STORE THAT READS IS NEVER SET ASIDE, whatever error sent the caller there.
+func TestAReadableStoreIsNotSetAside(t *testing.T) {
 	dir := t.TempDir()
-	legacy := filepath.Join(dir, LegacyFileName)
-	if err := os.WriteFile(legacy, []byte(`{"spaces":[{"name":"harbor","members":[{"key":"k1","word":"one"}]}]}`), 0o600); err != nil {
-		t.Fatal(err)
+	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Name: "a"}}))
+	if aside, err := SetAside(dir); err == nil || aside != "" {
+		t.Fatalf("a good store was set aside: %q %v", aside, err)
 	}
-	if err := Update(dir, func(f *File) error {
-		if len(f.Teams) != 1 || f.Teams[0].Name != "harbor" {
-			return fmt.Errorf("update saw %+v", f.Teams)
-		}
-		return f.SetManager(f.Teams[0].ID, "k1")
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(legacy + ".migrated"); err != nil {
-		t.Fatalf("spaces.json not moved aside: %v", err)
-	}
-	f, _ := Load(dir)
-	if len(f.Teams) != 1 || f.Teams[0].Manager != "k1" {
-		t.Fatalf("after update: %+v", f.Teams)
+	if f := mustLoad(t, dir); len(f.Teams) != 1 {
+		t.Fatalf("the store lost its team: %+v", f.Teams)
 	}
 }
 
-// A TEAMS FILE ALREADY THERE WINS, and the old one is left alone.
-func TestMigrationLeavesTheOldFileWhenTeamsExist(t *testing.T) {
-	dir := t.TempDir()
-	if err := Save(dir, []Team{{ID: "aaaaaaaaaaaa", Name: "kept", hued: true}}); err != nil {
-		t.Fatal(err)
-	}
-	legacy := filepath.Join(dir, LegacyFileName)
-	if err := os.WriteFile(legacy, []byte(`{"spaces":[{"name":"old"}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	f, err := LoadHued(dir, nil)
-	if err != nil || len(f.Teams) != 1 || f.Teams[0].Name != "kept" {
-		t.Fatalf("loaded %+v %v", f, err)
-	}
-	if _, err := os.Stat(legacy); err != nil {
-		t.Fatalf("spaces.json was moved though teams.json was there: %v", err)
+// A STORE ANOTHER PROGRAM OR A NEWER BUILD MADE IS REFUSED, NOT READ AS EMPTY.
+func TestAForeignOrNewerStoreIsUnreadable(t *testing.T) {
+	for name, pragma := range map[string]string{
+		"foreign": "PRAGMA application_id = 7",
+		"newer":   fmt.Sprintf("PRAGMA user_version = %d", schemaVersion+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Name: "a"}}))
+			h, err := acquire(Path(dir), false)
+			must(t, err)
+			_, err = h.db.Exec(pragma)
+			h.release()
+			must(t, err)
+			forget(Path(dir))
+			want := ErrUnreadable
+			if name == "newer" {
+				want = ErrNewer
+			}
+			if _, err := Load(dir); !errors.Is(err, want) {
+				t.Fatalf("loaded with %v", err)
+			}
+			if err := Update(dir, func(*File) error { return nil }); !errors.Is(err, want) {
+				t.Fatalf("updated with %v", err)
+			}
+		})
 	}
 }
 
@@ -218,7 +155,7 @@ func TestRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 	dir := t.TempDir()
 	in := `{"version":2,"teams":[{"id":"abcdefabcdef","name":"harbor","parent":"","members":[{"key":"k1","file":"","where":"","word":""}],` +
 		`"manager":"k1","hue":120,"tier":1,"made":"2026-09-20T10:00:00Z","pinned":true,"rules":{"quiet":["k2"]}}]}`
-	if err := os.WriteFile(Path(dir), []byte(in), 0o600); err != nil {
+	if err := storeRaw(dir, []byte(in)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := Load(dir)
@@ -227,7 +164,7 @@ func TestRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 	}
 	check := func(when string) {
 		t.Helper()
-		raw, _ := os.ReadFile(Path(dir))
+		raw, _ := storedRaw(dir)
 		var d struct {
 			Teams []map[string]json.RawMessage `json:"teams"`
 		}
@@ -256,20 +193,20 @@ func TestRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 // a choice.
 func TestAnUncolouredTeamStaysUncolouredWithoutAPalette(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(Path(dir), []byte(`{"version":2,"teams":[{"id":"aaaaaaaaaaaa","name":"a","members":[]}]}`), 0o600); err != nil {
+	if err := storeRaw(dir, []byte(`{"version":2,"teams":[{"id":"aaaaaaaaaaaa","name":"a","members":[]}]}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := Update(dir, func(f *File) error { f.Teams[0].Name = "b"; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if raw, _ := os.ReadFile(Path(dir)); strings.Contains(string(raw), `"hue"`) {
+	if raw, _ := storedRaw(dir); strings.Contains(string(raw), `"hue"`) {
 		t.Fatalf("a writer without a palette invented a colour:\n%s", raw)
 	}
 	f, _ := LoadHued(dir, reservedForTest)
 	if !f.Teams[0].Hued() {
 		t.Fatal("the palette's load left the team uncoloured")
 	}
-	if raw, _ := os.ReadFile(Path(dir)); !strings.Contains(string(raw), `"hue"`) {
+	if raw, _ := storedRaw(dir); !strings.Contains(string(raw), `"hue"`) {
 		t.Fatalf("the colour was not written back:\n%s", raw)
 	}
 }
@@ -358,7 +295,7 @@ func TestLoadCutsLoopsAndMissingParents(t *testing.T) {
 		`{"id":"aaaaaaaaaaaa","name":"a","parent":"bbbbbbbbbbbb","hue":1},` +
 		`{"id":"bbbbbbbbbbbb","name":"b","parent":"aaaaaaaaaaaa","hue":2},` +
 		`{"id":"cccccccccccc","name":"c","parent":"gone00000000","hue":3}]}`
-	if err := os.WriteFile(Path(dir), []byte(in), 0o600); err != nil {
+	if err := storeRaw(dir, []byte(in)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := Load(dir)
@@ -374,22 +311,26 @@ func TestLoadCutsLoopsAndMissingParents(t *testing.T) {
 	}
 }
 
-// REPAIRS ON LOAD: a repeated id gets a new one, a manager who is not a member
-// is cleared, members with titles get handles, and all of it is written back.
+// REPAIRS ON LOAD: a manager who is not a member is cleared, members with
+// titles get handles, and all of it is written back. A repeated id is the
+// store's primary key, so no store holds one; a list handed to Save with one
+// gets a new id for the second.
 func TestLoadRepairsIdsManagersAndHandles(t *testing.T) {
 	dir := t.TempDir()
 	in := `{"version":2,"teams":[` +
 		`{"id":"aaaaaaaaaaaa","name":"a","manager":"gone","hue":1,"members":[{"key":"k1","word":"Fix the login bug"},{"key":"k2","word":"Fix login page"},{"key":"k3","word":""}]},` +
-		`{"id":"aaaaaaaaaaaa","name":"b","hue":2}]}`
-	if err := os.WriteFile(Path(dir), []byte(in), 0o600); err != nil {
+		`{"id":"bbbbbbbbbbbb","name":"b","hue":2}]}`
+	if err := storeRaw(dir, []byte(in)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := Load(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Teams[0].ID == f.Teams[1].ID {
-		t.Fatal("a repeated id was kept")
+	twice := t.TempDir()
+	must(t, Save(twice, []Team{{ID: "aaaaaaaaaaaa", Name: "a"}, {ID: "aaaaaaaaaaaa", Name: "b"}}))
+	if g := mustLoad(t, twice); len(g.Teams) != 2 || g.Teams[0].ID == g.Teams[1].ID {
+		t.Fatalf("a repeated id was kept: %+v", g.Teams)
 	}
 	if f.Teams[0].Manager != "" {
 		t.Fatalf("a manager who is not a member was kept: %q", f.Teams[0].Manager)
@@ -413,7 +354,7 @@ func TestAnOldTeamsFileLoadsWithNoWrapUp(t *testing.T) {
 	dir := t.TempDir()
 	in := `{"version":2,"teams":[{"id":"abcdefabcdef","name":"harbor","parent":"","members":[{"key":"k1","file":"","where":"","word":"one"}],` +
 		`"manager":"k1","hue":120,"tier":1,"made":"2026-09-20T10:00:00Z"}]}`
-	if err := os.WriteFile(Path(dir), []byte(in), 0o600); err != nil {
+	if err := storeRaw(dir, []byte(in)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := Load(dir)
@@ -423,7 +364,7 @@ func TestAnOldTeamsFileLoadsWithNoWrapUp(t *testing.T) {
 	if err := Save(dir, f.Teams); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(Path(dir))
+	raw, err := storedRaw(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +421,7 @@ func TestWrapUpRoundTripThroughChange(t *testing.T) {
 	if got.Teams[0].Wrap != nil {
 		t.Fatalf("cleared wrap still there: %+v", got.Teams[0].Wrap)
 	}
-	raw, _ := os.ReadFile(Path(dir))
+	raw, _ := storedRaw(dir)
 	if strings.Contains(string(raw), `"wrap"`) {
 		t.Fatalf("a cleared wrap was still written:\n%s", raw)
 	}
