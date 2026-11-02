@@ -313,6 +313,7 @@ decides which combinations are accepted.
 | `factory.sign_in_poll` | `in.FactorySignInFlowParams` | `FactorySignInState` |
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
+| `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
@@ -354,6 +355,15 @@ instructions. Credential-looking paths (`.env*`, `*.pem`, `*.key`, `id_*`,
 binary file is `unreadable` with `binary`; a repository with no checkout on the
 factory's machine is `not_cloned`; one the caller cannot see is `not_found`. A
 factory older than the route is `conflict`.
+
+An engine whose hello carries `factory.job_area` sends `area` on each job of
+`factory.queue` and on `factory.job`: the part of the repository the job's
+change touched most, the repository's declared area or else the top-level
+directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
+`internal`, `pkg`, `lib`, `app`, `apps`, `packages`, `crates`, `cmd`) it is the
+first two segments (`"internal/factory/"`), and a file directly inside one is
+the container (`"internal/"`). Every response that carries the job says the
+same area. It is absent when the job changed no file or only files at the root.
 
 An engine whose hello carries the feature `factory.job_brief` serves
 `factory.job_brief {factory, job, since?}`: the job's newest brief version as
