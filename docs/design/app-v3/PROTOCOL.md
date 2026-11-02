@@ -262,6 +262,7 @@ decides which combinations are accepted.
 | `factory.job_step_stop` | `in.FactoryJobStepParams` | `FactoryJobActed` |
 | `factory.job_stop` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_unassign` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.issue_comment` | `in.FactoryIssueCommentParams` | `FactoryIssueCommented` |
 | `factory.job_undo` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.link_copy` | `in.FactoryLinkCopyParams` | `FactoryLinkMade` |
 | `factory.link_create` | `in.FactoryLinkCreateParams` | `FactoryLinkMade` |
