@@ -73,6 +73,9 @@ func (d Door) Look(ctx context.Context, id int, refresh bool) (factory.Scout, bo
 	if err != nil {
 		return s, false, err
 	}
+	if s.Head == "" {
+		s.Head = head
+	}
 	s.At = now
 	err = d.Floor.Annotate(id, func(cur *factory.Item) error { Apply(cur, s); return nil })
 	return s, false, err

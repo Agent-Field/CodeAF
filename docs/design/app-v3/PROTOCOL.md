@@ -358,10 +358,12 @@ its budget is `no_answer`; a repository with no checkout is `not_cloned`.
 An engine whose hello carries the feature `factory.read_on_arrival` serves
 `factory.read_on_arrival {factory, on?}` → `{on}`: "Read new issues as they
 arrive", the factory's `read_on_arrival` in `GET /v1/settings`. Off (the
-default: AI runs only on a person's click or schedule), the factory's AI reads
+default: AI runs only on a person's click), the factory's AI reads
 nothing by itself; on, each new issue gets the arrival read and a job the start
-rules would start gets a look closer before it launches. Either way only a size
-label (or a measured PR diff) decides a start. With `on` the operator changes
+rules would start gets a look closer before it launches. Either way a read never
+starts a job: size labels and the start rules decide; a read's rubric only places
+the job among similar finished jobs, so its measured cost over `max_cost` asks
+first. With `on` the operator changes
 it (`PATCH /v1/settings`); anyone else is `forbidden`.
 
 An engine whose hello carries the feature `factory.read` serves `factory.read
