@@ -13,6 +13,39 @@ const AutonomyManual = "manual"
 // while Take over has suspended the pipeline. A mode never resumes Take over.
 func Automatic(it Item) bool { return it.Autonomy == AutonomyAuto && !it.Manual }
 
+// AsksBeforeStep says Manual holds phase i for the person's word before its
+// first round. Only an explicit Manual asks: a record with no saved mode keeps
+// its pipeline's own approve steps. Start is the word for the first step, an
+// approve step just passed is the word for the step after it, and a step that
+// has run once (a retry, a send-back) is the same step, not a new one. Follow PR
+// has its own door: Manual asks before each repair push.
+func AsksBeforeStep(it Item, i int) bool {
+	if it.Autonomy != AutonomyManual || it.Stream == nil || i < 0 || i >= len(it.Stream.Phases) {
+		return false
+	}
+	ph := it.Stream.Phases
+	p := ph[i]
+	if p.Kind == StageGate || p.State != PhasePending || p.Round > 0 || it.FollowUp != nil || p.Name == FollowPRStep {
+		return false
+	}
+	return PreviousWork(ph, i) >= 0 && !answeredByApprove(it, i)
+}
+
+// answeredByApprove says the step before phase i is an approve step that asked.
+// One turned off passes quietly, so it said nothing about the next step.
+func answeredByApprove(it Item, i int) bool {
+	for k := i - 1; k >= 0; k-- {
+		p := it.Stream.Phases[k]
+		if p.Kind != StageGate {
+			return false
+		}
+		if j := StageIndex(it.Stages, p.Name); j < 0 || it.Stages[j].On {
+			return p.State == PhaseDone
+		}
+	}
+	return false
+}
+
 // CheckAutomaticApproval runs under the item's write lock before a queued
 // automatic decision can start work. Budget and mode may have changed since
 // the service selected the candidate; an earlier read is not authority.
