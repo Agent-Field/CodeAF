@@ -29,7 +29,7 @@ import (
 // Like the web pair, this whole file is CONDITIONAL: no manager, no tools. See
 // [Config.Connect] for why a belt must never carry a promise it cannot keep.
 
-const servicesDescription = "List the accounts the person can connect to this conversation and which of them are connected already, with the address each one is connected as. Hundreds can be connected, so the ones that are not yet are listed by id only; pass filter to search them by name. Cheap; call it when you are about to need something that lives in one of their accounts — mail, a calendar, a billing system — or when they ask what is connected."
+const servicesDescription = "List the accounts the person can connect to this conversation and which of them are connected already, with the address each one is connected as. Hundreds can be connected, so the ones that are not yet are listed by id only; pass filter to search them by name. Cheap; call it before you need something in one of their accounts, such as mail or a calendar, or when they ask what is connected."
 
 const servicesSchemaJSON = `{"type":"object","properties":{"filter":{"description":"Show only the accounts whose name or id contains this, for example stripe or fresh","type":"string"}},"additionalProperties":false}`
 
@@ -38,7 +38,7 @@ const servicesSchemaJSON = `{"type":"object","properties":{"filter":{"descriptio
 // model to stop at exactly the moment the current turn can carry on.
 const sameTurnToolArrival = "The account's tools are in your tool list from your very next request, which is still this turn — carry on and use them now"
 
-const useServiceDescription = "Pick up one account's tools. " + sameTurnToolArrival + ". If it is not connected, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Some accounts serve tools of their own and a few serve too many to carry at once: that answer lists them and you call again with tools naming the ones the work needs."
+const useServiceDescription = "Pick up one account's tools. " + sameTurnToolArrival + ". If it is not connected, the person is asked whether to connect it, so call it only when the work needs that account, and never twice for the same one. An account with too many tools to carry at once lists them; call again with tools naming the ones the work needs."
 
 const useServiceSchemaJSON = `{"type":"object","properties":{"service":{"type":"string","description":"The id of the account, as services lists it — for example google"},"tools":{"type":"string","description":"Only these of the tools the account serves, by name, separated by commas. Leave it out to take everything it brings; an account with too many to carry says so and lists them"}},"required":["service"],"additionalProperties":false}`
 

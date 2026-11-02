@@ -72,10 +72,10 @@ import (
 // recording and a video each come back as, which is three tellings of one fact
 // the first clause states. `described, never as bytes` is the whole of the
 // decoder ban: a model that knows the answer is prose does not reach for a
-// codec. The scanned-PDF pointer stays because it is the one file this rung
-// genuinely cannot take, and a model that meets one needs the name of the tool
-// that can.
-const senseSentence = " Images, audio and video come back described, never as bytes; a scanned PDF needs read_document."
+// codec. The scanned-PDF pointer is not repeated here: [pdfSentence] always
+// comes first in the same description and already names read_document, so a
+// second copy was the same rule bought twice on every request.
+const senseSentence = " Images, audio and video come back described, never as bytes."
 
 // ── what kind of file is this ───────────────────────────────────────────────
 

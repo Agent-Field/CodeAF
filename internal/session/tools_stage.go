@@ -52,22 +52,22 @@ const (
 	planNeedsChange    = "Invalid arguments: plan_edit needs at least one of add, skip or on."
 )
 
-const stageResultDescription = "This IS one stage of a factory item. Follow its brief; independent parts may go to tasks. Report this step's result. Successful done ends the step immediately; use final false for an intermediate report. Findings count unresolved problems; until clean needs zero. Claims need evidence in their stated medium. Nothing is posted anywhere."
-const planEditDescription = "Propose stage changes: add sentences, skip or on named stages. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
+const stageResultDescription = "This IS one stage of a factory item. Follow its brief; independent parts may go to tasks. Successful done ends the step immediately; use final false for an intermediate report. Findings count unresolved problems; until clean needs zero. Claims need evidence in their stated medium. Nothing is posted anywhere."
+const planEditDescription = "Propose stage changes. Nothing changes by calling this: the runner applies it within the recipe's bounds; proof and a person's gate are never skipped. It never posts anywhere."
 
 func stageResultSchemaJSON() string {
 	return `{"type":"object","properties":{` +
 		`"final":{"type":"boolean","description":"Defaults to done; false keeps working."},` +
 		`"done":{"type":"boolean","description":"Ask completed."},` +
-		`"findings":{"type":"integer","minimum":0,"description":"Unresolved problems."},` +
+		`"findings":{"type":"integer","minimum":0},` +
 		`"claims":{"type":"array","items":{"type":"object","properties":{` +
 		`"text":{"type":"string"},"ok":{"type":"boolean"},"evidence":{"type":"string"},` +
 		`"medium":{"type":"string","description":"test, screenshot, transcript, benchmark or policy."}` +
-		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true, each with its evidence."},` +
-		`"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"Final PR-ready change bullets; accurate names and complete sentences."},` +
+		`},"required":["text","ok","evidence"],"additionalProperties":false},"description":"What is now true."},` +
+		`"publish_summary":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":600},"description":"PR-ready change bullets."},` +
 		`"notes":{"type":"array","items":{"type":"string"},"description":"Sentences for the stages after this one."},` +
-		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome; dependencies and new files are allowed."},` +
-		`"output":{"type":"string","description":"What changed and what was verified; omit guessed test totals."}` +
+		`"repair":{"type":"object","properties":{"decision":{"type":"string","enum":["fixed","no_change","needs_repair","needs_you"]},"reason":{"type":"string"},"readiness":{"type":"object","properties":{"head":{"type":"string"},"diff_reviewed":{"type":"boolean"},"description_matches":{"type":"boolean"},"feedback_addressed":{"type":"boolean"},"no_unfinished_work":{"type":"boolean"}},"required":["head","diff_reviewed","description_matches","feedback_addressed","no_unfinished_work"],"additionalProperties":false}},"required":["decision","reason"],"additionalProperties":false,"description":"Follow PR outcome."},` +
+		`"output":{"type":"string","description":"What changed and what was verified."}` +
 		`},"required":["done"],"additionalProperties":false}`
 }
 

@@ -335,7 +335,7 @@ const (
 // each op does, what comes back, and where the whole log lives.
 var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
 	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks). kill: SIGTERM the process group, SIGKILL " +
-	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's recent log is a bounded file on disk, named when it started; when older output has been discarded, its footer says so instead of promising a full log. A running job also shows on their screen."
+	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's recent log is a bounded file named when it started; its footer says when older output was discarded. A running job also shows on their screen."
 
 var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"integer","description":"Job id (output and kill need one)"},"tail":{"type":"integer","description":"Lines returned (default: ` +
 	strconv.Itoa(jobsDefaultTail) + `, max: ` + strconv.Itoa(jobsMaxTail) + `)"}},"required":["action"],"additionalProperties":false}`

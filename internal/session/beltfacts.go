@@ -719,8 +719,8 @@ var programFacts = []beltFact{{
 		"`build_harness` designs one.",
 	shelved: "A **sub-harness** is a reusable recipe this machine has saved and offers by\n" +
 		"itself when somebody's words match: `list_harnesses` lists them,\n" +
-		"`build_harness` designs one. Both wait in the `harnesses` group, so call\n" +
-		"`load_capability`: it fetches them and says what each verb there is for.",
+		"`build_harness` designs one. Both wait in the `harnesses` group;\n" +
+		"`load_capability` fetches them.",
 	absent: "",
 }}
 
@@ -753,8 +753,7 @@ var automationFacts = []beltFact{{
 		"world — is `automation`'s: \"remind me at 6\", \"every Monday draft the update\",\n" +
 		"\"tell me when CI goes red\". PROPOSE IT, and never do it instead of proposing\n" +
 		"it, which answers a request they did not make; one that exists is CHANGED,\n" +
-		"never proposed again. `automation`'s own description says how to tell one\n" +
-		"from the work in front of you and how to say when.",
+		"never proposed again.",
 	// AND THE ABSENT CASE NAMES NO VERB: a sentence naming a tool this belt does
 	// not carry is the lie the whole file exists to prevent (prompt_belt_test.go
 	// asks it of every shape).

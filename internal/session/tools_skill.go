@@ -46,7 +46,7 @@ const skillShelfLimit = store.SkillShelfLimit
 // useSkillDescription says what the two modes are for in the model's own terms.
 // It is bought on every request of every turn on a belt that carries it, so it
 // names the gesture and nothing about the store behind it.
-const useSkillDescription = "Reach the shelf of active skills — procedures this project saved after watching them run. `list` shows each as a name and one-line doc; `get` resolves one to its shelf path and doc to `read`."
+const useSkillDescription = "Reach the shelf of active skills — procedures this project saved after watching them run. `read` the shelf path `get` returns."
 
 // useSkillSchemaJSON is the two modes. `name` is required for `get` alone, which
 // the mode enum cannot express, so the handler refuses a nameless get in words
