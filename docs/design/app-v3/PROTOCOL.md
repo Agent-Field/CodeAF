@@ -768,6 +768,29 @@ $0.10 goes out as `0.1`.
 |---|---|---|
 | `search.all` | `{limit_per_group, query}` | `GroupsResult2` |
 
+With hello feature `search.jobs`, `search.all` includes a `job` group alongside
+`agent`, `crew`, `task` and `message`, including empty groups (`hits: []`).
+Each job hit has `{kind: "job", id: "<factory>#<document_id>", title,
+factory, document_id, repo?, number?, state?}`. `factory` is the connection id;
+`document_id` is the queue job's document id; `number` is its issue or PR number
+when known. The state is the factory's wire state. `agent` is absent. Older
+clients must ignore unknown groups; existing hit kinds retain their JSON shape.
+
+Search ignores case and matches words in titles, then queue request text
+(`ask.text`, when carried), then repository names. Numbers match `12`, `#12`,
+`repo#12` or `owner/repo#12`. Title and number matches precede request text,
+which precedes repository-only matches; newest creation time wins within each
+rank, with stable id breaking ties. `limit_per_group` bounds jobs across all
+factories (default 8, allowed 1–50).
+
+All connected factory queues are read concurrently under one 1.5-second total
+job-search deadline, using the caller's existing authority and visibility.
+Search never starts or resumes a local factory. A failed or timed-out factory
+adds no hits and no error. Dismissed and dropped jobs are excluded; other closed
+jobs are included only for the week they closed, and only with a known close
+time. `search.all` retains its existing `bad_params` error for an empty query.
+
+
 ## services methods
 
 | method | params | result |

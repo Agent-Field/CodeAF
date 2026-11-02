@@ -12,6 +12,20 @@ Three things make one factory:
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
 
+## finding jobs with desktop search and ⌘K
+
+Desktop search can find jobs in connected factories before you open their jobs
+lists. Search by title words, request text when the factory includes it in its
+queue, repository, or issue or pull request number: `12`, `#12`, `repo#12` or
+`owner/repo#12`. Matching ignores case. Title matches appear before request text
+and repository matches; newer jobs appear first within each rank.
+
+Search shows only jobs your factory sign-in can see. Dismissed and dropped jobs
+are excluded. Other closed jobs appear only during the week they closed.
+Search does not start a stopped local factory. Factories have a shared
+1.5-second search deadline; a slow or unavailable factory contributes no results
+for that search, while the other results remain available.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.
