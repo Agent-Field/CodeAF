@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+func TestMemoryPauseStopsFinishedStageTail(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "pause tail", 0)
+}
 
 func TestMemoryLateReceiptReachesFactoryHeaderAfterWorkerFinishes(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "finish", 0)
@@ -43,6 +48,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *te
 }
 
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
+	pauseTail := end == "pause tail"
 	settlingQuit := end == "settling quit"
 	stop, quit := end == "stop" || settlingQuit, end == "quit" || settlingQuit
 	quitDone := make(chan struct{})
@@ -51,6 +57,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	releaseReceipt := sync.OnceFunc(func() { close(release) })
 	cancelled := make(chan struct{}, 1)
 	started := make(chan struct{}, 1)
+	var memoryCalls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			select {
@@ -77,6 +84,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		if payload["messages"] != nil {
+			memoryCalls.Add(1)
 			select {
 			case started <- struct{}{}:
 			default:
@@ -148,10 +156,14 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 		t.Fatal(err)
 	}
-	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar queues jobs", ChatSpent: existing, Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: []factory.Stage{
+	stages := []factory.Stage{
 		{Name: "write", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."},
 		{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
-	}})
+	}
+	if pauseTail {
+		stages = append(stages[:1], factory.Stage{Name: "test", Kind: factory.StageCheck, On: true, Ask: "sleep 60"}, stages[1])
+	}
+	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar queues jobs", ChatSpent: existing, Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: stages})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,6 +199,10 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			t.Fatalf("job did not finish: state=%s", job.State)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if pauseTail {
+		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
+		s.must("factory.job_hold", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &acted)
 	}
 	select {
 	case <-cancelled:
@@ -266,6 +282,18 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 		}
 		if memoryUSD >= .02 && math.Abs(job.Cost-usd-existing) < .000001 {
+			if pauseTail {
+				before := memoryCalls.Load()
+				time.Sleep(3 * time.Second)
+				if got := memoryCalls.Load(); got != before {
+					t.Fatalf("paused memory count grew: %d -> %d", before, got)
+				}
+				snapshot, err := knowledge.Open(profile).Snapshot()
+				if err != nil || snapshot.Pending == 0 {
+					t.Fatalf("pause lost pending memory: %+v %v", snapshot, err)
+				}
+				t.Logf("paused memory calls=%d; ledger=%.4f header=%.4f pending=%d", before, usd, job.Cost, snapshot.Pending)
+			}
 			return
 		}
 		if time.Now().After(deadline) {
