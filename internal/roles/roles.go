@@ -289,6 +289,28 @@ const (
 	RoleCareful Role = "careful"
 )
 
+// The page-AI roles: the calls an app makes on an agent's errand door to write
+// about what is on a page (a repository's notes, an answer to a question about
+// it, the themes in its backlog, a pipeline built with AI, a factory's topic
+// views, and a factory's arrival read and closer look). They are one FAMILY: `insight` is the model
+// every page AI runs on, and each override is one page feature a person may
+// point somewhere else. An override nobody pinned is the family's choice, so a
+// person who sets `insight` once has set every page.
+const (
+	RoleInsight       Role = "insight"
+	RoleInsightNotes  Role = "insight_notes"
+	RoleInsightAsk    Role = "insight_ask"
+	RoleInsightThemes Role = "insight_themes"
+	// RoleInsightPipeline is a pipeline's steps written with AI.
+	RoleInsightPipeline Role = "insight_pipeline"
+	// RoleInsightViews is a factory's topic views.
+	RoleInsightViews Role = "insight_views"
+	// RoleInsightFactoryRead is the read of what arrived in a factory, and
+	// RoleInsightFactoryScout is the closer look a person asks for after it.
+	RoleInsightFactoryRead  Role = "insight_factory_read"
+	RoleInsightFactoryScout Role = "insight_factory_scout"
+)
+
 // Tier is a class of model the person configures once. Roles are open; tiers
 // are deliberately not. Five settings is a decision someone can hold in their
 // head — a tier per feature is the per-feature knob this package exists to

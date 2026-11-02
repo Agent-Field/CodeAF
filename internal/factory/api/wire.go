@@ -57,6 +57,20 @@ const ReasonHasRunning = "has_running"
 // [factory.RepoOffWords].
 const ReasonRepoOff = "repo_off"
 
+// ReasonInFlight is the reason on the 409 that refuses a comment on a job's
+// issue while another comment on the same job is still being posted, so a
+// double click posts once. Nothing was posted by the refused call.
+const ReasonInFlight = "in_flight"
+
+// The outcome on a failure of a job's issue comment
+// (POST /v1/jobs/{id}/issue_comment): refused says nothing was posted;
+// unknown says GitHub's answer cannot say, so the person reads the issue
+// before posting again. A factory older than the field sends none.
+const (
+	CommentRefused = "refused"
+	CommentUnknown = "unknown"
+)
+
 // ReasonNeedsCheckout is the reason on the 409 that refuses a start whose
 // repository has no checkout on the factory's machine and cannot be cloned
 // there; the error is [factory.NeedsCheckout]'s sentence, naming why. It is
@@ -417,6 +431,12 @@ type Job struct {
 
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
+	// Area is the part of the repository the job's change touched most
+	// ([factory.JobArea], said by [AreaIn]): the repository's declared area,
+	// or else the top-level directory with a trailing slash ("cli/"), two
+	// segments deep under a container ("internal/factory/"). Absent before
+	// the job changed a file, or when it changed files at the root alone.
+	Area string `json:"area,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
 	Draft *bool  `json:"draft,omitempty"`
 	ID    int    `json:"document_id"`
