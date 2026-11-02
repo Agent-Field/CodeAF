@@ -1549,3 +1549,9 @@ work or start refusals (`repo_off` or `needs_checkout` in refusal.reason),
 A start refusal removes a provisional copy; its allocated document ID is not
 reused. Storage or receipt failures after a successful start remain uncertain;
 the engine never repeats the write automatically.
+
+`factory.job`'s `desk.run.log[]` carries optional `kind: "tool"` for tool
+captions; `text` remains readable, with one tool name and home paths replaced
+by `~` before a 240-character limit. Other lines omit `kind`. Worker reports
+retain their existing body shape, carrying tool identity in `tone: "tool"`;
+no hello feature or new error code is needed.

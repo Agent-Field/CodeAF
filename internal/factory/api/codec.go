@@ -887,7 +887,12 @@ func toRubric(r *Rubric) *factory.Rubric {
 }
 
 func fromLog(l factory.LogLine) LogLine {
-	return LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	out := LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	if l.Tone == "tool" || factory.LegacyToolLog(l) {
+		out.Kind = "tool"
+		out.Text = factory.ToolLogText(l.Text, "")
+	}
+	return out
 }
 
 func toLog(l LogLine) factory.LogLine {
