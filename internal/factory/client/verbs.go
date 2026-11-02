@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 func (c *Client) launch(id int) error  { return c.postID(id, "run", nil) }
