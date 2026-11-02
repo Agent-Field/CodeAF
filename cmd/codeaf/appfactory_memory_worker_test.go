@@ -97,7 +97,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			case started <- struct{}{}:
 			default:
 			}
-			fmt.Fprintf(w, "data: {\"id\":\"gen-late-memory\",\"model\":%q,\"choices\":[{\"delta\":{\"content\":\"{\\\"claims\\\":[]}\"}}]}\n\n", knowledge.Model)
+			fmt.Fprintf(w, "data: {\"id\":\"gen-late-memory\",\"model\":%q,\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n", knowledge.Model)
 			w.(http.Flusher).Flush()
 			if pauseBoundary && n == 1 {
 				select {
