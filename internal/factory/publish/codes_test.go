@@ -28,7 +28,7 @@ func TestEveryFailureHasOneStableCodeAndNextStep(t *testing.T) {
 		}
 		seen[row.Code] = true
 	}
-	if !seen["machine_offline"] || len(seen) != 10 {
+	if !seen["machine_offline"] || len(seen) != 11 {
 		t.Fatalf("codes = %v", seen)
 	}
 	for _, tt := range tests {
