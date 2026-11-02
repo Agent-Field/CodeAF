@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -138,7 +139,7 @@ func TestFactoryActionsAbsentWithoutActor(t *testing.T) {
 		t.Fatalf("a reader announced %v", got.Features)
 	}
 	got := withFactoryActorFeature(Hello{}, &actorEngine{})
-	if len(got.Features) != 1 || got.Features[0] != FeatureFactoryJobActions {
+	if !slices.Equal(got.Features, []string{FeatureFactoryJobActions, FeatureFactoryStopAnyVersion}) {
 		t.Fatalf("an actor announced %v", got.Features)
 	}
 	// factory.remote is still announced by the reader half alone.
