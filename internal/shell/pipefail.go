@@ -9,13 +9,13 @@ import (
 // runs a command with: pipefail on, so a failing stage cannot hide behind a
 // succeeding reader, and one exception to it.
 //
-// THE EXCEPTION IS A READER THAT STOPPED EARLY. In `git log | head` the reader
+// The exception is a reader that stopped early. In `git log | head` the reader
 // exits once it has its lines and the writer dies of SIGPIPE; pipefail alone
 // reports that 141 and the whole command reads as failed. The shell itself is
 // the only place that knows each stage's status, so the command runs behind a
 // short EXIT trap that reads PIPESTATUS of the last pipeline and, when a stage
-// other than the last ended in SIGPIPE, recomputes pipefail with those stages
-// counted as successes. Every other status stands: a real failure in any stage
+// other than the last exited 141 (the status SIGPIPE leaves), recomputes
+// pipefail with those stages counted as successes. Every other status stands: a real failure in any stage
 // still wins, and a last stage that failed is still the answer.
 //
 // It declines to judge when it cannot read the statuses honestly. Under

@@ -74,7 +74,7 @@ func TestPipedFailureIsNotReportedAsSuccess(t *testing.T) {
 	}
 }
 
-// A READER THAT STOPS EARLY IS NOT A FAILED COMMAND. `git log | head` kills
+// A reader that stops early is not a failed command. `git log | head` kills
 // its writer with SIGPIPE, which pipefail alone reports as 141; every other
 // failing stage must still fail.
 func TestAnEarlyReaderIsNotAFailureButEveryOtherStageIs(t *testing.T) {
