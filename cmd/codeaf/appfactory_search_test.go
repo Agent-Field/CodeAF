@@ -92,8 +92,14 @@ func TestAppSearchJobs(t *testing.T) {
 		var opens, releases int
 		w.backend.open = fakeOpener(&fakeConversation{}, &opens, &releases, &mu)
 		var created struct{ Agent appwire.Agent }
-		w.must("agents.create", map[string]any{"workspace": t.TempDir()}, &created)
+		w.must("agents.create", map[string]any{"workspace": t.TempDir(), "text": "Needle conversation"}, &created)
 		w.must("agents.rename", map[string]any{"id": created.Agent.ID, "title": "Needle conversation"}, nil)
+		var listed struct{ Agents []appwire.Agent }
+		w.must("agents.list", map[string]any{}, &listed)
+		if len(listed.Agents) != 1 || listed.Agents[0].ID != created.Agent.ID {
+			t.Fatalf("agent fixture must be listed before testing search: %+v", listed)
+		}
+
 		var reads atomic.Int32
 		attach := func(jobs []api.Job, hang bool) appwire.FactoryConnection {
 			srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
