@@ -12,8 +12,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// THE READ ASKS AT TEMPERATURE 0: the same issue read twice should land in the
-// same band (live eval: 17 of 17 at 0 against 31 of 34 at the default).
+// The read asks at temperature 0, so the same issue read twice lands in the
+// same band.
 func TestTheFactoryReadAsksAtTemperatureZero(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	got := make(chan *float64, 1)

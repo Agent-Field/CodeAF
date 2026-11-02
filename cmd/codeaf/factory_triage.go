@@ -156,8 +156,8 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 			return "", err
 		}
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryTriageName))
-		// AT TEMPERATURE 0, so the same issue read twice lands in the same band
-		// (the live eval's read agreement went from 31 of 34 to 17 of 17).
+		// The read asks at temperature 0, so the same issue read twice lands
+		// in the same band.
 		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)}, ai.WithTemperature(0))
 		if err != nil {
 			return "", err
@@ -186,7 +186,7 @@ func factoryTriageModel(settings config.Config) (string, error) {
 // factoryRoleModel is the model one factory AI call runs on: the launch's or
 // the profile's one model when there is one, else the call's page-AI role
 // (insight_factory_read or insight_factory_scout, then the insight family's
-// pin and the engine's default for it), else the small-work seat as before.
+// pin and the engine's default for it), else the small-work seat.
 func factoryRoleModel(settings config.Config, role roles.Role) (string, error) {
 	if parent := factoryWorkerParent(); parent.OneModel {
 		return strings.TrimSpace(parent.Model), nil
