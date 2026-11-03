@@ -2,6 +2,7 @@ package session
 
 import (
  "context"
+ "encoding/json"
  "fmt"
  "net/http"
  "net/http/httptest"
@@ -45,6 +46,10 @@ func TestCancelledHelperRetryBooksEachAttemptOnce(t *testing.T) {
  if err != nil { t.Fatal(err) }
  if len(rows) != 2 || agent.Usage().Calls != 2 || agent.Usage().CostUSD != 0.14 { t.Fatalf("retry bookings: rows=%+v usage=%+v", rows, agent.Usage()) }
  for i, row := range rows {
+  data, _ := json.Marshal(row)
+  var fields map[string]any
+  json.Unmarshal(data, &fields)
+  if fields["generation_id"] != fmt.Sprintf("helper-%d", i+1) { t.Errorf("helper receipt id: %s", data) }
   if row.USD != 0.07 || row.Calls != 1 || row.Role != "caption" { t.Errorf("row %d=%+v", i, row) }
  }
 }
