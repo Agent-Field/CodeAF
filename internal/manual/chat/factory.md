@@ -427,7 +427,7 @@ The manager never changes the plan from a comment on its own yet, even one that 
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
-The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
+The factory reads GitHub on its own about once a minute and finishes untouched Backlog issues it learns were closed. When a person starts a job that came from GitHub (start, run or run again), the factory also reads that one issue again first, in one request, protecting starts between polls and jobs the poll leaves alone. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
@@ -695,22 +695,21 @@ from the automatic arrival read and start rules.
 
 The poll preserves running and queued jobs, jobs already started, and jobs
 with a run, conversation, work folder, pull request, spending, failure or brief
-work.
-A needs-you row with no such work or decided pipeline can finish; its pending
+work. A needs-you row with no such work or decided pipeline can finish; its pending
 question clears. A row whose start rules already decided its pipeline stays
-untouched, including a pending ask-first decision. The poll never stops a running job. A person's Start still
-checks GitHub directly, including between polls.
+untouched, including a pending ask-first decision. The poll never stops a
+running job. A person's Start still checks GitHub directly, including between polls.
 
 The initial import lists open issues. Later polls include closures updated
-since the cursor, using a conditional request when nothing changed. After changes, the poll
-primes the next cursor query so its ETag names that exact request. An older
+since the cursor, using a conditional request when nothing changed. After
+changes, the poll primes the next cursor query so its ETag names that exact request. An older
 factory's existing rows get a one-time reconciliation: at most 40 direct
 issue checks per repository per poll, only for existing untouched rows absent
 from that poll's results. Progress survives restarts. A missing issue stays
-unchanged and does not block later rows; other read failures retry next poll. Larger backlogs continue
-over subsequent polls; the factory never walks the repository's closed history.
+unchanged and does not block later rows; other read failures retry next poll.
+Larger backlogs continue over subsequent polls; the factory never walks the repository's closed history.
 
 Reopening an issue on GitHub refreshes its text but keeps a poll-finished job
-Done. A person must explicitly start it again after reopening; reopening alone
+Done. A person must choose **Run again** after reopening; reopening alone
 never authorizes more spending. Triage or Look closer already in flight may
 finish before the closure arrives.

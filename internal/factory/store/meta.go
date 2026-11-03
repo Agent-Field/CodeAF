@@ -11,12 +11,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
-// SourceMeta is what a polling source last said about itself: when a read
-// last succeeded, when one was last tried, and the trouble when the last try
-// failed. It lives on disk beside the items, at <root>/sources.json, because
-// THE PROCESS THAT POLLS IS NOT ALWAYS THE ONE THAT DRAWS: a window and the
-// engine behind it may both poll, taking turns through the poller lock, and
-// whichever read last, every window draws from this one file.
 // IssueSweep keeps the bounded reconciliation of rows imported before closure polling.
 type IssueSweep struct {
 	Last    int  `json:"last"`
@@ -24,6 +18,12 @@ type IssueSweep struct {
 	Done    bool `json:"done"`
 }
 
+// SourceMeta is what a polling source last said about itself: when a read
+// last succeeded, when one was last tried, and the trouble when the last try
+// failed. It lives on disk beside the items, at <root>/sources.json, because
+// THE PROCESS THAT POLLS IS NOT ALWAYS THE ONE THAT DRAWS: a window and the
+// engine behind it may both poll, taking turns through the poller lock, and
+// whichever read last, every window draws from this one file.
 type SourceMeta struct {
 	IssueSweeps map[string]IssueSweep `json:"issue_sweeps,omitempty"`
 	IssueTags   map[string]string     `json:"issue_tags,omitempty"`
