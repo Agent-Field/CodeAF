@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf workers read notes delivered while their final answer is streaming
-pr: 0
+pr: 2259
 surface: [engine, app, chat]
 invalidates:
   - "A task could finish with an accepted note saved under its key but without a read receipt, because turn cleanup emptied the worker's queue before its runner checked for more words. Pending directions now stay queued until the worker's next request carries them and records the read step."
