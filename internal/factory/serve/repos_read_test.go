@@ -51,14 +51,15 @@ func TestReposAnswersFromStoreWithoutGitHubRequest(t *testing.T) {
 }
 
 type reposRig struct {
-	h       *Handler
-	st      *store.Store
-	now     atomic.Int64
-	calls   atomic.Int32
-	who     atomic.Value
-	token   atomic.Value
-	refused atomic.Bool
-	walk    func(context.Context) ([]factory.RepoInfo, error)
+	h            *Handler
+	st           *store.Store
+	now          atomic.Int64
+	calls        atomic.Int32
+	who          atomic.Value
+	token        atomic.Value
+	refused      atomic.Bool
+	notConnected atomic.Bool
+	walk         func(context.Context) ([]factory.RepoInfo, error)
 }
 
 func newReposRig(t *testing.T) *reposRig {
@@ -77,6 +78,9 @@ func newReposRig(t *testing.T) *reposRig {
 	seam := factory.Seam{GitHub: func(context.Context) (factory.GitHubLink, error) {
 		if f.refused.Load() {
 			return factory.GitHubLink{}, githubStatusError(401)
+		}
+		if f.notConnected.Load() {
+			return factory.GitHubLink{}, nil
 		}
 		return factory.GitHubLink{Login: f.who.Load().(string), Via: factory.ViaToken}, nil
 	},
@@ -462,6 +466,7 @@ func TestReposIdentityFailureUsesOnlySameCredentialStoredList(t *testing.T) {
 		err                error
 		token, login       string
 		stored, wantStored bool
+		notConnected       bool // no token: an answer without the stored list, not a failure
 	}{
 		{name: "network", err: errors.New("connection reset"), stored: true, wantStored: true},
 		{name: "server", err: &forge.APIError{StatusCode: 503}, stored: true, wantStored: true},
@@ -470,7 +475,7 @@ func TestReposIdentityFailureUsesOnlySameCredentialStoredList(t *testing.T) {
 		{name: "revoked", err: fmt.Errorf("identity: %w", &forge.APIError{StatusCode: 401}), stored: true},
 		{name: "forbidden", err: &forge.APIError{StatusCode: 403}, stored: true},
 		{name: "expired", err: fmt.Errorf("identity: %w", errGitHubExpired), stored: true},
-		{name: "lost", stored: true, token: ""},
+		{name: "lost", stored: true, token: "", notConnected: true},
 		{name: "changed token", err: errors.New("connection reset"), token: "other-token", stored: true},
 		{name: "changed identity", err: errors.New("connection reset"), login: "bob", stored: true},
 		{name: "nothing stored", err: errors.New("connection reset")},
@@ -496,6 +501,10 @@ func TestReposIdentityFailureUsesOnlySameCredentialStoredList(t *testing.T) {
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || len(got.Available) != 1 || got.Available[0].Full != "acme/api" || !got.ReadAt.Equal(old.ReadAt) {
 					t.Fatalf("stored read: %d %s", w.Code, w.Body)
 				}
+			} else if tc.notConnected {
+				if w.Code != 200 || strings.Contains(w.Body.String(), "acme/api") {
+					t.Fatalf("not connected: %d %s", w.Code, w.Body)
+				}
 			} else if w.Code != 500 || strings.Contains(w.Body.String(), "acme/api") {
 				t.Fatalf("unsafe fallback: %d %s", w.Code, w.Body)
 			}
@@ -518,5 +527,30 @@ func TestReposTransientIdentityFailureCannotOverrideRefusedDiscovery(t *testing.
 	w := f.read()
 	if w.Code != 500 || strings.Contains(w.Body.String(), "acme/api") {
 		t.Fatalf("refused sign-in: %d %s", w.Code, w.Body)
+	}
+}
+
+// No token at all is not a lost sign-in: the page shows the repos that are on and
+// offers Connect GitHub. No GitHub call, and nothing of an earlier account's list.
+func TestReposNotConnectedAnswersWatchedOnly(t *testing.T) {
+	f := newReposRig(t)
+	if w := f.read(); w.Code != 200 {
+		t.Fatalf("connected: %d %s", w.Code, w.Body)
+	}
+	awaitRepos(t, f.h)
+	if err := f.st.SetRepos([]string{"acme/on"}); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.calls.Load()
+	f.notConnected.Store(true)
+	w := f.read()
+	if w.Code != 200 {
+		t.Fatalf("not connected: %d %s", w.Code, w.Body)
+	}
+	if !strings.Contains(w.Body.String(), "acme/on") || strings.Contains(w.Body.String(), "acme/api") {
+		t.Fatalf("not connected answers the watched repos only: %s", w.Body)
+	}
+	if f.calls.Load() != calls {
+		t.Fatal("not connected: no walk")
 	}
 }

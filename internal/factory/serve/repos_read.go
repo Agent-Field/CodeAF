@@ -68,7 +68,10 @@ func (h *Handler) readRepos(ctx context.Context) ([]string, []factory.RepoInfo, 
 		return nil, nil, time.Time{}, err
 	}
 	if key == "" || !link.Connected() || link.Login == "" {
-		return nil, nil, time.Time{}, errGitHubExpired
+		// Not connected is an answer, not a failure: the repos that are on stay on
+		// the page beside Connect GitHub, as before this read was stored.
+		watched, err := h.config.Store.Repos()
+		return watched, nil, time.Time{}, err
 	}
 	identity := strings.ToLower(link.Login)
 	for {
