@@ -121,10 +121,10 @@ func (a *Agent) resolveTaskModel(word string) taskModelChoice {
 func (a *Agent) defaultTaskModel(available []string) string {
 	a.mu.Lock()
 	configured := strings.TrimSpace(a.config.TaskModel)
-	source, model := a.config.RolesSource, a.model
+	reader, model := readerFor(a.config, a.model), a.model
 	a.mu.Unlock()
 	if configured == "" {
-		if seat, ok := roles.TierModel(roles.Source(source), roles.TierWorker); ok {
+		if seat, ok := reader.TierModel(roles.TierWorker); ok {
 			id, _ := roles.SplitEffort(seat)
 			configured = strings.TrimSpace(id)
 		}
