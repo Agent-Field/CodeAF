@@ -110,6 +110,7 @@ func readPendingRows(t *testing.T, profileDir string) []pendingLanding {
 // unverified state a judge scores; a pool that forbids reading leaves none; and
 // two runs never share an id, because the restart sweep dedups on it.
 func TestExecLeavesAPendingJudgeRecordForTheRestartSweep(t *testing.T) {
+	t.Setenv("CODEAF_MODEL_POOL", "on")
 	model, profileDir := execPendingHome(t)
 
 	envelope := runOnePendingExec(t, model)
