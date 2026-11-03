@@ -1,6 +1,9 @@
 package main
 
 import (
+ "bytes"
+ "encoding/json"
+ "os"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -90,4 +93,26 @@ func TestFactoryExistingJobSendTouchesJob(t *testing.T) {
 	if factory.JobUnworked(after) || !after.PersonTouched {
 		t.Fatalf("sent message did not count: unworked=%t touched=%t", factory.JobUnworked(after), after.PersonTouched)
 	}
+}
+
+func TestFactoryJobChatsDoesNotMigrateRepositoryOnRead(t *testing.T) {
+ s := newLocalSetup(t)
+ st := s.start()
+ floor := s.backend.local.host.floor
+ it, err := floor.Create(factory.Item{Repo: "acme/api", Product: "acme", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+ if err != nil { t.Fatal(err) }
+ type envelope struct { Schema int `json:"schema"`; Revision int `json:"revision"`; Item factory.Item `json:"item"` }
+ raw, err := os.ReadFile(floor.ItemPath(it.ID))
+ if err != nil { t.Fatal(err) }
+ var doc envelope
+ if err := json.Unmarshal(raw, &doc); err != nil { t.Fatal(err) }
+ doc.Item.Repo = "api"
+ raw, err = json.Marshal(doc)
+ if err != nil { t.Fatal(err) }
+ if err := os.WriteFile(floor.ItemPath(it.ID), raw, 0600); err != nil { t.Fatal(err) }
+ var chats appwire.FactoryJobChats
+ s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
+ kept, err := os.ReadFile(floor.ItemPath(it.ID))
+ if err != nil { t.Fatal(err) }
+ if !bytes.Equal(raw, kept) { t.Fatal("job chat read rewrote repository identity or version") }
 }
