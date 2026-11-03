@@ -367,7 +367,7 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 			continue
 		}
 		if strings.EqualFold(is.State, "closed") {
-			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, Origin: factory.OriginForge, Changed: is.Updated, DoneHow: StandingClosed})
+			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, GitHubIssueID: is.ID, Origin: factory.OriginForge, Changed: is.Updated, DoneHow: StandingClosed})
 			s.mu.Lock()
 			delete(s.owed[full], is.Number)
 			s.mu.Unlock()
@@ -474,7 +474,7 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 	body := clip(is.Body, bodyLimit)
 	return factory.Item{
 		Repo: name, Product: owner, Places: []string{name},
-		Num: is.Number, Kind: factory.KindIssue,
+		Num: is.Number, Kind: factory.KindIssue, GitHubIssueID: is.ID,
 		Title: is.Title, Body: body, Author: is.User,
 		Tier:   s.tier(ctx, owner, name, is.User),
 		Origin: factory.OriginForge, Synced: true,
@@ -643,6 +643,7 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 		}
 
 		out := s.issueItem(ctx, owner, name, is)
+		out.GitHubIssueID = is.ID
 		// A transferred issue answers with its new number, which here would be
 		// some other issue, so only the issue asked about can read as closed.
 		if strings.EqualFold(is.State, "closed") && is.Number == it.Num {

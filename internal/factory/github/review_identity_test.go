@@ -61,6 +61,6 @@ func TestReviewStandingRejectsReplacementIssue(t *testing.T) {
  f.identity[1], f.state[1] = 9001, "closed"
  it := f.row(1)
  how, err := source.Standing(context.Background(), f.api, it)
- if err == nil && how == source.StandingClosed { t.Fatal("Standing accepted closed replacement identity: pinned=1001 answer=9001") }
- if factory.ClosedForAutomation(context.Background(), f.st.Root(), it, func(ctx context.Context, row factory.Item) (string, error) { return source.Standing(ctx, f.api, row) }) { t.Fatal("replacement identity stopped automation") }
+ if err == nil && how.How == source.StandingClosed { t.Fatal("Standing accepted closed replacement identity: pinned=1001 answer=9001") }
+ if factory.ClosedForAutomation(context.Background(), f.st.Root(), it, func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) { return source.Standing(ctx, f.api, row) }) { t.Fatal("replacement identity stopped automation") }
 }

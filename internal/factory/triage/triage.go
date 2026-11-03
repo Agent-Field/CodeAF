@@ -428,7 +428,7 @@ const CallTries = 3
 type Options struct {
 	// Standing reads GitHub before the worker pays for an arrival read. A person's
 	// Read press ([ReadThese]) isn't checked: they asked. Nil leaves reads unchanged.
-	Standing  func(context.Context, factory.Item) (string, error)
+	Standing  func(context.Context, factory.Item) (factory.SourceStanding, error)
 	AskFirst  func(factory.Item) []string
 	AfterTick func(context.Context) error
 	// Off is "Read new issues as they arrive" turned off: a tick reads

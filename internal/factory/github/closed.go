@@ -94,6 +94,8 @@ func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []s
 			}
 			left--
 			if err := s.finishIfClosed(ctx, st, it); err != nil {
+				q.sequence++
+				c.order = q.sequence
 				c.failures++
 				c.retry = now.Add(Backoff(time.Minute, c.failures))
 				q.pending[id] = c

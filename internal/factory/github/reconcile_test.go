@@ -264,7 +264,7 @@ func TestClosedPollNeverStopsRunningOrQueuedJobs(t *testing.T) {
 		t.Fatal("poll interfered with work")
 	}
 	calls := 0
-	if !factory.ClosedForAutomation(context.Background(), f.st.Root(), f.row(1), func(context.Context, factory.Item) (string, error) { calls++; return "closed", nil }) || calls != 1 {
+	if !factory.ClosedForAutomation(context.Background(), f.st.Root(), f.row(1), func(context.Context, factory.Item) (factory.SourceStanding, error) { calls++; return factory.SourceStanding{How: "closed"}, nil }) || calls != 1 {
 		t.Fatal("separate spend guard missing")
 	}
 }

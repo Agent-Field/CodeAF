@@ -246,6 +246,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		}
 		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
+			if old.GitHubIssueID != 0 && old.GitHubIssueID != in.GitHubIssueID { continue }
 			if in.DoneHow == StandingClosed {
 				continue
 			}
@@ -254,6 +255,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			}
 			at := time.Now()
 			errs = append(errs, st.Update(old.ID, func(it *factory.Item) error {
+				if it.GitHubIssueID != 0 && it.GitHubIssueID != in.GitHubIssueID { return nil }
+				if it.GitHubIssueID == 0 { it.GitHubIssueID = in.GitHubIssueID }
 				words := it.Title != in.Title || it.Body != in.Body
 				labels := !sameLabels(it.Labels, in.Labels)
 				switch {
@@ -358,6 +361,7 @@ func itemKey(it factory.Item) string {
 func forgeChanged(old, in factory.Item) bool {
 	// A pull request handed over before its files were read says nothing
 	// about its files or line counts.
+	if old.GitHubIssueID == 0 && in.GitHubIssueID != 0 { return true }
 	detailed := in.Kind != factory.KindPR || in.Files != nil
 	if old.Draft != in.Draft || old.Title != in.Title || old.Body != in.Body || old.Checks != in.Checks || (detailed && old.Diff != in.Diff) {
 		return true

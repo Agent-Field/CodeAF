@@ -327,9 +327,14 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		return false
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), recheckWait)
-	how, err := h.config.Recheck(ctx, it)
+	answer, err := h.config.Recheck(ctx, it)
 	cancel()
-	if err != nil || (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) {
+	if errors.Is(err, factory.ErrSourceIdentityChanged) || (err == nil && !answer.Matches(it)) {
+  h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.", it.Num), "conflict", "", nil, factory.JobState(it))
+  return true
+ }
+ how := answer.How
+ if err != nil || (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) {
 		return false
 	}
 	now := h.clock().UTC()
@@ -337,6 +342,7 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 	finished := false
 	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 		state = factory.JobState(*cur)
+		if !answer.Matches(*cur) { return factory.ErrSourceIdentityChanged }
 		if !factory.UntouchedIssue(*cur) {
 			return nil
 		}
@@ -352,10 +358,12 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		cur.StopUndo = nil
 		return nil
 	})
-	if h.failed(w, err) {
-		return true
-	}
-	if finished && h.config.Record != nil {
+	if errors.Is(err, factory.ErrSourceIdentityChanged) {
+  h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.", it.Num), "conflict", "", nil, state)
+  return true
+ }
+ if h.failed(w, err) { return true }
+ if finished && h.config.Record != nil {
 		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.SourceClosed, Verb: how, Job: it.ID, Detail: "on GitHub", Cost: jobCost(it)}); h.failed(w, err) {
 			return true
 		}

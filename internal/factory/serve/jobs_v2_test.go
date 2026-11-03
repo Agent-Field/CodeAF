@@ -673,12 +673,12 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
 	standing, reads := map[int]string{}, map[int]int{}
-	f.cfg.Recheck = func(_ context.Context, it factory.Item) (string, error) {
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (factory.SourceStanding, error) {
 		reads[it.Num]++
 		if it.Num == 404 {
-			return "", fmt.Errorf("dial tcp: no route")
+			return factory.SourceStanding{}, fmt.Errorf("dial tcp: no route")
 		}
-		return standing[it.Num], nil
+		return factory.SourceStanding{How: standing[it.Num]}, nil
 	}
 	f.h = serve.New(f.seam, f.cfg)
 
@@ -1210,11 +1210,11 @@ func TestClosedStartReportsConcurrentRowState(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
 	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
-	f.cfg.Recheck = func(context.Context, factory.Item) (string, error) {
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
 		if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; return nil }); err != nil {
 			t.Fatal(err)
 		}
-		return github.StandingClosed, nil
+		return factory.SourceStanding{How: github.StandingClosed}, nil
 	}
 	f.h = serve.New(f.seam, f.cfg)
 	w := f.post(t, it, "start_now", "", 409)
@@ -1239,7 +1239,7 @@ func TestReviewStartRejectsChangedIdentity(t *testing.T) {
  srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"id":9001,"number":12,"state":"closed"}`) }))
  defer srv.Close()
  client := forge.NewClient("fixture").WithBaseURL(srv.URL)
- f.cfg.Recheck = func(ctx context.Context, row factory.Item) (string, error) {
+ f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
   return github.Standing(ctx, client, row)
  }
  f.h = serve.New(f.seam, f.cfg)

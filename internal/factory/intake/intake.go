@@ -20,7 +20,7 @@ import (
 // Options injects repository policy and the existing launch door; tests need no model.
 type Options struct {
 	// Standing reads GitHub before an automatic start or ask. Nil keeps the existing policy.
-	Standing func(context.Context, factory.Item) (string, error)
+	Standing func(context.Context, factory.Item) (factory.SourceStanding, error)
 	Refresh  func(context.Context) error
 	Load     func(string) (pipeline.File, error)
 	// LoadJob reads ONE JOB'S OWN FILE (pipeline.JobFile): the one it was
