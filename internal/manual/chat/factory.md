@@ -453,8 +453,8 @@ A current factory keeps a choice sent to a current runner until that runner
 has received and handled it. Losing a heartbeat reply delays the choice until
 the next heartbeat; receiving it twice does not apply it twice during that run.
 This includes answers, steering words, manager replies, budget and model choices,
-autonomy changes, and pauses. Their order stays the same. Publish and merge
-continue to wait for the runner that pulls that work; a live heartbeat does
+autonomy changes, and pauses. Their order stays the same. Rechecks, publish
+and merge continue to wait for the runner that pulls that work; a live heartbeat does
 not start them. Stop clears pending choices, and choices from an ended run
 are not applied to a later run.
 
