@@ -620,6 +620,21 @@ Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
 
+## Job Brief inputs — later requests, answers and saved notes
+
+The Brief reads the issue plus your later requests from gate answers and saved
+notes, alongside the plan and step results. A later request wins where it
+disagrees with the issue or plan. Work that follows your request is treated as
+asked, never as a fault, surprise or scope creep. A real miss against your
+request is still reported, and the Brief names the request as asked.
+
+Plain continue, yes and no answers are omitted. The writer keeps the newest
+12 distinct requests, up to 2 KiB per text and 16 KiB of request JSON, oldest
+first. Dated answers carry their step, gate and answer time. Saved notes have
+no recorded step or time; their saved order comes before dated answers.
+Duplicate words appear once. Requests survive cuts to fit the writer's input.
+A new request makes an earlier Brief out of date.
+
 ## Job Brief after proof, publishing and an out of date line
 
 The job's Brief refreshes when proof waits for your publication approval and
