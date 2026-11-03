@@ -3,9 +3,12 @@ package session
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -125,35 +128,89 @@ func TestResumeRetainsOnlyLiveStamps(t *testing.T) {
 	assertLiveStamps(t, a, journalStampInstants(t, a, nil))
 }
 
+const resumeDiscardedWindowBytes = 54 * 48 * (len("long conversation ") * 128)
+
 func TestResumeHeapDoesNotScaleWithDiscardedWindows(t *testing.T) {
-	measure := func(passes int) uint64 {
-		path := stampWindowJournal(t, passes, 48)
-		runtime.GC()
-		var before, after runtime.MemStats
-		runtime.ReadMemStats(&before)
-		a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) { c.SessionFile = path })
-		runtime.GC()
-		runtime.ReadMemStats(&after)
-		runtime.KeepAlive(a)
-		if after.HeapAlloc < before.HeapAlloc {
-			return 0
-		}
-		return after.HeapAlloc - before.HeapAlloc
+	short, long := resumeHeapSample(t, 6, false), resumeHeapSample(t, 60, false)
+	growth := int64(long) - int64(short)
+	t.Logf("retained heap growth: 6 passes %d bytes, 60 passes %d bytes; duplicated content %d bytes", short, long, resumeDiscardedWindowBytes)
+	if growth >= resumeDiscardedWindowBytes/4 {
+		t.Fatalf("discarded windows retained %d extra bytes; limit %d", growth, resumeDiscardedWindowBytes/4)
 	}
-	minimum := func(passes int) uint64 {
-		var samples [3]uint64
-		for i := range samples {
-			samples[i] = measure(passes)
-		}
-		best := min(samples[0], samples[1], samples[2])
-		t.Logf("%d passes: retained heap samples %v bytes, minimum %d bytes", passes, samples, best)
-		return best
+}
+
+func TestResumeHeapMeasureRejectsRetainedWindows(t *testing.T) {
+	short, long := resumeHeapSample(t, 6, true), resumeHeapSample(t, 60, true)
+	growth := int64(long) - int64(short)
+	if growth < resumeDiscardedWindowBytes/4 {
+		t.Fatalf("measurement accepted retained windows: growth %d bytes; limit %d", growth, resumeDiscardedWindowBytes/4)
 	}
-	short, long := minimum(6), minimum(60)
-	const duplicated = 54 * 48 * (len("long conversation ") * 128)
-	t.Logf("retained heap growth: 6 passes %d bytes, 60 passes %d bytes; duplicated content %d bytes", short, long, duplicated)
-	if int64(long)-int64(short) >= int64(duplicated/4) {
-		t.Fatalf("discarded windows retained %d extra bytes; limit %d", int64(long)-int64(short), duplicated/4)
+	t.Logf("retained-window control rejected: growth %d bytes; limit %d", growth, resumeDiscardedWindowBytes/4)
+}
+
+func resumeHeapSample(t *testing.T, passes int, retainWindows bool) uint64 {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "heap-bytes")
+	cmd := exec.Command(executable, "-test.run=^TestResumeHeapSampleProcess$", "-test.count=1", "-test.timeout=2m")
+	cmd.Env = append(os.Environ(),
+		"CODEAF_TEST_RESUME_HEAP_PASSES="+strconv.Itoa(passes),
+		"CODEAF_TEST_RESUME_HEAP_OUTPUT="+output,
+		"CODEAF_TEST_RESUME_HEAP_RETAIN="+strconv.FormatBool(retainWindows))
+	if log, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("resume heap subprocess: %v\n%s", err, log)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heap, err := strconv.ParseUint(string(data), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%d passes: isolated retained heap %d bytes (retain windows %v)", passes, heap, retainWindows)
+	return heap
+}
+
+// Each sample owns a fresh process, so other tests and earlier agents cannot
+// grow or shrink its live heap. Compare absolute post-GC heaps, not deltas from
+// a baseline whose unrelated objects may disappear during resume.
+func TestResumeHeapSampleProcess(t *testing.T) {
+	value := os.Getenv("CODEAF_TEST_RESUME_HEAP_PASSES")
+	if value == "" {
+		return
+	}
+	passes, err := strconv.Atoi(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := stampWindowJournal(t, passes, 48)
+	a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) { c.SessionFile = path })
+	var retained [][]ai.Message
+	if os.Getenv("CODEAF_TEST_RESUME_HEAP_RETAIN") == "true" {
+		for range passes {
+			window := make([]ai.Message, 48)
+			for i := range window {
+				window[i] = textMessage("user", strings.Repeat("long conversation ", 128))
+			}
+			retained = append(retained, window)
+		}
+	}
+	var samples [3]uint64
+	for i := range samples {
+		runtime.GC()
+		var stats runtime.MemStats
+		runtime.ReadMemStats(&stats)
+		samples[i] = stats.HeapAlloc
+	}
+	runtime.KeepAlive(a)
+	runtime.KeepAlive(retained)
+	heap := min(samples[0], samples[1], samples[2])
+	if err := os.WriteFile(os.Getenv("CODEAF_TEST_RESUME_HEAP_OUTPUT"), []byte(strconv.FormatUint(heap, 10)), 0600); err != nil {
+		t.Fatal(err)
 	}
 }
 
