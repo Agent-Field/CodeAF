@@ -40,9 +40,9 @@ func (a *Agent) refuseFactoryTools(hub *eventHub, calls []ai.ToolCall, why strin
 // The marker follows only automatic work through retries and auxiliary calls.
 type factoryAutomaticTurnKey struct{}
 
-func (a *Agent) checkFactoryCall(ctx context.Context) error {
- if automatic,_:=ctx.Value(factoryAutomaticTurnKey{}).(bool);automatic {
-  if why:=a.automaticFactoryRefusal();why!="" {return errors.New(why)}
+func factoryCallRefusal(ctx context.Context) error {
+ if refusal,_:=ctx.Value(factoryAutomaticTurnKey{}).(func()string);refusal!=nil {
+  if why:=refusal();why!="" {return errors.New(why)}
  }
  return nil
 }

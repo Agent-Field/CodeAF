@@ -337,7 +337,7 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
- if user.factoryWork || user.wake && !user.answersPerson && !user.answer {ctx=context.WithValue(ctx,factoryAutomaticTurnKey{},true)}
+ if user.factoryWork || user.wake && !user.answersPerson && !user.answer {ctx=context.WithValue(ctx,factoryAutomaticTurnKey{},a.automaticFactoryRefusal)}
 	defer func() {
 		if finished {
 			a.finishJobKnowledge(ctx)
