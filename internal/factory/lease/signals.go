@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
- "github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 // THE SIGNAL CHANNEL. A person's verb reaches the server, never the machine
@@ -94,27 +94,27 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 			}
 		}
 		var kept []Signal
-  holdSent := false
+		holdSent := false
 		for _, s := range doc.Signals[held.Job] {
-   if !publishing && s.Verb == SignalHold {
-    // Resume queues the next lease. A queued older hold must not undo it.
-    if !holdSent && run.StoredPaused(it) {
-     out = append(out, Signal{Verb: SignalHold, Yes: true})
-     holdSent = true
-    }
-    continue
-   }
+			if !publishing && s.Verb == SignalHold {
+				// Resume queues the next lease. A queued older hold must not undo it.
+				if !holdSent && run.StoredPaused(it) {
+					out = append(out, Signal{Verb: SignalHold, Yes: true})
+					holdSent = true
+				}
+				continue
+			}
 			if carriedOut(s.Verb) && !publishing {
 				kept = append(kept, s)
 			} else {
 				out = append(out, s)
 			}
 		}
-  // Hold is desired state, not a one-shot notification. Reuse the existing
-  // signal vocabulary so older workers also retry a lost heartbeat reply.
-  if !publishing && !holdSent && run.StoredPaused(it) {
-   out = append(out, Signal{Verb: SignalHold, Yes: true})
-  }
+		// Hold is desired state, not a one-shot notification. Reuse the existing
+		// signal vocabulary so older workers also retry a lost heartbeat reply.
+		if !publishing && !holdSent && run.StoredPaused(it) {
+			out = append(out, Signal{Verb: SignalHold, Yes: true})
+		}
 		if len(out) == 0 && len(doc.Signals[held.Job]) == len(kept) {
 			return false, nil
 		}

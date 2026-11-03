@@ -3,7 +3,7 @@ package worker_test
 import (
 	"context"
 	"net/http"
- "net/http/httptest"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,8 +32,8 @@ type rig struct {
 	run   *run.Runner
 	// record is the factory's record, where the service writes approvals.
 	record *record.Record
- mirror *store.Store
- seen *reportLog
+	mirror *store.Store
+	seen   *reportLog
 }
 
 func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
@@ -66,18 +66,22 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 	}
 	handler := serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, PullWait: 50 * time.Millisecond})
 	seen := &reportLog{}
- server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-  body := ""
-  if req.Method == http.MethodPost { body = peek(req) }
-  captured := httptest.NewRecorder()
-  handler.ServeHTTP(captured, req)
-  if !strings.HasSuffix(req.URL.Path, "/heartbeat") || strings.Contains(captured.Body.String(), `"verb"`) {
-   seen.add(req.URL.Path + " request=" + body + " response=" + captured.Body.String())
-  }
-  for key, values := range captured.Header() { w.Header()[key] = values }
-  w.WriteHeader(captured.Code)
-  _, _ = w.Write(captured.Body.Bytes())
- }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body := ""
+		if req.Method == http.MethodPost {
+			body = peek(req)
+		}
+		captured := httptest.NewRecorder()
+		handler.ServeHTTP(captured, req)
+		if !strings.HasSuffix(req.URL.Path, "/heartbeat") || strings.Contains(captured.Body.String(), `"verb"`) {
+			seen.add(req.URL.Path + " request=" + body + " response=" + captured.Body.String())
+		}
+		for key, values := range captured.Header() {
+			w.Header()[key] = values
+		}
+		w.WriteHeader(captured.Code)
+		_, _ = w.Write(captured.Body.Bytes())
+	}))
 	t.Cleanup(func() { server.Close(); handler.Close() })
 
 	mirror, err := store.Open(t.TempDir())
@@ -309,8 +313,8 @@ func TestAPauseAndResumeReachTheRunner(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			it, _ := g.st.Get(id)
-   local, _ := g.mirror.Get(id)
-   t.Fatalf("the worker's runner never said paused: factory=%+v worker=%+v running=%t reports=%q", it.Stream, local.Stream, g.run.Running(id), g.seen.all())
+			local, _ := g.mirror.Get(id)
+			t.Fatalf("the worker's runner never said paused: factory=%+v worker=%+v running=%t reports=%q", it.Stream, local.Stream, g.run.Running(id), g.seen.all())
 		}
 	}
 	if err := g.floor.Hold(id, false); err != nil {
