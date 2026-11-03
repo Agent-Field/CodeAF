@@ -1,7 +1,7 @@
 ---
 kind: added
 title: OpenCode Go connects as a built-in plan provider
-pr: 2298
+pr: 2309
 surface: [chat, docs]
 invalidates:
   - "The built-in provider list named OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Codex, Ollama and custom endpoints. OpenCode Go is now a built-in plan provider too."
