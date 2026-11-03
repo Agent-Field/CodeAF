@@ -81,10 +81,14 @@ func (c *appChats) wakePublication() {
 func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() time.Time, ticks <-chan time.Time, settled chan<- struct{}) {
 	c := &b.chats
 	var source *syncsetup.Sync
-	offered := false
+	// offered says the first pass for this binding has run, failing that the
+	// last pass left chats to try again; both decide only the sharing line.
+	offered, failing := false, false
 	refresh := false
 	var stateRetry time.Time
 	var stateBackoff time.Duration
+	sharing := newHomeSharing(b.relayHome())
+	defer sharing.release()
 	for {
 		if b.pairingWorkRefusal() == nil {
 			ready, shared := false, false
@@ -98,6 +102,8 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 					return
 				}
 				if !ok || !syncsetup.MayTalk(b.relayHome()) {
+					sharing.forget()
+					b.noteUnshared(nil)
 					return
 				}
 				if source == nil || source.Identity.ID() != next.Identity.ID() || source.Device.ID() != next.Device.ID() || source.Relay != next.Relay {
@@ -105,16 +111,26 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 					stateRetry, stateBackoff = time.Time{}, 0
 				}
 				if refresh {
-					if err := source.RefreshLocalChats(); err != nil {
-						b.sharingStatus("Sharing could not finish yet. Your chats are still saved here; codeaf will try again.")
-						return
-					}
 					refresh, offered = false, false
 				}
-				if !offered {
-					offered = b.publishLocalChats(source, now) == nil
+				// One process publishes for the home (homesharing.go). Every
+				// round rescans, so a chat that appears on disk is found.
+				if sharing.claim() {
+					err := b.publishLocalChats(source, now, !offered)
+					if !offered || (err != nil) != failing {
+						b.sharingLine(err)
+					}
+					offered, failing = true, err != nil
+					if ctx.Err() == nil {
+						sharing.copyOne(ctx)
+					}
+				} else if !offered || failing {
+					offered, failing = true, false
+					b.sharingLine(nil)
 				}
-				ready, shared = true, offered
+				u := sharing.note(source, now())
+				b.noteUnshared(&u)
+				ready, shared = true, !failing
 			}()
 			// Home state has its own lock. Network work here must not hold up
 			// inventory reads or Continue here after the startup chat pass.
@@ -273,9 +289,10 @@ func (b *appBackend) startChatFeed(s *syncsetup.Sync) dirwatch.Follower {
 }
 
 // PublishCopy is also the terminal's background publication door. One finite,
-// sequential pass offers existing cell chats without opening or resealing them.
-// Older chats are left to the terminal's separate conversion policy.
-func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) error {
+// sequential pass offers existing cell chats, and finished copies of older
+// chats, without opening or resealing them. first shows the sharing line while
+// the binding's first pass runs.
+func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time, first bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	guard.Go("app/existing-chats-cancel", func() {
@@ -285,7 +302,9 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) 
 		case <-ctx.Done():
 		}
 	})
-	b.sharingStatus("Sharing this computer's chats.")
+	if first {
+		b.sharingStatus("Sharing this computer's chats.")
+	}
 	err := s.PublishLocalChats(ctx, now, func(c cell.Cell, line string) {
 		// Unopened chats use the global sync reason. Queueing one identical
 		// per-chat fact on every outage retry would grow without a reader.
@@ -302,12 +321,16 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) 
 			b.syncFact(c, appSyncFact{line: line})
 		}
 	})
+	return err
+}
+
+// sharingLine says whether the last pass left chats to try again.
+func (b *appBackend) sharingLine(err error) {
 	if err != nil {
 		b.sharingStatus("Some chats could not be shared yet. They are still saved here; codeaf will try again.")
 	} else {
 		b.sharingStatus("")
 	}
-	return err
 }
 func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)

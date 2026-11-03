@@ -22,6 +22,23 @@ type Sync struct {
 	Mode       string          `json:"mode" enum:"quiet,on,off,unavailable"`
 	Reason     string          `json:"reason,omitempty"`
 	Disclosure *SyncDisclosure `json:"disclosure,omitempty"`
+	// Unshared counts this computer's chats the other computers cannot list
+	// yet. Absent while sync is not on here, or before the first count.
+	Unshared *SyncUnshared `json:"unshared,omitempty"`
+}
+
+// SyncUnshared is how many of this computer's chats have no directory record,
+// so the other computers do not list them. Total is the sum of the rest.
+type SyncUnshared struct {
+	Total int `json:"total"`
+	// Waiting are still to be uploaded: queued, uploading, or older chats
+	// still to be copied. They are shared without anything the person does.
+	Waiting int `json:"waiting"`
+	// Failing are chats whose last upload failed; the engine tries again.
+	Failing int `json:"failing"`
+	// KeptHere are older chats a rule keeps here: last used over 30 days ago,
+	// or working in the home folder. Opening one on this computer shares it.
+	KeptHere int `json:"kept_here"`
 }
 
 type SyncDisclosure struct {
