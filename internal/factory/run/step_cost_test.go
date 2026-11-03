@@ -2,6 +2,7 @@ package run_test
 
 import (
 	"encoding/json"
+ "fmt"
 	"math"
 	"testing"
 	"time"
@@ -107,4 +108,18 @@ func TestStepCostWorkerReceiptBeforeResult(t *testing.T) {
 	if got := api.FromItem(resumed).Steps[0].Cost; math.Abs(got-.01) > 1e-9 {
 		t.Fatalf("step cost before result = %.4f, want .0100", got)
 	}
+}
+
+func TestStepCostDelayedRetryKeepsWorkerHighWater(t *testing.T) {
+ it:=factory.Item{State:factory.StateRunning,Stages:[]factory.Stage{{Name:"proof",Kind:factory.StageChat,On:true}},Stream:&factory.Stream{Phases:[]factory.Phase{{Name:"proof",Kind:factory.StageChat}}}}
+ for _, receipt:=range []struct{round int;cost float64}{{1,.01},{2,.02},{2,.01}} {
+  res:=factory.StageResult{Spent:receipt.cost,Chat:fmt.Sprintf("chat-%d",receipt.round)}
+  if err:=run.ApplyReport(&it,factory.RunReport{Stages:[]factory.StageReport{{Name:"proof",Round:receipt.round,Result:&res}}},time.Now());err!=nil {t.Fatal(err)}
+ }
+ pulled:=api.ToItem(api.WorkerJob(it))
+ ph:=&pulled.Stream.Phases[0]
+ ph.RecordRoundSpend(2,ph.RoundSpent+.01)
+ res:=factory.StageResult{Spent:ph.RoundSpent,Chat:"chat-2"}
+ if err:=run.ApplyReport(&it,factory.RunReport{Stages:[]factory.StageReport{{Name:"proof",Round:2,Result:&res}}},time.Now());err!=nil {t.Fatal(err)}
+ if got:=api.FromItem(it).Steps[0].Cost;math.Abs(got-.04)>1e-9 {t.Fatalf("step cost after delayed retry and resume = %.4f, want .0400",got)}
 }
