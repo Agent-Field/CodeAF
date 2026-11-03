@@ -781,7 +781,38 @@ func (a *Agent) Model() string {
 // this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
 // three deliberate limits — the journal is untouched, the swap is one-way, and a
 // model that CAN see is handed everything unchanged.
-func (a *Agent) SetModel(model string) { a.setModel(model) }
+func (a *Agent) SetModel(model string) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	err := a.CheckSettingsWork()
+	a.settingError.Store(&settingResult{err: err})
+	if err != nil {
+		return
+	}
+	a.setModel(model)
+}
+
+// SettingError is the local result of a legacy bool or void setting door.
+// Reading it never asks an engine or a relay; checked callers use their error.
+type settingResult struct{ err error }
+
+func (a *Agent) SettingError() error {
+	if result := a.settingError.Load(); result != nil {
+		return result.err
+	}
+	return nil
+}
+
+// SetModelChecked retains the requested choice when ownership refuses a save.
+func (a *Agent) SetModelChecked(model string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
+	a.setModel(model)
+	return nil
+}
 
 // setModel is SetModel with the answer to "when does this land", which the doors
 // inside this package that have somebody to tell need ([Agent.RetargetTask]) and
@@ -1094,6 +1125,8 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // CheckWork reuses the seat's ownership gate for every user-work door. It is
 // checked before journaling and again when a queued message starts its turn.
 func (a *Agent) CheckWork() error { return procexec.CheckWork(a.config.Seat) }
+
+func (a *Agent) CheckSettingsWork() error { return procexec.CheckSettingsWork(a.config.Seat) }
 
 // submitText is Submit's body with the PERSON'S MARK beside the words: what a
 // door that knows more than the words said about the message

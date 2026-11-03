@@ -155,6 +155,11 @@ func (a *Agent) StandingApprovalPosture() string {
 // refuses a nil: the answer to "I could not read the rules" is never a session
 // whose posture and gate disagree.
 func (a *Agent) SetApprovalPosture(posture string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	word := strings.ToLower(strings.TrimSpace(posture))
 	if !knownPosture(word) {
 		return fmt.Errorf("%q is not a posture. Use one of: %s", posture, strings.Join(ApprovalPostures, ", "))

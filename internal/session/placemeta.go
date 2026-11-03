@@ -315,7 +315,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		return saveMetaLocked(dir, meta)
 	})
 	if err == nil {
-		a.tellWrote()
+		if watch, ok := a.config.Seals.(interface{ MetadataWrote() }); ok {
+			watch.MetadataWrote()
+		}
 	}
 }
 

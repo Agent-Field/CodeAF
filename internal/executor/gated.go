@@ -26,7 +26,16 @@ func CheckPreparedWork(seat Seat) error {
 	if gate, ok := seat.(interface{ CheckPreparedWork() error }); ok {
 		return gate.CheckPreparedWork()
 	}
-	return CheckWork(seat)
+	return nil
+}
+
+// CheckSettingsWork admits persistent choices only when the seat installed a
+// setting door. Older seats and ordinary local sessions retain their behavior.
+func CheckSettingsWork(seat Seat) error {
+	if gate, ok := seat.(interface{ CheckSettingsWork() error }); ok {
+		return gate.CheckSettingsWork()
+	}
+	return nil
 }
 
 // Gated is seat with a gate in front of every tool call: while gate answers an
@@ -43,11 +52,15 @@ func Gated(seat Seat, gate func() error, admission ...func() error) Seat {
 	if len(admission) > 0 {
 		work = admission[0]
 	}
-	prepared := work
+	var prepared func() error
 	if len(admission) > 1 {
 		prepared = admission[1]
 	}
-	return gated{Seat: seat, gate: gate, work: work, prepared: prepared}
+	var settings func() error
+	if len(admission) > 2 {
+		settings = admission[2]
+	}
+	return gated{Seat: seat, gate: gate, work: work, prepared: prepared, settings: settings}
 }
 
 type gated struct {
@@ -55,6 +68,14 @@ type gated struct {
 	gate     func() error
 	work     func() error
 	prepared func() error
+	settings func() error
+}
+
+func (g gated) CheckSettingsWork() error {
+	if g.settings != nil {
+		return g.settings()
+	}
+	return nil
 }
 
 func (g gated) CheckPreparedWork() error {
@@ -73,7 +94,9 @@ func (g gated) CheckWork() error {
 }
 
 // ForSetup implements SetupSeat: a setup turn's calls are gated too.
-func (g gated) ForSetup() Seat { return Gated(ForSetup(g.Seat), g.gate, g.work, g.prepared) }
+func (g gated) ForSetup() Seat {
+	return Gated(ForSetup(g.Seat), g.gate, g.work, g.prepared, g.settings)
+}
 
 // NoteModelCall implements ModelNoter: the seat beneath keeps the record.
 func (g gated) NoteModelCall(m ModelCall) { NoteModelCall(g.Seat, m) }

@@ -70,3 +70,5 @@ func mergeEnvironment(base, extra []string) []string {
 	}
 	return append(result, extra...)
 }
+
+func (s environmentSeat) CheckSettingsWork() error { return CheckSettingsWork(s.Seat) }

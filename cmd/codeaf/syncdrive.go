@@ -274,6 +274,20 @@ func driveWorkGate(d *liveDrive) func() error {
 	}
 }
 
+func driveSettingsGate(d *liveDrive) func() error {
+	if d == nil {
+		return nil
+	}
+	return func() error {
+		if started := d.started(); started != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+			defer cancel()
+			return started.ConfirmSettingsWork(ctx)
+		}
+		return nil
+	}
+}
+
 func drivePreparedGate(d *liveDrive) func() error {
 	if d == nil {
 		return nil

@@ -48,3 +48,22 @@ func TestIdleRelease_C2_C4_PreparedWorkBypassesCachedAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestIdleRelease_R5_Audit_LegacySeatsKeepTheirExistingAdmissionCalls(t *testing.T) {
+	calls := 0
+	seat := Gated(Host, func() error { return nil }, func() error { calls++; return nil })
+	for _, form := range []Seat{seat, ForSetup(seat), WithEnvironment(seat, nil), Watching(seat, new(sightings))} {
+		if err := CheckPreparedWork(form); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckSettingsWork(form); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("optional idle doors added %d ordinary admission calls", calls)
+	}
+	if err := CheckWork(seat); err != nil || calls != 1 {
+		t.Fatalf("ordinary admission changed: calls=%d err=%v", calls, err)
+	}
+}

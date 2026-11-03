@@ -762,6 +762,11 @@ func (a *Agent) RememberAlways(text string, everywhere bool) (string, error) {
 }
 
 func (a *Agent) rememberAs(text, scope string) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	memory, reach, added, err := a.keep(text, scope, store.OriginPerson, nil)
 	if errors.Is(err, store.ErrMemoryFull) {
 		return "", a.memoryFullError(err)
