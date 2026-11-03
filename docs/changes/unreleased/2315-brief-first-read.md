@@ -1,5 +1,5 @@
 ---
-kind: feature
+kind: added
 title: A job that has not run reads its issue on the Brief tab instead of repeating it
 pr: 2315
 surface: [engine]
