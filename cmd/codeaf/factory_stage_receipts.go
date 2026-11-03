@@ -234,7 +234,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		} else {
 			lastOutcome[cmd] = receipt["outcome"].(string)
 			// A measured check does not finish its surrounding background shell.
-			if launchOutcome, _ := commandReceiptOutcome(row.Content, status, invoked, refused, started, nil); outcome == "passed" && launchOutcome == "started" {
+			if launchOutcome, _ := commandReceiptOutcome(row.Content, status, invoked, refused, started, nil); (outcome == "passed" || outcome == "completed") && launchOutcome == "started" {
 				lastOutcome[cmd] = launchOutcome
 			}
 		}

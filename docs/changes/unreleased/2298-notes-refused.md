@@ -4,6 +4,7 @@ title: Execution notes and completion guard share trustworthy command outcomes
 pr: 2298
 surface: [engine, factory, chat]
 invalidates:
+  - "A zero exit could hide an unmeasured check in the same call. Every check must now have a zero exit before the call reads passed."
   - "A failed shell script could recreate an obligation for measured scratch checks already classified as diagnostic."
   - "Unrun literal Go test attempts, including quoted test filters, could remain owed after later measured covering passes."
   - "Execution notes previously called approval and policy refusals completed. They now say refused and retain the real refusal reason."
@@ -39,8 +40,15 @@ A compound with unquoted `;` or `||` publishes nothing, even when every observed
 check passed. Single `&`, newlines, command substitutions and backticks likewise
 lower an otherwise passing call to `completed`. Quoted literal separators, `&&`
 chains and `|` pipes remain eligible. Measured failures still read `failed`.
-The completion guard is unchanged. Rerunning the identical compound on the current
+Publication downgrades to `completed` retain unfinished background shell obligations;
+only the guard's existing measured-check coverage rules can clear them.
+Rerunning the identical compound on the current
 checkout with every measured exit zero clears its earlier failure, even when the
 surrounding command reads `completed`.
 `bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
 app/v3. This existing observation limit is not a fault fixed by this change.
+
+Any non-zero check exit keeps a compound call failed regardless of order.
+Otherwise an unmeasured check keeps it completed and unpublished, even with PASS
+output. Calls without checks retain legacy output classification, which now
+rejects FAIL on the first line as well as later lines.

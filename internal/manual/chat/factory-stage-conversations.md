@@ -630,7 +630,9 @@ allowed. `&&` chains and `|` pipes remain eligible, including `cd sub && go test
 `bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
 app/v3. This is an existing observation limit, not a check failure.
 A measured-zero command with a refused shell form reads `completed`; that outcome
-does not hold completion. Rerunning the identical compound on the current checkout with every measured exit
+does not itself hold completion. An unfinished background shell still holds unless
+the guard accepts its measured checks as covering the command.
+Rerunning the identical compound on the current checkout with every measured exit
 zero clears its earlier failure, even when it uses `;` and publishes nothing.
 
 Factory publication renders known local factory checkout prefixes as repo-relative
