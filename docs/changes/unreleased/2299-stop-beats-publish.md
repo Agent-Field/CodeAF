@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Stop prevents publication until the PR request is sent
-pr: 0
+pr: 2299
 surface: [engine, factory]
 invalidates:
   - "A worker could publish from a stale job snapshot after Stop, then lose the successful PR receipt when the factory revoked its lease."
