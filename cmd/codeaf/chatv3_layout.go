@@ -733,7 +733,7 @@ func v3EmptyUnassignedSession(dir string) bool {
 			return false
 		}
 	}
-	return !v3WorkstreamKeeps(dir)
+	return !v3WorkstreamKeeps(dir) && !collectionKeepsConversation(dir)
 }
 
 // v3ReapEmpty removes the empty session folders a launch left behind, except
