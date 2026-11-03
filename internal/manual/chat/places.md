@@ -648,7 +648,7 @@ These view switches underline while hovered. Build and Search controls highlight
 under the pointer; the surrounding description stays passive.
 
 If saved chats already exist, click **Build knowledge base** or press Enter.
-The first build uses saved chats across all projects, including archived chats
+Build turns automatic memory on and saves that choice. The first build uses saved chats across all projects, including archived chats
 and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
@@ -672,8 +672,8 @@ and completed publications are saved together. Opening another window does not
 start a duplicate compiler for the same profile.
 
 If there is no chat history, the reader says **Knowledge will populate as you
-chat.** Future saved chats populate it automatically, without a separate build
-step. A profile has one knowledge base; changing project does not change vaults.
+chat.** Automatic learning is off by default. Turn **learn from chats and jobs**
+on in Settings or use **Build knowledge base** to populate it from saved chats. A profile has one knowledge base; changing project does not change vaults.
 
 ## Reading knowledge pages, links and sources
 

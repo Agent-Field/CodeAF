@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"net/http"
@@ -124,6 +125,23 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	hits, err := vault.Search("queues", 5)
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("memory output lost: %v %v", hits, err)
+	}
+	offProfile := filepath.Join(s.home, "profile")
+	if err := config.WriteMemoryEnabled(offProfile, false); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := vault.Snapshot()
+	if err != nil || saved.Enabled || len(saved.Pages) != 1 {
+		t.Fatalf("off hid saved knowledge: %+v %v", saved, err)
+	}
+	if _, err := vault.Read(hits[0].Page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if offHits, err := vault.Search("queues", 5); err != nil || len(offHits) != 1 {
+		t.Fatalf("off search lost knowledge: %v %v", offHits, err)
+	}
+	if err := config.WriteMemoryEnabled(offProfile, true); err != nil {
+		t.Fatal(err)
 	}
 	before := calls.Load()
 	if err := vault.Flush(context.Background(), "fixture", true); err != nil {
