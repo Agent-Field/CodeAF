@@ -187,3 +187,32 @@ func skippedCheck(it factory.Item, index int) bool {
 	}
 	return false
 }
+
+// skippedPolicyWait explains the missing evidence without offering an approval
+// bypass: the every-check policy still requires each check to run and pass.
+func skippedPolicyWait(it factory.Item) string {
+	if it.Stream == nil {
+		return ""
+	}
+	var reasons []string
+	back := ""
+	for i, ph := range it.Stream.Phases {
+		if ph.Kind != factory.StageCheck || ph.State != factory.PhaseSkipped {
+			continue
+		}
+		reasons = append(reasons, "check " + ph.Name + " was skipped (" + ph.SkipReason + ")")
+		if len(reasons) == 1 {
+			if prev := factory.PreviousWork(it.Stream.Phases, i); prev >= 0 {
+				back = it.Stream.Phases[prev].Name
+			}
+		}
+	}
+	if len(reasons) == 0 {
+		return ""
+	}
+	action := "Stop the job and revise the pipeline before starting a new job."
+	if back != "" {
+		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
+	}
+	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
+}
