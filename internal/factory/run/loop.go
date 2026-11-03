@@ -1523,6 +1523,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
 	dir, dirErr := lp.jobDir(it)
+	if dirErr == nil {
+		it = lp.settleRules(c, it)
+	}
 	if dirErr == nil && factory.IsCIRepairStage(st) {
 		dirErr = lp.reconcilePR(it, dir)
 	}
