@@ -228,7 +228,7 @@ func TestWorkstreamPageGetSavedVersion(t *testing.T) {
 	ctx := context.Background()
 	w := createStream(t, s, "Version reads")
 	firstDoc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"First"}]}]}`)
-	first, _, err := s.CreatePage(ctx, PageCreate{WorkstreamID: w.ID, Title: "First title", Doc: firstDoc,
+	first, _, err := s.CreatePage(ctx, PageCreate{WorkstreamID: w.ID, Title: "First title", Owner: "agent", Doc: firstDoc,
 		Attribution: Attribution{By: "agent", From: &Source{Kind: "chat", ID: "first-source"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -319,6 +319,11 @@ func TestWorkstreamDeletedPageTreeRestore(t *testing.T) {
 	second := createWorkstreamPage(t, s, w.ID, root.ID, "Second")
 	sibling := createWorkstreamPage(t, s, w.ID, parent.ID, "Sibling")
 	doc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Keep me"}]}]}`)
+	// The agent writes only its own pages, so the page is the agent's for this save.
+	agentOwner := "agent"
+	if _, _, err := s.UpdatePage(ctx, root.ID, PagePatch{Owner: &agentOwner}); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := s.SavePage(ctx, root.ID, 1, doc, Attribution{By: "agent", From: &Source{Kind: "chat", ID: "source"}}); err != nil {
 		t.Fatal(err)
 	}
