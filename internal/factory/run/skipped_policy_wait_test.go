@@ -37,7 +37,7 @@ func TestSkippedRequiredCheckExplainsPolicyWaitToClient(t *testing.T) {
 	}
 	it := g.waitState(id, factory.StateNeedsYou)
 	job := api.FromItem(it)
-	want := "Publishing waits: check inspect was skipped (when touches auth does not match the change files). Rerun from write after revising the change files to match, or stop the job."
+	want := "Publishing waits: check inspect was skipped (when touches auth does not match the change files). Publish anyway, rerun from write after revising the change files to match, or stop the job."
 	if len(job.Questions) != 1 || job.Questions[0].State != "open" || !strings.Contains(job.Questions[0].Text, want) {
 		t.Fatalf("client waiting reason missing %q: %+v", want, job.Questions)
 	}
