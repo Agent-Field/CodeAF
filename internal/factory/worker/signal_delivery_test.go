@@ -134,3 +134,23 @@ func TestReplyDeliveryRetriesFailureButNeverRepeatsAnAcceptedTurn(t *testing.T) 
  j.signals(t.Context(),signals)
  if attempts.Load()!=2{t.Fatalf("accepted reply ran again: %d",attempts.Load())}
 }
+
+func TestRepeatedReconcileDeliveryDoesNotRestartManualRecovery(t *testing.T) {
+ var attempts atomic.Int32
+ j,_:=deliveryJob(t,http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if strings.HasPrefix(r.URL.Path,"/v1/workers/recover/"){attempts.Add(1);w.WriteHeader(422);return}
+  var report api.WorkerReport
+  _=json.NewDecoder(r.Body).Decode(&report)
+  if report.Question!=nil{w.WriteHeader(200);return}
+  w.WriteHeader(422)
+ }))
+ setDeliverySpend(t,j,.25)
+ j.flush(t.Context())
+ if j.blocked=="" || j.pending==nil{t.Fatal("fixture did not retain rejected results")}
+ var signals []api.WorkerSignal
+ if err:=json.Unmarshal([]byte(`[{"verb":"reconcile_results","delivery":"lease:a"}]`),&signals);err!=nil{t.Fatal(err)}
+ j.signals(t.Context(),signals)
+ first:=attempts.Load()
+ j.signals(t.Context(),signals)
+ if first!=1 || attempts.Load()!=first{t.Fatalf("one reconcile delivery started %d recovery attempts",attempts.Load())}
+}
