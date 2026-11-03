@@ -46,6 +46,26 @@ func JobSpent(it Item) float64 {
 	return it.ChatSpent
 }
 
+// JobLifetimeSpent is all known spending on this job, including earlier runs.
+func JobLifetimeSpent(it Item) float64 {
+	return it.SpentBefore + JobSpent(it)
+}
+
+// ClearJobRun keeps the money before clearing the run and its pre-run chat.
+// Calling it again cannot book the same money twice.
+func ClearJobRun(it *Item) {
+	it.SpentBefore += it.ChatSpent
+	if it.Stream != nil {
+		it.SpentBefore += it.Stream.Spent
+	}
+	for i := range it.ReportReceipts {
+		it.ReportReceipts[i].Archived = true
+	}
+	it.Stream = nil
+	it.ChatSpent = 0
+	it.ChatModels = nil
+}
+
 // JobUnworked says nothing has been done on the job: no start, taker, run,
 // chat, work folder, pull request, spend, failure, change, brief, note, reply,
 // answer, edited steps, Look closer or approval.
@@ -105,8 +125,9 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 
 // placedToday is the spend placed ([SpentIn]) on now's calendar day, in now's
 // location. A job keeps one total, so a job that began on an earlier day counts
-// nothing today, even if it spent today: this figure can be low but never claims
-// more than today's spend. Triage reads are not added.
+// nothing today, even if it spent today. A restarted job places earlier runs
+// on its latest start day too; this is not an exact daily usage figure.
+// Triage reads are not added.
 func placedToday(items []Item, now time.Time) float64 {
 	y, m, d := now.Date()
 	start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
@@ -267,11 +288,11 @@ func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err 
 	return start, last.AddDate(0, 0, 1), nil
 }
 
-// SpentIn is the job's whole spend ([JobSpent]) when it is placed ([SpentAt])
+// SpentIn is the job's whole spend ([JobLifetimeSpent]) when it is placed ([SpentAt])
 // in [start, end), and false when it spent nothing or is placed outside. It is
 // the one placement rule every spend-by-day read counts by.
 func SpentIn(it Item, start, end time.Time) (float64, bool) {
-	usd, at := JobSpent(it), SpentAt(it)
+	usd, at := JobLifetimeSpent(it), SpentAt(it)
 	return usd, usd > 0 && !at.Before(start) && at.Before(end)
 }
 
@@ -350,7 +371,7 @@ func putModelUse(rows []ModelUse, row ModelUse) []ModelUse {
 	return append(rows, row)
 }
 
-// SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
+// SpentAt is the instant a job's whole spend ([JobLifetimeSpent]) is placed at: its
 // run's start, or its creation when it has no run that started.
 func SpentAt(it Item) time.Time {
 	if it.Stream != nil && !it.Stream.Started.IsZero() {
