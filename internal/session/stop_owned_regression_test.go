@@ -232,3 +232,37 @@ func TestLateStopSampleDoesNotCancelRetriedManagerTask(t *testing.T) {
  select { case <-sampledAgain: case <-time.After(2*time.Second): t.Fatal("watcher did not finish old Stop") }
  if got := graph.node(id).notice(); got.State != TaskRunning || got.Stopped { t.Fatalf("late Stop cancelled retried task: %+v", got) }
 }
+
+type sampledJobBudget struct { liveBudgetStub; read func() string }
+func (b *sampledJobBudget) Refusal() string { return b.read() }
+
+func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
+ var armed atomic.Bool
+ sampled, release := make(chan struct{}), make(chan struct{})
+ var releaseOnce sync.Once
+ unblock := func() { releaseOnce.Do(func() { close(release) }) }; defer unblock()
+ budget := &sampledJobBudget{read: func() string {
+  if armed.CompareAndSwap(true, false) { close(sampled); <-release; return "job budget reached" }; return ""
+ }}
+ entered, finish := make(chan struct{}), make(chan struct{})
+ model := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+  close(entered)
+  select { case <-finish: return textResponse("resumed"), nil; case <-ctx.Done(): return nil, ctx.Err() }
+ }}}
+ a, _ := newTestAgent(t, model, func(c *Config) { c.JobBudget = budget })
+ armed.Store(true)
+ select { case <-sampled: case <-time.After(2*time.Second): t.Fatal("watcher did not sample budget") }
+ if err := a.StopWork(); err != nil { t.Fatal(err) }
+ waitFor(t, "person Stop settles", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.workStopping })
+ events := mustSubmit(t, a, "Start fresh work after raising the budget")
+ <-entered
+ unblock()
+ time.Sleep(250*time.Millisecond)
+ a.mu.Lock(); stopped := a.workStopped; a.mu.Unlock()
+ if stopped { t.Error("late budget sample stopped the resumed manager") }
+ close(finish)
+ var words strings.Builder
+ for _, e := range collect(t, events) { if e.Kind == EventTextDelta { words.WriteString(e.Text) } }
+ // The provider result remains inspectable even if it emits no streaming delta.
+ if stopped { t.Logf("resumed words=%q", words.String()) }
+}
