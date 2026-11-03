@@ -544,7 +544,6 @@ func TestPipelinePreviewRefusalsAreTypedAndPlainlyWorded(t *testing.T) {
 			if !strings.HasSuffix(we.Message, "Nothing was written.") {
 				t.Fatal(we.Message)
 			}
-			we.Message += " 820"
 			prNoNames(t, errors.New(we.Message), "deploy", "approve")
 		})
 	}
