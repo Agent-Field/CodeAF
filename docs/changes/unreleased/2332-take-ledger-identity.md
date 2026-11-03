@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Continuing a chat reconciles spending by call identity and keeps late receipts in its home
-pr: PRNUMBER
+pr: 2332
 surface: [chat, engine]
 invalidates:
   - A take used to assume every ledger row covered the next saved call; new saved calls now share the live row identity and are appended only when absent.
