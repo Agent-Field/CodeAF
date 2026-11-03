@@ -292,6 +292,10 @@ func briefPersonRequests(it Item) []BriefPersonRequest {
 // result, which carries the structured fields.
 func stepInputs(st Stage, p Phase) []BriefStepInput {
 	base := BriefStepInput{Step: p.Name, Kind: string(st.Kind), Until: st.Until, State: string(p.State)}
+	if p.State == PhaseSkipped {
+		base.Summary = p.SkipReason
+		return []BriefStepInput{base}
+	}
 	var out []BriefStepInput
 	latest := briefTry(p)
 	for _, r := range p.Rounds {
@@ -495,7 +499,7 @@ func briefEvidenceOf(it Item) briefEvidence {
 	e := briefEvidence{it: it, tries: map[string]int{}, files: map[string]ChangedFile{}}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			if p.Result != nil || len(p.Rounds) > 0 {
+			if p.State != PhaseSkipped && (p.Result != nil || len(p.Rounds) > 0) {
 				e.tries[p.Name] = briefTry(p)
 			}
 		}
@@ -545,7 +549,7 @@ func (e briefEvidence) phaseOf(step string) (Phase, bool) {
 		return Phase{}, false
 	}
 	for _, p := range e.it.Stream.Phases {
-		if p.Name == step {
+		if p.Name == step && p.State != PhaseSkipped {
 			return p, true
 		}
 	}

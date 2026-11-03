@@ -262,7 +262,7 @@ func askingPhase(s *factory.Stream, stage string) int {
 		return s.Cur
 	}
 	for i, ph := range s.Phases {
-		if ph.Name == stage && ph.State != factory.PhaseDone && ph.State != factory.PhaseFailed {
+		if ph.Name == stage && ph.State != factory.PhaseDone && ph.State != factory.PhaseSkipped && ph.State != factory.PhaseFailed {
 			return i
 		}
 	}

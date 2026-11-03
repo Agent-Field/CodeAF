@@ -391,7 +391,7 @@ func BriefFacts(it Item) []BriefFact {
 	out := []BriefFact{}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			if p.Result == nil {
+			if p.State == PhaseSkipped || p.Result == nil {
 				continue
 			}
 			if f, ok := phaseFact(briefStageOf(it.Stages, p), p); ok {

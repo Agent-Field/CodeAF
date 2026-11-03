@@ -79,7 +79,8 @@ func ReadDailySpend(path string, now time.Time) (DailySpendReading, error) {
 var factoryAIRoles = map[string]bool{
 	"factory triage": true, "factory scout": true,
 	"repo_ask": true, "repo_notes": true, "repo_themes": true, "repo_eval": true,
-	"pipeline_ai": true, "view_topic": true, "factory_brief": true,
+	"pipeline_ai": true, "step_ai": true, "my_pipeline_ai": true,
+	"view_topic": true, "factory_brief": true,
 }
 
 type spendTally struct {

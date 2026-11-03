@@ -86,8 +86,12 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		}
 		if policy != nil {
 			if ok, why := PolicyAllows(withHouse(policy(it), it), it, action, job.Prior); !ok {
+				output := "post refused: " + why
+				if shapeOf(why) == shapeTestsFirst {
+					output += skippedPolicyWait(it)
+				}
 				return factory.StageResult{
-					Output: "post refused: " + why,
+					Output: output,
 					Claims: []factory.Claim{{Text: verb + " refused by policy", OK: false, Evidence: why, Medium: "policy"}},
 				}, nil
 			}

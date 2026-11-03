@@ -91,6 +91,7 @@ func TestAppFactoryNoteNamesItsNextReader(t *testing.T) {
 				t.Cleanup(func() { _ = a.Close() })
 				return &appConn{Conv: a, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 			}
+			makeJobManager(t, s, it.ID)
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", map[string]any{"factory": status.Factory, "job": it.ID}, &chats)
 			s.must("agents.send", map[string]any{"id": chats.Agent, "text": "Add a note about the retry limit"}, nil)
