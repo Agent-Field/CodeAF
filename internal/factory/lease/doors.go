@@ -282,7 +282,11 @@ func (d *Doors) Hold(id int, on bool) error {
 	resumed := false
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := factory.CheckPersonStop(*it); err != nil {
-			return false, err
+			state := "paused"
+			if on {
+				state = "running"
+			}
+			return false, fmt.Errorf("%s is not %s: %w", it.Ref(), state, err)
 		}
 		if !on && !factory.UnderWay(*it) {
 			return false, fmt.Errorf("%s is not paused", it.Ref())
