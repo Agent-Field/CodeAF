@@ -47,7 +47,7 @@ func TestHoldSpendAnswerLockOrder(t *testing.T) {
 	// Stop Hold just before its store write, then queue SpendAnswer first
 	// on lp.mu. Hold must be able to finish that write without the loop lock.
 	atWrite, advance := make(chan struct{}), make(chan struct{})
-	r.opts.Now = func() time.Time {
+	r.opts.Clock = func() time.Time {
 		close(atWrite)
 		<-advance
 		return time.Now()
