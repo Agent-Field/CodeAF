@@ -21,7 +21,7 @@ type issueScript struct {
  t *testing.T
  st *store.Store
  src *source.Source
- api forge.Client
+ api source.API
  cursor string
  state map[int]string
  identity map[int]int64
