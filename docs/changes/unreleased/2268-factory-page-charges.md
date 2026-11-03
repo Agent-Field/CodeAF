@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf keeps Factory page charges when a model call fails
-pr: 0
+pr: 2268
 surface: [engine]
 invalidates: ["Failed AI read and Look closer calls could disappear from Spending; reported charges now remain visible."]
 ---
