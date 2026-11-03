@@ -130,7 +130,7 @@ func ObserveSyncedPreferences(dir string, changed func([]string)) func() {
 // PreferenceTime reads the setting's edit clock, including a removal. Older
 // profiles have no clocks; their file time is the only available evidence.
 func PreferenceTime(dir, key string) time.Time {
-	held, err := readProfileConfigStrict(dir)
+	held, err := readProfileConfig(dir)
 	if err != nil {
 		return time.Time{}
 	}

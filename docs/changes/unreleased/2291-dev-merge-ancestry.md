@@ -38,9 +38,12 @@ the same account. Durable cleanup progress and the destination device distinguis
 an unfinished reset from an installed replacement, preserving later writes.
 
 Ordinary file-memo readers retain their missing-file fallback. Profile writes,
-daily spending authority, preference/key sharing and live tool-policy reads use
-strict reads: unreadable existing configuration cannot be overwritten or treated
-as an absent budget or policy. Missing profiles still use their normal defaults.
+daily spending authority and preference/key sharing use strict reads: unreadable
+existing configuration cannot be overwritten or treated as an absent budget or
+shared value. Ordinary startup and headless approval resolution fall back to
+prompting with profile exceptions withheld when profile access fails; parse errors
+still propagate. Preference edit-clock reads retain their ordinary fallback.
+Missing profiles still use their normal defaults.
 
 A failed chat installation leaves the source read-only until a fresh Continue
 here action. A released takeover updates the source window to available instead

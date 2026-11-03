@@ -204,8 +204,8 @@ func TestUnreadableProfileAuthoritiesDoNotUseOrdinaryFallback(t *testing.T) {
 			if got := ToolApprovalModeAt(profile); got != "prompt" {
 				t.Errorf("tool policy = %q; want prompt", got)
 			}
-			if _, err := HeadlessToolApprovalModeAt(t.TempDir(), profile); err == nil {
-				t.Error("headless tool policy hid read failure")
+			if got, err := HeadlessToolApprovalModeAt(t.TempDir(), profile); err != nil || got != "prompt" {
+				t.Errorf("headless tool policy = %q, %v; want prompt, nil", got, err)
 			}
 			if err := os.Chmod(path, 0600); err != nil {
 				t.Fatal(err)

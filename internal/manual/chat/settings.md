@@ -213,5 +213,9 @@ substituting the default limit. Restore read access to resume these operations.
 A missing file still uses new-profile defaults.
 
 Preference and saved-provider-key sharing also refuses unreadable profile data.
-Tool approval gates keep a read error or ask for approval rather than treating
-an unreadable saved policy as permission to run tools automatically.
+An unreadable profile does not by itself block interactive startup: tool approvals
+fall back to prompting, with saved profile exceptions withheld. Headless approval
+resolution also falls back to prompting. A missing profile keeps its usual defaults;
+malformed JSON still reports an error. Spending-limit reads and settings writes
+continue to refuse unreadable files unless an explicit daily-limit override supplies
+the spending authority.
