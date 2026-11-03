@@ -8,10 +8,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // ItemStore is what the local seam needs of a store of items, and
@@ -633,6 +635,18 @@ func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, err
 	return it, nil
 }
 
+var liftedAskSeparators = regexp.MustCompile(`(?:\s+[,;:])+`)
+
+func askAfterLifting(words, rest string) string {
+	if rest == strings.TrimSpace(words) {
+		return strings.TrimSpace(rest)
+	}
+	rest = liftedAskSeparators.ReplaceAllString(rest, "")
+	return strings.TrimRightFunc(rest, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == ';' || r == ':'
+	})
+}
+
 // localNew makes an item from words typed on the floor. The chips lift out
 // (a cap, a gate word, a round count, an effort, a security pass) and what is left,
 // tidied, is the title. The stages are the repo's recipe for an issue, with
@@ -642,11 +656,11 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 	c := Lift(words)
 	security, rest := LiftSecurity(c.Rest)
 	title := TidyWords(rest)
-	it, err := localJob(repo, title, strings.TrimSpace(rest), now, recipe)
+	it, err := localJob(repo, title, askAfterLifting(words, rest), now, recipe)
 	if err != nil {
 		return 0, err
 	}
-	// The ask keeps punctuation after chips are lifted; the title alone is tidied.
+	// The ask drops orphan chip separators; the title alone is tidied.
 	it.Body = ""
 	it.Cap = c.Cap
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`

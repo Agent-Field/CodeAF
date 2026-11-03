@@ -254,7 +254,7 @@ An issue keeps the PR it opens, its checks, reviews and merge status. One final 
 
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
-A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job keeps your original input as its ask, while its short title still removes chips and stray punctuation.
+A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job removes chips and their leftover comma, semicolon and colon separators from its ask, preserving periods, question marks and exclamation marks. With no chips, only surrounding whitespace is trimmed. Its short title still removes stray punctuation.
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
 
