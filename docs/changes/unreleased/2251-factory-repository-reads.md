@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: Factory repository reads reuse persisted discovery and unchanged PR files
+pr: 2251
 surface: [factory, engine, app]
 invalidates:
   - "Every repository read walked GitHub and counted issues again. Reads now reuse the last complete identity-scoped list across restarts and refresh it behind requests at five-minute intervals."
