@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -62,6 +63,7 @@ func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.D
 	if src == nil || st == nil || every <= 0 {
 		return
 	}
+	ctx = githubcalls.WithCaller(ctx, "poll")
 	cursor := ""
 	wait := time.Duration(0)
 	failed := 0
@@ -274,9 +276,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if in.URL != "" {
 					it.URL = in.URL
 				}
-				if in.Comments != nil {
-					it.Comments = in.Comments
-				}
+				// Every new comment goes to the job's manager here, the one
+				// place the floor learns of it ([factory.ReadComments]).
+				factory.ReadComments(it, in.Comments, at)
 				if in.Kind != factory.KindPR || in.Files != nil {
 					it.Diff = in.Diff
 				}
@@ -322,6 +324,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			in.Places = []string{in.Repo}
 		}
 		in.Activity = nil
+		// The comments an issue arrives with are its context, never news.
+		factory.ReadComments(&in, in.Comments, time.Now())
 		in.Note(time.Now(), factory.EventArrived)
 		made, err := st.Create(in)
 		if err == nil {

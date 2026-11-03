@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // JobFolders is a drop's reach into this machine: the job's local branch and
@@ -45,6 +46,14 @@ type JobFolders interface {
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// Scout is Look closer on this factory (scout.Door.Look): nil when the
+	// factory has no model to look with, and the route then says so.
+	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
+	// Read is a person's Read of chosen jobs (triage.ReadThese), whether or
+	// not new issues are read as they arrive: nil when the factory has no
+	// read, and the route then says so.
+	Read func(ctx context.Context, ids []int) api.ReadResult
+
 	// GitHubToken supplies the local profile credential only on a solo host.
 	GitHubToken func(context.Context) string
 
@@ -114,6 +123,9 @@ type Config struct {
 	// applies without restarting the service.
 	TokensPath   string
 	PollingEvery time.Duration
+	// GitHubLimit is when GitHub's spent rate limit resets, zero when it is
+	// not spent. About says it, so an app can show why nothing is read.
+	GitHubLimit func() time.Time
 	// Store enables worker writes to the same documents the local runner uses.
 	Store *store.Store
 	// LeaseOptions supplies the claims desk's TTL and deterministic clock.
@@ -153,11 +165,18 @@ type Handler struct {
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
-	setupCancel context.CancelFunc
-	setupDone   chan struct{}
-	setupTimer  *time.Timer
-	accessMu    sync.Mutex
-	accessFlows map[string]accessLinkFlow
+	// setupContinuing is held by a Continue from the moment it decides to stop
+	// the reader until it saves its own step, so nothing starts reading again
+	// in between.
+	setupContinuing bool
+	setupCancel     context.CancelFunc
+	setupDone       chan struct{}
+	setupTimer      *time.Timer
+	accessMu        sync.Mutex
+	accessFlows     map[string]accessLinkFlow
+	// commentFlights holds the jobs with a comment on their issue being
+	// posted by this handler (issue_comment.go).
+	commentFlights sync.Map
 
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
@@ -170,6 +189,7 @@ type Handler struct {
 	jobsBusy   sync.WaitGroup
 
 	seam    factory.Seam
+	areas   repoAreas
 	config  Config
 	factory api.Factory
 	mux     *http.ServeMux
@@ -196,8 +216,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
-	h := &Handler{seam: seam, config: config,
+	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
@@ -220,7 +241,11 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
+	h.read("/v1/repos/{owner}/{repo}/read", h.repoRead)
+	h.read("/v1/repos/{owner}/{repo}/pipeline/prs", h.pipelinePRs)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
+	h.read("/v1/repos/{owner}/{repo}/estimate", h.estimateNew)
+	h.read("/v1/repos/{owner}/{repo}/facts", h.repoFacts)
 	h.read("/v1/github", h.github)
 	h.route("/v1/github/grant", map[string]http.HandlerFunc{http.MethodPut: h.grantGitHub})
 	h.route("/v1/github/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollGitHub})
@@ -235,12 +260,16 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/audit", h.audit)
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
+	h.scoutRoutes()
+	h.readRoutes()
 	h.workerRoutes()
 	h.v2Routes()
 	h.route("/v1/factory-setup/{id}", map[string]http.HandlerFunc{http.MethodGet: h.factorySetup, http.MethodPost: h.factorySetup})
 	h.route("/v1/factory-setup", map[string]http.HandlerFunc{http.MethodPost: h.factorySetup})
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
+	h.read("/v1/spend/repos", h.spendRepos)
+	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
@@ -252,7 +281,7 @@ func New(seam factory.Seam, config Config) *Handler {
 		h.setupMu.Unlock()
 	}
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
-		h.fail(w, http.StatusNotFound, "factory endpoint not found")
+		h.fail(w, http.StatusNotFound, api.EndpointNotFound)
 	})
 	// The dashboard lives in the codeaf app; outside /v1 the factory only says so.
 	h.read("/", h.root)
@@ -281,7 +310,16 @@ func (h *Handler) Close() {
 		if h.setupCancel != nil {
 			h.setupCancel()
 		}
+		var setupDone chan struct{}
+		if h.setupBusy {
+			setupDone = h.setupDone
+		}
 		h.setupMu.Unlock()
+		// A cancelled setup worker still finishes its last write; nothing may
+		// write into the factory's folder once Close has returned.
+		if setupDone != nil {
+			<-setupDone
+		}
 	}
 	if h != nil {
 		h.jobsMu.Lock()
@@ -366,7 +404,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Noncanonical paths are refused here so ServeMux cannot replace the JSON
 	// contract with an HTML redirect that carries no factory identity.
 	if r.URL.Path != path.Clean(r.URL.Path) {
-		h.fail(w, http.StatusNotFound, "factory endpoint not found")
+		h.fail(w, http.StatusNotFound, api.EndpointNotFound)
 		return
 	}
 	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
@@ -396,6 +434,9 @@ func (h *Handler) route(pattern string, methods map[string]http.HandlerFunc) {
 	sort.Strings(allowed)
 	h.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if handler := methods[r.Method]; handler != nil {
+			if ctx := githubcalls.WithCaller(r.Context(), r.Method+" "+pattern); ctx != r.Context() {
+				r = r.WithContext(ctx)
+			}
 			handler(w, r)
 			return
 		}
@@ -461,6 +502,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
 		}
 	}
+	h.judgeProtected(r.Context(), s.Items, q.Jobs)
 	q.Reason = reason
 	if reason != "" {
 		if q.Jobs == nil {
@@ -489,6 +531,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
+	h.repoCheckouts(r.Context(), q.Repos)
 	summarize := h.summaries(r)
 	for _, job := range q.Jobs {
 		if job.HeldBy != nil {
@@ -548,6 +591,20 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	}{h.factory, jobs[0]})
 }
 
+// repoCheckouts says on each queue repository how a run of it gets its
+// checkout, from the door every start asks ([factory.Seam.CheckoutOf]), so a
+// repository with no jobs yet can be checked before its first Start. A seam
+// that does not know its machine's checkouts leaves the word absent.
+func (h *Handler) repoCheckouts(ctx context.Context, repos []api.Repo) {
+	if h.seam.CheckoutOf == nil {
+		return
+	}
+	for i := range repos {
+		state, _ := h.seam.CheckoutOf(ctx, repos[i].Name)
+		repos[i].CheckoutState = string(state)
+	}
+}
+
 // findJob gives every job door the same id and existence checks, without
 // guessing whether an untyped runner error meant a missing job.
 func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
@@ -564,7 +621,7 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
-		if factory.IsIssueJob(it) && (it.ID == id || factory.JobRef(it) == r.PathValue("id")) {
+		if factory.IsIssueJob(it) && (it.ID == id || factory.JobKey(it) == r.PathValue("id")) {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))
@@ -584,13 +641,15 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 // Repository preserves the picker's facts with product names and JSON keys,
 // rather than exposing the Go fields of factory.RepoInfo directly.
 type Repository struct {
-	Full     string    `json:"full"`
-	Name     string    `json:"name"`
-	Owner    string    `json:"owner"`
-	Private  bool      `json:"private"`
-	Pushed   time.Time `json:"pushed"`
-	Open     int       `json:"open"`
-	Checkout string    `json:"checkout,omitempty"`
+	Full    string    `json:"full"`
+	Name    string    `json:"name"`
+	Owner   string    `json:"owner"`
+	Private bool      `json:"private"`
+	Pushed  time.Time `json:"pushed"`
+	Open    int       `json:"open"`
+	// OpenIssues is open issues without pull requests, absent when unknown.
+	OpenIssues *int   `json:"open_issues,omitempty"`
+	Checkout   string `json:"checkout,omitempty"`
 }
 
 func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
@@ -623,7 +682,8 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 	}
 	repos := make([]Repository, len(available))
 	for i, repo := range available {
-		repos[i] = Repository{repo.Full, repo.Name, repo.Owner, repo.Private, repo.Pushed, repo.Open, repo.Dir}
+		repos[i] = Repository{Full: repo.Full, Name: repo.Name, Owner: repo.Owner, Private: repo.Private, Pushed: repo.Pushed,
+			Open: repo.Open, OpenIssues: repo.OpenIssues, Checkout: repo.Dir}
 	}
 	h.write(w, http.StatusOK, struct {
 		Factory   api.Factory  `json:"factory"`
@@ -757,6 +817,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 // about is the join preview. It is the one /v1 read that does not require a
 // token, and it names no job or repository.
 func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
+	limited, resumes := h.githubLimited()
 	h.write(w, http.StatusOK, struct {
 		Factory       api.Factory `json:"factory"`
 		Scheme        string      `json:"scheme"`
@@ -770,8 +831,31 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		// AccessCheckPost is optional and public: POST /v1/factory-access takes
 		// verb "check", so a client need not put a link's secret in a URL.
 		AccessCheckPost bool `json:"access_check_post"`
+		// GitHubLimited is the sentence an app shows while GitHub's rate
+		// limit is spent, and GitHubResumesAt is when it resets.
+		GitHubLimited   string     `json:"github_limited,omitempty"`
+		GitHubResumesAt *time.Time `json:"github_resumes_at,omitempty"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy(), true})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes})
+}
+
+// githubLimited is the reason and reset time about carries while GitHub's
+// rate limit is spent, and nothing otherwise.
+func (h *Handler) githubLimited() (string, *time.Time) {
+	if h.config.GitHubLimit == nil {
+		return "", nil
+	}
+	until := h.config.GitHubLimit()
+	if until.IsZero() || !h.now().Before(until) {
+		return "", nil
+	}
+	return GitHubLimitedWords(until), &until
+}
+
+// GitHubLimitedWords is the one sentence that names a spent GitHub rate
+// limit, in the factory's own log and on its about page.
+func GitHubLimitedWords(until time.Time) string {
+	return "GitHub is rate-limited until " + until.Local().Format("15:04") + "; the factory keeps serving and reads GitHub again then"
 }
 
 func (h *Handler) accessMode() string {

@@ -558,7 +558,12 @@ func (s *Source) lastComments(ctx context.Context, owner, name string, number, c
 	}
 	list := make([]factory.Comment, 0, len(got))
 	for _, c := range got {
-		list = append(list, factory.Comment{Author: c.User, Body: clip(strings.TrimSpace(c.Body), commentLimit), At: c.Created})
+		body := strings.TrimSpace(c.Body)
+		// The author's standing is asked here, once per login and repository
+		// for the process ([Source.tier]), because the job's manager treats a
+		// comment from someone without write access as context only.
+		list = append(list, factory.Comment{Author: c.User, Body: clip(body, commentLimit), At: c.Created, ID: c.ID, URL: c.URL,
+			Tier: s.tier(ctx, owner, name, c.User), ByFactory: strings.HasPrefix(body, forge.PublicationMarker)})
 	}
 	s.mu.Lock()
 	s.comments[key] = seenComments{count: count, list: list}
@@ -811,13 +816,23 @@ func (s *Source) openPull(ctx context.Context, owner, name string, a factory.Act
 	} else if n > 0 {
 		// A retry carries the approved proof again, including its trailer;
 		// merely returning the old URL could leave a different commit's body.
-		return s.api.UpdatePullRequest(ctx, owner, name, n, title, a.Body)
+		if a.BeforeWrite != nil {
+			if err := a.BeforeWrite(ctx); err != nil {
+				return forge.Posted{}, err
+			}
+		}
+		return s.api.UpdatePullRequest(context.WithoutCancel(ctx), owner, name, n, title, a.Body)
 	}
 	base, err := s.api.DefaultBranch(ctx, owner, name)
 	if err != nil {
 		return forge.Posted{}, err
 	}
-	return s.api.CreatePullRequest(ctx, owner, name, branch, base, title, a.Body, a.Draft)
+	if a.BeforeWrite != nil {
+		if err := a.BeforeWrite(ctx); err != nil {
+			return forge.Posted{}, err
+		}
+	}
+	return s.api.CreatePullRequest(context.WithoutCancel(ctx), owner, name, branch, base, title, a.Body, a.Draft)
 }
 
 func (s *Source) watching(full string) bool {

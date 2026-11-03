@@ -73,9 +73,20 @@ func TestAppModelQuestionHoldStopsTheEngineClock(t *testing.T) {
 			rec.mu.Lock()
 			ask := rec.data[i].(appwire.AskOpened).Ask
 			rec.mu.Unlock()
-			if ask.ClockUntil == nil {
-				t.Fatal("the question has no clock")
+			// The clock waits for a surface to draw the card (asks.shown).
+			if ask.ClockUntil != nil {
+				t.Fatal("the question's clock runs before any surface drew it")
 			}
+			shown, err := backend.ShowAsk(agent.ID, ask.ID)
+			if err != nil || shown == nil || shown.ClockUntil == nil {
+				t.Fatalf("asks.shown did not start the clock: %+v %v", shown, err)
+			}
+			ask = *shown
+			// Every window learns the countdown: the engine re-announces the ask.
+			rec.waitFor(t, 2*time.Second, func(event string, data any) bool {
+				v, ok := data.(appwire.AskOpened)
+				return ok && v.Ask.ID == ask.ID && v.Ask.ClockUntil != nil
+			})
 			if !hold {
 				rec.waitFor(t, 5*time.Second, appAskEvent(appwire.EventAskClosed))
 				decisions := engine.Decisions()
@@ -101,20 +112,26 @@ func TestAppModelQuestionHoldStopsTheEngineClock(t *testing.T) {
 			if waiting, _, err := backend.ListInbox(appwire.InboxWaiting, ""); err != nil || len(waiting) != 1 || waiting[0].Ask.ClockUntil != nil {
 				t.Fatalf("held Inbox = %+v %v", waiting, err)
 			}
-			// An identical lane replay must not publish another opening.
+			// An identical lane replay must not publish another opening. (Showing
+			// the card restates it once or not at all, as the lane's own restate
+			// and the reply race, so the count is taken across the replay alone.)
+			openings := func() int {
+				rec.mu.Lock()
+				defer rec.mu.Unlock()
+				n := 0
+				for _, event := range rec.events {
+					if event == appwire.EventAskOpened {
+						n++
+					}
+				}
+				return n
+			}
+			before := openings()
 			a := mustFind(t, backend, agent.ID)
 			q := engine.OpenQuestions()[0]
 			backend.questionEvent(a, agent.ID, backend.liveOf(a), session.Event{Kind: session.EventQuestion, Question: &q})
-			rec.mu.Lock()
-			defer rec.mu.Unlock()
-			opened := 0
-			for _, event := range rec.events {
-				if event == appwire.EventAskOpened {
-					opened++
-				}
-			}
-			if opened != 2 {
-				t.Fatalf("initial + Hold + identical replay emitted %d openings, want 2", opened)
+			if after := openings(); after != before {
+				t.Fatalf("an identical replay emitted %d more openings", after-before)
 			}
 		})
 	}

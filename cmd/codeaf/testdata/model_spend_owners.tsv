@@ -1,0 +1,83 @@
+# Exact production caller inventory. Exceptions are audit debt, not proof of missing charges.
+cmd/codeaf/carried.go:wireCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:consolidateFacts:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:digestTerritory:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:distillFacts:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:fillCraftParams:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:quorumVerify:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:reflectAcrossJobs:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:repairCraft:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:titleGoal:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/chat.go:unlockedWhileThinking.CompleteWithMessages:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/factory_scout.go:factoryScoutChat:CompleteWithMessages	owner: Factory page accounting (factoryAIAccounting -> recordFactoryAIUsage -> session.RecordUsage)
+cmd/codeaf/factory_triage.go:factoryTriageCallNoting:CompleteWithMessages	owner: Factory page accounting (factoryAIAccounting -> recordFactoryAIUsage -> session.RecordUsage)
+cmd/codeaf/image.go:runImage:GenerateImage	exception: untraced image and media transport
+cmd/codeaf/poolrecord.go:poolJudgeAsk:CompleteWithMessages	exception: pool judge
+cmd/codeaf/subharness_env.go:headlessEnv.AI:CompleteWithMessages	exception: untraced execution helpers
+internal/exec/document.go:Toolbox.parseDocument:ParseDocument	exception: untraced execution helpers
+internal/exec/linear.go:Linear.complete:CompleteWithMessages	exception: untraced execution helpers
+internal/exec/media.go:Toolbox.generateImage:GenerateImage	exception: untraced image and media transport
+internal/exec/media.go:Toolbox.generateMusic:GenerateMusic	exception: music
+internal/exec/media.go:Toolbox.generateVideo:GenerateVideo	exception: video
+internal/exec/media.go:Toolbox.speak:Speak	exception: speech
+internal/exec/media.go:Toolbox.viewImage:CompleteWithMessages	exception: untraced image and media transport
+internal/head/absorb.go:Head.deliveryAnswer:CompleteWithMessages	exception: untraced resident assistants
+internal/head/aside.go:Head.Ask:CompleteWithMessages	exception: untraced resident assistants
+internal/head/loop.go:Head.runTurn:CompleteWithMessages	exception: untraced resident assistants
+internal/head/revisionvoice.go:Head.composeRevision:CompleteWithMessages	exception: untraced resident assistants
+internal/head/scribe.go:Head.nameRoom:CompleteWithMessages	exception: untraced resident assistants
+internal/head/wake.go:Head.wakeReceipt:CompleteWithMessages	exception: untraced resident assistants
+internal/knowledge/compiler_provider.go:compilerModel.call:CompleteWithMessages	owner: Memory compiler (memoryBilling -> session knowledge usage recorder -> RecordUsage)
+internal/plan/brief.go:writeBrief:CompleteWithMessages	exception: untraced plan helpers
+internal/provider/client.go:Client.StreamComplete:sendShaped	exception: untraced provider routing and transport
+internal/provider/client.go:Client.completeWithMessagesStreaming:sendShaped	exception: untraced provider routing and transport
+internal/provider/client.go:Client.newHTTPRequest:newHTTPRequestAt	exception: untraced provider routing and transport
+internal/provider/client.go:Client.resend:send	exception: untraced provider routing and transport
+internal/provider/client.go:Client.sendRecovered:sendRepaired	exception: untraced provider routing and transport
+internal/provider/client.go:Client.sendRepaired:resend	exception: untraced provider routing and transport
+internal/provider/client.go:Client.sendRepaired:send	exception: untraced provider routing and transport
+internal/provider/client.go:Client.sendShaped:sendRecovered	exception: untraced provider routing and transport
+internal/provider/dispatch.go:Client.send:newHTTPRequestAt	exception: untraced provider routing and transport
+internal/provider/document.go:Client.ParseDocument:send	exception: untraced provider routing and transport
+internal/provider/endpoints.go:Client.attemptShaped:send	exception: untraced provider routing and transport
+internal/provider/endpoints.go:Client.widenPastTheUncarriedPreference:sendRepaired	exception: untraced provider routing and transport
+internal/provider/media.go:MediaClient.GenerateImage:postJSON	exception: untraced image and media transport
+internal/provider/media.go:MediaClient.Speak:do	exception: speech
+internal/provider/media.go:MediaClient.do:doEndpoint	exception: untraced image and media transport
+internal/provider/media.go:MediaClient.downloadVideo:doEndpoint	exception: video
+internal/provider/media.go:MediaClient.generateVideo:postJSON	exception: video
+internal/provider/media.go:MediaClient.getJSON:doEndpoint	exception: untraced image and media transport
+internal/provider/media.go:MediaClient.postJSON:do	exception: untraced image and media transport
+internal/provider/modelapi/server.go:Server.complete:CompleteWithMessages	exception: untraced provider routing and transport
+internal/provider/music.go:MediaClient.GenerateMusic:do	exception: music
+internal/provider/openrouter_client.go:Client.executeOwnToolCallLoop:CompleteWithMessages	exception: untraced provider routing and transport
+internal/provider/openrouter_client.go:Client.finalToolTurn:CompleteWithMessages	exception: untraced provider routing and transport
+internal/provider/pool/pool.go:Client.CompleteWithMessages:CompleteWithMessages	exception: untraced provider routing and transport
+internal/provider/pool/wall.go:walled.completion:CompleteWithMessages	exception: untraced provider routing and transport
+internal/provider/probe.go:Client.probeLane:newHTTPRequest	exception: lane probes
+internal/provider/transcribe.go:MediaClient.Transcribe:postJSON	exception: speech
+internal/reflex/reflex.go:bound.CompleteWithMessages:CompleteWithMessages	exception: untraced reflex helpers
+internal/reflex/reflex.go:bound.completeAttempt:CompleteWithMessages	exception: untraced reflex helpers
+internal/reflex/reflex.go:completeWithRecovery:CompleteWithMessages	exception: untraced reflex helpers
+internal/revision/compose.go:Compose:CompleteWithMessages	exception: untraced revision helpers
+internal/router/router.go:Router.StreamComplete:StreamComplete	exception: untraced router helpers
+internal/router/router.go:Router.cascade:CompleteWithMessages	exception: untraced router helpers
+internal/router/router.go:Router.leaf:CompleteWithMessages	exception: untraced router helpers
+internal/run/delegateworker.go:ownLineage.CompleteWithMessages:CompleteWithMessages	exception: untraced run helpers
+internal/session/agent.go:sessionCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced session helpers
+internal/session/automation_run.go:automationRunner.Judge:CompleteWithMessages	exception: automation judge
+internal/session/clientdoor.go:Agent.completeWithNamedModel:CompleteWithMessages	exception: untraced session helpers
+internal/session/memory.go:billedCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced session helpers
+internal/session/seatcompleter.go:seatCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced session helpers
+internal/session/spendguard.go:guardedCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced session helpers
+internal/session/tools_doc.go:ReadDocument:ParseDocument	exception: untraced session helpers
+internal/session/tools_image.go:GenerateImage:GenerateImage	exception: untraced image and media transport
+internal/session/tools_music.go:Agent.composeMusic:GenerateMusic	exception: music
+internal/session/tools_sense.go:Agent.audioSense:Transcribe	exception: speech
+internal/session/tools_speak.go:Agent.speakTool:Speak	exception: speech
+internal/session/tools_video.go:Agent.renderVideo:GenerateVideo	exception: video
+internal/shaped/prose.go:Prose:CompleteWithMessages	exception: untraced shaped helpers
+internal/shaped/shaped.go:Answer:CompleteWithMessages	exception: untraced shaped helpers
+internal/shaped/shaped.go:repair:CompleteWithMessages	exception: untraced shaped helpers
+internal/subharness/exec_model.go:modelEnv.say:CompleteWithMessages	exception: untraced execution helpers
+internal/subharness/exec_model.go:modelEnv.work:ExecuteToolCallLoop	exception: untraced execution helpers

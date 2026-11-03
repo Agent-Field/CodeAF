@@ -377,16 +377,11 @@ func TestJobFromItemKeepsTheFactsDecideReads(t *testing.T) {
 	when := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	issue := factory.Item{
 		ID: 7, Kind: factory.KindIssue, Tier: factory.TierOwner, Labels: []string{"agent-ready"},
-		Cap: 5, Triage: factory.Triage{Size: "S", Est: 1.5, TriagedAt: when},
+		Cap: 5, Triage: factory.Triage{Size: "S", TriagedAt: when},
 	}
 	got := pipeline.JobFromItem(issue)
-	if !got.CostKnown || got.Cost != 1.5 || got.Size != "S" || got.LinesKnown || got.Cap != 5 {
-		t.Fatalf("issue = %+v", got)
-	}
-	unread := issue
-	unread.Triage.TriagedAt = time.Time{}
-	if pipeline.JobFromItem(unread).CostKnown {
-		t.Fatal("an unread estimate counted as a cost")
+	if got.CostKnown || got.Size != "S" || got.LinesKnown || got.Cap != 5 {
+		t.Fatalf("issue = %+v; a read writes no price, so no cost is known", got)
 	}
 	pr := factory.Item{
 		ID: 8, Kind: factory.KindPR, Tier: factory.TierStranger,

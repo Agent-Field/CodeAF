@@ -13,13 +13,23 @@ import (
 
 const schema = 1
 
+type publisherReceipt struct {
+	Lease     Lease        `json:"lease"`
+	Item      factory.Item `json:"item"`
+	Restarted bool         `json:"restarted,omitempty"`
+}
+
 type document struct {
-	Schema int     `json:"schema"`
-	Leases []Lease `json:"leases"`
+	Receipts []publisherReceipt `json:"publisher_receipts,omitempty"`
+	Schema   int                `json:"schema"`
+	Leases   []Lease            `json:"leases"`
 	// Signals are what people asked of a job that its worker has not yet
 	// collected, keyed by job id. They live beside the leases, under the same
 	// lock, so a verb and the hold it is meant for can never disagree.
 	Signals map[int][]Signal `json:"signals,omitempty"`
+	// Withdrawn keeps the last replaced lease for each worker until its next
+	// pull. Losing execution authority is different from a person's Stop.
+	Withdrawn map[string]string `json:"withdrawn,omitempty"`
 }
 
 // Path names the shared document beside the factory's numbered job files.

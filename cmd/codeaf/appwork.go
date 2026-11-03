@@ -252,6 +252,7 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 		ID:        appTaskID(agent, notice.ID), Agent: agent, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: now,
 		Irreversible: notice.Irreversible, YourCall: state == appwire.TaskUnverified,
 		Result: redact.Secrets(strings.TrimSpace(notice.Result)), Files: appFiles(notice.Changed), SpentUSD: appFigure(notice.CostUSD),
+		Worker: strings.TrimSpace(notice.Worker),
 	}
 	// A FAILED TASK SAYS WHAT STOPPED IT. A run row that ended without working
 	// carries its reason as the report and no result — a hand-off whose run never
@@ -420,6 +421,10 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		// A PROGRAM IS A FACT OF THE ROW'S WHOLE LIFE: an update that leaves it out has not changed it.
 		if task.Program == "" {
 			task.Program = before.Program
+		}
+		// So is who it acts as.
+		if task.Worker == "" {
+			task.Worker = before.Worker
 		}
 		// THE GROUP'S LABEL IS ITS RUN'S OWN ROW'S TITLE: the row with the run's
 		// id and no parent is the run itself.
@@ -1553,15 +1558,41 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, 
 	if err != nil {
 		return appwire.MoveResult{}, err
 	}
-	a.gate.Lock()
-	if err := b.workAllowed(a); err != nil {
-		a.gate.Unlock()
+	result, proposed, err := b.moveToTaskGated(a, agent, turn)
+	if proposed == nil {
+		return result, err
+	}
+	// ActOnTask takes this same gate for its own admission.
+	if err := b.ActOnTask(proposed.ID, "start", "", ""); err != nil {
 		return appwire.MoveResult{}, err
 	}
+	proposed.Proposed = false
+	return appwire.MoveResult{Task: proposed}, nil
+}
+
+// moveToTaskGated admits the move holding the agent's gate. A reply whose
+// task card already waits answers that task, to be started once the gate is
+// free; any other running reply is asked to move while the gate stays held.
+func (b *appBackend) moveToTaskGated(a *appAgent, agent string, turn uint64) (appwire.MoveResult, *appwire.Task, error) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return appwire.MoveResult{}, nil, err
+	}
 	live := b.liveOf(a)
-	// A TASK THE REPLY ALREADY PROPOSED IS THE TASK IT MOVES TO. While its card
-	// waits, the reply is parked on the person's answer and reaches no step at
-	// which it could move, so moving it is saying yes to the card.
+	if proposed := b.proposedTask(live); proposed != nil {
+		return appwire.MoveResult{}, proposed, nil
+	}
+	result, err := b.moveLiveReply(live, agent, turn)
+	return result, nil, err
+}
+
+// proposedTask is the newest top-level task the running reply proposed and the
+// person has not settled. A TASK THE REPLY ALREADY PROPOSED IS THE TASK IT
+// MOVES TO: while its card waits, the reply is parked on the person's answer
+// and reaches no step at which it could move, so moving it is saying yes to
+// the card.
+func (b *appBackend) proposedTask(live *appLive) *appwire.Task {
 	var proposed *appwire.Task
 	b.locked(func() {
 		if live == nil {
@@ -1574,16 +1605,12 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, 
 			}
 		}
 	})
-	if proposed != nil {
-		// ActOnTask takes this same gate for its own admission.
-		a.gate.Unlock()
-		if err := b.ActOnTask(proposed.ID, "start", "", ""); err != nil {
-			return appwire.MoveResult{}, err
-		}
-		proposed.Proposed = false
-		return appwire.MoveResult{Task: proposed}, nil
-	}
-	defer a.gate.Unlock()
+	return proposed
+}
+
+// moveLiveReply asks the running reply to move to a task and waits briefly for
+// the task to appear. Callers hold the agent's gate.
+func (b *appBackend) moveLiveReply(live *appLive, agent string, turn uint64) (appwire.MoveResult, error) {
 	known := map[string]bool{}
 	running := false
 	b.locked(func() {
@@ -1741,13 +1768,18 @@ func (b *appBackend) Wake() error {
 // Factory presence follows the native power door, not whether a step's chat is
 // open. Never hold the local-host lock while contacting its elected service.
 func (b *appBackend) factoryPower(asleep bool) error {
-	b.local.mu.Lock()
-	host := b.local.host
-	b.local.mu.Unlock()
+	host := b.local.currentHost()
 	if host == nil {
 		return nil
 	}
 	return host.power(context.Background(), asleep)
+}
+
+// currentHost answers the elected local factory service, if any.
+func (l *appLocalFactory) currentHost() *appFactoryHost {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.host
 }
 
 // appProcessListWait is how long processes.list waits for the engine holding a

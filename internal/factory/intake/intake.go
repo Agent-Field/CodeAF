@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -18,8 +19,10 @@ import (
 
 // Options injects repository policy and the existing launch door; tests need no model.
 type Options struct {
-	Refresh func(context.Context) error
-	Load    func(string) (pipeline.File, error)
+	// Standing reads GitHub before an automatic start or ask. Nil keeps the existing policy.
+	Standing func(context.Context, factory.Item) (string, error)
+	Refresh  func(context.Context) error
+	Load     func(string) (pipeline.File, error)
 	// LoadJob reads ONE JOB'S OWN FILE (pipeline.JobFile): the one it was
 	// decided on ([factory.Item.DecidePipeline]), else its repository's as
 	// Load reads it. Nil reads Load. Intake decides a job's file when it
@@ -33,6 +36,12 @@ type Options struct {
 	// them and Auto can pass the routine ones. Nil leaves such a job with no
 	// person, as before.
 	Owner func(context.Context) string
+	// Scout looks at one job closer (Look closer) and writes the look on it.
+	// AN AUTOMATIC START GETS THE BETTER READ FIRST: a job the rules would
+	// start is looked at before it launches and decided again on what the
+	// look changed. A failed look (a limit, no answer) never stops the start.
+	// Nil starts on the arrival read alone.
+	Scout func(ctx context.Context, id int) error
 }
 
 type Intake struct {
@@ -81,6 +90,9 @@ func (in *Intake) Once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The ledger is read once a pass, from the same list: what jobs like
+	// each one cost is measured from the floor's finished jobs.
+	book := estimate.Open(items)
 	var errs []error
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
@@ -89,7 +101,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
 			continue
 		}
-		if err := in.decide(ctx, it); err != nil {
+		if err := in.decide(ctx, it, book); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -105,13 +117,29 @@ func (in *Intake) load(it factory.Item) (pipeline.File, error) {
 	return in.opts.Load(it.Repo)
 }
 
-func (in *Intake) decide(ctx context.Context, it factory.Item) error {
+// Cost is what jobs like it cost, as the start rules read it: the high end
+// of its measured range, and unknown when the ledger has too few similar
+// jobs.
+func Cost(book estimate.Book, it factory.Item) pipeline.Measured {
+	r, ok := book.For(it)
+	return pipeline.Measured{USD: r.USDHi, Known: ok}
+}
+
+func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Book) error {
 	f, err := in.load(it)
 	if err != nil {
 		return err
 	}
-	job := Job(it)
-	decision := f.DecideJob(it, job.Paths)
+	decision := f.DecideJob(it, Job(it).Paths, Cost(book, it))
+	if (decision.Start || decision.Ask) && factory.ClosedForAutomation(ctx, in.st.Root(), it, in.opts.Standing) {
+		return nil
+	}
+	if decision.Start {
+		if looked, ok := in.lookFirst(ctx, it); ok {
+			it = looked
+			decision = f.DecideJob(it, Job(it).Paths, Cost(book, it))
+		}
+	}
 	if !decision.Start && !decision.Ask {
 		return nil
 	}
@@ -185,6 +213,20 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 
 var errMoved = errors.New("intake: job already moved")
 
+// lookFirst looks at a job closer before an automatic start and answers the
+// job as the look left it; false when there is no scout, the job already has
+// a current look, or the look failed.
+func (in *Intake) lookFirst(ctx context.Context, it factory.Item) (factory.Item, bool) {
+	if in.opts.Scout == nil || (it.Scout != nil && !it.Scout.Stale(it)) {
+		return it, false
+	}
+	if in.opts.Scout(ctx, it.ID) != nil {
+		return it, false
+	}
+	looked, err := in.st.Get(it.ID)
+	return looked, err == nil
+}
+
 // canStart reads the stop history under the job's update lock, so a stop
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
@@ -218,8 +260,8 @@ var pathWords = regexp.MustCompile(`[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.*?-]*)+`)
 func Job(it factory.Item) pipeline.Job {
 	j := pipeline.Job{
 		ID: it.ID, Kind: it.Kind, Tier: it.Tier, Labels: it.Labels,
-		Size: factory.JobSize(it), Cost: it.Triage.Est, CostKnown: it.Triage.Est > 0,
-		Cap: it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
+		Size: factory.JobSize(it),
+		Cap:  it.Cap, Judged: it.Triage.StartJudged, Matched: it.Triage.StartMatched,
 		Paths: append([]string(nil), it.Triage.StartPaths...),
 	}
 	text := it.Title + "\n" + it.Body

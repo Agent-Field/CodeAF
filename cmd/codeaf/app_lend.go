@@ -69,6 +69,20 @@ func forgetStageAgent(agent *session.Agent) {
 	delete(stageLends.agents, agent)
 }
 
+// stageAgentsWhere answers the open stages' agents that keep accepts, asked
+// while the registry holds still.
+func stageAgentsWhere(keep func(*session.Agent) bool) []*session.Agent {
+	stageLends.mu.Lock()
+	defer stageLends.mu.Unlock()
+	var out []*session.Agent
+	for agent := range stageLends.agents {
+		if keep(agent) {
+			out = append(out, agent)
+		}
+	}
+	return out
+}
+
 // liveStageFor is the factory stage's agent open in this process on transcript:
 // a live agent that the stage maker registered and that is not closed.
 func liveStageFor(transcript string) (*session.Agent, bool) {
@@ -186,6 +200,9 @@ func appLendLive(agent *session.Agent, ask appOpenAsk, hello remote.Hello) (*app
 		SessionFile: ask.Transcript,
 		Resumed:     true,
 	}
+	// In-process chats are the desktop's hot path. Remote surfaces keep
+	// one frame per event until someone measures them.
+	engine.DeltaWindow = remote.DefaultDeltaWindow
 	sess := remote.NewSession(engine, true)
 	loop, err := remote.LoopbackAttach(hello, remote.AttachOptions{
 		Open: func(remote.Hello) (*remote.Session, error) { return sess, nil },

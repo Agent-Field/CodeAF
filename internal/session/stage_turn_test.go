@@ -72,11 +72,12 @@ func stageTestAgent(t *testing.T, completer Completer, door StageDoor) *Agent {
 }
 
 // THE TURN THAT MUST REPORT names `stage_result` in `tool_choice` on its first
-// request and on no other: the call is answered, the next request is free, and
-// an ordinary turn after it owes nothing.
+// request and on no other. The report here is intermediate (`final` false), so
+// the turn goes on: the call is answered, the next request is free, and an
+// ordinary turn after it owes nothing.
 func TestATurnThatMustReportRequiresTheVerbOnItsFirstRequestOnly(t *testing.T) {
 	completer := &choiceCompleter{answers: []*ai.Response{
-		toolResponse("c1", "stage_result", `{"done":true,"output":"planned two edits"}`),
+		toolResponse("c1", "stage_result", `{"done":true,"final":false,"output":"planned two edits"}`),
 		textResponse("reported"),
 	}}
 	door := &fakeStageDoor{}
@@ -104,6 +105,40 @@ func TestATurnThatMustReportRequiresTheVerbOnItsFirstRequestOnly(t *testing.T) {
 		}
 	}
 	if len(door.reports) != 1 || door.reports[0].Output != "planned two edits" {
+		t.Fatalf("door got %+v", door.reports)
+	}
+}
+
+// A FINAL REPORT ENDS THE TURN THAT MUST REPORT: once the required call is
+// answered the model is not asked again ([Agent.stageBatchFinal]), so the turn
+// makes one request, and the ordinary turn after it requires nothing.
+func TestAFinalReportEndsTheTurnThatMustReportAndTheNextTurnOwesNothing(t *testing.T) {
+	completer := &choiceCompleter{answers: []*ai.Response{
+		toolResponse("c1", "stage_result", `{"done":true,"output":"planned two edits"}`),
+	}}
+	door := &fakeStageDoor{}
+	agent := stageTestAgent(t, completer, door)
+	events, err := agent.FollowUpRequiring("Call stage_result now.", "stage_result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	events, err = agent.FollowUp("and one more thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	choices, _ := completer.seen()
+	if len(choices) != 2 {
+		t.Fatalf("%d requests, want 2: %#v", len(choices), choices)
+	}
+	if requiredName(choices[0]) != "stage_result" {
+		t.Fatalf("the first request's tool_choice = %#v, want stage_result named", choices[0])
+	}
+	if choices[1] != "auto" {
+		t.Errorf("the next turn still required a tool: %#v", choices[1])
+	}
+	if len(door.reports) != 1 || door.reports[0].Output != "planned two edits" || door.reports[0].Checkpoint {
 		t.Fatalf("door got %+v", door.reports)
 	}
 }

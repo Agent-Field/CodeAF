@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -80,13 +81,19 @@ type Moved struct {
 // before a run, the plan stage during one, the person from settings or in
 // words. A run is a short program of one-word stages, and this is the whole
 // of what may change about it; there is no field for the cap, the
-// rounds or the fanout, so an edit can never raise what an item may spend.
+// fanout, and its rounds only as Max below: the person's, at most
+// [StepTriesMost], so an edit can never raise what an item may spend past a
+// bound the person chose.
 //
 //   - Add is new conversation stages, each placed after a named stage, or
 //     an approve step (named approve, or of kind gate), where the run holds
 //     for the person.
 //   - Ask is a new ask for a stage, by name.
 //   - Thinking is a stage's thinking, by name: "", cheap or strong.
+//   - Max is how many tries a conversation stage gets, by name: 1 to
+//     [StepTriesMost]. Only the person sets it.
+//   - Model is the model a stage runs on, by name: a model id, or "" for the
+//     job's. Only the person picks it, and only for a conversation.
 //   - On switches a stage on by name, an off one included.
 //   - Skip switches a stage off by name; it stays in the job, off.
 //   - Remove takes a stage out of this job by name: it is gone from the job's
@@ -99,6 +106,8 @@ type RunEdit struct {
 	Add      []Added
 	Ask      map[string]string
 	Thinking map[string]string
+	Max      map[string]int
+	Model    map[string]string
 	On       []string
 	Skip     []string
 	Remove   []string
@@ -110,7 +119,7 @@ type RunEdit struct {
 // Empty says the edit changes nothing. A reason with no change is nothing to
 // record.
 func (e RunEdit) Empty() bool {
-	return len(e.Add) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
+	return len(e.Add) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.Max) == 0 && len(e.Model) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
 		len(e.Remove) == 0 && len(e.Move) == 0
 }
 
@@ -383,6 +392,63 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			} else {
 				say("set " + stages[i].Name + " thinking " + word)
 			}
+		}
+	}
+	for _, name := range sortedKeys(e.Max) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		tries := e.Max[name]
+		switch {
+		// HOW MANY TRIES A STEP GETS IS WHAT IT MAY SPEND, so it is the
+		// person's alone, and bounded.
+		case who != ByYou:
+			refuse("only the person sets how many tries a step gets")
+		case tries < 1 || tries > StepTriesMost:
+			refuse("%s", ErrStepTries.Error())
+		case stages[i].Kind == StageCheck || IsApprove(stages[i]):
+			refuse("%s is a check or an approval; only a conversation step's tries change here", stages[i].Name)
+		case fixed(i) && tries != max(stages[i].Max, 1):
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && tries != max(stages[i].Max, 1):
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case tries != max(stages[i].Max, 1):
+			stages[i].Max = tries
+			mark(i, "")
+			say("set " + stages[i].Name + " tries " + strconv.Itoa(tries))
+		}
+	}
+	for _, name := range sortedKeys(e.Model) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		model := strings.TrimSpace(e.Model[name])
+		switch {
+		// THE MODEL A STEP RUNS ON IS THE PERSON'S PICK: it is what the step
+		// costs, so neither the manager nor the plan chooses it.
+		case who != ByYou:
+			refuse("only the person picks the model a step runs on")
+		case !ModelID(model):
+			refuse("%s", ErrModelID.Error())
+		case stages[i].Kind == StageCheck || IsApprove(stages[i]):
+			refuse("%s is a check or an approval and runs no model", stages[i].Name)
+		case fixed(i) && model != stages[i].Model:
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && model != stages[i].Model:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case model != stages[i].Model:
+			stages[i].Model = model
+			mark(i, "")
+			if model == "" {
+				model = "usual"
+			}
+			say("set " + stages[i].Name + " model " + model)
 		}
 	}
 	for _, add := range e.Add {
@@ -762,7 +828,7 @@ func StageFixed(stages []Stage, i int, recipe Recipe, kind Kind) bool {
 
 // sortedKeys is a map's keys in order, so an edit's lines read the same on
 // every run.
-func sortedKeys(m map[string]string) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

@@ -2498,10 +2498,24 @@ type Config struct {
 	// Children inherit it without inheriting manager or stage authority.
 	JobBudget JobChat
 
+	// JobContext is the owning pipeline's lifetime across stage conversations.
+	// Optional knowledge may finish after a stage closes, but never after this
+	// context ends. A standalone job conversation uses its own close lifetime.
+	JobContext context.Context
+
+	// JobPendingSpend keeps the worker report path open for paid memory receipts.
+	JobPendingSpend func() func()
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
 	Stage StageDoor
+
+	// PlanStage requires the plan file list in the stage_result answer schema.
+	PlanStage bool
+	// RepairStage offers the PR repair report in the stage_result answer schema;
+	// only the step that follows a pull request can write one.
+	RepairStage bool
 
 	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
 	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
@@ -2622,6 +2636,13 @@ type Config struct {
 	// agent that built it ([Agent.newChildAgent]); no surface sets them.
 	agentDID string
 	actorDID string
+
+	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
+	// conversation's DID with the task number its row wears. A run builds its
+	// workers outside the conversation's own tree ([NewBeltWorker]), so the
+	// run states the name rather than the worker inheriting it. Empty leaves a
+	// run worker with no identity, as before.
+	WorkerDID string
 
 	// automationID is the id of the automation whose run this agent IS
 	// (automation_run.go), and empty in every conversation and every ordinary
@@ -2759,6 +2780,10 @@ type Agent struct {
 	knowledgeJournal   *knowledgeJournal
 	taskComputerPrompt bool
 	remoteAckJobs      sync.WaitGroup
+	// knowledgeWake is signalled after each journal line reaches the file.
+	// initKnowledge creates it once before the agent is reachable and never
+	// replaces it, so writers read it without a lock.
+	knowledgeWake chan struct{}
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 

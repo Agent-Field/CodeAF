@@ -41,6 +41,8 @@ type factoryHostConfig struct {
 	secure           *factoryTLS
 	operatorLinks    bool
 	operatorRecovery bool
+	// githubLimit is the team server's view of GitHub's rate limit; nil elsewhere.
+	githubLimit *githubLimit
 }
 
 // MarshalYAML keeps omission distinct from an explicit empty repository list,

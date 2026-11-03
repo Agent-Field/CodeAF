@@ -662,8 +662,9 @@ Over `--host`, these same doors reach the other machine's store. When a
 machine's memory store could not be opened, the page and the commands say so
 (`memory is unavailable in this conversation · the store could not be opened`
 here, `memory is unavailable on this machine · …` from a far engine). The
-`notice things to remember` row is read on every turn, so even an engine that
-has been running for days follows a change from the next turn.
+`learn from chats and jobs` row is read at every memory step, so even an engine
+that has been running for days follows a change without a restart. Off stops
+automatic memory model calls; saved lines remain available.
 
 ## Executable handoff on Windows
 

@@ -58,12 +58,13 @@ type stageMaker struct {
 	floor *store.Store
 	// jobs is where the job a step runs for is kept: the worker's mirror of
 	// the job the factory leased it. Nil is floor.
-	jobs       *store.Store
-	parent     session.Config
-	current    func() session.Config
-	refusal    func() error
-	workspace  string
-	profileDir string
+	jobs        *store.Store
+	memoryOwner *store.Store
+	parent      session.Config
+	current     func() session.Config
+	refusal     func() error
+	workspace   string
+	profileDir  string
 }
 
 // factoryStageMaker is this process's maker.
@@ -127,11 +128,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
-	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
 	cfg.AutomaticModels = spec.AutomaticModels
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		cfg.Model = model
-	}
+	cfg.Model = factoryOpenModel(m.profileDir, cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)
 	if cfg.OneModel || fallback == cfg.Model {
 		fallback = ""
@@ -139,6 +137,8 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
 	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
 	cfg.Stage = verification
+	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
+	cfg.RepairStage = factory.IsCIRepairStage(factory.Stage{Name: strings.TrimSpace(spec.VerificationStage)})
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
@@ -153,8 +153,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if jobs == nil {
 		jobs = m.floor
 	}
-	budget := &stageBudget{floor: jobs, item: spec.Item}
+	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item}
 	cfg.JobBudget = budget
+	cfg.JobContext = spec.JobContext
+	cfg.JobPendingSpend = spec.PendingSpend
 	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
@@ -239,6 +241,20 @@ func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where 
 		return parent, err
 	}
 	return v3PointAt(parent, place)
+}
+
+// stageOpenModel is the model a step opens on: THE STEP'S OR JOB'S OWN, WHEN A
+// PERSON CHOSE ONE, over everything; else the factory's default model; else
+// the launch's. A launch on one model for every task keeps that model rather
+// than the factory's default, which nobody picked for this job.
+func stageOpenModel(cfg session.Config, spec factoryrun.ConversationSpec) string {
+	if model := strings.TrimSpace(spec.Model); model != "" {
+		return model
+	}
+	if model := strings.TrimSpace(spec.FactoryModel); model != "" && !cfg.OneModel {
+		return model
+	}
+	return cfg.Model
 }
 
 // factoryPostureEnv pins the posture a stage conversation runs at, in the
@@ -447,18 +463,25 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 			prose.Reset()
 		case session.EventToolBegin:
 			flush()
-			hint := c.relativeHint(event.Hint)
-			if hint != "" {
-				c.say(event.Tool + " " + hint)
-			} else {
-				c.say(event.Tool)
+			hint := strings.TrimSpace(event.Hint)
+			if event.Tool == "bash" {
+				var args struct {
+					Command string `json:"command"`
+				}
+				if json.Unmarshal([]byte(event.Args), &args) == nil && args.Command != "" {
+					hint = "bash " + strings.Join(strings.Fields(args.Command), " ")
+				}
 			}
+			if hint != event.Tool && !strings.HasPrefix(hint, event.Tool+" ") {
+				hint = strings.TrimSpace(event.Tool + " " + hint)
+			}
+			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(hint, c.dir))
 		case session.EventToolFailed:
 			reason := event.Hint
 			if reason == "" && event.Err != nil {
 				reason = event.Err.Error()
 			}
-			c.say(event.Tool + " failed: " + reason)
+			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(event.Tool+" failed: "+reason, c.dir))
 		case session.EventNotice:
 			// THE ACCEPTANCE NOTICE IS THE STAGE'S OWN BUSINESS: every stage
 			// would log a `done when · …` line, which says nothing to the
@@ -601,7 +624,11 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 		defer c.mu.Unlock()
 		if c.budget != nil {
 			if why := c.budget.Refusal(); why != "" {
-				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Said: why}
+				// A daily refusal already recorded was not caused by memory, so
+				// the stop keeps its ordinary meaning: an early report is rejected.
+				var refused factoryrun.SpendStop
+				daily := errors.As(c.failure, &refused) && refused.Daily
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Memory: !daily && c.budget.memoryCap(), Said: why}
 			}
 		}
 		return c.failure
@@ -883,15 +910,6 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 		return nil
 	})
 	return id, err
-}
-
-// relativeHint spends the visible log on the filename and command, not a home path.
-func (c *stageConversation) relativeHint(s string) string {
-	if c.dir == "" {
-		return s
-	}
-	s = strings.ReplaceAll(s, c.dir+string(os.PathSeparator), "")
-	return strings.ReplaceAll(s, c.dir, ".")
 }
 
 // watchVerification relays bounded structured facts even while a model turn parks.

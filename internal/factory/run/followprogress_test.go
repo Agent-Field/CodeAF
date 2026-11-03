@@ -149,7 +149,7 @@ func TestFollowPRProgressPublicationMessagesRequireConfirmedOutcomes(t *testing.
 				g.r.opts.Source = func(string) factory.Source { return ciPublishSource{g.src, pr} }
 			}
 			if mode == "failed" {
-				g.r.opts.Push = func(string, string) error { return errors.New("permission denied") }
+				g.r.opts.Push = func(string, string, ...func() error) error { return errors.New("permission denied") }
 			}
 			if err := g.st.Update(g.id, func(it *factory.Item) error {
 				it.Talk = "manager"

@@ -27,6 +27,11 @@ import (
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
+// setupHang is how long a test waits on the setup worker before calling it
+// hung. Reading a page of issues is real store writes, which a loaded machine
+// can stretch well past a few seconds, so this bounds a hang, not a speed.
+const setupHang = time.Minute
+
 func waitSetup(t *testing.T, h *Handler) {
 	t.Helper()
 	h.setupMu.Lock()
@@ -38,7 +43,7 @@ func waitSetup(t *testing.T, h *Handler) {
 	}
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(setupHang):
 		t.Fatal("setup worker did not finish")
 	}
 }
@@ -63,6 +68,21 @@ func setupGitHub(t *testing.T, f *peopleV2Fixture, fail *bool) {
 			body = `{"login":"owner"}`
 		case "/user/repos":
 			body = `[{"full_name":"acme/api","open_issues_count":3},{"full_name":"acme/old","archived":true}]`
+		case "/graphql":
+			// Issues alone: acme/api has 2 open issues (and 1 open pull
+			// request, which open_issues_count adds); acme/old is not answered.
+			var ask struct {
+				Variables map[string]string `json:"variables"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&ask)
+			data := map[string]any{}
+			for key, name := range ask.Variables {
+				if strings.HasPrefix(key, "n") && name == "api" {
+					data["r"+key[1:]] = map[string]any{"issues": map[string]int{"totalCount": 2}}
+				}
+			}
+			raw, _ := json.Marshal(map[string]any{"data": data})
+			body = string(raw)
 		case "/repos/acme/api/issues":
 			if *fail {
 				status, body = 503, `{}`
@@ -417,7 +437,7 @@ func TestFactorySetupPagedReadResumesFromSavedPage(t *testing.T) {
 	defer resumed.Close()
 	select {
 	case <-resumedCall:
-	case <-time.After(5 * time.Second):
+	case <-time.After(setupHang):
 		t.Fatal("restart did not resume the saved page")
 	}
 	waitSetup(t, resumed)
@@ -764,5 +784,71 @@ func TestFactorySetupDoneGoesBackToGitHubOnlyWhenTheTokenIsRefused(t *testing.T)
 	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
 	if out.State != "github" || out.GitHub.Connected {
 		t.Fatalf("a refused token left setup done: %+v", out)
+	}
+}
+
+// CLOSING WAITS FOR SETUP. A setup worker still reading when the factory
+// closes is cancelled and waited for, so nothing writes into the factory's
+// folder after Close returns.
+func TestFactoryCloseWaitsForTheSetupWorker(t *testing.T) {
+	f := peopleV2Setup(t, api.FactoryTeam)
+	if err := factorygithub.SaveReadGrant(factorygithub.GrantPath(f.cfg.TokensPath), factorygithub.ReadGrant{Token: "read-only", Login: "owner", GrantedAt: f.now}); err != nil {
+		t.Fatal(err)
+	}
+	reading := make(chan struct{})
+	var once sync.Once
+	f.h.config.GitHubHTTPClient = &http.Client{Transport: githubTransport(func(r *http.Request) (*http.Response, error) {
+		once.Do(func() { close(reading) })
+		<-r.Context().Done()
+		// The worker is still unwinding when the request has been cancelled.
+		time.Sleep(300 * time.Millisecond)
+		return nil, r.Context().Err()
+	})}
+	out := setupState{View: api.FactorySetup{ID: "local", Mode: "team", State: "reading", Repos: []api.SetupRepo{{ID: "acme/api", Selected: true, Read: "next", Clone: "missing"}}}}
+	if err := f.h.saveSetup(out); err != nil {
+		t.Fatal(err)
+	}
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, nil)
+	select {
+	case <-reading:
+	case <-time.After(setupHang):
+		t.Fatal("the setup worker never read")
+	}
+	f.h.Close()
+	f.h.setupMu.Lock()
+	busy := f.h.setupBusy
+	f.h.setupMu.Unlock()
+	if busy {
+		t.Fatal("Close returned while the setup worker was still running")
+	}
+}
+
+// DISCOVERY'S open_issues IS ISSUES ALONE, from one batched GraphQL request per
+// page, and says so (open_issues_exact). A repository GraphQL does not answer
+// keeps GitHub's combined count, marked not exact, because older desks need the
+// number. The read's own count is issues alone too.
+func TestFactorySetupOpenIssuesAreIssuesAloneAndSayWhenTheyAreNot(t *testing.T) {
+	f := peopleV2Setup(t, api.FactorySolo)
+	fail := false
+	setupGitHub(t, f, &fail)
+	var setup api.FactorySetup
+	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &setup)
+	byID := map[string]api.SetupRepo{}
+	for _, r := range setup.Repos {
+		byID[r.ID] = r
+	}
+	if r := byID["acme/api"]; r.OpenIssues != 2 || !r.OpenIssuesExact {
+		t.Fatalf("acme/api: open_issues %d exact %v, want 2 and true", r.OpenIssues, r.OpenIssuesExact)
+	}
+	if r := byID["acme/old"]; r.OpenIssues != 0 || r.OpenIssuesExact {
+		t.Fatalf("acme/old: open_issues %d exact %v, want the combined 0 and false", r.OpenIssues, r.OpenIssuesExact)
+	}
+	f.request(t, "POST", "/v1/factory-setup", "operator-secret", api.FactorySetupRequest{ID: "local", Verb: "select_repos", RepoIDs: []string{"acme/api"}}, 200, &setup)
+	waitSetup(t, f.h)
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &setup)
+	for _, r := range setup.Repos {
+		if r.ID == "acme/api" && (r.OpenIssues != 5 || !r.OpenIssuesExact) {
+			t.Fatalf("after the read: open_issues %d exact %v, want 5 and true", r.OpenIssues, r.OpenIssuesExact)
+		}
 	}
 }

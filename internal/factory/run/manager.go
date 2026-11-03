@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // THE MANAGER'S LINES, every sentence the runner says into an item's
@@ -63,6 +64,7 @@ const (
 	sayStopped   = "stopped"
 	sayPaused    = "paused"
 	sayResumed   = "resumed"
+	sayTrying    = "trying %s again"
 	saySteer     = "steer: %s"       // what the person typed during a run
 	sayBack      = "sent back to %s" // sent back to plan: <the person's words>, from an approve step
 	saySep       = " · "
@@ -105,6 +107,13 @@ type Talk interface {
 type Heard struct {
 	At    time.Time
 	Words string
+}
+
+// ResumeReporter gives the lease door the runner's retrying chat writer.
+// It reports explicit Resume actions without launching or polling any jobs.
+func ResumeReporter(st *store.Store, talk Talk) func(int) {
+	r := New(Options{Store: st, Talk: talk})
+	return func(id int) { r.loop().tell(id, sayResumed) }
 }
 
 // owedLine is a line said to a conversation that could not take it yet, with

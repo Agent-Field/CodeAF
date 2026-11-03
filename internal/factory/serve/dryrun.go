@@ -6,6 +6,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
@@ -40,10 +41,15 @@ func (h *Handler) dryrun(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	book := estimate.Open(snap.Items)
+	paths := func(it factory.Item) []string { return intake.Job(it).Paths }
+	cost := func(it factory.Item) pipeline.Measured { return intake.Cost(book, it) }
+	dry := wireDry(file.DryItems(backlog(snap.Items, owner, repo), paths, cost))
+	dry.CostJobs = book.JobsIn(full)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.DryRun
-	}{h.factory, wireDry(file.DryItems(backlog(snap.Items, owner, repo), func(it factory.Item) []string { return intake.Job(it).Paths }))})
+	}{h.factory, dry})
 }
 
 // pipelineFile is the checkout's pipeline, or the defaults when this machine

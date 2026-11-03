@@ -133,7 +133,7 @@ and neither does a test binary.
 ## The Model Pool is a second stream, under its own switch
 
 The usage counts are not the only thing this binary sends to AgentField. With
-`model_pool` set to `on` — the default — a judge scores each crew seat after a
+`model_pool` explicitly set to `on` — it defaults to `off` — a judge scores each crew seat after a
 task lands, and one row per seat leaves for
 `https://codeaf.agentfield.ai/pool/v1/rows`: the model slug that held the
 seat, the judge's slug, the seat (the worker, checker or planner, spelled on the wire as `worker`,

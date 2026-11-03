@@ -677,9 +677,7 @@ func importPass(st *store.Store, projectDir, homeDir string, digests *digestCach
 			return
 		}
 		stamps, valid := importStamps(key)
-		digests.imports.mu.Lock()
-		digests.imports.scans++
-		digests.imports.mu.Unlock()
+		digests.imports.countScan()
 		if scanAndPublishImport(st, projectDir, homeDir, digests.digest, true) && valid {
 			digests.imports.remember(key, stamps)
 		}

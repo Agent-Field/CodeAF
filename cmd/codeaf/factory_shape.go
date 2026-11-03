@@ -12,11 +12,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"unicode/utf8"
 )
 
 // ── THE MANAGER'S TURNS ────────────────────────────────────────────────────
@@ -397,7 +400,8 @@ func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (fa
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	return factory.StatusForManagerHold(it, held, threadOnly, time.Now()), nil
+	now := time.Now()
+	return factory.StatusForManagerWaiting(it, held, threadOnly, serve.QueuedWait(d.st, it, now), now), nil
 }
 
 func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {
@@ -414,6 +418,45 @@ func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID
 	}
 	receipt, err := lease.NewDoors(desk).AnswerPending(it.ID, it.Talk, questionID, answer)
 	return managerAnswerResult(receipt, err)
+}
+
+// RejectPendingPlan uses the same typed send-back door as the job's controls.
+// The manager binding and exact decision are checked again on the locked item.
+func (d seamRunDoor) RejectPendingPlan(ctx context.Context, conversation, questionID, words string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	words = strings.TrimSpace(words)
+	if words == "" || utf8.RuneCountInString(words) > api.MaxRejectPlanWords {
+		return "", fmt.Errorf("Nothing changed: requested changes must contain 1 to %d characters", api.MaxRejectPlanWords)
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return "", err
+	}
+	revision, err := d.st.Revision(it.ID)
+	if err != nil {
+		return "", err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return "", err
+	}
+	_, err = lease.NewDoors(desk).RejectPlan(it.ID, revision, words, func(cur factory.Item) error {
+		if cur.Talk != it.Talk || questionID == "" || factory.PendingQuestionID(cur) != questionID {
+			return errors.New("Nothing changed: the pending decision changed; read factory_status before trying again")
+		}
+		return nil
+	})
+	if err != nil {
+		var refused factoryrun.PlanRevisionRefusal
+		var stale *store.StaleError
+		if errors.As(err, &refused) || errors.As(err, &stale) {
+			return "", fmt.Errorf("Nothing changed: %w", err)
+		}
+		return "", err
+	}
+	return "Plan sent back with the requested changes. The previous step will run again with those words and approval will be requested again afterward. This confirms the send-back, not that a worker has started; read factory_status for current progress.", nil
 }
 
 func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, error) {
