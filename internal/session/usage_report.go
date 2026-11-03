@@ -31,10 +31,8 @@ package session
 // memory, and the scan is NOT constant-time: it is one linear pass over the
 // ledger's first byte to the end of the prefix it fixed at the start.
 //
-// ONE PASS, ONE PREFIX, NO CACHE. The file's length is read once, the scan
-// reads no further than that (a line appended meanwhile is the next report's),
-// and the report is built in a map as it goes. Nothing is remembered between
-// calls, so there is nothing to go stale.
+// Date-only reports use an incremental in-memory daily rollup when it can
+// preserve the scan's exact answer; other questions retain the streaming scan.
 //
 // THE TOTALS ARE ADDED UP BY THE SAME CHECKED HELPER as the ledger's
 // ([UsageLedgerTotals.count]): a negative count or a sum past what a number
@@ -152,10 +150,10 @@ func validStoredDay(day string) bool {
 	return err == nil
 }
 
-// QueryUsageReport adds up every ledger line the query matches into day, model
+// scanUsageReport adds up every ledger line the query matches into day, model
 // and subject cells. The query must name both ends of a range of at most
 // [UsageReportMaxDays] days; loc places a line that has no stored day.
-func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget UsageReportBudget) (UsageReport, error) {
+func scanUsageReport(path string, q UsageQuery, loc *time.Location, budget UsageReportBudget) (UsageReport, error) {
 	q, err := q.normalized()
 	if err != nil {
 		return UsageReport{}, err
@@ -181,79 +179,100 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 	if err != nil {
 		return UsageReport{}, err
 	}
-	cells := map[usageReportKey]*UsageReportCell{}
-	var weight int64
-	lastDay, lastDayValid := "", false
+	b := newUsageReportBuilder(loc, budget)
 	report.Stats, err = scanUsageLines(file, info.Size(), func(_ int64, line UsageLine) error {
-		line.Run = strings.TrimSpace(line.Run)
 		if !q.matches(line) {
 			return nil
 		}
-		if err := report.Totals.count(line); err != nil {
-			return err
-		}
-		day := line.Day
-		if day != lastDay {
-			lastDay, lastDayValid = day, validStoredDay(day)
-		}
-		if !lastDayValid {
-			day = line.At.In(loc).Format(usageDayLayout)
-			report.DaysDerived++
-		}
-		kind, subject := usageSubject(line)
-		root, session := "", ""
-		if kind == SubjectTask {
-			root = strings.TrimSpace(line.Root)
-			if root == "" {
-				session = strings.TrimSpace(line.Session)
-			}
-		}
-		key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session, agent: UsageOwner(line)}
-		cell := cells[key]
-		if cell == nil {
-			cost := int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session) + len(key.agent))
-			if len(cells) >= budget.MaxCells || weight+cost > budget.MaxBytes {
-				return fmt.Errorf("%w (more than %d groups or %d estimated bytes)", ErrUsageReportTooLarge, budget.MaxCells, budget.MaxBytes)
-			}
-			// Only now are the strings copied, so a line's large id is never
-			// retained by a map it was refused from.
-			key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent)}
-			cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent}
-			cells[key] = cell
-			weight += cost
-		}
-		cell.Records++
-		cell.Calls += max(line.Calls, 1)
-		cell.Input += int64(line.Input)
-		cell.Output += int64(line.Output)
-		if line.USD > 0 {
-			cell.USD += line.USD
-		} else {
-			cell.Unpriced++
-		}
-		if line.Unbilled {
-			cell.Unbilled++
-		}
-		return nil
+		return b.add(line)
 	})
 	if err != nil {
 		return UsageReport{}, err
 	}
-	report.Cells = make([]UsageReportCell, 0, len(cells))
+	b.report.Stats = report.Stats
+	return b.finish(), nil
+}
+
+type usageReportBuilder struct {
+	report       UsageReport
+	cells        map[usageReportKey]*UsageReportCell
+	weight       int64
+	lastDay      string
+	lastDayValid bool
+	loc          *time.Location
+	budget       UsageReportBudget
+}
+
+func newUsageReportBuilder(loc *time.Location, budget UsageReportBudget) *usageReportBuilder {
+	return &usageReportBuilder{cells: map[usageReportKey]*UsageReportCell{}, loc: loc, budget: budget}
+}
+
+func (b *usageReportBuilder) add(line UsageLine) error {
+	line.Run = strings.TrimSpace(line.Run)
+	if err := b.report.Totals.count(line); err != nil {
+		return err
+	}
+	day := line.Day
+	if day != b.lastDay {
+		b.lastDay, b.lastDayValid = day, validStoredDay(day)
+	}
+	if !b.lastDayValid {
+		day = line.At.In(b.loc).Format(usageDayLayout)
+		b.report.DaysDerived++
+	}
+	kind, subject := usageSubject(line)
+	root, session := "", ""
+	if kind == SubjectTask {
+		root = strings.TrimSpace(line.Root)
+		if root == "" {
+			session = strings.TrimSpace(line.Session)
+		}
+	}
+	key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session, agent: UsageOwner(line)}
+	cell := b.cells[key]
+	if cell == nil {
+		cost := reportCellWeight(key)
+		if len(b.cells) >= b.budget.MaxCells || b.weight+cost > b.budget.MaxBytes {
+			return fmt.Errorf("%w (more than %d groups or %d estimated bytes)", ErrUsageReportTooLarge, b.budget.MaxCells, b.budget.MaxBytes)
+		}
+		// Only now are the strings copied, so a line's large id is never
+		// retained by a map it was refused from.
+		key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent)}
+		cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent}
+		b.cells[key] = cell
+		b.weight += cost
+	}
+	cell.Records++
+	cell.Calls += max(line.Calls, 1)
+	cell.Input += int64(line.Input)
+	cell.Output += int64(line.Output)
+	if line.USD > 0 {
+		cell.USD += line.USD
+	} else {
+		cell.Unpriced++
+	}
+	if line.Unbilled {
+		cell.Unbilled++
+	}
+	return nil
+}
+
+func (b *usageReportBuilder) finish() UsageReport {
+	b.report.Cells = make([]UsageReportCell, 0, len(b.cells))
 	seen := map[string]struct{}{}
-	for _, cell := range cells {
-		report.Cells = append(report.Cells, *cell)
+	for _, cell := range b.cells {
+		b.report.Cells = append(b.report.Cells, *cell)
 		if cell.Model != "" {
 			if _, ok := seen[cell.Model]; !ok {
 				seen[cell.Model] = struct{}{}
-				report.Models = append(report.Models, cell.Model)
+				b.report.Models = append(b.report.Models, cell.Model)
 			}
 		}
 	}
-	slices.SortFunc(report.Cells, func(a, b UsageReportCell) int {
+	slices.SortFunc(b.report.Cells, func(a, b UsageReportCell) int {
 		return cmp.Or(strings.Compare(a.Day, b.Day), strings.Compare(a.Model, b.Model), strings.Compare(a.Kind, b.Kind),
 			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session), strings.Compare(a.Agent, b.Agent))
 	})
-	slices.Sort(report.Models)
-	return report, nil
+	slices.Sort(b.report.Models)
+	return b.report
 }
