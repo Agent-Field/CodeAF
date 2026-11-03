@@ -53,3 +53,31 @@ func TestRemoteTalkDoesNotReuseIdenticalLocalJob(t *testing.T) {
 		t.Fatalf("owned runner lost held manager: got %q, want %q", held, first)
 	}
 }
+
+// A worker's mirror goes when the worker ends; the conversation's folder stays
+// with the floor.
+func TestRemoteTalkWorksInTheFloorsFolder(t *testing.T) {
+	floor, web, profile := talkLab(t)
+	mirror, err := store.Open(filepath.Join(floor.Root(), "workers", strconv.Itoa(os.Getpid())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := factory.Item{ID: 41, Repo: "elsewhere", Title: "remote", Kind: factory.KindIssue, State: factory.StateNew}
+	if err := mirror.Save(remote); err != nil {
+		t.Fatal(err)
+	}
+	base := "https://factory.example"
+	factoryLocalLease(mirror)(base, api.WorkerLease{ID: "remote-lease", Job: remote.ID, Worker: "here", ExpiresAt: time.Now().Add(time.Hour)})
+	doors := factoryLocalJobs(floor, base, web, profile, factory.Snapshot{Items: []factory.Item{remote}}, nil)
+	chat, err := doors[remote.ID].seam.Talk(context.Background(), remote.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := v3ProjectDir(filepath.Join(floor.Root(), "chats", strconv.Itoa(remote.ID)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(filepath.Dir(chat)) != want {
+		t.Fatalf("the conversation is in %q, want the floor's %q", chat, want)
+	}
+}
