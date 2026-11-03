@@ -68,7 +68,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	}
 	if rec != nil && rec.State == "running" && it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
-			if ph.Name == rec.Step && ph.State == PhaseDone {
+			if ph.Name == rec.Step && (ph.State == PhaseDone || ph.State == PhaseSkipped) {
 				it.Recovery = nil
 				return true
 			}
