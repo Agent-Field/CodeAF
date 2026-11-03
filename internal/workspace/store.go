@@ -20,10 +20,10 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// schemaVersion is the schema this build writes. Schemas 1 and 2 remain
-// readable without migration; the first successful write upgrades them to 3.
+// schemaVersion is the schema this build writes. Earlier schemas remain
+// readable without migration; the first successful write upgrades them.
 const (
-	schemaVersion       = 3
+	schemaVersion       = WorkstreamSourcesSchemaVersion
 	legacySchemaVersion = 1
 )
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
@@ -41,6 +41,7 @@ const (
 	schemaReady
 	schemaLegacy
 	schemaTwo
+	schemaThree
 	schemaRefused
 )
 
@@ -51,6 +52,8 @@ func (s schemaState) version() int {
 		return schemaVersion
 	case schemaTwo:
 		return 2
+	case schemaThree:
+		return 3
 	case schemaLegacy:
 		return legacySchemaVersion
 	}
@@ -174,14 +177,17 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := q.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return schemaBlank, err
 	}
-	if app == applicationID && (version == schemaVersion || version == 2 || version == legacySchemaVersion) {
+	if app == applicationID && (version == schemaVersion || version == 3 || version == 2 || version == legacySchemaVersion) {
 		state := schemaReady
 		collections := "SELECT seq,id,name,created_at FROM collections LIMIT 0"
 		memberships := "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at FROM memberships LIMIT 0"
 		if version == 2 {
 			state = schemaTwo
 		}
-		if version == schemaVersion {
+		if version == 3 {
+			state = schemaThree
+		}
+		if version >= 3 {
 			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at,factory FROM memberships LIMIT 0"
 		}
 		if version == legacySchemaVersion {
@@ -197,11 +203,16 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 		if _, err := q.ExecContext(ctx, memberships); err != nil {
 			return state, err
 		}
-		if version == schemaVersion {
+		if version >= 3 {
 			for _, query := range workstreamSchemaReads {
 				if _, err := q.ExecContext(ctx, query); err != nil {
 					return state, err
 				}
+			}
+		}
+		if version == schemaVersion {
+			if _, err := q.ExecContext(ctx, workstreamSourcesRead); err != nil {
+				return state, err
 			}
 		}
 		return state, nil
@@ -312,13 +323,21 @@ func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
 		switch state {
 		case schemaReady:
 			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
+		case schemaThree:
+			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
+			if err == nil {
+				err = migrateWorkstreamSources(ctx, tx)
+			}
 		case schemaLegacy, schemaTwo:
 			err = migrateLegacy(ctx, tx, state.version())
+			if err == nil {
+				err = migrateWorkstreamSources(ctx, tx)
+			}
 		case schemaBlank:
 			if !create {
 				err = ErrNotFound
 			} else {
-				_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes+workstreamSchema)
+				_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes+workstreamSchema+workstreamSourcesSchema)
 			}
 		}
 	}

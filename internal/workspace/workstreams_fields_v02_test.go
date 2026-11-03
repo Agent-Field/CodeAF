@@ -14,6 +14,7 @@ func TestWorkstreamSchemaThreeRequiresGoAheadRecordColumns(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "obsolete.db")
 			s := openTestStore(t, path)
 			createTestCollection(t, s, "Schema three")
+			workstreamSchemaThreeFixture(t, s)
 			if userVersion(t, s) != 3 {
 				t.Fatal("fixture is not schema 3")
 			}
