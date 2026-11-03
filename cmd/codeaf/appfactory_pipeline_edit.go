@@ -495,8 +495,11 @@ func pipelineStructure(ed pipeline.Edited) *appwire.FactoryPipelineStructure {
 	return s
 }
 
+// PipelineLabelEdits attests that this preview applies label edits.
+func (*appBackend) PipelineLabelEdits() {}
+
 func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
-	return appwire.FactoryPipelineStepValues{Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
+	return appwire.FactoryPipelineStepValues{Label: v.Label, Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
 }
 
 // firstRuntimeEdit is the position of the first edit that names when, effort or
