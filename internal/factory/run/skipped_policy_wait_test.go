@@ -53,7 +53,7 @@ func TestSkippedRequiredCheckExplainsPolicyWaitToClient(t *testing.T) {
 	if len(served.Questions) != 1 || served.Questions[0].Text != want {
 		t.Fatalf("worker report lost waiting reason: %+v", served.Questions)
 	}
-	if len(job.Desk.Policy) != 1 || job.Desk.Policy[0].OK || job.Desk.Policy[0].Evidence != policy[0] {
+	if len(job.Desk.Policy) != 1 || job.Desk.Policy[0].Proven || job.Desk.Policy[0].Evidence == nil || job.Desk.Policy[0].Evidence.Ref != policy[0] {
 		t.Fatalf("client lost policy result: %+v", job.Desk.Policy)
 	}
 	if job.NeedsYou == nil || job.NeedsYou.Question == nil || !strings.Contains(job.NeedsYou.Question.Text, want) {
@@ -96,8 +96,8 @@ func TestSkippedRequiredCheckExplainsPolicyWaitToClient(t *testing.T) {
 
 func TestSkippedOptionalCheckDoesNotClaimAPolicyWait(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		policy []string
+		name     string
+		policy   []string
 		measured bool
 	}{
 		{name: "no check policy"},
