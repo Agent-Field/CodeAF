@@ -68,12 +68,6 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if err := teams.AppendTraffic(profile, room, teams.Entry{Kind: teams.KindQuestion, From: "test", To: teams.ToManager, Text: item.Question}); err != nil {
-				t.Fatal(err)
-			}
-			if err := teams.AppendTraffic(profile, room, teams.Entry{Kind: teams.KindEvent, From: "test", To: teams.ToManager, State: teams.StateAsking, Text: "asks: " + item.Question}); err != nil {
-				t.Fatal(err)
-			}
 			read := func(w *factoryWire) api.Job {
 				var job api.Job
 				w.must("factory.job", map[string]any{"factory": status.Factory, "job": item.ID}, &job)
@@ -144,7 +138,7 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 			t.Cleanup(model.Close)
 			wire.backend.open = func(ask appOpenAsk) (*appConn, error) {
 				host := wire.backend.local.host
-				agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: profile, Model: "test/model", APIKey: "test-key", BaseURL: model.URL, OneModel: true, DeterministicNames: true, FactoryRun: runDoor(host.floor, ask.Workspace, profile)})
+				agent, err := session.New(session.Config{Workspace: ask.Workspace, SessionFile: ask.Transcript, ProfileDir: profile, TeamListeningSince: ask.TeamListeningSince, Model: "test/model", APIKey: "test-key", BaseURL: model.URL, OneModel: true, DeterministicNames: true, FactoryRun: runDoor(host.floor, ask.Workspace, profile)})
 				if err != nil {
 					return nil, err
 				}
@@ -161,6 +155,14 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 				t.Fatalf("restart alone erased Stop: %+v", got)
 			}
 			wire.must("factory.job_chats", map[string]any{"factory": status.Factory, "job": item.ID}, &appwire.FactoryJobChats{})
+			// Deliver the pending question traffic after Stop, as a delayed team
+			// notification can arrive after its runner has been cancelled.
+			if err := teams.AppendTraffic(profile, room, teams.Entry{Kind: teams.KindQuestion, From: "test", To: teams.ToManager, Text: item.Question}); err != nil {
+				t.Fatal(err)
+			}
+			if err := teams.AppendTraffic(profile, room, teams.Entry{Kind: teams.KindEvent, From: "test", To: teams.ToManager, State: teams.StateAsking, Text: "asks: " + item.Question}); err != nil {
+				t.Fatal(err)
+			}
 			select {
 			case result := <-toolResult:
 				job := read(wire)
@@ -178,6 +180,7 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, e := range traffic {
+					t.Logf("team traffic: kind=%s state=%s text=%q", e.Kind, e.State, e.Text)
 					if strings.Contains(e.Text, "could not wake") && strings.Contains(e.Text, "stopped") {
 						return
 					}
