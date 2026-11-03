@@ -1,12 +1,16 @@
 package serve_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
@@ -26,6 +30,10 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 			if len(read.Steps) != 2 || read.Steps[1].When != "touches auth" {
 				t.Fatalf("condition lost in readback: %+v", read.Steps)
 			}
+			bad := f.post(t, it, "step-edits", fmt.Sprintf(`{"add":[{"step":{"name":"another","kind":%q,"ask":"inspect it","when":"banana"}}]}`, kind), 409)
+			if !strings.Contains(bad.Body.String(), "when is one of") {
+				t.Fatalf("unclear condition refusal: %s", bad.Body)
+			}
 			st := factory.Stage{When: read.Steps[1].When}
 			if factory.Fits(st, it) {
 				t.Fatal("conditional step runs on an item without auth")
@@ -33,6 +41,33 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 			it.Triage.Area = "auth"
 			if !factory.Fits(st, it) {
 				t.Fatal("conditional step skips an auth item")
+			}
+
+			runner := run.New(run.Options{Store: f.st, Exec: map[factory.StageKind]run.Executor{
+				factory.StageChat: run.ExecutorFunc(func(_ context.Context, job run.Job) (factory.StageResult, error) {
+					if job.Stage.Name != "write" {
+						t.Errorf("conditional step executed: %s", job.Stage.Name)
+					}
+					return factory.StageResult{Done: true}, nil
+				}),
+			}})
+			t.Cleanup(func() { _ = runner.Stop(it.ID) })
+			if err := runner.Launch(it.ID); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				job := f.read(t, it)
+				if job.Ready {
+					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || job.Steps[1].State != api.StepSkipped {
+						t.Fatalf("run did not skip conditional step: %+v", job.Steps)
+					}
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("run never completed without conditional step: %+v", job)
+				}
+				time.Sleep(2 * time.Millisecond)
 			}
 		})
 	}
