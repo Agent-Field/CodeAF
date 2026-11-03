@@ -15,6 +15,9 @@ root-module packages. Module changes select the whole tree; changes without Go
 or module edits select no package leg. Tests run fresh with `-count=1` in
 separate chat, session, command and remaining-package jobs. Heavy packages are
 sharded from one compiled test binary, with a 15-minute timeout per shard.
+`cmd/codeaf` runs unsharded in its own leg; its serial suite measured 17.8
+minutes on 2026-11-03, so that leg alone passes a 25-minute package timeout.
+Drop this exception once the suite is back under 15 minutes.
 
 ## Local verification
 
