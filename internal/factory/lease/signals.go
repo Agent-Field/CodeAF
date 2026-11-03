@@ -2,8 +2,8 @@ package lease
 
 import (
 	"crypto/rand"
- "errors"
- "slices"
+	"errors"
+	"slices"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -54,8 +54,8 @@ const (
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
- // Delivery identifies transport separately from a question or message ID.
- Delivery string `json:"delivery,omitempty"`
+	// Delivery identifies transport separately from a question or message ID.
+	Delivery  string  `json:"delivery,omitempty"`
 	Automatic *bool   `json:"automatic,omitempty"`
 	Budget    float64 `json:"budget,omitempty"`
 	ID        string  `json:"id,omitempty"`
@@ -79,16 +79,20 @@ func (d *Desk) DrainLive(id, worker string, acknowledged ...[]string) ([]Signal,
 }
 
 func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]string) ([]Signal, error) {
- reliable := len(acknowledged)>0
- received := func(id string)bool{return reliable && id!="" && slices.Contains(acknowledged[0],id)}
+	reliable := len(acknowledged) > 0
+	received := func(id string) bool { return reliable && id != "" && slices.Contains(acknowledged[0], id) }
 	var out []Signal
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
 			if _, receiptErr := receiptIdentity(doc, id, worker, now); receiptErr == nil {
-				s:=Signal{Verb:SignalStop}
-    if reliable{s.Delivery=id+"/stop"}
-    if !received(s.Delivery){out=[]Signal{s}}
+				s := Signal{Verb: SignalStop}
+				if reliable {
+					s.Delivery = id + "/stop"
+				}
+				if !received(s.Delivery) {
+					out = []Signal{s}
+				}
 				return false, nil
 			}
 			return false, err
@@ -99,16 +103,24 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		}
 		for _, m := range it.Thread {
 			if m.State == "pending" {
-				s:=Signal{Verb:SignalReply,ID:m.ID,Words:m.Text}
-    if reliable{s.Delivery=held.ID+"/reply/"+m.ID}
-    if !received(s.Delivery){out=append(out,s)}
+				s := Signal{Verb: SignalReply, ID: m.ID, Words: m.Text}
+				if reliable {
+					s.Delivery = held.ID + "/reply/" + m.ID
+				}
+				if !received(s.Delivery) {
+					out = append(out, s)
+				}
 			}
 		}
 		var kept []Signal
 		holdSent := false
 		for _, s := range doc.Signals[held.Job] {
-   if received(s.Delivery){continue}
-   if reliable && !publishing && s.Verb==SignalHold && !run.StoredPaused(it){continue}
+			if received(s.Delivery) {
+				continue
+			}
+			if reliable && !publishing && s.Verb == SignalHold && !run.StoredPaused(it) {
+				continue
+			}
 			if !reliable && !publishing && s.Verb == SignalHold {
 				// Resume queues the next lease. A queued older hold must not undo it.
 				if !holdSent && run.StoredPaused(it) {
@@ -120,10 +132,12 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 			if onPull(s.Verb) && !publishing {
 				kept = append(kept, s)
 			} else {
-    if reliable{
-     if s.Delivery==""{s.Delivery=held.ID+"/"+rand.Text()}
-     kept=append(kept,s)
-    }
+				if reliable {
+					if s.Delivery == "" {
+						s.Delivery = held.ID + "/" + rand.Text()
+					}
+					kept = append(kept, s)
+				}
 				out = append(out, s)
 			}
 		}
@@ -210,9 +224,8 @@ func (d *Desk) keepPublish(doc *document, job int) error {
 		signal(doc, job, s)
 	}
 	if !publishing {
-		// A merge given while a worker still held the job (its manager lent
-		// for a reply) is never dropped with that hold: the job goes back to
-		// the queue with it, and the next pull carries it out.
+		// A merge or recheck queued while the worker finishes belongs to the
+        // next pull, without turning the job into a publish.
 		return d.store.Update(job, func(it *factory.Item) error {
 			if merging && (it.Merging == nil || it.Merging.State != factory.MergeQueued) {
 				return nil
@@ -278,7 +291,7 @@ func (d *Desk) restorePublish(doc *document, job int) error {
 func carriedOut(verb string) bool { return verb == SignalPublish || verb == SignalMerge }
 
 // onPull keeps startup work out of a finishing worker's heartbeat.
-func onPull(verb string) bool {return carriedOut(verb) || verb==SignalRecheck}
+func onPull(verb string) bool { return carriedOut(verb) || verb == SignalRecheck }
 
 // CarriedMerge says the hold named by id was given a merge to carry out, so
 // its done is the merge's and not a publish.

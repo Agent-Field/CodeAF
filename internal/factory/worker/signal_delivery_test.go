@@ -99,18 +99,19 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 			}
 			entered := make(chan struct{})
 			finished := make(chan struct{})
+   steered:=make(chan string,4)
 			var writes, checks atomic.Int32
 			runner := run.New(run.Options{Publisher: func(context.Context, factory.Item) (run.PublishTarget, error) {
 				writes.Add(1)
 				return run.PublishTarget{}, errors.New("test forge unavailable")
-			}, Store: mirror, RepoDir: func(string) string { return t.TempDir() }, Exec: map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, _ run.Job) (factory.StageResult, error) {
+			}, Store: mirror, RepoDir: func(string) string { return t.TempDir() }, Exec: map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, job run.Job) (factory.StageResult, error) {
 				if checks.Add(1) > 1 {
 					return factory.StageResult{Done: true}, nil
 				}
 				close(entered)
 				defer close(finished)
-				<-ctx.Done()
-				return factory.StageResult{}, ctx.Err()
+				for{select{case word:= <-job.Steer:steered<-word;case <-ctx.Done():return factory.StageResult{},ctx.Err()}}
+
 			})}})
 			if err := runner.Launch(it.ID); err != nil {
 				t.Fatal(err)
@@ -237,6 +238,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 					}
 				}
 			}
+   if verb=="steer"{select{case word:= <-steered:if word!="chosen"{t.Fatal("wrong steering words",word)};case <-time.After(3*time.Second):t.Fatal("steering did not reach the round")}}
 			before, _ := mirror.Get(it.ID)
 			// A replay must not overwrite a later choice or repeat a manager turn/note.
 			if err := mirror.Update(it.ID, func(it *factory.Item) error { it.Cap = 19; it.Model = "later"; it.Autonomy = "later"; return nil }); err != nil {
@@ -274,7 +276,9 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 				if before.Autonomy != "chosen" {
 					t.Fatal("autonomy was not applied")
 				}
-			case "steer", "answer":
+   case "steer":
+    if signalLogCount(before,"steer: chosen")!=1 || signalLogCount(after,"steer: chosen")!=1{t.Fatal("steering was not recorded exactly once")}
+			case "answer":
 				if len(before.Notes) != 1 {
 					t.Fatalf("expected one note, got %v", before.Notes)
 				}
@@ -420,4 +424,10 @@ func waitSignalRunner(t *testing.T, r *run.Runner, id int) {
 			t.Fatal("runner stayed in flight")
 		}
 	}
+}
+
+func signalLogCount(it factory.Item,text string)int{
+ n:=0
+ if it.Stream!=nil{for _,line:=range it.Stream.Log{if line.Text==text{n++}}}
+ return n
 }

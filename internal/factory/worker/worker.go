@@ -298,7 +298,7 @@ type job struct {
 	replyCancel   context.CancelFunc
 	accepted      map[string]bool
 	signalIDs     map[string]bool
- acknowledged  map[string]bool
+	acknowledged  map[string]bool
 	thread        []factory.Message
 	pending       *pendingDelivery
 	blocked       string
@@ -537,10 +537,12 @@ func (j *job) beat(ctx context.Context) bool {
 	beatCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
 	defer cancel()
 	j.mu.Lock()
- acknowledged:=make([]string,0,len(j.signalIDs))
- for id:=range j.signalIDs{acknowledged=append(acknowledged,id)}
- j.mu.Unlock()
- hb, err := j.w.Heartbeat(beatCtx, j.lease, acknowledged)
+	acknowledged := make([]string, 0, len(j.signalIDs))
+	for id := range j.signalIDs {
+		acknowledged = append(acknowledged, id)
+	}
+	j.mu.Unlock()
+	hb, err := j.w.Heartbeat(beatCtx, j.lease, acknowledged)
 	if j.lostLease(err) {
 		return false
 	}
@@ -555,12 +557,16 @@ func (j *job) beat(ctx context.Context) bool {
 func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 	r := j.o.Runner
 	for _, s := range signals {
-  j.mu.Lock();seen:=s.Delivery!="" && j.signalIDs[s.Delivery];j.mu.Unlock()
-  if seen{continue}
+		j.mu.Lock()
+		seen := s.Delivery != "" && j.signalIDs[s.Delivery]
+		j.mu.Unlock()
+		if seen {
+			continue
+		}
 		// A generic Resume or manager reply cannot bypass reconciliation of a
 		// rejected result. Stop remains available and unsent replies stay pending.
 		if j.blocked != "" && s.Verb == lease.SignalReconcile {
-   j.ackSignal(s.Delivery)
+			j.ackSignal(s.Delivery)
 			if j.recoverBlocked(ctx, true) {
 				return false
 			}
@@ -572,7 +578,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		switch s.Verb {
 		case lease.SignalReply:
 			j.reply(ctx, s)
-   continue
+			continue
 		case lease.SignalBudget:
 			// The cap arrives before the answer that lets the runner carry on.
 			if s.Budget <= 0 {
@@ -611,7 +617,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)
-   j.ackSignal(s.Delivery)
+			j.ackSignal(s.Delivery)
 			if r.Running(j.id) {
 				return true
 			}
@@ -620,17 +626,22 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			cur, err := j.o.Mirror.Get(j.id)
 			return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
 		}
-  j.ackSignal(s.Delivery)
+		j.ackSignal(s.Delivery)
 	}
 	return true
 }
 
 // ackSignal remembers handled delivery only for this job's lease.
-func (j *job) ackSignal(id string){
- if id==""{return}
- j.mu.Lock();defer j.mu.Unlock()
- if j.signalIDs==nil{j.signalIDs=map[string]bool{}}
- j.signalIDs[id]=true
+func (j *job) ackSignal(id string) {
+	if id == "" {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.signalIDs == nil {
+		j.signalIDs = map[string]bool{}
+	}
+	j.signalIDs[id] = true
 }
 
 // reply serializes manager turns while reporting and renewing continue.
@@ -650,6 +661,9 @@ func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
 		if err == nil {
 			err = j.o.Reply(ctx, it, s.Words)
 		}
+		if err == nil {
+			j.ackSignal(s.Delivery)
+		}
 		j.mu.Lock()
 		if err == nil {
 			j.accepted[s.ID] = true
@@ -657,7 +671,6 @@ func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
 		j.replying = false
 		j.replyCancel = nil
 		j.mu.Unlock()
-  if err==nil{j.ackSignal(s.Delivery)}
 	}()
 }
 
