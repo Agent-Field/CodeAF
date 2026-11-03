@@ -187,7 +187,8 @@ once against a fresh read, then refused if it changes again.
 `propose_goahead` makes a proposed decision beginning `Proposed go-ahead (not
 granted): `. Its scope, cap and end date are proposals. It grants nothing; the
 person chooses the real permission. The proposed cap is greater than zero and
-at most $10,000; its end date is after today in UTC and within 90 days.
+at most $10,000, including fractional dollars such as $12.50; its end date is
+after today in UTC and within 90 days.
 
 `write_agent_page` creates or updates only the agent's own pages. Every write
 carries an AI mark, its written-at time and a named source; history keeps that
@@ -196,3 +197,7 @@ pages with “That page is the person's. You write only your own pages;
 suggesting edits on theirs is not available yet.” Page documents are limited
 to 1 MiB. A page that changed must be read again before writing. Done
 workstreams refuse all these writes.
+
+Tool arguments refuse unknown fields and repeated object keys, including inside
+sources and draft jobs, before reading or writing the workstream. Whole job and
+wave numbers accept forms such as `2.0`; fractions and numeric strings are refused.

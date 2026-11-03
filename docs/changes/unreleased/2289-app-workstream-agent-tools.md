@@ -14,3 +14,12 @@ nothing. Page writes enforce agent ownership in the store transaction and
 preserve the agent mark, source and time in page history. Reads use recorded
 facts, and settled agent turns notify the app to refresh workstream spend.
 Ordinary conversations and child workers receive no workstream capability.
+
+Prompt briefs use a non-blocking cached snapshot and fall back when unavailable.
+Agent record and page writes check done inside the write transaction, including
+when the person marks done after the agent's read. Markdown list items always
+start with a paragraph, and malformed inline delimiters take linear work.
+Tool arguments refuse repeated keys at every object depth before calling a tool.
+Workstream tools use the shared argument decoder and mark input refusals before
+running. Whole-valued decimal job and wave numbers are accepted; proposed caps
+retain fractional dollars. A plan version conflict gets one fresh read and save.
