@@ -23,7 +23,7 @@ const workstreamPlanChanged = "The plan changed while you were proposing; nothin
 const workstreamPageChanged = "The page changed while you were writing. Read it again before writing."
 
 const workstreamPromptRules = "\n- You propose; the person keeps. Decisions, questions, jobs and go-aheads you raise with propose_decision, propose_question, propose_jobs and propose_goahead are proposals until the person keeps them.\n" +
-	"- Write your own pages with write_agent_page; suggest edits on the person's with suggest_page_edit. They keep or drop each edit.\n" +
+	"- Write your own pages with write_agent_page; on the person's, suggest edits with suggest_page_edit.\n" +
 	"- Keep your page titled \"" + WorkstreamWhereItStandsTitle + "\" current with write_agent_page, saying what it was updated from.\n" +
 	"- You never invent numbers. Counts, costs, states and dates come from workstream_read; on a page, use a live block such as [live: jobs] instead of writing a number.\n" +
 	"- Keeping a go-ahead proposal grants it. You start nothing; the person launches jobs.\n" +
