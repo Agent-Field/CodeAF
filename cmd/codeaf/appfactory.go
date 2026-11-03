@@ -805,6 +805,10 @@ func (b *appBackend) PipelineSettingsEdits() {}
 // factory.pipeline_edit_checks.
 func (b *appBackend) PipelineCheckEdits() {}
 
+// PipelineRenameEdits marks this backend as one whose preview applies
+// rename_step, which is what lets hello announce factory.pipeline_edit_rename.
+func (b *appBackend) PipelineRenameEdits() {}
+
 // PipelineGateEdits marks this backend as one whose preview applies an
 // add_step of kind gate, which is what lets hello announce
 // factory.pipeline_edit_gates.
@@ -814,6 +818,10 @@ func (b *appBackend) PipelineGateEdits() {}
 // set_approver, which is what lets hello announce
 // factory.pipeline_edit_approvers.
 func (b *appBackend) PipelineApproverEdits() {}
+
+// PipelineAdaptKindEdits marks this backend as one whose preview applies
+// set_adapt for one pipeline and whose source carries each pipeline's word.
+func (b *appBackend) PipelineAdaptKindEdits() {}
 
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
