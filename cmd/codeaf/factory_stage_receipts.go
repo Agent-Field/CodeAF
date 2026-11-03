@@ -86,12 +86,14 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		}
 	}
 	observed := map[string]bool{}
+	observedCall := map[string]bool{}
 	diagnosticOnly := map[string]bool{}
 	ownedCommand := map[string]bool{}
 	checks = verification.Resolve(checks, state, fresh)
 	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
 		observed[check.Command] = true
+		if check.CallID != "" && check.Exit != nil { observedCall[check.CallID] = true }
 		if check.Diagnostic {
 			diagnosticOnly[check.Command] = true
 		} else {
@@ -207,7 +209,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			// The pipeline may have failed while its check passed. Keep the
 			// shell receipt honest; only the observed check decides the guard.
 			receipt["scope"] = "shell presentation; check exits recorded separately"
-			delete(lastOutcome, cmd)
+			if observedCall[row.ToolCallID] { delete(lastOutcome, cmd) }
 		} else {
 			lastOutcome[cmd] = receipt["outcome"].(string)
 			
