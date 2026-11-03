@@ -1045,12 +1045,21 @@ func (b *appBackend) FactoryMe(ctx context.Context, id string) (appwire.FactoryM
 func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, error) {
 	var q api.Queue
 	err := b.factoryHub().read(ctx, id, "/v1/queue", appFactoryBody, &q)
+	if err == nil {
+		for i := range q.Jobs {
+			j := &q.Jobs[i]
+			j.LifetimeCost = max(j.Cost, j.LifetimeCost)
+		}
+	}
 	return q, err
 }
 
 func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Job, error) {
 	var out api.Job
 	err := b.factoryHub().read(ctx, id, "/v1/jobs/"+strconv.Itoa(job), appFactoryBody, &out)
+	if err == nil {
+		out.LifetimeCost = max(out.Cost, out.LifetimeCost)
+	}
 	return out, err
 }
 

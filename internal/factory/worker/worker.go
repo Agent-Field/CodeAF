@@ -286,11 +286,12 @@ func backoff(d time.Duration) time.Duration {
 
 // job is one leased job on this machine.
 type job struct {
-	o     Options
-	w     *client.WorkerClient
-	lease string
-	id    int
-	sent  factory.Item // the mirror as last reported
+	o      Options
+	w      *client.WorkerClient
+	tables bool
+	lease  string
+	id     int
+	sent   factory.Item // the mirror as last reported
 
 	mu            sync.Mutex
 	replying      bool
@@ -317,7 +318,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
+	j := &job{tables: pulled.Job.RoundCostTables, o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer j.clearMirror()
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
@@ -342,6 +343,12 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		})
 		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
 	}
+	o.Runner.SetPublishCheck(it.ID, func(ctx context.Context) error {
+		readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		defer cancel()
+		return w.CheckPublish(readCtx, pulled.Lease.ID)
+	})
+	defer o.Runner.SetPublishCheck(it.ID, nil)
 	// Establish an accounting acknowledgment before the first paid call.
 	key, err := deliveryKey()
 	if err != nil {
@@ -468,6 +475,10 @@ func (j *job) flush(ctx context.Context) bool {
 	if err != nil {
 		return true
 	}
+	// An already sent PR request still owes its forge receipt after Stop.
+	if cur.State == factory.StateNew && j.o.Runner.Running(j.id) {
+		return true
+	}
 	report, ok := run.Diff(j.sent, cur)
 	var messages []factory.Message
 	for _, m := range factorythread.Read(cur.Talk) {
@@ -591,7 +602,13 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)
-			return false
+			if r.Running(j.id) {
+				return true
+			}
+			// The forge may have answered before this heartbeat delivered Stop.
+			// Flush that receipt before releasing the publishing lease.
+			cur, err := j.o.Mirror.Get(j.id)
+			return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
 		}
 	}
 	return true

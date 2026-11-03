@@ -4428,6 +4428,8 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // is not a call), whether this was a step of the conversation, and whether its
 // money arrived too late to belong to the turn now running.
 type bankedCall struct {
+	generationID string
+	unpriced     bool
 	// run is captured from the call's immutable execution context, never the current turn.
 	run    string
 	remote *remoteUsage
@@ -4548,10 +4550,11 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		return
 	}
 	used := Usage{
-		Input:   receipt.PromptTokens,
-		Output:  receipt.CompletionTokens,
-		CostUSD: receipt.Cost,
-		Calls:   1,
+		Input:     receipt.PromptTokens,
+		CacheRead: receipt.CachedTokens,
+		Output:    receipt.CompletionTokens,
+		CostUSD:   receipt.Cost,
+		Calls:     1,
 	}
 	lane := laneFacts{Hedged: receipt.Hedged}
 	if receipt.Hedged {
@@ -4561,10 +4564,17 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		// that loses has none and reconciles as an ordinary cut.
 		lane.Waste = receipt.Cost
 	}
+	price := usagePriceReceipt
+	if receipt.Interim {
+		price = usagePriceProvider
+	}
+	if receipt.PriceMissing {
+		price = ""
+	}
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
-		late: true, reconciled: true,
-		billing: receipt.Billing, price: usagePriceReceipt,
+		late: true, unpriced: receipt.PriceMissing, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
+		billing: receipt.Billing, price: price,
 	})
 	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
 	// way: EVERY request this session makes writes one, and a request whose
@@ -4659,7 +4669,7 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	if len(runIDs) > 0 {
 		run = runIDs[0]
 	}
-	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole), run: run, billing: billing, price: usagePriceProvider})
+	a.bank(bankedCall{generationID: response.ID, used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole), run: run, billing: billing, price: usagePriceProvider})
 
 	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
 	// name the row above banks, so a turn that hopped seals one usage line per
@@ -6012,7 +6022,7 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	if noted {
 		price = usagePriceProvider
 	}
-	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0], billing: billing, price: price})
+	a.bank(bankedCall{generationID: response.ID, used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0], billing: billing, price: price})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.

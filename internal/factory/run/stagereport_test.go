@@ -367,6 +367,9 @@ func TestJobBudgetResumeKeepsChatAndDoesNotDoubleChargeLiveSpend(t *testing.T) {
 	if calls != 2 || it.Stream.Spent != 1 || it.Cap != 5 {
 		t.Fatalf("calls %v spent %v cap %v", calls, it.Stream.Spent, it.Cap)
 	}
+	if got := it.Stream.Phases[0].StepCost(); got != 1 {
+		t.Fatalf("smaller same-segment result lowered step cost to %g, want 1", got)
+	}
 }
 
 func TestJobBudgetCancelsNonChatExecutorWhenManagerSpends(t *testing.T) {

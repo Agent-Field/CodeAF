@@ -386,7 +386,8 @@ func TestAppFolderReferenceFiles(t *testing.T) {
 // journal after its folder moves to the owning root. F6 only reads those files.
 func TestAppFolderLazyRecoveryFiles(t *testing.T) {
 	eachAppFolder(t, func(t *testing.T, f appFolderFixture) {
-		run := &appCrewRun{since: f.clock.now(), wakeStamps: map[string]string{}}
+		run := newAppCrewRun()
+		run.since = f.clock.now()
 		read := appCrewRead{file: &teamstore.File{}}
 		if needed := f.b.neededMembers(run, read, false); len(needed) != 0 {
 			t.Fatalf("idle chat needs recovery: %+v", needed)

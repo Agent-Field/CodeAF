@@ -83,7 +83,7 @@ func (a *Agent) repairModel(node *TaskNode) string {
 	on := strings.TrimSpace(node.runModel())
 	picked := node.modelPicked()
 	a.mu.Lock()
-	source, floor := a.config.RolesSource, a.model
+	reader, floor := readerFor(a.config, a.model), a.model
 	a.mu.Unlock()
 	if on != "" {
 		floor = on
@@ -93,7 +93,7 @@ func (a *Agent) repairModel(node *TaskNode) string {
 		// never an override.
 		return floor
 	}
-	model, err := roles.Resolve(roles.Source(source), roles.RoleRepair, floor)
+	model, err := reader.Resolve(roles.RoleRepair, floor)
 	if err != nil || strings.TrimSpace(model) == "" {
 		return floor
 	}

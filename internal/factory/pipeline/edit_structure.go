@@ -212,7 +212,7 @@ func checkGateWords(i int, op EditOp) (EditOp, *EditError) {
 }
 
 func stepFieldsNamed(op EditOp) bool {
-	return op.Prompt != nil || op.Until != nil || op.Max != nil || op.When != nil || op.Effort != nil || op.Fanout != nil
+	return op.Label != nil || op.Prompt != nil || op.Until != nil || op.Max != nil || op.When != nil || op.Effort != nil || op.Fanout != nil
 }
 
 // structure applies one structural edit to its pipeline's list. A pipeline row
@@ -300,7 +300,7 @@ func (st *editState) define(i int, op EditOp) *EditError {
 		st.newSteps = append(st.newSteps, op.Name)
 		return nil
 	}
-	if want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
+	if want.Label != have.Label || want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
 		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who {
 		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
 	}

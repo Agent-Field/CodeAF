@@ -58,6 +58,11 @@ func (m *memAPI) addPulls(full string, from, n int) {
 
 func (m *memAPI) Me(context.Context) (string, error) { return "me", nil }
 
+// Issue is the one-time sweep's direct read: every row here is still open.
+func (m *memAPI) Issue(context.Context, string, string, int) (forge.Issue, error) {
+	return forge.Issue{State: "open"}, nil
+}
+
 func (m *memAPI) ListIssues(_ context.Context, owner, repo string, since time.Time, _ string) ([]forge.Issue, string, error) {
 	full := owner + "/" + repo
 	if m.listed != nil {
