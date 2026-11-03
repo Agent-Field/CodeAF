@@ -272,6 +272,22 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
             t.Fatalf("stopped retry lost classification: %+v", written)
         }
 	})
+ t.Run("stop during brief write classifies the returned current brief", func(t *testing.T) {
+  s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
+  var first appwire.FactoryJobBriefWritten
+  s.must("factory.job_brief_write", params, &first)
+  r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
+  stopped := &stopDuringBriefDoor{briefDoor: door, stop: func() error { return r.Stop(id) }}
+  s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+   return &appConn{Conv: stopped, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+  }
+  var got map[string]any
+  s.must("factory.job_brief_write", params, &got)
+  current := got["current"].(map[string]any)
+  if got["kept"] != false || current["failure_kind"] != "stopped" || current["status"] != factory.BriefStatusFailed || briefRev(current) != float64(first.Current.Brief.Rev) || briefBody(current)["verdict"] != first.Current.Brief.Verdict {
+   t.Fatalf("write returned a failure instead of a person Stop or lost paid content: %+v", got)
+  }
+ })
 	t.Run("stop without an active round refreshes", func(t *testing.T) {
 		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
 		var first appwire.FactoryJobBriefWritten
@@ -435,4 +451,15 @@ func TestAppFactoryStoppedBriefFailureKindRoundTrips(t *testing.T) {
    t.Fatalf("%T lost stopped classification or paid content: %s", target, data)
   }
  }
+}
+
+// stopDuringBriefDoor delivers the person's Stop after begin and before keep.
+type stopDuringBriefDoor struct {
+ *briefDoor
+ stop func() error
+}
+
+func (d *stopDuringBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (session.ErrandAnswer, error) {
+ if err := d.stop(); err != nil { return session.ErrandAnswer{}, err }
+ return d.briefDoor.RunErrand(ctx, ask)
 }
