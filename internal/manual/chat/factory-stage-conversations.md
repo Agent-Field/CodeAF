@@ -337,6 +337,15 @@ runner gives it no second turn on the same words. Say `start` and the manager st
 with `factory_start`; it starts the job only when you ask. It never clones the repository
 itself: the runner clones it when the job starts.
 
+## step cost across rounds, resumed work and the job total
+
+A step's cost includes every priced round once. Resuming an interrupted round
+keeps its earlier spending; a repeated result does not add another charge.
+The job total also includes the manager's calls and other work outside steps,
+so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
+Older saved jobs still open, but costs of earlier rounds that were never saved
+cannot be recovered from the last result.
+
 ## the job's chat is its manager — where it works, and its spend counts toward the job's budget
 
 A job's own chat (`T` on the floor, or the job's chat on its page) is the job's manager. What
