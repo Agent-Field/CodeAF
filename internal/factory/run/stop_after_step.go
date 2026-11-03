@@ -27,6 +27,7 @@ func (lp *floorLoop) stopSpending(c *loopCtl, it factory.Item) bool {
         // Withdrawal and Stop both end this lease. Temporary read failures
         // still use the stored choice, as they did before this boundary check.
         if errors.Is(err, client.ErrLeaseGone) {
+            c.cancel()
             return false
         }
 		if err == nil && on != it.StopAfterStep {
