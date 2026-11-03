@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -276,4 +278,14 @@ func freshMemoryOffApp(t *testing.T) {
 		t.Fatalf("wire off admitted another memory request: before=%d after=%d", before, after)
 	}
 
+}
+
+// The switch makes off a real state, so a store that can't open must say why
+// and never read as the person's choice.
+func TestMemoryStoreFailureNamesItsReasonNotOff(t *testing.T) {
+	b := &appBackend{memoryStore: func() (*store.Store, error) { return nil, errors.New("no provider is set up") }}
+	_, err := b.memoryOf()
+	if err == nil || strings.Contains(err.Error(), "memory is off") || !strings.Contains(err.Error(), "no provider is set up") {
+		t.Fatalf("memoryOf error = %v", err)
+	}
 }

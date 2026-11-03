@@ -265,11 +265,14 @@ func (b *appBackend) ForgetMemory(id string) error {
 // memoryOf is the memory store, or the refusal that says there is none.
 func (b *appBackend) memoryOf() (*store.Store, error) {
 	if b.memoryStore == nil {
-		return nil, appwire.Errorf(appwire.CodeEngine, "memory is off")
+		return nil, appwire.Errorf(appwire.CodeEngine, "saved memory can't be read: this engine has no saved memory store")
 	}
 	brain, err := b.memoryStore()
-	if err != nil || brain == nil {
-		return nil, appwire.Errorf(appwire.CodeEngine, "memory is off")
+	if err != nil {
+		return nil, appwire.Errorf(appwire.CodeEngine, "saved memory can't be read: %v", err)
+	}
+	if brain == nil {
+		return nil, appwire.Errorf(appwire.CodeEngine, "saved memory can't be read: this engine has no saved memory store")
 	}
 	return brain, nil
 }
