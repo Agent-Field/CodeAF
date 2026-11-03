@@ -17,6 +17,14 @@ import (
 )
 
 func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
+	testRevokedLeaseBoundary(t, false)
+}
+
+func TestAuthority503AfterPersonStopCannotAdmitNextStep(t *testing.T) {
+	testRevokedLeaseBoundary(t, true)
+}
+
+func testRevokedLeaseBoundary(t *testing.T, inject503 bool) {
 	f := setup(t)
 	stages := []factory.Stage{
 		{Name: "first", Kind: factory.StageChat, On: true, Ask: "first", Until: "done"},
@@ -41,6 +49,7 @@ func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
 	}
 	entered, release, second := make(chan struct{}), make(chan struct{}), make(chan struct{}, 1)
 	var lost atomic.Int32
+	var faultArmed, faultApplied atomic.Bool
 	r := run.New(run.Options{Store: mirror, Benches: 1, Exec: map[factory.StageKind]run.Executor{
 		factory.StageChat: run.ExecutorFunc(func(ctx context.Context, job run.Job) (factory.StageResult, error) {
 			if job.Stage.Name == "first" {
@@ -60,6 +69,11 @@ func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
 	// Use the worker's HTTP adapter: the server's ErrNoLease becomes the
 	// client's typed ErrLeaseGone before the runner sees the boundary read.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if faultArmed.CompareAndSwap(true, false) {
+			faultApplied.Store(true)
+			http.Error(w, "authority unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		_, err := f.desk.Renew(held.ID, held.Worker)
 		if errors.Is(err, lease.ErrNoLease) {
 			lost.Add(1)
@@ -93,6 +107,7 @@ func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
 	if err != nil || !factory.StoppedByPerson(stopped) {
 		t.Fatalf("authoritative Stop missing: %+v %v", stopped, err)
 	}
+	faultArmed.Store(inject503)
 	close(release)
 	select {
 	case <-second:
@@ -111,6 +126,10 @@ func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
 	case <-second:
 		t.Fatal("second paid step ran during revoked runner settlement")
 	default:
+	}
+
+	if inject503 && !faultApplied.Load() {
+		t.Fatal("authority did not return the injected 503 after Stop")
 	}
 
 }
