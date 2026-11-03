@@ -80,13 +80,13 @@ type BillingSink func(Billed)
 
 // Reconciled delivers a final receipt or retained measured interim usage.
 // Found says usable measured figures exist; Interim distinguishes the fallback.
-// PriceMissing says those interim figures did not include a monetary charge.
+// PriceMissing says the measured figures did not include a monetary charge.
 type Reconciled struct {
 	// Tag identifies the purpose of the original call.
 	Tag string
 	// Interim marks measured usage retained when a final receipt was unavailable.
 	Interim bool
-	// PriceMissing distinguishes token-only interim usage from an explicit zero price.
+	// PriceMissing distinguishes token-only measurements from an explicit zero price.
 	PriceMissing bool
 	Billed
 	// Ref is the provider's generation id, and is empty when the stream never
