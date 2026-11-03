@@ -249,7 +249,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			if old.GitHubIssueID != 0 && old.GitHubIssueID != in.GitHubIssueID {
 				continue
 			}
-			if in.DoneHow == StandingClosed {
+			if in.DoneHow == StandingClosed && (old.GitHubIssueID != 0 || in.GitHubIssueID == 0) {
 				continue
 			}
 			if !forgeChanged(old, in) {
@@ -263,6 +263,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if it.GitHubIssueID == 0 {
 					it.GitHubIssueID = in.GitHubIssueID
 				}
+				if in.DoneHow == StandingClosed { return nil }
 				words := it.Title != in.Title || it.Body != in.Body
 				labels := !sameLabels(it.Labels, in.Labels)
 				switch {

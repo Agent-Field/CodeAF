@@ -75,10 +75,10 @@ func TestWorkerRoundTripKeepsFloorReconciliationFields(t *testing.T) {
 	if local.GitHubIssueID != 0 || local.SourceClosed || local.PersonTouched {
 		t.Fatal("worker unexpectedly owns reconciliation fields")
 	}
-	local.Notes = append(local.Notes, "worker note")
+	local.Stream = &factory.Stream{Spent: .01}
 	report, moved := run.Diff(before, local)
 	if !moved {
-		t.Fatal("worker note did not produce a report")
+		t.Fatal("worker spending did not produce a report")
 	}
 	endpoint := "/v1/workers/leases/" + pulled.Lease.ID + "/report"
 	f.request(t, "POST", endpoint, worker.Credential, api.FromRunReport(report), 200, nil)

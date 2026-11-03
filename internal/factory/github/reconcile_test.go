@@ -305,21 +305,37 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 				case 7:
 					f.status[n] = 404
 				case 8:
-     f.status[n] = 0
-    case 9:
-     row := f.row(n)
-     fresh, err := f.src.Refetch(context.Background(), row)
-     if err == nil {
-      if err := source.Merge(f.st, source.Name, []factory.Item{fresh}); err != nil { t.Fatal(err) }
-      if f.row(n).GitHubIssueID != f.identity[n] { t.Fatalf("seed=%d step=%d direct read identity lost", seed, step) }
-     }
-    case 10:
-     if err := f.st.Update(n, func(it *factory.Item) error { it.Stages = factory.DefaultRecipe().Stages; it.Stages[0].On = false; return nil }); err != nil { t.Fatal(err) }
-     if err := f.st.Update(n, func(it *factory.Item) error { it.PersonTouched = false; return nil }); err != nil { t.Fatal(err) }
-    case 11:
-     row := f.row(n)
-     closed := factory.ClosedForAutomation(context.Background(), "", row, func(ctx context.Context, it factory.Item) (factory.SourceStanding, error) { return source.Standing(ctx, f.api, it) })
-     if row.GitHubIssueID != 0 && row.GitHubIssueID != f.identity[n] && closed { t.Fatalf("seed=%d step=%d replacement blocked automation", seed, step) }
+					f.status[n] = 0
+				case 9:
+					row := f.row(n)
+					fresh, err := f.src.Refetch(context.Background(), row)
+					if err == nil {
+						if err := source.Merge(f.st, source.Name, []factory.Item{fresh}); err != nil {
+							t.Fatal(err)
+						}
+						if f.row(n).GitHubIssueID != f.identity[n] {
+							t.Fatalf("seed=%d step=%d direct read identity lost", seed, step)
+						}
+					}
+				case 10:
+					if err := f.st.Update(n, func(it *factory.Item) error {
+						it.Stages = factory.DefaultRecipe().Stages
+						it.Stages[0].On = false
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+					if err := f.st.Update(n, func(it *factory.Item) error { it.PersonTouched = false; return nil }); err != nil {
+						t.Fatal(err)
+					}
+				case 11:
+					row := f.row(n)
+					closed := factory.ClosedForAutomation(context.Background(), "", row, func(ctx context.Context, it factory.Item) (factory.SourceStanding, error) {
+						return source.Standing(ctx, f.api, it)
+					})
+					if row.GitHubIssueID != 0 && row.GitHubIssueID != f.identity[n] && closed {
+						t.Fatalf("seed=%d step=%d replacement blocked automation", seed, step)
+					}
 				}
 				// Lists deliberately disagree with direct reads, and arrive reordered.
 				f.lists = nil
@@ -356,8 +372,12 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 						t.Fatalf("seed=%d step=%d failed read changed #%d", seed, step, num)
 					}
 					same := old.GitHubIssueID == 0 || old.GitHubIssueID == f.identity[num]
-     if !same && (got.Title != old.Title || got.GitHubIssueID != old.GitHubIssueID) { t.Fatalf("seed=%d step=%d replacement changed pinned row", seed, step) }
-     if !factory.UntouchedIssue(old) && got.State != old.State { t.Fatalf("seed=%d step=%d edited row moved", seed, step) }
+					if !same && (got.Title != old.Title || got.GitHubIssueID != old.GitHubIssueID) {
+						t.Fatalf("seed=%d step=%d replacement changed pinned row", seed, step)
+					}
+					if !factory.UntouchedIssue(old) && got.State != old.State {
+						t.Fatalf("seed=%d step=%d edited row moved", seed, step)
+					}
 					if read[num] && same && !f.redirect[num] && f.status[num] == 0 && f.state[num] == "open" && old.SourceClosed && factory.UntouchedIssue(old) && got.State != factory.StateNew {
 						t.Fatalf("seed=%d step=%d direct-open #%d stayed Done", seed, step, num)
 					}

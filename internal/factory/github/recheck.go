@@ -52,7 +52,9 @@ func Standing(ctx context.Context, api API, it factory.Item) (factory.SourceStan
 	if err != nil {
 		return factory.SourceStanding{}, err
 	}
-	if is.ID == 0 { return factory.SourceStanding{}, errors.New("GitHub issue identity missing") }
+	if is.ID == 0 {
+		return factory.SourceStanding{}, errors.New("GitHub issue identity missing")
+	}
 	answer := factory.SourceStanding{IssueID: is.ID}
 	if is.Redirected || is.Number != it.Num || !answer.Matches(it) {
 		return answer, factory.ErrSourceIdentityChanged
