@@ -718,3 +718,20 @@ Today's figure on Spending counts every model call on this computer's ledger, an
 
 The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (AI notes and themes on a repo, asking about a repo, Build with AI, AI views). Afi's small errands count under your chats. A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
 
+
+## Opening a job without touching it and sending its first message
+
+Opening an app job page shows the conversations already on the job. Viewing the
+page does not mark the job as personally touched or change its version. An
+untouched imported issue therefore remains eligible for automatic closed-issue
+handling after someone views it.
+
+Before a manager conversation exists, `factory.job_chats` returns an empty
+`agent` string and the existing step conversations, or `steps: []` when none
+exist. `factory.job_send` accepts `factory`, `job`, `text` and optional `client_id`;
+it creates the manager on the first send and returns `agent` and `turn`.
+Later messages can use the same method or `agents.send`. Sending a message counts
+as personal work. A dropped job still refuses its conversations.
+
+Jobs already marked by earlier page views keep their marks. codeaf cannot safely
+infer which old marks came only from viewing, so this fix does not migrate them.
