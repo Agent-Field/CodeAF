@@ -973,6 +973,8 @@ func (w *usageWriter) writeOverflow(path string, rows []usageOverflowRow) {
 			dropUsageRow()
 		} else if _, err := file.Write(row.line); err != nil {
 			dropUsageRow()
+		} else {
+			announceUsageWritten()
 		}
 		w.overflowMu.Lock()
 		delete(w.overflow, row.done)

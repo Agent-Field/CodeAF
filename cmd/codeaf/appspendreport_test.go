@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -124,7 +125,6 @@ func TestLedgerRowWithoutATurnMovesSpendToday(t *testing.T) {
 	day := now.Format(time.DateOnly)
 	got := make(chan appwire.SpendChanged, 8)
 	b := &appBackend{now: time.Now, today: func(at time.Time) float64 {
-		session.FlushUsage()
 		usd, err := session.DailySpendUSD(path, at)
 		if err != nil {
 			t.Error(err)
@@ -135,6 +135,8 @@ func TestLedgerRowWithoutATurnMovesSpendToday(t *testing.T) {
 			got <- changed
 		}
 	})}
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
+	b.dayAuth.profile, b.dayAuth.settled = config.ProfileDir(), true
 	t.Cleanup(b.watchSpendRows())
 	rows := []session.UsageLine{
 		{Role: "repo_ask", USD: .0061, Calls: 1, Session: "page", Input: 9},
