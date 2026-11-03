@@ -1103,6 +1103,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	now := time.Now()
 	line := UsageLine{
  GenerationID: strings.TrimSpace(call.generationID),
+ Unbilled: call.unpriced,
 		At:         now,
 		Day:        now.Local().Format(usageDayLayout),
 		Model:      strings.TrimSpace(call.model),
@@ -1143,6 +1144,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	if call.turn {
 		seat, _ = SeatOfAgent(a.agentKind())
 	}
+	if call.unpriced { countUnbilledCall() }
 	line = TagUsage(line, roles.Role(call.role), seat)
 	line = withUsageBilling(line, call.billing)
 	if remote := call.remote; remote != nil {

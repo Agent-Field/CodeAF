@@ -4425,6 +4425,7 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // money arrived too late to belong to the turn now running.
 type bankedCall struct {
  generationID string
+ unpriced bool
 	// run is captured from the call's immutable execution context, never the current turn.
 	run    string
 	remote *remoteUsage
@@ -4564,7 +4565,7 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
  if receipt.PriceMissing { price = "" }
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
-		late: true, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
+		late: true, unpriced: receipt.PriceMissing, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
 		billing: receipt.Billing, price: price,
 	})
 	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
