@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
 
 const pageSelect = `SELECT id,workstream_id,coalesce(parent_id,''),title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc,overview FROM workstream_pages WHERE id=?`
@@ -99,7 +101,7 @@ func (s *Store) Page(ctx context.Context, id string, markdown bool) (Page, error
 	})
 	if err == nil && markdown {
 		var md string
-		md, err = Markdown(p.Doc)
+		md, err = pagedoc.Markdown(p.Doc)
 		p.Markdown = &md
 	}
 	return p, err

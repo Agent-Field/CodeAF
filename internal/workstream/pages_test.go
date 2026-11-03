@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/workspace"
+	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
 
 // Part A (f): optimistic saves refuse stale versions without changing history;
@@ -156,16 +157,30 @@ func TestPartAPlanMembershipVersionsAndDone(t *testing.T) {
 	}
 }
 
-func TestPartAMarkdownExportSupportsEditorNodes(t *testing.T) {
-	doc := json.RawMessage(`{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Title","marks":[{"type":"bold"}]}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Item"}]}]}]},{"type":"codeBlock","attrs":{"language":"go"},"content":[{"type":"text","text":"code"}]},{"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"Quote"}]}]},{"type":"unknown","content":[{"type":"text","text":"Retained"}]}]}`)
-	got, err := Markdown(doc)
+// page.get's markdown is the shared page renderer's output (pagedoc), so the
+// engine has one renderer and it matches the desktop app's.
+func TestPartAMarkdownExportIsThePageRenderer(t *testing.T) {
+	s, _, _ := testStore(t)
+	ctx := context.Background()
+	w := createStream(t, s, "Markdown")
+	pages, err := s.Pages(ctx, w.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## Title", "- Item", "```go\ncode\n```", "> Quote", "Retained"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("missing %q in %q", want, got)
-		}
+	doc := json.RawMessage(`{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Title"}]},{"type":"paragraph","content":[{"type":"text","text":"Body"}]}]}`)
+	if _, _, err := s.SavePage(ctx, pages[0].ID, 1, doc, Attribution{}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Page(ctx, pages[0].ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := pagedoc.Markdown(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Markdown == nil || *p.Markdown != want || !strings.Contains(want, "Title") {
+		t.Fatalf("markdown %v, want %q", p.Markdown, want)
 	}
 }
 
