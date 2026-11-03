@@ -216,7 +216,7 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 	g := newRigWith(t, nil, func(o *run.Options) {
 		o.Source = func(string) factory.Source { return src }
 		o.Workdir = func(it factory.Item) (string, error) { return workdirs.For(it, checkout) }
-		o.Push = func(string, string) error { t.Error("no-diff approval pushed"); return nil }
+		o.Push = func(string, string, ...func() error) error { t.Error("no-diff approval pushed"); return nil }
 	})
 	id := g.add(t, factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}, check("true"))
 	if err := g.st.Update(id, func(it *factory.Item) error {

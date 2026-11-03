@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -35,6 +36,10 @@ func TestMemoryPauseStopsFinishedStageTail(t *testing.T) {
 
 func TestMemoryPauseRetainsPendingForResume(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause resume", 0)
+}
+
+func TestMemoryPauseResumeAfterTrailingProgress(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "pause resume trailing", 0)
 }
 
 func TestMemoryPauseClosesTailAdmission(t *testing.T) {
@@ -62,7 +67,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *te
 }
 
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
-	pauseResume := end == "pause resume"
+	pauseResume := end == "pause resume" || end == "pause resume trailing"
 	pauseBoundary := end == "pause boundary"
 	pauseTail := end == "pause tail" || pauseBoundary || pauseResume
 	settlingQuit := end == "settling quit"
@@ -103,12 +108,8 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			return
 		}
-		var payload map[string]json.RawMessage
-		if len(body.Messages) > 1 {
-			_ = json.Unmarshal([]byte(body.Messages[1].Content), &payload)
-		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		if payload["messages"] != nil || ((pauseBoundary || pauseResume) && len(payload) > 0) {
+		if r.Header.Get("X-Test-Role") == "memory" {
 			n := memoryCalls.Add(1)
 			if pauseResume && n > 1 {
 				providerUnits.Add(1)
@@ -173,6 +174,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		clone := r.Clone(r.Context())
 		u := *r.URL
 		clone.URL = &u
+		clone.Header.Set("X-Test-Role", string(provider.RoleFrom(r.Context())))
 		if strings.Contains(u.Host, "openrouter.ai") {
 			clone.URL.Scheme = "http"
 			clone.URL.Host = server.Listener.Addr().String()
@@ -385,6 +387,13 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 					if got := memoryCalls.Load(); got != before {
 						t.Fatalf("Resume started memory before a finished turn: %d -> %d", before, got)
 					}
+					// Freeze the evidence present before this turn can finish. Later
+					// runner timeline lines belong to a future owned pass, so the
+					// profile-wide pending count need not return to zero.
+					expected := memoryJobSources(t, profile)
+					if len(expected) == 0 {
+						t.Fatal("resumed turn has no saved evidence")
+					}
 					finishLearning()
 					until := time.Now().Add(15 * time.Second)
 					for {
@@ -394,6 +403,28 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 						for _, step := range job.Steps {
 							learned = learned || (step.Name == "learn" && step.State == "done")
 						}
+						if end == "pause resume trailing" && learned {
+							// Drive the same public admission used by background history
+							// capture after the runner writes its final timeline lines.
+							trailing := false
+							for _, source := range memoryJobSources(t, profile) {
+								trailing = trailing || strings.HasPrefix(source.Text, "learn done")
+								if err := knowledge.Open(profile).Capture(source); err != nil {
+									t.Fatal(err)
+								}
+							}
+							snapshot, err = knowledge.Open(profile).Snapshot()
+							if !trailing {
+								if time.Now().After(until) {
+									t.Fatal("runner did not write trailing learn progress")
+								}
+								time.Sleep(10 * time.Millisecond)
+								continue
+							}
+							if snapshot.Pending == 0 {
+								t.Fatal("trailing progress did not reproduce pending evidence")
+							}
+						}
 						session.FlushUsage()
 						ledger, _ := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
 						resumedUSD := 0.0
@@ -402,11 +433,23 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 								resumedUSD += line.USD
 							}
 						}
-						if err == nil && learned && snapshot.Pending == 0 && memoryCalls.Load() > before && math.Abs(job.Cost-resumedUSD) < .000001 && math.Abs(resumedUSD-float64(providerUnits.Load())/100) < .000001 {
+						published := map[string]bool{}
+						for _, page := range snapshot.Pages {
+							for _, evidence := range page.Evidence {
+								published[evidence.Source] = true
+							}
+						}
+						var missing []string
+						for _, source := range expected {
+							if !published[source.ID] {
+								missing = append(missing, source.ID)
+							}
+						}
+						if err == nil && learned && len(missing) == 0 && memoryCalls.Load() > before && math.Abs(job.Cost-resumedUSD) < .000001 && math.Abs(resumedUSD-float64(providerUnits.Load())/100) < .000001 {
 							break
 						}
 						if time.Now().After(until) {
-							t.Fatalf("resume did not compile pending evidence: calls=%d snapshot=%+v error=%v", memoryCalls.Load(), snapshot, err)
+							t.Fatalf("resume did not publish retained evidence: missing=%v calls=%d pending=%d last_error=%q error=%v", missing, memoryCalls.Load(), snapshot.Pending, snapshot.LastError, err)
 						}
 						time.Sleep(10 * time.Millisecond)
 					}
@@ -416,7 +459,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 					if got := memoryCalls.Load(); got > 11 {
 						t.Fatalf("resume exceeded one normal memory pass: calls=%d, limit=11", got)
 					}
-					t.Logf("resume compiled retained evidence: memory_calls=%d pending=%d", memoryCalls.Load(), snapshot.Pending)
+					t.Logf("resume published %d retained sources: memory_calls=%d later_pending=%d", len(expected), memoryCalls.Load(), snapshot.Pending)
 				}
 			}
 			return
@@ -426,4 +469,36 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// Read the same immutable evidence that the public history importer admits.
+func memoryJobSources(t *testing.T, profile string) []knowledge.Source {
+	t.Helper()
+	history := session.KnowledgeHistory(session.PlacesRoot(), profile)
+	journals, err := history.Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sources []knowledge.Source
+	for _, journal := range journals {
+		if !journal.Job {
+			continue
+		}
+		cursor := knowledge.JournalCursor{Scope: journal.Project}
+		for cursor.Offset < journal.Size {
+			batch, err := history.Read(context.Background(), journal, cursor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, source := range batch.Sources {
+				source.Job = true
+				sources = append(sources, source)
+			}
+			if batch.Cursor.Offset <= cursor.Offset {
+				break
+			}
+			cursor = batch.Cursor
+		}
+	}
+	return sources
 }
