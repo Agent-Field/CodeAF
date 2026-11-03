@@ -18,7 +18,7 @@ import (
 )
 
 func TestFactoryChargedCallsReachLedger(t *testing.T) {
-	for _, mode := range []string{"failed turn", "failed errand", "unmetered turn", "unmetered errand", "unknown turn", "unknown errand"} {
+	for _, mode := range []string{"failed turn", "failed errand", "unmetered turn", "unmetered errand", "unknown turn", "unknown errand", "unpriced receipt"} {
 		t.Run(mode, func(t *testing.T) {
 			s := newLocalSetup(t)
 			st := s.start()
@@ -28,10 +28,12 @@ func TestFactoryChargedCallsReachLedger(t *testing.T) {
 				t.Fatal(err)
 			}
 			failed := mode == "failed turn" || mode == "failed errand"
-			unknown := mode == "unknown turn" || mode == "unknown errand"
+			unknown := mode == "unknown turn" || mode == "unknown errand" || mode == "unpriced receipt"
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
-					if r.URL.Path == "/generation" {
+					if r.URL.Path == "/generation" && mode == "unpriced receipt" {
+						fmt.Fprint(w, `{"data":{"tokens_prompt":20,"tokens_completion":5}}`)
+					} else if r.URL.Path == "/generation" {
 						fmt.Fprint(w, `{"data":{"total_cost":0.12,"tokens_prompt":20,"tokens_completion":5}}`)
 					} else {
 						fmt.Fprint(w, `{"data":[]}`)
@@ -46,7 +48,7 @@ func TestFactoryChargedCallsReachLedger(t *testing.T) {
 					return
 				}
 				id := "gen-factory-charge"
-				if unknown {
+				if unknown && mode != "unpriced receipt" {
 					id = ""
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
@@ -106,7 +108,16 @@ func TestFactoryChargedCallsReachLedger(t *testing.T) {
 				if unknown {
 					valid = rows == 1 && missing == 1 && cost == 0 && len(usage.Models) == 1 && usage.Models[0].CostUSD == nil && usage.Models[0].UnbilledCalls == 1
 				}
+
 				if valid {
+					var spend appwire.SpendReportResult
+					s.must("spend.report", map[string]any{"from": day, "to": day}, &spend)
+					if unknown && (spend.Totals.UnbilledRecords != 1 || spend.Totals.CostUSD != nil) {
+						t.Fatalf("Spending unknown price: %+v", spend.Totals)
+					}
+					if !unknown && (spend.Totals.CostUSD == nil || math.Abs(*spend.Totals.CostUSD-.12) > 1e-9) {
+						t.Fatalf("Spending charge: %+v", spend.Totals)
+					}
 					break
 				}
 				if time.Now().After(deadline) {
