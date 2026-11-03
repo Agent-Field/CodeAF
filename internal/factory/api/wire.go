@@ -426,15 +426,17 @@ type Job struct {
 	// and only a factory that knows its machine's checkouts; absent is
 	// nothing to say (no repository, or a factory whose runners keep their
 	// own).
-	Checkout          string               `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
-	Display           JobDisplay           `json:"display"`
-	StatePresentation StatePresentation    `json:"state_presentation"`
-	Controls          JobControls          `json:"controls"`
-	Assignee          string               `json:"assignee,omitempty"`
-	Runner            string               `json:"runner,omitempty"`
-	JobID             string               `json:"id"`
-	Ref               string               `json:"ref"`
-	Priority          *factory.JobPriority `json:"priority,omitempty"`
+	Checkout          string            `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	Display           JobDisplay        `json:"display"`
+	StatePresentation StatePresentation `json:"state_presentation"`
+	Controls          JobControls       `json:"controls"`
+	Assignee          string            `json:"assignee,omitempty"`
+	Runner            string            `json:"runner,omitempty"`
+
+	// JobID is the opaque compatible key; Ref is display text, not an identity.
+	JobID    string               `json:"id"`
+	Ref      string               `json:"ref"`
+	Priority *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
 	Size          string       `json:"size,omitempty"`
