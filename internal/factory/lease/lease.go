@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+ "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -240,7 +241,11 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 				return false, err
 			}
 			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: it.State != factory.StateQueued || paused(it)}
-			return false, d.reserve(doc, worker, taken)
+			if err := d.reserve(doc, worker, taken); errors.Is(err, ErrNoJob) {
+                continue
+            } else {
+                return false, err
+            }
 		}
 		if full {
 			return false, ErrWorkerBusy
@@ -258,11 +263,16 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 // between files leaves a reserved queued job that expiry can recover, never
 // running work without a lease that another worker could immediately take.
 func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
-	return d.store.Update(taken.Job, func(it *factory.Item) error {
+	blocked := false
+    err := d.store.Update(taken.Job, func(it *factory.Item) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
-		delete(doc.Withdrawn, worker.ID)
+		if !taken.ThreadOnly && holdAtJobBudget(it) {
+            blocked = true
+            return nil
+        }
+        delete(doc.Withdrawn, worker.ID)
 		doc.Leases = append(doc.Leases, taken)
 		if err := d.write(*doc); err != nil {
 			return err
@@ -282,6 +292,22 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		}
 		return nil
 	})
+if err == nil && blocked {
+        return ErrNoJob
+    }
+    return err
+}
+
+// holdAtJobBudget uses the server's saved total while its item lock is held.
+func holdAtJobBudget(it *factory.Item) bool {
+    if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap {
+        return false
+    }
+    it.State = factory.StateNeedsYou
+    it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
+    it.Asking = nil
+    it.OverLimit = false
+    return true
 }
 
 // overLimit is a queued job a person said to start now, which may take a
