@@ -3495,7 +3495,7 @@ func TestTheGitMetadataQuestionsReachTheSectionsThatRefuseIt(t *testing.T) {
 			question: "can a task delete my repository's .git",
 			page:     "permissions",
 			title:    "Can a task delete my repository's .git or its history",
-			says:     []string{"is outside your copy", "rm -rf .git", "codeaf do --dir", "git commit"},
+			says:     []string{"is outside your copy", "rm -rf .git", "codeaf do --dir", "git commit", "exits\n**incomplete** (status 2)"},
 		},
 		{
 			question: "can work in a folder delete its .git history",

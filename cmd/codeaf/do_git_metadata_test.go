@@ -134,11 +134,25 @@ func TestDoOnTheRunEngineRefusesReplacingTheFoldersGitMetadata(t *testing.T) {
 		"cd " + parent + " && git -c user.name=t -c user.email=t@t commit --allow-empty -m 'Add add(a,b) and one pytest test'",
 	}}
 	var stdout, stderr strings.Builder
-	_ = doErrand(doRequest{
+	runErr := doErrand(doRequest{
 		task: "create add.py and its test", workspace: repo, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	})
+	if runErr == nil {
+		t.Fatalf("a run whose every attempted action was refused exited successfully\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+	var status exitStatus
+	if !asExitStatus(runErr, &status) || status != exitIncomplete {
+		t.Fatalf("the refused-only run exited with %v, want incomplete (%d)", runErr, exitIncomplete)
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if outcome.status() != exitIncomplete || outcome.Settled != true {
+		t.Fatalf("the refused-only receipt is not a settled incomplete outcome: %+v", outcome)
+	}
+	if !strings.Contains(outcome.Error, "is outside your copy") {
+		t.Fatalf("the incomplete receipt omits the boundary refusal: %+v", outcome)
+	}
 
 	if info, err := os.Stat(filepath.Join(repo, ".git")); err != nil || !info.IsDir() {
 		t.Fatalf("the repository's .git is gone after the run (err %v): the worker replaced the folder's history", err)
@@ -157,6 +171,35 @@ func TestDoOnTheRunEngineRefusesReplacingTheFoldersGitMetadata(t *testing.T) {
 		if !strings.Contains(said, "is outside your copy") {
 			t.Errorf("command %d (%q) was answered %q, want the boundary's refusal", index+1, seat.commands[index], said)
 		}
+	}
+}
+
+// A REFUSAL IS RECOVERABLE. If the worker reads the door's answer, performs real
+// work inside its folder, and only then finishes, the run still exits zero. The
+// false-success rule is about a claimed completion over nothing but refused
+// actions, never about poisoning a task for having met one refusal.
+func TestDoOnTheRunEngineCanRecoverAfterARefusedMetadataChange(t *testing.T) {
+	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	_, repo := nestedRunRepo(t)
+
+	seat := &recordedReplacementSeat{commands: []string{
+		"rm -rf .git",
+		"printf 'def add(a, b):\\n    return a + b\\n' > add.py",
+	}}
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "create add.py", workspace: repo, asJSON: true,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
+		newBeltCompleter: func(string) session.Completer { return seat },
+	}); err != nil {
+		t.Fatalf("a worker that recovered after the refusal left with %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(repo, "add.py")); err != nil {
+		t.Fatalf("the recovery write did not run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git")); err != nil {
+		t.Fatalf("the refused metadata still disappeared: %v", err)
 	}
 }
 

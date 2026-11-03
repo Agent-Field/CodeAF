@@ -812,10 +812,13 @@ refusal is the same one every write outside the task's folder gets:
 > replacing /Users/you/code/project/.git is outside your copy — this task works in
 > /Users/you/code/project; read anywhere, write only there. …
 
-This is not a question and no setting lifts it, because a task has nobody to ask. Ordinary
-git work is untouched: `git commit`, `git checkout` and the rest write inside `.git` on the
-task's behalf and run as before, and reading `.git` is reading. A conversation you are
-sitting in is not held by it. The full list is on how-tasks-run.
+This is not a question and no setting lifts it, because a task has nobody to ask. If every
+action the worker attempts is refused and it then claims `done`, a headless run exits
+**incomplete** (status 2) and its JSON receipt carries the refusal; a refusal followed by
+real work can still finish normally. Ordinary git work is untouched: `git commit`,
+`git checkout` and the rest write inside `.git` on the task's behalf and run as before, and
+reading `.git` is reading. A conversation you are sitting in is not held by it. The full
+list is on how-tasks-run.
 
 ## Neither floor can be swallowed by "stop asking me"
 

@@ -11,6 +11,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -229,6 +230,48 @@ func TestAWorkerIsRefusedOnTheSeamForWritingOutsideItsGround(t *testing.T) {
 		t.Fatal("the shell refusal was booked against the model")
 	}
 
+	// AND THE NON-SHELL HANDS DO NOT GO ROUND THE METADATA LAW. `write` and
+	// `edit` name their path directly, so they are refused before they can
+	// rewrite the ground's HEAD or config, including through a symlink.
+	if err := os.MkdirAll(filepath.Join(ground, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ground, ".git", "HEAD"), []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(ground, "payload"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ground, "payload", "HEAD"), []byte("broken\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	metadataCalls := []ai.ToolCall{
+		withdrawnCall("metadata-write", "write", `{"path":".git/HEAD","content":"ref: refs/heads/replaced"}`),
+		withdrawnCall("metadata-edit", "edit", `{"path":".git/config","oldText":"a","newText":"b"}`),
+	}
+	if err := os.Symlink(filepath.Join(ground, ".git"), filepath.Join(ground, "metadata-link")); err == nil {
+		metadataCalls = append(metadataCalls,
+			withdrawnCall("metadata-link-write", "write", `{"path":"metadata-link/HEAD","content":"ref: refs/heads/replaced"}`),
+			withdrawnCall("metadata-link-edit", "edit", `{"path":"metadata-link/config","oldText":"a","newText":"b"}`))
+	}
+	for index, call := range metadataCalls {
+		result := worker.executeTool(context.Background(), episode, nil, call, "")
+		if !result.isError || !result.harness || !strings.Contains(result.text, outsideYourCopy) {
+			t.Errorf("metadata call %d answered %+v, want the harness boundary refusal", index+1, result)
+		}
+	}
+
+	for index, command := range []string{"rm -rf .g?t", "rm -rf .[g]it", "cp -t .git payload/HEAD", "install --target-directory=.git payload/HEAD"} {
+		result := worker.executeTool(context.Background(), episode, nil,
+			withdrawnCall(fmt.Sprintf("metadata-bash-%d", index), "bash", `{"command":`+quoteJSON(command)+`}`), "")
+		if !result.isError || !result.harness || !strings.Contains(result.text, outsideYourCopy) {
+			t.Errorf("metadata command %q answered %+v, want the harness boundary refusal", command, result)
+		}
+		if got, err := os.ReadFile(filepath.Join(ground, ".git", "HEAD")); err != nil || string(got) != "original\n" {
+			t.Errorf("metadata command %q changed HEAD to %q (err %v)", command, got, err)
+		}
+	}
+
 	// AND THE CONVERSATION IS UNTOUCHED. A person in their own checkout writes
 	// wherever they like.
 	chat, _ := newTestAgent(t, &scriptedCompleter{}, nil)
@@ -251,11 +294,15 @@ func TestAWorkerIsRefusedOnTheSeamForWritingOutsideItsGround(t *testing.T) {
 func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 	ground := groundWithMetadata(t)
 	parent := filepath.Dir(ground)
+	var allowed []string
 	refused := []string{
 		// The recorded command, and the spelling a worker standing in the
 		// folder uses.
 		"rm -rf " + filepath.Join(ground, ".git"),
 		"rm -rf .git",
+		"doas rm -rf .git",
+		"rm -rf .g?t",
+		"rm -rf .[g]it",
 		"rm -r .git",
 		"rm -fr ./.git",
 		"rm -rf .git/",
@@ -266,6 +313,10 @@ func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 		// Moving it out of the way, or overwriting it with another one.
 		"mv .git ../kept-history",
 		"cp -r /tmp/other/.git .git",
+		"cp -t .git /tmp/payload/HEAD",
+		"cp --target-directory=.git /tmp/payload/HEAD",
+		"install -t .git /tmp/payload/HEAD",
+		"install --target-directory=.git /tmp/payload/HEAD",
 		"rsync -a --delete /tmp/empty/ .git/",
 		// Rewriting it in place.
 		"sed -i 's/main/x/' .git/HEAD",
@@ -285,17 +336,23 @@ func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 	}
 	// A SYMLINK IS THE SAME HISTORY UNDER ANOTHER NAME. A link to the ground, or
 	// to its .git, must not be the spelling that gets through.
-	linkedGround := filepath.Join(filepath.Dir(parent), "linked-ground")
-	linkedMetadata := filepath.Join(filepath.Dir(parent), "linked-metadata")
+	linkedGround := filepath.Join(ground, "linked-ground")
+	linkedMetadata := filepath.Join(ground, "linked-metadata")
 	if err := os.Symlink(ground, linkedGround); err == nil {
 		refused = append(refused,
 			"rm -rf "+filepath.Join(linkedGround, ".git"),
 			"cd "+linkedGround+" && rm -rf .git")
+		allowed = append(allowed,
+			"rm "+linkedGround,
+			"mv "+linkedGround+" "+linkedGround+"-moved")
 	}
 	if err := os.Symlink(filepath.Join(ground, ".git"), linkedMetadata); err == nil {
 		refused = append(refused,
-			"rm -rf "+linkedMetadata,
 			"rm -rf "+filepath.Join(linkedMetadata, "objects"))
+		allowed = append(allowed,
+			"rm "+linkedMetadata,
+			"unlink "+linkedMetadata,
+			"mv "+linkedMetadata+" "+linkedMetadata+"-moved")
 	}
 	for _, command := range refused {
 		why := refusedOutsideGround(ground, command)
@@ -305,6 +362,11 @@ func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 		}
 		if !strings.Contains(why, outsideYourCopy) {
 			t.Errorf("%q was refused with %q, want the boundary's own words %q", command, why, outsideYourCopy)
+		}
+	}
+	for _, command := range allowed {
+		if why := refusedOutsideGround(ground, command); why != "" {
+			t.Errorf("%q was refused with %q, but it removes or moves only a symlink", command, why)
 		}
 	}
 }
@@ -331,6 +393,24 @@ func TestATaskStillWorksInAGroundWhoseMetadataIsProtected(t *testing.T) {
 		"cat .git/HEAD",
 		"ls .git",
 		"git log --oneline",
+		// A destination directory that happens to contain `.git` is not itself
+		// metadata. These common commands add or move ordinary work into the
+		// repository root and must not be confused with removing the root.
+		"cp /tmp/a .",
+		"mv old.py .",
+		"install /tmp/tool .",
+		"rsync -a src/ .",
+		"mkdir -p .",
+		"touch .",
+		"chmod 755 .",
+		"chown user .",
+		// Ordinary upkeep under .git does not replace repository identity or
+		// history. A worker may clear a stale lock, write local excludes, or
+		// install a hook.
+		"rm -f .git/index.lock",
+		"printf 'scratch/\\n' >> .git/info/exclude",
+		"cp /tmp/pre-commit .git/hooks/pre-commit",
+		"install /tmp/pre-commit .git/hooks/pre-commit",
 		// Names that only begin with .git are not the history.
 		"rm -rf .github",
 		"rm .gitmodules",

@@ -900,9 +900,12 @@ the same sentence, naming that `.git`:
 Everything a task does with git stays allowed: `git commit`, `git checkout`, `git reset`
 and every other git command write inside `.git` on the task's behalf and are answered by
 the git rules as before. So are reading it (`cat .git/HEAD`, `git log`), editing a
-`.gitignore`, and every ordinary write in the copy. A folder that is not a repository has no
-history to protect, so nothing changes there. This holds for `codeaf do --dir` as much as
-for a chat task: the folder you hand it is the copy.
+`.gitignore`, and every ordinary write in the copy, including copying or moving a file into
+`.`. A folder that is not a repository has no history to protect, so nothing changes there.
+This holds for `codeaf do --dir` as much as for a chat task: the folder you hand it is the
+copy. If every attempted action was refused and the worker then claims `done`, `codeaf do`
+exits incomplete (status 2) and its JSON receipt includes the refusal. A worker that reads a
+refusal and then performs real work may still finish normally.
 
 It exists because a `codeaf do --dir <repo>` worker once ran `rm -rf <repo>/.git`, then
 `git init` and `git commit` in the folder above. The last two were already refused, since
