@@ -980,6 +980,11 @@ cap and only optional memory crosses it, the finished step stays done. The next
 step asks before starting, using the full job spend. On the last step, the job
 finishes with its true spend shown and no question for work it will not run.
 
+If a job budget cannot be read, new paid calls wait with
+`job budget could not be read; new work held`. The read error alone does not
+cancel work already running. A later successful read can admit work again;
+confirmed budget exhaustion and unrecorded spending still stop owned work.
+
 ## Stop spending after this step in a job's Spend menu
 
 **Stop spending after this step** lets the current step finish before you

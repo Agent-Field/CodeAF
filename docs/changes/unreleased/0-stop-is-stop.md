@@ -51,7 +51,9 @@ merges and approved post steps do not require the separate Publishing flag.
 GitHub comments, labels and closes honor the last authority check after source
 selection. The manager watcher cancels the producers it sampled on a person's
 Stop, preserving later starts and person chat; unknown authority alone does not
-cancel existing work. Budget watcher decisions cannot cross a resumed work epoch.
+cancel existing work. Budget watcher decisions cannot cross a resumed work epoch. Budget read
+uncertainty holds new paid calls without cancelling current work or permanently
+caching a transient read failure.
 The live rig excuses unpriced calls only when it recorded them open at Stop and
 cancelled them itself; a later timeout is an accounting failure.
 

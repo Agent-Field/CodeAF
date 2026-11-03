@@ -186,7 +186,7 @@ func (c *jobChat) Refusal() string {
 			return r.refusal
 		}
 	}
-	return "job budget could not be read; work stopped"
+	return session.JobBudgetUnreadable
 }
 
 // readOf is st's document for this job, decoded again only when its file has

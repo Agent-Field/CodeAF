@@ -8,6 +8,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// JobBudgetUnreadable refuses new paid calls without cancelling existing work.
+const JobBudgetUnreadable = "job budget could not be read; new work held"
+
 // jobBudgetOf is shared by the whole owned family. Children charge their own
 // provider receipts immediately; folding their usage home must not charge again.
 func (a *Agent) jobBudgetOf() JobChat {
@@ -45,7 +48,7 @@ func (a *Agent) watchJobBudget() {
 			}
 			if !stopped {
 				stopOwned := a.factoryOwnedStop()
-				if a.jobBudgetBlock() != nil {
+				if err := a.jobBudgetBlock(); err != nil && err.Error() != JobBudgetUnreadable {
 					_ = a.stopWorkEpoch(epoch)
 				} else if a.automaticFactoryRefusal() == factory.PersonStopReason {
 					stopOwned()

@@ -6,6 +6,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+ "github.com/Agent-Field/codeaf/internal/session"
 )
 
 // One live meter per round; descendants share it. The store is the worker's
@@ -96,8 +97,7 @@ func (b *stageBudget) Refusal() string {
 	}
 	it, err := b.floor.Get(b.item.ID)
 	if err != nil || it.Repo != b.item.Repo {
-		b.stopped = "job budget could not be read; work stopped"
-		return b.stopped
+		return session.JobBudgetUnreadable
 	}
 	b.stopped = factoryrun.ChatRefusal(it)
 	b.reached = b.stopped != ""

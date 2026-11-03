@@ -219,3 +219,18 @@ func TestAJobsChatReadsItsBudgetAgainOnlyWhenTheJobChanges(t *testing.T) {
 		t.Fatalf("after the job was spent elsewhere the refusal was %q, want %q", chat.Refusal(), want)
 	}
 }
+
+func TestManagerBudgetReadOutageHoldsOnlyNewWork(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Talk: talk, Cap: 5})
+	if err != nil { t.Fatal(err) }
+	budget := jobChatDoorOf(st).Chat(talk)
+	if budget == nil { t.Fatal("manager budget missing") }
+	path := st.ItemPath(it.ID)
+	saved := path + ".unread"
+	if err := os.Rename(path, saved); err != nil { t.Fatal(err) }
+	defer func() { _ = os.Rename(saved, path) }()
+	if why := budget.Refusal(); why != "job budget could not be read; new work held" { t.Fatalf("uncertain manager budget: %q", why) }
+	if err := os.Rename(saved, path); err != nil { t.Fatal(err) }
+	if why := budget.Refusal(); why != "" { t.Fatalf("recovered manager budget stayed held: %q", why) }
+}
