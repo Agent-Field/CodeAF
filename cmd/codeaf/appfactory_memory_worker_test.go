@@ -421,6 +421,9 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 								time.Sleep(10 * time.Millisecond)
 								continue
 							}
+							if snapshot.Pending == 0 {
+								t.Fatal("trailing progress did not reproduce pending evidence")
+							}
 						}
 						session.FlushUsage()
 						ledger, _ := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
