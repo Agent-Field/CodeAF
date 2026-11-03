@@ -1246,9 +1246,11 @@ func TestReviewStartRejectsChangedIdentity(t *testing.T) {
 	}
 	f.h = serve.New(f.seam, f.cfg)
 	w := f.post(t, it, "start_now", "", 409)
- if !strings.Contains(w.Body.String(), "now identifies a different GitHub issue") { t.Fatalf("untrue mismatch refusal: %s", w.Body) }
- got, _ := f.st.Get(it.ID)
- if got.State != factory.StateNew {
+	if !strings.Contains(w.Body.String(), "now identifies a different GitHub issue") {
+		t.Fatalf("untrue mismatch refusal: %s", w.Body)
+	}
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateNew {
 		t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State)
 	}
 }
