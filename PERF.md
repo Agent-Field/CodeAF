@@ -379,3 +379,21 @@ always coordinate through it, so no build leaves it out. On linux/amd64 it adds
 3,379,200 bytes to the stripped binary (75,755,785 to 79,134,985 on the same dev
 base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
 the 56,063 bytes of headroom the base had are kept.
+
+## Paired idle save certification
+
+The idle-only `cellstore.SavedState` keeps the first fingerprint for each path
+and stops climbing at an already visited ancestor. A proof admits at most
+20,000 paths and 50,000 directory entries in total, 8 MiB per native output/diagnostic stream,
+and 64 MiB of current/saved chat-file content reads. Directory reads request
+only the remaining entry budget plus one. Native comparison uses its existing
+30-second preparation deadline. Exceeding a budget retains the hold; it never
+certifies a partial scope or limits ordinary saves or transfers.
+
+`TestIdleRelease_R8_WideWorkspaceAndReceiptsAllocateLinearly` measures native
+proofs over 100, 500 and 5,000 workspace files plus as many receipt records.
+It caps retained paths and visited entries at `2*N+100`, and Go allocations at
+`6 MiB + N*32,000` bytes. Before deduplication, 500+500 allocated 106,534,776
+bytes; afterward it allocated 2,505,888 bytes. The 5,000+5,000 proof allocated
+21,807,368 bytes. Bounds tests require refusal for paths, entries, reply size
+and content bytes. Final metadata revalidation remains mandatory.
