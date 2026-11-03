@@ -319,6 +319,16 @@ func JobReason(it Item) string {
 	return ""
 }
 
+// JobApprovalSummary keeps the latest settled decision visible while a later
+// gate waits. JobApproval separately decides whether that gate needs consent.
+func JobApprovalSummary(it Item) *Approval {
+	if it.Approval != nil && it.Approval.State == "approved" {
+		a := *it.Approval
+		return &a
+	}
+	return JobApproval(it)
+}
+
 func JobApproval(it Item) *Approval {
 
 	kind := ""
