@@ -91,3 +91,32 @@ func TestFactoryExistingJobSendTouchesJob(t *testing.T) {
 		t.Fatalf("sent message did not count: unworked=%t touched=%t", factory.JobUnworked(after), after.PersonTouched)
 	}
 }
+
+func TestFactoryAutomaticBriefDoesNotTouchJob(t *testing.T) {
+	s := newLocalSetup(t)
+	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: `{"verdict":"Waiting to start.","blocks":[]}`, Model: "scripted"}}
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: door, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	st := s.start()
+	floor := s.backend.local.host.floor
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var written appwire.FactoryJobBriefWritten
+	s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &written)
+	after, err := floor.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Talk == "" {
+		t.Fatal("brief did not create its manager")
+	}
+	if !factory.JobUnworked(after) || after.PersonTouched {
+		t.Fatalf("automatic brief touched job: unworked=%t PersonTouched=%t", factory.JobUnworked(after), after.PersonTouched)
+	}
+	if !written.Kept {
+		t.Fatalf("scripted brief was not kept: %+v", written)
+	}
+}
