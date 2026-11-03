@@ -139,7 +139,7 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 	if err := os.WriteFile(filepath.Join(bin, "cargo"), []byte("#!/bin/sh\nif [ \"${CHECK_EXIT:-0}\" = 127 ]; then exit 127; fi\necho 'test result: ok'\nexit \"${CHECK_EXIT:-0}\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := os.Create(file)
+	journal, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
