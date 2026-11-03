@@ -256,6 +256,8 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	door.ask, door.stage = job.Ask, job.Stage
 	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && f.Readiness != nil {
 		door.readinessHead = f.Readiness.Head
+	} else if p := job.Item.PullRequest; factory.IsCIRepairStage(job.Stage) && p != nil && p.FeedbackTracked {
+		door.feedbackHead = p.HeadSHA
 	}
 	log := job.Log
 	if log == nil {
@@ -896,6 +898,7 @@ type stageDoor struct {
 	// until done, which no report contradicts.
 	stage         factory.Stage
 	readinessHead string
+	feedbackHead  string
 	// ask is the round's road to the manager (Job.Ask), nil for none.
 	ask func(ctx context.Context, q factory.Asked) (string, error)
 }
@@ -935,8 +938,12 @@ func newStageDoor() *stageDoor { return &stageDoor{} }
 // claim marked ok: false, is held like any report and judged into another
 // round. A refused call is not counted in Reports: nothing was reported.
 func (d *stageDoor) Report(_ context.Context, result factory.StageResult) error {
-	if !result.Checkpoint && d.readinessHead != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
-		if why := factory.ReadinessReportFault(d.readinessHead, result); why != "" {
+	head := d.readinessHead
+	if head == "" && result.Repair != nil && result.Repair.Decision == "no_change" {
+		head = d.feedbackHead
+	}
+	if !result.Checkpoint && head != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
+		if why := factory.ReadinessReportFault(head, result); why != "" {
 			d.RejectReport()
 			return errors.New(why)
 		}
