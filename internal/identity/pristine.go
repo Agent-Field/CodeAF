@@ -35,6 +35,7 @@ var startupRules = rules{
 	// The pairing name prompt writes this before checking whether the home can join.
 	"device-name":          never,
 	"teams.json.lock":      never,
+	"app.lock":             never,
 	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
 		".worker.lock":         never,

@@ -65,7 +65,12 @@ func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job 
 // fresh is true when expect is absent or still matches the job. A mismatch
 // is the page the person was looking at, not the job as it is now.
 func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item, verb string, exp *api.Expect) bool {
-	if exp == nil {
+	// Pause and Resume keep their intent after progress; their doors refuse ended jobs.
+	if verb == "pause" || verb == "resume" {
+		return true
+	}
+	// Stop expresses the same intent after any progress on an active run.
+	if exp == nil || ((verb == "stop" || verb == "step_stop") && factory.UnderWay(it)) {
 		return true
 	}
 	job := h.withVersion(api.FromItem(it))
@@ -122,6 +127,13 @@ func (h *Handler) approvedSentence(r *http.Request, it factory.Item) (string, st
 		when = it.Changed
 		commit = it.HeadCommit
 	}
+	if ok && handle == "" {
+		if when.IsZero() {
+			return "approved automatically", "", nil, eventID, commit
+		}
+		stamp := when.UTC()
+		return "approved automatically at " + stamp.Format("15:04"), "", &stamp, eventID, commit
+	}
 	if handle == "" {
 		handle = "someone"
 	}
@@ -143,7 +155,7 @@ func (h *Handler) latestApproval(ctx context.Context, id int) (handle, eventID, 
 	}
 	for i := len(events) - 1; i >= 0; i-- {
 		e := events[i]
-		if e.Job == id && e.Kind == record.Approved && e.Handle != "" {
+		if e.Job == id && e.Kind == record.Approved {
 			return e.Handle, e.ID, e.Commit, e.At, true
 		}
 	}

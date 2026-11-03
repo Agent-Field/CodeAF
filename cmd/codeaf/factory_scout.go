@@ -71,11 +71,12 @@ func factoryScoutChat(load func() (config.Config, error)) scout.Chat {
 			sent[i] = judgeMessage(m.Role, m.Text)
 		}
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryScoutName))
+		ctx, recorded := factoryAIAccounting(ctx, settings, model, factoryScoutName, nil)
 		response, err := client.CompleteWithMessages(ctx, sent)
+		usd := recorded(response)
 		if err != nil {
-			return scout.Reply{}, err
+			return scout.Reply{USD: usd, Model: model}, err
 		}
-		usd := recordFactoryAIUsage(settings, model, factoryScoutName, response)
 		if response == nil || strings.TrimSpace(response.Text()) == "" {
 			return scout.Reply{USD: usd, Model: model}, errors.New("the model answered nothing")
 		}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // callerHandle resolves credentials before consulting the host's GitHub login.
@@ -113,6 +114,7 @@ func (h *Handler) githubClient() http.Client {
 		client.Timeout = githubTimeout
 	}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client.Transport = githubcalls.Transport(client.Transport)
 	return client
 }
 

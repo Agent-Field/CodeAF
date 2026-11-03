@@ -75,9 +75,6 @@ func (v *Vault) DeletePage(id, expectedRevision string) error {
 	return v.changePage(id, expectedRevision, pageOverride{ID: id, Deleted: true})
 }
 func (v *Vault) changePage(id, revision string, override pageOverride) error {
-	if !v.Enabled() {
-		return ErrDisabled
-	}
 	db, err := v.database()
 	if err != nil {
 		return err

@@ -560,3 +560,16 @@ func decodeTaskModelsPatch(raw json.RawMessage) (TaskModelsPatch, error) {
 	}
 	return patch, nil
 }
+
+// FeatureSettingsMemory announces the shared automatic-memory setting.
+const FeatureSettingsMemory = "settings.memory"
+
+// MemorySettingsServer marks an engine that serves the memory setting.
+type MemorySettingsServer interface{ MemorySettings() }
+
+func withMemorySettingsFeature(h Hello, e Engine) Hello {
+	if _, ok := e.(MemorySettingsServer); !ok {
+		return h
+	}
+	return withFeature(h, FeatureSettingsMemory)
+}
