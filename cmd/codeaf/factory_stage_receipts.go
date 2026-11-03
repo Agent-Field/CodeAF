@@ -89,6 +89,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	observed := map[string]bool{}
 	observedCall := map[string]bool{}
 	callExit := map[string]*int{}
+	callCommand := map[string]string{}
 	unmeasuredCall := map[string]bool{}
 	diagnosticOnly := map[string]bool{}
 	ownedCommand := map[string]bool{}
@@ -96,6 +97,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
 		observed[check.Command] = true
+		callCommand[check.CallID] = check.Command
 		if check.CallID != "" && check.Exit == nil {
 			unmeasuredCall[check.CallID] = true
 		}
@@ -208,7 +210,12 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			status, invoked, refused = row.Presentation.Outcome, row.Presentation.Invoked, row.Presentation.Refused
 			started = started || row.Presentation.Process != nil
 		}
-		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, callExit[row.ToolCallID])
+		// A call ID cannot transfer an exit to a different journal command.
+		measuredExit := callExit[row.ToolCallID]
+		if callCommand[row.ToolCallID] != cmd {
+			measuredExit = nil
+		}
+		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, measuredExit)
 		if outcome == "passed" && unmeasuredCall[row.ToolCallID] {
 			outcome = "completed"
 		}
@@ -228,7 +235,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			lastOutcome[cmd] = receipt["outcome"].(string)
 
 		}
-		if strings.Contains(cmd, "go test") && callExit[row.ToolCallID] != nil && (outcome == "passed" || outcome == "failed") {
+		if strings.Contains(cmd, "go test") && measuredExit != nil && (outcome == "passed" || outcome == "failed") {
 			counts := &factory.TestCounts{}
 			for _, line := range strings.Split(row.Content, "\n") {
 				line = strings.TrimSpace(line)

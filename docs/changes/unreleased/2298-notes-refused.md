@@ -17,7 +17,7 @@ journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
 timeouts remain unresolved until later measured covering evidence qualifies. Later
 stage briefs retain the reason instead of implying that the refused command ran. PR validation
-continues to publish only passed command receipts. Only measured exits of 0 for every check in a call read
+continues to publish only passed command receipts. Only measured exits of 0 for every check bound to the call and its exact command read
 `passed`; any non-zero exit reads `failed`. Producer refusals, cancellations and
 timeouts retain their outcomes. Without measured exits, legacy PASS or `ok  `
 output reads `completed`, never `passed`. Named test counts attach only to

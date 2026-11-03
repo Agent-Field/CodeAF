@@ -474,7 +474,8 @@ Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by 
 later measured wider pass; a refused check without covering evidence still holds.
 For older journals without producer status, printed cancellation or timeout words
 are command output and do not establish an interruption.
-Measured check exits for the call decide before producer status or output:
+Measured check exits bound to the call and its exact command decide before
+producer status or output:
 any non-zero exit reads `failed`; otherwise any unmeasured check reads `completed`,
 even with PASS output. Only a measured exit of 0 for every check reads `passed`.
 Producer failures, refusals, cancellations and timeouts can lower that outcome.
