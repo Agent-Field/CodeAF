@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+ "time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -18,6 +19,8 @@ const factoryOwnerFile = "factory-owner.json"
 
 type factoryChatOwner struct {
 	Step string `json:"step,omitempty"`
+ Num int `json:"num,omitempty"`
+ Created time.Time `json:"created,omitempty"`
 	Root string `json:"root"`
 	Job  int    `json:"job"`
 	Repo string `json:"repo"`
@@ -29,7 +32,7 @@ func markFactoryChat(st *store.Store, it factory.Item, file string) error {
 	if st == nil || it.ID <= 0 || strings.TrimSpace(file) == "" {
 		return nil
 	}
-	data, err := json.Marshal(factoryChatOwner{Root: chatKey(st.Root()), Job: it.ID, Repo: it.Repo})
+	data, err := json.Marshal(factoryChatOwner{Root: chatKey(st.Root()), Job: it.ID, Repo: it.Repo, Num: it.Num, Created: it.Created})
 	if err != nil {
 		return err
 	}
