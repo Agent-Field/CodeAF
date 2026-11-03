@@ -764,6 +764,8 @@ Step costs and attempt limits stay unchanged. A pipeline's `default_budget`
 supplies this same job budget; `start.max_cost` still governs intake.
 Model selection, including Pareto routing, does not raise the budget.
 
+## Spending by repository and model uses saved job totals
+
 Spending by repository and model places the whole known lifetime on one day:
 the latest run's start day, or the job's creation day when no start remains.
 A range covering only the second run therefore includes money from the first
