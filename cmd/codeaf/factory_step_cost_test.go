@@ -30,7 +30,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
  for _, round := range []int{1,2,2} {
   if err := st.Annotate(it.ID,func(cur *factory.Item) error { cur.Stream.Phases[0].Round=round; return nil }); err != nil { t.Fatal(err) }
   current,_ := st.Get(it.ID)
-  b := &stageBudget{floor:st,item:current}
+  b := &stageBudget{floor:st,item:current,stage:"proof",round:round}
   agent,err := session.New(session.Config{Workspace:t.TempDir(),SessionFile:filepath.Join(t.TempDir(),"stage.jsonl"),ProfileDir:t.TempDir(),Model:"deepseek/deepseek-v4.1-flash", APIKey:"fixture",BaseURL:server.URL,JobBudget:b,Unattended:true,DeterministicNames:true})
   if err != nil { t.Fatal(err) }
   _,err=agent.RunErrand(context.Background(),session.ErrandAsk{Purpose:"step_cost_fixture",Role:"brief",System:"Return ok.",Messages:[]session.ErrandMessage{{Role:"user",Text:"Check."}},MaxTokens:100,Deadline:time.Second})

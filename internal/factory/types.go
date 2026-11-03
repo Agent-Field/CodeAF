@@ -281,6 +281,11 @@ const (
 // Phase is one stage as it runs: its state, what round it is on, how many
 // tasks it fanned out into.
 type Phase struct {
+	// Cost includes every priced round. CostRound and RoundSpent retain the
+	// latest round high-water mark so resumed reports replace, rather than add.
+	Cost float64 `json:",omitempty"`
+	CostRound int `json:",omitempty"`
+	RoundSpent float64 `json:",omitempty"`
 	Name  string
 	Kind  StageKind
 	State PhaseState

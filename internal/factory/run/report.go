@@ -463,6 +463,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	if len(kept.Output) > factory.ResultOutputMost {
 		kept.Output = strings.ToValidUTF8(kept.Output[:factory.ResultOutputMost], "")
 	}
+	ph.RecordRoundSpend(ph.Round, res.Spent)
 	ph.Result = &kept
 	round := ph.Round
 	if round < 1 {

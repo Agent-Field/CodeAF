@@ -116,7 +116,10 @@ var Lost = map[string]string{
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
-	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
+	"Phase.CostRound": "runner accounting high-water identity; reconstructed from the current round on worker admission",
+ "Phase.RoundSpent": "runner accounting high-water dollars; the worker pull carries the latest round report",
+ "Phase.Cost": "crosses as step.cost, the sum of recorded rounds",
+ "Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
 	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
 	"Phase.Left":                   "crosses in whole milliseconds",
@@ -1084,8 +1087,9 @@ func runStep(s Step, p factory.Phase) Step {
 	}
 	if r := p.Result; r != nil {
 		s.Files = r.Files
-		s.Result, s.Cost, s.Tests, s.Model = r.Output, r.Spent, r.Tests, r.Model
+		s.Result, s.Tests, s.Model = r.Output, r.Tests, r.Model
 	}
+	s.Cost = p.StepCost()
 	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
 	s.Failure = failureWireOrNil(p.Failure)
 	s.Rounds = roundsWire(p.Rounds)
@@ -1200,6 +1204,10 @@ func toPhase(s Step) factory.Phase {
 	if s.StartedAt != nil {
 		p.Started = *s.StartedAt
 	}
+	if s.Cost != 0 {
+ p.Cost, p.CostRound = s.Cost, max(1, s.Round)
+ if p.Result != nil { p.RoundSpent = p.Result.Spent }
+ }
 	p.Failure = failureItem(s.Failure)
 	p.Rounds = roundsItem(s.Rounds)
 	return p
