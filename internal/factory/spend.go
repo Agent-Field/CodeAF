@@ -358,52 +358,20 @@ func AddMemorySpend(it *Item, usd float64) {
 	it.MemorySpent += usd
 }
 
-// StepCost reads saved round accounting, falling back to the last result on
-// historical jobs. Missing historical rounds cannot be reconstructed.
+// StepCost sums the worker's round receipts. Historical jobs without a table
+// retain their last reported spend; reading never rewrites saved rows.
 func (p Phase) StepCost() float64 {
-	if p.CostRound > 0 {
-		return p.Cost
-	}
-	if p.Result != nil {
-		return p.Result.Spent
-	}
-	return 0
+ if p.RoundCosts != nil {
+  var total float64
+  for _, spent := range p.RoundCosts { total += spent }
+  return total
+ }
+ if p.Result != nil { return p.Result.Spent }
+ return 0
 }
 
-// RestoreRoundSpend attributes a historical result before its next round starts.
-// Pending phases may already name the next round while retaining the last result.
-func (p *Phase) RestoreRoundSpend() {
-	if p.CostRound > 0 || p.Result == nil {
-		return
-	}
-	round := max(1, p.Round)
-	if p.State == PhasePending && round > 1 {
-		round--
-	}
-	if p.Result.Chat != "" {
-		for _, line := range p.Rounds {
-			if line.Chat == p.Result.Chat {
-				round = max(1, line.Round)
-			}
-		}
-	}
-	p.Cost, p.CostRound, p.RoundSpent = p.StepCost(), round, p.Result.Spent
-}
-
-// RecordRoundSpend replaces the current round's cumulative dollars. Repeated
-// or older reports cannot add the same receipt again.
+// RecordRoundSpend records a worker's cumulative receipt for one logical round.
 func (p *Phase) RecordRoundSpend(round int, spent float64) {
-	round = max(1, round)
-	if round < p.CostRound {
-		return
-	}
-	p.RestoreRoundSpend()
-	if round != p.CostRound && p.CostRound > 0 {
-		p.RoundSpent = 0
-	}
-	p.CostRound = round
-	if spent > p.RoundSpent {
-		p.Cost += spent - p.RoundSpent
-		p.RoundSpent = spent
-	}
+ if p.RoundCosts == nil { p.RoundCosts = make(map[int]float64) }
+ p.RoundCosts[max(1, round)] = spent
 }

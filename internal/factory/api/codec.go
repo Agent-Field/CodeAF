@@ -1,6 +1,7 @@
 package api
 
 import (
+ "maps"
 	"fmt"
 	"slices"
 	"strings"
@@ -116,9 +117,7 @@ var Lost = map[string]string{
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
-	"Phase.CostRound":              "runner accounting high-water identity; reconstructed from the current round on worker admission",
-	"Phase.RoundSpent":             "runner accounting high-water dollars; the worker pull carries the latest round report",
-	"Phase.Cost":                   "crosses as step.cost, the sum of recorded rounds",
+	"Phase.RoundCosts": "worker admission carries the complete round table; readers get only its sum as step.cost",
 	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
 	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
@@ -1204,23 +1203,7 @@ func toPhase(s Step) factory.Phase {
 	if s.StartedAt != nil {
 		p.Started = *s.StartedAt
 	}
-	if s.Cost != 0 {
-		p.Cost, p.CostRound = s.Cost, max(1, s.Round)
-		if s.State == StepPending {
-			// Pending rounds retain the previous result, even without chat history.
-			p.CostRound = max(1, s.Round-1)
-		}
-		if p.Result != nil {
-			p.RoundSpent = p.Result.Spent
-			if s.Report != nil && p.Result.Chat != "" {
-				for _, line := range s.Rounds {
-					if line.Chat == p.Result.Chat {
-						p.CostRound = max(1, line.Round)
-					}
-				}
-			}
-		}
-	}
+	p.RoundCosts = maps.Clone(s.RoundCosts)
 	p.Failure = failureItem(s.Failure)
 	p.Rounds = roundsItem(s.Rounds)
 	return p

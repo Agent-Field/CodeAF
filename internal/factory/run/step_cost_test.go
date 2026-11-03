@@ -28,9 +28,11 @@ func TestStepCostAcrossRounds(t *testing.T) {
 			it := factory.Item{State: factory.StateRunning,
 				Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}},
 				Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat}}}}
-			for i, round := range tc.rounds {
+			rows := map[int]float64{}
+ for i, round := range tc.rounds {
+ rows[round] = tc.costs[i]
 				err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{
-					Name: "proof", Round: round, State: factory.PhaseRunning,
+					Name: "proof", RoundCosts: rows, Round: round, State: factory.PhaseRunning,
 					Result: &factory.StageResult{Done: true, Spent: tc.costs[i]},
 				}}}, time.Date(2026, 11, 3, 0, i, 0, 0, time.UTC))
 				if err != nil {
@@ -58,7 +60,7 @@ func TestStepCostAfterWorkerPullBetweenRounds(t *testing.T) {
 	apply := func(item *factory.Item, round int, cost float64, chat string) {
 		t.Helper()
 		result := factory.StageResult{Spent: cost, Chat: chat}
-		if err := run.ApplyReport(item, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: round, Result: &result}}}, time.Now()); err != nil {
+		if err := run.ApplyReport(item, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1:.2025, round:cost}, Round: round, Result: &result}}}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,7 +81,7 @@ func TestStepCostOldSavedJobNextRound(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := factory.StageResult{Spent: .0153, Chat: "second"}
-	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: 2, Result: &result}}}, time.Now()); err != nil {
+	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1:.2025,2:.0153}, Round: 2, Result: &result}}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-.2178) > 1e-9 {
@@ -117,15 +119,15 @@ func TestStepCostDelayedRetryKeepsWorkerHighWater(t *testing.T) {
 		cost  float64
 	}{{1, .01}, {2, .02}, {2, .01}} {
 		res := factory.StageResult{Spent: receipt.cost, Chat: fmt.Sprintf("chat-%d", receipt.round)}
-		if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: receipt.round, Result: &res}}}, time.Now()); err != nil {
+		if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1:.01,receipt.round:receipt.cost}, Round: receipt.round, Result: &res}}}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}
 	pulled := api.ToItem(api.WorkerJob(it))
 	ph := &pulled.Stream.Phases[0]
-	ph.RecordRoundSpend(2, ph.RoundSpent+.01)
-	res := factory.StageResult{Spent: ph.RoundSpent, Chat: "chat-2"}
-	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: 2, Result: &res}}}, time.Now()); err != nil {
+	ph.RecordRoundSpend(2, ph.RoundCosts[2]+.01)
+	res := factory.StageResult{Spent: ph.RoundCosts[2], Chat: "chat-2"}
+	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: ph.RoundCosts, Round: 2, Result: &res}}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-.04) > 1e-9 {

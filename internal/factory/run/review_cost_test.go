@@ -14,7 +14,9 @@ import (
 func reviewApply(t *testing.T, it *factory.Item, round int, cost float64) {
 	t.Helper()
 	r := factory.StageResult{Spent: cost, Chat: map[int]string{1: "first", 2: "second"}[round]}
-	if err := run.ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: round, Result: &r}}}, time.Now()); err != nil {
+ rows := map[int]float64{1: .2025}
+ rows[round] = cost
+	if err := run.ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: rows, Round: round, Result: &r}}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -54,12 +56,12 @@ func TestReviewRerunRetainsStepCost(t *testing.T) {
 	it := factory.Item{State: factory.StateNeedsYou, Cap: 10,
 		Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}},
 		Stream: &factory.Stream{Spent: .2, Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseFailed, Round: 1,
-			Cost: .2, CostRound: 1, RoundSpent: .2, Result: &factory.StageResult{Spent: .2}}}}}
+			RoundCosts: map[int]float64{1: .2}, Result: &factory.StageResult{Spent: .2}}}}}
 	if err := run.StepControl(&it, "proof", true, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	result := factory.StageResult{Spent: .01}
-	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: 2, Result: &result}}}, time.Now()); err != nil {
+	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1: .2, 2: .01}, Round: 2, Result: &result}}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-.21) > 1e-9 {

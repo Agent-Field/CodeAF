@@ -921,7 +921,6 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// that round (a pause cut it): the step asks again if it must.
 			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
-			ph.RestoreRoundSpend()
 			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
 			ph.RoundLimit = limit
@@ -987,8 +986,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			spent := 0.0
 			if job.Item.Stream != nil {
 				for _, ph := range job.Item.Stream.Phases {
-					if ph.Name == st.Name && ph.CostRound == round {
-						spent = ph.RoundSpent
+					if ph.Name == st.Name {
+						spent = ph.RoundCosts[round]
 						break
 					}
 				}
@@ -1701,6 +1700,7 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 	}
 	now := lp.r.now()
 	_ = lp.write(c, func(it *factory.Item) error {
+		if !res.Checkpoint { it.Stream.Phases[i].RecordRoundSpend(it.Stream.Phases[i].Round, res.Spent) }
 		foldResult(it, st, i, res, now)
 		if res.Edit == nil {
 			return nil

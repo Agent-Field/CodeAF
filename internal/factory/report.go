@@ -12,8 +12,7 @@ type RunReport struct {
 	Publishing *Publishing
 	// Pipeline is the job's steps after the worker's runner reshaped them (the
 	// manager's first turn, or a plan's edit, both bounded by the recipe). Nil
-	// is no change. A phase-only snapshot carries accumulated step costs and
-	// preserves the pipeline. A reshape lands before Stages, which may name a new step.
+	// is no change. A reshape lands before Stages, which may name a new step.
 	Pipeline     *PipelineChange
 	Stages       []StageReport
 	Log          []LogLine
@@ -46,7 +45,7 @@ type RunReport struct {
 // PipelineChange is the job's stages and the run's phase list as the worker's
 // runner left them. A phase already on the job keeps its state on the server;
 // only the shape is taken from the report before results are folded. Phase
-// costs are then reconciled. Empty Stages carries costs without changing shape.
+// state is retained.
 type PipelineChange struct {
 	Stages []Stage
 	Phases []Phase
@@ -55,6 +54,7 @@ type PipelineChange struct {
 // StageReport addresses a pipeline step by name, so a report cannot invent a
 // new step or depend on an index that a person changed between reports.
 type StageReport struct {
+ RoundCosts map[int]float64
 	RoundLimit   int
 	Verification *StepVerification
 	Name         string

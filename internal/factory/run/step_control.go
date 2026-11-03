@@ -63,11 +63,10 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
-			p.RestoreRoundSpend()
 			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending,
-				Cost: p.Cost, CostRound: p.CostRound, RoundSpent: p.RoundSpent}
-			if p.CostRound > 0 {
-				s.Phases[i].Round = max(p.Round, p.CostRound) + 1
+				RoundCosts: p.RoundCosts, Result: p.Result}
+			if len(p.RoundCosts) > 0 {
+				s.Phases[i].Round = p.Round + 1
 			}
 		}
 		// A fresh round retains this step's history and identity. Its nonzero

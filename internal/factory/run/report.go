@@ -3,6 +3,7 @@ package run
 import (
 	"fmt"
 	"math"
+ "maps"
 	"strings"
 	"time"
 
@@ -167,17 +168,6 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	for _, step := range report.Stages {
 		if err := reportStep(it, step, now); err != nil {
 			return err
-		}
-	}
-	// A coalesced snapshot carries completed rounds in the existing pipeline
-	// cost. Fold the latest result first so its round high-water stays intact.
-	if report.Pipeline != nil {
-		for _, saved := range report.Pipeline.Phases {
-			if i := phaseIndex(it, saved.Name); i >= 0 {
-				ph := &it.Stream.Phases[i]
-				ph.RestoreRoundSpend()
-				ph.Cost = max(ph.StepCost(), saved.StepCost())
-			}
 		}
 	}
 	if completed {
@@ -389,7 +379,19 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
-	ph.RestoreRoundSpend()
+if step.RoundCosts != nil {
+  for round, spent := range step.RoundCosts {
+   if round < 1 || math.IsNaN(spent) || math.IsInf(spent,0) || spent < 0 { return fmt.Errorf("round cost must have a positive round and finite nonnegative dollars") }
+  }
+  // Reject an older whole receipt. Replacing only part of it would silently
+  // erase coalesced rounds or roll back a resumed round's spending.
+  for round, spent := range ph.RoundCosts {
+   if next, ok := step.RoundCosts[round]; !ok || next < spent { return nil }
+  }
+  before := ph.StepCost()
+  ph.RoundCosts = maps.Clone(step.RoundCosts)
+  addCost(it, max(0, ph.StepCost()-before))
+ }
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil
 	if step.Chat != "" {
@@ -474,11 +476,6 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	kept.Edit = nil
 	if len(kept.Output) > factory.ResultOutputMost {
 		kept.Output = strings.ToValidUTF8(kept.Output[:factory.ResultOutputMost], "")
-	}
-	ph.RecordRoundSpend(ph.Round, res.Spent)
-	// A delayed retry cannot lower the baseline a resumed worker receives.
-	if ph.CostRound == ph.Round {
-		kept.Spent = ph.RoundSpent
 	}
 	ph.Result = &kept
 	round := ph.Round

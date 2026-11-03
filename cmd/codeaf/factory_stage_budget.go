@@ -74,11 +74,7 @@ func (b *stageBudget) book(usd float64, memory bool, model string, calls, input,
 			for i := range it.Stream.Phases {
 				ph := &it.Stream.Phases[i]
 				if ph.Name == b.stage && b.stage != "" {
-					spent := 0.0
-					if ph.CostRound == b.round {
-						spent = ph.RoundSpent
-					}
-					ph.RecordRoundSpend(b.round, spent+usd)
+					ph.RecordRoundSpend(b.round, ph.RoundCosts[b.round]+usd)
 					break
 				}
 			}
@@ -159,8 +155,8 @@ func (b *stageBudget) roundTotal() float64 {
 	if b.floor != nil && b.stage != "" {
 		if it, err := b.floor.Get(b.item.ID); err == nil && it.Stream != nil {
 			for _, ph := range it.Stream.Phases {
-				if ph.Name == b.stage && ph.CostRound == b.round {
-					return ph.RoundSpent
+				if ph.Name == b.stage && ph.RoundCosts != nil {
+					return ph.RoundCosts[b.round]
 				}
 			}
 		}

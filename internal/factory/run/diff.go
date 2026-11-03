@@ -3,6 +3,7 @@ package run
 import (
 	"encoding/json"
 	"reflect"
+ "maps"
 	"slices"
 	"strings"
 	"time"
@@ -27,9 +28,7 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	if pipelineMoved(prev, cur) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
-	} else if completedCostMoved(ps.Phases, cs.Phases) {
-		r.Pipeline = &factory.PipelineChange{Phases: cs.Phases}
-	}
+		}
 	if !reflect.DeepEqual(prev.Change, cur.Change) {
 		r.Change = cur.Change
 	}
@@ -48,7 +47,15 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Log = unlanded(r.Log)
 	}
 	if spent := cs.Spent - ps.Spent; spent > 0 {
-		r.Cost = spent
+		// Table growth is booked by ApplyReport. Cost carries only work
+        // outside those steps, such as the manager's own calls.
+        for _, ph := range cs.Phases {
+         if ph.RoundCosts == nil { continue }
+         before := 0.0
+         for _, old := range ps.Phases { if old.Name == ph.Name { before = old.StepCost(); break } }
+         spent -= max(0, ph.StepCost()-before)
+        }
+        r.Cost = max(0, spent)
 	}
 	r.Models = modelDelta(ps.Models, cs.Models)
 	r.Claims = append(claimsMoved(prev.Proof, cur.Proof), claimsMoved(prev.Policy, cur.Policy)...)
@@ -83,21 +90,6 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
-}
-
-// completedCostMoved detects paid rounds absent from the last flushed snapshot.
-// The existing pipeline step cost carries their total alongside the latest result.
-func completedCostMoved(prev, cur []factory.Phase) bool {
-	was := make(map[string]float64, len(prev))
-	for _, ph := range prev {
-		was[ph.Name] = ph.StepCost()
-	}
-	for _, ph := range cur {
-		if ph.CostRound > 0 && ph.Cost-ph.RoundSpent > was[ph.Name]+1e-9 {
-			return true
-		}
-	}
-	return false
 }
 
 // modelDelta is what cur recorded since prev, per model. A model whose
@@ -218,23 +210,17 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && old.Cost == ph.Cost && old.CostRound == ph.CostRound && old.RoundSpent == ph.RoundSpent && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
+		if seen && reflect.DeepEqual(old.RoundCosts, ph.RoundCosts) && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
 		if ph.Kind == factory.StageGate {
 			continue
 		}
-		step := factory.StageReport{Name: ph.Name, Chat: ph.Chat, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
+		step := factory.StageReport{RoundCosts: maps.Clone(ph.RoundCosts), Name: ph.Name, Chat: ph.Chat, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
 		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil
 			step.Result = &res
-		}
-		// A paid interrupted round must cross even before its final report.
-		// Existing result fields carry this provisional receipt; the final
-		// report replaces it with the round's evidence and cumulative cost.
-		if step.Result == nil && ph.CostRound == ph.Round && ph.RoundSpent > 0 && (!seen || old.CostRound != ph.CostRound || old.RoundSpent != ph.RoundSpent) {
-			step.Result = &factory.StageResult{Spent: ph.RoundSpent, Chat: ph.Chat}
 		}
 		if len(ph.Rounds) > 0 && (!seen || !reflect.DeepEqual(old.Rounds, ph.Rounds)) {
 			step.Rounds = append([]factory.RoundLine(nil), ph.Rounds...)
