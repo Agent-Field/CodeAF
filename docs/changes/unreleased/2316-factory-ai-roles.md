@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Step and My pipeline AI count as Factory AI in daily spending
-pr: 0
+pr: 2316
 surface: [engine, factory]
 invalidates:
   - "Was true: step_ai and my_pipeline_ai spending without a job counted under your chats. It now counts under Factory AI."
