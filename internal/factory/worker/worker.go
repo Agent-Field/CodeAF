@@ -587,7 +587,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
  if s.PublishAnyway != nil {
  if err := j.o.Mirror.Update(j.id,func(it *factory.Item) error {
  it.PublishAnyway = s.PublishAnyway
- if !factory.PublishedAnyway(*it) {return fmt.Errorf("Publish anyway decision no longer matches the current change")}
+ if !factory.PublishedAnyway(*it) {return errors.New("Publish anyway decision no longer matches the current change")}
  return nil
  });err != nil {continue}
  }
