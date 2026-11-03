@@ -1,14 +1,11 @@
 ---
 kind: fixed
 title: codeaf jobs keep spending across restarts
-pr: 0
+pr: 2305
 surface: [factory, app]
 invalidates:
   - "Starting a job again or bringing it back used to erase earlier run spending from job totals. Lifetime spending now keeps those dollars."
 ---
-
-Fill in the pull request number in the file name and frontmatter before opening
-this change for review.
 
 Jobs save earlier spending as SpentBefore. Start and Bring back clear work while
 keeping money; Run as new starts a separate job at zero. Late acknowledged
