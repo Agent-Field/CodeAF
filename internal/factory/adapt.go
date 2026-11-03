@@ -88,6 +88,7 @@ type Moved struct {
 //   - Add is new conversation stages, each placed after a named stage, or
 //     an approve step (named approve, or of kind gate), where the run holds
 //     for the person.
+//   - Label is a new display label for a stage, by name; empty clears it.
 //   - Ask is a new ask for a stage, by name.
 //   - Thinking is a stage's thinking, by name: "", cheap or strong.
 //   - Max is how many tries a conversation stage gets, by name: 1 to

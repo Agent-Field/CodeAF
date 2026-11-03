@@ -18,7 +18,7 @@ import (
 // An editor never writes YAML. It names an edit, and this file turns the file
 // that was really read plus that edit into the exact bytes the pull request
 // route will commit. The edits are the ones the file format can hold today: a
-// step's prompt, kind, when, effort, fanout, until and max, the default budget,
+// step's label, prompt, kind, when, effort, fanout, until and max, the default budget,
 // a chat step added to, removed from or moved within one pipeline's list
 // (edit_structure.go), and the file's own rules, ask_first and never lines
 // replaced whole (edit_lists.go). Everything else in the file (the rest of
@@ -96,7 +96,7 @@ func refuseEdit(code string, op int, format string, args ...any) *EditError {
 }
 
 // EditOp is one edit. Pointers tell a field that was not sent from one that was
-// sent empty. set_step names a step and at least one of prompt, kind, when,
+// sent empty. set_step names a step and at least one of label, prompt, kind, when,
 // effort, fanout, until and max; an empty kind, when, effort or fanout is the
 // default, written as the key left out. Kind may only be chat (or empty), and
 // only a chat step is edited at all ([lockedStep]); set_budget names only Value.
@@ -908,20 +908,16 @@ func cleanPrompt(s string) (string, string) {
 }
 
 func cleanUntil(s string) (string, string) {
-	return cleanLine(s, "until", EditUntilMax)
-}
-
-func cleanLine(s, field string, limit int) (string, string) {
 	s = strings.TrimSpace(s)
 	switch {
-	case utf8.RuneCountInString(s) > limit:
-		return "", fmt.Sprintf("%s is one line of at most %d characters", field, limit)
+	case utf8.RuneCountInString(s) > EditUntilMax:
+		return "", fmt.Sprintf("until is one line of at most %d characters", EditUntilMax)
 	case !utf8.ValidString(s):
-		return "", field + " must be valid UTF-8"
+		return "", "until must be valid UTF-8"
 	}
 	for _, r := range s {
 		if r < 0x20 || r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029 || r == 0xfeff {
-			return "", field + " is one line"
+			return "", "until is one line"
 		}
 	}
 	return s, ""

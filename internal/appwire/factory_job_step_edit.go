@@ -39,8 +39,8 @@ import (
 // can still refuse the write (for example when it has no worker desk).
 //
 // WHAT AN EDIT CAN SAY is deliberately the factory's bounded edit language and
-// no more: reword a step's ask, set its thinking, switch steps on or off, add a
-// step with only a name, kind, ask, until and effort (and a check its max),
+// no more: change a step's label, reword its ask, set its thinking, switch steps on or off, add a
+// step with only a name, label, kind, ask, until and effort (and a check its max),
 // optionally after another step, remove a step from this job, and move a step
 // after another (or first). It cannot change a step's kind or its max, when,
 // fanout or proof, and cannot name a path. A conversation step's tries
@@ -56,11 +56,11 @@ import (
 // `lines` are not empty while a worker holds the job, the running step goes
 // back to the queue and that worker is cut off. The app says so before it sends.
 
-// FeatureFactoryJobStepEdit is announced in hello when the engine serves
-// factory.job_step_edits_read and factory.job_step_edit.
 // FeatureFactoryJobStepEditLabel announces labels on added and existing steps.
 const FeatureFactoryJobStepEditLabel = "factory.job_step_edit_label"
 
+// FeatureFactoryJobStepEdit is announced in hello when the engine serves
+// factory.job_step_edits_read and factory.job_step_edit.
 const FeatureFactoryJobStepEdit = "factory.job_step_edit"
 
 // FeatureFactoryJobStepEditChecks is announced beside FeatureFactoryJobStepEdit

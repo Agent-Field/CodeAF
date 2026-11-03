@@ -60,11 +60,11 @@ import (
 // text byte for byte: reformatting alone is not a change and offers nothing to
 // write.
 
-// FeatureFactoryPipelineEdit is announced in hello when the engine serves
-// factory.pipeline_source and factory.pipeline_preview.
 // FeatureFactoryPipelineEditLabel announces labels on set_step and add_step.
 const FeatureFactoryPipelineEditLabel = "factory.pipeline_edit_label"
 
+// FeatureFactoryPipelineEdit is announced in hello when the engine serves
+// factory.pipeline_source and factory.pipeline_preview.
 const FeatureFactoryPipelineEdit = "factory.pipeline_edit"
 
 // FeatureFactoryPipelineEditRuntime is announced beside FeatureFactoryPipelineEdit
