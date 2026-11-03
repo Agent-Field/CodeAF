@@ -127,7 +127,7 @@ func TestLocalNewLiftsChips(t *testing.T) {
 	if it.Cap != 8 || len(it.Stages) < 2 || it.Stages[1].Name != factory.ApproveName || factory.StageIndex(it.Stages, "approve2") >= 0 {
 		t.Fatalf("stages %+v cap %v; want approve after plan, 8", it.Stages, it.Cap)
 	}
-	if it.Ask == nil || it.Ask.Text != "fix the ledger double count, , , ," || it.Ask.Source != factory.AskTUI || it.Ask.At.IsZero() {
+	if it.Ask == nil || it.Ask.Text != "fix the ledger double count" || it.Ask.Source != factory.AskTUI || it.Ask.At.IsZero() {
 		t.Fatalf("ask = %+v", it.Ask)
 	}
 	if it.Origin != factory.OriginTerminal || it.State != factory.StateNew || it.Tier != factory.TierOwner || it.Kind != factory.KindIssue || it.Num != 0 {
@@ -148,6 +148,32 @@ func TestLocalNewLiftsChips(t *testing.T) {
 	}
 	if _, err := seam.New("", "fix it"); err == nil {
 		t.Fatal("New made an item on no repo")
+	}
+}
+
+func TestLocalNewPreservesAskPunctuation(t *testing.T) {
+	for _, tc := range []struct {
+		words string
+		want  string
+	}{
+		{"Fix the login, $8, then the logout.", "Fix the login, then the logout."},
+		{"Report these findings:", "Report these findings:"},
+		{"Fix what you find,", "Fix what you find,"},
+	} {
+		t.Run(tc.words, func(t *testing.T) {
+			_, st := openLocal(t)
+			seam := factory.LocalSeam(st, time.Now())
+			if _, err := seam.New("agentfield/codeaf", tc.words); err != nil {
+				t.Fatal(err)
+			}
+			snap, err := seam.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ask := snap.Items[0].Ask; ask == nil || ask.Text != tc.want {
+				t.Fatalf("ask = %+v, want %q", ask, tc.want)
+			}
+		})
 	}
 }
 
