@@ -1,8 +1,8 @@
 package lease
 
 import (
+	"fmt"
 	"time"
- "fmt"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -90,10 +90,10 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 // CheckPublish reads the current job under its row lock and the worker's lease.
 // A worker must check again at each push and immediately before its PR request.
 func (d *Desk) CheckPublish(id, worker string) error {
-    return d.Apply(id, worker, false, func(it *factory.Item) error {
-        if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
-            return fmt.Errorf("publication stopped; no write is permitted")
-        }
-        return nil
-    })
+	return d.Apply(id, worker, false, func(it *factory.Item) error {
+		if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
+			return fmt.Errorf("publication stopped; no write is permitted")
+		}
+		return nil
+	})
 }

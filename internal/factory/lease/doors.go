@@ -224,13 +224,13 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		if held == nil {
 			return false, nil
 		}
-        if held.Publish != "" {
-            // Keep only this publisher's receipt channel; Stop withdraws all queued writes.
-            held.Publish = ""
-            delete(doc.Signals, id)
-            signal(doc, id, Signal{Verb: SignalStop})
-            return true, nil
-        }
+		if held.Publish != "" {
+			// Keep only this publisher's receipt channel; Stop withdraws all queued writes.
+			held.Publish = ""
+			delete(doc.Signals, id)
+			signal(doc, id, Signal{Verb: SignalStop})
+			return true, nil
+		}
 		release(doc, id)
 		return true, nil
 	})

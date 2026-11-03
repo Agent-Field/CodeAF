@@ -314,6 +314,6 @@ func (w *WorkerClient) StopAfterStep(ctx context.Context, lease string) (bool, e
 
 // CheckPublish confirms publication is still authorized on the factory's current row.
 func (w *WorkerClient) CheckPublish(ctx context.Context, lease string) error {
-    _, err := w.send(ctx, http.MethodGet, leasePath(lease, "publish-check"), w.credential, nil, nil)
-    return err
+	_, err := w.send(ctx, http.MethodGet, leasePath(lease, "publish-check"), w.credential, nil, nil)
+	return err
 }

@@ -280,10 +280,10 @@ type Runner struct {
 	// loopOnce makes floor, the state machine's own state (loop.go), on the
 	// first door anybody calls, so New stays the one-line constructor the
 	// lanes were handed.
-	loopOnce    sync.Once
-	floor       *floorLoop
-	stopReaders sync.Map
- publishChecks sync.Map
+	loopOnce      sync.Once
+	floor         *floorLoop
+	stopReaders   sync.Map
+	publishChecks sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.
