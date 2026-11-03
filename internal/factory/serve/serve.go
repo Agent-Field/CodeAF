@@ -526,6 +526,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
+	h.repoCheckouts(r.Context(), q.Repos)
 	summarize := h.summaries(r)
 	for _, job := range q.Jobs {
 		if job.HeldBy != nil {
@@ -583,6 +584,20 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		Factory api.Factory `json:"factory"`
 		api.Job
 	}{h.factory, jobs[0]})
+}
+
+// repoCheckouts says on each queue repository how a run of it gets its
+// checkout, from the door every start asks ([factory.Seam.CheckoutOf]), so a
+// repository with no jobs yet can be checked before its first Start. A seam
+// that does not know its machine's checkouts leaves the word absent.
+func (h *Handler) repoCheckouts(ctx context.Context, repos []api.Repo) {
+	if h.seam.CheckoutOf == nil {
+		return
+	}
+	for i := range repos {
+		state, _ := h.seam.CheckoutOf(ctx, repos[i].Name)
+		repos[i].CheckoutState = string(state)
+	}
 }
 
 // findJob gives every job door the same id and existence checks, without

@@ -254,13 +254,22 @@ type Repo struct {
 	// CheckedOut says the factory's machine knows a checkout of the
 	// repository; false is none known, whose jobs are cloned on their first
 	// step or refused (the job's own `checkout` says which).
-	CheckedOut bool      `json:"checked_out"`
-	Pipeline   *Pipeline `json:"pipeline,omitempty"`
-	Team       string    `json:"team,omitempty"`   // desk
-	Areas      []string  `json:"areas,omitempty"`  // desk
-	Habits     []string  `json:"habits,omitempty"` // desk
-	Hue        int       `json:"hue,omitempty"`    // desk
-	CIRed      bool      `json:"ci_red,omitempty"` // desk
+	CheckedOut bool `json:"checked_out"`
+	// CheckoutState is how a run of the repository gets its folder on the
+	// factory's machine, in the words a job's own `checkout` says and from
+	// the same door a start asks ([factory.CheckoutState]): `here`,
+	// `will_clone` (the runner clones it on the first job's first step, the
+	// normal state of a repository no job has run on yet) or `missing` (a
+	// start is refused 409 needs_checkout). It names no path. Absent is a
+	// factory that does not know its machine's checkouts (its runners keep
+	// their own), never a guess.
+	CheckoutState string    `json:"checkout_state,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	Pipeline      *Pipeline `json:"pipeline,omitempty"`
+	Team          string    `json:"team,omitempty"`   // desk
+	Areas         []string  `json:"areas,omitempty"`  // desk
+	Habits        []string  `json:"habits,omitempty"` // desk
+	Hue           int       `json:"hue,omitempty"`    // desk
+	CIRed         bool      `json:"ci_red,omitempty"` // desk
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy
