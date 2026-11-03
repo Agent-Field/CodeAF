@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: Isolate resumed-session heap regression measurements
-pr: 0
+pr: 2300
 surface: [engine]
 invalidates:
   - Shared-process heap deltas were treated as retained resume memory.
