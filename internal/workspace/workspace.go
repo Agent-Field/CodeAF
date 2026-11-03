@@ -22,8 +22,9 @@ const (
 	// CrewKind names a crew by its id; ProcessKind names a process a
 	// conversation started, by its id, and like a task carries that
 	// conversation as its session. Both arrived with schema 2.
-	CrewKind    Kind = "crew"
-	ProcessKind Kind = "process"
+	CrewKind       Kind = "crew"
+	ProcessKind    Kind = "process"
+	FactoryJobKind Kind = "factory_job"
 	// StandingKind is an older build's reference to a standing item. Standing
 	// items are gone (automations replaced them), so the collections command
 	// refuses a new one, but a row that already names one is still a row: it
@@ -57,11 +58,13 @@ type Ref struct {
 	Kind      Kind   `json:"kind"`
 	ID        string `json:"id"`
 	SessionID string `json:"session_id,omitempty"`
+	Factory   string `json:"factory,omitempty"`
 }
 
 type Collection struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Workstream bool   `json:"workstream,omitempty"`
 }
 
 // Member is a reference as one collection holds it, with when it was added in
@@ -71,12 +74,17 @@ type Member struct {
 	AddedAt int64 `json:"added_at,omitempty"`
 }
 
-// key is a reference's identity, the three columns the uniqueness rule reads.
-func (r Ref) key() string { return string(r.Kind) + "\x00" + r.ID + "\x00" + r.SessionID }
+// key includes the factory because job numbers are local to one factory.
+func (r Ref) key() string {
+	return string(r.Kind) + "\x00" + r.ID + "\x00" + r.SessionID + "\x00" + r.Factory
+}
 
 // Validate checks the reference shape without asking an execution owner to
 // open it. A temporarily unavailable record must remain discoverable here.
 func (r Ref) Validate() error {
+	if r.Kind != FactoryJobKind && r.Factory != "" {
+		return fmt.Errorf("%w: only a factory_job reference has a factory", ErrInvalid)
+	}
 	if !validText(r.ID, 4096) {
 		return fmt.Errorf("%w: record id is empty, too long or contains control characters", ErrInvalid)
 	}
@@ -84,6 +92,11 @@ func (r Ref) Validate() error {
 		return fmt.Errorf("%w: only a task or a process reference has a session id", ErrInvalid)
 	}
 	switch r.Kind {
+	case FactoryJobKind:
+		n, err := strconv.ParseUint(r.ID, 10, 63)
+		if err != nil || n == 0 || strconv.FormatUint(n, 10) != r.ID || !validText(r.Factory, 4096) {
+			return fmt.Errorf("%w: a factory_job needs a factory and a positive canonical job number", ErrInvalid)
+		}
 	case CollectionKind, ConversationKind, StandingKind, CrewKind:
 	case ProcessKind:
 		if !validText(r.SessionID, 1024) {

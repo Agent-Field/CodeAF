@@ -35,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/workspace"
+	"github.com/Agent-Field/codeaf/internal/workstream"
 )
 
 // appCollectionsPath is where the collections store is, the CLI's own default.
@@ -97,11 +98,16 @@ func (b *appBackend) closeCollections() {
 // appCollectionError is a store refusal in the wire's codes.
 func appCollectionError(err error) error {
 	var wire *appwire.Error
+	var taken *workspace.WorkstreamTaken
 	switch {
 	case err == nil:
 		return nil
 	case errors.As(err, &wire):
 		return wire
+	case errors.As(err, &taken):
+		return &appwire.Error{Code: appwire.CodeInOtherWorkstream, Message: taken.Error(), Detail: appwire.WorkstreamTaken{Factory: taken.Factory, Job: taken.Job, WorkstreamID: taken.WorkstreamID, WorkstreamName: taken.WorkstreamName}}
+	case errors.Is(err, workspace.ErrWorkstreamDelete):
+		return appwire.Errorf(appwire.CodeBadParams, "%s", err)
 	case errors.Is(err, workspace.ErrNameTaken):
 		return appwire.Errorf(appwire.CodeConflict, "%s", workspace.ErrNameTaken.Error())
 	case errors.Is(err, workspace.ErrCycle):
@@ -123,11 +129,11 @@ func (b *appBackend) collectionChanged(id string, deleted bool) {
 }
 
 func appStoreRef(r appwire.Ref) workspace.Ref {
-	return workspace.Ref{Kind: workspace.Kind(r.Kind), ID: r.ID, SessionID: r.SessionID}
+	return workspace.Ref{Kind: workspace.Kind(r.Kind), ID: r.ID, SessionID: r.SessionID, Factory: r.Factory}
 }
 
 func appWireRef(r workspace.Ref) appwire.Ref {
-	return appwire.Ref{Kind: string(r.Kind), ID: r.ID, SessionID: r.SessionID}
+	return appwire.Ref{Kind: string(r.Kind), ID: r.ID, SessionID: r.SessionID, Factory: r.Factory}
 }
 
 // appMoment is a stored moment on the wire: absent when unknown.
@@ -144,7 +150,7 @@ func appWireMember(m workspace.Member) appwire.Member {
 }
 
 func appWireCollection(s workspace.Summary) appwire.Collection {
-	return appwire.Collection{ID: s.ID, Name: s.Name, CreatedAt: appMoment(s.CreatedAt), Count: s.Count, LastAddedAt: appMoment(s.LastAddedAt), Holds: s.Holds}
+	return appwire.Collection{ID: s.ID, Name: s.Name, CreatedAt: appMoment(s.CreatedAt), Count: s.Count, LastAddedAt: appMoment(s.LastAddedAt), Holds: s.Holds, Workstream: s.Workstream}
 }
 
 // describe is one collection as the wire says it.
@@ -202,10 +208,20 @@ func (b *appBackend) RenameCollection(id, name string) (appwire.Collection, erro
 	if err != nil {
 		return appwire.Collection{}, err
 	}
+	before, err := s.Describe(context.Background(), id)
+	if err != nil {
+		return appwire.Collection{}, appCollectionError(err)
+	}
+	if before.Workstream && before.Name == name {
+		return appWireCollection(before), nil
+	}
 	if err := s.Rename(context.Background(), id, name); err != nil {
 		return appwire.Collection{}, appCollectionError(err)
 	}
 	b.collectionChanged(id, false)
+	if before.Workstream && before.Name != name {
+		b.workstreamCollectionChanged(id, workstream.PartWorkstream)
+	}
 	return describeCollection(s, id)
 }
 
@@ -237,6 +253,7 @@ func (b *appBackend) DeleteCollection(id string) error {
 	b.collectionChanged(id, true)
 	for _, parent := range parents {
 		b.collectionChanged(parent, false)
+		b.workstreamCollectionChanged(parent, workstream.PartJobs)
 	}
 	return nil
 }
@@ -268,6 +285,7 @@ func (b *appBackend) AddToCollection(id string, refs []appwire.Member) (appwire.
 	}
 	if len(added) > 0 {
 		b.collectionChanged(id, false)
+		b.workstreamCollectionChanged(id, workstream.PartJobs)
 	}
 	return out, nil
 }
@@ -292,6 +310,7 @@ func (b *appBackend) RemoveFromCollection(id string, refs []appwire.Ref) (appwir
 	}
 	if len(removed) > 0 {
 		b.collectionChanged(id, false)
+		b.workstreamCollectionChanged(id, workstream.PartJobs)
 	}
 	return out, nil
 }
@@ -308,6 +327,7 @@ func (b *appBackend) OpenCollection(id string, depth, limit int, after string) (
 		return appwire.CollectionOpenResult{}, appCollectionError(err)
 	}
 	r := newCollectionResolver(b)
+	r.prepareWorkstreamTree(tree.Level)
 	var nodes func(level workspace.Level) []appwire.Node
 	nodes = func(level workspace.Level) []appwire.Node {
 		out := make([]appwire.Node, 0, len(level.Members))
@@ -359,6 +379,7 @@ func (b *appBackend) ExpandCollection(id string, depth, limit int) (appwire.Coll
 		Missing: e.Deleted, Unread: e.Unread, Collections: e.Collections, More: e.More,
 	}
 	r := newCollectionResolver(b)
+	r.prepareWorkstreamRefs(e.Refs)
 	for _, m := range e.Refs {
 		target := r.target(m.Ref)
 		switch target.State {
@@ -400,6 +421,7 @@ func (b *appBackend) RelinkCollection(id string, from, to appwire.Ref) (appwire.
 	// Relinking a member to itself changed nothing, so it says nothing.
 	if from != to {
 		b.collectionChanged(id, false)
+		b.workstreamCollectionChanged(id, workstream.PartJobs)
 	}
 	return appwire.CollectionRelinkResult{Member: appWireMember(m), Already: already}, nil
 }
@@ -499,9 +521,10 @@ type collectionResolver struct {
 	crewByID  map[string]int
 	crewsErr  error
 
-	tasks map[string]appOwned[appwire.Task]
-	procs map[string]appOwned[appwire.Process]
-	git   map[string]*appGitTree
+	tasks          map[string]appOwned[appwire.Task]
+	procs          map[string]appOwned[appwire.Process]
+	git            map[string]*appGitTree
+	factoryTargets map[workspace.Ref]appwire.Target
 }
 
 // appOwned is one agent's tasks or processes by wire id, or why they could
@@ -517,6 +540,11 @@ func newCollectionResolver(b *appBackend) *collectionResolver {
 
 func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 	switch ref.Kind {
+	case workspace.FactoryJobKind:
+		if _, ok := r.factoryTargets[ref]; !ok {
+			r.prepareWorkstreamRefs([]workspace.Member{{Ref: ref}})
+		}
+		return r.factoryTargets[ref]
 	case workspace.ConversationKind:
 		a, not := r.agent(ref.ID)
 		if not != nil {

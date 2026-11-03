@@ -725,6 +725,7 @@ type appBackend struct {
 	collections       *workspace.Store
 	collectionsClosed bool
 	collectionsPath   string
+	workstreams       appWorkstreams
 	// services is the app's one supervisor of kept-running processes
 	// (appservices.go); nil is the capability absent.
 	services *appServices

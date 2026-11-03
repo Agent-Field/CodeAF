@@ -147,6 +147,18 @@ decides which combinations are accepted.
 | `collections.remove` | `{id, refs}` | `CollectionRemoveResult` |
 | `collections.rename` | `in.collectionNameParams` | `CollectionResult` |
 
+Collection refs include `factory_job`, with a canonical positive decimal job `id`
+and a required `factory` field. The pair addresses the same job as `factory.job`.
+Other ref kinds have no `factory`. Collection results carry `workstream: true`
+when their id is a workstream. `collections.delete` refuses these collections
+with `bad_params` and the exact message `mark a workstream done instead`;
+duplicating one makes a plain collection. A job can belong to only one workstream:
+adding a job held by another returns `in_other_workstream` with factory, integer
+job, workstream_id and workstream_name detail, and changes nothing in the batch.
+Membership changes and renames send `workstream.changed` as well as
+`collection.changed`. Factory job targets carry the recorded title, state word
+and repository; an unavailable Factory produces an `unknown` target and status.
+
 ## competence methods
 
 | method | params | result |
@@ -1493,10 +1505,34 @@ read because it has said nothing. Engines that serve it announce
 
 ## Workstreams (v0 proposal)
 
-The Workstreams plan, WP-0, registers 25 methods and `workstream.changed` with their wire types.
-The `workstreams` feature is announced only by an engine that serves them.
-This build does not announce it and answers `unknown_method` with
-`workstreams: not implemented yet`; the store lands in WP-1.
+The Workstreams plan, WP-1, serves 25 methods backed by the collections SQLite
+store and announces `workstreams` in `hello.features`. Older engines without
+this feature must not be called; their methods may answer `unknown_method`.
+Pages, version history, records, plans, settings and go-aheads are engine-owned
+SQLite state. Markdown is a page export. Every committed change sends one
+`workstream.changed` for its id and changed parts; unchanged writes emit nothing.
+List/get may persist and announce the first observed job leaving Backlog.
+Creation checks refs and ownership before opening one bare agent conversation,
+with no first message or model turn. Repeating a nonempty client_id returns the
+first workstream. Origin and agent conversations are collection members.
+Mark done ends active go-aheads, and optional chat archiving excludes the agent's
+record. Reopen keeps the workstream in Building. Recorded Factory facts and agent
+spend feed the numbers; unavailable readings remain absent, while measured zero
+is present. Queue reads have a three-second call deadline and a ten-second cache
+of at most 32 factories. Distinct factories are read concurrently, up to eight
+at a time; at most 20 missing jobs get individual reads per call. Further jobs
+remain unknown. A Factory connection that cannot be read stays unknown.
+Update, mark_done and reopen results use the same bounded, cached facts and agent
+spend as get. They persist the first observed start and return the refreshed row,
+combining the observation with the mutation's single `workstream.changed` event.
+A fault while reading a queue releases waiting readers and caches an unavailable
+result for the normal window before a retry. Repeating mark_done preserves the
+original done_at and how_it_went.
+Client IDs, page/milestone/wave/draft titles and source labels reject control
+characters. Why, how_it_went, record text and draft text allow newline and tab
+only; other control characters return `bad_params`. Names use collection rules.
+Go-aheads are stored with scope, cap and end bounds; expiry is derived on read.
+Factory enforcement and automatic wave starts remain separate capabilities.
 A workstream is a collection, sharing its id, naming rules and membership methods.
 Its jobs use `factory_job` refs with `factory`; a job in another workstream is refused
 as `in_other_workstream`. Versioned page and plan writes refuse stale bases with `version_conflict`.

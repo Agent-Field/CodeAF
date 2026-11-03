@@ -15,7 +15,7 @@ const (
 	CodeVersionConflict    = "version_conflict"
 )
 
-// ErrWorkstreamsNotYet keeps the registered contract unavailable until WP-1.
+// ErrWorkstreamsNotYet is the capability refusal for a shapes-only engine.
 var ErrWorkstreamsNotYet = Errorf(CodeUnknownMethod, "workstreams: not implemented yet")
 
 // WorkstreamMethods follows the contract index order.
@@ -507,16 +507,32 @@ type Workstreamer interface {
 }
 
 // workstreamCall preserves the params/result types used by the schema generator.
-// Bounds and storage behavior land in WP-1; this door only delegates.
-func workstreamCall[P, R any](call func(Workstreamer, P) (R, error)) method {
-	return typed(func(e Engine, p P) (*R, error) {
+// Unsupported engines retain their capability refusal before parameter checks.
+func workstreamCall[P interface{ Check() error }, R any](call func(Workstreamer, P) (R, error)) method {
+	m := typed(func(e Engine, p P) (*R, error) {
 		w, ok := e.(Workstreamer)
 		if !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve workstreams")
 		}
+		if !w.ServesWorkstreams() {
+			return nil, ErrWorkstreamsNotYet
+		}
+		if err := p.Check(); err != nil {
+			return nil, err
+		}
 		result, err := call(w, p)
 		return &result, err
 	})
+	delegate := m.call
+	m.call = func(e Engine, raw json.RawMessage) (any, error) {
+		if w, ok := e.(Workstreamer); ok && w.ServesWorkstreams() {
+			if err := workstreamRequired(raw, m.params); err != nil {
+				return nil, err
+			}
+		}
+		return delegate(e, raw)
+	}
+	return m
 }
 
 func init() {
