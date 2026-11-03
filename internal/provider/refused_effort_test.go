@@ -112,6 +112,9 @@ func TestWithoutTheFlagARefusedEffortIsReturnedAsBefore(t *testing.T) {
 	if bodies := fixture.requests(); len(bodies) != 1 || bodies[0]["reasoning"] == nil {
 		t.Fatalf("ordinary call changed or retried: %+v", bodies)
 	}
+	if _, err := os.Stat(filepath.Join(fixture.profile, quirksFile)); !os.IsNotExist(err) {
+		t.Fatalf("ordinary refusal wrote a quirks file: %v", err)
+	}
 }
 
 // R10(a) requires an effort on the actual wire. The endpoint ladder can

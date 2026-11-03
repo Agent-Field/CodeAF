@@ -50,7 +50,7 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
-	// DropRefusedEffort lets a task child repair an explicit thinking refusal
+	// DropRefusedEffort lets a task or Factory client repair an explicit thinking refusal
 	// without teaching other clients or processes on this home.
 	DropRefusedEffort bool
 	// BillingDoor is the person-facing name of a bound road. Empty is a service

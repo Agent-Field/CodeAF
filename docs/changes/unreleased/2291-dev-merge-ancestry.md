@@ -16,8 +16,10 @@ Team sharing is on by default for paired computers. Missing or empty
 invalid values read off. The live pairing gate still prevents unpaired sharing.
 Solo computers with submitted chats refuse ordinary pairing and explain
 `--replace`; replacement retains confirmation and preserved-team receipts.
-Unsupported-effort repair is limited to opted-in task clients and their local
-memo. Ordinary clients return the refusal without a repair.
+Unsupported-effort repair is local to opted-in task and Factory clients. Stage
+conversations, their helpers, manager turns, scouts and triage retain recovery,
+including after model or account switches. Ordinary clients return the refusal
+without a repair.
 
 These choices supersede the earlier merge's opt-in sharing default, keep-and-share
 pairing policy and process-wide reasoning repair. Later app/v3 work remains merged.
