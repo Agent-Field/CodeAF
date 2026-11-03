@@ -201,6 +201,7 @@ func TestFactoryPersonStopLegacyFixtures(t *testing.T) {
 }
 
 func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
+ for _,mode:=range []string{"late_tools","retry_503","queued_person"} { t.Run(mode,func(t *testing.T){
  s,status,it := stoppedAppJob(t,factory.StateNeedsYou)
  var stopped api.Job
  s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&stopped)
@@ -221,11 +222,13 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
   var req recordedRequest
   if err := json.NewDecoder(r.Body).Decode(&req); err != nil { t.Error(err); return }
   n:=calls.Add(1)
-  if n==2 { close(personEntered); <-personRelease }
+  firstPerson:=int32(2);if mode=="queued_person"{firstPerson=3}
+  if n==firstPerson { close(personEntered); <-personRelease }
   delta,finish := map[string]any{"content":"this job is stopped; a person presses Start"},"stop"
   if n==1 {
    close(entered)
    <-release
+   if mode=="retry_503"{http.Error(w,"temporary upstream failure",http.StatusServiceUnavailable);return}
    delta=map[string]any{"tool_calls":[]any{map[string]any{"index":0,"id":"late-start","type":"function","function":map[string]string{"name":"factory_start","arguments":"{}"}}}}
    finish="tool_calls"
   }
@@ -239,23 +242,27 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  agent,err:=session.New(session.Config{Workspace:mustCheckout(t,floor),SessionFile:it.Talk,ProfileDir:s.backend.localProfile(),Model:"test/model",APIKey:"test-key",BaseURL:model.URL,OneModel:true,DeterministicNames:true,FactoryRun:runDoor(floor,mustCheckout(t,floor),s.backend.localProfile())})
  if err != nil { t.Fatal(err) }
  t.Cleanup(func(){unblock(); unblockPerson(); _ = agent.Close()})
+ wakes,stopWatching:=agent.WatchWakes()
+ defer stopWatching()
  events,err:=agent.SubmitRunnerNoteThrough(context.Background(),"The team question arrived; continue the job.",runDoor(floor,mustCheckout(t,floor),s.backend.localProfile()))
  if err != nil { t.Fatal(err) }
  select { case <-entered: case <-time.After(10*time.Second): t.Fatal("fake model did not enter the manager wake") }
  var before api.Job
  s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&before)
  s.must("factory.job_stop",map[string]any{"factory":status.Factory,"job":it.ID,"expect":map[string]any{"version":before.Version}},&appwire.FactoryJobActed{})
+ var queued <-chan session.Event
+ if mode=="queued_person" { queued,err=agent.Submit(context.Background(),"Why did this stop? Answer without doing any work.");if err!=nil{t.Fatal(err)} }
  unblock()
  var words strings.Builder
  for event:=range events { words.WriteString(event.Text) }
- if calls.Load()!=1 { t.Errorf("in-flight wake bought %d calls; only the already-running call may finish",calls.Load()) }
+ if mode=="queued_person" { for range queued{};select{case answer:=<-wakes:for range answer{};case <-time.After(10*time.Second):t.Fatal("person message queued during automatic Stop was unanswered")} }
+ wantCalls:=int32(1);if mode=="queued_person"{wantCalls=2}
+ if calls.Load()!=wantCalls { t.Errorf("in-flight wake bought %d calls; want %d including person answers",calls.Load(),wantCalls) }
  if !strings.Contains(words.String(),"this job is stopped") || !strings.Contains(words.String(),"a person presses Start") { t.Errorf("manager did not explain Stop: %q",words.String()) }
  saved,err:=floor.Get(it.ID)
  if err != nil { t.Fatal(err) }
  if !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("late tool restarted job: %s",saved.State) }
  beforeCalls:=calls.Load()
- wakes,stopWatching:=agent.WatchWakes()
- defer stopWatching()
  reply,err:=agent.Submit(context.Background(),"Explain what you need from me, without doing any work.")
  if err != nil { t.Fatal(err) }
  select {case <-personEntered: case <-time.After(10*time.Second): t.Fatal("person chat did not enter fake model") }
@@ -270,6 +277,7 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  if calls.Load()!=beforeCalls+2 {t.Fatalf("two person messages bought %d calls; want two",calls.Load()-beforeCalls)}
  saved,err=floor.Get(it.ID)
  if err!=nil || !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("person chat changed execution: %s %v",saved.State,err) }
+ }) }
 }
 
 func mustCheckout(t *testing.T, floor *store.Store) string {
