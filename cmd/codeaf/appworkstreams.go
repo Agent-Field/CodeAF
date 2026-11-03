@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,8 +62,8 @@ func (b *appBackend) workstreamStore(create bool) (*workstream.Store, error) {
 	return workstream.New(s, workstream.Options{Now: b.now}), nil
 }
 
-// workstreamDo emits only the committed domain receipt. Reads return an empty
-// receipt; unchanged and refused mutations therefore say nothing to watchers.
+// workstreamDo emits committed receipts, including a read's first observation.
+// Unchanged and refused writes have empty receipts and do not notify watchers.
 func workstreamDo[P interface{ Check() error }, R any](b *appBackend, p P, call func(*workstream.Store) (R, workstream.Change, error)) (R, error) {
 	var zero R
 	if err := p.Check(); err != nil {
@@ -76,10 +77,11 @@ func workstreamDo[P interface{ Check() error }, R any](b *appBackend, p P, call 
 		return zero, appwire.Errorf(appwire.CodeNotFound, "workstream target not found")
 	}
 	out, change, err := call(s)
+	// A refresh can fail after a write commits; its receipt still belongs to watchers.
+	b.workstreamChanged(change)
 	if err != nil {
 		return zero, appWorkstreamError(err)
 	}
-	b.workstreamChanged(change)
 	return out, nil
 }
 
@@ -177,7 +179,9 @@ func (b *appBackend) WorkstreamList(p appwire.WorkstreamListParams) (appwire.Wor
 	}
 	facts := b.workstreamFacts(jobs)
 	for _, w := range rows {
-		w, err = b.workstreamObserved(s, w, facts)
+		var c workstream.Change
+		w, c, err = b.workstreamObserved(s, w, facts, workstream.Change{})
+		b.workstreamChanged(c)
 		if err != nil {
 			return appwire.WorkstreamListResult{}, err
 		}
@@ -194,8 +198,8 @@ func (b *appBackend) WorkstreamGet(p appwire.WorkstreamGetParams) (appwire.Works
 			return appwire.WorkstreamGetResult{}, workstream.Change{}, err
 		}
 		facts := b.workstreamFacts(w.Jobs())
-		w, err = b.workstreamObserved(s, w, facts)
-		return appwire.WorkstreamGetResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, workstream.Change{}, err
+		w, c, err := b.workstreamObserved(s, w, facts, workstream.Change{})
+		return appwire.WorkstreamGetResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, err
 	})
 }
 
@@ -370,7 +374,8 @@ func (b *appBackend) WorkstreamUpdate(p appwire.WorkstreamUpdateParams) (appwire
 			b.collectionChanged(w.ID, false)
 		}
 		facts := b.workstreamFacts(w.Jobs())
-		return appwire.WorkstreamUpdateResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, nil
+		w, c, err = b.workstreamObserved(s, w, facts, c)
+		return appwire.WorkstreamUpdateResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, err
 	})
 }
 
@@ -380,10 +385,15 @@ func (b *appBackend) WorkstreamMarkDone(p appwire.WorkstreamMarkDoneParams) (app
 		if err != nil {
 			return appwire.WorkstreamMarkDoneResult{}, c, err
 		}
+		facts := b.workstreamFacts(w.Jobs())
+		w, c, err = b.workstreamObserved(s, w, facts, c)
 		// The workstream is already durable even if archiving a chat fails. Publish
 		// that receipt first; retrying mark_done can finish the archive without a
 		// second workstream mutation or notification.
 		b.workstreamChanged(c)
+		if err != nil {
+			return appwire.WorkstreamMarkDoneResult{}, workstream.Change{}, err
+		}
 		if workstreamValue(p.ArchiveChats) {
 			ids := []string{}
 			for _, r := range w.Members {
@@ -402,7 +412,6 @@ func (b *appBackend) WorkstreamMarkDone(p appwire.WorkstreamMarkDoneParams) (app
 		if err != nil {
 			return appwire.WorkstreamMarkDoneResult{}, workstream.Change{}, err
 		}
-		facts := b.workstreamFacts(w.Jobs())
 		return appwire.WorkstreamMarkDoneResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, workstream.Change{}, nil
 	})
 }
@@ -414,7 +423,8 @@ func (b *appBackend) WorkstreamReopen(p appwire.WorkstreamReopenParams) (appwire
 			return appwire.WorkstreamReopenResult{}, c, err
 		}
 		facts := b.workstreamFacts(w.Jobs())
-		return appwire.WorkstreamReopenResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, nil
+		w, c, err = b.workstreamObserved(s, w, facts, c)
+		return appwire.WorkstreamReopenResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, err
 	})
 }
 
@@ -608,9 +618,9 @@ func (b *appBackend) WorkstreamGoAheadRevoke(p appwire.WorkstreamGoAheadRevokePa
 
 // workstreamQueue shares successful and failed reads briefly, including an
 // in-flight read, so concurrent list/get calls cannot multiply Factory work.
-func (b *appBackend) workstreamQueue(ctx context.Context, factory string) workstreamQueueRead {
+func (b *appBackend) workstreamQueue(ctx context.Context, factory string) (entry workstreamQueueRead) {
 	state := &b.workstreams
-	entry, flight, readQueue := state.workstreamQueueStart(factory)
+	entry, flight, readQueue := state.workstreamQueueStart(factory, b.now())
 	if flight == nil {
 		return entry
 	}
@@ -622,23 +632,30 @@ func (b *appBackend) workstreamQueue(ctx context.Context, factory string) workst
 			return workstreamQueueRead{err: ctx.Err()}
 		}
 	}
+	// Complete ownership even when the guarded reader panics. Only a completed
+	// read replaces the unavailable entry, so a fault cannot publish success.
+	entry = workstreamQueueRead{err: errors.New("the Factory queue read did not complete")}
+	defer func() {
+		entry.at = b.now()
+		state.workstreamQueueFinish(factory, flight, entry)
+	}()
 	read := state.queue
 	if read == nil {
 		read = b.FactoryQueue
 	}
 	queue, err := read(ctx, factory)
-	entry = workstreamQueueRead{at: time.Now(), err: err, jobs: map[int]api.Job{}}
+	jobs := map[int]api.Job{}
 	for _, j := range queue.Jobs {
-		entry.jobs[j.ID] = j
+		jobs[j.ID] = j
 	}
-	state.workstreamQueueFinish(factory, flight, entry)
+	entry = workstreamQueueRead{err: err, jobs: jobs}
 	return entry
 }
 
-func (state *appWorkstreams) workstreamQueueStart(factory string) (workstreamQueueRead, chan struct{}, bool) {
+func (state *appWorkstreams) workstreamQueueStart(factory string, now time.Time) (workstreamQueueRead, chan struct{}, bool) {
 	state.cacheMu.Lock()
 	defer state.cacheMu.Unlock()
-	if entry, ok := state.cache[factory]; ok && time.Since(entry.at) < workstreamFactoryFresh {
+	if entry, ok := state.cache[factory]; ok && now.Sub(entry.at) < workstreamFactoryFresh {
 		return entry, nil, false
 	}
 	if flight := state.flights[factory]; flight != nil {
@@ -816,9 +833,11 @@ func (r *collectionResolver) prepareWorkstreamTree(level workspace.Level) {
 	r.prepareWorkstreamRefs(members)
 }
 
-func (b *appBackend) workstreamObserved(s *workstream.Store, w workstream.Workstream, facts map[workstream.Job]workstream.JobFacts) (workstream.Workstream, error) {
+// workstreamObserved adds the first observed start to the caller's
+// receipt, so mutations announce their write and observation in one event.
+func (b *appBackend) workstreamObserved(s *workstream.Store, w workstream.Workstream, facts map[workstream.Job]workstream.JobFacts, c workstream.Change) (workstream.Workstream, workstream.Change, error) {
 	if !w.StartedAt.IsZero() {
-		return w, nil
+		return w, c, nil
 	}
 	states := map[workstream.Job]string{}
 	active := false
@@ -830,16 +849,24 @@ func (b *appBackend) workstreamObserved(s *workstream.Store, w workstream.Workst
 		}
 	}
 	if !active {
-		return w, nil
+		return w, c, nil
 	}
-	c, err := s.ObserveJobStates(context.Background(), w.ID, states)
+	observed, err := s.ObserveJobStates(context.Background(), w.ID, states)
 	if err != nil {
-		return w, appWorkstreamError(err)
+		return w, c, appWorkstreamError(err)
 	}
-	b.workstreamChanged(c)
+	if c.ID == "" {
+		c = observed
+	} else {
+		for _, part := range observed.Parts {
+			if !slices.Contains(c.Parts, part) {
+				c.Parts = append(c.Parts, part)
+			}
+		}
+	}
 	// Another reader may have won the write, so reread even with an empty receipt.
 	w, err = s.Get(context.Background(), w.ID)
-	return w, appWorkstreamError(err)
+	return w, c, appWorkstreamError(err)
 }
 
 func (b *appBackend) workstreamSpend(id string) *float64 {

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -267,16 +268,13 @@ func TestAppWorkstreamMutationNumbersMatchGet(t *testing.T) {
 			if _, err := b.WorkstreamRecordPropose(appwire.WorkstreamRecordProposeParams{WorkstreamID: w.ID, Kind: "question", Text: "Ready?"}); err != nil {
 				t.Fatal(err)
 			}
-			before, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
-			if err != nil {
-				t.Fatal(err)
-			}
+			before := w
 			if method == "reopen" || method == "mark_done_again" {
 				done, err := b.WorkstreamMarkDone(appwire.WorkstreamMarkDoneParams{ID: w.ID, HowItWent: workstreamPtr("First report")})
 				if err != nil {
 					t.Fatal(err)
 				}
-				before.Workstream = done.Workstream
+				before = done.Workstream
 			}
 			events := len(workstreamEvents(rec))
 			var result appwire.Workstream
@@ -313,8 +311,77 @@ func TestAppWorkstreamMutationNumbersMatchGet(t *testing.T) {
 			if method == "reopen" && result.Stage != "building" {
 				t.Fatalf("reopen stage = %q", result.Stage)
 			}
-			if method == "mark_done_again" && (!reflect.DeepEqual(result, before.Workstream) || len(workstreamEvents(rec)) != events) {
+			if method == "mark_done_again" && (!reflect.DeepEqual(result, before) || len(workstreamEvents(rec)) != events) {
 				t.Fatal("marking an already done workstream changed it or emitted an event")
+			}
+		})
+	}
+}
+
+// (d), (i), (j): a mutation observes the first running job before any get,
+// publishes one combined receipt, and keeps that start through Factory failure.
+func TestAppWorkstreamMutationPersistsFirstStart(t *testing.T) {
+	for _, method := range []string{"update", "mark_done", "reopen"} {
+		t.Run(method, func(t *testing.T) {
+			b, rec, _, _ := workstreamBackend(t)
+			var clock atomic.Int64
+			clock.Store(time.Now().UnixMilli())
+			b.now = func() time.Time { return time.UnixMilli(clock.Load()) }
+			reads := 0
+			b.workstreams.queue = func(context.Context, string) (api.Queue, error) {
+				reads++
+				if reads > 1 {
+					return api.Queue{}, errors.New("unreachable")
+				}
+				return api.Queue{Jobs: []api.Job{{ID: 7, State: "running", Cost: 1.25}}}, nil
+			}
+			w := workstreamCreateForTest(t, b, "First start", workstreamJobRef("7"))
+			events := len(workstreamEvents(rec))
+			var result appwire.Workstream
+			switch method {
+			case "update":
+				v, err := b.WorkstreamUpdate(appwire.WorkstreamUpdateParams{ID: w.ID, Patch: appwire.WorkstreamPatch{Why: workstreamPtr("Updated before get")}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				result = v.Workstream
+			case "mark_done":
+				v, err := b.WorkstreamMarkDone(appwire.WorkstreamMarkDoneParams{ID: w.ID})
+				if err != nil {
+					t.Fatal(err)
+				}
+				result = v.Workstream
+			case "reopen":
+				// Reopening an already open workstream still observes its jobs.
+				v, err := b.WorkstreamReopen(appwire.WorkstreamReopenParams{ID: w.ID})
+				if err != nil {
+					t.Fatal(err)
+				}
+				result = v.Workstream
+			}
+			stage := "building"
+			if method == "mark_done" {
+				stage = "done"
+			}
+			if result.Stage != stage || result.StartedAt.IsZero() || !result.UpdatedAt.After(w.UpdatedAt) {
+				t.Fatalf("first observation: %+v", result)
+			}
+			changed := workstreamEvents(rec)[events:]
+			if len(changed) != 1 || changed[0].ID != w.ID || !reflect.DeepEqual(changed[0].Parts, []string{"workstream"}) {
+				t.Fatalf("mutation events: %+v", changed)
+			}
+			got, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+			if err != nil || !reflect.DeepEqual(result, got.Workstream) || len(workstreamEvents(rec)) != events+1 || reads != 1 {
+				t.Fatalf("get after mutation: %+v, %v; events %d, reads %d", got, err, len(workstreamEvents(rec))-events, reads)
+			}
+			clock.Add(workstreamFactoryFresh.Milliseconds())
+			got, err = b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+			if err != nil || got.Workstream.Stage != stage || !got.Workstream.StartedAt.Equal(result.StartedAt) || !got.Workstream.UpdatedAt.Equal(result.UpdatedAt) || got.Workstream.Merged != nil || got.Workstream.NeedsYou != nil || got.Workstream.SpendUSD != nil || reads != 2 || len(workstreamEvents(rec)) != events+1 {
+				t.Fatalf("unreachable Factory lost durable observation: %+v, %v; reads %d", got, err, reads)
+			}
+			updated, err := b.WorkstreamUpdate(appwire.WorkstreamUpdateParams{ID: w.ID, Patch: appwire.WorkstreamPatch{Why: workstreamPtr("Committed while unreachable")}})
+			if err != nil || updated.Workstream.Why != "Committed while unreachable" || updated.Workstream.Stage != stage || updated.Workstream.SpendUSD != nil || len(workstreamEvents(rec)) != events+2 {
+				t.Fatalf("unreachable Factory failed mutation: %+v, %v", updated, err)
 			}
 		})
 	}
@@ -963,6 +1030,133 @@ func TestAppWorkstreamFactoryBatchCacheAndCollectionTargets(t *testing.T) {
 	defer mu.Unlock()
 	if !found || calls["f"] != 1 || calls["g"] != 1 {
 		t.Fatalf("target found %v, queue calls %v", found, calls)
+	}
+}
+
+// workstreamQueueWaitContext signals when a coalesced reader selects on Done,
+// so the panic cannot race ahead of the waiter entering the flight branch.
+type workstreamQueueWaitContext struct {
+	context.Context
+	waiting chan struct{}
+	once    sync.Once
+}
+
+func (c *workstreamQueueWaitContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.waiting) })
+	return c.Context.Done()
+}
+
+// (j), B3: a guarded queue panic releases concurrent waiters, caches an
+// unavailable reading for the normal window, and permits a successful retry.
+func TestAppWorkstreamFactoryPanicFinishesFlight(t *testing.T) {
+	b, _, _, _ := workstreamBackend(t)
+	var clock atomic.Int64
+	clock.Store(time.Now().UnixMilli())
+	b.now = func() time.Time { return time.UnixMilli(clock.Load()) }
+	w := workstreamCreateForTest(t, b, "Queue panic", workstreamJobRef("7"))
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	var calls atomic.Int32
+	b.workstreams.queue = func(ctx context.Context, _ string) (api.Queue, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			select {
+			case <-release:
+				panic("queue reader fault")
+			case <-ctx.Done():
+				return api.Queue{}, ctx.Err()
+			}
+		}
+		return api.Queue{Jobs: []api.Job{{ID: 7, State: "backlog", Cost: 1.25}}}, nil
+	}
+	b.workstreams.job = func(context.Context, string, int) (api.Job, error) {
+		t.Error("unavailable queue triggered a job fallback")
+		return api.Job{}, errors.New("unexpected job fallback")
+	}
+	type workstreamGetRead struct {
+		result appwire.WorkstreamGetResult
+		err    error
+	}
+	owner := make(chan workstreamGetRead, 1)
+	guard.Go("app/workstream-panic-owner-test", func() {
+		result, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+		owner <- workstreamGetRead{result: result, err: err}
+	})
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("queue reader did not enter")
+	}
+	_, flight, owns := b.workstreams.workstreamQueueStart("f", b.now())
+	if flight == nil || owns {
+		t.Fatal("queue reader did not own a shared flight")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), workstreamFactoryTimeout)
+	defer cancel()
+	waitCtx := &workstreamQueueWaitContext{Context: ctx, waiting: make(chan struct{})}
+	waiter := make(chan workstreamQueueRead, 1)
+	guard.Go("app/workstream-panic-waiter-test", func() { waiter <- b.workstreamQueue(waitCtx, "f") })
+	select {
+	case <-waitCtx.waiting:
+	case <-time.After(time.Second):
+		t.Fatal("concurrent reader did not wait on the flight")
+	}
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case read := <-owner:
+		if read.err != nil {
+			t.Fatal(read.err)
+		}
+		encoded, err := json.Marshal(read.result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"merged", "needs_you", "spend_usd"} {
+			if bytes.Contains(encoded, []byte(`"`+key+`"`)) {
+				t.Fatalf("panic exposed a number in %s", encoded)
+			}
+		}
+		if read.result.Workstream.Total != 1 {
+			t.Fatalf("panic lost total: %+v", read.result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("guarded queue owner did not finish")
+	}
+	select {
+	case <-flight:
+	default:
+		t.Fatal("panic did not close the flight")
+	}
+	select {
+	case read := <-waiter:
+		if read.err == nil || errors.Is(read.err, context.DeadlineExceeded) || !read.at.Equal(b.now()) {
+			t.Fatalf("waiter did not receive the cached failure: %+v", read)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("panic stranded the concurrent waiter")
+	}
+	func() {
+		b.workstreams.cacheMu.Lock()
+		defer b.workstreams.cacheMu.Unlock()
+		if _, ok := b.workstreams.flights["f"]; ok {
+			t.Fatal("panic left an in-flight entry")
+		}
+	}()
+	entry, flight, owns := b.workstreams.workstreamQueueStart("f", b.now())
+	if entry.err == nil || flight != nil || owns || calls.Load() != 1 {
+		t.Fatalf("panic did not remove and cache the failed flight: %+v, %v, %v", entry, flight, owns)
+	}
+	clock.Add((workstreamFactoryFresh - time.Millisecond).Milliseconds())
+	got, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+	if err != nil || got.Workstream.Merged != nil || got.Workstream.NeedsYou != nil || got.Workstream.SpendUSD != nil || calls.Load() != 1 {
+		t.Fatalf("failure did not stay cached: %+v, %v; calls %d", got, err, calls.Load())
+	}
+	clock.Add(1)
+	got, err = b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+	if err != nil || calls.Load() != 2 || got.Workstream.Merged == nil || *got.Workstream.Merged != 0 || got.Workstream.NeedsYou == nil || *got.Workstream.NeedsYou != 0 || got.Workstream.SpendUSD == nil || *got.Workstream.SpendUSD != 1.25 {
+		t.Fatalf("retry after failure-cache expiry: %+v, %v; calls %d", got, err, calls.Load())
 	}
 }
 

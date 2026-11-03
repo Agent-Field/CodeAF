@@ -19,4 +19,9 @@ automatic starts are separate work.
 
 Update, mark done and reopen results include the same available live numbers as
 get. Single-line fields reject control characters; prose permits newline and
-tab only. Marking an already done workstream remains unchanged.
+tab only. Repeating mark done preserves the original done time and report.
+
+Faults while reading a queue release concurrent readers, cache an unavailable
+result and permit retries after the cache window. Update, mark done and reopen
+persist their first observed start, return the refreshed row and announce one
+combined change.

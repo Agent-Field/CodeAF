@@ -1523,7 +1523,11 @@ of at most 32 factories. Distinct factories are read concurrently, up to eight
 at a time; at most 20 missing jobs get individual reads per call. Further jobs
 remain unknown. A Factory connection that cannot be read stays unknown.
 Update, mark_done and reopen results use the same bounded, cached facts and agent
-spend as get. An already done workstream remains unchanged on mark_done.
+spend as get. They persist the first observed start and return the refreshed row,
+combining the observation with the mutation's single `workstream.changed` event.
+A fault while reading a queue releases waiting readers and caches an unavailable
+result for the normal window before a retry. Repeating mark_done preserves the
+original done_at and how_it_went.
 Client IDs, page/milestone/wave/draft titles and source labels reject control
 characters. Why, how_it_went, record text and draft text allow newline and tab
 only; other control characters return `bad_params`. Names use collection rules.

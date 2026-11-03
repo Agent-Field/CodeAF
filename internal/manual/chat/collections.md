@@ -165,7 +165,7 @@ at most $10,000 and an end in the future at most 90 days away. Expired grants
 read as ended. Marking done ends every still-active grant; granting on a done
 workstream is refused. These are stored permissions; Factory enforcement is a
 separate capability. Workstream numbers use recorded job facts and agent spend.
-Updating, marking done and reopening return those numbers using the same reads
-as getting the workstream.
+Updating, marking done and reopening persist the first observed start and return
+those numbers using the same reads as getting the workstream.
 Unavailable readings stay absent; a measured zero is present. Budgets and autonomy
 settings do not themselves start work.
