@@ -235,7 +235,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	// Writing content or generating an artifact.
 	case "write", "generate_image", "generate_music", "generate_video",
 		"remember", "propose_subharness", "factory_add", "factory_recipe", "factory_item", "build_harness", "calendar_create",
-		"propose_decision", "propose_question", "propose_jobs", "propose_goahead", "write_agent_page":
+		"propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page":
 		return ActionCreate
 
 	// Executing and waiting on what it prints.

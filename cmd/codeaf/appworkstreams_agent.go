@@ -116,6 +116,10 @@ func (d *workstreamAgentDoor) Read(ctx context.Context, ask session.WorkstreamRe
 		return json.Marshal(appwire.WorkstreamPlanGetResult{Plan: appWorkstreamPlan(p)})
 	case "goaheads":
 		return workstreamAgentReadGoAheads(ctx, s, w.ID)
+	case "sources":
+		return workstreamAgentReadSources(ctx, s, w.ID)
+	case "source":
+		return workstreamAgentReadSource(ctx, s, w.ID, ask.SourceID)
 	}
 	return nil, errors.New("what must name a workstream part")
 }

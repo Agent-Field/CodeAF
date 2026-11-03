@@ -14,21 +14,22 @@ import (
 )
 
 type workstreamFakeDoor struct {
-	brief       WorkstreamBrief
-	briefReady  bool
-	read        json.RawMessage
-	readAsk     WorkstreamReadAsk
-	proposals   []WorkstreamProposal
-	plan        WorkstreamPlanState
-	reads       int
-	saves       []WorkstreamPlanState
-	bases       []int
-	conflicts   int
-	pageWrites  []WorkstreamPageWrite
-	pageError   error
-	otherCalls  int
-	sourceCalls int
-	sourceError error
+	brief           WorkstreamBrief
+	briefReady      bool
+	read            json.RawMessage
+	readAsk         WorkstreamReadAsk
+	proposals       []WorkstreamProposal
+	plan            WorkstreamPlanState
+	reads           int
+	saves           []WorkstreamPlanState
+	bases           []int
+	conflicts       int
+	pageWrites      []WorkstreamPageWrite
+	pageError       error
+	otherCalls      int
+	sourceCalls     int
+	sourceError     error
+	sourceProposals []WorkstreamSourceProposal
 }
 
 func (d *workstreamFakeDoor) Source(_ context.Context, source *workstream.Source) (*workstream.Source, error) {
@@ -53,6 +54,12 @@ func (d *workstreamFakeDoor) Propose(_ context.Context, p WorkstreamProposal) (W
 	d.otherCalls++
 	d.proposals = append(d.proposals, p)
 	return WorkstreamProposed{ID: "record-1"}, nil
+}
+
+func (d *workstreamFakeDoor) ProposeSource(_ context.Context, p WorkstreamSourceProposal) (WorkstreamSourceProposed, error) {
+	d.otherCalls++
+	d.sourceProposals = append(d.sourceProposals, p)
+	return WorkstreamSourceProposed{ID: "source-1"}, d.sourceError
 }
 
 func (d *workstreamFakeDoor) Plan(context.Context) (WorkstreamPlanState, error) {
@@ -111,8 +118,8 @@ func TestWorkstreamAgentToolsAndPromptAreScoped(t *testing.T) {
 	d := &workstreamFakeDoor{brief: WorkstreamBrief{Name: "Usage", Why: "Explain recorded usage"}, briefReady: true}
 	cfg.Workstream = d
 	with := &Agent{config: cfg}
-	if len(with.belt()) != len(belt)+6 || len(with.workstreamTools()) != 6 {
-		t.Fatal("the workstream must add exactly six tools")
+	if len(with.belt()) != len(belt)+7 || len(with.workstreamTools()) != 7 {
+		t.Fatal("the workstream must add exactly seven tools")
 	}
 	if !reflect.DeepEqual(workstreamOrdinaryBelt(belt), workstreamOrdinaryBelt(with.belt())) {
 		t.Fatal("the workstream changed the ordinary belt's bytes")
@@ -197,7 +204,7 @@ func workstreamPromptUnderLock(a *Agent) string {
 }
 
 func workstreamOrdinaryBelt(tools []bare.Tool) []string {
-	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "write_agent_page"}
+	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page"}
 	var out []string
 	for _, tool := range tools {
 		if !workstreamHasWord(names, tool.Name) {
@@ -379,7 +386,7 @@ func TestWorkstreamPageOwnershipRefusal(t *testing.T) {
 
 // Contract (g) refuses unknown fields before touching any door.
 func TestWorkstreamToolsRefuseInventedFacts(t *testing.T) {
-	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "write_agent_page"}
+	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page"}
 	fields := []string{"kept", "state", "cost_usd", "spend_usd", "count", "merged", "budget_usd", "auto_start", "version"}
 	for _, name := range names {
 		for _, field := range fields {

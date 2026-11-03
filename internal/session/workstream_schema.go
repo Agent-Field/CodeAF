@@ -7,11 +7,12 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 var workstreamSourceSchema = fmt.Sprintf(`{"type":"object","properties":{"kind":{"type":"string","enum":["factory_job","page","url"]},"id":{"type":"string"},"factory":{"type":"string"},"label":{"type":"string","maxLength":%d}},"required":["kind","id"],"additionalProperties":false}`, workstreamLineMax)
 
-const workstreamReadSchema = `{"type":"object","properties":{"what":{"type":"string","enum":["workstream","pages","page","records","plan","goaheads"]},"page_id":{"type":"string"},"kind":{"type":"string","enum":["decision","question","goahead"]},"state":{"type":"string","enum":["proposed","kept","dropped","superseded"]}},"required":["what"],"additionalProperties":false}`
+const workstreamReadSchema = `{"type":"object","properties":{"what":{"type":"string","enum":["workstream","pages","page","records","plan","goaheads","sources","source"]},"page_id":{"type":"string"},"source_id":{"type":"string"},"kind":{"type":"string","enum":["decision","question","goahead"]},"state":{"type":"string","enum":["proposed","kept","dropped","superseded"]}},"required":["what"],"additionalProperties":false}`
 
 var workstreamRecordSchema = fmt.Sprintf(`{"type":"object","properties":{"text":{"type":"string","minLength":1,"maxLength":%d},"source":%s},"required":["text"],"additionalProperties":false}`, workstreamRecordMax, workstreamSourceSchema)
 
@@ -30,6 +31,9 @@ type workstreamArgumentSchema struct {
 }
 
 func workstreamDecode(args json.RawMessage, schema workstreamArgumentSchema, target any) (map[string]any, error) {
+	if _, source := target.(*WorkstreamSourceProposal); source && !utf8.Valid(args) {
+		return nil, fmt.Errorf("source arguments must be valid UTF-8")
+	}
 	if err := decodeToolArguments(args, target); err != nil {
 		return nil, err
 	}
