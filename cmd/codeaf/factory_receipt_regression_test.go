@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,9 +57,16 @@ func TestReviewLegacySuccessfulOutput(t *testing.T) {
 }
 
 func TestReviewBackgroundValidation(t *testing.T) {
+	for _, preserveCommand := range []bool{false, true} {
+		t.Run(fmt.Sprint("matching command=", preserveCommand), func(t *testing.T) {
 	root, file, run := repairCheckFixture(t)
 	command := "cargo test --test cli regression && false"
 	run(command)
+	if preserveCommand {
+		checks, err := verification.Read(file)
+		if err != nil || len(checks) != 1 { t.Fatalf("fixture checks: %v: %v", checks, err) }
+		command = checks[0].Command
+	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
@@ -101,8 +109,10 @@ func TestReviewBackgroundValidation(t *testing.T) {
 		t.Errorf("real background compound exit=1 did not reach guard: %v", notes)
 	}
 	body := factory.PublishBody(factory.Item{Title: "review", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
-	if strings.Contains(body, "Passed locally:") {
+	if !preserveCommand && strings.Contains(body, "Passed locally:") {
 		t.Errorf("background exit=1 published as passed: %s", body)
+	}
+		})
 	}
 }
 
