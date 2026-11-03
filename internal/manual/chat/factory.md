@@ -608,7 +608,7 @@ The Brief reads the issue plus your later requests from gate answers and saved
 notes, alongside the plan and step results. A later request wins where it
 disagrees with the issue or plan. Work that follows your request is treated as
 asked, never as a fault, surprise or scope creep. A real miss against your
-request is still reported, and the verdict names the request as asked.
+request is still reported, and the Brief names the request as asked.
 
 Plain continue, yes and no answers are omitted. The writer keeps the newest
 12 distinct requests, up to 2 KiB per text and 16 KiB of request JSON, oldest
