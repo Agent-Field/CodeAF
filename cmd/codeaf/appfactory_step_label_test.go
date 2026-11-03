@@ -17,3 +17,22 @@ func TestAppFactoryStepLabelKeepsTheRoutingName(t *testing.T) {
 		}
 	}
 }
+
+func TestAppFactoryAddedStepKeepsItsLabel(t *testing.T) {
+	f := startActionFactory(t)
+	alice := signedIn(t, f, 1, "alice")
+	it := f.create(t, factory.Item{Kind: factory.KindIssue, State: factory.StateNew, Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true}}})
+	alice.act(t, "factory.job_step_edit", it.ID, map[string]any{
+		"edit": map[string]any{"add": []any{map[string]any{
+			"step": map[string]any{"name": "securityrevi", "label": "Security review", "ask": "review security", "until": "clean"}, "after": "write",
+		}}},
+	})
+	got := alice.job(t, it.ID)
+	for _, step := range got.Steps {
+		if step.Name == "securityrevi" {
+			if step.Label != "Security review" { t.Fatalf("added step lost label: %+v", step) }
+			return
+		}
+	}
+	t.Fatal("added step missing")
+}

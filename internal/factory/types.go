@@ -102,7 +102,7 @@ const (
 // skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
 	// Label is an optional display name; Name remains the step identity.
-	Label string `json:",omitempty"`
+	Label  string    `json:",omitempty"`
 	Name   string    // plan · write · test · review · neaten · security · proof
 	Kind   StageKind // chat unless said otherwise
 	Ask    string    // the sentence as typed; the brief is compiled from it

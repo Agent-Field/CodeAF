@@ -13,7 +13,7 @@ import (
 // Runtime source and read problems are omitted because they are not file keys.
 func Encode(f File) ([]byte, error) {
 	type step struct {
-		Label string `yaml:"label,omitempty"`
+		Label  string  `yaml:"label,omitempty"`
 		Prompt *string `yaml:"prompt,omitempty"`
 		Kind   string  `yaml:"kind,omitempty"`
 		When   string  `yaml:"when,omitempty"`

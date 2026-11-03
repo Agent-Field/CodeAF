@@ -144,7 +144,7 @@ type Size struct {
 // conversation. No other word is read, and a file never invents one. A file
 // that says `kind: chat` reads as "", so the two spellings are one file.
 type Step struct {
-	Label string
+	Label  string
 	Prompt string
 	Kind   string
 	When   string

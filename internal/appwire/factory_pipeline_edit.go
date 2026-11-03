@@ -346,7 +346,7 @@ type FactoryPipelinePreviewParams struct {
 // omitted when empty, so a preview of a legacy file is byte for byte what it was
 // before they existed.
 type FactoryPipelineStepValues struct {
-	Label string `json:"label,omitempty"`
+	Label  string `json:"label,omitempty"`
 	Prompt string `json:"prompt"`
 	Until  string `json:"until"`
 	Max    int    `json:"max"`

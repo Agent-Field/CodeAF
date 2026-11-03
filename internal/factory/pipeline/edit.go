@@ -138,8 +138,8 @@ type EditOp struct {
 // define itself, whose wording is a shipped default.
 type StepView struct {
 	Label string
-	Name string
-	Gate bool
+	Name  string
+	Gate  bool
 	// Who is who a person step waits on; "" the job's person.
 	Who    string
 	Prompt string

@@ -149,7 +149,7 @@ type PipelineEditKind struct {
 // no prompt. Locked steps are refused by the preview. InFile is false for a
 // step whose wording is a shipped default the file does not write.
 type PipelineEditStep struct {
-	Label string `json:"label,omitempty"`
+	Label  string `json:"label,omitempty"`
 	Name   string `json:"name"`
 	Gate   bool   `json:"gate,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
