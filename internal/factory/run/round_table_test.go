@@ -36,8 +36,8 @@ func checkTableCost(t *testing.T, it factory.Item, want float64) {
 	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("worker step cost = %.4f, want %.4f", got, want)
 	}
-	if got := factory.JobSpent(it); got+1e-9 < want {
-		t.Fatalf("job spend = %.4f, below real spend %.4f", got, want)
+	if got := factory.JobSpent(it); math.Abs(got-want) > 1e-9 {
+		t.Fatalf("job spend = %.4f, want real spend %.4f", got, want)
 	}
 }
 

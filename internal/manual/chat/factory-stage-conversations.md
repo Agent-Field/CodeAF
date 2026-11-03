@@ -346,9 +346,11 @@ The job total also includes the manager's calls and other work outside steps,
 so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
 Worker reports retain every round even when several rounds finish between reports.
 The factory keeps the largest reported total for each round. Delayed or partial
-reports cannot remove a round or lower its cost; increases still count. Older saved jobs and
-workers without round receipts show the last reported round cost. There is no
-migration; earlier round costs absent from saved receipts cannot be recovered.
+reports cannot remove a round or lower its cost; increases still count. Once a step
+has round receipts, reports without a table keep those receipts and update their
+round without charging the job twice. Steps that never had round receipts show
+the last reported round cost. There is no migration; earlier round costs absent
+from saved receipts cannot be recovered.
 Workers use round receipts only when the factory advertises support. With an
 older factory, all new spending travels in the established job-spend report.
 
