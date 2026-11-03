@@ -26,7 +26,7 @@ func untouchedBacklog(it factory.Item) bool {
 		it.DoneHow == "" && it.Starter == "" && !it.PipelineDecided && it.Stream == nil &&
 		it.Talk == "" && it.WorktreeMachine == "" && it.PullRequest == nil &&
 		!it.Publishing && factory.JobSpent(it) == 0 && it.Failure == nil &&
-		it.Change == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 && len(it.Thread) == 0 && it.Approval == nil
+		it.Change == nil && it.BriefWriting == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 && len(it.Thread) == 0 && it.Approval == nil
 }
 
 func finishClosed(st *store.Store, id int) error {

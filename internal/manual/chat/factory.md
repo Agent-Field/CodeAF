@@ -694,7 +694,8 @@ the factory has never imported do not become jobs. Finished jobs are excluded
 from the automatic arrival read and start rules.
 
 The poll preserves running and queued jobs, jobs already started, and jobs
-with a run, conversation, work folder, pull request, spending or failure.
+with a run, conversation, work folder, pull request, spending, failure or brief
+work.
 A needs-you row with no such work or decided pipeline can finish; its pending
 question clears. A row whose start rules already decided its pipeline stays
 untouched, including a pending ask-first decision. The poll never stops a running job. A person's Start still
