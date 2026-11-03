@@ -46,6 +46,23 @@ func JobSpent(it Item) float64 {
 	return it.ChatSpent
 }
 
+// JobLifetimeSpent is all known spending on this job, including earlier runs.
+func JobLifetimeSpent(it Item) float64 {
+	return it.SpentBefore + JobSpent(it)
+}
+
+// ClearJobRun keeps the money before clearing the run and its pre-run chat.
+// Calling it again cannot book the same money twice.
+func ClearJobRun(it *Item) {
+	it.SpentBefore += it.ChatSpent
+	if it.Stream != nil {
+		it.SpentBefore += it.Stream.Spent
+	}
+	it.Stream = nil
+	it.ChatSpent = 0
+	it.ChatModels = nil
+}
+
 // AddChatSpend books usd that the job's own conversation spent where the
 // job's money is: on its stream while it has one, and as ChatSpent while it
 // has none. A cost of nothing, or less, is not booked.
@@ -257,11 +274,11 @@ func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err 
 	return start, last.AddDate(0, 0, 1), nil
 }
 
-// SpentIn is the job's whole spend ([JobSpent]) when it is placed ([SpentAt])
+// SpentIn is the job's whole spend ([JobLifetimeSpent]) when it is placed ([SpentAt])
 // in [start, end), and false when it spent nothing or is placed outside. It is
 // the one placement rule every spend-by-day read counts by.
 func SpentIn(it Item, start, end time.Time) (float64, bool) {
-	usd, at := JobSpent(it), SpentAt(it)
+	usd, at := JobLifetimeSpent(it), SpentAt(it)
 	return usd, usd > 0 && !at.Before(start) && at.Before(end)
 }
 

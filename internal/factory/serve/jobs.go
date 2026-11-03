@@ -515,9 +515,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	forgetChats(it)
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
-	it.Stream = nil
-	// What the job's chat spent before an earlier start goes with that run: a fresh job has spent nothing.
-	it.ChatSpent = 0
+	factory.ClearJobRun(it)
 	it.Failure = nil
 	it.Approval, it.StopUndo = nil, nil
 	it.Question, it.QKind = "", ""

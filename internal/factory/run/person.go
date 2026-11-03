@@ -39,6 +39,9 @@ func QueueItem(it *factory.Item, now time.Time) error {
 	it.PublishError = ""
 	it.Question, it.QKind = "", ""
 	it.Proof, it.Policy = nil, nil
+	if it.Stream != nil && begun(it.Stream) {
+		factory.ClearJobRun(it)
+	}
 	it.Stream = freshStream(it, now)
 	it.Note(now, "Run started")
 	loopSay(it, now, "said", "queued")
@@ -84,6 +87,9 @@ func PauseItem(it *factory.Item, now time.Time) error {
 		return fmt.Errorf("%s is not running", it.Ref())
 	}
 	if it.Stream == nil {
+		if it.Stream != nil && begun(it.Stream) {
+			factory.ClearJobRun(it)
+		}
 		it.Stream = freshStream(it, now)
 	}
 	it.Stream.Paused = true
@@ -99,6 +105,9 @@ func HoldQueued(it *factory.Item, now time.Time) error {
 		return fmt.Errorf("%s is not queued", it.Ref())
 	}
 	if it.Stream == nil {
+		if it.Stream != nil && begun(it.Stream) {
+			factory.ClearJobRun(it)
+		}
 		it.Stream = freshStream(it, now)
 	}
 	it.Stream.Paused = true
