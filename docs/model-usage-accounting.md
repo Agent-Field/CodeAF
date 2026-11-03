@@ -65,3 +65,14 @@ FROM receipts WHERE receipt_time >= today()-INTERVAL 14 DAY
 GROUP BY day ORDER BY day
 ```
 
+
+## Cancelled calls and the spend ledger
+
+A failed stream with measured interim usage must not suppress reconciliation
+unless a billing sink actually consumed it. The existing receipt sink receives
+one final receipt, or falls back to measured interim usage if recovery fails.
+The fallback is marked interim and retains provider price provenance; it is not
+a token estimate or a final billing claim. Direct services retain measured usage
+without attempting a routed generation lookup. Calls without either source stay
+unpriced. Call logs and session usage rows retain supplied generation IDs for
+later audits, including auxiliary calls. All session bookings use Agent.bank.

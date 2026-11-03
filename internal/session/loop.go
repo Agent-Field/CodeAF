@@ -4558,10 +4558,12 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		// that loses has none and reconciles as an ordinary cut.
 		lane.Waste = receipt.Cost
 	}
+	price := usagePriceReceipt
+	if receipt.Interim { price = usagePriceProvider }
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
 		late: true, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
-		billing: receipt.Billing, price: func() string { if receipt.Interim { return usagePriceProvider }; return usagePriceReceipt }(),
+		billing: receipt.Billing, price: price,
 	})
 	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
 	// way: EVERY request this session makes writes one, and a request whose

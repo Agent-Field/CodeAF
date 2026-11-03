@@ -185,30 +185,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		}
 		c.bankBilledUsage(ctx, model, response, traces...)
 	}
-	// A DIRECT SERVICE HAS NO OPENROUTER GENERATION ROUTE TO ASK. Its missing
-	// usage block supplies no measured figures to record. An overflow route
-	// does not change which service owns this client's credential, so it must
-	// not carry that credential to a router's generation route either, and
-	// calling the router's route on the vendor would send that vendor a
-	// request and bearer for a fact this client already knows cannot be there.
-	if c.config.Direct {
-		if finalReceiptsFrom(ctx) {
-			if sink := reconcileFrom(ctx); sink != nil {
-				result := Reconciled{Billed: Billed{Model: model, Billing: c.answeredBilling(traces...)}, Reason: reason}
-				if response != nil && response.Usage != nil && response.Usage.Cost != nil {
-					result.Found = true
-					result.Cost = *response.Usage.Cost
-					result.PromptTokens = response.Usage.PromptTokens
-					result.CompletionTokens = response.Usage.CompletionTokens
-					sink(result)
-				} else if answerBytes > 0 {
-					sink(result)
-				}
-			}
-		}
-		handle.unknown()
-		return
-	}
+
 	sink := reconcileFrom(ctx)
 	if bankedUsage {
 		// The legacy usage bank already consumed this response. This additional
@@ -250,6 +227,16 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
    }
    original(answer)
   }
+ }
+ // A direct service has no generation route; retain its measured usage only.
+ if c.config.Direct {
+  if !bankedUsage && response != nil && response.Usage != nil {
+   sink(result)
+  } else if finalReceiptsFrom(ctx) && answerBytes > 0 {
+   sink(result)
+  }
+  handle.unknown()
+  return
  }
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
