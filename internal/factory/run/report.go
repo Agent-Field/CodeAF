@@ -23,7 +23,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	}
 	// Resume may queue a paused job before its old lease has flushed the
 	// cancelled round. That holder still owes the job its work and spending.
-    if it.State == factory.StateNew && report.Publishing != nil {
+    if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
         // Validate the whole report before preserving a sent request's receipt.
         raw, err := json.Marshal(it)
         if err != nil { return err }
@@ -36,7 +36,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
             if it.Stream != nil && candidate.Stream != nil { it.Stream.Spent = candidate.Stream.Spent }
             return nil
         }
-        if report.Publishing.State != "opened" { return fmt.Errorf("a stopped publisher reports an opened PR receipt") }
+        if report.Publishing == nil || report.Publishing.State != "opened" { return fmt.Errorf("a stopped publisher reports an opened PR receipt") }
         candidate.Failure = nil
         if err := ShipPublished(&candidate, now); err != nil { return err }
         loopSay(&candidate, now, "said", stoppedPRWords(report.PR.URL))
