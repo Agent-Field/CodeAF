@@ -723,20 +723,6 @@ func announceUsageWritten() {
 	for _, watch := range usageWatchers.of {
 		watch()
 	}
-	for work := range w.queue {
-		if work.done != nil {
-			w.writeOverflow(write)
-			close(work.done)
-			continue
-		}
-		if work.line != nil {
-			write(work.line)
-		}
-		if len(w.queue) == 0 {
-			w.writeOverflow(write)
-		}
-	}
-	w.writeOverflow(write)
 }
 
 // openUsageLedger opens one ledger for appending, creating its directory, and
