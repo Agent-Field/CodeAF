@@ -24,3 +24,15 @@ func TestAppFactoryPipelineLabelEdit(t *testing.T) {
  }, &out)
  if !out.Changed || !strings.Contains(out.Text, "label: Security review") || len(out.Steps) != 1 || strings.Join(out.Steps[0].Fields, ",") != "label" { t.Fatalf("label preview lost change: %+v", out) }
 }
+
+func TestAppFactoryJobLabelEdit(t *testing.T) {
+ f := startStepFactory(t)
+ f.reply = `{"factory":{"name":"acme"},"steps":[{"name":"write","label":"Security review"}],"version":5,"lines":[]}`
+ wire, id := attachStep(t, f)
+ var out appwire.FactoryJobStepEdited
+ wire.must("factory.job_step_edit", map[string]any{
+  "factory":id, "job":7, "expect":map[string]any{"version":4},
+  "edit":map[string]any{"label":map[string]string{"write":" Security review "}},
+ }, &out)
+ if len(f.bodies) != 1 || !strings.Contains(f.bodies[0], `"label":{"write":"Security review"}`) { t.Fatalf("job label lost: %v", f.bodies) }
+}
