@@ -33,8 +33,8 @@ func TestPR2294OldWorkerAfterTableAdmission(t *testing.T) {
 	if err := run.ApplyReport(&it, api.ToWorkerReport(old), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-.01) > 1e-9 {
-		t.Fatalf("old worker fallback step cost=%.2f, want last Spent 0.01", got)
+	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-.21) > 1e-9 {
+		t.Fatalf("old worker table step cost=%.2f, want cumulative 0.21", got)
 	}
 }
 
@@ -59,4 +59,22 @@ func TestPR2294NewWorkerNormalReportsKeepTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkTableCost(t, it, .2)
+}
+
+func TestReviewTableFallbackTableJobSpend(t *testing.T) {
+	it := reviewItem()
+	reports := []factory.RunReport{
+		tableReport(t, 1, map[int]float64{1: .20}),
+		{Cost: .01, Stages: []factory.StageReport{{Name: "proof", Round: 2, Result: &factory.StageResult{Spent: .01}}}},
+		tableReport(t, 3, map[int]float64{1: .20, 2: .01, 3: .05}),
+	}
+	for _, report := range reports {
+		if err := run.ApplyReport(&it, report, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := factory.JobSpent(it); math.Abs(got-.26) > 1e-9 {
+		t.Fatalf("table -> fallback -> table: job %.2f, real spend 0.26", got)
+	}
+	checkTableCost(t, it, .26)
 }
