@@ -1850,7 +1850,7 @@ without usage. After a failed stream, the final receipt replaces interim usage
 for billing: a $0.10 interim figure followed by a $0.12 receipt charges $0.12 once.
 Missing receipts keep their job attribution. Job usage and Spending expose the
 missing price as unbilled, never as a measured $0. A saturated ledger queue writes
-through instead of discarding charges; a caller waits at most 100 milliseconds.
+through instead of discarding charges; a caller never waits on the disk.
 Filesystem write failures still appear as missing records.
 
 
