@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"os"
+	"sync"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -127,16 +128,20 @@ func TestHoldPersistsBeforeStepBoundary(t *testing.T) {
 			c := &loopCtl{id: id, ctx: ctx, cancel: cancel, roundCancel: roundCancel}
 			lp.ctls[id] = c
 			atSave, save := make(chan struct{}), make(chan struct{})
+			var firstSave sync.Once
 			st.SetOutputPolicy(func() (int, int) {
-				close(atSave)
-				<-save
-				if failWrite {
-					// Refuse the final rename after the callback has run.
-					if err := os.Rename(st.ItemPath(id), st.ItemPath(id)+".before"); err != nil {
-						return 0, 0
+				// A later write in the same hold passes through; only the first is held.
+				firstSave.Do(func() {
+					close(atSave)
+					<-save
+					if failWrite {
+						// Refuse the final rename after the callback has run.
+						if err := os.Rename(st.ItemPath(id), st.ItemPath(id)+".before"); err != nil {
+							return
+						}
+						_ = os.Mkdir(st.ItemPath(id), 0700)
 					}
-					_ = os.Mkdir(st.ItemPath(id), 0700)
-				}
+				})
 				return 0, 0
 			})
 			holdDone := make(chan error, 1)
