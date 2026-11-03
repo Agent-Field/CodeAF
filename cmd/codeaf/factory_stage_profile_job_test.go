@@ -21,6 +21,15 @@ import (
 )
 
 func TestUnreadableStageJobKeepsConfigReason(t *testing.T) {
+	testUnreadableStageJobKeepsConfigReason(t, false)
+}
+
+func TestInitiallyUnreadableStageJobKeepsConfigReason(t *testing.T) {
+	testUnreadableStageJobKeepsConfigReason(t, true)
+}
+
+func testUnreadableStageJobKeepsConfigReason(t *testing.T, initiallyUnreadable bool) {
+	t.Helper()
 	if os.Geteuid() == 0 {
 		t.Skip("mode 000 requires nonroot")
 	}
@@ -75,20 +84,28 @@ func TestUnreadableStageJobKeepsConfigReason(t *testing.T) {
 	if err := os.WriteFile(file, []byte(`{"tools.approvals":"write:deny"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	oldHandler := model.server.Config.Handler
-	var once sync.Once
-	model.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		if bytes.Contains(body, []byte(`"stage_result"`)) {
-			once.Do(func() {
-				if err := os.Chmod(file, 0); err != nil {
-					t.Error(err)
-				}
-			})
+	reason := "saved approval rules could not be read"
+	if initiallyUnreadable {
+		if err := os.Chmod(file, 0); err != nil {
+			t.Fatal(err)
 		}
-		oldHandler.ServeHTTP(w, r)
-	})
+		reason = "permission denied"
+	} else {
+		oldHandler := model.server.Config.Handler
+		var once sync.Once
+		model.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			if bytes.Contains(body, []byte(`"stage_result"`)) {
+				once.Do(func() {
+					if err := os.Chmod(file, 0); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			oldHandler.ServeHTTP(w, r)
+		})
+	}
 	t.Cleanup(func() { _ = os.Chmod(file, 0600) })
 	maker := factoryStageMaker(st, workspace, profile, launch.Config)
 	exec := factoryChatStage(st, profile, factoryrun.NewChatExecutor(maker))
@@ -104,11 +121,17 @@ func TestUnreadableStageJobKeepsConfigReason(t *testing.T) {
 		t.Fatalf("ROUND ERROR: %v", err)
 	}
 	t.Logf("ROUND RESULT: %+v", res)
-	if res.Done || res.Exit != 1 || !strings.Contains(res.Output, file) || !strings.Contains(res.Output, "saved approval rules could not be read") {
+	if res.Done || res.Exit != 1 || !strings.Contains(res.Output, file) || !strings.Contains(res.Output, reason) {
 		t.Errorf("job lost the terminal profile-read reason: %+v", res)
 	}
 	model.mu.Lock()
 	defer model.mu.Unlock()
+	if initiallyUnreadable {
+		t.Logf("STAGE MODEL REQUESTS: %d", len(model.briefs))
+		if len(model.briefs) != 0 || res.Spent != 0 || res.Reports != 0 {
+			t.Fatalf("refused admission did work: requests=%d spent=%v reports=%d", len(model.briefs), res.Spent, res.Reports)
+		}
+	}
 	for _, brief := range model.briefs {
 		if i := strings.Index(brief, "no resolver is attached"); i >= 0 {
 			t.Logf("MODEL RECEIVED REFUSAL: %.650s", brief[i:])

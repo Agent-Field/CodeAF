@@ -619,6 +619,8 @@ needs a person, and with nobody to ask it is refused. Workers, repair rounds and
 checkers see a parent's current read failure even after they start. Standalone
 run workers check the profile before each call. A refused Factory job keeps the
 failed-read reason and config filename in its result, without report retries.
+This includes a daily-limit check that refuses the first turn because the
+profile cannot be read; no model request is made.
 
 **Readable default-stage bypass:** with a readable file, a default Factory stage
 runs on its own allow posture and does not apply your saved rules. This named
