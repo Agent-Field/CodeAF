@@ -59,13 +59,19 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		}
 		it := job.Item
 		verb, rest := splitAsk(job.Stage.Ask)
-        action := factory.Action{Verb: verb, Item: it, BeforeWrite: job.BeforeWrite}
-        check := func() error {
-            if err := ctx.Err(); err != nil { return err }
-            if err := factory.CheckPersonStop(it); err != nil { return err }
-            if job.BeforeWrite != nil { return job.BeforeWrite(ctx) }
-            return nil
-        }
+		action := factory.Action{Verb: verb, Item: it, BeforeWrite: job.BeforeWrite}
+		check := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := factory.CheckPersonStop(it); err != nil {
+				return err
+			}
+			if job.BeforeWrite != nil {
+				return job.BeforeWrite(ctx)
+			}
+			return nil
+		}
 		switch verb {
 		case "comment":
 			action.Body = rest
@@ -115,13 +121,17 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			}
 		}
 		if verb == "pr" && o.Push != nil {
-            if err := check(); err != nil { return factory.StageResult{}, err }
-            if err := push(o.Push, job.Dir, it, action.Branch, check); err != nil {
+			if err := check(); err != nil {
+				return factory.StageResult{}, err
+			}
+			if err := push(o.Push, job.Dir, it, action.Branch, check); err != nil {
 				return factory.StageResult{}, err
 			}
 		}
-        if err := check(); err != nil { return factory.StageResult{}, err }
-        rcpt, err := src.Write(ctx, action)
+		if err := check(); err != nil {
+			return factory.StageResult{}, err
+		}
+		rcpt, err := src.Write(ctx, action)
 		if err != nil {
 			return factory.StageResult{}, err
 		}
@@ -207,7 +217,7 @@ func proofList(it factory.Item, prior []factory.StageResult) string {
 }
 
 // push runs the push and says what went wrong in a sentence.
-func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string) error {
+func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string, before ...func() error) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
 	}

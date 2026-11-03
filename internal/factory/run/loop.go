@@ -1573,7 +1573,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	return Job{
- BeforeWrite: func(ctx context.Context) error { return lp.r.publishBoundary(ctx, c.id) },
+		BeforeWrite:     func(ctx context.Context) error { return lp.r.publishBoundary(ctx, c.id) },
 		Lifetime:        c.ctx,
 		PendingSpend:    c.pendingSpend,
 		Item:            it,

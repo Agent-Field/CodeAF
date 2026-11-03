@@ -324,10 +324,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	}
 	body := PublishBody(it, trailer)
 	if isPull(it) {
-        if err := r.publishBoundary(ctx, it.ID); err != nil {
-            return published{}, err
-        }
-        rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
+		if err := r.publishBoundary(ctx, it.ID); err != nil {
+			return published{}, err
+		}
+		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 		if err != nil {
 			return published{}, err
 		}
@@ -376,10 +376,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
 	}
 	if mode == "comment" {
-        if err := r.publishBoundary(ctx, it.ID); err != nil {
-            return published{}, err
-        }
-        rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
+		if err := r.publishBoundary(ctx, it.ID); err != nil {
+			return published{}, err
+		}
+		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 		if err != nil {
 			return published{}, err
 		}
@@ -415,10 +415,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if updater, ok := src.(interface {
 			UpdatePRBody(context.Context, factory.Item, string) error
 		}); ok {
-            if err := r.publishBoundary(ctx, it.ID); err != nil {
-                return published{}, err
-            }
-            if err := updater.UpdatePRBody(ctx, it, body); err != nil {
+			if err := r.publishBoundary(ctx, it.ID); err != nil {
+				return published{}, err
+			}
+			if err := updater.UpdatePRBody(ctx, it, body); err != nil {
 				return published{}, fmt.Errorf("repair pushed, but could not update the PR description: %w", err)
 			}
 		}

@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
- "sync/atomic"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -110,9 +110,9 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}
 	recorder := newLiveRecorder(t, config.DefaultBaseURL)
 	recorder.budget = liveStopSpendMost
- var stopAt atomic.Int64
- var cancelledRequests int
- var highestCost float64
+	var stopAt atomic.Int64
+	var cancelledRequests int
+	var highestCost float64
 	t.Cleanup(func() {
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
@@ -129,7 +129,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		defer paid.Unlock()
 		recorder.mu.Lock()
 		spent, bad := recorder.cost, len(recorder.problems) > 0
- reserved := spent + float64(cancelledRequests)*highestCost
+		reserved := spent + float64(cancelledRequests)*highestCost
 		recorder.mu.Unlock()
 		// Reserve each unpriced cancellation at the highest observed call cost.
 		if bad || reserved+max(0.02, highestCost) >= liveStopSpendMost {
@@ -149,26 +149,28 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		raw, _ = json.Marshal(body)
 		req.Body = io.NopCloser(bytes.NewReader(raw))
 		req.ContentLength = int64(len(raw))
-        var cancelledAt atomic.Int64
-        cancelled := make(chan struct{})
-        stopWatching := context.AfterFunc(req.Context(), func() {
-            cancelledAt.Store(time.Now().UnixNano())
-            close(cancelled)
-        })
-        defer stopWatching()
-        inner.ServeHTTP(w, req)
-        if req.Context().Err() != nil { <-cancelled }
-        recorder.mu.Lock()
+		var cancelledAt atomic.Int64
+		cancelled := make(chan struct{})
+		stopWatching := context.AfterFunc(req.Context(), func() {
+			cancelledAt.Store(time.Now().UnixNano())
+			close(cancelled)
+		})
+		defer stopWatching()
+		inner.ServeHTTP(w, req)
+		if req.Context().Err() != nil {
+			<-cancelled
+		}
+		recorder.mu.Lock()
 		if recorder.cost <= spent {
 			at := stopAt.Load()
-            if at != 0 && cancelledAt.Load() >= at {
-                cancelledRequests++
-            } else {
-                recorder.problems = append(recorder.problems, "request has no recorded cost")
-            }
+			if at != 0 && cancelledAt.Load() >= at {
+				cancelledRequests++
+			} else {
+				recorder.problems = append(recorder.problems, "request has no recorded cost")
+			}
 		} else {
- highestCost = max(highestCost, recorder.cost-spent)
- }
+			highestCost = max(highestCost, recorder.cost-spent)
+		}
 		recorder.mu.Unlock()
 	})
 
@@ -413,7 +415,9 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		}
 	}
 	if !ack {
- for _, e := range traffic { t.Logf("queued traffic: kind=%s from=%s to=%s state=%s text=%q", e.Kind, e.From, e.To, e.State, e.Text) }
+		for _, e := range traffic {
+			t.Logf("queued traffic: kind=%s from=%s to=%s state=%s text=%q", e.Kind, e.From, e.To, e.State, e.Text)
+		}
 		t.Fatal("queued question had no stopped-manager acknowledgement")
 	}
 	afterWait := assertStopped("after 95 seconds")

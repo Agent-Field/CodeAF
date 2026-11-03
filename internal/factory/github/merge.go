@@ -43,10 +43,12 @@ func (s *Source) mergePull(ctx context.Context, owner, name string, a factory.Ac
 		}
 		method = allowed[0]
 	}
-    if a.BeforeWrite != nil {
-        if err := a.BeforeWrite(ctx); err != nil { return forge.Posted{}, err }
-    }
-    merged, err := m.MergePullRequest(ctx, owner, name, pr.Number, a.Commit, method)
+	if a.BeforeWrite != nil {
+		if err := a.BeforeWrite(ctx); err != nil {
+			return forge.Posted{}, err
+		}
+	}
+	merged, err := m.MergePullRequest(ctx, owner, name, pr.Number, a.Commit, method)
 	if err != nil {
 		return forge.Posted{}, err
 	}

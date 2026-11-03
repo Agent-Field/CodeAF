@@ -28,11 +28,11 @@ func (a *Agent) stopWorkFor(why string, door StopDoor, keepPersonChat bool) erro
 	a.workStopDone = make(chan struct{})
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
-cancel, done := a.cancel, a.done
-    // A factory Stop ends the job's owned work, while a person's chat may finish.
-    if keepPersonChat && a.running && !a.factoryAutomaticTurn {
-        cancel, done = nil, nil
-    }
+	cancel, done := a.cancel, a.done
+	// A factory Stop ends the job's owned work, while a person's chat may finish.
+	if keepPersonChat && a.running && !a.factoryAutomaticTurn {
+		cancel, done = nil, nil
+	}
 	// A pass a surface asked for outside any turn is work too.
 	defer a.cutManualPassLocked()()
 	memoryStop, titleStop := a.memoryStop, a.titleStop
