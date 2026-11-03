@@ -199,5 +199,5 @@ to 1 MiB. A page that changed must be read again before writing. Done
 workstreams refuse all these writes.
 
 Tool arguments refuse unknown fields and repeated object keys, including inside
-sources and draft jobs, before reading or writing the workstream. Whole job and
-wave numbers accept forms such as `2.0`; fractions and numeric strings are refused.
+sources and draft jobs, before reading or writing the workstream. The agent keeps
+its page titled “Where it stands” current; the Overview shows it with the AI mark.

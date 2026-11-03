@@ -31,6 +31,10 @@ var ErrWorkstreamTooLarge = errors.New("That page is too large; the encoded docu
 
 const WorkstreamGoAheadProposalPrefix = "Proposed go-ahead (not granted): "
 
+// WorkstreamWhereItStandsTitle is the agent page the app shows on the Overview as
+// the agent's summary, so the agent keeps the page with exactly this title current.
+const WorkstreamWhereItStandsTitle = "Where it stands"
+
 type WorkstreamBrief struct {
 	Name string
 	Why  string

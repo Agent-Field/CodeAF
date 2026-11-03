@@ -410,3 +410,24 @@ func TestWorkstreamToolActionCategories(t *testing.T) {
 		}
 	}
 }
+
+// The app draws the agent's summary from the agent page titled exactly
+// "Where it stands", so the prompt and write_agent_page both name that title.
+func TestWorkstreamAgentKeepsWhereItStandsCurrent(t *testing.T) {
+	if WorkstreamWhereItStandsTitle != "Where it stands" {
+		t.Fatalf("the Overview summary page title moved: %q", WorkstreamWhereItStandsTitle)
+	}
+	cfg := Config{Workspace: t.TempDir(), ProfileDir: t.TempDir(), Workstream: &workstreamFakeDoor{}}
+	if !strings.Contains(workstreamPage(cfg), `titled "Where it stands" current with write_agent_page`) {
+		t.Fatal("the workstream prompt does not ask the agent to keep Where it stands current")
+	}
+	described := false
+	for _, tool := range (&Agent{config: cfg}).workstreamTools() {
+		if tool.Name == "write_agent_page" {
+			described = strings.Contains(tool.Description, `"Where it stands"`)
+		}
+	}
+	if !described {
+		t.Fatal("write_agent_page does not name the Where it stands page")
+	}
+}

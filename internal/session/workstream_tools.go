@@ -22,6 +22,7 @@ const workstreamPlanChanged = "The plan changed while you were proposing; nothin
 
 const workstreamPromptRules = "\n- You propose; the person keeps. Decisions, questions, jobs and go-aheads you raise with propose_decision, propose_question, propose_jobs and propose_goahead are proposals until the person keeps them.\n" +
 	"- You write only your own pages, with write_agent_page. The person's pages are theirs; you do not change them.\n" +
+	"- Keep your page titled \"" + WorkstreamWhereItStandsTitle + "\" current with write_agent_page: a short summary of where the work stands, with updated_from saying what it was updated from. Create it if it is missing.\n" +
 	"- You never invent numbers. Counts, costs, states and dates come from workstream_read; on a page, use a live block such as [live: jobs] instead of writing a number.\n" +
 	"- You start nothing. Jobs start only when the person launches them or inside a go-ahead they granted."
 
@@ -81,7 +82,7 @@ func (a *Agent) workstreamToolsAt(now func() time.Time) []bare.Tool {
 		workstreamTool("propose_goahead", "Propose a go-ahead as a decision. The cap and end date are proposals; this grants nothing.", workstreamGoAheadSchema, func(ctx context.Context, ask WorkstreamGoAheadAsk) (string, error) {
 			return workstreamProposeGoAhead(ctx, door, ask, now())
 		}),
-		workstreamTool("write_agent_page", "Write only your own pages, marked as agent-written with their source and time. The person's pages are refused.", workstreamPageSchema, func(ctx context.Context, ask WorkstreamPageWrite) (string, error) {
+		workstreamTool("write_agent_page", "Write only your own pages, marked as agent-written with their source and time. The person's pages are refused. Keep the page titled \""+WorkstreamWhereItStandsTitle+"\" current; the app shows it on the Overview.", workstreamPageSchema, func(ctx context.Context, ask WorkstreamPageWrite) (string, error) {
 			return workstreamWritePage(ctx, door, ask)
 		}),
 	}
