@@ -25,3 +25,6 @@ App job and queue reads use only saved spending. Ledger recovery is disabled:
 local and remote factory jobs can share both a ledger tag and this worker's
 workspace, so neither identifies which factory spent the money. Older jobs
 show only their known saved totals; lost ledger-only spending is not guessed.
+
+An older binary still running can rewrite a saved job and drop SpentBefore and
+Archived, like any newly added saved field; this change adds no version fence.
