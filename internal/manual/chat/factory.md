@@ -435,7 +435,7 @@ The manager never changes the plan from a comment on its own yet, even one that 
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
-The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
+The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows. An arrival read or a start rule checks GitHub once too, and a closed issue gets nothing from them; a Read press still reads.
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
@@ -515,8 +515,6 @@ Limits: $10 of looks a month per factory (`Monthly limit for AI reached`) and 20
 Off by default: the factory's AI runs only when you click. With it off, new issues arrive unread. Backlog offers `Read N new issues · about $X` (the last read's cost times N), and each row has Read and Look closer. A click reads exactly the issues chosen, at most 20 at a time; an issue whose read failed stays unread so you can try again.
 
 Turned on, each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start.
-
-Before an arrival read or a rule's start, the factory checks GitHub once. A closed or merged issue gets no read, look, start or ask; its row stays as it is. A Read press still reads. A failed check lets the work go on.
 
 Reading never makes a job start on its own: size labels and the start rules decide. A read's complexity only places the job among similar finished jobs, so a measured cost over `max_cost` asks first. Only the factory's operator can change this setting.
 
