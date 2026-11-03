@@ -39,6 +39,8 @@ type SealWatch struct {
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
+	// OnMetadataWrite is installed only by the paired idle ownership door.
+	OnMetadataWrite func()
 	// OnTail, when set, is called once the record has been quiet for Quiet after
 	// writes that came behind the turn-end seal. The door seals the tree and asks
 	// the sync side to upload, exactly as it does at the end of a turn, so there
@@ -209,6 +211,14 @@ func (w *SealWatch) sealTail() {
 			w.mu.Unlock()
 		}()
 		w.OnTail()
+	}
+}
+
+// MetadataWrote leaves ordinary metadata saves on their original path. An
+// idle ownership door can schedule certification after a retaken setting save.
+func (w *SealWatch) MetadataWrote() {
+	if w.OnMetadataWrite != nil {
+		w.OnMetadataWrite()
 	}
 }
 

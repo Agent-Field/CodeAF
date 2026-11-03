@@ -20,14 +20,20 @@ func (b *Batcher) Lease() (id string, fence uint64) {
 // conditional acquisition cannot displace a winner that arrived after the read.
 // Serializing with publishes keeps an old flush from replacing the new fence.
 func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool, error) {
-	if err := lockOwnership(ctx, &b.flushMu); err != nil {
-		return false, err
+	idle := func() bool { b.mu.Lock(); defer b.mu.Unlock(); return b.released }()
+	if idle {
+		if err := lockOwnership(ctx, &b.flushMu); err != nil {
+			return false, err
+		}
+		defer b.flushMu.Unlock()
+		if err := lockOwnership(ctx, &b.renewMu); err != nil {
+			return false, err
+		}
+		defer b.renewMu.Unlock()
+	} else {
+		b.flushMu.Lock()
+		defer b.flushMu.Unlock()
 	}
-	defer b.flushMu.Unlock()
-	if err := lockOwnership(ctx, &b.renewMu); err != nil {
-		return false, err
-	}
-	defer b.renewMu.Unlock()
 	d, pending, _ := b.view()
 	if b.isClosing() || pending != 0 || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires > seen.Now {
 		return false, nil
@@ -49,7 +55,9 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	b.renewalSince = time.Time{}
 	b.mu.Unlock()
 	b.renewalChanged()
-	b.leaseChanged.fire()
+	if idle {
+		b.leaseChanged.fire()
+	}
 	return true, nil
 }
 

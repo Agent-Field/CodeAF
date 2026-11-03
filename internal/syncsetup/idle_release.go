@@ -2,6 +2,7 @@ package syncsetup
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync"
 	"time"
@@ -14,9 +15,12 @@ import (
 const idleReleaseWithin = 250 * time.Millisecond
 
 func (d *Drive) SetIdleCheck(check func() bool) {
-	d.workMu.Lock()
-	d.idleCheck = check
-	d.workMu.Unlock()
+	func() { d.workMu.Lock(); defer d.workMu.Unlock(); d.idleCheck = check }()
+	// A restored terminal can already be idle without another foreground turn.
+	if d.batcher != nil {
+		d.idleRequested.Store(true)
+		d.scheduleIdle(d.activity.Load())
+	}
 }
 
 // BeginWork cancels preparation immediately. Only the short final release can
@@ -29,6 +33,14 @@ func (d *Drive) BeginWork() bool {
 	}
 	d.idleMu.Unlock()
 	return d.released.Load() || d.committing.Load()
+}
+
+// SavedMetadata resumes a paired chat's requested idle certification. It does
+// not trigger ordinary publication; readiness excludes settings and live work.
+func (d *Drive) SavedMetadata() {
+	if d.idleRequested.Load() && d.paired() {
+		d.scheduleIdle(d.activity.Load())
+	}
 }
 
 func (d *Drive) IdleReleased() bool { return d.released.Load() }
@@ -96,7 +108,9 @@ func (d *Drive) releaseWhenIdle(ctx context.Context, activity uint64) {
 		if finished {
 			return
 		}
-		if err != nil {
+		if err == nil || errors.Is(err, cellstore.ErrSavedStateChanged) || errors.Is(err, errStateBusy) {
+			wait = cellstore.TailQuiet
+		} else {
 			wait = min(max(wait*2, 5*time.Second), time.Minute)
 		}
 	}
@@ -106,7 +120,7 @@ func (d *Drive) idleState(activity uint64) (func() bool, bool) {
 	d.mu.Lock()
 	stopped := d.stopped || d.lost || d.viewer.Line != "" && !(d.released.Load() && d.viewer.Line == chatlist.Available)
 	d.mu.Unlock()
-	return d.idleCheck, activity != d.activity.Load() || d.releaseDone || stopped
+	return d.idleCheck, activity != d.activity.Load() || d.releaseDone.Load() || stopped
 }
 
 func (d *Drive) profileFiles() []string {
@@ -130,9 +144,16 @@ func (d *Drive) prepareIdle(ctx context.Context, activity uint64) (*cellstore.Sa
 	if finished || d.sync.isRemoved() || Quiet(d.sync.Home) {
 		return nil, true, nil
 	}
-	if check != nil && !check() || d.batcher.Pending() != 0 {
+	// A private unpublished chat has no hold to release. Do not add captures
+	// or vault work to its existing local save path.
+	if d.batcher.Fence() == 0 && d.batcher.Pending() == 0 {
+		return nil, true, nil
+	}
+	ready := check == nil || check()
+	if !ready || d.batcher.Pending() != 0 {
 		return nil, false, nil
 	}
+	d.idlePrepared.Store(true)
 	if err := lockDrive(ctx, &d.sealMu); err != nil {
 		return nil, false, err
 	}
@@ -157,7 +178,7 @@ func (d *Drive) prepareIdle(ctx context.Context, activity uint64) (*cellstore.Sa
 	if err != nil || proof == nil {
 		return nil, false, err
 	}
-	if err := d.syncVault(ctx); err != nil {
+	if err := d.syncIdleVault(ctx); err != nil {
 		return nil, false, err
 	}
 	return proof, false, nil
@@ -165,14 +186,13 @@ func (d *Drive) prepareIdle(ctx context.Context, activity uint64) (*cellstore.Sa
 
 func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, error) {
 	notify := false
+	var version uint64
 	defer func() {
 		// Surface callbacks can take their own locks. They run after admission
 		// and capture locks are free; the local work gate has already closed.
 		if notify {
 			d.renewalChanged()
-			if d.opt.OnViewer != nil {
-				d.opt.OnViewer(Viewer{Line: chatlist.Available})
-			}
+			d.ownershipNotice(context.Background(), version, Viewer{Line: chatlist.Available})
 		}
 	}()
 	prepare, cancel := context.WithTimeout(parent, requestTimeout)
@@ -215,6 +235,11 @@ func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, erro
 		d.recordedFence = 0
 		notify = d.viewer != (Viewer{Line: chatlist.Available})
 		d.viewer = Viewer{Line: chatlist.Available}
+		d.idleNotices.Store(true)
+		version = d.noticeVersion.Load()
+		if notify {
+			version = d.noticeVersion.Add(1)
+		}
 		d.mu.Unlock()
 		d.released.Store(true)
 		return nil
@@ -222,7 +247,7 @@ func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, erro
 	if err != nil || !released {
 		return false, err
 	}
-	d.releaseDone = true
+	d.releaseDone.Store(true)
 	return true, nil
 }
 

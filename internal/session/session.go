@@ -2742,6 +2742,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	settingError       atomic.Pointer[settingResult]
+	settingsWrites     atomic.Int64
 	modelChanges       sync.Mutex
 	conversationModels *ConversationModels
 	modelRequestSlot   string

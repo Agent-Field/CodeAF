@@ -35,7 +35,7 @@ func (a *Agent) idleForHandoff() bool {
 		graph = a.config.tasker
 	}
 	a.mu.Unlock()
-	if !idle || a.taskStarting.Load() != 0 || a.titleJobs.pending.Load() != 0 || a.memoryJobs.pending.Load() != 0 || a.orchestrateWorkers.pending.Load() != 0 {
+	if !idle || a.settingsWrites.Load() != 0 || a.taskStarting.Load() != 0 || a.titleJobs.pending.Load() != 0 || a.memoryJobs.pending.Load() != 0 || a.orchestrateWorkers.pending.Load() != 0 {
 		return false
 	}
 	if !a.beltStartMu.TryLock() {

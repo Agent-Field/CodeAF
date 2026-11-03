@@ -256,6 +256,12 @@ func (l *liveDrive) Gate() error {
 	return nil
 }
 
+func (l *liveDrive) SavedMetadata() {
+	if d := l.started(); d != nil {
+		d.SavedMetadata()
+	}
+}
+
 // Idle uploads what is sealed, once a drive side exists.
 func (l *liveDrive) Idle() {
 	if d := l.current(); d != nil {

@@ -381,16 +381,7 @@ func (b *Batcher) Close(ctx context.Context) error {
 	b.mu.Lock()
 	b.closing = true
 	b.mu.Unlock()
-	if err := lockOwnership(ctx, &b.flushMu); err != nil {
-		// Cancellation also stops the drive's active publisher. Briefly join
-		// its outcome so the closing error retains upload/local provenance,
-		// without inheriting an unresponsive publisher's lifetime.
-		join, cancel := context.WithTimeout(context.WithoutCancel(ctx), 50*time.Millisecond)
-		defer cancel()
-		if lockOwnership(join, &b.flushMu) != nil {
-			return err
-		}
-	}
+	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
 	// A release is the cross-computer clean-quit signal. Publishing must finish
 	// first; otherwise another home could automatically open an older head.
@@ -563,9 +554,7 @@ func (b *Batcher) Displaced(ctx context.Context) {
 // flush in flight, and does nothing if that flush already branched. When the
 // branch fails the state stays stale and the next flush retries it.
 func (b *Batcher) lost(ctx context.Context, seen Driving) {
-	if lockOwnership(ctx, &b.flushMu) != nil {
-		return
-	}
+	b.flushMu.Lock()
 	defer b.flushMu.Unlock()
 	if b.isClosing() {
 		return

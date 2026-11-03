@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,6 +15,11 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
+
+// ErrSavedStateChanged is an optimistic comparison that lost to a local write.
+// It retains ownership and retries at the quiet cadence rather than backing
+// off like a failed relay or engine request.
+var ErrSavedStateChanged = errors.New("save check: files changed during comparison")
 
 // SavedState certifies the saved head against current workspace and chat files.
 // The native plan supplies the transfer scope, including metadata under .cell.
@@ -36,7 +42,14 @@ func (e Engine) SavedState(ctx context.Context, c cell.Cell, extra ...string) (*
 	if err := e.composeExtra(c); err != nil {
 		return nil, err
 	}
-	raw, err := e.do(ctx, c, e.cellDir(c), capturePlanOp{})
+	// The warm daemon can answer with its incremental metadata scope even
+	// without change hints. Certification needs a fresh complete workspace
+	// walk; the standalone planner supplies that, while seals keep the daemon.
+	scope := e
+	if scope.Transport == nil {
+		scope.Transport = Spawn{Binary: e.Binary, Run: e.Run}
+	}
+	raw, err := scope.do(ctx, c, e.cellDir(c), capturePlanOp{})
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +103,7 @@ func (e Engine) SavedState(ctx context.Context, c cell.Cell, extra ...string) (*
 	}
 	s.Changes = append(s.Changes, stateChanges...)
 	if changed := s.changed(ctx); changed != "" {
-		return nil, fmt.Errorf("save check: files changed during comparison: %s", changed)
+		return nil, fmt.Errorf("%w: %s", ErrSavedStateChanged, changed)
 	}
 	return s, nil
 }

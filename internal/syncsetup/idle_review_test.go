@@ -24,7 +24,7 @@ func idleContractSession(t *testing.T, h *twoHomes, c *openChat, change ...func(
 	raw, err := os.ReadFile(transcriptOf(h.cell))
 	mustNil(t, err)
 	mustNil(t, os.WriteFile(transcriptOf(h.cell), bytes.Replace(raw, []byte(`"version":3`), []byte(`"version":1`), 1), 0600))
-	watch := &cellstore.SealWatch{OnTurnEnd: c.drive.Idle}
+	watch := &cellstore.SealWatch{OnTurnEnd: c.drive.Idle, OnMetadataWrite: c.drive.SavedMetadata}
 	watch.OnTail = func() { executor.Settle(context.Background(), c.seat); c.drive.Idle() }
 	watch.Waiting()
 	work := func() error {
@@ -45,7 +45,11 @@ func idleContractSession(t *testing.T, h *twoHomes, c *openChat, change ...func(
 		return c.drive.ConfirmPreparedWork(ctx)
 	}
 	cfg := session.Config{Workspace: h.work, Place: session.Place{Dir: h.cell.Root, Workspace: h.work},
-		SessionFile: transcriptOf(h.cell), Seat: executor.Gated(c.seat, c.drive.Gate, work, prepared), Seals: watch,
+		SessionFile: transcriptOf(h.cell), Seat: executor.Gated(c.seat, c.drive.Gate, work, prepared, func() error {
+			ctx, cancel := context.WithTimeout(t.Context(), 750*time.Millisecond)
+			defer cancel()
+			return c.drive.ConfirmSettingsWork(ctx)
+		}), Seals: watch,
 		Model: "stub/chat", APIKey: "stub", BaseURL: "http://127.0.0.1:1", System: "SYSTEM", ProfileDir: h.homeA}
 	for _, apply := range change {
 		apply(&cfg)
