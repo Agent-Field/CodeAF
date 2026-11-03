@@ -61,6 +61,15 @@ func appTakeWords(words string) string {
 	}
 	return words
 }
+
+// Tests stand in for the copy that acquires the chat and for opening it here.
+var (
+	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation) (syncsetup.Continued, error) {
+		return chatContinuer(s, nil).TakeSeen(ctx, id, seen)
+	}
+	appTakeOpen = (*appBackend).OpenAgent
+)
+
 func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if p.Cell == "" || p.Seen.Device == "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "a chat and its seen computer are required")
@@ -138,7 +147,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 			return appwire.Agent{}, err
 		}
 	}
-	got, err := chatContinuer(s, nil).TakeSeen(ctx, p.Cell, seen)
+	got, err := appTakeSeen(ctx, s, p.Cell, seen)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
@@ -175,7 +184,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		location.Seen.Head = ""
 	}
 	b.located(a, location)
-	agent, err := b.OpenAgent(id)
+	agent, err := appTakeOpen(b, id)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}

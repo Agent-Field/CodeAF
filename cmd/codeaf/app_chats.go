@@ -361,7 +361,9 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		b.chats.facts = facts
 	}
 	cacheFacts()
-	b.publishChats(out, version, emit)
+	// markTaking has already cleared a landed take on a row saying the chat is
+	// here, so only a row from before the take keeps its agent where it is.
+	b.publishChatRows(out, version, emit, func(r appwire.ChatRow) bool { return !b.chats.landedTake(r.Cell) })
 	return appwire.ChatsResult{Chats: out, Version: version}, nil
 }
 

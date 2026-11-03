@@ -1,16 +1,23 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -281,4 +288,149 @@ func TestAppTakeInFlightPresenceAfterALandedTakeLeavesTheAgentHere(t *testing.T)
 			t.Errorf("a presence change moved the taken agent back: %+v", placed.view.Location)
 		}
 	})
+}
+
+// A watch that has announced a directory version newer than any cache, so its
+// next frame reads the rows again.
+type newerVersionFeed struct{ presenceOnlyFeed }
+
+func (newerVersionFeed) State() dirwatch.State {
+	return dirwatch.State{Up: true, Version: math.MaxUint64}
+}
+
+// appLandedTakeFixture lists another computer's chat here and has agents.take
+// acquire it without an engine: the copy answers with the chat's own folder at
+// the next fence, and open stands in for opening the moved chat.
+func appLandedTakeFixture(t *testing.T, open func(*appBackend, string) (appwire.Agent, error)) (*appBackend, *appRecorder, *actionWire, *atomic.Bool, appwire.ChatRow) {
+	t.Helper()
+	celltest.Available(t)
+	_, _, down := appDevicesRelay(t)
+	aHome, bHome := t.TempDir(), t.TempDir()
+	id, err := identity.Ensure(aHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Adopt(bHome, id, false); err != nil {
+		t.Fatal(err)
+	}
+	a, b := appDeviceSync(t, aHome), appDeviceSync(t, bHome)
+	for _, s := range []*syncsetup.Sync{a, b} {
+		if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, devname.Name(s.Home)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Title: "moved", Workspace: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Dir.Create(t.Context(), c.ID, directory.CellInit{Head: "saved-head"}); err != nil {
+		t.Fatal(err)
+	}
+	backend, rec, wire := appDeviceBackend(t, bHome)
+	var row appwire.ChatRow
+	appSyncWait(t, "the other computer's chat is listed", func() bool {
+		for _, r := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
+			if r.Cell == c.ID && r.CanTake {
+				row = r
+				return true
+			}
+		}
+		return false
+	})
+	seen, opened := appTakeSeen, appTakeOpen
+	t.Cleanup(func() { appTakeSeen, appTakeOpen = seen, opened })
+	appTakeSeen = func(_ context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation) (syncsetup.Continued, error) {
+		if id != c.ID {
+			t.Errorf("took %s, want %s", id, c.ID)
+		}
+		return syncsetup.Continued{Device: "this computer", Taken: handoff.Taken{Cell: c, Driving: cellsync.Driving{Cell: c, Fence: row.Seen.Fence + 1, Head: "saved-head"}}}, nil
+	}
+	appTakeOpen = open
+	return backend, rec, wire, down, row
+}
+
+// appNoEndedTake fails on any chat.changed row from index from on that shows
+// the chat elsewhere without saying the take runs.
+func appNoEndedTake(t *testing.T, rec *appRecorder, from int, id string) {
+	t.Helper()
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for _, data := range rec.data[from:] {
+		if changed, ok := data.(appwire.ChatChanged); ok && changed.Chat.Cell == id && !changed.Chat.Here && !changed.Chat.Taking {
+			t.Fatalf("a take that acquired the chat was announced as one that did not move it: %+v", changed.Chat)
+		}
+	}
+}
+
+// agents.take acquired the chat but opening it here failed: every row after
+// still says the take runs while the chat shows elsewhere.
+func TestAppTakeAcquiredThenOpenFailsKeepsSayingItRuns(t *testing.T) {
+	backend, rec, wire, _, row := appLandedTakeFixture(t, func(*appBackend, string) (appwire.Agent, error) {
+		return appwire.Agent{}, errors.New("the moved chat would not open")
+	})
+	rec.mu.Lock()
+	from := len(rec.data)
+	rec.mu.Unlock()
+	if _, refusal := wire.call("agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}); refusal == nil {
+		t.Fatal("a take whose chat would not open succeeded")
+	}
+	if !backend.chats.landedTake(row.Cell) {
+		t.Fatal("a take that acquired the chat recorded no landed take")
+	}
+	appNoEndedTake(t, rec, from, row.Cell)
+	for _, r := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
+		if r.Cell == row.Cell && !r.Here && !r.Taking {
+			t.Fatalf("the list read after the take says it ended with the chat elsewhere: %+v", r)
+		}
+	}
+	appNoEndedTake(t, rec, from, row.Cell)
+}
+
+// agents.take acquired and opened the chat but its follow-up reading failed:
+// the rows still say the take runs, and a later reading from before the take
+// leaves the agent here.
+func TestAppTakeAcquiredThenReadingFailsKeepsTheAgentHere(t *testing.T) {
+	var down *atomic.Bool
+	backend, rec, wire, relayDown, row := appLandedTakeFixture(t, func(b *appBackend, id string) (appwire.Agent, error) {
+		// The relay drops once the chat is open, so settleTake's reading fails.
+		down.Store(true)
+		return appwire.Agent{ID: id}, nil
+	})
+	down = relayDown
+	rec.mu.Lock()
+	from := len(rec.data)
+	rec.mu.Unlock()
+	got := machineCall[appwire.TakeResult](t, wire, "agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}).Agent
+	if got.Location == nil || !got.Location.Here {
+		t.Fatalf("the taken agent is not here: %+v", got.Location)
+	}
+	appNoEndedTake(t, rec, from, row.Cell)
+	here := func(when string) {
+		t.Helper()
+		var a *appAgent
+		backend.locked(func() { a = backend.agents[got.ID] })
+		if a == nil {
+			t.Fatalf("%s: the taken agent is gone", when)
+		}
+		backend.locked(func() {
+			if a.view.Location == nil || !a.view.Location.Here {
+				t.Errorf("%s: the taken agent moved back: %+v", when, a.view.Location)
+			}
+		})
+	}
+	here("after the take")
+	// The follower's next reading is no older than the cache but older than
+	// the take: it still shows the chat elsewhere.
+	down.Store(false)
+	if !backend.refreshChatInventory(t.Context(), newerVersionFeed{presenceOnlyFeed{changes: make(chan struct{})}}) {
+		t.Fatal("the refresh stopped the follower")
+	}
+	if !backend.chats.landedTake(row.Cell) {
+		t.Fatal("a reading from before the take cleared the landed take")
+	}
+	here("after a reading from before the take")
+	appNoEndedTake(t, rec, from, row.Cell)
 }
