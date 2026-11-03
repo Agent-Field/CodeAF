@@ -16,6 +16,7 @@ import (
 // The repair reports needs_you, so this fixture neither publishes nor pushes.
 func TestAppFactoryFollowPRAndPostPublishMoney(t *testing.T) {
 	s := newLocalSetup(t)
+	t.Setenv("OPENROUTER_API_KEY", "fixture")
 	var calls atomic.Int64
 	server := moneyProvider(t, &calls)
 	g := newRunRig(t)

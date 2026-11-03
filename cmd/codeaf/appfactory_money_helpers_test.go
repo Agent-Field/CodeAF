@@ -28,7 +28,7 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 				return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 			}
 			floor := s.backend.local.host.floor
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Final brief accounting", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageCheck, State: factory.PhaseDone}}}})
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Final brief accounting", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
 			if err != nil {
 				t.Fatal(err)
 			}
