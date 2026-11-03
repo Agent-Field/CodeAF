@@ -175,6 +175,7 @@ func runApp(args []string) error {
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
 	}
+	defer backend.watchSpendRows()()
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
@@ -710,6 +711,9 @@ type appBackend struct {
 	dayAuth appDayAuthority
 	// today replaces the usage ledger's figure for today in a test.
 	today func(time.Time) float64
+	// spendRowsPending holds one read of today's figure for rows written
+	// together (watchSpendRows).
+	spendRowsPending atomic.Bool
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
 	// inbox is every open ask as one list (appinbox.go); emit is its tap.
@@ -4273,6 +4277,19 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 		}
 		if after != nil {
 			after(spend)
+		}
+	})
+}
+
+// watchSpendRows says spend.changed for ledger rows no turn ended with. Rows
+// that arrive together cost one read. The answer stops the watching.
+func (b *appBackend) watchSpendRows() (stop func()) {
+	return session.OnUsageWritten(func() {
+		if b.spendRowsPending.CompareAndSwap(false, true) {
+			time.AfterFunc(appSpendSettle, func() {
+				b.spendRowsPending.Store(false)
+				b.spendMoved(nil)
+			})
 		}
 	})
 }

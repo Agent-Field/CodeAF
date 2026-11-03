@@ -672,7 +672,44 @@ func (w *usageWriter) run(path string) {
 			dropUsageRow()
 			_ = file.Close()
 			file = nil
+			continue
 		}
+		announceUsageWritten()
+	}
+}
+
+// usageWatchers are told after a row reaches the file. Spending happens outside
+// chat turns (Factory triage, scouts, page AI), so a reader of today's figure
+// can't wait for a turn's ending to know the ledger moved.
+var usageWatchers struct {
+	sync.Mutex
+	next int
+	of   map[int]func()
+}
+
+// OnUsageWritten calls watch after each row reaches the ledger, on the writer's
+// goroutine, so watch must not block. The answer stops the watching.
+func OnUsageWritten(watch func()) (stop func()) {
+	usageWatchers.Lock()
+	defer usageWatchers.Unlock()
+	if usageWatchers.of == nil {
+		usageWatchers.of = map[int]func(){}
+	}
+	id := usageWatchers.next
+	usageWatchers.next++
+	usageWatchers.of[id] = watch
+	return func() {
+		usageWatchers.Lock()
+		defer usageWatchers.Unlock()
+		delete(usageWatchers.of, id)
+	}
+}
+
+func announceUsageWritten() {
+	usageWatchers.Lock()
+	defer usageWatchers.Unlock()
+	for _, watch := range usageWatchers.of {
+		watch()
 	}
 }
 

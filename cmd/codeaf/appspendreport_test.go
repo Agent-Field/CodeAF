@@ -171,5 +171,3 @@ func TestLedgerRowWithoutATurnMovesSpendToday(t *testing.T) {
 type appEmitFunc func(event string, payload any)
 
 func (f appEmitFunc) Emit(event string, payload any) { f(event, payload) }
-
-func (b *appBackend) watchSpendRows() func() { return func() {} }
