@@ -359,4 +359,11 @@ func TestRacingAsksMakeOneManager(t *testing.T) {
 	if got.Talk != chats[0] {
 		t.Fatalf("the job holds %q, the asks got %q", got.Talk, chats[0])
 	}
+	made, err := os.ReadDir(filepath.Dir(filepath.Dir(chats[0])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(made) != 1 {
+		t.Fatalf("%d conversations on disk, want 1", len(made))
+	}
 }

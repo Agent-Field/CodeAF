@@ -34,6 +34,11 @@ func TestFactoryOwnedManagerChargesAfterTalkMoves(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// A manager left by a race before the mint lock: on disk and owned,
+			// not the one the job chose.
+			if err := floor.Update(it.ID, func(cur *factory.Item) error { cur.Talk = ""; return nil }); err != nil {
+				t.Fatal(err)
+			}
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
 			if collision {
