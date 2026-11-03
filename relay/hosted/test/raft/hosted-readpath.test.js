@@ -35,7 +35,7 @@ test('native enrollment cannot revive a certificate expired at an observed read 
   command.signature=sign(null,Buffer.from('codeaf.directory.command.v1\0'+encodeCanonical(command)),a.key.privateKey).toString('base64');
   await h.control({op:'reset-metrics'});
   const result=await h.api(a,{cluster,action:'submit',incarnation:'0',command});
-  assert.equal((await h.control({op:'metrics'})).presenceCommits,0,'native ingress time enforcement does not synchronously commit presence');
+  assert.equal((await h.control({op:'metrics'})).presenceCommits,1,'native ingress commits a compatible device_seen clock witness');
   assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.body.result.code,'bad_request');
  }finally{await h.close();}
 });

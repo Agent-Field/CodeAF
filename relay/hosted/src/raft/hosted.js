@@ -791,9 +791,9 @@ export class HostedIdentity {
     await this.wakeMaintenance();
     if(q.cluster!==this.manifest.config.cluster||q.identity_key!==this.manifest.config.signing_key)throw new Wire('unauthorized',401);
     // Native commands carry a caller-signed time. Commit the server's clock
-    // witness separately so backdated enrollment cannot revive expired scope.
-    requireOK((await this.commitEffect({advance_time:{}},this.readNow())).code);
-    this.noteSeen(actor);
+    // witness using the device_seen shape older native evaluators accept so
+    // backdated enrollment cannot revive expired scope.
+    requireOK((await this.commitEffect({device_seen:{device:actor}},this.readNow())).code);
     const b=await this.barrier(),member=this.members.get(b.node);
     const root=await member.hostView(b.index,'state','identity');
     clusterIngress(this.runtime,raw,root.app.now);

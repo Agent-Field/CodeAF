@@ -261,10 +261,10 @@ Directory reads do not propose AdvanceTime. Their observed wall-clock floor is
 durable in the router's local metadata and never moves backward after recovery;
 subsequent v1 mutation translation includes that floor. Directory GET signatures
 are checked against it too, so clock rollback cannot revive stale request proofs.
-Native API ingress still commits a restricted AdvanceTime clock witness before
-checking signed commands or worker reads. It does not stamp device presence.
-Without this witness, a backdated command could enroll expired worker scope.
-Device presence from native ingress, blob
+Native API ingress still commits a synchronous device_seen clock witness before
+checking signed commands or worker reads, using the shape older native evaluators
+accept. This also records caller presence. Without this witness, a backdated
+command could enroll expired worker scope. Device presence from blob
 authorization and watch departure is advisory, coalesced for thirty seconds with
 at most 64 pending devices, and flushed one device per maintenance turn after
 critical work. Failed presence writes remain pending and do not skip other work.
