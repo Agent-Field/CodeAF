@@ -23,6 +23,8 @@ const (
 	BriefThinVerdict = "This issue says too little to read. Add what you want, or ask the manager."
 	// BriefNotReadVerdict is what the stub says until the read is written.
 	BriefNotReadVerdict = "Not read yet."
+	// BriefNotWrittenVerdict is what the stub says once work has reported.
+	BriefNotWrittenVerdict = "No brief written yet."
 	// briefThinWords is the fewest words of an issue no triage has read that
 	// are worth a model call.
 	briefThinWords = 12
@@ -36,6 +38,10 @@ const (
 	// deepseek/deepseek-v4.1-flash read 0.016 to 0.169 (median 0.046), and a verdict
 	// copied from an issue reads 1. Over this a read says the issue back.
 	BriefOverlapMost = 0.25
+	// briefClaimOverlapMost is the most of one claim's word runs that may be
+	// in the issue, so own words elsewhere cannot hide a copied sentence. The six
+	// real reads above peak at 0.6 on one claim.
+	briefClaimOverlapMost = 0.75
 )
 
 // briefHTMLComment is a part of an issue's body no reader sees, such as a template's note.
@@ -66,12 +72,12 @@ func briefIssueThin(it Item) bool {
 	return BriefWords(briefHTMLComment.ReplaceAllString(it.Body, "")) < briefThinWords
 }
 
-// briefStubVerdict is the line of a job with no written brief. Before work the
-// issue's title is on the page already, so the line says where the read is.
+// briefStubVerdict is the line of a job with no written brief. The issue's
+// title is on the page already, so the line says where the brief is.
 func briefStubVerdict(it Item) string {
 	switch {
 	case !briefBeforeWork(it):
-		return it.Title
+		return BriefNotWrittenVerdict
 	case briefIssueThin(it):
 		return BriefThinVerdict
 	}
@@ -132,9 +138,9 @@ func briefPlainWords(text string) []string {
 	})
 }
 
-// briefWrittenWords is the words a person reads in a version: its verdict and
-// its claims. Evidence is left out: a quote is meant to be the issue's.
-func briefWrittenWords(v BriefVersion) string {
+// briefWrittenParts is what a person reads in a version: its verdict and its
+// claims. Evidence is left out: a quote is meant to be the issue's.
+func briefWrittenParts(v BriefVersion) []string {
 	parts := []string{v.Verdict}
 	for _, b := range v.Blocks {
 		for _, c := range b.Bullets {
@@ -144,23 +150,35 @@ func briefWrittenWords(v BriefVersion) string {
 			parts = append(parts, q.Text)
 		}
 	}
-	return strings.Join(parts, " . ")
+	return parts
+}
+
+// briefIssueWords is the issue as one run of plain words, spaces at each end.
+func briefIssueWords(it Item) string {
+	return " " + strings.Join(briefPlainWords(it.Title+" . "+it.Body), " ") + " "
+}
+
+// briefRuns counts a text's three-word runs, and those also in the issue.
+func briefRuns(text, issue string) (runs, same int) {
+	words := briefPlainWords(text)
+	for i := 0; i+briefOverlapGram <= len(words); i++ {
+		runs++
+		if strings.Contains(issue, " "+strings.Join(words[i:i+briefOverlapGram], " ")+" ") {
+			same++
+		}
+	}
+	return runs, same
 }
 
 // BriefIssueOverlap is the share of a version's three-word runs that are also
 // in the job's issue: 0 is all its own words, 1 is a copy. Runs do not cross
 // from one claim to the next.
 func BriefIssueOverlap(v BriefVersion, it Item) float64 {
-	issue := " " + strings.Join(briefPlainWords(it.Title+" . "+it.Body), " ") + " "
+	issue := briefIssueWords(it)
 	runs, same := 0, 0
-	for _, part := range strings.Split(briefWrittenWords(v), " . ") {
-		words := briefPlainWords(part)
-		for i := 0; i+briefOverlapGram <= len(words); i++ {
-			runs++
-			if strings.Contains(issue, " "+strings.Join(words[i:i+briefOverlapGram], " ")+" ") {
-				same++
-			}
-		}
+	for _, part := range briefWrittenParts(v) {
+		r, s := briefRuns(part, issue)
+		runs, same = runs+r, same+s
 	}
 	if runs == 0 {
 		return 0
@@ -169,10 +187,20 @@ func BriefIssueOverlap(v BriefVersion, it Item) float64 {
 }
 
 // briefRepeatsFault is what is wrong with a read before work that says the
-// issue back, "" for nothing.
+// issue back, "" for nothing: as a whole, in one claim, or as the bare title.
 func briefRepeatsFault(v BriefVersion, it Item) string {
-	if overlap := BriefIssueOverlap(v, it); briefBeforeWork(it) && overlap > BriefOverlapMost {
+	if !briefBeforeWork(it) {
+		return ""
+	}
+	if overlap := BriefIssueOverlap(v, it); overlap > BriefOverlapMost {
 		return fmt.Sprintf("the read repeats the issue: %.0f%% of it", overlap*100)
+	}
+	issue, title := briefIssueWords(it), strings.Join(briefPlainWords(it.Title), " ")
+	for _, part := range briefWrittenParts(v) {
+		r, s := briefRuns(part, issue)
+		if strings.Join(briefPlainWords(part), " ") == title || (r > 0 && float64(s)/float64(r) > briefClaimOverlapMost) {
+			return fmt.Sprintf("the read repeats the issue in %q", part)
+		}
 	}
 	return ""
 }

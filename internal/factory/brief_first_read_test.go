@@ -63,8 +63,8 @@ func TestAThinIssueSaysSoPlainlyAndAStubNeverRepeatsTheTitle(t *testing.T) {
 	if v := BriefStub(firstReadJob()).Verdict; v != BriefNotReadVerdict {
 		t.Errorf("unread stub verdict %q", v)
 	}
-	if v := BriefStub(firstReadWorked()).Verdict; v != firstReadJob().Title {
-		t.Errorf("a stub after work keeps the job's line, got %q", v)
+	if v := BriefStub(firstReadWorked()).Verdict; v != BriefNotWrittenVerdict {
+		t.Errorf("a stub after work still repeats the title, got %q", v)
 	}
 }
 
@@ -113,6 +113,16 @@ func TestAFirstReadThatRepeatsTheIssueIsNotKept(t *testing.T) {
 	copied := "the retry loop sends the message again although the first send landed"
 	if _, _, fault := CheckBriefDraft(firstReadJob(), firstReadDraft(t, copied, "the first send landed")); !strings.Contains(fault, "repeats") {
 		t.Fatalf("a copied verdict passed: %q", fault)
+	}
+	diluted := firstReadJob()
+	raw, _ := json.Marshal(BriefDraft{Verdict: "Retries double-send after a worker restart", VerdictEvidence: []BriefEvidence{{Kind: "issue", Ref: "the first send landed"}}, Blocks: []BriefBlock{
+		{Kind: BlockBullets, Heading: "Risky part", Bullets: []BriefClaim{
+			{Text: "Crash state must survive somewhere durable and also be checked before any resend happens today", Evidence: []BriefEvidence{{Kind: "issue", Ref: "the first send landed"}}},
+			{Text: "Webhook consumers probably cannot tolerate repeats even when spaced apart over many long hours", Evidence: []BriefEvidence{{Kind: "issue", Ref: "the first send landed"}}},
+		}},
+	}})
+	if _, _, fault := CheckBriefDraft(diluted, raw); !strings.Contains(fault, "repeats") {
+		t.Fatalf("a copied title passed under own words: %q", fault)
 	}
 	own := BriefVersion{Verdict: "Make a resend after a crash harmless"}
 	if got := BriefIssueOverlap(own, firstReadJob()); got != 0 {
