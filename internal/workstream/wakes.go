@@ -69,13 +69,15 @@ type WakeRun struct {
 }
 
 type workstreamWakeUndo struct {
-	Wave            int
-	Position        int
-	Version         int
-	PreviousVersion int
-	Created         bool
-	CreatedWave     bool
-	PlanItem        PlanItem
+	Wave             int
+	Position         int
+	Version          int
+	PreviousVersion  int
+	Created          bool
+	CreatedWave      bool
+	CreatedWaveImage *Wave
+	PlanItem         PlanItem
+	Page             *PageNode
 }
 
 // BeginWake claims the event before any model call, under the stage and cost guards.
@@ -373,6 +375,7 @@ func (s *Store) SettleWake(ctx context.Context, id string, answer WakeAnswer, co
 		}
 		parts := map[ChangedPart]bool{PartWorkstream: true}
 		if failure == "" {
+			pageTargets := map[string]bool{}
 			for _, p := range answer.Items {
 				p = workstreamWakeProposal(p)
 				if len(run.Items) == WakeItemsMax {
@@ -393,6 +396,16 @@ func (s *Store) SettleWake(ctx context.Context, id string, answer WakeAnswer, co
 						continue
 					}
 					p.Title = page.Title
+				}
+				if p.Kind == "page" {
+					target := "title:" + p.Title
+					if p.PageID != "" {
+						target = "id:" + p.PageID
+					}
+					if pageTargets[target] {
+						continue
+					}
+					pageTargets[target] = true
 				}
 				itemID, err := s.newID()
 				if err != nil {

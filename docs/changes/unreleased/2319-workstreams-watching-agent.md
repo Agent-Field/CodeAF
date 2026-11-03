@@ -16,3 +16,8 @@ The additive wire contract is v0.3, with four wake methods and a wakes change
 part. Storage migrates additively from schema 3 to 4 on the first write.
 Related-issue wakes are not built. The job event hook awaits the Factory event
 source; queue reads do not trigger it.
+
+Morning wakes consider only today's local 08:00 slot; opening before it never
+catches up yesterday. Undo preserves later draft edits and page metadata
+changes, and removes a wake-created wave only while it is unchanged and empty.
+A wake keeps only the first page suggestion per existing page or new-page title.

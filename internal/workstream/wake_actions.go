@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
@@ -147,6 +148,8 @@ func (s *Store) workstreamWakePlanApplyIn(ctx context.Context, tx *sql.Tx, w Wor
 			p.Waves = append(p.Waves, Wave{N: 1, Items: []PlanItem{}})
 			target = 0
 			item.Undo.CreatedWave = true
+			wave := p.Waves[target]
+			item.Undo.CreatedWaveImage = &wave
 		}
 		if target < 0 {
 			return ErrConflict
@@ -184,7 +187,7 @@ func (s *Store) workstreamWakePageApplyIn(ctx context.Context, tx *sql.Tx, w Wor
 			return err
 		}
 		item.PageID = page.ID
-		item.Undo = workstreamWakeUndo{Created: true, Version: page.Version}
+		item.Undo = workstreamWakeUndo{Created: true, Version: page.Version, Page: &page.PageNode}
 		return nil
 	}
 	page, _, err := livePageIn(ctx, tx, item.PageID)
@@ -197,6 +200,7 @@ func (s *Store) workstreamWakePageApplyIn(ctx context.Context, tx *sql.Tx, w Wor
 	if page.WorkstreamID != w.ID || page.Owner != "agent" {
 		return ErrConflict
 	}
+	previousVersion := page.Version
 	raw, err := sourceJSON(source)
 	if err != nil {
 		return err
@@ -205,7 +209,11 @@ func (s *Store) workstreamWakePageApplyIn(ctx context.Context, tx *sql.Tx, w Wor
 		return err
 	}
 	item.Proposal.Title = page.Title
-	item.Undo = workstreamWakeUndo{Version: page.Version + 1, PreviousVersion: page.Version}
+	page, _, err = livePageIn(ctx, tx, page.ID)
+	if err != nil {
+		return err
+	}
+	item.Undo = workstreamWakeUndo{Version: page.Version, PreviousVersion: previousVersion, Page: &page.PageNode}
 	return nil
 }
 
@@ -272,7 +280,10 @@ func (s *Store) workstreamWakePlanUndoIn(ctx context.Context, tx *sql.Tx, w Work
 	if from < 0 {
 		return ErrConflict
 	}
-	if item.Kind == "move" && p.Waves[from].N != item.Wave {
+	if p.Waves[from].N != item.Wave {
+		return ErrConflict
+	}
+	if item.Kind == "draft" && !reflect.DeepEqual(p.Waves[from].Items[pos], item.Undo.PlanItem) {
 		return ErrConflict
 	}
 	target := -1
@@ -291,7 +302,7 @@ func (s *Store) workstreamWakePlanUndoIn(ctx context.Context, tx *sql.Tx, w Work
 		copy(items[at+1:], items[at:])
 		items[at] = v
 		p.Waves[target].Items = items
-	} else if item.Undo.CreatedWave && len(p.Waves[from].Items) == 0 {
+	} else if item.Undo.CreatedWave && item.Undo.CreatedWaveImage != nil && len(p.Waves[from].Items) == 0 && reflect.DeepEqual(p.Waves[from], *item.Undo.CreatedWaveImage) {
 		p.Waves = append(p.Waves[:from], p.Waves[from+1:]...)
 	}
 	return s.workstreamWakeSavePlanIn(ctx, tx, p)
@@ -304,7 +315,7 @@ func (s *Store) workstreamWakePageUndoIn(ctx context.Context, tx *sql.Tx, w Work
 	if err != nil {
 		return err
 	}
-	if p.WorkstreamID != w.ID || p.Owner != "agent" || p.Version != item.Undo.Version {
+	if p.WorkstreamID != w.ID || p.Owner != "agent" || p.Version != item.Undo.Version || item.Undo.Page == nil || !reflect.DeepEqual(p.PageNode, *item.Undo.Page) {
 		return ErrConflict
 	}
 	if item.Undo.Created {

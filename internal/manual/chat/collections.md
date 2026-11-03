@@ -241,8 +241,10 @@ records. The agent's record reads include go-ahead proposals and their grant IDs
 
 ## Watching workstreams: morning wakes, costs, Apply, Undo and Not now
 
-With morning wakes on, a workstream can wake once for the latest 08:00 slot in
-this machine's zone, while the app is open. The slot must be at or after creation.
+With morning wakes on, a workstream can wake once for today's 08:00 slot in
+this machine's zone, while the app is open, once that slot has passed and if it
+is at or after creation. Before 08:00 no morning slot is eligible; closed days
+are never caught up.
 The app first checks after 30 seconds, then every minute; opening late wakes
 once, without replaying a backlog of missed days. Related-issue wakes are
 stored as a preference but are not available yet. Job-event handling is ready

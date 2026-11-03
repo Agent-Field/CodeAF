@@ -60,7 +60,7 @@ func RunWorkstreamWake(ctx context.Context, settings TeamProposerConfig, ask Wor
 }
 
 func workstreamWakeCall(ctx context.Context, client Completer, model string, ask WorkstreamWakeAsk, record func(UsageLine)) (WorkstreamWakeAnswer, error) {
-	ctx = provider.WithRole(provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground), lane.RoleStanding)
+	ctx = provider.WithRole(provider.WithRoutingIntent(provider.WithoutStream(withPurpose(ctx, purposeWorkstreamWake)), provider.IntentBackground), lane.RoleStanding)
 	response, err := client.CompleteWithMessages(ctx, []ai.Message{textMessage("system", workstreamWakeRules), textMessage("user", workstreamWakeQuestion(ask))})
 	answer := WorkstreamWakeAnswer{Model: model}
 	line := UsageLine{Model: model, Role: string(roles.RoleSentinel), Calls: 1, Session: ask.AgentID, Run: ask.ID, Unbilled: true}

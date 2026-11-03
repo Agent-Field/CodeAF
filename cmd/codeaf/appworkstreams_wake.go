@@ -146,9 +146,6 @@ func workstreamMorningSlot(now time.Time) (time.Time, error) {
 	midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
 	schedule := automation.Schedule{Every: "0 8 * * *"}
 	slot, err := schedule.Next(midnight.Add(-time.Minute))
-	if err == nil && slot.After(now) {
-		slot, err = schedule.Next(midnight.AddDate(0, 0, -1).Add(-time.Minute))
-	}
 	if err != nil || slot.After(now) {
 		return time.Time{}, err
 	}

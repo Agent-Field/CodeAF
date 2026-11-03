@@ -376,11 +376,47 @@ func TestWakeB_EventFallbackKeyUsesUTCSecondsAndValidatesWords(t *testing.T) {
 
 func TestWakeA_LatestSlotIncludesExactEight(t *testing.T) {
 	now := time.Date(2026, 11, 3, 8, 0, 0, 0, time.Local)
-	for _, tc := range []struct{ at, want time.Time }{{now, now}, {now.Add(7 * time.Hour), now}, {now.Add(-time.Minute), now.AddDate(0, 0, -1)}} {
+	for _, tc := range []struct{ at, want time.Time }{{now, now}, {now.Add(7 * time.Hour), now}, {now.Add(-time.Minute), time.Time{}}} {
 		slot, err := workstreamMorningSlot(tc.at)
 		if err != nil || !slot.Equal(tc.want) {
 			t.Fatalf("%s: slot %s want %s (%v)", tc.at, slot, tc.want, err)
 		}
+	}
+}
+
+func TestWakeA_M3_PreEightOpeningNeverCatchesUpClosedDay(t *testing.T) {
+	b, _, now, tasks, turns := workstreamWakeBackend(t)
+	*now = time.Date(2026, 11, 1, 7, 59, 0, 0, time.Local)
+	w := workstreamCreateForTest(t, b, "Closed day")
+	if _, err := b.WorkstreamUpdate(appwire.WorkstreamUpdateParams{ID: w.ID, Patch: appwire.WorkstreamPatch{Wake: &appwire.WorkstreamWake{Morning: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	// No tick happens on the intervening day while the app is closed.
+	*now = time.Date(2026, 11, 3, 7, 0, 0, 0, time.Local)
+	b.workstreamWakeTick(*now)
+	if len(*tasks) != 0 || *turns != 0 {
+		t.Fatal("opening before 08:00 queued a closed day's wake")
+	}
+	if runs := workstreamWakeListForTest(t, b, w.ID); len(runs) != 0 {
+		t.Fatalf("opening before 08:00 created a wake row: %+v", runs)
+	}
+	*now = time.Date(2026, 11, 3, 8, 0, 0, 0, time.Local)
+	b.workstreamWakeTick(*now)
+	if len(*tasks) != 1 {
+		t.Fatalf("08:00 queued %d wakes, want one", len(*tasks))
+	}
+	workstreamDrainWakes(b, tasks)
+	b.workstreamWakeTick(*now)
+	if *turns != 1 || len(*tasks) != 0 {
+		t.Fatalf("today did not wake exactly once: %d turns, %d queued", *turns, len(*tasks))
+	}
+	s, err := b.workstreamStore(false)
+	if err != nil || s == nil {
+		t.Fatalf("store: %v", err)
+	}
+	runs, err := s.Wakes(context.Background(), w.ID, 100)
+	if err != nil || len(runs) != 1 || runs[0].Event.Kind != "morning" || !runs[0].Event.At.Equal(*now) || !runs[0].StartedAt.Equal(*now) || runs[0].State != "settled" {
+		t.Fatalf("expected only today's 08:00 wake: %+v %v", runs, err)
 	}
 }
 

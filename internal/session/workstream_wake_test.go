@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -46,6 +47,36 @@ func TestWakeB_OneModelCallWithCostAndNoTools(t *testing.T) {
 		})
 	}
 }
+
+func TestWakeB_m2_ModelCallCarriesWakePurpose(t *testing.T) {
+	checks := 0
+	adapter, err := provider.NewClient(provider.Config{
+		BaseURL: "http://provider.test", Model: "test/model", APIKey: "test-key",
+		HTTPClient: fakeHTTP(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`))
+		})),
+		RouteGate: func(ctx context.Context, model, tag string) error {
+			checks++
+			if tag != "workstream-wake" {
+				t.Fatalf("wake purpose: %q", tag)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+		return adapter.CompleteWithMessages(ctx, messages)
+	}}}
+	lines := 0
+	_, err = workstreamWakeCall(context.Background(), client, "test/model", WorkstreamWakeAsk{ID: "wake", AgentID: "agent", Event: workstream.WakeEvent{Kind: "morning"}, Snapshot: json.RawMessage(`{}`)}, func(UsageLine) { lines++ })
+	if err != nil || client.requests() != 1 || checks != 1 || lines != 1 {
+		t.Fatalf("wake call: requests %d, purpose checks %d, usage lines %d (%v)", client.requests(), checks, lines, err)
+	}
+}
+
 func TestWakeB_SnapshotUsesReadCutRule(t *testing.T) {
 	text := workstreamWakeQuestion(WorkstreamWakeAsk{Snapshot: json.RawMessage(`{"words":"` + strings.Repeat("é", 40000) + `"}`)})
 	start := strings.Index(text, "Numbers absent below")
