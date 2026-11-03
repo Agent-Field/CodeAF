@@ -528,3 +528,98 @@ func TestRefreshOfAClosedIssueKeepsItDone(t *testing.T) {
 		t.Fatalf("refresh reopened an issue closed on GitHub: state=%s", got.State)
 	}
 }
+
+// A close read before a newer open read does not finish the row, reopened or not.
+func TestADelayedCloseDoesNotBeatANewerOpenRead(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	row, err := st.Create(closedTestRow(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Merge(st, source.Name, []factory.Item{closedTestRow(func(it *factory.Item) { it.Changed = now })}); err != nil {
+		t.Fatal(err)
+	}
+	stale := closedTestRow(func(it *factory.Item) { it.DoneHow, it.Title, it.Changed = "closed", "", now.Add(-time.Minute) })
+	if err := source.Merge(st, source.Name, []factory.Item{stale}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(row.ID); got.DoneHow != "" {
+		t.Fatalf("a delayed close beat a newer open read: state=%s", got.State)
+	}
+}
+
+// A sweep's closed answer does not finish a row an open read reached while that
+// answer was on its way.
+func TestASweepAnswerDoesNotBeatAnOpenReadDuringIt(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	mine := func(change func(*factory.Item)) factory.Item {
+		it := factory.Item{Product: "acme", Repo: "api", Num: 1, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateNew}
+		if change != nil {
+			change(&it)
+		}
+		return it
+	}
+	row, err := st.Create(mine(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"owner"}`)
+		case "/repos/acme/api/issues":
+			fmt.Fprint(w, `[]`)
+		case "/repos/acme/api/issues/1":
+			if err := source.Merge(st, source.Name, []factory.Item{mine(func(it *factory.Item) { it.Changed = time.Now() })}); err != nil {
+				t.Error(err)
+			}
+			fmt.Fprint(w, `{"state":"closed"}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	src := source.New(forge.NewClient("sweep-race").WithBaseURL(srv.URL), nil, nil)
+	if _, err := source.PollOnce(ctx, src, st, "", time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(row.ID); got.DoneHow != "" {
+		t.Fatalf("a sweep answer beat a newer open read: state=%s", got.State)
+	}
+}
+
+// An issue transferred away answers with its new number. That number here is a
+// different issue, so the answer must not finish it.
+func TestRefreshOfATransferredIssueDoesNotCloseAnother(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"owner"}`)
+		case "/repos/acme/api/issues/7":
+			json.NewEncoder(w).Encode(map[string]any{"number": 8, "title": "moved", "state": "closed", "updated_at": time.Now(), "user": map[string]any{"login": "a"}})
+		default:
+			fmt.Fprint(w, `[]`)
+		}
+	}))
+	defer srv.Close()
+	src := source.New(forge.NewClient("transfer").WithBaseURL(srv.URL), nil, nil)
+	fresh, err := src.Refetch(context.Background(), factory.Item{Product: "acme", Repo: "api", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.DoneHow != "" {
+		t.Fatalf("a transferred issue's answer closes number %d in this repository", fresh.Num)
+	}
+}
+
