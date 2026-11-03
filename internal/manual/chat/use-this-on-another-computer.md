@@ -276,7 +276,10 @@ already paired; nothing changed
 
 To pair a removed computer again, run `codeaf pair --replace` there and approve
 its link from a computer still in the set. It keeps the shared set and installs
-a new device; the removed device stays listed as removed.
+a new device; the removed device stays listed as removed. Replacement still sets
+aside this computer's old chats and clears shared preferences when the account
+is unchanged. If replacement is interrupted, reopening finishes it and preserves
+writes made after the replacement was installed.
 
 ## I got a new laptop — move my chats to a new machine
 

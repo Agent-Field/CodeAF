@@ -28,3 +28,7 @@ Chat ownership follows dev too: reopening acquires a new fence, an expired hold
 cannot admit tools or desktop sends, and stale move confirmation refuses a
 changed fence even when holder and saved head match. Typed desktop refusals and
 saved-head metadata remain available.
+
+Explicit replacement clears live chats and shared preferences even when rejoining
+the same account. Durable cleanup progress and the destination device distinguish
+an unfinished reset from an installed replacement, preserving later writes.

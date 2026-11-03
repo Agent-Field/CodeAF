@@ -49,6 +49,8 @@ type mergeRecord struct {
 	ProfileDir string          `json:"profile_dir,omitempty"`
 	Phase      string          `json:"phase,omitempty"`
 	TeamsAside string          `json:"teams_aside,omitempty"`
+	// Nil identifies older journals; new replacements explicitly record false before cleanup.
+	CleanupComplete *bool `json:"cleanup_complete,omitempty"`
 }
 
 // Resume completes an approved local merge before sync opens its clients.
@@ -97,6 +99,10 @@ func (j Joining) merge(g Grant, dev *identity.Dev, oldKey []byte) (Joined, error
 		return Joined{}, err
 	}
 	rec := mergeRecord{OldKey: oldKey, Identity: idDoc, Device: devDoc, SyncURL: g.SyncURL, Replace: j.Replace, ProfileDir: j.ProfileDir}
+	if rec.Replace {
+		done := false
+		rec.CleanupComplete = &done
+	}
 	if err := rec.save(j.Home); err != nil {
 		return Joined{}, err
 	}
@@ -150,21 +156,29 @@ func (j Joining) resume() (Joined, error) {
 	}
 	if rec.Replace {
 		if rec.Phase != "installed" {
-			// Preparation can precede a failed install or new writes under the
-			// old key. An installed destination proves the reset already ran,
-			// even if its process stopped before saving progress.
-			current, err := identity.Load(j.Home)
-			if err != nil && !errors.Is(err, identity.ErrNone) {
+			// A prepared replacement can still receive old-state writes before
+			// installation. Only the journal's exact destination device proves
+			// installation, including when the account itself never changed.
+			current, err := identity.LoadDevice(j.Home)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
 				return joined, err
 			}
-			if current.ID() != id.ID() {
+			installed := err == nil && current.ID() == dev.ID()
+			// Older journals did not record cleanup. Their destination device
+			// still proves a completed installation, preserving admitted writes.
+			cleaned := rec.CleanupComplete == nil && installed || rec.CleanupComplete != nil && *rec.CleanupComplete
+			if !cleaned || !installed {
 				aside, replaceErr := replaceState(j.Home, rec.ProfileDir, func() bool { return true })
 				if aside != "" {
 					rec.TeamsAside = aside
 					joined.TeamsAside = aside
-					if err := rec.save(j.Home); err != nil {
-						return joined, errors.Join(replaceErr, err)
-					}
+				}
+				if replaceErr == nil {
+					done := true
+					rec.CleanupComplete = &done
+				}
+				if err := rec.save(j.Home); err != nil {
+					return joined, errors.Join(replaceErr, err)
 				}
 				if replaceErr != nil {
 					return joined, replaceErr
