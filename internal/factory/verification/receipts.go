@@ -123,7 +123,7 @@ func (c Check) Key() string {
 func (c Check) Label() string {
 	if len(c.Args) == 0 {
 		if c.Command != "" {
-			return c.Command
+			return OwedCommand(c.Command)
 		}
 		return "incomplete recorded check"
 	}

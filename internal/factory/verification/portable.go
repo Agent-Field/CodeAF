@@ -42,9 +42,24 @@ func OwedCommand(command string) string {
 		}
 	}
 	for _, part := range approval.SplitBashCommand(command) {
-		args := strings.Fields(part.Command)
+		text := strings.TrimSpace(part.Command)
+		args := strings.Fields(text)
 		for len(args) > 0 && assignment.MatchString(args[0]) {
-			args = args[1:]
+			text = strings.TrimSpace(strings.TrimPrefix(text, args[0]))
+			args = strings.Fields(text)
+		}
+		// Decode only a whole literal quoted executable for diagnostics. Do
+		// not evaluate substitutions or infer paths from concatenated words.
+		if len(text) > 0 && (text[0] == '\'' || text[0] == '"') {
+			end := strings.IndexByte(text[1:], text[0]) + 1
+			if end == 0 || (end+1 < len(text) && !strings.ContainsRune(" \t", rune(text[end+1]))) {
+				continue
+			}
+			path := text[1:end]
+			if text[0] == '"' && strings.ContainsAny(path, "$`\\") {
+				continue
+			}
+			args = []string{path}
 		}
 		if why := missingCheckPath(args); why != "" {
 			return command + why
