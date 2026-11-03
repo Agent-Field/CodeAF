@@ -1656,3 +1656,23 @@ captions; `text` remains readable, with one tool name and home paths replaced
 by `~` before a 240-character limit. Other lines omit `kind`. Worker reports
 retain their existing body shape, carrying tool identity in `tone: "tool"`;
 no hello feature or new error code is needed.
+
+### factory.job_publish_anyway
+
+Hello feature `factory.publish_anyway` advertises this person action. Params:
+`factory`, `job`, and `expect.version`. The result is `FactoryJobActed` with
+`action: "publish_anyway"` and the current job. The desk shows **Publish anyway**
+only when `can.publish_anyway` is true.
+
+The factory requires an authenticated person allowed to publish the job. Only
+correctly skipped conditional checks under the every-check policy qualify.
+Failed, pending or unmeasured checks refuse. Stale versions return `stale`
+without recording consent. Auto mode and automatic answers cannot grant it.
+
+The job's `publish_anyway` uses the existing approval shape. Its `matched`
+identity hashes the reported head, change, files and skipped-check set. The
+existing approved ledger event records the person and time. A held worker
+receives this decision on the existing answer signal and validates the identity
+before resuming. Its `words` carries the server-minted approval trailer; a post
+checks its head and person before using it without a local copy of the ledger.
+Skipped checks stay unmeasured and the PR lists each reason and the person decision.

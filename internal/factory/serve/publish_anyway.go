@@ -7,6 +7,7 @@ import (
 	"net/http"
  "errors"
  "fmt"
+ "strings"
  "github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -39,7 +40,7 @@ func (h *Handler) publishAnyway(w http.ResponseWriter, r *http.Request, it facto
  event,err:=h.config.Record.Append(r.Context(),record.Event{Kind:record.Approved,Job:cur.ID,Handle:who,Commit:cur.HeadCommit,Detail:"Publish anyway; skipped checks remain unmeasured"})
  if err!=nil {return err}
  cur.PublishAnyway.At=event.At
- cur.PublishAnyway.Words=fmt.Sprintf("Factory-Approval: %s @%s %s",event.ID,who,cur.HeadCommit)
+ cur.PublishAnyway.Words=strings.TrimSpace(fmt.Sprintf("Factory-Approval: %s @%s %s",event.ID,who,cur.HeadCommit))
  }
  return nil
 	})
