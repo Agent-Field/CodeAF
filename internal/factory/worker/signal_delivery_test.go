@@ -56,7 +56,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    entered := make(chan struct{})
    finished := make(chan struct{})
    runner := run.New(run.Options{Store:mirror, RepoDir:func(string) string{return t.TempDir()}, Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context, _ run.Job)(factory.StageResult,error){close(entered); defer close(finished); <-ctx.Done(); return factory.StageResult{},ctx.Err()})}})
-   if err := runner.Resume(it.ID); err != nil { t.Fatal(err) }
+   if err := runner.Launch(it.ID); err != nil { t.Fatal(err) }
    select { case <-entered: case <-time.After(3*time.Second): t.Fatal("runner did not start") }
    defer func(){ _ = runner.Stop(it.ID); select {case <-finished: case <-time.After(3*time.Second): t.Error("runner did not stop") } }()
    var turns atomic.Int32
