@@ -145,15 +145,20 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 
 func (l *liveDrive) setIdleCheck(check func() bool) {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.idleCheck = check
-	l.mu.Unlock()
 }
 
 func (l *liveDrive) idleReady() bool {
-	l.mu.Lock()
-	check, surface, closed := l.idleCheck, l.surfaceIdle, l.closed
-	l.mu.Unlock()
+	check, surface, closed := l.idleChecks()
 	return !closed && check != nil && (surface == nil || surface()) && check()
+}
+
+// idleChecks reads the checks under mu; they run after it is released.
+func (l *liveDrive) idleChecks() (check, surface func() bool, closed bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.idleCheck, l.surfaceIdle, l.closed
 }
 
 // retryStartup owns the next attempt after a transport failure. It runs under

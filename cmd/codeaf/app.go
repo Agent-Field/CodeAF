@@ -1703,21 +1703,26 @@ func appSendUnsure(err error) bool {
 func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	// Only a row already read for this paired identity can enable automatic
 	// pull. Ordinary local opens and single-device homes add no relay request.
-	b.chats.mu.Lock()
-	row, found := b.chats.byAgent[id]
-	if !found {
-		for _, candidate := range b.chats.rows {
-			if candidate.Cell == id {
-				row, found = candidate, true
-				break
-			}
-		}
-	}
-	b.chats.mu.Unlock()
+	row, found := b.chats.rowFor(id)
 	if found && row.CanOpen && !row.Here {
 		return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}, true)
 	}
 	return b.openAgent(id, false)
+}
+
+// rowFor is the last listed row for an agent id or a shared chat's cell id.
+func (c *appChats) rowFor(id string) (appwire.ChatRow, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if row, found := c.byAgent[id]; found {
+		return row, true
+	}
+	for _, row := range c.rows {
+		if row.Cell == id {
+			return row, true
+		}
+	}
+	return appwire.ChatRow{}, false
 }
 
 // WarmAgent is OpenAgent for a window's guess at a view (a hover's prefetch):
