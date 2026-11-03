@@ -241,3 +241,32 @@ var workstreamSchemaReads = []string{
 	"SELECT id,workstream_id,scope,factory,job,wave,milestone_id,cap_usd,ends_at,state,end_reason,granted_at,ended_at FROM workstream_goaheads LIMIT 0",
 	"SELECT workstream_id,version,updated_at,updated_by,milestones,waves FROM workstream_plans LIMIT 0",
 }
+
+// WorkstreamWakeSchemaVersion keeps admission reads tied to this additive step.
+const WorkstreamWakeSchemaVersion = 4
+
+// Schema 4 is additive; its tables can be renumbered without changing schema 3.
+const workstreamWakeSchema = `
+CREATE TABLE workstream_wakes (
+ id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id) ON DELETE CASCADE,
+ event_key TEXT NOT NULL, event_json TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('running','settled','failed')),
+ summary TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', cost_usd REAL,
+ started_at INTEGER NOT NULL, settled_at INTEGER, dismissed_at INTEGER,
+ UNIQUE(workstream_id,event_key)
+);
+CREATE INDEX workstream_wake_list ON workstream_wakes(workstream_id,started_at);
+CREATE TABLE workstream_wake_items (
+ id TEXT PRIMARY KEY, wake_id TEXT NOT NULL REFERENCES workstream_wakes(id) ON DELETE CASCADE,
+ position INTEGER NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('move','draft','page','decision','question')),
+ state TEXT NOT NULL CHECK(state IN ('applied','undone','proposed','dismissed')),
+ why TEXT NOT NULL DEFAULT '', item_json TEXT NOT NULL, undo_json TEXT,
+ note TEXT NOT NULL DEFAULT '', applied_at INTEGER, undone_at INTEGER
+);
+CREATE INDEX workstream_wake_item_list ON workstream_wake_items(wake_id,position);
+`
+
+func migrateWorkstreamWakes(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, workstreamWakeSchema+workstreamCollectionKeep)
+	return err
+}

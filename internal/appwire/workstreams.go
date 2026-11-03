@@ -46,6 +46,10 @@ var WorkstreamMethods = []string{
 	"goahead.list",
 	"goahead.grant",
 	"goahead.revoke",
+	"wake.list",
+	"wake.apply",
+	"wake.undo",
+	"wake.not_now",
 	"source.list",
 	"source.add",
 	"source.update",
@@ -230,7 +234,7 @@ type WorkstreamGoAhead struct {
 
 type WorkstreamChanged struct {
 	ID    string   `json:"id"`
-	Parts []string `json:"parts,omitempty" enum:"workstream,plan,pages,records,goaheads,jobs,sources"`
+	Parts []string `json:"parts,omitempty" enum:"workstream,plan,pages,records,goaheads,jobs,wakes,sources"`
 }
 
 type WorkstreamTaken struct {
@@ -507,6 +511,73 @@ type WorkstreamGoAheadRevokeResult struct {
 	GoAhead WorkstreamGoAhead `json:"goahead"`
 }
 
+type WorkstreamWakeEvent struct {
+	Kind    string  `json:"kind" enum:"morning,finished,merged,failed,needs_you"`
+	Factory *string `json:"factory,omitempty"`
+	Job     *int    `json:"job,omitempty"`
+	Label   *string `json:"label,omitempty"`
+}
+
+type WorkstreamWakeItem struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind" enum:"move,draft,page,decision,question"`
+	State     string    `json:"state" enum:"applied,undone,proposed,dismissed"`
+	Text      string    `json:"text"`
+	Why       *string   `json:"why,omitempty"`
+	Factory   *string   `json:"factory,omitempty"`
+	Job       *int      `json:"job,omitempty"`
+	DraftID   *string   `json:"draft_id,omitempty"`
+	Wave      *int      `json:"wave,omitempty"`
+	PageID    *string   `json:"page_id,omitempty"`
+	RecordID  *string   `json:"record_id,omitempty"`
+	BudgetUSD *float64  `json:"budget_usd,omitempty"`
+	Note      *string   `json:"note,omitempty"`
+	AppliedAt time.Time `json:"applied_at,omitzero"`
+	UndoneAt  time.Time `json:"undone_at,omitzero"`
+}
+
+type WorkstreamWakeRun struct {
+	ID           string               `json:"id"`
+	WorkstreamID string               `json:"workstream_id"`
+	Event        WorkstreamWakeEvent  `json:"event"`
+	State        string               `json:"state" enum:"running,settled,failed"`
+	StartedAt    time.Time            `json:"started_at"`
+	SettledAt    time.Time            `json:"settled_at,omitzero"`
+	CostUSD      *float64             `json:"cost_usd,omitempty"`
+	Summary      *string              `json:"summary,omitempty"`
+	Error        *string              `json:"error,omitempty"`
+	DismissedAt  time.Time            `json:"dismissed_at,omitzero"`
+	Items        []WorkstreamWakeItem `json:"items"`
+}
+
+type WorkstreamWakeListParams struct {
+	WorkstreamID string `json:"workstream_id"`
+	Limit        *int   `json:"limit,omitempty"`
+}
+type WorkstreamWakeListResult struct {
+	Wakes []WorkstreamWakeRun `json:"wakes"`
+}
+type WorkstreamWakeApplyParams struct {
+	ID     string  `json:"id"`
+	ItemID *string `json:"item_id,omitempty"`
+}
+type WorkstreamWakeApplyResult struct {
+	Wake WorkstreamWakeRun `json:"wake"`
+}
+type WorkstreamWakeUndoParams struct {
+	ID     string  `json:"id"`
+	ItemID *string `json:"item_id,omitempty"`
+}
+type WorkstreamWakeUndoResult struct {
+	Wake WorkstreamWakeRun `json:"wake"`
+}
+type WorkstreamWakeNotNowParams struct {
+	ID string `json:"id"`
+}
+type WorkstreamWakeNotNowResult struct {
+	Wake WorkstreamWakeRun `json:"wake"`
+}
+
 // Workstreamer is the optional engine half of the workstreams contract.
 // A stub implements the shapes but returns ErrWorkstreamsNotYet and serves false.
 type Workstreamer interface {
@@ -536,6 +607,10 @@ type Workstreamer interface {
 	WorkstreamGoAheadList(WorkstreamGoAheadListParams) (WorkstreamGoAheadListResult, error)
 	WorkstreamGoAheadGrant(WorkstreamGoAheadGrantParams) (WorkstreamGoAheadGrantResult, error)
 	WorkstreamGoAheadRevoke(WorkstreamGoAheadRevokeParams) (WorkstreamGoAheadRevokeResult, error)
+	WorkstreamWakeList(WorkstreamWakeListParams) (WorkstreamWakeListResult, error)
+	WorkstreamWakeApply(WorkstreamWakeApplyParams) (WorkstreamWakeApplyResult, error)
+	WorkstreamWakeUndo(WorkstreamWakeUndoParams) (WorkstreamWakeUndoResult, error)
+	WorkstreamWakeNotNow(WorkstreamWakeNotNowParams) (WorkstreamWakeNotNowResult, error)
 	WorkstreamSourceList(WorkstreamSourceListParams) (WorkstreamSourceListResult, error)
 	WorkstreamSourceAdd(WorkstreamSourceAddParams) (WorkstreamSourceAddResult, error)
 	WorkstreamSourceUpdate(WorkstreamSourceUpdateParams) (WorkstreamSourceUpdateResult, error)
@@ -597,6 +672,10 @@ func init() {
 	methods["goahead.list"] = workstreamCall(Workstreamer.WorkstreamGoAheadList)
 	methods["goahead.grant"] = workstreamCall(Workstreamer.WorkstreamGoAheadGrant)
 	methods["goahead.revoke"] = workstreamCall(Workstreamer.WorkstreamGoAheadRevoke)
+	methods["wake.list"] = workstreamCall(Workstreamer.WorkstreamWakeList)
+	methods["wake.apply"] = workstreamCall(Workstreamer.WorkstreamWakeApply)
+	methods["wake.undo"] = workstreamCall(Workstreamer.WorkstreamWakeUndo)
+	methods["wake.not_now"] = workstreamCall(Workstreamer.WorkstreamWakeNotNow)
 	methods["source.list"] = workstreamCall(Workstreamer.WorkstreamSourceList)
 	methods["source.add"] = workstreamCall(Workstreamer.WorkstreamSourceAdd)
 	methods["source.update"] = workstreamCall(Workstreamer.WorkstreamSourceUpdate)

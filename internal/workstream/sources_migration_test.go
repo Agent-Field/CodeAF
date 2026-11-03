@@ -16,8 +16,12 @@ import (
 func workstreamSourceStoredRows(t *testing.T, collections *workspace.Store) map[string][][]any {
 	t.Helper()
 	out := map[string][][]any{}
-	err := collections.Read(context.Background(), func(tx *sql.Tx, _ int) error {
-		for _, table := range []string{"collections", "memberships", "workstreams", "workstream_jobs", "workstream_pages", "workstream_page_versions", "workstream_records", "workstream_goaheads", "workstream_plans"} {
+	err := collections.Read(context.Background(), func(tx *sql.Tx, version int) error {
+		tables := []string{"collections", "memberships", "workstreams", "workstream_jobs", "workstream_pages", "workstream_page_versions", "workstream_records", "workstream_goaheads", "workstream_plans"}
+		if version >= workspace.WorkstreamWakeSchemaVersion {
+			tables = append(tables, "workstream_wakes", "workstream_wake_items")
+		}
+		for _, table := range tables {
 			rows, err := tx.Query("SELECT * FROM " + table + " ORDER BY 1,2")
 			if err != nil {
 				return err
@@ -27,6 +31,7 @@ func workstreamSourceStoredRows(t *testing.T, collections *workspace.Store) map[
 				rows.Close()
 				return err
 			}
+			out[table] = nil
 			for rows.Next() {
 				values := make([]any, len(columns))
 				pointers := make([]any, len(columns))
@@ -62,10 +67,19 @@ func workstreamSourceSchemaVersion(t *testing.T, collections *workspace.Store) i
 	return version
 }
 
-// WP-12 (i): the real source.add path reads schema three without writing, then
-// migrates atomically while retaining every earlier row except its required
+// WP-12 (i): the real source.add path reads older schemas without writing, then
+// migrates to schema five while retaining every earlier row except its required
 // workstream updated_at touch. Every existing domain read keeps its behavior.
 func TestWorkstreamSourceAddMigratesSchemaThreeAndPreservesRows(t *testing.T) {
+	workstreamSourceMigration(t, 3)
+}
+
+func TestWorkstreamSourceAddMigratesSchemaFourAndPreservesRows(t *testing.T) {
+	workstreamSourceMigration(t, 4)
+}
+
+func workstreamSourceMigration(t *testing.T, version int) {
+	t.Helper()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "collections.db")
 	collections, err := workspace.Open(path)
@@ -74,7 +88,7 @@ func TestWorkstreamSourceAddMigratesSchemaThreeAndPreservesRows(t *testing.T) {
 	}
 	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 	s := New(collections, Options{Now: func() time.Time { return now }})
-	w := createStream(t, s, "Schema three sources", workspace.Ref{Kind: workspace.FactoryJobKind, ID: "7", Factory: "f"})
+	w := createStream(t, s, "Migrated sources", workspace.Ref{Kind: workspace.FactoryJobKind, ID: "7", Factory: "f"})
 	pages, err := s.Pages(ctx, w.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +110,18 @@ func TestWorkstreamSourceAddMigratesSchemaThreeAndPreservesRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := collections.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.Exec("DROP TABLE workstream_sources; PRAGMA user_version=3")
+		query := "DROP TABLE workstream_sources; DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes; PRAGMA user_version=3"
+		if version == 4 {
+			if _, err := tx.Exec(`INSERT INTO workstream_wakes(id,workstream_id,event_key,event_json,state,summary,cost_usd,started_at,settled_at)
+ VALUES ('wake',?,'morning:2026-11-03','{"kind":"morning","at":"2026-11-03T08:00:00Z"}','settled','Review this.',0.04,100,200)`, w.ID); err != nil {
+				return err
+			}
+			if err := workstreamSaveWakeItemIn(ctx, tx, "wake", 0, WakeItem{ID: "wake-item", Kind: "decision", State: "proposed", Text: "Keep the context.", Why: "For review."}); err != nil {
+				return err
+			}
+			query = "DROP TABLE workstream_sources; PRAGMA user_version=4"
+		}
+		_, err := tx.Exec(query)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -116,14 +141,14 @@ func TestWorkstreamSourceAddMigratesSchemaThreeAndPreservesRows(t *testing.T) {
 	s = New(collections, Options{Now: func() time.Time { return now }})
 	before := workstreamSourceStoredRows(t, collections)
 	items, err := s.Sources(ctx, w.ID)
-	if err != nil || items == nil || len(items) != 0 || workstreamSourceSchemaVersion(t, collections) != 3 {
-		t.Fatalf("schema three sources: %v %v", items, err)
+	if err != nil || items == nil || len(items) != 0 || workstreamSourceSchemaVersion(t, collections) != version {
+		t.Fatalf("schema %d sources: %v %v", version, items, err)
 	}
 	if _, err := s.Get(ctx, w.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := collections.Members(ctx, w.ID); err != nil || len(got) != 2 || got[0].Factory != "f" {
-		t.Fatalf("schema three members: %+v %v", got, err)
+		t.Fatalf("schema %d members: %+v %v", version, got, err)
 	}
 	if _, err := s.Pages(ctx, w.ID); err != nil {
 		t.Fatal(err)
@@ -140,15 +165,34 @@ func TestWorkstreamSourceAddMigratesSchemaThreeAndPreservesRows(t *testing.T) {
 	if _, err := s.Plan(ctx, w.ID); err != nil {
 		t.Fatal(err)
 	}
+	wakes, err := s.Wakes(ctx, w.ID, 20)
+	if err != nil || version == 3 && len(wakes) != 0 || version == 4 && (len(wakes) != 1 || len(wakes[0].Items) != 1 || wakes[0].Items[0].ID != "wake-item") {
+		t.Fatalf("schema %d wakes: %+v %v", version, wakes, err)
+	}
+	cost, err := s.WakeSpendByAgent(ctx, w.AgentID)
+	if err != nil || version == 3 && cost != 0 || version == 4 && cost != 0.04 {
+		t.Fatalf("schema %d wake cost: %v %v", version, cost, err)
+	}
+	if changes, err := s.ExpireWakes(ctx); err != nil || len(changes) != 0 {
+		t.Fatalf("settled wakes changed: %+v %v", changes, err)
+	}
 	bytesAfter, err := os.ReadFile(path)
 	if err != nil || string(bytesBefore) != string(bytesAfter) {
-		t.Fatalf("schema three reads wrote: %v", err)
+		t.Fatalf("schema %d reads wrote: %v", version, err)
 	}
 	item, _, _, err := s.AddSource(ctx, w.ID, SourceAdd{Kind: SourceLink, URL: workstreamSourcePtr("https://example.com")})
-	if err != nil || workstreamSourceSchemaVersion(t, collections) != workspace.WorkstreamSourcesSchemaVersion {
+	if err != nil || workstreamSourceSchemaVersion(t, collections) != 5 {
 		t.Fatalf("migration: %+v %v", item, err)
 	}
 	after := workstreamSourceStoredRows(t, collections)
+	if version == 3 {
+		for _, table := range []string{"workstream_wakes", "workstream_wake_items"} {
+			if len(after[table]) != 0 {
+				t.Fatalf("migration populated %s", table)
+			}
+			delete(after, table)
+		}
+	}
 	// updated_at is the tenth column in the unchanged workstreams DDL. Source writes
 	// advance that timestamp; migration itself changes no existing value.
 	if after["workstreams"][0][9].(int64) <= before["workstreams"][0][9].(int64) {

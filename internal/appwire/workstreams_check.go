@@ -426,3 +426,15 @@ func workstreamDraftFields(item WorkstreamPlanItem) error {
 	}
 	return workstreamChecks(workstreamOptionalEnum(item.Size, "S", "M", "L"), workstreamSource(item.Source))
 }
+
+func (p WorkstreamWakeListParams) Check() error {
+	_, err := bounded("limit", p.Limit, 1, 100, 20)
+	return workstreamChecks(workstreamID(p.WorkstreamID), err)
+}
+func (p WorkstreamWakeApplyParams) Check() error {
+	return workstreamChecks(workstreamID(p.ID), workstreamOptionalID(p.ItemID))
+}
+func (p WorkstreamWakeUndoParams) Check() error {
+	return workstreamChecks(workstreamID(p.ID), workstreamOptionalID(p.ItemID))
+}
+func (p WorkstreamWakeNotNowParams) Check() error { return workstreamID(p.ID) }

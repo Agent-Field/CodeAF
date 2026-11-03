@@ -214,6 +214,7 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
+	guard.Go("app/workstream-wakes", func() { backend.watchWorkstreamWakes(backend.sweepStop) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()

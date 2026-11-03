@@ -21,6 +21,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/workspace"
 	"github.com/Agent-Field/codeaf/internal/workstream"
 )
@@ -571,6 +572,8 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 	}
 	fixture.IDs["pg_31d0"] = pages.Pages[0].ID
 	switch name {
+	case "wake.list", "wake.apply", "wake.undo", "wake.not_now":
+		fixture.wake(t, name)
 	case "workstream.reopen":
 		if _, err := backend.WorkstreamMarkDone(appwire.WorkstreamMarkDoneParams{ID: made.Workstream.ID}); err != nil {
 			t.Fatal(err)
@@ -841,7 +844,8 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		"page.list", "page.get", "page.save", "page.create", "page.update", "page.move",
 		"page.delete", "page.history", "page.restore", "record.list", "record.propose",
 		"record.keep", "record.drop", "record.supersede", "goahead.list", "goahead.grant",
-		"goahead.revoke", "source.list", "source.add", "source.update", "source.remove", "collections.add", "workstream.changed",
+		"goahead.revoke", "wake.list", "wake.apply", "wake.undo", "wake.not_now",
+		"source.list", "source.add", "source.update", "source.remove", "collections.add", "workstream.changed",
 	}
 	errorCases := []workstreamWireErrorCase{
 		{Name: "bad_params", Method: "workstream.get", Code: "bad_params"},
@@ -1115,6 +1119,12 @@ func workstreamWireKeptGoAhead(t *testing.T, connection *workstreamWireConnectio
 
 func workstreamWireCoverage(t *testing.T, contract *workstreamWireContract, files map[string]workstreamWireExamples, cases []string, errorCases []workstreamWireErrorCase) {
 	t.Helper()
+	if len(contract.Methods) != 33 {
+		t.Errorf("v0.4 has %d methods, want 33", len(contract.Methods))
+	}
+	if len(contract.Events) != 1 || contract.Events[0].Event != appwire.EventWorkstreamChanged {
+		t.Errorf("v0.4 events: want only workstream.changed, got %v", contract.Events)
+	}
 	if !reflect.DeepEqual(contract.Methods, appwire.WorkstreamMethods) {
 		t.Errorf("contract methods/order %v differ from appwire.WorkstreamMethods %v", contract.Methods, appwire.WorkstreamMethods)
 	}
@@ -1455,4 +1465,50 @@ func workstreamWireHoldWriter(t *testing.T, backend *appBackend) func() {
 		t.Fatal("writer did not take the lock")
 	}
 	return release
+}
+
+// WP-11 (j): every wake example uses a fake turn and the real durable action path.
+func (fixture *workstreamWireFixture) wake(t *testing.T, name string) {
+	t.Helper()
+	b := fixture.Backend
+	s, err := b.workstreamStore(false)
+	if err != nil || s == nil {
+		t.Fatal(err)
+	}
+	if name == "wake.list" {
+		small := "small"
+		if _, _, err := s.Update(context.Background(), fixture.Stream.ID, workstream.Patch{Autonomy: &small}); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = s.SetPlan(context.Background(), fixture.Stream.ID, 0, nil, []workstream.Wave{{N: 1, Items: []workstream.PlanItem{{Kind: "job", Factory: "f_local", Job: 1107}}}, {N: 3, Items: []workstream.PlanItem{}}}, workstream.Attribution{})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	b.workstreams.wakeTurn = func(context.Context, session.WorkstreamWakeAsk) (session.WorkstreamWakeAnswer, error) {
+		text := `{"summary":"Review the rollout.","items":[{"kind":"decision","text":"Roll out after review."}]}`
+		if name == "wake.list" {
+			text = `{"summary":"Applied: moved it to wave 3; updated Where it stands. Keep the rollout decision and consider a small follow-up job.","items":[{"kind":"move","factory":"f_local","job":1107,"to_wave":3},{"kind":"decision","text":"Roll out after review.","why":"The merge is ready for review."},{"kind":"draft","title":"Check rollout","budget_usd":3,"wave":99}]}`
+		}
+		return session.WorkstreamWakeAnswer{Text: text, CostUSD: workstreamPtr(.04), Model: "fake"}, nil
+	}
+	var task workstreamWakeTask
+	b.workstreams.wakeDispatch = func(v workstreamWakeTask) { task = v }
+	id, woke := b.WorkstreamJobEvent(workstreamJobEvent{Factory: "f_local", Job: 1107, Kind: "merged", ID: "wire-contract", At: fixture.Now, Label: "api#1102 merged"})
+	if !woke {
+		t.Fatal("seed wake was refused")
+	}
+	b.workstreamRunWake(context.Background(), task)
+	fixture.IDs["wake_11"] = id
+	runs, err := s.Wakes(context.Background(), fixture.Stream.ID, 20)
+	if err != nil || len(runs) != 1 || len(runs[0].Items) == 0 {
+		t.Fatalf("seed wake: %+v %v", runs, err)
+	}
+	item := runs[0].Items[0]
+	fixture.IDs["wi_decision"] = item.ID
+	if name == "wake.undo" {
+		if _, _, err := s.ActOnWake(context.Background(), id, item.ID, "apply"); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

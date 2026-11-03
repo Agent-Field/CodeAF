@@ -25,6 +25,10 @@
     "goahead.list",
     "goahead.grant",
     "goahead.revoke",
+    "wake.list",
+    "wake.apply",
+    "wake.undo",
+    "wake.not_now",
     "source.list",
     "source.add",
     "source.update",
@@ -160,7 +164,33 @@
       "records",
       "goaheads",
       "jobs",
+      "wakes",
       "sources"
+    ],
+    "WorkstreamWakeKind": [
+      "morning",
+      "finished",
+      "merged",
+      "failed",
+      "needs_you"
+    ],
+    "WorkstreamWakeRunState": [
+      "running",
+      "settled",
+      "failed"
+    ],
+    "WorkstreamWakeItemKind": [
+      "move",
+      "draft",
+      "page",
+      "decision",
+      "question"
+    ],
+    "WorkstreamWakeItemState": [
+      "applied",
+      "undone",
+      "proposed",
+      "dismissed"
     ],
     "WorkstreamSourceItemKind": [
       "file",
@@ -787,6 +817,132 @@
         "required": false
       }
     },
+    "WorkstreamWakeEvent": {
+      "kind": {
+        "type": "WorkstreamWakeKind",
+        "required": true
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "job": {
+        "type": "integer",
+        "required": false
+      },
+      "label": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamWakeItem": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamWakeItemKind",
+        "required": true
+      },
+      "state": {
+        "type": "WorkstreamWakeItemState",
+        "required": true
+      },
+      "text": {
+        "type": "string",
+        "required": true
+      },
+      "why": {
+        "type": "string",
+        "required": false
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "job": {
+        "type": "integer",
+        "required": false
+      },
+      "draft_id": {
+        "type": "string",
+        "required": false
+      },
+      "wave": {
+        "type": "integer",
+        "required": false
+      },
+      "page_id": {
+        "type": "string",
+        "required": false
+      },
+      "record_id": {
+        "type": "string",
+        "required": false
+      },
+      "budget_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "note": {
+        "type": "string",
+        "required": false
+      },
+      "applied_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "undone_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      }
+    },
+    "WorkstreamWakeRun": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "event": {
+        "type": "WorkstreamWakeEvent",
+        "required": true
+      },
+      "state": {
+        "type": "WorkstreamWakeRunState",
+        "required": true
+      },
+      "started_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "settled_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "cost_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "summary": {
+        "type": "string",
+        "required": false
+      },
+      "error": {
+        "type": "string",
+        "required": false
+      },
+      "dismissed_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "items": {
+        "type": "WorkstreamWakeItem[]",
+        "required": true
+      }
+    },
     "WorkstreamKeptRef": {
       "kind": {
         "type": "WorkstreamKeptKind",
@@ -1409,6 +1565,66 @@
     "WorkstreamGoAheadRevokeResult": {
       "goahead": {
         "type": "WorkstreamGoAhead",
+        "required": true
+      }
+    },
+    "WorkstreamWakeListParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "limit": {
+        "type": "integer",
+        "required": false
+      }
+    },
+    "WorkstreamWakeListResult": {
+      "wakes": {
+        "type": "WorkstreamWakeRun[]",
+        "required": true
+      }
+    },
+    "WorkstreamWakeApplyParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "item_id": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamWakeApplyResult": {
+      "wake": {
+        "type": "WorkstreamWakeRun",
+        "required": true
+      }
+    },
+    "WorkstreamWakeUndoParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "item_id": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamWakeUndoResult": {
+      "wake": {
+        "type": "WorkstreamWakeRun",
+        "required": true
+      }
+    },
+    "WorkstreamWakeNotNowParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamWakeNotNowResult": {
+      "wake": {
+        "type": "WorkstreamWakeRun",
         "required": true
       }
     },

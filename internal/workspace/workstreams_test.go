@@ -90,7 +90,7 @@ func TestPartAWorkstreamMembershipOwnershipIsEnforcedInSQLite(t *testing.T) {
 
 // Part A (a), WP-12 (i): schema 1 upgrades directly to the current schema,
 // preserving unknown timestamps and checking a job reference's factory.
-func TestPartASchemaOneMigratesStraightToFour(t *testing.T) {
+func TestPartASchemaOneMigratesStraightToFive(t *testing.T) {
 	s := openTestStore(t, writeLegacyStore(t))
 	ctx := context.Background()
 	if err := s.Add(ctx, "aaaa", Ref{Kind: FactoryJobKind, ID: "11", Factory: "f"}); err != nil {
@@ -100,7 +100,7 @@ func TestPartASchemaOneMigratesStraightToFour(t *testing.T) {
 		t.Fatal("did not migrate directly to the current schema")
 	}
 	var count int
-	if err := s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name LIKE 'workstream%'").Scan(&count); err != nil || count != 8 {
+	if err := s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name LIKE 'workstream%'").Scan(&count); err != nil || count != 10 {
 		t.Fatalf("workstream tables: %d %v", count, err)
 	}
 	var created, added int64

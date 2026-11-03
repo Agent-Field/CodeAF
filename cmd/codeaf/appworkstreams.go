@@ -46,6 +46,12 @@ type appWorkstreams struct {
 	flights      map[string]chan struct{}
 	briefMu      sync.Mutex
 	briefs       map[string]session.WorkstreamBrief
+	wakeTurn     func(context.Context, session.WorkstreamWakeAsk) (session.WorkstreamWakeAnswer, error)
+	wakeDispatch func(workstreamWakeTask)
+	wakeMu       sync.Mutex
+	wakeQueue    []workstreamWakeTask
+	wakeSignal   chan struct{}
+	wakeCancel   context.CancelFunc
 }
 
 type workstreamQueueRead struct {
@@ -957,6 +963,26 @@ func (b *appBackend) workstreamObserved(s *workstream.Store, w workstream.Workst
 }
 
 func (b *appBackend) workstreamSpend(id string) *float64 {
+	spend := b.workstreamAgentSpend(id)
+	if spend == nil {
+		return nil
+	}
+	s, err := b.workstreamStore(false)
+	if err != nil {
+		return nil
+	}
+	if s == nil {
+		return spend
+	}
+	wakes, err := s.WakeSpendByAgent(context.Background(), id)
+	if err != nil {
+		return nil
+	}
+	total := *spend + wakes
+	return &total
+}
+
+func (b *appBackend) workstreamAgentSpend(id string) *float64 {
 	if id == "" {
 		return nil
 	}

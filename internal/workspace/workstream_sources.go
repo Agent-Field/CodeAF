@@ -6,7 +6,7 @@ import (
 )
 
 // WorkstreamSourcesSchemaVersion is the first schema with source pointers.
-const WorkstreamSourcesSchemaVersion = 4
+const WorkstreamSourcesSchemaVersion = 5
 
 // Sources are pointers with their own lifetime, separate from memberships.
 const workstreamSourcesSchema = `
