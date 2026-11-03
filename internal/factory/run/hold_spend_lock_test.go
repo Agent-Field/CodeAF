@@ -3,10 +3,11 @@ package run
 import (
 	"context"
 	"os"
-	"sync"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,12 +129,20 @@ func TestHoldPersistsBeforeStepBoundary(t *testing.T) {
 			c := &loopCtl{id: id, ctx: ctx, cancel: cancel, roundCancel: roundCancel}
 			lp.ctls[id] = c
 			atSave, save := make(chan struct{}), make(chan struct{})
+			var savingHold atomic.Bool
+			// Hold reads the item before setPaused takes pauseMu. Arm only
+			// when setPaused samples its clock, so that read cannot block here.
+			r.opts.Clock = func() time.Time {
+				savingHold.Store(true)
+				return time.Now()
+			}
 			var firstSave sync.Once
 			st.SetOutputPolicy(func() (int, int) {
+				if !savingHold.Load() {
+					return 0, 0
+				}
 				// A later write in the same hold passes through; only the first is held.
 				firstSave.Do(func() {
-					stack := make([]byte, 64<<10)
-					t.Logf("[DEBUG-c52-first-hook]\n%s", stack[:runtime.Stack(stack, false)])
 					close(atSave)
 					<-save
 					if failWrite {
