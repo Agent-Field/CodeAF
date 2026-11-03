@@ -702,6 +702,8 @@ type Item struct {
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
 	ChatSpent float64 `json:",omitempty"`
+	// MemorySpent is the memory portion already included in the job total.
+	MemorySpent float64 `json:",omitempty"`
 	// ChatModels is the model split of ChatSpent. The next start carries it
 	// onto the run with the dollars and clears it (run's freshStream).
 	ChatModels []ModelUse `json:",omitempty"`

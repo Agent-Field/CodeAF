@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factorythread "github.com/Agent-Field/codeaf/internal/factory/thread"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // Options is one machine's worker against one factory.
@@ -291,18 +292,20 @@ type job struct {
 	id    int
 	sent  factory.Item // the mirror as last reported
 
-	mu           sync.Mutex
-	replying     bool
-	replyCancel  context.CancelFunc
-	accepted     map[string]bool
-	acknowledged map[string]bool
-	thread       []factory.Message
-	pending      *pendingDelivery
-	blocked      string
-	withdrawn    bool
-	control      *client.PreparedWorkerReport
-	controlTries int
-	controlSent  bool
+	mu            sync.Mutex
+	replying      bool
+	replyCancel   context.CancelFunc
+	accepted      map[string]bool
+	acknowledged  map[string]bool
+	thread        []factory.Message
+	pending       *pendingDelivery
+	blocked       string
+	withdrawn     bool
+	control       *client.PreparedWorkerReport
+	controlTries  int
+	controlSent   bool
+	spendReport   *client.PreparedWorkerReport
+	spendBaseline float64
 }
 
 // work runs one pulled job to its end, or until the lease is gone.
@@ -339,6 +342,25 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		})
 		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
 	}
+	// Establish an accounting acknowledgment before the first paid call.
+	key, err := deliveryKey()
+	if err != nil {
+		j.refuse(ctx, err)
+		return
+	}
+	anchor, err := client.PrepareWorkerReport(api.WorkerReport{}, key)
+	if err == nil {
+		err = j.sendRequest(ctx, anchor)
+	}
+	if err != nil {
+		j.refuse(ctx, err)
+		return
+	}
+	j.spendReport = &anchor
+	if it.Stream != nil {
+		j.spendBaseline = it.Stream.Spent
+	}
+	defer j.settleAccounting(ctx)
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
@@ -689,6 +711,43 @@ func final(it factory.Item) api.WorkerDone {
 
 func gone(err error) bool {
 	return errors.Is(err, client.ErrLeaseGone) || errors.Is(err, client.ErrNotAttached)
+}
+
+// A revoked lease cannot carry execution reports. Its acknowledged request can
+// still reconcile accounting alone through the existing receipt door.
+func (j *job) settleAccounting(ctx context.Context) {
+	if j.spendReport == nil {
+		return
+	}
+	// Quit can arrive before or during settlement. Keep its existing receipt
+	// door alive for five seconds after cancellation, before mirror cleanup.
+	parent := ctx
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancel()
+	stop := context.AfterFunc(parent, func() { time.AfterFunc(StopWait, cancel) })
+	defer stop()
+	deadline := time.Now().Add(provider.ReceiptWait + time.Second)
+	for j.o.Runner.Running(j.id) && time.Now().Before(deadline) {
+		if !pause(ctx, 20*time.Millisecond) {
+			return
+		}
+	}
+	cur, err := j.o.Mirror.Get(j.id)
+	if err != nil || cur.Stream == nil {
+		return
+	}
+	additional := max(0, cur.Stream.Spent-j.spendBaseline)
+	if additional == 0 {
+		return
+	}
+	for attempt := range deliveryRecoveryLimit {
+		requestCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		_, err := j.w.Recover(requestCtx, j.id, j.lease, *j.spendReport, additional)
+		cancel()
+		if err == nil || !reportRetryable(err) || !pause(ctx, time.Duration(attempt+1)*time.Second) {
+			return
+		}
+	}
 }
 
 func (j *job) lostLease(err error) bool {

@@ -1109,6 +1109,18 @@ time. `search.all` retains its existing `bad_params` error for an empty query.
 | `settings.models.set` | `in.TaskModelsPatchWire` | `TaskModelsResult` |
 | `settings.set` | `in.SettingsPatchWire` | `SettingsResult` |
 
+An engine whose hello carries `settings.memory` includes `memory` in Settings
+(`settings.get`, `settings.set`, and `settings.changed`):
+`{enabled: bool, source: "default"|"saved", cost_note: string}`. No saved choice
+means off with source `default`. A saved word (`on`/`off`) or boolean is respected.
+`settings.set` takes optional `memory_enabled: bool`; any non-boolean, including
+null, is `bad_params`. Its reply and `settings.changed` carry the updated Settings.
+The switch applies live at the next memory step. Off prevents automatic learning
+calls; saved knowledge and explicit keeps remain available. Calls already in
+flight finish and are billed. Terminal Build saves an explicit on.
+`cost_note` is the shared `config.MemoryCostNote` disclosure, including the example
+of one small DeepSeek V4.1 Flash job at 39% ($0.0124 of $0.0315).
+
 An engine whose hello carries the feature `settings.models.auxiliary` adds a
 fourth role to the task models: `roles.auxiliary` in `settings.models.get` (and
 in `settings.changed`'s `task_models`) is `{pin, warning, eligible_count}` like

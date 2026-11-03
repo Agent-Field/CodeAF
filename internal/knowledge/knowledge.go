@@ -28,6 +28,7 @@ type Source struct {
 	TS      string `json:"ts"`
 	Text    string `json:"text"`
 	Kind    string `json:"kind"`
+	Job     bool   `json:"job,omitempty"`
 }
 type Link struct {
 	ID     string `json:"id"`
@@ -97,7 +98,10 @@ type Result struct {
 	Page    Page
 	Snippet string
 }
-type Vault struct{ root, profile string }
+type Vault struct {
+	root, profile string
+	calls         func(context.Context) (context.Context, error)
+}
 
 func hash(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
 func Open(profile string) *Vault {
