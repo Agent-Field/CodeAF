@@ -5,6 +5,8 @@ import "time"
 // WorkerReportReceipt records only an opaque request digest, never credentials,
 // payloads or machine-local paths. It is not writable through worker reports.
 type WorkerReportReceipt struct {
+	// Archived means this receipt belongs to work cleared from the job.
+	Archived       bool `json:",omitempty"`
 	Digest         string
 	Lease          string `json:",omitempty"`
 	At             time.Time

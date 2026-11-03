@@ -58,6 +58,9 @@ func ClearJobRun(it *Item) {
 	if it.Stream != nil {
 		it.SpentBefore += it.Stream.Spent
 	}
+	for i := range it.ReportReceipts {
+		it.ReportReceipts[i].Archived = true
+	}
 	it.Stream = nil
 	it.ChatSpent = 0
 	it.ChatModels = nil
