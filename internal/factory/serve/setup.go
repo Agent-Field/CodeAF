@@ -327,6 +327,7 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 			available[i].OpenIssues = &n
 		}
 	}
+	factory.AttachCheckouts(available, func(repo string) string { return dirs[strings.ToLower(repo)] })
 	if err := h.config.Store.SetAvailableRepos(store.AvailableRepos{Identity: strings.ToLower(user.Login), Credential: fmt.Sprintf("%x", sha256.Sum256([]byte(token))), ReadAt: h.clock().UTC(), Repos: available}); err != nil {
 		return err
 	}

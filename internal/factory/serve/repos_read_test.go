@@ -455,3 +455,68 @@ func TestReposConcurrentFirstReadsShareOneWalk(t *testing.T) {
 		t.Fatalf("walks=%d", f.calls.Load())
 	}
 }
+
+func TestReposIdentityFailureUsesOnlySameCredentialStoredList(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		err                error
+		token, login       string
+		stored, wantStored bool
+	}{
+		{name: "network", err: errors.New("connection reset"), stored: true, wantStored: true},
+		{name: "server", err: &forge.APIError{StatusCode: 503}, stored: true, wantStored: true},
+		{name: "wrapped server", err: fmt.Errorf("identity: %w", githubStatusError(502)), stored: true, wantStored: true},
+		{name: "refused", err: githubStatusError(401), stored: true},
+		{name: "revoked", err: fmt.Errorf("identity: %w", &forge.APIError{StatusCode: 401}), stored: true},
+		{name: "forbidden", err: &forge.APIError{StatusCode: 403}, stored: true},
+		{name: "expired", err: fmt.Errorf("identity: %w", errGitHubExpired), stored: true},
+		{name: "lost", stored: true, token: ""},
+		{name: "changed token", err: errors.New("connection reset"), token: "other-token", stored: true},
+		{name: "changed identity", err: errors.New("connection reset"), login: "bob", stored: true},
+		{name: "nothing stored", err: errors.New("connection reset")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReposRig(t)
+			if tc.stored {
+				if w := f.read(); w.Code != 200 {
+					t.Fatal(w.Body)
+				}
+			}
+			old := f.saved(t)
+			if tc.token != "" || tc.name == "lost" {
+				f.token.Store(tc.token)
+			}
+			f.h.seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: tc.login}, tc.err }
+			w := f.read()
+			var got struct {
+				Available []Repository `json:"available"`
+				ReadAt    time.Time    `json:"available_read_at"`
+			}
+			if tc.wantStored {
+				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || len(got.Available) != 1 || got.Available[0].Full != "acme/api" || !got.ReadAt.Equal(old.ReadAt) {
+					t.Fatalf("stored read: %d %s", w.Code, w.Body)
+				}
+			} else if w.Code != 500 || strings.Contains(w.Body.String(), "acme/api") {
+				t.Fatalf("unsafe fallback: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+}
+
+func TestReposTransientIdentityFailureCannotOverrideRefusedDiscovery(t *testing.T) {
+	f := newReposRig(t)
+	if w := f.read(); w.Code != 200 {
+		t.Fatal(w.Body)
+	}
+	f.walk = func(context.Context) ([]factory.RepoInfo, error) { return nil, githubStatusError(401) }
+	f.now.Add(int64(6 * time.Minute))
+	f.read()
+	awaitRepos(t, f.h)
+	f.h.seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+		return factory.GitHubLink{}, errors.New("connection reset")
+	}
+	w := f.read()
+	if w.Code != 500 || strings.Contains(w.Body.String(), "acme/api") {
+		t.Fatalf("refused sign-in: %d %s", w.Code, w.Body)
+	}
+}

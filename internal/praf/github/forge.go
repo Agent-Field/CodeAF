@@ -15,6 +15,7 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -637,8 +638,10 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 		}
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Pushed.After(out[b].Pushed) })
+	rawPages, _ := json.Marshal(out)
+	revision := fmt.Sprintf("%x", sha256.Sum256(rawPages))
 	countsKey := keyOf(c.token, c.baseURL+"/user/repos#counts")
-	if previous, ok := cache.get(countsKey); ok && allUnchanged {
+	if previous, ok := cache.get(countsKey); ok && allUnchanged && previous.etag == revision {
 		var kept []RepoInfo
 		if json.Unmarshal(previous.body, &kept) == nil {
 			return kept, nil
@@ -646,7 +649,7 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 	}
 	c.fillOpenIssues(ctx, out)
 	if raw, err := json.Marshal(out); err == nil && len(raw) <= readCacheBody {
-		cache.put(countsKey, readRow{body: raw})
+		cache.put(countsKey, readRow{body: raw, etag: revision})
 	}
 	return out, nil
 }

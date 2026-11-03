@@ -30,7 +30,7 @@ import (
 //	GET /repos/{o}/{r}/pulls/{n}/files         first page of 100, for at most 20 of them
 //
 // GitHub cannot filter pull requests by path, so the changed files are read
-// per pull request. Files already kept for the same head SHA need no request.
+// per pull request. Files already kept for the same head and base SHAs need no request.
 // The factory's own branches (api.PipelinePRBranchPrefix) are
 // read first, then the rest by recency. When a bound may have hidden a pull
 // request (a full page, more candidates than reads, or a files page that is
@@ -51,6 +51,9 @@ type githubPull struct {
 	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
+	Base struct {
+		SHA string `json:"sha"`
+	} `json:"base"`
 	Head struct {
 		Ref  string `json:"ref"`
 		SHA  string `json:"sha"`
@@ -117,7 +120,7 @@ func (h *Handler) pipelinePRs(w http.ResponseWriter, r *http.Request) {
 	if len(order) > pipelinePRsMaxChecks {
 		order = order[:pipelinePRsMaxChecks]
 	}
-	checked := f.checkFiles(open, order)
+	checked := f.checkFiles(pulls, order)
 	out := api.PipelinePRs{Factory: h.factory, Repo: owner + "/" + repo, PRs: []api.PipelineOpenPR{}, CheckedAt: time.Now().UTC()}
 	for _, i := range order {
 		if c := checked[i]; c.err != nil || c.status != 200 {
@@ -169,8 +172,8 @@ func checkOrder(open []api.PipelineOpenPR) []int {
 
 // checkFiles reads the first page of changed files of each pull request at the
 // given positions, a few at a time. Positions not read stay zero.
-func (f *pipelinePRFlow) checkFiles(open []api.PipelineOpenPR, order []int) []pullChecked {
-	out := make([]pullChecked, len(open))
+func (f *pipelinePRFlow) checkFiles(pulls []githubPull, order []int) []pullChecked {
+	out := make([]pullChecked, len(pulls))
 	slots := make(chan struct{}, pipelinePRsParallel)
 	var wg sync.WaitGroup
 	for _, i := range order {
@@ -182,9 +185,13 @@ func (f *pipelinePRFlow) checkFiles(open []api.PipelineOpenPR, order []int) []pu
 				Filename         string `json:"filename"`
 				PreviousFilename string `json:"previous_filename"`
 			}
-			path := f.repoAt + "/pulls/" + strconv.Itoa(open[i].Number) + "/files?per_page=" + strconv.Itoa(pipelinePRsPage)
+			path := f.repoAt + "/pulls/" + strconv.Itoa(pulls[i].Number) + "/files?per_page=" + strconv.Itoa(pipelinePRsPage)
+			revision := ""
+			if pulls[i].Base.SHA != "" {
+				revision = pulls[i].Head.SHA + ":" + pulls[i].Base.SHA
+			}
 			c := &out[i]
-			if c.status, c.err = f.h.githubRESTRevision(f.ctx, f.token, http.MethodGet, path, nil, &files, pipelinePRReadLimit, open[i].HeadSHA); c.err != nil || c.status != 200 {
+			if c.status, c.err = f.h.githubRESTRevision(f.ctx, f.token, http.MethodGet, path, nil, &files, pipelinePRReadLimit, revision); c.err != nil || c.status != 200 {
 				return
 			}
 			c.full = len(files) >= pipelinePRsPage

@@ -19,15 +19,18 @@ refresh interval.
 
 A saved list belongs to the GitHub identity and credential that read it. A
 different connection must read its own list. The existing GitHub identity and
-caller-access checks still apply, and a refused sign-in fails the read.
+caller-access checks still apply. A transient identity-lookup failure can reuse
+the saved list only with the same credential; a refused sign-in fails the read.
 Turning a repository on or off changes `watched` immediately, including a newly
 watched repository absent from the saved available list. A repository removed
 on GitHub leaves the available list after the next successful discovery.
 
-Discovery uses conditional GitHub reads. If every repository page answers 304,
-it keeps the previous issue counts without another GraphQL count request. Open
-pipeline pull requests reuse their files for the same head SHA in the bounded
-process cache. A new head SHA reads the files again.
+Discovery preserves registered checkout folders and uses conditional GitHub reads.
+If every repository page answers 304 and matches the last complete discovery,
+it keeps the previous issue counts without another GraphQL count request. A
+partial failed walk cannot restore removed repositories on a retry. Open pipeline
+pull requests reuse their files for the same head SHA and base SHA in the bounded
+process cache. A change to either SHA reads the files again.
 
 ## save a job note after steps finish — who reads it and PR comments
 

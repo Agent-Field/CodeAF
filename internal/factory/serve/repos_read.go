@@ -15,6 +15,7 @@ import (
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 const (
@@ -60,15 +61,14 @@ func (h *Handler) readRepos(ctx context.Context) ([]string, []factory.RepoInfo, 
 	}
 	link, err := h.seam.GitHub(ctx)
 	if err != nil {
-		return nil, nil, time.Time{}, err
+		return h.reposAfterIdentityFailure(ctx, link.Login, err)
 	}
 	key, err := h.reposCredential(ctx)
 	if err != nil {
 		return nil, nil, time.Time{}, err
 	}
 	if key == "" || !link.Connected() || link.Login == "" {
-		watched, repos, err := h.seam.Repos(ctx)
-		return watched, repos, time.Time{}, err
+		return nil, nil, time.Time{}, errGitHubExpired
 	}
 	identity := strings.ToLower(link.Login)
 	for {
@@ -94,8 +94,7 @@ func (h *Handler) readRepos(ctx context.Context) ([]string, []factory.RepoInfo, 
 		h.reposRead.mu.Unlock()
 		if known {
 			watched, err := h.config.Store.Repos()
-			var status githubStatusError
-			if err == nil && readErr != nil && (factorygithub.TroubleWords(readErr) == "token refused" || errors.Is(readErr, errGitHubExpired) || (errors.As(readErr, &status) && int(status) == http.StatusUnauthorized)) {
+			if err == nil && reposSignInRefused(readErr) {
 				err = readErr
 			}
 			return watched, saved.Repos, saved.ReadAt, err
@@ -150,4 +149,52 @@ func (h *Handler) startReposRead(identity, key string) {
 			err = h.config.Store.SetAvailableRepos(store.AvailableRepos{Identity: identity, Credential: key, ReadAt: h.clock().UTC(), Repos: repos})
 		}
 	})
+}
+
+// reposAfterIdentityFailure trusts only the credential that established the saved
+// identity. It cannot start a discovery until GitHub verifies that identity again.
+func (h *Handler) reposAfterIdentityFailure(ctx context.Context, login string, failure error) ([]string, []factory.RepoInfo, time.Time, error) {
+	if !reposIdentityRetryable(failure) {
+		return nil, nil, time.Time{}, failure
+	}
+	key, err := h.reposCredential(ctx)
+	if err != nil {
+		return nil, nil, time.Time{}, err
+	}
+	h.reposRead.mu.Lock()
+	readErr := h.reposRead.err
+	sameCredential := h.reposRead.key == key
+	h.reposRead.mu.Unlock()
+	if sameCredential && reposSignInRefused(readErr) {
+		return nil, nil, time.Time{}, readErr
+	}
+	saved, err := h.config.Store.AvailableRepos()
+	if err != nil {
+		return nil, nil, time.Time{}, err
+	}
+	if key == "" || saved.Credential != key || saved.Identity == "" || saved.ReadAt.IsZero() || (login != "" && !strings.EqualFold(login, saved.Identity)) {
+		return nil, nil, time.Time{}, failure
+	}
+	watched, err := h.config.Store.Repos()
+	return watched, saved.Repos, saved.ReadAt, err
+}
+
+func reposIdentityRetryable(err error) bool {
+	if errors.Is(err, errGitHubExpired) || errors.Is(err, errSessionEnded) {
+		return false
+	}
+	var upstream *forge.APIError
+	if errors.As(err, &upstream) {
+		return upstream.StatusCode >= 500 || upstream.StatusCode == http.StatusTooManyRequests
+	}
+	var status githubStatusError
+	if errors.As(err, &status) {
+		return status >= 500 || status == http.StatusTooManyRequests
+	}
+	return true
+}
+
+func reposSignInRefused(err error) bool {
+	var status githubStatusError
+	return factorygithub.TroubleWords(err) == "token refused" || errors.Is(err, errGitHubExpired) || (errors.As(err, &status) && status == http.StatusUnauthorized)
 }

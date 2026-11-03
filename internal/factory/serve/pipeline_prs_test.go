@@ -26,10 +26,11 @@ type prsGitHub struct {
 	auth  []string
 	// open is the default branch's open pull requests, newest first; files is
 	// each one's changed paths.
-	sha    string
-	open   []prsPull
-	files  map[int][]string
-	status map[string]int // "repo", "pulls" or "files" -> forced status
+	sha     string
+	baseSHA string
+	open    []prsPull
+	files   map[int][]string
+	status  map[string]int // "repo", "pulls" or "files" -> forced status
 }
 
 type prsPull struct {
@@ -39,7 +40,7 @@ type prsPull struct {
 }
 
 func newPRsGitHub(t *testing.T, open ...prsPull) *prsGitHub {
-	return &prsGitHub{t: t, open: open, files: map[int][]string{}, status: map[string]int{}}
+	return &prsGitHub{t: t, baseSHA: strings.Repeat("2", 40), open: open, files: map[int][]string{}, status: map[string]int{}}
 }
 
 func (g *prsGitHub) transport(next http.RoundTripper) http.RoundTripper {
@@ -89,7 +90,7 @@ func (g *prsGitHub) transport(next http.RoundTripper) http.RoundTripper {
 				out = append(out, map[string]any{"number": pr.number, "html_url": fmt.Sprintf("https://github.com/acme/api/pull/%d", pr.number),
 					"title": fmt.Sprintf("PR %d", pr.number), "draft": pr.draft, "user": map[string]any{"login": "mona"},
 					"created_at": "2026-10-30T10:00:00Z", "updated_at": "2026-10-31T11:00:00Z",
-					"head": head, "base": map[string]any{"ref": "main"}})
+					"head": head, "base": map[string]any{"ref": "main", "sha": g.baseSHA}})
 			}
 			data, _ := json.Marshal(out)
 			return reply(200, string(data)), nil
@@ -250,7 +251,7 @@ func TestPipelinePRsFailuresAreTypedAndReadOnly(t *testing.T) {
 	}
 }
 
-func TestPipelinePRsFilesNotRereadForSameHeadAndRereadForNewHead(t *testing.T) {
+func TestPipelinePRsFilesCachedByHeadAndBase(t *testing.T) {
 	g := newPRsGitHub(t, prsPull{number: 7, branch: "feature"})
 	g.files[7] = []string{factory.PipelineFile}
 	h := soloPRs(t, g)
@@ -282,5 +283,13 @@ func TestPipelinePRsFilesNotRereadForSameHeadAndRereadForNewHead(t *testing.T) {
 	out := readPRs(t, sourceRequest(h, "", "GET", prsPath))
 	if len(out.PRs) != 0 || count() != 2 {
 		t.Fatalf("new head: PRs=%+v files=%d", out.PRs, count())
+	}
+	g.mu.Lock()
+	g.baseSHA = strings.Repeat("5", 40)
+	g.files[7] = []string{factory.PipelineFile}
+	g.mu.Unlock()
+	out = readPRs(t, sourceRequest(h, "", "GET", prsPath))
+	if len(out.PRs) != 1 || count() != 3 {
+		t.Fatalf("new base: PRs=%+v files=%d", out.PRs, count())
 	}
 }

@@ -77,3 +77,58 @@ func checkReposConditionalCounts(t *testing.T, change bool) {
 		t.Fatalf("REST calls=%d want 4", got)
 	}
 }
+
+func TestReposPartialFailureThen304KeepsCurrentPages(t *testing.T) {
+	phase := 0
+	_, srv := newCountingForge(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/graphql" {
+			_, _ = w.Write([]byte(`{"data":{}}`))
+			return
+		}
+		page := r.URL.Query().Get("page")
+		if phase == 1 && page == "2" {
+			w.WriteHeader(503)
+			return
+		}
+		tag := `"old"`
+		if phase > 0 && page == "1" {
+			tag = `"new"`
+		}
+		w.Header().Set("ETag", tag)
+		if r.Header.Get("If-None-Match") == tag {
+			w.WriteHeader(304)
+			return
+		}
+		rows := []map[string]any{}
+		start, end := 0, 100
+		if page == "2" {
+			start, end = 100, 101
+		}
+		for i := start; i < end; i++ {
+			name := fmt.Sprintf("r%d", i)
+			if phase > 0 && i == 0 {
+				name = "replacement"
+			}
+			rows = append(rows, map[string]any{"full_name": "acme/" + name, "name": name, "owner": map[string]string{"login": "acme"}})
+		}
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	c := idleClient(t, srv)
+	if _, err := c.Repos(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	phase = 1
+	if _, err := c.Repos(context.Background()); err == nil {
+		t.Fatal("partial walk succeeded")
+	}
+	phase = 2
+	for range 2 {
+		repos, err := c.Repos(context.Background())
+		if err != nil || len(repos) != 101 {
+			t.Fatalf("retry: len=%d err=%v", len(repos), err)
+		}
+		if repos[0].Full != "acme/replacement" {
+			t.Fatalf("removed repository returned: %s", repos[0].Full)
+		}
+	}
+}
