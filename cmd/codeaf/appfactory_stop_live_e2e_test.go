@@ -327,7 +327,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}
 	question := saved.Asking.Question
 	profile := w.backend.localProfile()
-	room, err := factoryItemTeam(profile, saved)
+	room, err := stopLiveRoom(profile, saved)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,4 +528,19 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 			}
 		}
 	}
+}
+
+func stopLiveRoom(profile string, it factory.Item) (string, error) {
+ return factoryItemTeam(profile, it)
+}
+
+func TestStopLiveTrafficUsesRecordedRoom(t *testing.T) {
+ _, _, profile := talkLab(t)
+ routingTeams(t, profile, []teams.Team{
+  {ID: "parent", Name: factoryTeamName, FactoryManaged: true},
+  {ID: "recorded", Name: "saved job room", Parent: "parent", FactoryManaged: true},
+ })
+ it := factory.Item{ID: 1, Repo: "acme/api", Title: "current title", Stream: &factory.Stream{Room: "recorded"}}
+ got, err := stopLiveRoom(profile, it)
+ if err != nil || got != "recorded" { t.Fatalf("delayed Stop traffic went to %q, want recorded job room; error=%v", got, err) }
 }

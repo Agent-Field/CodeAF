@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+ "github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func TestReviewStopCancelsOwnedManagerBackgroundWork(t *testing.T) {
@@ -41,12 +42,16 @@ func TestPersonStopPreservesManagerPersonChat(t *testing.T) {
 		close(entered)
 		select {
 		case <-release:
-			return textResponse("this job is stopped; a person presses Start"), nil
+			provider.Emit(ctx, provider.StreamDelta, "this job is stopped; a person presses Start")
+ return textResponse("this job is stopped; a person presses Start"), nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
-	}}}
-	a, _ := newTestAgent(t, model, func(c *Config) {
+    }, func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+        provider.Emit(ctx, provider.StreamDelta, "second person answer")
+        return textResponse("second person answer"), nil
+    }}}
+    a, _ := newTestAgent(t, model, func(c *Config) {
 		c.JobBudget = &liveBudgetStub{cap: 10}
 		c.FactoryWorkRefusal = func() string {
 			if stopped.Load() {
@@ -62,10 +67,12 @@ func TestPersonStopPreservesManagerPersonChat(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("person chat did not enter the provider")
 	}
-	stopped.Store(true)
-	time.Sleep(350 * time.Millisecond)
-	if a.jobs.find(id).running() {
-		t.Error("person chat kept the manager background command alive after Stop")
+    follow, err := a.FollowUp("What should I press next?")
+    if err != nil { t.Fatal(err) }
+    stopped.Store(true)
+    time.Sleep(350 * time.Millisecond)
+    if a.jobs.find(id).running() {
+        t.Error("person chat kept the manager background command alive after Stop")
 	}
 	close(release)
 	got := collect(t, events)
@@ -78,6 +85,10 @@ func TestPersonStopPreservesManagerPersonChat(t *testing.T) {
 	if !strings.Contains(words.String(), "this job is stopped") {
 		t.Fatalf("person chat was cut off: %q", words.String())
 	}
+    second := collect(t, follow)
+    words.Reset()
+    for _, e := range second { if e.Kind == EventTextDelta { words.WriteString(e.Text) } }
+    if !strings.Contains(words.String(), "second person answer") { t.Fatalf("queued person chat was lost: %q", words.String()) }
 }
 
 func TestManagerBackgroundCommandContinuesWithoutPersonStop(t *testing.T) {
