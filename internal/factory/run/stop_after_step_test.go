@@ -79,7 +79,7 @@ func TestAuthorityOutageDoesNotAdmitNextPaidStep(t *testing.T) {
    if err := g.r.Launch(id); err != nil { t.Fatal(err) }
    it := g.wait(id, "authority hold", func(it factory.Item) bool { return it.State == factory.StateLanded || it.State == factory.StateNeedsYou || it.Stream != nil && it.Stream.Paused })
    if steps.Load() != 1 || it.Failure != nil { t.Fatalf("authority outage admitted paid steps=%d failure=%+v", steps.Load(), it.Failure) }
-   if !transient && !logHas(it, "could not confirm Stop") { t.Fatal("hold did not explain authority outage") }
+   if !transient && !logHas(it, "could not confirm Stop before the next step; work held: 503 authority unavailable") { t.Fatal("hold did not explain authority outage") }
   })
  }
 }

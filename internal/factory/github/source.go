@@ -791,6 +791,13 @@ func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, 
 	if !s.watching(full) {
 		return factory.Receipt{}, fmt.Errorf("github writes only to a watched repository, and %s is not one: %w", full, factory.ErrReadOnly)
 	}
+	if a.Verb == "comment" || a.Verb == "label" || a.Verb == "close" {
+		if a.BeforeWrite != nil {
+			if err := a.BeforeWrite(ctx); err != nil {
+				return factory.Receipt{}, err
+			}
+		}
+	}
 	var (
 		posted forge.Posted
 		err    error

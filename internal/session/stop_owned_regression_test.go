@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+ "sync"
 	"testing"
 	"time"
 
@@ -166,4 +167,41 @@ func TestStoppedManagerPersonChatShowsCurrentStopReceipt(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLateStopSampleDoesNotCancelNewManagerWork(t *testing.T) {
+ var armed atomic.Bool
+ var once sync.Once
+ sampled, release := make(chan struct{}), make(chan struct{})
+ var releaseOnce sync.Once
+ unblock := func() { releaseOnce.Do(func() { close(release) }) }
+ defer unblock()
+ a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+  c.JobBudget = &liveBudgetStub{cap: 10}
+  c.FactoryWorkRefusal = func() string {
+   if armed.CompareAndSwap(true, false) {
+    once.Do(func() { close(sampled) })
+    <-release
+    return factory.PersonStopReason
+   }
+   return ""
+  }
+ })
+ old := startJob(t, a, "sleep 30")
+ armed.Store(true)
+ select { case <-sampled: case <-time.After(2*time.Second): t.Fatal("watcher did not sample Stop") }
+ fresh := startJob(t, a, "sleep 30")
+ unblock()
+ select { case <-a.jobs.find(old).done: case <-time.After(2*time.Second): t.Fatal("old work was not cancelled") }
+ if !a.jobs.find(fresh).running() { t.Fatal("late Stop sample cancelled work started after the sample") }
+}
+
+func TestAuthorityReadErrorDoesNotCancelManagerWork(t *testing.T) {
+ a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+  c.JobBudget = &liveBudgetStub{cap: 10}
+  c.FactoryWorkRefusal = func() string { return "job could not be read; automatic work stopped" }
+ })
+ id := startJob(t, a, "sleep 30")
+ time.Sleep(350*time.Millisecond)
+ if !a.jobs.find(id).running() { t.Fatal("read error cancelled an unstopped manager's work") }
 }
