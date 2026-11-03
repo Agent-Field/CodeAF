@@ -369,6 +369,9 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	afterUSD, _ := ledger()
 	t.Logf("STOP_WAIT: before=%.8f after=%.8f state=%s no_new_run=true PR=nil github=%d in_flight=0 question=%q", beforeUSD, afterUSD, afterWait.State, gh.count(), pending.Questions[0].Text)
 
+	accounting.requestMu.Lock()
+	accounting.personChat = true
+	accounting.requestMu.Unlock()
 	var turn appwire.TurnResult
 	w.must("agents.send", map[string]any{"id": chats.Agent, "text": "Why is this job waiting? Explain what I must do next; do not start any work."}, &turn)
 	wait("person manager chat answers", func(api.Job) bool {
@@ -388,6 +391,9 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		}
 		return false
 	})
+	accounting.requestMu.Lock()
+	accounting.personChat = false
+	accounting.requestMu.Unlock()
 	var page appwire.EntriesResult
 	w.must("agents.entries", map[string]any{"id": chats.Agent, "limit": 200}, &page)
 	var words strings.Builder
@@ -442,6 +448,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	if err := os.WriteFile(marker, []byte("person authorized rerun\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	accounting.press()
 	act("factory.job_step_rerun", map[string]any{"step": "test"})
 	final := wait("person rerun executes paid Test", func(j api.Job) bool {
 		return j.State != api.StateRunning && len(j.Steps) > 0 && j.Steps[0].State == "done"
@@ -524,6 +531,8 @@ func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
 // stopLiveAccounting serializes calls and retains unpriced request evidence.
 type stopLiveAccounting struct {
 	stopAt            time.Time
+	pressAt           time.Time
+	personChat        bool
 	logf              func(string, ...any)
 	evidence          []stopLiveEvidence
 	requestMu         sync.Mutex
@@ -542,13 +551,16 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 			return
 		}
 		started := time.Now()
+		accounting.requestMu.Lock()
+		personChat := accounting.personChat
+		accounting.requestMu.Unlock()
 		accounting.paid.Lock()
 		defer accounting.paid.Unlock()
 		recorder.mu.Lock()
 		spent, bad := recorder.cost, len(recorder.problems) > 0
 		reserved := spent + float64(accounting.cancelledRequests)*max(0.02, accounting.highestCost)
 		recorder.mu.Unlock()
-		// Reserve each unpriced cancellation at the highest observed call cost.
+		// Reserve each allowed unpriced call at least at the highest observed cost.
 		if bad || reserved+max(0.02, accounting.highestCost) >= liveStopSpendMost {
 			recorder.note("hard spend stop")
 			http.Error(w, "hard spend stop", http.StatusBadRequest)
@@ -576,17 +588,25 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 		ended := time.Now()
 		accounting.requestMu.Lock()
 		accounting.request, accounting.cancel = nil, nil
-		stopAt := accounting.stopAt
-		cancelledByStop := errors.Is(context.Cause(ctx), errStopLiveRequest)
+		stopAt, pressAt := accounting.stopAt, accounting.pressAt
 		accounting.requestMu.Unlock()
 		recorder.mu.Lock()
 		if recorder.cost <= spent {
-			e := stopLiveEvidence{Started: started, Ended: ended, Status: observed.status, Finished: observed.finished, ClientClosed: req.Context().Err() != nil || observed.writeError, Cause: fmt.Sprint(context.Cause(ctx)), Purpose: stopLivePurpose(body)}
+			phase := "before Stop"
+			if !stopAt.IsZero() && !started.Before(stopAt) {
+				phase = "after Stop before press"
+				if !pressAt.IsZero() && !started.Before(pressAt) {
+					phase = "after person press"
+				} else if personChat {
+					phase = "person chat"
+				}
+			}
+			e := stopLiveEvidence{Case: phase,Started: started, Ended: ended, Status: observed.status, Finished: observed.finished, ClientClosed: req.Context().Err() != nil || observed.writeError, Cause: fmt.Sprint(context.Cause(ctx)), Purpose: stopLivePurpose(body)}
 			accounting.evidence = append(accounting.evidence, e)
 			if accounting.logf != nil {
-				accounting.logf("UNPRICED: request=%d evidence=%+v stop=%s start_relative=%s end_relative=%s", recorder.calls, e, stopAt.Format(time.RFC3339Nano), stopLiveRelative(started, stopAt), stopLiveRelative(ended, stopAt))
+				accounting.logf("UNPRICED: request=%d evidence=%+v stop=%s start_relative=%s end_relative=%s press=%s", recorder.calls, e, stopAt.Format(time.RFC3339Nano), stopLiveRelative(started, stopAt), stopLiveRelative(ended, stopAt), pressAt.Format(time.RFC3339Nano))
 			}
-			if cancelledByStop {
+			if phase != "after Stop before press" {
 				accounting.cancelledRequests++
 			} else {
 				recorder.problems = append(recorder.problems, "request has no recorded cost")
@@ -607,6 +627,50 @@ func (a *stopLiveAccounting) stop() {
 	a.stopAt = time.Now()
 	if a.request != nil && a.request.Err() == nil {
 		a.cancel(errStopLiveRequest)
+	}
+}
+
+func (a *stopLiveAccounting) press() {
+	a.requestMu.Lock()
+	defer a.requestMu.Unlock()
+	a.pressAt = time.Now()
+}
+
+func TestStopLiveAccountingUnpricedWindows(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop, press, chat bool
+		problems, reserved int
+	}{
+		{"before Stop", false, false, false, 0, 1},
+		{"after Stop before press", true, false, false, 1, 0},
+		{"person chat", true, false, true, 0, 1},
+		{"after person press", true, true, false, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := &liveRecorder{}
+			recorder.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			}))
+			defer recorder.server.Close()
+			accounting := &stopLiveAccounting{personChat: tc.chat, highestCost: 0.025}
+			handler := stopLiveAccountingHandler(recorder, accounting)
+			if tc.stop { accounting.stop() }
+			if tc.press { accounting.press() }
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)))
+			if len(recorder.problems) != tc.problems || accounting.cancelledRequests != tc.reserved || len(accounting.evidence) != 1 || accounting.evidence[0].Case != tc.name {
+				t.Fatalf("problems=%v reserved=%d evidence=%+v", recorder.problems, accounting.cancelledRequests, accounting.evidence)
+			}
+			if tc.reserved != 0 {
+				// Three unpriced calls reserve $0.075; the fourth would reach the cap.
+				for i := 0; i < 3; i++ {
+					handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)))
+				}
+				if accounting.cancelledRequests != 3 || len(recorder.problems) != 1 || recorder.problems[0] != "hard spend stop" {
+					t.Fatalf("cap: reserved=%d problems=%v", accounting.cancelledRequests, recorder.problems)
+				}
+			}
+		})
 	}
 }
 
@@ -693,7 +757,7 @@ type stopLiveEvidence struct {
 	Started, Ended         time.Time
 	Status                 int
 	Finished, ClientClosed bool
-	Cause, Purpose         string
+	Cause, Purpose, Case   string
 }
 
 func stopLiveRelative(at, stop time.Time) string {
