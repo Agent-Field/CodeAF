@@ -26,7 +26,7 @@ import (
 var offVerbs = map[string]bool{
 	"run": true, "start_now": true, "run_again": true, "run-as-new": true, "steps/{sid}/rerun": true, "resume": true,
 	"approve": true, "retry_publish": true, "merge": true, "request_changes": true, "recheck": true,
-	"sync": true, "issue_comment": true,
+	"sync": true, "issue_comment": true, "pr-ready": true,
 }
 
 // repoSwitch is the switch the store keeps. A factory with no store of its
@@ -82,6 +82,6 @@ func offJob(j *api.Job) {
 	j.RepoOff = true
 	j.Can.RunAsNew = false
 	j.Can.Run, j.Can.StartNow, j.Can.RunAgain, j.Can.Resume = false, false, false, false
-	j.Can.Approve, j.Can.RetryPublish, j.Can.Merge = false, false, false
+	j.Can.Approve, j.Can.RetryPublish, j.Can.Merge, j.Can.PRReady = false, false, false, false
 	j.Controls.RerunStep, j.Controls.Sync = false, false
 }
