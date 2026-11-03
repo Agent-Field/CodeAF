@@ -1,6 +1,8 @@
 package main
 
 import (
+ "encoding/json"
+ "strings"
  "os"
  "path/filepath"
  "testing"
@@ -34,4 +36,50 @@ func TestGuardDeletedScratch(t *testing.T) {
  door := &receiptStageDoor{StageDoor:&repairReportDoor{}, file:file, dir:root, requireFresh:true, requireAnyCheck:true}
  t.Cleanup(door.closeVerification)
  if err := door.Report(t.Context(), factory.StageResult{Done:true}); err != nil { t.Fatal(err) }
+}
+
+func guardUnrunJournal(t *testing.T, file, command, outcome string) {
+ t.Helper()
+ f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0600)
+ if err != nil { t.Fatal(err) }
+ defer f.Close()
+ enc := json.NewEncoder(f)
+ args, _ := json.Marshal(map[string]string{"command":command})
+ for _, row := range []any{
+  map[string]any{"role":"assistant", "toolCalls": []any{map[string]any{"id":"unrun", "function":map[string]string{"name":"bash", "arguments":string(args)}}}},
+  map[string]any{"role":"tool", "toolCallId":"unrun", "content":outcome, "presentation":map[string]any{"outcome":outcome, "refused":outcome=="refused"}},
+ } { if err := enc.Encode(row); err != nil { t.Fatal(err) } }
+}
+
+func TestGuardUnrunProbe(t *testing.T) {
+ for _, outcome := range []string{"refused", "cancelled", "timed out"} {
+  t.Run(outcome, func(t *testing.T) {
+   root,file,run := staleGuardFixture(t)
+   guardUnrunJournal(t,file,"go test -run TestProbe ./pkg",outcome)
+   run("go test ./...")
+   door := &receiptStageDoor{StageDoor:&repairReportDoor{},file:file,dir:root,requireFresh:true,requireAnyCheck:true}
+   t.Cleanup(door.closeVerification)
+   if err := door.Report(t.Context(),factory.StageResult{Done:true}); err != nil { t.Fatal(err) }
+  })
+ }
+}
+
+func TestGuardOwedAndBound(t *testing.T) {
+ for _, kind := range []string{"real failure", "refused", "cancelled", "timed out", "no receipt"} {
+  t.Run(kind,func(t *testing.T) {
+   root,file,run := staleGuardFixture(t)
+   if kind=="real failure" { run("CHECK_EXIT=7 go test ./...") } else if kind!="no receipt" { guardUnrunJournal(t,file,"go test ./...",kind) }
+   parent := &repairReportDoor{}
+   door := &receiptStageDoor{StageDoor:parent,file:file,dir:root,requireFresh:true,requireAnyCheck:true}
+   t.Cleanup(door.closeVerification)
+   stopped := door.stoppedVerification()
+   for range 3 {
+    err := door.Report(t.Context(),factory.StageResult{Done:true,Output:"Tests pass"})
+    if err==nil { t.Fatal("accepted missing or failed verification") }
+    if strings.Contains(err.Error(),"\n") || !strings.Contains(err.Error(),"owed:") { t.Errorf("hold must name exactly what is owed on one line: %s",err) }
+   }
+   select { case <-stopped: default: t.Fatal("unchanged evidence exceeded three refusals") }
+   if parent.last.Done { t.Fatal("bounded stop reported success") }
+  })
+ }
 }
