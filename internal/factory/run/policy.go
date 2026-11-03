@@ -134,11 +134,16 @@ func testClaimFailed(prior []factory.StageResult) bool {
 
 // checksGreen: every check result exited 0 and no test claim failed.
 func checksGreen(it factory.Item, prior []factory.StageResult) bool {
+	for i, st := range it.Stages {
+		if st.Kind == factory.StageCheck && skippedCheck(it, i) {
+			return false
+		}
+	}
 	if testClaimFailed(prior) {
 		return false
 	}
 	for _, i := range checkIndexes(it, prior) {
-		if prior[i].Exit != 0 {
+		if !prior[i].Done || prior[i].Exit != 0 || skippedCheck(it, i) {
 			return false
 		}
 	}
@@ -147,6 +152,14 @@ func checksGreen(it factory.Item, prior []factory.StageResult) bool {
 
 // someCheckGreen: a check ran and passed, and nothing failed.
 func someCheckGreen(it factory.Item, prior []factory.StageResult) bool {
+	// Prior omits skipped steps. Keep the stage indexes aligned with those results.
+	stages := make([]factory.Stage, 0, len(it.Stages))
+	for i, st := range it.Stages {
+		if !skippedCheck(it, i) {
+			stages = append(stages, st)
+		}
+	}
+	it.Stages = stages
 	if !checksGreen(it, prior) {
 		return false
 	}
@@ -161,4 +174,54 @@ func someCheckGreen(it factory.Item, prior []factory.StageResult) bool {
 		}
 	}
 	return false
+}
+
+// A skipped phase has no measured exit, even if an old result remains on disk.
+func skippedCheck(it factory.Item, index int) bool {
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.Name == it.Stages[index].Name {
+				return ph.State == factory.PhaseSkipped
+			}
+		}
+	}
+	return false
+}
+
+// skippedPolicyWait explains the missing evidence without offering an approval
+// bypass: the every-check policy still requires each check to run and pass.
+func skippedPolicyWait(it factory.Item) string {
+	if it.Stream == nil {
+		return ""
+	}
+	var reasons []string
+	back := ""
+	for i, ph := range it.Stream.Phases {
+		if ph.Kind != factory.StageCheck || ph.State != factory.PhaseSkipped {
+			continue
+		}
+		reasons = append(reasons, "check "+ph.Name+" was skipped ("+strings.TrimPrefix(ph.SkipReason, "skipping "+ph.Name+": ")+")")
+		if len(reasons) == 1 {
+			if prev := factory.PreviousWork(it.Stream.Phases, i); prev >= 0 {
+				back = it.Stream.Phases[prev].Name
+			}
+		}
+	}
+	if len(reasons) == 0 {
+		return ""
+	}
+	action := "Stop the job and revise the pipeline before starting a new job."
+	if back != "" {
+		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
+	}
+	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
+}
+
+func skippedPolicyQuestion(it factory.Item, res factory.StageResult) string {
+	for _, claim := range res.Claims {
+		if claim.Medium == "policy" && !claim.OK && shapeOf(claim.Evidence) == shapeTestsFirst {
+			return strings.TrimSpace(skippedPolicyWait(it))
+		}
+	}
+	return ""
 }

@@ -1,9 +1,13 @@
 package github
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -113,25 +117,80 @@ func (r *readCache) forgetToken(token string) {
 // last answer while it stands (zero for most reads), else a conditional ask
 // that a 304 turns into that answer, else a fresh ask whose answer is kept.
 func (c *client) cachedRead(rawurl string, stands time.Duration, ask func(etag string) ([]byte, string, error)) ([]byte, string, error) {
+	body, tag, _, err := c.cachedReadChanged(rawurl, stands, ask)
+	return body, tag, err
+}
+
+func (c *client) cachedReadChanged(rawurl string, stands time.Duration, ask func(string) ([]byte, string, error)) ([]byte, string, bool, error) {
 	k := keyOf(c.token, rawurl)
 	row, known := cache.get(k)
 	if known && readCacheNow().Sub(row.at) < stands {
-		return row.body, row.etag, nil
+		return row.body, row.etag, false, nil
 	}
 	body, tag, err := ask(row.etag)
 	switch {
 	case errors.Is(err, ErrNotModified) && known:
 		cache.put(k, row)
-		return row.body, row.etag, nil
+		return row.body, row.etag, false, nil
 	case err == nil && len(body) <= readCacheBody && (tag != "" || stands > 0):
 		cache.put(k, readRow{body: body, etag: tag})
 	case isStatusErr(err, http.StatusUnauthorized):
 		cache.forgetToken(c.token)
 	}
-	return body, tag, err
+	return body, tag, true, err
 }
 
 func isStatusErr(err error, status int) bool {
 	var apiErr *APIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == status
+}
+
+// ReadHTTP reuses the bounded process read cache for the serving routes that
+// need HTTP status and headers. Revision identifies immutable content already
+// authorized by a fresh parent read (for example a pull request head SHA).
+// Changed is false only when the body was reused, including a GitHub 304.
+func ReadHTTP(client *http.Client, req *http.Request, revision string) (*http.Response, bool, error) {
+	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
+	rawURL := req.URL.String()
+	if revision != "" {
+		rawURL += "#" + revision
+	}
+	key := keyOf(token, rawURL)
+	row, known := cache.get(key)
+	if known && revision != "" {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(row.body))}, false, nil
+	}
+	if known && row.etag != "" {
+		req.Header.Set("If-None-Match", row.etag)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return resp, false, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		cache.forgetToken(token)
+	}
+	if resp.StatusCode == http.StatusNotModified && known {
+		resp.Body.Close()
+		resp.StatusCode = http.StatusOK
+		resp.Body = io.NopCloser(bytes.NewReader(row.body))
+		return resp, false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return resp, true, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, readCacheBody+1))
+	if err != nil {
+		resp.Body.Close()
+		return nil, false, err
+	}
+	// Oversize bodies remain streamed to the caller's own bound, but are not kept.
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(body), resp.Body), resp.Body}
+	if len(body) <= readCacheBody && json.Valid(body) && (revision != "" || resp.Header.Get("ETag") != "") {
+		cache.put(key, readRow{body: body, etag: resp.Header.Get("ETag")})
+	}
+	return resp, true, nil
 }

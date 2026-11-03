@@ -3206,8 +3206,9 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 // ── tools ───────────────────────────────────────────────────────────────────
 
 type toolResult struct {
-	text    string
-	isError bool
+	text         string
+	isError      bool
+	interruption string
 	// harness says the HARNESS wrote this failure, rather than the world the
 	// model reached for: a withdrawn hand (withdrawn.go), or a door that refused
 	// the call before it ran (the pre-action chain). It rides out to the runner
@@ -3867,8 +3868,10 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// Only bash can become a registry command or kept service, so other
 		// tools pay no allocation for a fact they cannot produce.
 		var process *atomic.Pointer[ToolProcess]
+		var interruption string
 		if call.Function.Name == "bash" {
 			callCtx, process = withToolProcess(callCtx)
+			callCtx = bare.WithBashInterruption(callCtx, func(outcome string) { interruption = outcome })
 		}
 		observedTool, invocation := observeToolInvocation(tool)
 		// The session's seat records the call and seals the workspace around the
@@ -3921,7 +3924,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if process != nil && !isError && ctx.Err() == nil {
 			became = process.Load()
 		}
-		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load(), process: became})
+		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load(), process: became, interruption: interruption})
 		// The held-range ledger records on the FINISHED text — exactly the bytes
 		// the transcript will carry — and only on a result that ran (heldreads.go).
 		a.heldNote(call.Function.Name, args, result.text, isError)

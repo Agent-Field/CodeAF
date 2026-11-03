@@ -26,9 +26,11 @@ type prsGitHub struct {
 	auth  []string
 	// open is the default branch's open pull requests, newest first; files is
 	// each one's changed paths.
-	open   []prsPull
-	files  map[int][]string
-	status map[string]int // "repo", "pulls" or "files" -> forced status
+	sha     string
+	baseSHA string
+	open    []prsPull
+	files   map[int][]string
+	status  map[string]int // "repo", "pulls" or "files" -> forced status
 }
 
 type prsPull struct {
@@ -38,7 +40,7 @@ type prsPull struct {
 }
 
 func newPRsGitHub(t *testing.T, open ...prsPull) *prsGitHub {
-	return &prsGitHub{t: t, open: open, files: map[int][]string{}, status: map[string]int{}}
+	return &prsGitHub{t: t, baseSHA: strings.Repeat("2", 40), open: open, files: map[int][]string{}, status: map[string]int{}}
 }
 
 func (g *prsGitHub) transport(next http.RoundTripper) http.RoundTripper {
@@ -77,14 +79,18 @@ func (g *prsGitHub) transport(next http.RoundTripper) http.RoundTripper {
 		case "pulls":
 			var out []map[string]any
 			for _, pr := range g.open {
-				head := map[string]any{"ref": pr.branch, "sha": strings.Repeat("3", 40), "repo": map[string]any{"full_name": "acme/api"}}
+				sha := g.sha
+				if sha == "" {
+					sha = strings.Repeat("3", 40)
+				}
+				head := map[string]any{"ref": pr.branch, "sha": sha, "repo": map[string]any{"full_name": "acme/api"}}
 				if pr.fork {
 					head["repo"] = map[string]any{"full_name": "mona/api"}
 				}
 				out = append(out, map[string]any{"number": pr.number, "html_url": fmt.Sprintf("https://github.com/acme/api/pull/%d", pr.number),
 					"title": fmt.Sprintf("PR %d", pr.number), "draft": pr.draft, "user": map[string]any{"login": "mona"},
 					"created_at": "2026-10-30T10:00:00Z", "updated_at": "2026-10-31T11:00:00Z",
-					"head": head, "base": map[string]any{"ref": "main"}})
+					"head": head, "base": map[string]any{"ref": "main", "sha": g.baseSHA}})
 			}
 			data, _ := json.Marshal(out)
 			return reply(200, string(data)), nil
@@ -242,5 +248,48 @@ func TestPipelinePRsFailuresAreTypedAndReadOnly(t *testing.T) {
 			t.Errorf("%s %d: %d %s", c.stage, c.status, w.Code, w.Body)
 		}
 		assertClean(t, w)
+	}
+}
+
+func TestPipelinePRsFilesCachedByHeadAndBase(t *testing.T) {
+	g := newPRsGitHub(t, prsPull{number: 7, branch: "feature"})
+	g.files[7] = []string{factory.PipelineFile}
+	h := soloPRs(t, g)
+	h.config.GitHubToken = func(context.Context) string { return "token-" + t.Name() }
+	for range 2 {
+		out := readPRs(t, sourceRequest(h, "", "GET", prsPath))
+		if len(out.PRs) != 1 {
+			t.Fatalf("PRs=%+v", out)
+		}
+	}
+	count := func() int {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		n := 0
+		for _, c := range g.calls {
+			if strings.HasSuffix(c, "/files") {
+				n++
+			}
+		}
+		return n
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("same head: files requests=%d, want 1", n)
+	}
+	g.mu.Lock()
+	g.sha = strings.Repeat("4", 40)
+	g.files[7] = []string{"README.md"}
+	g.mu.Unlock()
+	out := readPRs(t, sourceRequest(h, "", "GET", prsPath))
+	if len(out.PRs) != 0 || count() != 2 {
+		t.Fatalf("new head: PRs=%+v files=%d", out.PRs, count())
+	}
+	g.mu.Lock()
+	g.baseSHA = strings.Repeat("5", 40)
+	g.files[7] = []string{factory.PipelineFile}
+	g.mu.Unlock()
+	out = readPRs(t, sourceRequest(h, "", "GET", prsPath))
+	if len(out.PRs) != 1 || count() != 3 {
+		t.Fatalf("new base: PRs=%+v files=%d", out.PRs, count())
 	}
 }

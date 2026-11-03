@@ -59,6 +59,7 @@ type StageReport struct {
 	Verification *StepVerification
 	Name         string
 	Chat         string
+	SkipReason   string
 	State        PhaseState
 	Round        int
 	// Started is when the step's latest round began on the worker
