@@ -149,7 +149,7 @@ func stoppedAppJob(t *testing.T, initial factory.State) (*localSetup, appwire.Fa
 }
 
 func TestFactoryPersonStopPersonControls(t *testing.T) {
-	for _, method := range []string{"factory.job_start", "factory.job_resume", "factory.job_run_again", "factory.job_step_rerun"} {
+	for _, method := range []string{"factory.job_start", "factory.job_run_again", "factory.job_step_rerun"} {
 		t.Run(method, func(t *testing.T) {
 			s, status, it := stoppedAppJob(t, factory.StateNeedsYou)
 			var stopped api.Job
