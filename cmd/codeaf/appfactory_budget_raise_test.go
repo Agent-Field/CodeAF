@@ -79,7 +79,7 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 					finish := make(chan struct{})
 					spent := 5.25
 					if budget == 20 {
-						spent = 20
+						spent = 19.5
 					}
 					model := &budgetModel{spent: spent}
 					model.maker.Script = func(ctx context.Context, c *factoryrun.FakeConversation) {
