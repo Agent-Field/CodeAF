@@ -150,7 +150,9 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 		// Keep reporting logs outside the measured checkout.
 		command = strings.ReplaceAll(command, "check.log", repairShellQuote(filepath.Join(bin, "check.log")))
 		command = "export PATH=" + repairShellQuote(bin) + ":\"$PATH\"; " + command
-		wrapped, err := verification.Prepare(file, command)
+		n++
+		id := fmt.Sprint(n)
+		wrapped, err := verification.PrepareCallIn(file, "", command, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,8 +167,6 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 				t.Fatal(runErr)
 			}
 		}
-		n++
-		id := fmt.Sprint(n)
 		args, _ := json.Marshal(map[string]string{"command": command})
 		if err := enc.Encode(map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": id, "function": map[string]string{"name": "bash", "arguments": string(args)}}}}); err != nil {
 			t.Fatal(err)
