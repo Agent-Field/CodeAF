@@ -75,7 +75,7 @@ func TestFactoryModelSendsHaveLedgerOwners(t *testing.T) {
 	if !found {
 		t.Fatal("ledger law accepted an unowned production helper")
 	}
-	if len(mutant) != len(calls)+2 {
+	if len(mutant) != len(calls)+3 {
 		t.Fatal("ledger law accepted package-scope model sends")
 	}
 	// Removing an exception without retiring its entry must also fail.
@@ -142,22 +142,47 @@ func modelSpendCallers(root string) (map[string]string, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		var bodies []struct {
+			name string
+			node ast.Node
+		}
 		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			name := fn.Name.Name
-			if fn.Recv != nil {
-				recv := fn.Recv.List[0].Type
-				if p, ok := recv.(*ast.StarExpr); ok {
-					recv = p.X
+			switch decl := decl.(type) {
+			case *ast.FuncDecl:
+				if decl.Body == nil {
+					continue
 				}
-				if id, ok := recv.(*ast.Ident); ok {
-					name = id.Name + "." + name
+				name := decl.Name.Name
+				if decl.Recv != nil {
+					recv := decl.Recv.List[0].Type
+					if p, ok := recv.(*ast.StarExpr); ok {
+						recv = p.X
+					}
+					if id, ok := recv.(*ast.Ident); ok {
+						name = id.Name + "." + name
+					}
+				}
+				bodies = append(bodies, struct {
+					name string
+					node ast.Node
+				}{name, decl.Body})
+			case *ast.GenDecl:
+				for _, spec := range decl.Specs {
+					if value, ok := spec.(*ast.ValueSpec); ok {
+						var names []string
+						for _, name := range value.Names {
+							names = append(names, name.Name)
+						}
+						bodies = append(bodies, struct {
+							name string
+							node ast.Node
+						}{"initializer." + strings.Join(names, ","), value})
+					}
 				}
 			}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
+		}
+		for _, body := range bodies {
+			ast.Inspect(body.node, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true
@@ -170,7 +195,7 @@ func modelSpendCallers(root string) (map[string]string, error) {
 				if !verbs[verb] && !(strings.HasPrefix(rel, "internal/provider/") && requests[verb]) {
 					return true
 				}
-				key := rel + ":" + name + ":" + verb
+				key := rel + ":" + body.name + ":" + verb
 				calls[key] = fmt.Sprintf("%s:%d", rel, set.Position(call.Pos()).Line)
 				return true
 			})

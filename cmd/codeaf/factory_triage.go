@@ -206,17 +206,6 @@ func factoryRoleModel(settings config.Config, role roles.Role) (string, error) {
 	return strings.TrimSpace(settings.Model), nil
 }
 
-// recordFactoryTriageUsage puts one read's cost on this machine's spend
-// ledger: the role column says `factory triage`, the seat is the low one it
-// ran on. The dollars are the provider's own receipt when one arrived,
-// otherwise the model's published price over the tokens, and a call nobody
-// priced writes no row ([session.RecordUsage] refuses an all-zero line).
-//
-// It answers the dollars it wrote, 0 when none were known.
-func recordFactoryTriageUsage(settings config.Config, model string, response *ai.Response) float64 {
-	return recordFactoryAIUsage(settings, model, factoryTriageName, response)
-}
-
 // recordFactoryAIUsage puts one factory AI call's cost on the spend ledger
 // under name in the role column, on the low seat, and answers its dollars.
 func recordFactoryAIUsage(settings config.Config, model, name string, response *ai.Response) float64 {
@@ -234,29 +223,37 @@ func recordFactoryAIUsage(settings config.Config, model, name string, response *
 	return line.USD
 }
 
-// factoryAIAccounting banks charges when the provider reports them, including
-// a failed generation whose response is not returned. The returned response
-// is a fallback only: a successful call already banked must not charge twice.
+// factoryAIAccounting collects provider charges even when a failed generation
+// returns no response. Its finisher banks them before the caller judges the
+// error. The returned usage keeps its price-presence fact on successful calls.
 func factoryAIAccounting(ctx context.Context, settings config.Config, model, name string, noted func(float64)) (context.Context, func(*ai.Response) float64) {
-	total := 0.0
-	billed := false
-	bank := func(served string, response *ai.Response) {
-		usd := recordFactoryAIUsage(settings, served, name, response)
-		total += usd
-		if usd > 0 && noted != nil {
-			noted(usd)
-		}
-	}
-	ctx = provider.WithBilling(ctx, func(charge provider.Billed) {
-		billed = true
-		served := charge.Model
-		if served == "" {
-			served = model
-		}
-		bank(served, &ai.Response{Usage: &ai.Usage{PromptTokens: charge.PromptTokens, CompletionTokens: charge.CompletionTokens, Cost: &charge.Cost}})
-	})
+	var charges []provider.Billed
+	ctx = provider.WithBilling(ctx, func(charge provider.Billed) { charges = append(charges, charge) })
 	return ctx, func(response *ai.Response) float64 {
-		if !billed && response != nil {
+		total := 0.0
+		bank := func(served string, response *ai.Response) {
+			usd := recordFactoryAIUsage(settings, served, name, response)
+			total += usd
+			if usd > 0 && noted != nil {
+				noted(usd)
+			}
+		}
+		for i, charge := range charges {
+			served := charge.Model
+			if served == "" {
+				served = model
+			}
+			if i == len(charges)-1 && response != nil {
+				bank(served, response)
+				continue
+			}
+			used := &ai.Usage{PromptTokens: charge.PromptTokens, CompletionTokens: charge.CompletionTokens}
+			if charge.Cost != 0 {
+				used.Cost = &charge.Cost
+			}
+			bank(served, &ai.Response{Usage: used})
+		}
+		if len(charges) == 0 && response != nil {
 			bank(model, response)
 		}
 		return total
