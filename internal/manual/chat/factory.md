@@ -27,6 +27,17 @@ Three things make one factory:
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
 
+## job numbers and GitHub issue numbers — a job with no GitHub issue
+
+A job created without a GitHub issue is labelled `job 21`, where 21 is its
+local factory id. It does not refer to GitHub issue #21. A job from a real
+GitHub issue keeps its repository reference, such as `api#87`.
+
+Plan, Review and Proof are told when a job has no GitHub issue. They work
+from its brief and checkout. Commenting on such a job's GitHub issue is
+refused with "this job has no GitHub issue to comment on"; nothing is posted.
+Existing saved jobs keep their identity and work, without a migration.
+
 ## finding jobs with desktop search and ⌘K
 
 Desktop search can find jobs in connected factories before you open their jobs
@@ -225,7 +236,7 @@ A job's plan step may change the steps the rest of the job runs, within bounds c
 - **ask**: the plan may reshape them, and a person approves before anything after the plan runs.
 - **fixed**: the steps run as the pipeline wrote them; only you can change them.
 
-A repository says it with `adapt:` in its `.codeaf/factory.yaml` (one word for every pipeline in the file). The factory can say it for every repository (the Steps tab's Global view, "Plans may reshape a job's steps"), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
+A repository says it with `adapt:` in its `.codeaf/factory.yaml`: one word for every pipeline in the file, or one word per pipeline (`adapt: {issue: ask, docs: fixed}`, and a pipeline it does not name is adapt). The pipeline editor sets either; one word per pipeline is offered only by a factory that says it reads it. The factory can say it for every repository (the Steps tab's Global view, "Plans may reshape a job's steps"), and like every factory rule it only tightens: a repository that says fixed stays fixed, and the factory's ask makes an adapt repository ask. A personal `~/.codeaf/factory.yaml` may tighten it too, never loosen it. The word travels with the job, so a runner on another machine holds the same one. Your own changes to a job's steps are never bound by it.
 
 ## issues only — pull requests are outcomes, old PR jobs removed
 
@@ -410,7 +421,7 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 **The factory gets the repository itself.** When a job's repository has no checkout on the computer that runs it (codeaf was never opened in its folder), the run's first step clones it into the factory's own folder, `~/.codeaf/v3/factory/repos/<owner>/<name>`, and the job's log says `cloning acme/api…` while it does. The clone goes over https with the same GitHub connection the factory reads and pushes with, never over ssh, so a private repository clones too. From then on it is that repository's checkout for every job: it is never cloned twice, and two jobs started together share the one clone. Every job still works in its own worktree and branch, never in the checkout itself.
 
-**A start is refused only when nothing can be cloned**, and before anything about the job changes: `acme/api isn't checked out on this machine · connect GitHub so the factory can clone it.` when GitHub is not connected, and `notes isn't checked out on this machine · watch it in Repos so the factory can clone it, or open codeaf in its folder.` for a repository the factory cannot find on GitHub. Start, the chat's `factory_start` and a new job started at once all refuse in the same words. A job's page can tell in advance: its repository is checked out, will be cloned on the first step, or cannot be.
+**A start is refused only when nothing can be cloned**, and before anything about the job changes: `acme/api isn't checked out on this machine · connect GitHub so the factory can clone it.` when GitHub is not connected, and `notes isn't checked out on this machine · watch it in Repos so the factory can clone it, or open codeaf in its folder.` for a repository the factory cannot find on GitHub. Start, the chat's `factory_start` and a new job started at once all refuse in the same words. A job's page can tell in advance: its repository is checked out, will be cloned on the first step, or cannot be. The factory's list of repositories says the same of each repository, so one with no jobs yet can be checked before its first Start; a repository no job has run on yet will be cloned, which is normal.
 
 **A clone that fails** (a repository that was renamed or deleted, a token that cannot read it) fails the job's first step with git's reason, such as `could not clone acme/api · repository not found`, and leaves nothing half-made behind; Run again tries the clone again.
 
@@ -506,6 +517,19 @@ On the app's job page, the job's person can pick the model one conversation step
 A pick is refused when the step has already run (`you may not change review, which has already run`), when it is a check or an approval (`test is a check or an approval and runs no model`), when the recipe fixes the step, when the step comes after proof, and when anyone but the job's person makes it (`only the person picks the model a step runs on`). The app offers only models it lists; another is refused as `vendor/x is not a model this engine offers now; models.list names them`. A factory older than the pick answers that it doesn't support that yet. The manager and the plan cannot pick a step's model.
 
 A step that has run takes another model only through Run again from here: that step and every step after it run again (an approval after it asks again), and that step runs on the model you named, in a fresh conversation. The job's log says `Rerun from <step> on <model>`. A check, an approval and a fixed step take no model there either.
+
+## raise a job budget and continue without a runner
+
+Raising Budget above recorded spend answers the open budget question in Auto
+or Manual, unless Take over has kept the job in your hands or publication is in
+progress. Manual still asks before the next step. Its runner receives the chosen
+cap before Continue. Activity records the budget change followed by the answer.
+The timeline says "budget raised to $10 · carrying on" for a $10 choice only
+after the answer succeeds. If no runner holds the job, Continue takes down the
+budget question and puts the job back in the queue.
+
+Raising Budget does not answer another open question or undo Stop spending after
+this step. A raise that does not clear recorded spend keeps the budget question.
 
 ## budget recovery and external PR commits
 

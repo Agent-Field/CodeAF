@@ -7,6 +7,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func (d *fakeFloorDoor) Mark(_ context.Context, ids []int, on bool) error {
 	return nil
 }
 
-func itoaFloor(n int) string { return strings.TrimPrefix(factory.Item{ID: n}.Ref(), "#") }
+func itoaFloor(n int) string { return strconv.Itoa(n) }
 
 // floorLab is a floor of six items a morning would choose among: three new
 // bugs at three prices, a risky new feature, one waiting on the person and one
