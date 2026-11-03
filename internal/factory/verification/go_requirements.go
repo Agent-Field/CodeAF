@@ -109,7 +109,7 @@ func (next goScope) covers(old goScope) bool {
 
 func goRequirement(c Check) (goScope, bool) {
 	var scope goScope
-	a := c.Args
+	a := portableCheckArgs(c.Args)
 	if len(a) < 2 || a[0] != "go" || a[1] != "test" || c.Cwd == "" {
 		return scope, false
 	}
@@ -207,7 +207,10 @@ func CoversUnrun(command, cwd string, pass Check) bool {
 	if strings.ContainsAny(command, "\n\r") {
 		return false
 	}
-	var context []string
+	if len(args) == 0 || args[0] != "go" {
+ return false
+ }
+ var context []string
 	for _, name := range checkContextNames {
 		context = append(context, os.Getenv(name))
 	}
