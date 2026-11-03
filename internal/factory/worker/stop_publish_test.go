@@ -2,6 +2,7 @@ package worker_test
 
 import (
  "context"
+ "encoding/json"
  "os"
  "path/filepath"
  "strings"
@@ -13,6 +14,7 @@ import (
 
  "github.com/Agent-Field/codeaf/internal/factory"
  "github.com/Agent-Field/codeaf/internal/factory/run"
+ "github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 type stoppedPublisher struct {
@@ -49,7 +51,9 @@ func testStopPublishWorker(t *testing.T,point string){
  var once sync.Once
  release:=func(){once.Do(func(){close(answer)})}
  defer release()
+ var mirror *store.Store
  g:=newRigWith(t,nil,func(o *run.Options){
+  mirror=o.Store
   o.Source=func(string)factory.Source{return src}
   o.Workdir=func(it factory.Item)(string,error){return dirs.For(it,checkout)}
   o.Push=func(string,string)error{pushes.Add(1);if point=="after_push"{block()};return nil}
@@ -80,6 +84,10 @@ func testStopPublishWorker(t *testing.T,point string){
   var words string;for _,l:=range it.Stream.Log{words+=l.Text}
   if !strings.Contains(words,"not closed"){t.Fatal("person was not told the PR remains open")}
  case <-time.After(8*time.Second):
+  local,localErr:=mirror.Get(id)
+  t.Logf("mirror state=%s publishing=%+v failure=%+v error=%v",local.State,local.PublishStatus,local.Failure,localErr)
+  paths,_:=filepath.Glob(filepath.Join(mirror.Root(),"delivery","*.json"))
+  for _,p:=range paths{raw,_:=os.ReadFile(p);var d map[string]any;_ = json.Unmarshal(raw,&d);t.Logf("delivery reason=%v",d["reason"])}
   it,_:=g.st.Get(id);t.Fatalf("floor lost the successful PR receipt: state=%s pr=%+v",it.State,it.PullRequest)
  }
  for _,a:=range src.writes(){if a.Verb=="close"{t.Fatal("closed automatically")}}
