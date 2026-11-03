@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Today's spending moves with every ledger row and names Factory AI
-pr: 0
+pr: 2275
 surface: [engine]
 invalidates:
   - "Today's figure could stay stale until a chat turn ended, because spend.changed fired only then."
