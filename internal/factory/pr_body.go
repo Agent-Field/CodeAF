@@ -32,7 +32,7 @@ func PublishBody(it Item, trailer string) string {
 	var finalSummary []string
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
-			if ph.Result == nil {
+			if ph.State == PhaseSkipped || ph.Result == nil {
 				continue
 			}
 			if len(ph.Result.PublishSummary) > 0 {
@@ -93,6 +93,13 @@ func PublishBody(it Item, trailer string) string {
 		fmt.Fprintf(&b, "\nCloses #%d.\n", it.Num)
 	}
 	b.WriteString("\n## Validation\n\n")
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.State == PhaseSkipped {
+				fmt.Fprintf(&b, "- %s: skipped · %s\n", ph.Name, publicationSentence(ph.SkipReason))
+			}
+		}
+	}
 	seen := map[string]bool{}
 	for _, cmd := range commands {
 		if seen[cmd] {
