@@ -131,6 +131,10 @@ func TestAppFactoryJobBriefWriteBeforeWork(t *testing.T) {
 		t.Fatalf("a thin issue was written or called: %+v, %d asks", got, asks())
 	}
 
+	if cur, _ := floor.Get(thin.ID); cur.Talk != "" {
+		t.Fatalf("a thin issue made a manager: %q", cur.Talk)
+	}
+
 	body := "When a worker restarts mid-send, the retry loop sends the message again although the first send landed."
 	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Retries double-send", Body: body, Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
