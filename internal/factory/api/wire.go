@@ -195,6 +195,7 @@ type Since struct {
 // Cell is one chip of the pipeline strip: a step with jobs in it, and whether
 // an approve waits there.
 type Cell struct {
+	Label string `json:"label,omitempty"`
 	Step    string `json:"step"`
 	Jobs    int    `json:"jobs"`
 	Waiting bool   `json:"waiting,omitempty"`

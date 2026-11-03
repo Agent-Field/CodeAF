@@ -1221,7 +1221,7 @@ func strip(jobs []Job) []Cell {
 		if !ok {
 			i = len(out)
 			at[j.Step.Name] = i
-			out = append(out, Cell{Step: j.Step.Name})
+			out = append(out, Cell{Step: j.Step.Name, Label: j.Step.Label})
 		}
 		out[i].Jobs++
 		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateProof
