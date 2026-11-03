@@ -406,5 +406,6 @@ func (p *Phase) RecordRoundSpend(round int, spent float64) {
 	if p.RoundCosts == nil {
 		p.RoundCosts = make(map[int]float64)
 	}
-	p.RoundCosts[max(1, round)] = spent
+	round = max(1, round)
+	p.RoundCosts[round] = max(p.RoundCosts[round], spent)
 }

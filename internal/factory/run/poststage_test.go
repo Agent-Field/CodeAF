@@ -213,7 +213,7 @@ func TestPostStageWithoutRecordedApprovalRefusesBeforePush(t *testing.T) {
 	}
 	src := &fakeSource{}
 	pushed := false
-	ex := NewPostExecutorWith(PostOptions{Record: rec, Source: func(string) factory.Source { return src }, Push: func(string, string) error { pushed = true; return nil }})
+	ex := NewPostExecutorWith(PostOptions{Record: rec, Source: func(string) factory.Source { return src }, Push: func(string, string, ...func() error) error { pushed = true; return nil }})
 	_, err = ex.Run(context.Background(), Job{Item: item(), Stage: factory.Stage{Ask: "pr"}, Dir: t.TempDir()})
 	if err == nil || pushed || len(src.got) != 0 {
 		t.Fatalf("unapproved post: pushed=%t writes=%+v error=%v", pushed, src.got, err)

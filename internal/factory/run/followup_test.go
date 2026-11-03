@@ -39,7 +39,7 @@ func TestCIRepairRetestsProvesAndWaitsForApprovalOnTheSamePR(t *testing.T) {
 				return factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 2}, Claims: []factory.Claim{{Text: "repair tests pass", OK: true, Evidence: "focused tests passed", Medium: "test"}}}, nil
 			})}, func(o *Options) {
 				o.Workdir = func(factory.Item) (string, error) { return dir, nil }
-				o.Push = func(string, string) error { t.Error("pushed without approval"); return nil }
+				o.Push = func(string, string, ...func() error) error { t.Error("pushed without approval"); return nil }
 			})
 			id := g.add("fix regression", factory.Stage{Name: "proof", Kind: factory.StageChat, Until: factory.UntilProven})
 			if err := g.st.Update(id, func(it *factory.Item) error {
@@ -124,7 +124,7 @@ func TestCIRepairPublishRechecksTheExistingPRBeforePush(t *testing.T) {
 			}
 			g.r.opts.Source = func(string) factory.Source { return ciPublishSource{g.src, fresh} }
 			pushes := 0
-			g.r.opts.Push = func(string, string) error { pushes++; return nil }
+			g.r.opts.Push = func(string, string, ...func() error) error { pushes++; return nil }
 			result, err := g.r.publish(context.Background(), it, testTrailer+" "+head)
 			if state == "open" {
 				if err != nil || result.pr == nil || result.pr.Number != 7 || !result.pr.Draft || pushes != 1 {

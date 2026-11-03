@@ -20,7 +20,7 @@ const testTrailer = "Factory-Approval: evt_0123abcd @octocat"
 // it, and a branch title containing worktree must not change the remedy.
 func TestPushKeepsTheFailureCodeAndDetailBehindItsSingleDisplayLine(t *testing.T) {
 	message := "remote: GH006: protected branch factory/12-worktree\nhint: see the documentation"
-	err := push(func(string, string) error { return errors.New(message) }, "/work", factory.Item{}, "factory/12-worktree")
+	err := push(func(string, string, ...func() error) error { return errors.New(message) }, "/work", factory.Item{}, "factory/12-worktree")
 	if err == nil || strings.Contains(err.Error(), "\n") || publish.ErrorCode(publish.Wrap(err, "push")) != "branch_protected" || publish.ErrorDetail(err) != message {
 		t.Fatalf("push lost its display or code: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestBoundPushNamesTheApprovedObjectWhenTheBranchMoves(t *testing.T) {
 	}
 	branch := branchFor(g.item(t))
 	push := g.r.opts.Push
-	g.r.opts.Push = func(dir, ref string) error {
+	g.r.opts.Push = func(dir, ref string, before ...func() error) error {
 		if ref != head+":refs/heads/"+branch {
 			t.Fatalf("push ref=%q", ref)
 		}
@@ -98,7 +98,7 @@ func TestCommitBoundPublishFailureRetryAndUnseenWork(t *testing.T) {
 			}
 			trailer := testTrailer + " " + head
 			push := g.r.opts.Push
-			g.r.opts.Push = func(string, string) error { return errors.New("permission denied") }
+			g.r.opts.Push = func(string, string, ...func() error) error { return errors.New("permission denied") }
 			if dirty {
 				if err := os.WriteFile(filepath.Join(g.dir, "unseen.go"), []byte("package ledger\n"), 0o600); err != nil {
 					t.Fatal(err)
@@ -165,7 +165,7 @@ func TestPublishNoCommitsCommentsWithoutPushing(t *testing.T) {
 				next := mustGit(t, g.dir, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "default moved")
 				mustGit(t, g.dir, "update-ref", "refs/remotes/origin/trunk", next)
 			}
-			g.r.opts.Push = func(string, string) error { t.Error("a proof-only job pushed"); return nil }
+			g.r.opts.Push = func(string, string, ...func() error) error { t.Error("a proof-only job pushed"); return nil }
 			before := mustGit(t, g.dir, "rev-parse", "HEAD")
 			if got := g.r.publishPreview(g.item(t)); got != "comment" {
 				t.Fatalf("publish preview = %q", got)
@@ -355,7 +355,7 @@ func TestStandalonePRJobsCannotPublish(t *testing.T) {
 	}
 	src := &fakeSource{}
 	pushed := false
-	r := New(Options{Store: st, Source: func(string) factory.Source { return src }, Push: func(string, string) error { pushed = true; return nil }})
+	r := New(Options{Store: st, Source: func(string) factory.Source { return src }, Push: func(string, string, ...func() error) error { pushed = true; return nil }})
 	if err := r.Publish(saved.ID, testTrailer); err == nil || !strings.Contains(err.Error(), "issues only") {
 		t.Fatalf("accepted legacy PR job: %v", err)
 	}

@@ -26,3 +26,9 @@ a table, table-less results retain its rows and update their round without charg
 spending already included in Cost. Later tables charge only growth, and step.cost
 continues to sum every retained round. There is no migration or reconstruction of
 missing historical rounds. Spending includes resumed work and descendants.
+
+Each opened chat is a new spending segment, even when it reopens the same
+transcript in the same round. Chats without a live spending meter add that
+segment's spending to the saved round base before reporting a cumulative receipt.
+Live meters already include that base. Saved jobs and worker admission retain
+the round table across restarts; smaller results cannot lower a recorded row.
