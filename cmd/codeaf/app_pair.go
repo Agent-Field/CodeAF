@@ -235,6 +235,7 @@ func (o *appPairOperation) finish(state, line string, err error, restart bool) {
 	o.view.Question = nil
 	o.view.Code = ""
 	o.view.Link = ""
+	o.view.Words = ""
 	o.view.ExpiresAt = time.Time{}
 	if line != "" {
 		o.view.Lines = append(o.view.Lines, strings.Split(line, "\n")...)
@@ -265,7 +266,8 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 	case errors.Is(err, pair.ErrRefused):
 		o.finish("cancelled", appPairDeclined, nil, false)
 	default:
-		o.finish("failed", appPairFailure(err), errors.New(appPairFailure(err)), false)
+		// The failure sentence is the error alone; repeating it as a line showed it twice.
+		o.finish("failed", "", errors.New(appPairFailure(err)), false)
 	}
 }
 func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
