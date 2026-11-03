@@ -71,3 +71,15 @@ func TestPublishAnywayOfferRecognizesPolicyPunctuation(t *testing.T) {
  it.Stream.Phases[1].Result.Claims[0].Evidence="Tests  pass before anything posts."
  if !api.CanFor(it,"alice").PublishAnyway {t.Fatal("valid every-check policy lost offer")}
 }
+
+func TestPublishAnywayRerunRequiresANewPress(t *testing.T) {
+ it:=publishAnywayJob()
+ if err:=factory.DecidePublishAnyway(&it,"alice",time.Now());err!=nil {t.Fatal(err)}
+ if err:=StepControl(&it,"inspect",true,"recheck files",time.Now());err!=nil {t.Fatal(err)}
+ it.Change.Files[0].Path="other.md"
+ it.Stream.Phases[0].State=factory.PhaseSkipped
+ it.Stream.Phases[0].SkipReason="when touches auth does not match the change files"
+ src:=&fakeSource{}
+ res,err,_:=runPost(t,src,[]string{"tests pass before anything posts"},it,"pr",nil)
+ if err!=nil || res.Done || len(src.got)!=0 || it.PublishAnyway!=nil {t.Fatal("rerun retained earlier person press")}
+}
