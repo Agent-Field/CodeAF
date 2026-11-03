@@ -59,59 +59,61 @@ func TestReviewLegacySuccessfulOutput(t *testing.T) {
 func TestReviewBackgroundValidation(t *testing.T) {
 	for _, preserveCommand := range []bool{false, true} {
 		t.Run(fmt.Sprint("matching command=", preserveCommand), func(t *testing.T) {
-	root, file, run := repairCheckFixture(t)
-	command := "cargo test --test cli regression && false"
-	run(command)
-	if preserveCommand {
-		checks, err := verification.Read(file)
-		if err != nil || len(checks) != 1 { t.Fatalf("fixture checks: %v: %v", checks, err) }
-		command = checks[0].Command
-	}
-	raw, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rows []map[string]any
-	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
-		var row map[string]any
-		if err := json.Unmarshal([]byte(line), &row); err != nil {
-			t.Fatal(err)
-		}
-		if row["role"] == "assistant" {
-			call := row["toolCalls"].([]any)[0].(map[string]any)["function"].(map[string]any)
-			args, err := json.Marshal(map[string]any{"command": command, "background": true})
+			root, file, run := repairCheckFixture(t)
+			command := "cargo test --test cli regression && false"
+			run(command)
+			if preserveCommand {
+				checks, err := verification.Read(file)
+				if err != nil || len(checks) != 1 {
+					t.Fatalf("fixture checks: %v: %v", checks, err)
+				}
+				command = checks[0].Command
+			}
+			raw, err := os.ReadFile(file)
 			if err != nil {
 				t.Fatal(err)
 			}
-			call["arguments"] = string(args)
-		}
-		if row["role"] == "tool" {
-			row["content"] = "job 1 started; log at /tmp/job.log"
-			row["presentation"] = map[string]any{"invoked": true, "outcome": "ok"}
-		}
-		rows = append(rows, row)
-	}
-	f, err := os.Create(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc := json.NewEncoder(f)
-	for _, row := range rows {
-		enc.Encode(row)
-	}
-	f.Close()
-	notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
-	blocked := false
-	for _, note := range notes {
-		blocked = blocked || strings.HasPrefix(note, verification.FailurePrefix)
-	}
-	if !blocked {
-		t.Errorf("real background compound exit=1 did not reach guard: %v", notes)
-	}
-	body := factory.PublishBody(factory.Item{Title: "review", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
-	if !preserveCommand && strings.Contains(body, "Passed locally:") {
-		t.Errorf("background exit=1 published as passed: %s", body)
-	}
+			var rows []map[string]any
+			for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+				var row map[string]any
+				if err := json.Unmarshal([]byte(line), &row); err != nil {
+					t.Fatal(err)
+				}
+				if row["role"] == "assistant" {
+					call := row["toolCalls"].([]any)[0].(map[string]any)["function"].(map[string]any)
+					args, err := json.Marshal(map[string]any{"command": command, "background": true})
+					if err != nil {
+						t.Fatal(err)
+					}
+					call["arguments"] = string(args)
+				}
+				if row["role"] == "tool" {
+					row["content"] = "job 1 started; log at /tmp/job.log"
+					row["presentation"] = map[string]any{"invoked": true, "outcome": "ok"}
+				}
+				rows = append(rows, row)
+			}
+			f, err := os.Create(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			enc := json.NewEncoder(f)
+			for _, row := range rows {
+				enc.Encode(row)
+			}
+			f.Close()
+			notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
+			blocked := false
+			for _, note := range notes {
+				blocked = blocked || strings.HasPrefix(note, verification.FailurePrefix)
+			}
+			if !blocked {
+				t.Errorf("real background compound exit=1 did not reach guard: %v", notes)
+			}
+			body := factory.PublishBody(factory.Item{Title: "review", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
+			if !preserveCommand && strings.Contains(body, "Passed locally:") {
+				t.Errorf("background exit=1 published as passed: %s", body)
+			}
 		})
 	}
 }

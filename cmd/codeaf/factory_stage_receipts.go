@@ -233,7 +233,10 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			}
 		} else {
 			lastOutcome[cmd] = receipt["outcome"].(string)
-
+			// A measured check does not finish its surrounding background shell.
+			if launchOutcome, _ := commandReceiptOutcome(row.Content, status, invoked, refused, started, nil); outcome == "passed" && launchOutcome == "started" {
+				lastOutcome[cmd] = launchOutcome
+			}
 		}
 		if strings.Contains(cmd, "go test") && measuredExit != nil && (outcome == "passed" || outcome == "failed") {
 			counts := &factory.TestCounts{}
