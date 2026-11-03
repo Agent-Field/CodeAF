@@ -83,6 +83,7 @@ func RepoOf(it Item) string {
 // person (changes requested, a conflict, a merge that failed) is not under
 // way: nothing of the factory's is running for it, and a stop would refuse it.
 func UnderWay(it Item) bool {
+ if StoppedByPerson(it) { return false }
 	state := JobState(it)
 	if state != "running" && state != "queued" && state != "needs_you" {
 		return false

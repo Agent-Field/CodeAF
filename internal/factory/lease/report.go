@@ -141,6 +141,7 @@ func (d *Desk) CheckPublish(id, worker string) error {
 			return false, err
 		}
 		return false, d.store.Update(held.Job, func(it *factory.Item) error {
+			if err := factory.CheckPersonStop(*it); err != nil { return err }
 			if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
 				return fmt.Errorf("publication stopped; no write is permitted")
 			}

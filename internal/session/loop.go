@@ -965,7 +965,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 	frozenToolHistory := len(a.snapshot())
 
 	for {
- if user.wake || user.factoryWork {
+ if (user.wake && !user.answersPerson && !user.answer) || user.factoryWork {
   if why := a.automaticFactoryRefusal(); why != "" {
    a.record(ai.Message{Role:"assistant",Content:[]ai.ContentPart{{Type:"text",Text:why}}})
    hub.send(Event{Kind:EventTextDelta,Text:why})

@@ -22,7 +22,7 @@ func PresentJob(j *Job) {
 		if j.Failure.Code == factory.CodeStopped {
 			p.Title = "Step stopped"
 		}
-	case j.State != StateDone && j.Desk != nil && j.Desk.PersonStopped:
+	case j.State != StateDone && j.Desk != nil && j.Desk.PersonStopped != nil && *j.Desk.PersonStopped:
  p.Kind, p.Title, p.Detail = "stopped", "Stopped by you", factory.PersonStopReason
 	case j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsOutOfAttempts:
 		p.Kind, p.Title = "out_of_rounds", "Stuck"

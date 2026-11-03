@@ -778,6 +778,7 @@ func clip(s string, n int) string {
 // `open-pr`) and `close`. Anything else is refused as this source not having
 // that verb, and so is an item on a repository nobody watches.
 func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, error) {
+ if err := factory.CheckPersonStop(a.Item); err != nil { return factory.Receipt{}, err }
 	a.Body = factory.PublicText(a.Body)
 	if (a.Verb == "comment" || a.Verb == "pr" || a.Verb == "open-pr") && !strings.HasPrefix(a.Body, forge.PublicationMarker) && strings.TrimSpace(a.Body) != "" {
 		a.Body = forge.PublicationMarker + "\n" + a.Body

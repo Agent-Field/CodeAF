@@ -743,7 +743,7 @@ type JobDesk struct {
 	Priority    *factory.JobPriority `json:"priority,omitempty"`
 	DoneHow     string               `json:"done_how,omitempty"`
 	Approval    *factory.Approval    `json:"approval,omitempty"`
-	PersonStopped bool `json:"person_stopped,omitempty"`
+	PersonStopped *bool `json:"person_stopped,omitempty"`
 	StopUndo    *factory.StopUndo    `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`

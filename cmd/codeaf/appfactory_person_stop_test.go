@@ -1,6 +1,10 @@
 package main
 
 import (
+factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
+"github.com/Agent-Field/codeaf/internal/factory/intake"
+"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+"github.com/Agent-Field/codeaf/internal/factory/record"
 "context"
 "net/http"
 "net/http/httptest"
@@ -143,7 +147,7 @@ func TestFactoryPersonStopProofAndDraftPR(t *testing.T) {
    if factory.QueueCIFollowUp(&after,time.Now()) || factory.Automatic(after) { t.Fatal("draft PR resumed automatically") }
    var job api.Job
    s.must("factory.job",map[string]any{"factory":status.Factory,"job":saved.ID},&job)
-   if job.State != api.StateNeedsYou || job.Can.PRReady || job.Can.Approve || job.Desk == nil || !job.Desk.PersonStopped { t.Fatalf("wire lost Stop: %+v",job) }
+   if job.State != api.StateNeedsYou || job.Can.PRReady || job.Can.Approve || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) { t.Fatalf("wire lost Stop: %+v",job) }
   })
  }
 }
@@ -165,7 +169,7 @@ func TestFactoryPersonStopLegacyFixtures(t *testing.T) {
    if !errors.Is(err,factory.ErrPersonStopped) { t.Fatalf("legacy Stop was ignored: %v",err) }
    var job api.Job
    s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&job)
-   if job.State != api.StateNeedsYou || job.Desk == nil || !job.Desk.PersonStopped { t.Fatalf("legacy wire lost Stop: %+v",job) }
+   if job.State != api.StateNeedsYou || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) { t.Fatalf("legacy wire lost Stop: %+v",job) }
   })
  }
 }
@@ -180,6 +184,9 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  it,err := floor.Get(it.ID)
  if err != nil { t.Fatal(err) }
  entered,release := make(chan struct{}),make(chan struct{})
+ personEntered,personRelease := make(chan struct{}),make(chan struct{})
+ var personOnce sync.Once
+ unblockPerson:=func(){personOnce.Do(func(){close(personRelease)})}
  var once sync.Once
  unblock := func(){once.Do(func(){close(release)})}
  var calls atomic.Int32
@@ -188,6 +195,7 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
   var req recordedRequest
   if err := json.NewDecoder(r.Body).Decode(&req); err != nil { t.Error(err); return }
   n:=calls.Add(1)
+  if n==2 { close(personEntered); <-personRelease }
   delta,finish := map[string]any{"content":"this job is stopped; a person presses Start"},"stop"
   if n==1 {
    close(entered)
@@ -201,6 +209,7 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  }))
  t.Cleanup(model.Close)
  t.Cleanup(unblock)
+ t.Cleanup(unblockPerson)
  agent,err:=session.New(session.Config{Workspace:mustCheckout(t,floor),SessionFile:it.Talk,ProfileDir:s.backend.localProfile(),Model:"test/model",APIKey:"test-key",BaseURL:model.URL,OneModel:true,DeterministicNames:true,FactoryRun:runDoor(floor,mustCheckout(t,floor),s.backend.localProfile())})
  if err != nil { t.Fatal(err) }
  t.Cleanup(func(){_ = agent.Close()})
@@ -219,11 +228,20 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  if err != nil { t.Fatal(err) }
  if !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("late tool restarted job: %s",saved.State) }
  beforeCalls:=calls.Load()
+ wakes,stopWatching:=agent.WatchWakes()
+ defer stopWatching()
  reply,err:=agent.Submit(context.Background(),"Explain what you need from me, without doing any work.")
  if err != nil { t.Fatal(err) }
+ select {case <-personEntered: case <-time.After(10*time.Second): t.Fatal("person chat did not enter fake model") }
+ steered,err:=agent.Submit(context.Background(),"Also explain which Start button I should press; do not start anything.")
+ if err!=nil{t.Fatal(err)}
+ unblockPerson()
  words.Reset()
  for event:=range reply { words.WriteString(event.Text) }
  if calls.Load()!=beforeCalls+1 || !strings.Contains(words.String(),"this job is stopped") { t.Fatalf("person chat did not reach manager: calls=%d text=%q",calls.Load()-beforeCalls,words.String()) }
+ for range steered {}
+ select { case answer:=<-wakes: for event:=range answer { words.WriteString(event.Text) }; case <-time.After(10*time.Second): t.Fatal("person message during a response was left unanswered") }
+ if calls.Load()!=beforeCalls+2 {t.Fatalf("two person messages bought %d calls; want two",calls.Load()-beforeCalls)}
  saved,err=floor.Get(it.ID)
  if err!=nil || !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("person chat changed execution: %s %v",saved.State,err) }
 }
@@ -233,4 +251,25 @@ func mustCheckout(t *testing.T, floor *store.Store) string {
  dirs,err:=floor.Checkouts()
  if err!=nil {t.Fatal(err)}
  return dirs["acme/api"]
+}
+
+func TestFactoryPersonStopGitHubSyncAndIntake(t *testing.T) {
+ s,status,it:=stoppedAppJob(t,factory.StateNeedsYou)
+ floor:=s.backend.local.host.floor
+ if err:=floor.Update(it.ID,func(cur *factory.Item)error{cur.Origin=factory.OriginForge;cur.Num=128;cur.URL="https://github.com/acme/api/issues/128";return nil});err!=nil{t.Fatal(err)}
+ if err:=factorygithub.Merge(floor,"github",[]factory.Item{{Repo:"acme/api",Num:128,Kind:factory.KindIssue,Origin:factory.OriginForge,Title:"Changed on GitHub",Labels:[]string{"agent-ready","size:S"},State:factory.StateNew}});err!=nil{t.Fatal(err)}
+ var job api.Job
+ s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&job)
+ if job.State!=api.StateNeedsYou||job.Desk==nil||(job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped)||!job.Can.StartNow||job.Can.Answer||job.Can.Approve||job.Can.PRReady{t.Fatalf("GitHub sync erased or hid Stop: %+v",job)}
+ history,err:=record.Open(floor,record.Options{})
+ if err!=nil{t.Fatal(err)}
+ file,err:=pipeline.Parse("default_budget: 10\nstart:\n  labels: [agent-ready]\n")
+ if err!=nil{t.Fatal(err)}
+ var calls atomic.Int32
+ picker:=intake.New(floor,intake.Options{Record:history,Load:func(string)(pipeline.File,error){calls.Add(1);return file,nil},Launch:func(int)error{calls.Add(1);return nil}})
+ if err:=picker.Once(context.Background());err!=nil{t.Fatal(err)}
+ if calls.Load()!=0{t.Fatalf("GitHub sync restarted stopped intake: %d calls",calls.Load())}
+ desk,err:=lease.Open(floor,lease.Options{})
+ if err!=nil{t.Fatal(err)}
+ if _,err:=desk.Pull(lease.Worker{ID:"poll",Handle:"owner",Solo:true});!errors.Is(err,lease.ErrNoJob){t.Fatalf("GitHub poll made stopped job runnable: %v",err)}
 }

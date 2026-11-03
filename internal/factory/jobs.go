@@ -331,6 +331,7 @@ func JobApprovalSummary(it Item) *Approval {
 }
 
 func JobApproval(it Item) *Approval {
+ if StoppedByPerson(it) { return nil }
 
 	kind := ""
 	switch JobReason(it) {

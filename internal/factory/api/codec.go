@@ -146,6 +146,7 @@ var Lost = map[string]string{
 
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
+ if it.PersonStopped == nil && factory.StoppedByPerson(it) { factory.MarkPersonStopped(&it) }
 	j := Job{
 		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
@@ -488,7 +489,7 @@ func ToItem(j Job) factory.Item {
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
-		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: &d.PersonStopped,
+		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped,
 		DismissedBy: j.DismissedBy, DoneAt: j.DoneAt,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
@@ -795,7 +796,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
-		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: factory.StoppedByPerson(it),
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
