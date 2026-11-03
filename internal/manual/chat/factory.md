@@ -254,6 +254,8 @@ An issue keeps the PR it opens, its checks, reviews and merge status. One final 
 
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
+A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job keeps your original input as its ask, while its short title still removes chips and stray punctuation.
+
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
 
 Once a job has landed, a nonempty step edit is refused with `the job has landed, so the steps can no longer be edited`, whether or not it had a proof step. Landed jobs do not offer step editing.

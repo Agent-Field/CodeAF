@@ -236,7 +236,7 @@ func StageSentence(words string) (Stage, string, error) {
 		}
 		name, rest = w, rest[len(m[0]):]
 	}
-	ask := strings.Trim(strings.TrimSpace(rest), " ,:;.")
+	ask := strings.TrimSpace(rest)
 	if ask == "" {
 		return Stage{}, when, errors.New("say what the stage should do")
 	}
