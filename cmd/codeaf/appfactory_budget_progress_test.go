@@ -54,7 +54,7 @@ func TestAppFactoryBudgetProgress(t *testing.T) {
 				"budget": 5, "expect": map[string]any{"version": edited.Current.Version}}, &edited)
 			want = 5
 		}
-		s.mustFail("factory.job_set_budget", params, appwire.CodeStale)
+		s.mustFail("factory.job_set_budget", params, appwire.CodeConflict)
 		var current api.Job
 		s.must("factory.job", map[string]any{"factory": status.Factory, "job": job.ID}, &current)
 		if current.Budget != want || current.Version != edited.Current.Version {
