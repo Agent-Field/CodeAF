@@ -298,7 +298,7 @@ func (d *workstreamAgentDoor) WritePage(ctx context.Context, ask session.Workstr
 
 func workstreamAgentWritePage(ctx context.Context, s *workstream.Store, id string, ask session.WorkstreamPageWrite, doc json.RawMessage, who workstream.Attribution) (workstream.Page, workstream.Change, error) {
 	if ask.PageID == "" {
-		return s.CreatePage(ctx, workstream.PageCreate{WorkstreamID: id, ParentID: ask.ParentID, Title: ask.Title, Owner: "agent", ReadByJobs: false, Doc: doc, Attribution: who})
+		return s.CreatePage(ctx, workstream.PageCreate{WorkstreamID: id, ParentID: ask.ParentID, Title: ask.Title, Owner: "agent", ReadByJobs: workstream.ReadByJobsDefault(ask.Title), Doc: doc, Attribution: who})
 	}
 	p, err := workstreamAgentPage(ctx, s, id, ask.PageID, false)
 	if err != nil {

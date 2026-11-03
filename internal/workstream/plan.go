@@ -68,6 +68,19 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 		if !w.DoneAt.IsZero() {
 			return ErrConflict
 		}
+		if len(milestones) > PlanMilestonesMax {
+			return fmt.Errorf("%w: a plan holds at most %d milestones", ErrLimit, PlanMilestonesMax)
+		}
+		if len(waves) > PlanWavesMax {
+			return fmt.Errorf("%w: a plan holds at most %d waves", ErrLimit, PlanWavesMax)
+		}
+		items := 0
+		for _, wave := range waves {
+			items += len(wave.Items)
+			if items > PlanItemsMax {
+				return fmt.Errorf("%w: a plan holds at most %d items", ErrLimit, PlanItemsMax)
+			}
+		}
 		p, err := planIn(ctx, tx, id)
 		if err != nil {
 			return err
@@ -128,8 +141,12 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 					if err := validTitle(item.Title); err != nil {
 						return err
 					}
+					// Control characters stay invalid whatever the length.
 					if !textWithin(item.Text, len(item.Text)) {
 						return invalid("draft text allows only newline and tab control characters")
+					}
+					if len(item.Text) > PlanDraftTextMax {
+						return fmt.Errorf("%w: draft text must be at most %d bytes", ErrLimit, PlanDraftTextMax)
 					}
 				default:
 					return invalid("unknown plan item kind")
@@ -143,6 +160,9 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 		v, err := json.Marshal(waves)
 		if err != nil {
 			return err
+		}
+		if len(m)+len(v) > PlanEncodedMax {
+			return fmt.Errorf("%w: a plan's milestones and waves must encode to at most %d bytes", ErrLimit, PlanEncodedMax)
 		}
 		at := s.now().UnixMilli()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_plans(workstream_id,version,updated_at,updated_by,milestones,waves) VALUES (?,?,?,?,?,?)

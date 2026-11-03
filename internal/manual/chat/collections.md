@@ -159,6 +159,10 @@ characters. Malformed app requests return `bad_params`.
 Decisions and questions can be proposed, kept, dropped and replaced. Keep can undo a drop;
 a replaced record cannot change again. Plans store milestones, ordered waves
 and job or draft items. Wave auto-start is stored without starting jobs.
+A plan holds at most 500 milestones, 500 waves and 5,000 items; its stored
+milestones and waves together encode to at most 4 MiB of JSON.
+Plans beyond these limits return `too_large` without changing anything or
+sending a change event.
 
 A go-ahead requires a member job, a planned wave or milestone, a positive cap
 at most $10,000 and an end in the future at most 90 days away. Expired grants
@@ -183,14 +187,18 @@ agent proposes; the person keeps. `propose_jobs` adds 1–20 draft jobs to the
 plan, leaving existing waves and settings intact. Drafts create no Factory
 jobs and start nothing; the person launches them. A plan conflict is retried
 once against a fresh read, then refused if it changes again.
+Each `propose_jobs` draft's text is at most 4,000 bytes; a plan stores draft
+text up to 80,000 bytes. A workstream holds at most 5,000 pages, including
+deleted pages, and 5,000 records of every kind and state.
 
 `write_agent_page` creates or updates only the agent's own pages. Every write
 carries an AI mark, its written-at time and a named source; history keeps that
-attribution. New pages have Read by jobs off. The agent refuses the person's
-pages with “That page is the person's. You write only your own pages;
-suggesting edits on theirs is not available yet.” Page documents are limited
-to 1 MiB. A page that changed must be read again before writing. Done
-workstreams refuse all these writes.
+attribution. New pages titled Spec or Decisions have Read by jobs on, ignoring
+case and surrounding space; other new pages have it off. Updates keep the flag.
+The agent refuses the person's pages with “That page is the person's. You write
+only your own pages; suggesting edits on theirs is not available yet.” Page
+documents are limited to 1 MiB. A page that changed must be read again before
+writing. Done workstreams refuse all these writes.
 
 Tool arguments refuse unknown fields and repeated object keys, including inside
 sources and draft jobs, before reading or writing the workstream. The agent keeps

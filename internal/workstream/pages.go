@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -407,6 +408,13 @@ func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, err
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
 		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, p.By); err != nil {
 			return err
+		}
+		var count int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM workstream_pages WHERE workstream_id=?", p.WorkstreamID).Scan(&count); err != nil {
+			return err
+		}
+		if count >= PagesMax {
+			return fmt.Errorf("%w: a workstream holds at most %d pages, including deleted pages", ErrLimit, PagesMax)
 		}
 		id, err := s.newID()
 		if err != nil {

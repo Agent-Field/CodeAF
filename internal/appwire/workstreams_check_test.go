@@ -5,7 +5,73 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/workstream"
 )
+
+func TestStabEM4PlanBoundsBeforeDelegation(t *testing.T) {
+	draftID, title := "draft", "Draft"
+	draft := WorkstreamPlanItem{Kind: "draft", DraftID: &draftID, Title: &title}
+	for _, tc := range []struct {
+		name string
+		edit func(*WorkstreamPlanSetParams)
+		code string
+	}{
+		{"draft text", func(p *WorkstreamPlanSetParams) {
+			text := strings.Repeat("x", workstream.PlanDraftTextMax+1)
+			p.Waves[0].Items[0].Text = &text
+		}, CodeTooLarge},
+		{"milestones", func(p *WorkstreamPlanSetParams) {
+			p.Milestones = make([]WorkstreamMilestone, workstream.PlanMilestonesMax+1)
+			for i := range p.Milestones {
+				p.Milestones[i] = WorkstreamMilestone{ID: fmt.Sprintf("m%d", i), Title: "Milestone"}
+			}
+		}, CodeTooLarge},
+		{"waves", func(p *WorkstreamPlanSetParams) {
+			p.Waves = make([]WorkstreamWave, workstream.PlanWavesMax+1)
+			for i := range p.Waves {
+				p.Waves[i] = WorkstreamWave{N: i + 1, Items: []WorkstreamPlanItem{}}
+			}
+		}, CodeTooLarge},
+		{"items", func(p *WorkstreamPlanSetParams) {
+			p.Waves[0].Items = make([]WorkstreamPlanItem, workstream.PlanItemsMax+1)
+			for i := range p.Waves[0].Items {
+				p.Waves[0].Items[i] = draft
+			}
+		}, CodeTooLarge},
+		{"control characters", func(p *WorkstreamPlanSetParams) {
+			text := "before\x00after"
+			p.Waves[0].Items[0].Text = &text
+		}, CodeBadParams},
+		{"control characters past the text bound", func(p *WorkstreamPlanSetParams) {
+			text := strings.Repeat("x", workstream.PlanDraftTextMax) + "\x00"
+			p.Waves[0].Items[0].Text = &text
+		}, CodeBadParams},
+		{"bad draft id", func(p *WorkstreamPlanSetParams) {
+			id := " invalid "
+			p.Waves[0].Items[0].DraftID = &id
+		}, CodeBadParams},
+		{"at text bound", func(p *WorkstreamPlanSetParams) {
+			text := strings.Repeat("x", workstream.PlanDraftTextMax)
+			p.Waves[0].Items[0].Text = &text
+		}, CodeUnknownMethod},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			params := WorkstreamPlanSetParams{ID: "w", Milestones: []WorkstreamMilestone{}, Waves: []WorkstreamWave{{N: 1, Items: []WorkstreamPlanItem{draft}}}}
+			tc.edit(&params)
+			raw, err := json.Marshal(params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fake := &fakeWorkstreamer{fakeEngine: &fakeEngine{}, serves: true}
+			_, err = methods["workstream.plan_set"].call(fake, raw)
+			wire, ok := err.(*Error)
+			if !ok || wire.Code != tc.code {
+				t.Fatalf("got %v, want %s", err, tc.code)
+			}
+		})
+	}
+}
 
 // B1: malformed requests are refused at the real typed dispatch door, before
 // the serving fake (which always answers unknown_method) can receive them.

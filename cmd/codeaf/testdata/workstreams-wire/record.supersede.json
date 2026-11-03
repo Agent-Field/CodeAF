@@ -4,6 +4,7 @@
     "bad_params",
     "not_found",
     "conflict",
+    "too_large",
     "busy",
     "unknown_method"
   ],

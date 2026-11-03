@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -38,6 +39,18 @@ func recordText(kind, text string) error {
 	}
 	return nil
 }
+
+func workstreamRecordLimitIn(ctx context.Context, tx *sql.Tx, id string) error {
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM workstream_records WHERE workstream_id=?", id).Scan(&count); err != nil {
+		return err
+	}
+	if count >= RecordsMax {
+		return fmt.Errorf("%w: a workstream holds at most %d records", ErrLimit, RecordsMax)
+	}
+	return nil
+}
+
 func (s *Store) Records(ctx context.Context, id, kind, state string, includeGoAheads ...bool) ([]Record, error) {
 	if kind != "" && kind != "decision" && kind != "question" && kind != "goahead" {
 		return nil, invalid("unknown record kind")
@@ -135,6 +148,9 @@ func (s *Store) ProposeRecord(ctx context.Context, p RecordPropose) (Record, Cha
 				return err
 			}
 			proposal = string(encoded)
+		}
+		if err := workstreamRecordLimitIn(ctx, tx, p.WorkstreamID); err != nil {
+			return err
 		}
 		id, err := s.newID()
 		if err != nil {
@@ -238,6 +254,9 @@ func (s *Store) SupersedeRecord(ctx context.Context, id string, p RecordReplacem
 			kind = r.Kind
 		}
 		if err := recordText(kind, p.Text); err != nil {
+			return err
+		}
+		if err := workstreamRecordLimitIn(ctx, tx, r.WorkstreamID); err != nil {
 			return err
 		}
 		replacement, err := s.newID()

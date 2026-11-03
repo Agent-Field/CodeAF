@@ -5,6 +5,7 @@
     "not_found",
     "conflict",
     "version_conflict",
+    "too_large",
     "busy",
     "unknown_method"
   ],
