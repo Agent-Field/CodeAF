@@ -8,7 +8,9 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -47,9 +49,20 @@ type CheckRun struct {
 // first. A pull request touching more is still read in one page of a hundred.
 const FilesMost = 20
 
+type noIssueRedirect struct{}
+
+var errIssueRedirect = errors.New("GitHub issue redirected")
+
 // Issue reads one issue (or the issue side of a pull request) by its number.
 func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Issue, error) {
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/issues/"+strconv.Itoa(number)), "")
+	headers, err := c.headersForRepo(ctx, owner, repo)
+	if err != nil {
+		return Issue{}, err
+	}
+	body, _, err := c.requestTagged(context.WithValue(ctx, noIssueRedirect{}, true), http.MethodGet, c.repoURL(owner, repo, "/issues/"+strconv.Itoa(number)), headers, nil, 30*time.Second, "")
+	if errors.Is(err, errIssueRedirect) {
+		return Issue{Redirected: true}, nil
+	}
 	if err != nil {
 		return Issue{}, err
 	}
@@ -58,6 +71,7 @@ func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Iss
 		return Issue{}, err
 	}
 	return Issue{
+		ID:     r.ID,
 		Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 		Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 		URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,

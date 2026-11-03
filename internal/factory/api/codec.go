@@ -110,6 +110,10 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"Item.GitHubIssueID": "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
+	"Item.SourceClosed":  "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
+	"Item.PersonTouched": "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
+
 	"Item.MemorySpent":             "runner-local provenance already included in total cost; completed-round checks compare only charges since local admission, so readers and a newly admitted worker need no historical split",
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
