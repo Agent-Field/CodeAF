@@ -22,6 +22,7 @@ func TestPublishAnywayPostRequiresCurrentPersonDecision(t *testing.T) {
   {"unknown files",func(it *factory.Item){it.Change=nil;it.Triage.Area="docs"},false},
   {"automatic approval",func(it *factory.Item){it.PublishAnyway.Automatic=true},false},
   {"files changed",func(it *factory.Item){it.Change.Files[0].Path="other.md"},false},
+  {"condition now matches",func(it *factory.Item){it.Change.Files[0].Path="auth.go"},false},
   {"head changed",func(it *factory.Item){it.HeadCommit=strings.Repeat("b",40)},false},
   {"skips changed",func(it *factory.Item){it.Stream.Phases[0].SkipReason="different reason"},false},
  } {t.Run(tc.name,func(t *testing.T){
@@ -82,4 +83,14 @@ func TestPublishAnywayRerunRequiresANewPress(t *testing.T) {
  src:=&fakeSource{}
  res,err,_:=runPost(t,src,[]string{"tests pass before anything posts"},it,"pr",nil)
  if err!=nil || res.Done || len(src.got)!=0 || it.PublishAnyway!=nil {t.Fatal("rerun retained earlier person press")}
+}
+
+func TestPublishAnywayPostKeepsMeasuredPassBesideSkip(t *testing.T) {
+ it:=publishAnywayJob()
+ it.Stages=append(it.Stages,factory.Stage{Name:"unit",Kind:factory.StageCheck})
+ it.Stream.Phases=append(it.Stream.Phases,factory.Phase{Name:"unit",Kind:factory.StageCheck,State:factory.PhaseDone,Result:&factory.StageResult{Done:true}})
+ if err:=factory.DecidePublishAnyway(&it,"alice",time.Now());err!=nil {t.Fatal(err)}
+ src:=&fakeSource{}
+ res,err,_:=runPost(t,src,[]string{"tests pass before anything posts"},it,"pr",[]factory.StageResult{{Done:true}})
+ if err!=nil || !res.Done || len(src.got)!=1 {t.Fatalf("measured pass plus skip did not publish: %+v %v",res,err)}
 }
