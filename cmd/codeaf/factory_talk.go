@@ -113,9 +113,16 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 // factory runs here), which carries the file it was decided on, so this
 // machine's own copy is never read for it, nor cleared by that read.
 func talkMakerReading(st, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
-	dirs := factoryRepoDirs(st, workspace)
+	return talkMakerHolding(st, st, copies, workspace, profileDir)
+}
+
+// talkMakerHolding is [talkMakerReading] whose jobs live in st, while the
+// conversation's folder and team belong to floor: a worker's mirror holds a
+// remote job's row and goes when the worker ends; the conversation stays.
+func talkMakerHolding(st, floor, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	dirs := factoryRepoDirs(floor, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
-		factoryReconcileOnce(profileDir, st)
+		factoryReconcileOnce(profileDir, floor)
 		if _, held, err := talkHeld(st, it); held != "" || err != nil {
 			return held, err
 		}
@@ -126,7 +133,7 @@ func talkMakerReading(st, copies *store.Store, workspace, profileDir string) fun
 			if held != "" || err != nil {
 				return held, err
 			}
-			where, err := talkFolder(st, dirs, it)
+			where, err := talkFolder(floor, dirs, it)
 			if err != nil {
 				return "", err
 			}
