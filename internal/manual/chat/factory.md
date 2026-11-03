@@ -23,7 +23,7 @@ caller-access checks still apply. A transient identity-lookup failure can reuse
 the saved list only with the same credential; a refused sign-in fails the read.
 Turning a repository on or off changes `watched` immediately, including a newly
 watched repository absent from the saved available list. A repository removed
-on GitHub leaves the available list after the next successful discovery.
+on GitHub disappears from the available list after the next successful discovery.
 
 Discovery preserves registered checkout folders and uses conditional GitHub reads.
 If every repository page answers 304 and matches the last complete discovery,
