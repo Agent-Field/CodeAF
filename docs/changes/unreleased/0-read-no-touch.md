@@ -21,8 +21,8 @@ separate viewing from intentional work.
 | `factory.job_chats`, `cmd/codeaf/appfactory_chats.go:28` | Called Talk and persistent SetEffort. Returns stored chats and applies effort only while opening the conversation. |
 | Every HTTP snapshot, `internal/factory/serve/serve.go:413` | Reaped leases and settled jobs before routing GET. Startup, deadlines, worker pulls and explicit writes now own maintenance. Writes settle after version checks. |
 | Presence and desk reads, `internal/factory/serve/presence.go:24`, `internal/factory/serve/runners_v2.go:46`, `internal/factory/serve/conflict.go:242` | Called reaping Desk.Live. Snapshot now observes holds without changing jobs. This covers queue, job, step-edit, me, person, runners and people reads. |
-| Worker checks, `internal/factory/serve/workers.go:748`, `internal/factory/serve/stop_after_step.go:49` | Publication checking called Store.Update without changing a field. Stop-choice reads renewed the lease. Both now read without writing jobs or leases. |
-| Job and queue storage, `internal/factory/store/store.go:202`, `internal/factory/store/store.go:225` | Get and List persisted repository identity normalization and bumped revisions. They now normalize returned snapshots. Actual writes persist normalization. |
+| Worker checks, `internal/factory/serve/workers.go:744`, `internal/factory/serve/stop_after_step.go:49` | Publication checking called Store.Update without changing a field. Stop-choice reads renewed the lease. Both now read without writing jobs or leases. |
+| Job and queue storage, `internal/factory/store/store.go:202`, `internal/factory/store/store.go:222` | Get and List persisted repository identity normalization and bumped revisions. They now normalize returned snapshots. Actual writes persist normalization. |
 
 Brief, spot, hand-off, repository, usage and transcript reads use stored snapshots
 or files. `internal/factory/serve/thread.go:9` reads the replicated thread.

@@ -26,8 +26,8 @@ import (
 )
 
 type workerFixture struct {
- cfg serve.Config
- seam factory.Seam
+	cfg     serve.Config
+	seam    factory.Seam
 	st      *store.Store
 	handler *serve.Handler
 	server  *httptest.Server
@@ -61,7 +61,7 @@ func workerSetupAs(t *testing.T, login string) *workerFixture {
 		}
 	}
 	f.cfg, f.seam = cfg, seam
- f.handler = serve.New(seam, cfg)
+	f.handler = serve.New(seam, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)
 	t.Cleanup(f.handler.Close)
@@ -691,11 +691,11 @@ func TestReattachingTheSameComputerLeavesOneRegistrationPerLiveSlot(t *testing.T
 }
 
 func (f *workerFixture) restart(t *testing.T) {
- t.Helper()
- f.server.Close()
- f.handler.Close()
- f.handler = serve.New(f.seam, f.cfg)
- f.server = httptest.NewServer(f.handler)
- t.Cleanup(f.server.Close)
- t.Cleanup(f.handler.Close)
+	t.Helper()
+	f.server.Close()
+	f.handler.Close()
+	f.handler = serve.New(f.seam, f.cfg)
+	f.server = httptest.NewServer(f.handler)
+	t.Cleanup(f.server.Close)
+	t.Cleanup(f.handler.Close)
 }

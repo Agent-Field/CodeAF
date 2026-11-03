@@ -74,7 +74,7 @@ func TestCheckoutIdentityIsNormalizedWithoutWritingOnRead(t *testing.T) {
 				t.Fatal(err)
 			}
 			// A full key does not need origin, but the old alias does. Keep the
-			// legacy alias in the file to exercise migration after an upgrade.
+			// legacy alias in the file to exercise read-only normalization.
 			if key == "acme/ledger" {
 				if err := st.SetCheckout("local-alias", dir); err != nil {
 					t.Fatal(err)
@@ -98,9 +98,13 @@ func TestCheckoutIdentityIsNormalizedWithoutWritingOnRead(t *testing.T) {
 			if rev, _ := st.Revision(it.ID); rev != 1 {
 				t.Fatalf("read changed revision: %d", rev)
 			}
-			if err := st.Update(it.ID, func(cur *factory.Item) error { cur.Title = "updated"; return nil }); err != nil { t.Fatal(err) }
-   persisted, err := st.read(st.ItemPath(it.ID))
-   if err != nil || persisted.Item.Repo != "acme/ledger" || persisted.Revision != 2 { t.Fatalf("write did not normalize identity: %+v %v", persisted, err) }
+			if err := st.Update(it.ID, func(cur *factory.Item) error { cur.Title = "updated"; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			persisted, err := st.read(st.ItemPath(it.ID))
+			if err != nil || persisted.Item.Repo != "acme/ledger" || persisted.Revision != 2 {
+				t.Fatalf("write did not normalize identity: %+v %v", persisted, err)
+			}
 			made, err := st.Create(factory.Item{Repo: alias, Title: "new"})
 			if err != nil || made.Repo != "acme/ledger" {
 				t.Fatalf("new = %+v, %v", made, err)

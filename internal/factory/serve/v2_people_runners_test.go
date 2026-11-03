@@ -276,8 +276,8 @@ func TestV2RepoOnOffIsRecordedAsOperator(t *testing.T) {
 }
 
 func (f *peopleV2Fixture) restart(t *testing.T) {
- t.Helper()
- f.h.Close()
- f.h = New(f.seam, f.cfg)
- t.Cleanup(f.h.Close)
+	t.Helper()
+	f.h.Close()
+	f.h = New(f.seam, f.cfg)
+	t.Cleanup(f.h.Close)
 }

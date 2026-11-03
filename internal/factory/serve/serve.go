@@ -413,7 +413,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.idempotent(w, r)
 	// Writes admit lifecycle work after checking the version the person read.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		if h.workers != nil && h.workers.desk != nil { _, _ = h.workers.desk.Live() }
+		if h.workers != nil && h.workers.desk != nil {
+			_, _ = h.workers.desk.Live()
+		}
 		h.settleJobs(r.Method == http.MethodPost)
 		h.scheduleJobTimer()
 	}

@@ -1,9 +1,9 @@
 package main
 
 import (
- "bytes"
- "encoding/json"
- "os"
+	"bytes"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -96,26 +96,46 @@ func TestFactoryExistingJobSendTouchesJob(t *testing.T) {
 }
 
 func TestFactoryJobChatsDoesNotMigrateRepositoryOnRead(t *testing.T) {
- s := newLocalSetup(t)
- st := s.start()
- floor := s.backend.local.host.floor
- it, err := floor.Create(factory.Item{Repo: "acme/api", Product: "acme", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
- if err != nil { t.Fatal(err) }
- type envelope struct { Schema int `json:"schema"`; Revision int `json:"revision"`; Item factory.Item `json:"item"` }
- raw, err := os.ReadFile(floor.ItemPath(it.ID))
- if err != nil { t.Fatal(err) }
- var doc envelope
- if err := json.Unmarshal(raw, &doc); err != nil { t.Fatal(err) }
- doc.Item.Repo = "api"
- raw, err = json.Marshal(doc)
- if err != nil { t.Fatal(err) }
- if err := os.WriteFile(floor.ItemPath(it.ID), raw, 0600); err != nil { t.Fatal(err) }
- for _, method := range []string{"factory.job_chats", "factory.job", "factory.queue"} {
-  params := map[string]any{"factory": st.Factory}
-  if method != "factory.queue" { params["job"] = it.ID }
-  s.must(method, params, nil)
-  kept, err := os.ReadFile(floor.ItemPath(it.ID))
-  if err != nil { t.Fatal(err) }
-  if !bytes.Equal(raw, kept) { t.Fatalf("%s rewrote repository identity or version", method) }
- }
+	s := newLocalSetup(t)
+	st := s.start()
+	floor := s.backend.local.host.floor
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Product: "acme", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type envelope struct {
+		Schema   int          `json:"schema"`
+		Revision int          `json:"revision"`
+		Item     factory.Item `json:"item"`
+	}
+	raw, err := os.ReadFile(floor.ItemPath(it.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc envelope
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc.Item.Repo = "api"
+	raw, err = json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(floor.ItemPath(it.ID), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"factory.job_chats", "factory.job", "factory.queue"} {
+		params := map[string]any{"factory": st.Factory}
+		if method != "factory.queue" {
+			params["job"] = it.ID
+		}
+		s.must(method, params, nil)
+		kept, err := os.ReadFile(floor.ItemPath(it.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(raw, kept) {
+			t.Fatalf("%s rewrote repository identity or version", method)
+		}
+	}
 }
