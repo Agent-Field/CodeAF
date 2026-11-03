@@ -173,7 +173,7 @@ func (a *Agent) endRunOnTheWall() bool {
 // lets a running worker land its stopped row, and deliberately leaves every
 // branch and working copy alone.
 func (a *Agent) stopWorkOnTheWall() {
-	if err := a.stopWorkFor(conversationTimeLimitReason, StopByTimeLimit); err != nil {
+	if err := a.stopWorkFor(conversationTimeLimitReason, StopByTimeLimit, false); err != nil {
 		return
 	}
 	a.mu.Lock()

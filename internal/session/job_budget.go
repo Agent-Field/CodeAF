@@ -40,9 +40,13 @@ func (a *Agent) watchJobBudget() {
 			if closed {
 				return
 			}
-			if !stopped && a.jobBudgetBlock() != nil {
-				_ = a.StopWork()
-			}
+			if !stopped {
+                if a.jobBudgetBlock() != nil {
+                    _ = a.StopWork()
+                } else if a.automaticFactoryRefusal() != "" {
+                    _ = a.stopWorkFor("", StopByWorkStopped, true)
+                }
+            }
 		}
 	}()
 }

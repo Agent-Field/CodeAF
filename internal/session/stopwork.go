@@ -10,9 +10,9 @@ var errWorkStopping = errors.New("this conversation is stopping; wait for its wo
 // StopWork closes this conversation's admission gates before cancelling work.
 // Unlike Interrupt, this includes background jobs and adaptive runs. Completion
 // news remains in the record but cannot buy another turn until a fresh Submit.
-func (a *Agent) StopWork() error { return a.stopWorkFor("", StopByWorkStopped) }
+func (a *Agent) StopWork() error { return a.stopWorkFor("", StopByWorkStopped, false) }
 
-func (a *Agent) stopWorkFor(why string, door StopDoor) error {
+func (a *Agent) stopWorkFor(why string, door StopDoor, keepPersonChat bool) error {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -28,7 +28,11 @@ func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	a.workStopDone = make(chan struct{})
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
-	cancel, done := a.cancel, a.done
+cancel, done := a.cancel, a.done
+    // A factory Stop ends the job's owned work, while a person's chat may finish.
+    if keepPersonChat && a.running && !a.factoryAutomaticTurn {
+        cancel, done = nil, nil
+    }
 	// A pass a surface asked for outside any turn is work too.
 	defer a.cutManualPassLocked()()
 	memoryStop, titleStop := a.memoryStop, a.titleStop

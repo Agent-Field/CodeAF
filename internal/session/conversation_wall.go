@@ -36,7 +36,7 @@ func (a *Agent) endConversationOnWall() {
 	}
 	a.wallEndingTaken = true
 	a.mu.Unlock()
-	if err := a.stopWorkFor(conversationTimeLimitReason, StopByTimeLimit); err != nil {
+	if err := a.stopWorkFor(conversationTimeLimitReason, StopByTimeLimit, false); err != nil {
 		return
 	}
 	a.mu.Lock()
