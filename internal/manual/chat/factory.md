@@ -369,8 +369,8 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 round. The job reads **Paused**, with no question to answer. Its work, step
 conversation and spending stay. No further model round starts while it is
 paused; costs already incurred by the cancelled call still count.
-Spending after a resume adds to that same round, including after a worker
-restart. Repeated spending reports count once and cannot lower a round's cost.
+Spending after a resume adds to that same round, including when another worker
+continues the job. Repeated spending reports count once and cannot lower a round's cost.
 
 **Resume** continues the step and round where they paused, in the same
 conversation when it can be reopened. It takes a free Jobs at once slot, or
