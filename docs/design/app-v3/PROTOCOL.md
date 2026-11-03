@@ -471,9 +471,21 @@ A confirmed send-back reports acceptance, not worker startup; an unconfirmed
 result directs the manager to read status before retrying and explain the
 outcome to the person without internal identifiers.
 
+Cap questions use one next budget: `factory.job`'s existing
+`spending_limit.next_limit` and `questions[].next_limit` are the smallest of
+$5, $10, $20, $30 strictly above recorded spend. Once spend reaches $30,
+double the current cap, repeatedly if needed, until it is above spend.
+The next limit is never zero. A new question says
+`budget of $30 reached · $31 spent · raise it to $60, or stop?`. Yes or
+continue, including on an older saved question, uses that same next cap.
+The desk sends that next cap as the existing `factory.job_set_budget`'s
+`budget`, never as an answer field. No new field, method, hello feature, or
+error code is added; `factory.job_actions` remains the existing feature.
+
 `factory.job_set_budget` keeps its existing params (`factory`, `job`, `budget`,
-required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
-$30. Raising the cap above recorded spend resolves a `cap` question and resumes
+required `expect.version`) and `FactoryJobActed` reply. Budgets accept $5, $10, $20, $30 or exactly the job's next cap.
+Other amounts are refused with HTTP 422 (`bad_input`), mapped to app-wire
+`bad_params`. Raising the cap above recorded spend resolves a `cap` question and resumes
 the interrupted step in the same conversation and round, with spend retained,
 in Auto or Manual on local and leased runners. Manual still asks before its next
 step. Take over and publishing jobs do not resume through a budget change.

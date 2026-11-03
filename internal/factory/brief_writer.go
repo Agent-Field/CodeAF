@@ -17,7 +17,7 @@ import (
 //
 // The writer is one small model call, not the manager's chat turn. The
 // factory assembles everything it may read ([BriefInputOf]) from the job's
-// own records: the issue, the plan, each step's structured result per try,
+// own records: the issue, later person requests, the plan, each step's result per try,
 // the change's stats and a hunk index, the rules that applied and the brief
 // before. It is never the full diff.
 //
@@ -39,8 +39,10 @@ const (
 	BriefDebounce = 10 * time.Second
 	// briefOutputMost bounds each step output and the issue body the writer
 	// reads, in bytes.
-	briefOutputMost = 2 << 10
-	briefHunksMost  = 40
+	briefOutputMost        = 2 << 10
+	briefHunksMost         = 40
+	briefRequestsMost      = 12
+	briefRequestsBytesMost = 16 << 10
 )
 
 // The triggers of a write. A person's retry and an ask that opened are
@@ -82,6 +84,15 @@ type BriefStepInput struct {
 	Output   string      `json:"output,omitempty"`
 }
 
+// BriefPersonRequest is a person's later words, with the context the job kept.
+// Notes have no recorded step, gate or time; their saved order precedes dated answers.
+type BriefPersonRequest struct {
+	Text string    `json:"text"`
+	Step string    `json:"step,omitempty"`
+	Gate string    `json:"gate,omitempty"`
+	At   time.Time `json:"at,omitzero"`
+}
+
 // BriefInput is everything the writer reads. Previous is not part of the
 // input's hash: a new version changes it, and that alone is no reason to
 // write another.
@@ -102,6 +113,7 @@ type BriefInput struct {
 	Question               string                 `json:"question,omitempty"`
 	Model                  string                 `json:"model,omitempty"`
 	Plan                   string                 `json:"plan,omitempty"`
+	PersonRequests         []BriefPersonRequest   `json:"person_requests,omitempty"`
 	Steps                  []BriefStepInput       `json:"steps"`
 	Change                 *ChangeStat            `json:"change,omitempty"`
 	Hunks                  []PatchHunk            `json:"hunks,omitempty"`
@@ -190,6 +202,7 @@ func BriefVerdictBehind(it Item) bool {
 // BriefInputOf assembles the writer's input from the job.
 func BriefInputOf(it Item) BriefInput {
 	var in BriefInput
+	in.PersonRequests = briefPersonRequests(it)
 	in.Issue.Title, in.Issue.Body, in.Issue.Labels = it.Title, clip(it.Body, briefOutputMost), it.Labels
 	in.NeedsYou, in.Question, in.Model = JobState(it) == "needs_you", it.Question, it.Model
 	in.State = strings.ReplaceAll(string(it.State), "_", " ")
@@ -230,6 +243,46 @@ func BriefInputOf(it Item) BriefInput {
 		in.Previous = &prev
 	}
 	return in
+}
+
+// briefPersonRequests keeps the newest distinct words without inventing note clocks.
+func briefPersonRequests(it Item) []BriefPersonRequest {
+	var requests []BriefPersonRequest
+	for _, text := range it.Notes {
+		if text = strings.TrimSpace(text); text != "" {
+			requests = append(requests, BriefPersonRequest{Text: text})
+		}
+	}
+	for _, q := range it.AnsweredQuestions {
+		if q.Answer == nil {
+			continue
+		}
+		text := strings.TrimSpace(q.Answer.Text)
+		if text == "" || IsContinue(false, text) || strings.EqualFold(text, "no") {
+			continue
+		}
+		requests = append(requests, BriefPersonRequest{Text: text, Step: clip(q.FromStep, 128), Gate: clip(q.Kind, 128), At: q.Answer.At})
+	}
+	slices.SortStableFunc(requests, func(a, b BriefPersonRequest) int { return a.At.Compare(b.At) })
+	seen := map[string]bool{}
+	var kept []BriefPersonRequest
+	size := 2 // The JSON array's brackets.
+	for i := len(requests) - 1; i >= 0; i-- {
+		r := requests[i]
+		if seen[r.Text] {
+			continue
+		}
+		seen[r.Text] = true
+		r.Text = strings.ToValidUTF8(clip(r.Text, briefOutputMost), "")
+		raw, _ := json.Marshal(r)
+		size += len(raw) + 1
+		if len(kept) == briefRequestsMost || size > briefRequestsBytesMost {
+			break
+		}
+		kept = append(kept, r)
+	}
+	slices.Reverse(kept)
+	return kept
 }
 
 // stepInputs is one line per finished try of a phase, then its latest
