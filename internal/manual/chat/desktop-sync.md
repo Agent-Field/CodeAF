@@ -228,3 +228,10 @@ send no Devices event when the displayed computer list has not changed.
 A model choice is applied here only when its provider is set up on this computer;
 otherwise this computer keeps its own model. Setting up that provider later does
 not apply an older skipped choice; only a newer choice on the other computer travels.
+
+## Why the desktop takes a moment to start after an update or a quick reopen
+
+One desktop engine runs on your codeaf home at a time, so two can't spend on the same work. If the last one is still saving as it closes, the new one waits, starts nothing, and carries on as soon as the last one ends. A crash doesn't make you wait.
+
+If the last one is still there after about two minutes, the new one stops and the log says `another codeaf app is still closing this home`. Quit it, then open the app again. Terminal `codeaf`, headless runs and other `--home` folders don't wait.
+

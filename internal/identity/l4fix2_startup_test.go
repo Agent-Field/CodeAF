@@ -52,7 +52,7 @@ func firstStart(t *testing.T) string {
 	if err := autos.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"teams.json.lock", "v3/automations/clock.lock", "v3/automations/clock.log", "v3/automations/environment.salt", "v3/automations/windows/window", "v3/projects/project/chat/meta.lock", startupChat + "/.furrowpolicy"} {
+	for _, name := range []string{"app.lock", "teams.json.lock", "v3/automations/clock.lock", "v3/automations/clock.log", "v3/automations/environment.salt", "v3/automations/windows/window", "v3/projects/project/chat/meta.lock", startupChat + "/.furrowpolicy"} {
 		startupFile(t, home, name, "")
 	}
 	startupFile(t, home, "model-catalog-a88839f814a18779.json", "{}")

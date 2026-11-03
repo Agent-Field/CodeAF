@@ -123,6 +123,9 @@ func runApp(args []string) error {
 			return err
 		}
 	}
+	if err := holdAppHome(); err != nil {
+		return err
+	}
 	// STDOUT IS THE PROTOCOL'S AND NOBODY ELSE'S. The wire keeps the real
 	// descriptor, and anything else in this process that prints to stdout
 	// lands on stderr, where the app collects logs.

@@ -206,6 +206,3 @@ func waitOneEngineFile(t *testing.T, path string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
-
-// Stands in for the lock until it exists, so the first run shows the behaviour.
-var appHomeWait time.Duration
