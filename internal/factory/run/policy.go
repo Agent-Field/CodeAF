@@ -2,7 +2,6 @@ package run
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -22,8 +21,8 @@ const (
 // shapeOf reads one policy line into a shape, ignoring case, punctuation and
 // the spacing between words.
 func shapeOf(line string) policyShape {
-	switch normPolicy(line) {
-	case "tests pass before anything posts":
+	switch factory.PolicyWords(line) {
+	case factory.EveryCheckPolicy:
 		return shapeTestsFirst
 	case "a strangers pr never runs write":
 		return shapeStrangerWrite
@@ -35,21 +34,6 @@ func shapeOf(line string) policyShape {
 		return shapeNeverClose
 	}
 	return shapeUnknown
-}
-
-func normPolicy(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r == '\'' || r == '’':
-			// an apostrophe vanishes: stranger's is strangers.
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		default:
-			b.WriteByte(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 // UnknownPolicy returns the lines no code applies. They are for a model's

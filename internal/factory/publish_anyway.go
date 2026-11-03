@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"strings"
 	"time"
+ "unicode"
 )
 
 // SkippedChecksIdentity binds consent to the reported head, change and skipped
 // checks. Empty means at least one unmet check cannot be waived by a person.
+const EveryCheckPolicy = "tests pass before anything posts"
+
 func SkippedChecksIdentity(it Item) string {
+ if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 { return "" }
 	if it.Stream == nil || (it.HeadCommit == "" && (it.Change == nil || it.Change.Patch == "" || it.Change.PatchTruncated)) {
 		return ""
 	}
@@ -75,7 +79,7 @@ func OffersPublishAnyway(it Item) bool {
 		return false
 	}
 	for _, cl := range ph.Result.Claims {
-		if cl.Medium == "policy" && !cl.OK && strings.EqualFold(strings.TrimSpace(cl.Evidence), "tests pass before anything posts") {
+		if cl.Medium == "policy" && !cl.OK && PolicyWords(cl.Evidence) == EveryCheckPolicy {
 			return true
 		}
 	}
@@ -100,3 +104,20 @@ func DecidePublishAnyway(it *Item, who string, now time.Time) error {
 	it.PublishAnyway = &Approval{Kind: "publish_anyway", State: "approved", DecidedBy: who, At: now.UTC(), Commit: it.HeadCommit, Matched: SkippedChecksIdentity(*it)}
 	return nil
 }
+
+// PolicyWords normalizes the policy language shared by the runner and job actions.
+func PolicyWords(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r == '\'' || r == '’':
+			// an apostrophe vanishes: stranger's is strangers.
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		default:
+			b.WriteByte(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+

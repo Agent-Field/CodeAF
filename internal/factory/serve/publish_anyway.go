@@ -5,10 +5,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"net/http"
+ "errors"
+ "github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 func (h *Handler) publishAnyway(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	var body struct {
+	session, authenticated := h.credential(r)
+ if !authenticated || (session.profile == nil && !(h.config.ServedBy == "app" && h.floorToken(bearer(r)))) {
+ h.fail(w,403,"Sign in before pressing Publish anyway");return
+ }
+ var body struct {
 		Expect *api.Expect `json:"expect"`
 	}
 	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "publish_anyway", body.Expect) || !h.approves(w, r, it) {
@@ -30,6 +36,8 @@ func (h *Handler) publishAnyway(w http.ResponseWriter, r *http.Request, it facto
 		return factory.DecidePublishAnyway(cur, who, h.clock())
 	})
 	if err != nil {
+ var stale *store.StaleError
+ if errors.As(err,&stale) {h.refuse(w,409,err.Error(),"stale","",nil,factory.JobState(it));return}
 		h.refuse(w, 409, err.Error(), "conflict", "", nil, factory.JobState(it))
 		return
 	}
