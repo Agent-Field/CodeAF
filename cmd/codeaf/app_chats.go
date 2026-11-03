@@ -24,6 +24,7 @@ import (
 type appChats struct {
 	start           sync.Once
 	byAgent         map[string]appwire.ChatRow
+	taking          map[string]int
 	take            sync.Mutex
 	op              sync.Mutex
 	mu              sync.Mutex
@@ -352,6 +353,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		out = append(out, row)
 	}
+	b.chats.markTaking(out)
 	cacheFacts := func() {
 		b.chats.mu.Lock()
 		defer b.chats.mu.Unlock()
@@ -369,6 +371,48 @@ func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {
 		return appwire.ChatsResult{Chats: slices.Clone(c.rows), Version: c.version}, true
 	}
 	return appwire.ChatsResult{}, false
+}
+
+// A take is in flight from when agents.take asks for the chat until it ends,
+// so a client that stopped waiting can tell a move still copying from one that
+// never happened.
+func (c *appChats) markTaking(rows []appwire.ChatRow) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range rows {
+		rows[i].Taking = c.taking[rows[i].Cell] > 0
+	}
+}
+
+func (c *appChats) countTake(id string, delta int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.taking == nil {
+		c.taking = make(map[string]int)
+	}
+	c.taking[id] += delta
+	if c.taking[id] <= 0 {
+		delete(c.taking, id)
+	}
+}
+
+// The take's own start and end change no directory version, so its row is
+// emitted again from the cache.
+func (b *appBackend) publishTaking() {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	cached := func() ([]appwire.ChatRow, uint64, bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return slices.Clone(c.rows), c.version, !c.closed && c.source != nil
+	}
+	rows, version, following := cached()
+	if !following {
+		return
+	}
+	c.markTaking(rows)
+	b.publishChats(rows, version, true)
 }
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
@@ -494,6 +538,7 @@ func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Fol
 			r := &rows[i]
 			appChatPresence(r, c.facts[r.Cell], state, known)
 		}
+		c.markTaking(rows)
 		b.publishChats(rows, version, true)
 	}
 	return true

@@ -71,6 +71,15 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if err := b.pairingWorkRefusal(); err != nil {
 		return appwire.Agent{}, err
 	}
+	b.chats.countTake(p.Cell, 1)
+	b.publishTaking()
+	taking := true
+	defer func() {
+		if taking {
+			b.chats.countTake(p.Cell, -1)
+			b.publishTaking()
+		}
+	}()
 	b.chats.take.Lock()
 	defer b.chats.take.Unlock()
 	s, ok, err := syncsetup.Open(b.relayHome())
@@ -181,6 +190,10 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	b.located(a, location)
 	agent.Location = location
+	// The finished take's row stops saying so in the same emission that
+	// says the chat is here.
+	taking = false
+	b.chats.countTake(p.Cell, -1)
 	// Acquisition may have been observed before installation and admission.
 	// Reconcile the local id even when no later directory version will arrive.
 	reconcileInventory := func() error {
@@ -191,8 +204,12 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	err = reconcileInventory()
 	if err != nil {
-		// The take has completed. Inventory recovery belongs to its follower.
+		// The take has completed. Inventory recovery belongs to its follower,
+		// whose next reading also clears the row's taking.
 		b.startChatInventory()
+	} else {
+		// A newer cached version skips the reading's own taking.
+		b.publishTaking()
 	}
 	return agent, nil
 }
