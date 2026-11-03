@@ -2773,6 +2773,10 @@ type Agent struct {
 	knowledgeJournal   *knowledgeJournal
 	taskComputerPrompt bool
 	remoteAckJobs      sync.WaitGroup
+	// knowledgeWake is signalled after each journal line reaches the file.
+	// initKnowledge creates it once before the agent is reachable and never
+	// replaces it, so writers read it without a lock.
+	knowledgeWake chan struct{}
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
