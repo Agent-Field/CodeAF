@@ -547,7 +547,9 @@ func TestStopLiveTrafficUsesRecordedRoom(t *testing.T) {
 }
 
 func newStopLiveWire(t *testing.T, hub *appFactoryHub, profile string) *factoryWire {
- return newFactoryWire(t, hub)
+ w := newFactoryWire(t, hub)
+ w.backend.profileDir = profile
+ return w
 }
 
 func TestStopLiveFactoryAndManagerUseSameProfile(t *testing.T) {
