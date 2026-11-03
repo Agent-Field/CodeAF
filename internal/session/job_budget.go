@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+ "sync"
 	"time"
 )
 
@@ -83,11 +84,17 @@ func (a *Agent) stopFactoryOwnedWork() {
 			_, _ = graph.stopFor(id, "")
 		}
 	}
-	if jobs != nil {
-		for _, job := range jobs.all() {
-			if job.running() {
-				_, _ = jobs.killFor(context.Background(), job.id)
-			}
-		}
-	}
+    if jobs != nil {
+        var stopped sync.WaitGroup
+        for _, job := range jobs.all() {
+            if job.running() {
+                stopped.Add(1)
+                go func(id int) {
+                    defer stopped.Done()
+                    _, _ = jobs.killFor(context.Background(), id)
+                }(job.id)
+            }
+        }
+        stopped.Wait()
+    }
 }
