@@ -706,6 +706,8 @@ failed}`: jobs read now; jobs skipped (already read, not an issue job, not
 visible to the caller, or past the first 20 read); jobs whose model call
 failed, left unread to try again. A factory with no model key fails every job.
 `queue.desk.last_read_cost` is what the last read cost, for "about $X".
+Both read and scout bank each reported provider charge once on Spending,
+including failed generations. Their methods, replies and hello features are unchanged.
 
 An engine whose hello carries the feature `factory.repo_checkout` answers
 `factory.queue` with `checkout_state` on each of `repos[]`: how a run of that

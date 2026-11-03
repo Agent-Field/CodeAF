@@ -158,12 +158,11 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryTriageName))
 		// The read asks at temperature 0, so the same issue read twice lands
 		// in the same band.
+		ctx, recorded := factoryAIAccounting(ctx, settings, model, factoryTriageName, noted)
 		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)}, ai.WithTemperature(0))
+		recorded(response)
 		if err != nil {
 			return "", err
-		}
-		if usd := recordFactoryTriageUsage(settings, model, response); usd > 0 && noted != nil {
-			noted(usd)
 		}
 		if response == nil || strings.TrimSpace(response.Text()) == "" {
 			return "", errors.New("the model answered nothing")
@@ -233,4 +232,33 @@ func recordFactoryAIUsage(settings config.Config, model, name string, response *
 	}
 	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(name), session.SeatLow))
 	return line.USD
+}
+
+// factoryAIAccounting banks charges when the provider reports them, including
+// a failed generation whose response is not returned. The returned response
+// is a fallback only: a successful call already banked must not charge twice.
+func factoryAIAccounting(ctx context.Context, settings config.Config, model, name string, noted func(float64)) (context.Context, func(*ai.Response) float64) {
+	total := 0.0
+	billed := false
+	bank := func(served string, response *ai.Response) {
+		usd := recordFactoryAIUsage(settings, served, name, response)
+		total += usd
+		if usd > 0 && noted != nil {
+			noted(usd)
+		}
+	}
+	ctx = provider.WithBilling(ctx, func(charge provider.Billed) {
+		billed = true
+		served := charge.Model
+		if served == "" {
+			served = model
+		}
+		bank(served, &ai.Response{Usage: &ai.Usage{PromptTokens: charge.PromptTokens, CompletionTokens: charge.CompletionTokens, Cost: &charge.Cost}})
+	})
+	return ctx, func(response *ai.Response) float64 {
+		if !billed && response != nil {
+			bank(model, response)
+		}
+		return total
+	}
 }
