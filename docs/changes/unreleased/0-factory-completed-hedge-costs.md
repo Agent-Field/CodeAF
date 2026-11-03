@@ -9,4 +9,5 @@ invalidates:
 
 When a slow request races another provider, the job includes the cost of both
 completed calls, even though only one answer is used. Spending and the job header
-retain the same charges. No app wire methods or limits change.
+retain the same charges. Settlement stops outstanding requests, then waits up to
+one second for their accounting. No app wire methods change.
