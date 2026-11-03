@@ -566,8 +566,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		// A generic Resume or manager reply cannot bypass reconciliation of a
 		// rejected result. Stop remains available and unsent replies stay pending.
 		if j.blocked != "" && s.Verb == lease.SignalReconcile {
-			j.ackSignal(s.Delivery)
-			if j.recoverBlocked(ctx, true) {
+			if j.recoverBlocked(ctx, true, s.Delivery) {
 				return false
 			}
 			continue
