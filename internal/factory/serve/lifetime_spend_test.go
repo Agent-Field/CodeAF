@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
@@ -202,5 +203,100 @@ func TestLateSettlementAfterRoundTableGrowthKeepsOldRunLifetime(t *testing.T) {
 				t.Fatalf("repeated settlement rewrote the job: revision %d -> %d", revision, after)
 			}
 		}
+	}
+}
+
+func TestArchivedLifetimeSettlementSurvivesClearedOrReplacedMachine(t *testing.T) {
+	for _, mode := range []string{"drop and bring back", "restart on another machine"} {
+		t.Run(mode, func(t *testing.T) {
+			f := workerSetupAs(t, "sam")
+			it := f.add(t, "sam")
+			worker := f.attach(t, "sam")
+			pulled := f.pull(t, worker)
+			cli := client.Open(f.server.URL, "").Worker(worker.Credential)
+			started, err := client.PrepareWorkerReport(api.WorkerReport{Steps: []api.StepReport{{Name: "proof", Round: 1, State: api.StepRunning}}}, "started-lifetime")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cli.ReportPrepared(context.Background(), pulled.Lease.ID, started); err != nil {
+				t.Fatal(err)
+			}
+			anchor, err := client.PrepareWorkerReport(api.WorkerReport{}, "archived-lifetime")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cli.ReportPrepared(context.Background(), pulled.Lease.ID, anchor); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "drop and bring back" {
+				f.request(t, "POST", fmt.Sprintf("/v1/jobs/%d/drop", it.ID), "", nil, 200, nil)
+				f.request(t, "POST", fmt.Sprintf("/v1/jobs/%d/restore", it.ID), "", nil, 200, nil)
+			} else {
+				desk, err := lease.Open(f.st, lease.Options{Now: func() time.Time { return now }})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := lease.NewDoors(desk).Stop(it.ID); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.st.Update(it.ID, func(it *factory.Item) error {
+					it.State = factory.StateNew
+					if err := run.QueueItem(it, now.Add(time.Minute)); err != nil {
+						return err
+					}
+					it.WorktreeMachine = ""
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var replacement api.WorkerAttached
+			var newPull api.WorkerPull
+			if mode == "restart on another machine" {
+				f.request(t, "POST", "/v1/workers/attach", "", api.WorkerAttach{Name: "replacement-machine", Machine: "replacement-machine", Handle: "sam"}, 201, &replacement)
+				newPull = f.pull(t, replacement)
+				if err := f.st.Update(it.ID, func(it *factory.Item) error {
+					return run.ApplyReport(it, factory.RunReport{Cost: .02}, now.Add(time.Minute))
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			body := api.WorkerRecovery{OriginalLease: pulled.Lease.ID, Body: anchor.Body, Headers: anchor.Headers, AdditionalCost: .05}
+			path := fmt.Sprintf("/v1/workers/recover/%d", it.ID)
+			var first api.WorkerRecovered
+			f.request(t, "POST", path, worker.Credential, body, 200, &first)
+			wantRun := 0.0
+			if mode == "restart on another machine" {
+				wantRun = .02
+			}
+			if !first.AlreadyApplied || math.Abs(first.Job.LifetimeCost-(wantRun+.05)) > 1e-9 || first.Job.Cost != wantRun {
+				t.Fatalf("late spend: lifetime=%g run=%g replay=%v, want %g/%g/true", first.Job.LifetimeCost, first.Job.Cost, first.AlreadyApplied, wantRun+.05, wantRun)
+			}
+			var stranger api.WorkerAttached
+			f.request(t, "POST", "/v1/workers/attach", "", api.WorkerAttach{Name: "stranger-machine", Machine: "stranger-machine", Handle: "sam"}, 201, &stranger)
+			f.request(t, "POST", path, stranger.Credential, body, 409, nil)
+			wrongLease := body
+			wrongLease.OriginalLease = "lease_unrelated"
+			f.request(t, "POST", path, worker.Credential, wrongLease, 422, nil)
+			revision, err := f.st.Revision(it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, cost := range []float64{.05, .03} {
+				body.AdditionalCost = cost
+				var replay api.WorkerRecovered
+				f.request(t, "POST", path, worker.Credential, body, 200, &replay)
+				if replay.Job.LifetimeCost != first.Job.LifetimeCost || replay.Job.Cost != wantRun {
+					t.Fatalf("replay changed spending: %+v", replay.Job)
+				}
+			}
+			if mode == "restart on another machine" {
+				f.request(t, "POST", "/v1/workers/leases/"+newPull.Lease.ID+"/heartbeat", replacement.Credential, nil, 200, nil)
+			}
+			after, err := f.st.Revision(it.ID)
+			if err != nil || after != revision {
+				t.Fatalf("replay rewrote job: %d -> %d: %v", revision, after, err)
+			}
+		})
 	}
 }

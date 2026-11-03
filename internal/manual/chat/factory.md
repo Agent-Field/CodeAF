@@ -725,6 +725,10 @@ The line under it splits today into factory jobs, `Factory AI` and your chats. `
 A job keeps the money spent on its earlier runs when Start or Run again begins
 fresh work, and when Bring back clears its earlier work. Run as new creates a
 separate job with zero spending. Undo Stop keeps money reported after Stop too.
+Late cumulative usage adds only its growth to the earlier run's lifetime, even
+after Drop and Bring back or a restart on another machine. It does not charge
+the new run. Archived receipts must retain the original lease, machine and
+person; older receipts without those identities cannot accept late usage.
 
 The job wire keeps `cost` as the current run's cost and adds optional
 `lifetime_cost` for all known spending on the job. Queue jobs carry the same
@@ -742,4 +746,3 @@ App job and queue reads show only saved spending. Ledger tags and workspace
 paths can be shared by jobs from different factories, so ledger recovery is
 disabled. Older jobs show what their saved fields know. Earlier money recorded
 only in the ledger cannot be placed safely and is not added to a job.
-

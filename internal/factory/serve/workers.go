@@ -577,7 +577,7 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			// Only the initial empty report creates a settlement anchor. Later
 			// reports advance it without displacing it from bounded history.
 			if reflect.DeepEqual(report, factory.RunReport{}) {
-				it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: r.PathValue("lease"), At: h.workers.now()})
+				it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: r.PathValue("lease"), Machine: requestWorker(r).Machine, Handle: factory.NormalizeHandle(requestWorker(r).Handle), At: h.workers.now()})
 				if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
 					it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
 				}

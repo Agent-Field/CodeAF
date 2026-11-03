@@ -95,7 +95,7 @@ func (h *Handler) recoverWorkerReport(w http.ResponseWriter, r *http.Request) {
 			it.State = factory.StateQueued
 			it.Stream.Ended = time.Time{}
 		}
-		it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, At: h.workers.now(), AdditionalCost: body.AdditionalCost})
+		it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: body.OriginalLease, Machine: requestWorker(r).Machine, Handle: factory.NormalizeHandle(requestWorker(r).Handle), At: h.workers.now(), AdditionalCost: body.AdditionalCost})
 		if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
 			it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
 		}

@@ -9,7 +9,9 @@ invalidates:
 
 Jobs save earlier spending as SpentBefore. Start and Bring back clear work while
 keeping money; Run as new starts a separate job at zero. Late acknowledged
-receipts add only their growth to the run that spent it, even after restart.
+receipts add only their growth to the run that spent it, even after Drop and Bring back or a restart on another machine. Archived
+receipts require the original lease, machine and person saved in the receipt;
+older receipts without those identities cannot accept late usage.
 Undo Stop keeps money reported since the stop.
 
 The job and queue wire add optional lifetime_cost beside the unchanged current
