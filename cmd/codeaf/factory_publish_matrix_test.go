@@ -210,16 +210,22 @@ func TestStageCommandReceiptsExcludeUnmeasuredCounts(t *testing.T) {
 			root := t.TempDir()
 			file := filepath.Join(root, "journal.jsonl")
 			f, err := os.Create(file)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			enc := json.NewEncoder(f)
 			args, _ := json.Marshal(map[string]string{"command": "go test ./..."})
 			for _, row := range []any{
 				map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": "a", "function": map[string]string{"name": "bash", "arguments": string(args)}}}},
 				map[string]any{"role": "tool", "toolCallId": "a", "content": "--- PASS: TestPrinted (0s)\n--- FAIL: TestPrintedFailure (0s)\n--- SKIP: TestPrintedSkip (0s)\nPASS\n", "presentation": map[string]any{"outcome": status, "refused": status == "refused", "invoked": status != "refused"}},
 			} {
-				if err := enc.Encode(row); err != nil { t.Fatal(err) }
+				if err := enc.Encode(row); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if err := f.Close(); err != nil { t.Fatal(err) }
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
 			notes, counts := (&stageConversation{file: file, dir: root}).ExecutionNotes()
 			if counts != nil || strings.Contains(strings.Join(notes, "\n"), `"tests":`) {
 				t.Fatalf("unmeasured named output acquired counts: %v: %+v", notes, counts)

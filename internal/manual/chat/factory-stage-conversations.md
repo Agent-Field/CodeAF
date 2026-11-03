@@ -457,7 +457,8 @@ A running step publishes its chat identity immediately, so the desktop can show 
 open that conversation while it works. Provider turn errors are recovery events; only the
 runner announces the final stage outcome. Progress uses paths relative to the checkout.
 Completed stage results carry command receipts in their notes: the command, starting folder,
-outcome and named test counts only when a measured exit establishes passed or failed. A final PASS summary is not a test.
+outcome and named test counts only when a measured exit establishes passed or failed.
+A final PASS summary is not a test.
 Later steps receive these receipts instead of rediscovering the working directory and flags.
 ## Execution notes, command outcomes and background checks
 
@@ -467,8 +468,8 @@ identity comes from the tool call or its recorded process.
 A command refused for approval or policy reads `refused` with the actual reason;
 it did not run. Interrupted commands read `cancelled` or `timed out`, even if partial
 output includes PASS. These outcomes remain unresolved until a later measured
-covering pass qualifies for the completion guard. A background launch without a measured exit reads
-`started`; its measured check exit decides verification later.
+covering pass qualifies for the completion guard. A background launch without a
+measured exit reads `started`; its measured check exit decides verification later.
 Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by a
 later measured wider pass; a refused check without covering evidence still holds.
 For older journals without producer status, printed cancellation or timeout words

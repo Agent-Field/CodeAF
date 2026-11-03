@@ -192,6 +192,11 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		// Keep it even for commands outside the legacy check-name vocabulary.
 		if strings.HasPrefix(row.Content, verification.SetupFailurePrefix) {
 			setupFailures[cmd] = row.Content
+			raw, _ := json.Marshal(map[string]any{"command": cmd, "cwd": c.dir, "outcome": "refused", "reason": row.Content})
+			notes = append(notes, "Command receipt: "+string(raw))
+			if len(notes) > 12 {
+				notes = notes[len(notes)-12:]
+			}
 			continue
 		}
 		delete(setupFailures, cmd)
