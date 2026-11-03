@@ -290,6 +290,8 @@ An added conversation, check or approval step may use `when: touches auth` or `w
 
 `touches auth` matches auth, billing or crypto; `has ui` matches tui, pages, render or ui. Matching is case-insensitive, on a whole path segment or its name without extension: `internal/auth/x.go`, `auth.go` and `src/pages/a.tsx` match; `authors.go` and `internal/uint/x.go` do not. Known files override triage area. With known files and no match, the job log says, for example, `skipping inspect: when touches auth does not match the change files`.
 
+A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on the wire), rather than done or passed. It supplies no proof or measured checks. The next step can run and the job can finish, but a job whose only check was skipped is not verified. Resume keeps the skip; rerun from an earlier step re-reads the files and decides again. Engines announce `factory.step_skipped` for this state and reason.
+
 The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 
 ## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs

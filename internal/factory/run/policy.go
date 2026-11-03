@@ -138,7 +138,7 @@ func checksGreen(it factory.Item, prior []factory.StageResult) bool {
 		return false
 	}
 	for _, i := range checkIndexes(it, prior) {
-		if prior[i].Exit != 0 {
+		if !prior[i].Done || prior[i].Exit != 0 || skippedCheck(it, i) {
 			return false
 		}
 	}
@@ -157,6 +157,18 @@ func someCheckGreen(it factory.Item, prior []factory.StageResult) bool {
 		for _, c := range r.Claims {
 			if c.Medium == "test" && c.OK {
 				return true
+			}
+		}
+	}
+	return false
+}
+
+// A skipped phase has no measured exit, even if an old result remains on disk.
+func skippedCheck(it factory.Item, index int) bool {
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.Name == it.Stages[index].Name {
+				return ph.State == factory.PhaseSkipped
 			}
 		}
 	}

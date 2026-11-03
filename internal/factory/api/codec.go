@@ -1097,7 +1097,7 @@ func runStep(s Step, p factory.Phase) Step {
 	if string(p.Kind) != s.Kind {
 		s.RunKind = string(p.Kind)
 	}
-	if r := p.Result; r != nil {
+	if r := p.Result; r != nil && p.State != factory.PhaseSkipped {
 		s.Files = r.Files
 		s.Result, s.Tests, s.Model = r.Output, r.Tests, r.Model
 	}

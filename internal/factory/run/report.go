@@ -399,6 +399,12 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("report names an unknown step")
 	}
 	st := it.Stages[index]
+	if step.State == factory.PhaseSkipped {
+		if st.Kind == factory.StageGate && (!factory.FileCondition(st) || factory.Fits(st, *it)) {
+			return fmt.Errorf("an approve step requires a person’s answer or an unmatched file condition")
+		}
+		step.Result, step.Verification, step.Failure = nil, nil, nil
+	}
 	// Approval remains a person's door; an executing worker cannot answer it.
 	if st.Kind == factory.StageGate && (step.State == factory.PhaseDone || step.Result != nil) {
 		return fmt.Errorf("an approve step requires a person's answer")
@@ -440,6 +446,9 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	if step.State != "" {
 		setPhaseState(ph, step.State, now)
 		ph.SkipReason = step.SkipReason
+		if step.State == factory.PhaseSkipped {
+			ph.Note, ph.Result, ph.Failure = "", nil, nil
+		}
 	}
 	// WHEN THE ROUND BEGAN IS THE WORKER'S CLOCK, not this report's arrival:
 	// the report comes after the round has run a while. It lands before the

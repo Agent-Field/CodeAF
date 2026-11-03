@@ -220,11 +220,11 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 		if seen && reflect.DeepEqual(old.RoundCosts, ph.RoundCosts) && old.SkipReason == ph.SkipReason && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
-		if ph.Kind == factory.StageGate {
+		if ph.Kind == factory.StageGate && ph.State != factory.PhaseSkipped {
 			continue
 		}
 		step := factory.StageReport{RoundCosts: maps.Clone(ph.RoundCosts), Name: ph.Name, Chat: ph.Chat, SkipReason: ph.SkipReason, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
-		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
+		if ph.State != factory.PhaseSkipped && ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil
 			step.Result = &res

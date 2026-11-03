@@ -2255,7 +2255,7 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.results[id] = map[int]factory.StageResult{}
 		lp.notes[id] = nil
 		for i, ph := range it.Stream.Phases {
-			if ph.Result == nil {
+			if ph.State == factory.PhaseSkipped || ph.Result == nil {
 				continue
 			}
 			lp.results[id][i] = *ph.Result

@@ -126,3 +126,53 @@ func TestLaunchRefusesStrangerWriteWithDeferredCondition(t *testing.T) {
 		t.Fatalf("deferred stranger write launched: %v", err)
 	}
 }
+
+func TestSkippedStepResumesWithoutRunningAndRerunRedecidesFiles(t *testing.T) {
+	for _, rerun := range []bool{false, true} {
+		t.Run(map[bool]string{false: "resume", true: "rerun"}[rerun], func(t *testing.T) {
+			dir := gitRig(t)
+			calls := make(chan string, 4)
+			g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(_ context.Context, job Job) (factory.StageResult, error) {
+				calls <- job.Stage.Name
+				if job.Stage.Name == "write" {
+					if err := os.WriteFile(filepath.Join(job.Dir, "auth.go"), []byte("changed"), 0600); err != nil {
+						return factory.StageResult{}, err
+					}
+				}
+				return done("finished"), nil
+			})}, func(o *Options) { o.RepoDir = func(string) string { return dir } })
+			inspect := chat("inspect")
+			inspect.When = "touches auth"
+			id := g.add("resume skip", chat("write"), inspect, chat("after"))
+			if err := g.st.Update(id, func(it *factory.Item) error {
+				it.State = factory.StateRunning
+				it.Change = &factory.Change{Files: []factory.ChangedFile{{Path: "docs/a.md"}}}
+				it.Stream = &factory.Stream{Cur: 2, Paused: true, Phases: []factory.Phase{
+					{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1},
+					{Name: "inspect", Kind: factory.StageChat, State: factory.PhaseSkipped, SkipReason: "no auth files"},
+					{Name: "after", Kind: factory.StageChat, State: factory.PhasePending},
+				}}
+				if rerun {
+					if err := StepControl(it, "write", true, "", g.r.now()); err != nil {
+						return err
+					}
+					it.State, it.Stream.Paused = factory.StateRunning, true
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.r.Hold(id, false); err != nil {
+				t.Fatal(err)
+			}
+			it := g.waitState(id, factory.StateLanded)
+			if !rerun {
+				if len(calls) != 1 || <-calls != "after" || it.Stream.Phases[1].State != factory.PhaseSkipped {
+					t.Fatalf("resume reran skipped work: %+v", it.Stream.Phases)
+				}
+			} else if len(calls) != 3 || it.Stream.Phases[1].State != factory.PhaseDone || it.Stream.Phases[1].SkipReason != "" {
+				t.Fatalf("rerun did not redecide: %+v", it.Stream.Phases)
+			}
+		})
+	}
+}

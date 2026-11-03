@@ -113,7 +113,7 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
-	SkipReason string `json:"skip_reason,omitempty"`
+	SkipReason   string                    `json:"skip_reason,omitempty"`
 	RoundCosts   map[int]float64           `json:"round_costs,omitempty"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
@@ -195,7 +195,7 @@ func WorkerJob(it factory.Item) Job {
 		}
 		if k < len(it.Stream.Phases) {
 			j.Steps[i].RoundCosts = maps.Clone(it.Stream.Phases[k].RoundCosts)
-			if r := it.Stream.Phases[k].Result; r != nil {
+			if r := it.Stream.Phases[k].Result; r != nil && it.Stream.Phases[k].State != factory.PhaseSkipped {
 				j.Steps[i].Report = stepResultWire(*r)
 			}
 		}

@@ -15,5 +15,10 @@ auth, billing and crypto; UI includes tui, pages, render and ui.
 
 The runner keeps these conditional steps pending until their turn. With neither
 files nor area known, they run conservatively, including before write. Known
-nonmatching files skip the step with the reason in its note and the job log.
+nonmatching files end the step as `skipped`, with `SkipReason` (`skip_reason`
+on client steps and worker reports) and the job log. Skips advance the run and
+survive resume but never count as done work, passed checks or proof. A rerun
+re-reads the files and decides again. Hello announces `factory.step_skipped`.
+Older desk readers already recognize `skipped` as idle rather than done;
+older services reject unknown report states instead of accepting them as passes.
 `thin`, `large`, `always` and jobs without a condition keep their behavior.
