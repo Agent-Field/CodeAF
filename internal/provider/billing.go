@@ -118,6 +118,7 @@ type billingContextKey struct{}
 type reconcileContextKey struct{}
 type receiptPendingContextKey struct{}
 type unmeteredReceiptsContextKey struct{}
+type finalReceiptsContextKey struct{}
 
 // WithBilling arms one piece of work's banking. Like the transcript sink it
 // belongs to the work rather than to the client, because one client serves
@@ -164,6 +165,18 @@ func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Con
 // one: its missing usage block is a subscription's silence, not a charge.
 func WithUnmeteredReceipts(ctx context.Context) context.Context {
 	return context.WithValue(ctx, unmeteredReceiptsContextKey{}, true)
+}
+
+// WithFinalReceipts asks for a failed call's final receipt even when its stream
+// carried interim usage. Successful unmetered answers also seek a receipt.
+// Callers bank successful usage themselves and must not also install a billing sink.
+func WithFinalReceipts(ctx context.Context) context.Context {
+	return context.WithValue(WithUnmeteredReceipts(ctx), finalReceiptsContextKey{}, true)
+}
+
+func finalReceiptsFrom(ctx context.Context) bool {
+	armed, _ := ctx.Value(finalReceiptsContextKey{}).(bool)
+	return armed
 }
 
 // unmeteredReceiptsFrom reports whether [WithUnmeteredReceipts] armed ctx.
@@ -268,7 +281,7 @@ func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Re
 		// A direct client's receipt bearer belongs to its original service.
 		// Preserve the whole-answer boundary until recovery can carry the
 		// overflow attempt's own credential to its different host.
-		if c.config.Direct {
+		if c.config.Direct && !finalReceiptsFrom(ctx) {
 			return
 		}
 		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes, traces...)
