@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
@@ -58,6 +59,9 @@ type History interface {
 }
 
 func (v *Vault) StartBuild() error {
+	if err := config.WriteMemoryEnabled(v.profile, true); err != nil {
+		return err
+	}
 	db, err := v.database()
 	if err != nil {
 		return err
@@ -177,17 +181,12 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			}
 		}
 	}
-	settings, err := stateDocument(db, "config")
-	if err != nil {
-		return err
-	}
 	job, err := stateDocument(db, "job")
 	if err != nil {
 		return err
 	}
-	if !flag(settings["enabled"]) {
-		// A successful empty inventory may arm future capture. Existing history
-		// always waits for an explicit Build action before sources enter the vault.
+	if !v.Enabled() {
+		// Discovery is local. No inventory, including an empty one, opts in.
 		fingerprint := identity(journals)
 		if textValue(job["inventory_hash"]) == fingerprint {
 			return nil
@@ -226,14 +225,9 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
-		if available > 0 || problems > 0 {
-			return nil
-		}
-		if _, err = db.Exec("INSERT OR IGNORE INTO state(key,payload) VALUES('config',?)", mustJSON(document{"enabled": true, "schema": 1, "created_at": time.Now().UTC().Format(time.RFC3339Nano)})); err != nil {
-			return err
-		}
-		v.forgetConsent()
+		return nil
 	}
+
 	imported := int(number(job["imported"]))
 	problems := int(number(job["problems"]))
 	fingerprint := identity(journals)
@@ -339,6 +333,9 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if err = ctx.Err(); err != nil {
 			return err
 		}
+		if !v.Enabled() {
+			return nil
+		}
 		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&pending); err != nil {
 			return err
 		}
@@ -356,6 +353,9 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		if err = v.Flush(ctx, key(), flag(job["backfill"])); err != nil {
+			if errors.Is(err, ErrDisabled) {
+				return nil
+			}
 			job["failed_input"] = attemptInput
 			if saveErr := saveState(db, "job", job); saveErr != nil {
 				return saveErr

@@ -198,6 +198,7 @@ type ProviderParams struct {
 // optional, and a field present is changed. A money field sent as null means
 // none. [decodeSettingsPatch] reads exactly these fields and refuses any other.
 type SettingsPatchWire struct {
+	MemoryEnabled      *bool    `json:"memory_enabled,omitempty"`
 	DefaultModel       *string  `json:"default_model,omitempty"`
 	AsksBefore         *string  `json:"asks_before,omitempty"`
 	WorkFolder         *string  `json:"work_folder,omitempty"`
@@ -328,6 +329,12 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 			err = oneOf(name, &patch.TextSize, TextSmall, TextMedium, TextLarge)
 		case "open_at_login":
 			err = flag(name, &patch.OpenAtLogin)
+		case "memory_enabled":
+			if strings.TrimSpace(string(fields[name])) == "null" {
+				err = Errorf(CodeBadParams, "memory_enabled must be true or false")
+			} else {
+				err = flag(name, &patch.MemoryEnabled)
+			}
 		case "dock_badge":
 			err = flag(name, &patch.DockBadge)
 		case "checks_model":

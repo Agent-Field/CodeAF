@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
@@ -89,6 +90,15 @@ func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
 // consent answers from the shared view while it is younger than maxAge and no
 // consent write of this process came after it; maxAge 0 always reads.
 func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
+	// The setting is read for every memory step, independently of cached metadata.
+	defer func() {
+		enabled = v.Enabled()
+		if !enabled {
+			since = time.Time{}
+		} else if since.IsZero() {
+			since = time.Unix(0, 0).UTC()
+		}
+	}()
 	view := v.captureConsentView()
 	view.mu.Lock()
 	defer view.mu.Unlock()
@@ -200,8 +210,7 @@ func (v *Vault) state(key string) (document, error) {
 	return stateDocument(db, key)
 }
 func (v *Vault) Enabled() bool {
-	value, err := v.state("config")
-	return err == nil && flag(value["enabled"])
+	return config.MemoryEnabledAt(v.profile)
 }
 func (v *Vault) EnabledSince() time.Time {
 	value, err := v.state("config")
@@ -340,7 +349,7 @@ func (v *Vault) status(db *sql.DB) (Snapshot, error) {
 		return snapshot, err
 	}
 	snapshot.Revision = textValue(revision["value"])
-	snapshot.Enabled = flag(settings["enabled"])
+	snapshot.Enabled = v.Enabled()
 	snapshot.LastError = textValue(status["last_error"])
 	snapshot.NeedsUpdate = flag(status["needs_update"])
 	snapshot.CostUSD = number(status["cost_usd"])
@@ -381,7 +390,7 @@ func (v *Vault) Snapshot() (Snapshot, error) {
 	}
 	defer db.Exec("ROLLBACK")
 	snapshot, err := v.status(db)
-	if err != nil || !snapshot.Enabled {
+	if err != nil {
 		return snapshot, err
 	}
 	snapshot.Pages, err = readPages(db)
