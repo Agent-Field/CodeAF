@@ -100,7 +100,7 @@ func TestUsageAliasRowIdentity(t *testing.T) {
     saved = append(saved, session.UsageLine{At:at.Add(2*time.Second), Model:"m", Calls:1, Input:1, USD:.001})
     rows[1] = saved[1]
     want = 3000
-   case "rounded duplicate": rows[0].USD = .0010004
+   case "rounded duplicate": rows[0].USD = .0010004; rows[0].At = at.Add(-time.Second)
    case "same row ID": rows[0].ID = "same-call"; rows[1].ID = "same-call"
    }
    f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY,0600)

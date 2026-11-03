@@ -186,7 +186,7 @@ func withTalkMintLock(st *store.Store, mint func() (string, error)) (string, err
 	return mint()
 }
 
-// talkHeld reads st's own row for it under the mint lock: ours says the row is
+// talkHeld reads st's own row for it: ours says the row is
 // this job, and held is the manager an earlier maker already kept on it. A job
 // another factory handed over can share a number with a row here; that row's
 // conversation is never its manager.
