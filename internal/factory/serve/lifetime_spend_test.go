@@ -172,7 +172,7 @@ func TestLateSettlementAfterRoundTableGrowthKeepsOldRunLifetime(t *testing.T) {
 	if err := f.st.Update(it.ID, func(it *factory.Item) error {
 		it.State = factory.StateNew
 		factory.ClearPersonStop(it)
-					if err := run.QueueItem(it, now.Add(time.Minute)); err != nil {
+		if err := run.QueueItem(it, now.Add(time.Minute)); err != nil {
 			return err
 		}
 		return run.ApplyReport(it, factory.RunReport{Cost: .0625}, now.Add(time.Minute))

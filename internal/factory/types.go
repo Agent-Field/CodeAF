@@ -538,8 +538,8 @@ type Item struct {
 	Approval *Approval `json:",omitempty"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
-	PersonStopped *bool `json:",omitempty"`
-	StopUndo *StopUndo `json:",omitempty"`
+	PersonStopped *bool     `json:",omitempty"`
+	StopUndo      *StopUndo `json:",omitempty"`
 
 	// BriefSeen is the Brief revision each person last saw, by normalised
 	// handle (brief_seen.go). It is private to each person: it never crosses

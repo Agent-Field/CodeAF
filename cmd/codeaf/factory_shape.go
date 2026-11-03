@@ -58,8 +58,8 @@ type idleWaiter interface {
 
 // shapeTurns gives an item's manager one turn of its conversation.
 type shapeTurns struct {
-	dirs func(repo string) string
- checkWork func(int) error
+	dirs      func(repo string) string
+	checkWork func(int) error
 	// live answers the item's manager conversation when a window of THIS
 	// process holds it ([session.LiveAgentFor]), as a turn through it with
 	// door lent to that turn alone.
@@ -78,11 +78,13 @@ type shapeTurns struct {
 // factoryShapeTurnsFrom reads the launch when a manager opens, because the
 // worker survives the window whose launch first built its turns.
 func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, current func() session.Config) *shapeTurns {
-	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace), checkWork:func(id int) error {
- it, err := st.Get(id)
- if err != nil { return err }
- return factory.CheckPersonStop(it)
- }}
+	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace), checkWork: func(id int) error {
+		it, err := st.Get(id)
+		if err != nil {
+			return err
+		}
+		return factory.CheckPersonStop(it)
+	}}
 	// UNDER A SAVED ONE MODEL THE WINDOW'S CONVERSATION IS NOT THE FACTORY'S: it
 	// runs on whatever model the person is talking to, so liveOK refuses it and
 	// the turn opens a governed factory session instead.
@@ -95,7 +97,12 @@ func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, curren
 	}
 	turns.open = func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
 		parent := current()
- parent.FactoryWorkRefusal = func() string { if err := turns.checkWork(it.ID); err != nil { return err.Error() }; return "" }
+		parent.FactoryWorkRefusal = func() string {
+			if err := turns.checkWork(it.ID); err != nil {
+				return err.Error()
+			}
+			return ""
+		}
 		if err := refusalOf(parent, turns.refusal); err != nil {
 			return nil, err
 		}
@@ -169,7 +176,11 @@ func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, d
 	if s == nil || s.open == nil {
 		return "", errors.New("no manager to ask")
 	}
-	if door != nil && s.checkWork != nil { if err := s.checkWork(it.ID); err != nil { return "", err } }
+	if door != nil && s.checkWork != nil {
+		if err := s.checkWork(it.ID); err != nil {
+			return "", err
+		}
+	}
 	var turn managerTurn
 	if s.live != nil {
 		turn, _ = s.live(it.Talk, door)
@@ -356,7 +367,9 @@ func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory
 	if err != nil {
 		return factory.Item{}, nil, err
 	}
-	if err := factory.CheckPersonStop(it); err != nil { return factory.Item{}, nil, err }
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.Item{}, nil, err
+	}
 	return d.edit(ctx, it.ID, e)
 }
 

@@ -278,8 +278,8 @@ func (a *Agent) SubmitRunnerNote(ctx context.Context, text string) (<-chan Event
 		return nil, errors.New("session: empty message")
 	}
 	user := runnerNote(text)
- user.factoryWork = a.config.FactoryRun != nil
- return a.submitUser(ctx, user)
+	user.factoryWork = a.config.FactoryRun != nil
+	return a.submitUser(ctx, user)
 }
 
 // runnerNote is the factory runner's words for an item's manager: the
@@ -348,7 +348,7 @@ func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door R
 		return nil, errors.New("session: empty message")
 	}
 	user := runnerNote(text)
- user.factoryWork = door != nil
+	user.factoryWork = door != nil
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {

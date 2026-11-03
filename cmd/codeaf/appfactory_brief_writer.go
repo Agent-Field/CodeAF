@@ -101,8 +101,10 @@ func (b *appBackend) briefErrand(ctx context.Context, factoryID string, job int,
 		return session.ErrandAnswer{Reason: appwire.ErrandNotOpen}
 	}
 	current, err := host.floor.Get(job)
- if err != nil || factory.StoppedByPerson(current) { return session.ErrandAnswer{Reason: factory.PersonStopReason} }
- // Writing a brief needs a manager; reading its chats no longer creates one.
+	if err != nil || factory.StoppedByPerson(current) {
+		return session.ErrandAnswer{Reason: factory.PersonStopReason}
+	}
+	// Writing a brief needs a manager; reading its chats no longer creates one.
 	if _, err := host.seam.Talk(ctx, job); err != nil {
 		return session.ErrandAnswer{Reason: appwire.ErrandNotOpen}
 	}

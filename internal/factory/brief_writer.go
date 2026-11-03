@@ -157,7 +157,9 @@ func BriefProofApprovalWaiting(it Item) bool {
 // BriefEndOf is the outcome of the work, including a run that stopped while
 // retaining its branch. Publication is an outcome even while the PR is open.
 func BriefEndOf(it Item) string {
- if StoppedByPerson(it) { return "stopped" }
+	if StoppedByPerson(it) {
+		return "stopped"
+	}
 	if pr := it.PullRequest; pr != nil {
 		switch pr.State {
 		case PRMerged:
@@ -350,7 +352,9 @@ const (
 // the last failed write) was made from; or the cost guard holds it back. A
 // retry skips only for a write on its way.
 func BriefBeginSkip(it Item, trigger, hash string, now time.Time) string {
- if StoppedByPerson(it) { return PersonStopReason }
+	if StoppedByPerson(it) {
+		return PersonStopReason
+	}
 	if w := it.BriefWriting; w != nil && w.State == BriefGenerating && now.Sub(w.At) < briefWritingStale {
 		return BriefSkipWriting
 	}

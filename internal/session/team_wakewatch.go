@@ -569,7 +569,9 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 // reports whether a turn was started (or one was already running, which takes
 // the note at its next boundary), and why not when neither.
 func (a *Agent) teamWakeWith(text string) (bool, string) {
- if why := a.automaticFactoryRefusal(); why != "" { return false, why }
+	if why := a.automaticFactoryRefusal(); why != "" {
+		return false, why
+	}
 	if err := a.CheckWork(); err != nil {
 		return false, err.Error()
 	}

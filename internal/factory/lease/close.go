@@ -24,7 +24,10 @@ func (d *Doors) Close(id int, revision *int, who string) error {
 		if it.Merging != nil && it.Merging.State == factory.MergeMerging {
 			return false, CloseRefusal("merge is already in progress; wait for GitHub's result before closing")
 		}
-		if it.PersonStopped == nil && !factory.StoppedByPerson(*it) { stopped := false; it.PersonStopped = &stopped }
+		if it.PersonStopped == nil && !factory.StoppedByPerson(*it) {
+			stopped := false
+			it.PersonStopped = &stopped
+		}
 		if factory.UnderWay(*it) {
 			if err := run.StopItem(it, now); err != nil {
 				return false, err

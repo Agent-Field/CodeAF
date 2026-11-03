@@ -5,6 +5,7 @@ factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 "github.com/Agent-Field/codeaf/internal/factory/intake"
 "github.com/Agent-Field/codeaf/internal/factory/pipeline"
 "github.com/Agent-Field/codeaf/internal/factory/record"
+ forge "github.com/Agent-Field/codeaf/internal/praf/github"
 "context"
 "net/http"
 "net/http/httptest"
@@ -35,7 +36,7 @@ func TestFactoryPersonStopLaunchAuthorities(t *testing.T) {
 		t.Run(authority, func(t *testing.T) {
 			s, status := newPauseSetup(t)
 			host := s.backend.local.host
-			it, err := host.floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateNeedsYou, Starter: "owner", Question: "which command?", QKind: "step"})
+			it, err := host.floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateNeedsYou, Starter: "owner", Talk: filepath.Join(t.TempDir(),"manager.jsonl"), Question: "which command?", QKind: "step"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -46,15 +47,31 @@ func TestFactoryPersonStopLaunchAuthorities(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var launch func(int) error
-			if authority == "crew" || authority == "standing_item" {
-				launch = factoryrun.New(factoryrun.Options{Store: host.floor}).Launch
-			} else {
-				launch = lease.NewDoors(desk).Launch
-			}
-			if err := launch(it.ID); err == nil || !strings.Contains(err.Error(), "person stopped") || !strings.Contains(err.Error(), "Start") {
-				t.Fatalf("%s launched stopped job, or gave a dishonest reason: %v", authority, err)
-			}
+            // The shared launch seam has no caller privilege to borrow. Exercise
+            // manager tools, queue admission and a fresh desk as well as Launch.
+            switch authority {
+            case "manager", "standing_item":
+                _,err=runDoor(host.floor,"",s.backend.localProfile()).(session.RunStarter).StartRun(context.Background(),it.Talk)
+                if !errors.Is(err,factory.ErrPersonStopped){t.Fatalf("manager tool admitted %s: %v",authority,err)}
+            case "scheduler", "restart":
+                if authority=="restart" {
+                    reopened,openErr:=store.Open(host.floor.Root());if openErr!=nil{t.Fatal(openErr)}
+                    desk,err=lease.Open(reopened,lease.Options{});if err!=nil{t.Fatal(err)}
+                }
+                _,err=desk.Pull(lease.Worker{ID:authority,Handle:"owner",Solo:true})
+                if !errors.Is(err,lease.ErrNoJob){t.Fatalf("queue admitted %s: %v",authority,err)}
+            case "github_poll", "new_commits":
+                pollStoppedJob(t,host.floor,it.ID)
+                _,err=desk.Pull(lease.Worker{ID:authority,Handle:"owner",Solo:true})
+                if !errors.Is(err,lease.ErrNoJob){t.Fatalf("GitHub admitted %s: %v",authority,err)}
+            case "other_job_manager", "crew":
+                // A different conversation cannot borrow this manager's identity.
+                _,err=runDoor(host.floor,"",s.backend.localProfile()).(session.RunStarter).StartRun(context.Background(),filepath.Join(t.TempDir(),"other-manager.jsonl"))
+                if !errors.Is(err,factory.ErrNotManager){t.Fatalf("foreign manager identity accepted: %v",err)}
+                err=factoryrun.New(factoryrun.Options{Store:host.floor}).Launch(it.ID)
+                if !errors.Is(err,factory.ErrPersonStopped){t.Fatalf("runner admitted %s: %v",authority,err)}
+            }
+            if err:=lease.NewDoors(desk).Launch(it.ID);!errors.Is(err,factory.ErrPersonStopped){t.Fatalf("lowest queue door admitted %s: %v",authority,err)}
 			var after api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &after)
 			if after.State != api.StateNeedsYou {
@@ -121,6 +138,15 @@ func TestFactoryPersonStopPersonControls(t *testing.T) {
    if err != nil { t.Fatal(err) }
    held,err := desk.Pull(lease.Worker{ID:"person-start",Handle:"owner",Solo:true})
    if err != nil || held.Job != it.ID || held.ThreadOnly { t.Fatalf("person's start not admitted: %+v %v",held,err) }
+   mirror,err:=store.Open(t.TempDir());if err!=nil{t.Fatal(err)}
+   saved.State=factory.StateRunning;saved.Stream.Paused=true
+   if err:=mirror.Save(saved);err!=nil{t.Fatal(err)}
+   ran:=make(chan struct{},1)
+   runner:=factoryrun.New(factoryrun.Options{Store:mirror,Exec:map[factory.StageKind]factoryrun.Executor{factory.StageCheck:factoryrun.ExecutorFunc(func(context.Context,factoryrun.Job)(factory.StageResult,error){select{case ran<-struct{}{}:default:};return factory.StageResult{Done:true},nil})}})
+   t.Cleanup(func(){runner.Withdraw(saved.ID)})
+   if err:=runner.Hold(saved.ID,false);err!=nil{t.Fatal(err)}
+   select{case <-ran:case <-time.After(3*time.Second):t.Fatal("person control admitted a lease but did not execute its step")}
+
   })
  }
 }
@@ -256,8 +282,7 @@ func mustCheckout(t *testing.T, floor *store.Store) string {
 func TestFactoryPersonStopGitHubSyncAndIntake(t *testing.T) {
  s,status,it:=stoppedAppJob(t,factory.StateNeedsYou)
  floor:=s.backend.local.host.floor
- if err:=floor.Update(it.ID,func(cur *factory.Item)error{cur.Origin=factory.OriginForge;cur.Num=128;cur.URL="https://github.com/acme/api/issues/128";return nil});err!=nil{t.Fatal(err)}
- if err:=factorygithub.Merge(floor,"github",[]factory.Item{{Repo:"acme/api",Num:128,Kind:factory.KindIssue,Origin:factory.OriginForge,Title:"Changed on GitHub",Labels:[]string{"agent-ready","size:S"},State:factory.StateNew}});err!=nil{t.Fatal(err)}
+ pollStoppedJob(t,floor,it.ID)
  var job api.Job
  s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&job)
  if job.State!=api.StateNeedsYou||job.Desk==nil||(job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped)||!job.Can.StartNow||job.Can.Answer||job.Can.Approve||job.Can.PRReady{t.Fatalf("GitHub sync erased or hid Stop: %+v",job)}
@@ -272,4 +297,39 @@ func TestFactoryPersonStopGitHubSyncAndIntake(t *testing.T) {
  desk,err:=lease.Open(floor,lease.Options{})
  if err!=nil{t.Fatal(err)}
  if _,err:=desk.Pull(lease.Worker{ID:"poll",Handle:"owner",Solo:true});!errors.Is(err,lease.ErrNoJob){t.Fatalf("GitHub poll made stopped job runnable: %v",err)}
+}
+
+// pollStoppedJob drives the real GitHub source and PR follow-up reconciliation.
+func pollStoppedJob(t *testing.T,floor *store.Store,id int){
+ t.Helper()
+ oldHead,newHead:=strings.Repeat("a",40),strings.Repeat("b",40)
+ if err:=floor.SetRepos([]string{"acme/api"});err!=nil{t.Fatal(err)}
+ if err:=floor.Update(id,func(cur *factory.Item)error{
+  cur.Origin=factory.OriginForge;cur.Num=128;cur.URL="https://github.com/acme/api/issues/128"
+  cur.Publish="pr";cur.HeadCommit=oldHead
+  cur.PullRequest=&factory.PullRequest{Number:12,State:factory.PROpen,Draft:true,HeadSHA:oldHead}
+  cur.FollowUp=&factory.PRFollowUp{Kind:"pr",State:"watching",HeadSHA:oldHead}
+  return nil
+ });err!=nil{t.Fatal(err)}
+ var pullReads atomic.Int32
+ github:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.Method!=http.MethodGet {t.Errorf("stopped poll wrote %s %s",r.Method,r.URL.Path);w.WriteHeader(403);return}
+  switch {
+  case r.URL.Path=="/user":fmt.Fprint(w,`{"login":"owner"}`)
+  case r.URL.Path=="/repos/acme/api/issues":fmt.Fprint(w,`[{"id":100128,"number":128,"state":"open","title":"Changed on GitHub","labels":[{"name":"agent-ready"},{"name":"size:S"}],"user":{"login":"owner"}}]`)
+  case r.URL.Path=="/repos/acme/api/issues/128":fmt.Fprint(w,`{"id":100128,"number":128,"state":"open"}`)
+  case strings.HasSuffix(r.URL.Path,"/permission"):fmt.Fprint(w,`{"permission":"admin"}`)
+  case r.URL.Path=="/repos/acme/api/pulls/12":pullReads.Add(1);fmt.Fprintf(w,`{"number":12,"state":"open","draft":true,"mergeable":true,"head":{"sha":%q},"base":{"ref":"main"}}`,newHead)
+  case strings.Contains(r.URL.Path,"/check-runs"):fmt.Fprint(w,`{"total_count":1,"check_runs":[{"name":"test","status":"completed","conclusion":"failure"}]}`)
+  case strings.HasSuffix(r.URL.Path,"/status"):fmt.Fprint(w,`{"state":"failure","statuses":[]}`)
+  case strings.Contains(r.URL.Path,"/protection"):w.WriteHeader(404)
+  default:fmt.Fprint(w,`[]`)
+  }
+ }))
+ defer github.Close()
+ source:=factorygithub.New(forge.NewClient("test-key").WithBaseURL(github.URL),[]string{"acme/api"},time.Now)
+ if _,err:=factorygithub.PollOnce(context.Background(),source,floor,"",time.Now);err!=nil{t.Fatal(err)}
+ saved,err:=floor.Get(id)
+ if err!=nil||pullReads.Load()==0||saved.PullRequest==nil||saved.PullRequest.HeadSHA!=newHead{t.Fatalf("GitHub fixture did not sync new commits: reads=%d job=%+v err=%v",pullReads.Load(),saved.PullRequest,err)}
+ if !factory.StoppedByPerson(saved)||saved.State!=factory.StateNew||saved.FollowUp.State=="queued"{t.Fatalf("new commits revived Stop: state=%s follow=%+v",saved.State,saved.FollowUp)}
 }

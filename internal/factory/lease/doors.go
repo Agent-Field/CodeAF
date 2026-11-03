@@ -90,7 +90,9 @@ func (d *Doors) Launch(id int) error {
 	if err != nil {
 		return err
 	}
-	if err := factory.CheckPersonStop(it); err != nil { return err }
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}
@@ -130,7 +132,9 @@ func (d *Doors) Launch(id int) error {
 		copied, decide = f.Copy, true
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := factory.CheckPersonStop(*it); err != nil { return false, err }
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return false, err
+		}
 		if held != nil {
 			return false, run.AlreadyRunning(it.Ref())
 		}
@@ -229,17 +233,20 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 		// before intake can see the job back in the backlog.
 		if receipt {
- factory.MarkPersonStopped(it)
- it.Asking = nil
- it.ManagerAnswer = nil
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
+			it.ManagerAnswer = nil
 			if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
 				return false, err
 			}
 		}
-		if !receipt && !wasStopped { stopped := false; it.PersonStopped = &stopped }
+		if !receipt && !wasStopped {
+			stopped := false
+			it.PersonStopped = &stopped
+		}
 		it.Publishing = false
- _, pendingSignals := doc.Signals[id]
- delete(doc.Signals, id)
+		_, pendingSignals := doc.Signals[id]
+		delete(doc.Signals, id)
 		if held == nil {
 			return pendingSignals, nil
 		}
@@ -274,7 +281,9 @@ func (d *Doors) Pause(id int) error {
 func (d *Doors) Hold(id int, on bool) error {
 	resumed := false
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := factory.CheckPersonStop(*it); err != nil { return false, err }
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return false, err
+		}
 		if !on && !factory.UnderWay(*it) {
 			return false, fmt.Errorf("%s is not paused", it.Ref())
 		}
@@ -340,7 +349,9 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 // a job no worker holds is answered on the document, and a held job has its
 // question taken down and hears the answer through its lease.
 func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool, words string, now time.Time) (bool, error) {
- if err := factory.CheckPersonStop(*it); err != nil { return false, err }
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return false, err
+	}
 	if yes {
 		if err := factory.CheckAutomaticApproval(*it); err != nil {
 			return false, err
@@ -550,7 +561,9 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 		dirty := false
 		var receipt factory.ManagerAnswer
 		err := d.desk.store.Update(id, func(it *factory.Item) error {
-			if err := factory.CheckPersonStop(*it); err != nil { return err }
+			if err := factory.CheckPersonStop(*it); err != nil {
+				return err
+			}
 			if manager == "" || it.Talk != manager {
 				return errors.New("the job's manager changed; read factory_status from its current conversation")
 			}

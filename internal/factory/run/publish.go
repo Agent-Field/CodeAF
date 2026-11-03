@@ -136,7 +136,9 @@ func (r *Runner) Publish(id int, trailer string) error {
 	lp.mu.Unlock()
 	now := r.now()
 	err := lp.write(c, func(it *factory.Item) error {
-		if err := factory.CheckPersonStop(*it); err != nil { return err }
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
+		}
 		if err := factory.RequireIssueJob(*it); err != nil {
 			return err
 		}
@@ -292,10 +294,14 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 			return published{}, errors.New("this factory source does not support ready for review")
 		}
 		var pr factory.PullRequest
- var e error
- if checked, ok := src.(interface { ReadyChecked(context.Context, factory.Item, func(context.Context) error) (factory.PullRequest,error) }); ok {
-  pr,e = checked.ReadyChecked(ctx,it,func(ctx context.Context) error { return r.publishBoundary(ctx,it.ID) })
- } else if e = r.publishBoundary(ctx,it.ID); e == nil { pr,e = ready.Ready(ctx,it) }
+		var e error
+		if checked, ok := src.(interface {
+			ReadyChecked(context.Context, factory.Item, func(context.Context) error) (factory.PullRequest, error)
+		}); ok {
+			pr, e = checked.ReadyChecked(ctx, it, func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) })
+		} else if e = r.publishBoundary(ctx, it.ID); e == nil {
+			pr, e = ready.Ready(ctx, it)
+		}
 		if e != nil {
 			return published{}, e
 		}
@@ -617,7 +623,9 @@ func (r *Runner) SetPublishCheck(id int, check func(context.Context) error) {
 // publishBoundary reads Stop afresh under the row lock immediately before a write.
 func (r *Runner) publishBoundary(ctx context.Context, id int) error {
 	return r.opts.Store.Update(id, func(it *factory.Item) error {
-		if factory.StoppedByPerson(*it) { return factory.ErrPersonStopped }
+		if factory.StoppedByPerson(*it) {
+			return factory.ErrPersonStopped
+		}
 		if ctx.Err() != nil || it.State == factory.StateNew || it.State == factory.StateDismissed {
 			return errLoopStopped
 		}

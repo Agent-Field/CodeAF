@@ -147,9 +147,15 @@ func TestAStoppedJobIsNotStoppedAgain(t *testing.T) {
 	if events, err := history.Since(context.Background(), f.now.Add(-1)); err != nil || len(events) != 1 || events[0].Kind != record.Stopped {
 		t.Fatalf("stop history = %+v; error = %v", events, err)
 	}
-	if err := doors.Launch(it.ID); !errors.Is(err, factory.ErrPersonStopped) { t.Fatalf("unrequested restart: %v",err) }
- if err := f.store.Update(it.ID,func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil { t.Fatal(err) }
- if err := doors.Launch(it.ID); err != nil { t.Fatal(err) }
+	if err := doors.Launch(it.ID); !errors.Is(err, factory.ErrPersonStopped) {
+		t.Fatalf("unrequested restart: %v", err)
+	}
+	if err := f.store.Update(it.ID, func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := doors.Launch(it.ID); err != nil {
+		t.Fatal(err)
+	}
 	started, _ := f.store.Get(it.ID)
 	if started.State != factory.StateQueued || started.Failure != nil || started.Stream.Spent != 0 || len(started.Stream.Phases) != 2 || started.Stream.Phases[0].State != factory.PhasePending || started.Stream.Phases[1].State != factory.PhasePending {
 		t.Fatalf("start = %s %+v %+v", started.State, started.Failure, started.Stream)

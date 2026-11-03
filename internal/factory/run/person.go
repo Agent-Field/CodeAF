@@ -71,7 +71,9 @@ func StoredPaused(it factory.Item) bool { return storedPaused(it) }
 // ResumeItem takes a paused job that no worker holds off pause and puts it
 // back in the queue; the worker that pulls it goes on at the step it stopped in.
 func ResumeItem(it *factory.Item, now time.Time) error {
- if err := factory.CheckPersonStop(*it); err != nil { return err }
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if !storedPaused(*it) {
 		return fmt.Errorf("%s is not paused", it.Ref())
 	}
@@ -116,7 +118,9 @@ func HoldQueued(it *factory.Item, now time.Time) error {
 // passed (yes) or sent back to wait (no) here, because only a person's door
 // moves it. Passing it stamps the step's finish, which the brief's clock reads.
 func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) error {
- if err := factory.CheckPersonStop(*it); err != nil { return err }
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	answerWords := ""
 	if len(words) > 0 {
 		answerWords = words[0]
@@ -195,7 +199,9 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
- if err := factory.CheckPersonStop(*it); err != nil { return err }
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if err := followAnswerRefusal(*it, yes, words); err != nil {
 		return err
 	}
@@ -316,7 +322,9 @@ func ReleaseCap(it *factory.Item, now time.Time) {
 // KeepAnswer is an answer to a job no worker holds any more: it is kept for
 // the step's next round, as the Runner keeps it, and the job is queued again.
 func KeepAnswer(it *factory.Item, yes bool, words string, now time.Time) error {
- if err := factory.CheckPersonStop(*it); err != nil { return err }
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if it.Asking == nil || it.Asking.With != factory.AskedYou {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}

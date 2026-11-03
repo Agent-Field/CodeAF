@@ -368,7 +368,9 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
- if factory.StoppedByPerson(it) && !pendingReply(it) { return false }
+	if factory.StoppedByPerson(it) && !pendingReply(it) {
+		return false
+	}
 	if factory.JobState(it) == "done" {
 		return false
 	}
