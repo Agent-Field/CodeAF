@@ -50,6 +50,7 @@ func TestReviewLegacyDisabledStageDoesNotMove(t *testing.T) {
   it.PersonTouched = false
   return nil
  }); err != nil { t.Fatal(err) }
+ if err := f.st.Update(1, func(it *factory.Item) error { it.PersonTouched = false; return nil }); err != nil { t.Fatal(err) }
  f.poll()
  if f.row(1).State != factory.StateNew { t.Fatal("legacy person's disabled plan step moved to shipped") }
 }
