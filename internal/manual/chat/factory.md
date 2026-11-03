@@ -712,5 +712,5 @@ Larger backlogs continue over subsequent polls; the factory never walks the repo
 An issue reopened on GitHub returns to Backlog when nothing was done on it, and
 it counts like any new issue, so a start rule can start it. A job with work on
 it stays Done until a person chooses **Run again**. A job that ended with nothing
-done on it gets no end brief, so a closed issue costs no model call. never authorizes more spending. Triage or Look closer already in flight may
+done on it gets no end brief, so a closed issue costs no model call. Triage or Look closer already in flight may
 finish before the closure arrives.
