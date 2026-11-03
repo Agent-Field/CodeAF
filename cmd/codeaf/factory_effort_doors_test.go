@@ -93,6 +93,7 @@ func TestFactoryPageErrandsRecoverEffortOnExistingAgent(t *testing.T) {
 		{"repo_ask", "insight_ask"}, {"repo_notes", "insight_notes"},
 		{"repo_themes", "insight_themes"}, {"repo_eval", "insight"},
 		{"pipeline_ai", "insight_pipeline"}, {"view_topic", "insight_views"},
+		{"step_ai", "insight_pipeline"}, {"my_pipeline_ai", "insight_pipeline"},
 		{"factory_brief", "brief"},
 	} {
 		t.Run(path.purpose, func(t *testing.T) {

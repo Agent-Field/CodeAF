@@ -19,7 +19,7 @@ Solo computers with submitted chats refuse ordinary pairing and explain
 Unsupported-effort repair is local to opted-in task and Factory clients. Stage
 conversations, their helpers, manager turns, scouts and triage retain recovery,
 including after model or account switches. Live manager turns, brief writing and
-Factory page errands opt in per call; the same agent retains ordinary refusal
+Factory page errands (including Step AI and My pipeline AI) opt in per call; the same agent retains ordinary refusal
 for its other turns and errands. Ordinary clients return the refusal without a
 repair. Pairing acceptance tests use legal startup homes instead of assuming
 submitted chats can merge without replacement. Both terminal pairing doors use
