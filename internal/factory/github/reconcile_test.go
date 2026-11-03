@@ -387,10 +387,10 @@ func TestLookCloserAdmissionPreventsAutomaticClose(t *testing.T) {
 }
 
 func TestLegacyPersonalEditsAreUntouchedGateInputs(t *testing.T) {
- for _,name:=range []string{"budget","model","steps"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"budget","model","steps","marked"}{t.Run(name,func(t *testing.T){
   f:=newIssueScript(t,1);f.state[1]="closed"
   if err:=f.st.Update(1,func(it *factory.Item)error{
-   switch name{case "budget":it.Cap=7;case "model":it.Model="chosen";case "steps":it.Stages=[]factory.Stage{{Name:"review",By:factory.ByYou}}};return nil
+   switch name{case "budget":it.Cap=7;case "model":it.Model="chosen";case "marked":it.Marked=true;case "steps":it.Stages=[]factory.Stage{{Name:"review",By:factory.ByYou}}};return nil
   });err!=nil{t.Fatal(err)}
   // This models an existing row written before touch provenance was stored.
   if err:=f.st.Update(1,func(it *factory.Item)error{it.PersonTouched=false;return nil});err!=nil{t.Fatal(err)}
