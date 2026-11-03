@@ -1203,3 +1203,18 @@ func TestAPersonsContinueAtTheCapQueuesAnUnheldJobAgain(t *testing.T) {
 		t.Fatalf("a person's continue left the job %s with question %q kind %q asking %v", got.State, got.Question, got.QKind, got.Asking != nil)
 	}
 }
+
+func TestClosedStartReportsConcurrentRowState(t *testing.T) {
+ f:=newV2Jobs(t);f.h.Close()
+ it:=f.create(t,factory.Item{Num:12,Origin:factory.OriginForge,State:factory.StateNew,Assignee:"sam"})
+ f.cfg.Recheck=func(context.Context,factory.Item)(string,error){
+  if err:=f.st.Update(it.ID,func(cur *factory.Item)error{cur.State=factory.StateQueued;return nil});err!=nil{t.Fatal(err)}
+  return github.StandingClosed,nil
+ }
+ f.h=serve.New(f.seam,f.cfg)
+ w:=f.post(t,it,"start_now","",409)
+ var refusal struct{NowState string `json:"now_state"`}
+ if err:=json.Unmarshal(w.Body.Bytes(),&refusal);err!=nil{t.Fatal(err)}
+ if refusal.NowState!="queued"{t.Fatalf("refusal reports %q, want current queued state",refusal.NowState)}
+ if got,_:=f.st.Get(it.ID);got.State!=factory.StateQueued{t.Fatal("start check moved concurrent work")}
+}
