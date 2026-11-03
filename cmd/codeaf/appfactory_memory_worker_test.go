@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -406,7 +407,29 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 							break
 						}
 						if time.Now().After(until) {
-							t.Fatalf("resume did not compile pending evidence: calls=%d snapshot=%+v error=%v", memoryCalls.Load(), snapshot, err)
+							history := session.KnowledgeHistory(filepath.Dir(filepath.Dir(launch.Config.Place.Dir)), profile)
+							journals, readErr := history.Inventory(context.Background())
+							if readErr != nil {
+								t.Fatal(readErr)
+							}
+							published := map[string]bool{}
+							for _, page := range snapshot.Pages {
+								for _, evidence := range page.Evidence {
+									published[evidence.Source] = true
+								}
+							}
+							for _, journal := range journals {
+								batch, readErr := history.Read(context.Background(), journal, knowledge.JournalCursor{Scope: journal.Project})
+								if readErr != nil {
+									t.Fatal(readErr)
+								}
+								for _, source := range batch.Sources {
+									if !published[source.ID] {
+										t.Logf("unpublished evidence: session=%s owner=%s source=%s text=%q", source.Session, journal.JobOwner, source.ID, source.Text)
+									}
+								}
+							}
+							t.Fatalf("resume did not compile pending evidence: calls=%d pending=%d needs_update=%v last_error=%q error=%v", memoryCalls.Load(), snapshot.Pending, snapshot.NeedsUpdate, snapshot.LastError, err)
 						}
 						time.Sleep(10 * time.Millisecond)
 					}
