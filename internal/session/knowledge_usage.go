@@ -196,7 +196,7 @@ func (a *Agent) captureJobKnowledge(ctx context.Context, j *knowledgeJournal) ([
 			j.mu.Lock()
 			before := j.offset
 			j.mu.Unlock()
-			if err := a.scanKnowledge(ctx, j, a.file.journalName(), a.id); err != nil {
+			if err := a.scanKnowledge(ctx, j, a.file.journalName(), a.id, true); err != nil {
 				return nil, err
 			}
 			j.mu.Lock()
