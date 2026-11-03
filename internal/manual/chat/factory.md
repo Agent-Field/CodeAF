@@ -785,10 +785,13 @@ the desktop's raise button at $5 does the same. It does not add $5 to the cap.
 The factory checks its own saved job total before granting a worker lease and
 when a worker reports a step beginning. At or above the cap, it holds the job
 with this budget question. Current workers wait for that step report to be
-accepted before starting paid work. A running worker whose next report reaches
-the cap loses its lease and stops, including older workers. Already incurred
-charges remain recorded. Workers already reporting a budget question keep
-their parked lease so a raise can continue them.
+accepted before starting paid work, including spending not yet reported by the
+previous round. A running worker whose next report reaches the cap loses its
+lease and stops, including older workers. Already incurred charges remain
+recorded. Workers already reporting a budget question keep their parked lease
+so a raise can continue them. Approved publication and merge writes can finish
+at the cap because they make no model calls; a new paid pipeline step still
+requires budget. Stop remains available during publication and merge.
 
 The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
 spending. If the job has spent $5.25, the next budget is $10 even when the old cap

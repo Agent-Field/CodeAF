@@ -373,7 +373,8 @@ from the job's budget like the job's steps: everything done for the job spends f
 - **At the budget** new model calls and tools are refused. The job's owned agent families
   stop promptly, including delegated tasks, background commands and adaptive runs. This
   applies while the manager is idle too. Calls already sent can still report charges afterward;
-  stopping work cannot reverse a provider charge already incurred.
+  stopping work cannot reverse a provider charge already incurred. Approved publication
+  and merge writes can finish at the cap; they make no model calls. Stop remains available.
 - **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,
   $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
   recorded spend is at most $5. The server rechecks spend while writing the new cap.

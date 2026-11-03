@@ -46,3 +46,10 @@ Workers explicitly reporting that they are already waiting on a budget question
 keep their parked lease and existing budget-before-continue signal order. The
 server still replaces that question with its own total; a running-step report
 cannot claim this exception.
+
+Step admission first delivers the mirror's unreported spending through the same
+serialized delivery loop as periodic reports. A server total below the cap can
+therefore no longer admit another paid round when local spending crosses it.
+Approved publication and queued merges retain their lease at the cap while no
+pipeline phase is running. These forge writes make no model calls; a running
+pipeline phase still passes the cap gate, and Stop retains its existing checks.
