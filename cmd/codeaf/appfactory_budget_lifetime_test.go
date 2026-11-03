@@ -3,6 +3,8 @@ package main
 import (
  "context"
  "fmt"
+ "path/filepath"
+ "sync"
  "strings"
  "sync/atomic"
  "testing"
@@ -11,6 +13,9 @@ import (
  "github.com/Agent-Field/codeaf/internal/appwire"
  "github.com/Agent-Field/codeaf/internal/factory"
  "github.com/Agent-Field/codeaf/internal/factory/api"
+ "github.com/Agent-Field/codeaf/internal/factory/client"
+ "github.com/Agent-Field/codeaf/internal/factory/lease"
+ factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
  factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
  "github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -27,6 +32,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
    st, err := store.Open(v3FactoryRoot()); if err != nil { t.Fatal(err) }
    if err := st.SetCheckout("acme/api", t.TempDir()); err != nil { t.Fatal(err) }
    release, ok := st.TryWorker(); if !ok { t.Fatal("runner ownership") }; defer release()
+   mirror, err := store.Open(filepath.Join(t.TempDir(), "mirror")); if err != nil { t.Fatal(err) }
    transcript, _ := jobConversation(t)
    var calls atomic.Int32
    model := &budgetModel{spent: 5.25}
@@ -34,18 +40,39 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
     if err := c.Spec.Stage.Report(ctx, factory.StageResult{Done: true}); err != nil { c.Fail(err) }
    }
    chat := factoryrun.NewChatExecutor(model)
-   runner := factoryrun.New(factoryrun.Options{Store: st, Talk: sessionTalk{}, Exec: map[factory.StageKind]factoryrun.Executor{
+   runner := factoryrun.New(factoryrun.Options{Store: mirror, Talk: sessionTalk{}, Exec: map[factory.StageKind]factoryrun.Executor{
     factory.StageChat: factoryrun.ExecutorFunc(func(ctx context.Context, j factoryrun.Job) (factory.StageResult, error) {
      if calls.Add(1) > 1 || action == "old saved total" { model.spent = 1 }
      return chat.Run(ctx, j)
     }),
    }})
-   hook := s.backend.local.seamHook
-   s.backend.local.seamHook = func(seam factory.Seam) factory.Seam { seam = hook(seam); seam.Launch, seam.Answer = runner.Launch, runner.Answer; return seam }
+   
    status := s.start()
    it, err := st.Create(factory.Item{Title: "Lifetime budget", Repo: "acme/api", Num: 99, Kind: factory.KindIssue, State: factory.StateNew, Cap: 6, Autonomy: factory.AutonomyManual, Talk: transcript,
     Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: "done", Max: 1, On: true}}})
    if err != nil { t.Fatal(err) }; t.Cleanup(func() { _ = runner.Stop(it.ID) })
+   ctx, cancel := context.WithCancel(context.Background())
+						done := make(chan struct{})
+						var mu sync.Mutex
+						credentials := map[int]string{}
+						go func() {
+							defer close(done)
+							factoryworker.Run(ctx, factoryworker.Options{
+								Dial: func(slot int) *client.WorkerClient {
+									mu.Lock()
+									defer mu.Unlock()
+									return client.Open(status.URL, s.backend.local.host.token).Worker(credentials[slot])
+								},
+								Keep: func(slot int, w *client.WorkerClient) {
+									mu.Lock()
+									defer mu.Unlock()
+									credentials[slot] = w.Credential()
+								},
+								Attach: api.WorkerAttach{Machine: "budget-worker", Name: "Budget worker", Handle: "owner", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+								Runner: runner, Mirror: mirror, Slots: api.DefaultRunnerSlots, ReportEvery: 10 * time.Millisecond, BeatEvery: 10 * time.Millisecond,
+							})
+						}()
+						t.Cleanup(func() { cancel(); <-done })
    read := func() api.Job { var j api.Job; s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &j); return j }
    act := func(method string, extra map[string]any) { j := read(); p := map[string]any{"factory": status.Factory, "job": it.ID, "expect": map[string]any{"version": j.Version}}; for k,v := range extra { p[k]=v }; s.must(method,p,&appwire.FactoryJobActed{}) }
    wait := func(what string, ok func(api.Job) bool) api.Job {
@@ -56,7 +83,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
     if err := st.Update(it.ID,func(it *factory.Item) error { it.ChatSpent=6.25; return nil }); err != nil { t.Fatal(err) }
    } else {
     act("factory.job_start",nil)
-    wait("first run spends 5.25 under 6",func(j api.Job) bool { return j.Cost==5.25 && len(j.Steps)==1 && j.Steps[0].State=="done" })
+    wait("first run spends 5.25 under 6",func(j api.Job) bool { return j.Cost==5.25 && len(j.Steps)==1 && j.Steps[0].State=="done" && j.State!=api.StateRunning })
     // The next app action starts from saved work, as after a stopped run.
     if err := st.Update(it.ID,func(it *factory.Item) error { it.State=factory.StateNew; it.Failure=&factory.Failure{Step:"write", Next:factory.FailureStopped}; it.Stream.Ended=time.Now(); return nil }); err != nil { t.Fatal(err) }
     if action == "factory.job_step_rerun" {
