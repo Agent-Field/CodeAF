@@ -42,7 +42,7 @@ func (usageIndex) Present(c cell.Cell) bool {
 // copy this machine held was older than the one a take just brought.
 func (usageIndex) Behind(c cell.Cell, d session.Digest) bool {
 	lines, err := usageLines(c, d)
-	return err == nil && len(lines) > ledgerRows(session.UsageLedgerPath(), c.ID, usageJournalID(c))
+	return err == nil && len(lines) > ledgerRows(session.UsageLedgerPath(), c.ID, d.ID)
 }
 
 // Build appends the rows the ledger lacks. Rows are in call order and a copy

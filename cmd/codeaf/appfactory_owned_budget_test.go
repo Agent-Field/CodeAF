@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
