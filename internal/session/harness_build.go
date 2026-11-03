@@ -160,7 +160,7 @@ func (a *Agent) harnessDesignCall(named string) roleRequest {
 	if named = strings.TrimSpace(named); named != "" {
 		return roleRequest{model: named}
 	}
-	if call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RoleDesigner, a.model); err == nil {
+	if call, err := readerFor(a.config, a.model).ResolveCall(roles.RoleDesigner, a.model); err == nil {
 		return newRoleRequest(call)
 	}
 	return roleRequest{model: a.model}

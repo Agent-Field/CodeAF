@@ -120,6 +120,9 @@ func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
 // the working copy its workers share, the run's own words, the conversation's
 // two limits, and the provider its workers are seated on.
 type RunSpec struct {
+	// AgentDID is the conversation's agent DID, which each run worker hangs its
+	// task's fragment from (internal/run's workerDID). Empty names nobody.
+	AgentDID string
 	// Remote is the durable attempt being followed. SaveRemote fences abandoned
 	// attempts; WithRemoteCopy serializes result restore against running here.
 	Remote                  *TaskRemoteRecord
@@ -1072,9 +1075,9 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	// crew factory seats the work and plan roles on what this conversation's
 	// planner and worker calls already resolve through, rather than asking the
 	// profile again for a row the conversation's crew has moved.
-	source := roles.Source(a.config.RolesSource)
-	workSeat, _ := roles.TierModel(source, roles.TierWorker)
-	planSeat, _ := roles.TierModel(source, roles.TierMastermind)
+	reader := readerFor(a.config, a.model)
+	workSeat, _ := reader.TierModel(roles.TierWorker)
+	planSeat, _ := reader.TierModel(roles.TierMastermind)
 	programCrew := a.delegateCrew(run)
 	if run.delegate != nil && workSeat == "" {
 		workSeat = programCrew.Hands
@@ -1132,6 +1135,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	}
 	return RunSpec{
 		Store:        run.store,
+		AgentDID:     a.config.agentDID,
 		Workspace:    run.workspace,
 		WorkspaceURI: run.tree.workerWorkspaceURI(),
 		Title:        run.title,
@@ -1190,9 +1194,9 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 	if run.delegate == nil {
 		return delegate.Crew{}
 	}
-	source := roles.Source(a.config.RolesSource)
+	reader := readerFor(a.config, a.model)
 	seat := func(tier roles.Tier) (string, string) {
-		value, _ := roles.TierModel(source, tier)
+		value, _ := reader.TierModel(tier)
 		model, rung := roles.SplitEffort(strings.TrimSpace(value))
 		return strings.TrimSpace(model), rung
 	}
@@ -2372,7 +2376,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		note.batch = false
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
 		note.settlePrompt = landingAnswerPrompt
-		note.settleModel, _ = roles.TierModel(roles.Source(a.config.RolesSource), owedLandingTier())
+		note.settleModel, _ = readerFor(a.config, a.model).TierModel(owedLandingTier())
 		a.admitBeltLanding(run, summary, line, landing, note)
 		return
 	}
