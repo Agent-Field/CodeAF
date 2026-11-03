@@ -63,9 +63,8 @@ const (
 	PRClosed = "pr_closed"
 	// Restored is a person bringing a dropped job back to Backlog.
 	Restored = "restored"
-	// SourceClosed is the factory finding, as a person chose a job to run,
-	// that its issue or pull request was closed or merged on GitHub, so the
-	// job was finished instead of started. Its verb says which.
+	// SourceClosed is a poll or start finding that the source issue or pull
+	// request ended on GitHub. Its verb says closed or merged.
 	SourceClosed = "source_closed"
 	// MergeAsked is a person pressing Merge, inside its Undo window;
 	// MergeQueued a merge the gate passed and sent to the runner (Detail

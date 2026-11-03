@@ -986,7 +986,16 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			return false
 		}
 		if res.Spent > 0 && !res.SpendRecorded {
-			job.Spend(res.Spent)
+			spent := 0.0
+			if job.Item.Stream != nil {
+				for _, ph := range job.Item.Stream.Phases {
+					if ph.Name == st.Name {
+						spent = ph.RoundCosts[round]
+						break
+					}
+				}
+			}
+			job.Spend(max(0, res.Spent-spent))
 		}
 		readiness := factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness"
 		if factory.IsCIRepairStage(st) && !readiness {
@@ -1550,7 +1559,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		},
 		Progress:     lp.followProgress(c, st, i, round),
 		Verification: lp.verificationProgress(c, i, round),
-		Spend:        lp.spender(c),
+		Spend:        lp.spender(c, st.Name, round),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
 		},
@@ -1559,9 +1568,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 
 // spender is the Job.Spend hook: the money's when there is one, else the
 // loop's own plain reckoning onto Stream.Spent.
-func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
+func (lp *floorLoop) spender(c *loopCtl, step string, round int) func(usd float64) {
 	if p := lp.r.opts.Pool; p != nil {
-		return p.Spend(c.id)
+		return p.SpendRound(c.id, step, round)
 	}
 	return func(usd float64) {
 		if usd <= 0 {
@@ -1571,9 +1580,22 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 			if it.Stream == nil {
 				it.Stream = &factory.Stream{}
 			}
-			addCost(it, usd)
+			spendRound(it, step, round, usd)
 			return nil
 		})
+	}
+}
+
+// spendRound writes the job charge and its round receipt atomically, so a
+// worker report cannot mistake the interval between them for manager spending.
+func spendRound(it *factory.Item, step string, round int, usd float64) {
+	addCost(it, usd)
+	for i := range it.Stream.Phases {
+		ph := &it.Stream.Phases[i]
+		if step != "" && ph.Name == step {
+			ph.RecordRoundSpend(round, ph.RoundCosts[round]+usd)
+			break
+		}
 	}
 }
 
@@ -1694,6 +1716,9 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 	}
 	now := lp.r.now()
 	_ = lp.write(c, func(it *factory.Item) error {
+		if !res.Checkpoint {
+			it.Stream.Phases[i].RecordRoundSpend(it.Stream.Phases[i].Round, res.Spent)
+		}
 		foldResult(it, st, i, res, now)
 		if res.Edit == nil {
 			return nil

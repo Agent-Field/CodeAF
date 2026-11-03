@@ -322,7 +322,7 @@ func (a *Agent) visionSeer() string {
 	if resolve := a.config.MediaModel; resolve != nil {
 		return strings.TrimSpace(resolve("vision"))
 	}
-	seer, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleVision, "")
+	seer, err := readerFor(a.config, a.model).Resolve(roles.RoleVision, "")
 	if err != nil {
 		return ""
 	}

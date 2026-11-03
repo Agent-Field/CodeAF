@@ -337,6 +337,23 @@ runner gives it no second turn on the same words. Say `start` and the manager st
 with `factory_start`; it starts the job only when you ask. It never clones the repository
 itself: the runner clones it when the job starts.
 
+## step cost across rounds, resumed work and the job total
+
+A step's cost includes every priced round once. Resuming an interrupted round
+keeps its earlier spending; a repeated result does not add another charge.
+Retrying a step keeps its earlier cost. A new run or Run as new starts from zero.
+The job total also includes the manager's calls and other work outside steps,
+so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
+Worker reports retain every round even when several rounds finish between reports.
+The factory keeps the largest reported total for each round. Delayed or partial
+reports cannot remove a round or lower its cost; increases still count. Once a step
+has round receipts, reports without a table keep those receipts and update their
+round without charging the job twice. Steps that never had round receipts show
+the last reported round cost. There is no migration; earlier round costs absent
+from saved receipts cannot be recovered.
+Workers use round receipts only when the factory advertises support. With an
+older factory, all new spending travels in the established job-spend report.
+
 ## the job's chat is its manager — where it works, and its spend counts toward the job's budget
 
 A job's own chat (`T` on the floor, or the job's chat on its page) is the job's manager. What
