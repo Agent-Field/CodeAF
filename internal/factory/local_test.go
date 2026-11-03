@@ -158,6 +158,7 @@ func TestLocalNewCleansLiftedSeparators(t *testing.T) {
 	}{
 		{"Fix the login, $8, then the logout.", "Fix the login, then the logout."},
 		{"Report these findings:", "Report these findings:"},
+		{" \tReport these findings: \t", "Report these findings:"},
 		{"Fix what you find,", "Fix what you find,"},
 	} {
 		t.Run(tc.words, func(t *testing.T) {

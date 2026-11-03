@@ -638,10 +638,11 @@ func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, err
 var liftedAskSeparators = regexp.MustCompile(`(?:\s+[,;:])+`)
 
 func askAfterLifting(words, rest string) string {
+	rest = strings.TrimSpace(rest)
 	if rest == strings.TrimSpace(words) {
-		return strings.TrimSpace(rest)
+		return rest
 	}
-	rest = liftedAskSeparators.ReplaceAllString(strings.TrimSpace(rest), "")
+	rest = liftedAskSeparators.ReplaceAllString(rest, "")
 	return strings.TrimRightFunc(rest, func(r rune) bool {
 		return unicode.IsSpace(r) || r == ',' || r == ';' || r == ':'
 	})
