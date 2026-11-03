@@ -152,6 +152,14 @@ func checksGreen(it factory.Item, prior []factory.StageResult) bool {
 
 // someCheckGreen: a check ran and passed, and nothing failed.
 func someCheckGreen(it factory.Item, prior []factory.StageResult) bool {
+	// Prior omits skipped steps. Keep the stage indexes aligned with those results.
+	stages := make([]factory.Stage, 0, len(it.Stages))
+	for i, st := range it.Stages {
+		if !skippedCheck(it, i) {
+			stages = append(stages, st)
+		}
+	}
+	it.Stages = stages
 	if !checksGreen(it, prior) {
 		return false
 	}

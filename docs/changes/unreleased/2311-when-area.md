@@ -38,7 +38,7 @@ Changed state and evidence sites (relative to `internal/factory/`):
   and discard stale counts, claims and cached results.
 - `pr_body.go` (`PublishBody`), `brief.go` (`BriefFacts`),
   `brief_writer.go` (`stepInputs`, `briefEvidenceOf`, `phaseOf`) and
-  `run/policy.go` (`checksGreen`, `skippedCheck`) exclude skipped evidence.
+  `run/policy.go` (`checksGreen`, `someCheckGreen`, `skippedCheck`) exclude skipped evidence.
   `cmd/codeaf/factory_verification_checkpoint.go` (`inheritFactoryChecks`)
   excludes skipped source journals; `internal/appwire/server.go` announces
   `FeatureFactoryStepSkipped` from `factory_step_skipped.go`.
@@ -50,3 +50,8 @@ counts and retained measured-result recovery. Factory setup and ordinary task
 maps `skipped` to idle, its summary counts only `done`, and its checks list reads
 only supplied test counts. Engines supply no skipped test counts; clients can use
 the new feature word to show the reason directly.
+
+The policy requiring every check to pass still holds for a skipped required
+check. The policy requiring at least one green check ignores optional skips:
+a measured pass beside a skip qualifies, while only skips or a failed check do
+not. Compact prior results retain their stage alignment across skipped steps.
