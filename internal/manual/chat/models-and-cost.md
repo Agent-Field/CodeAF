@@ -1848,6 +1848,8 @@ Receipt workers exit when their queue is empty and start again when another rece
 Factory jobs and their page helpers also request receipts for successful answers
 without usage. After a failed stream, the final receipt replaces interim usage
 for billing: a $0.10 interim figure followed by a $0.12 receipt charges $0.12 once.
+A receipt without a price keeps measured interim spend; an explicitly priced zero
+replaces it. Each call is booked once.
 Missing receipts keep their job attribution. Job usage and Spending expose the
 missing price as unbilled, never as a measured $0. A saturated ledger queue writes
 through instead of discarding charges; a caller never waits on the disk.
