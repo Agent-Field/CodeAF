@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -313,7 +312,6 @@ func (v *Vault) captureTx(tx *sql.Tx, s Source) error {
 		if _, err = tx.Exec("INSERT INTO events(partition,id,payload,arrived) VALUES('profile',?,?,?)", part.ID, mustJSON(source), float64(stamp.UnixNano())/1e9); err != nil {
 			return err
 		}
-		log.Printf("[DEBUG-c52] admit session=%s id=%s text=%q", part.Session, part.ID, part.Text[:min(len(part.Text), 100)])
 		if err = wakeFromSource(tx, source); err != nil {
 			return err
 		}

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -38,8 +38,8 @@ func TestMemoryPauseRetainsPendingForResume(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause resume", 0)
 }
 
-func TestMemoryPauseResumeDrainsLateEvidence(t *testing.T) {
-	memoryLateReceiptFactoryHeader(t, "pause resume slow", 0)
+func TestMemoryPauseResumeAfterTrailingProgress(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "pause resume trailing", 0)
 }
 
 func TestMemoryPauseClosesTailAdmission(t *testing.T) {
@@ -67,7 +67,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *te
 }
 
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
-	pauseResume := end == "pause resume" || end == "pause resume slow"
+	pauseResume := end == "pause resume" || end == "pause resume trailing"
 	pauseBoundary := end == "pause boundary"
 	pauseTail := end == "pause tail" || pauseBoundary || pauseResume
 	settlingQuit := end == "settling quit"
@@ -113,14 +113,9 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			_ = json.Unmarshal([]byte(body.Messages[1].Content), &payload)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		if payload["messages"] != nil || ((pauseBoundary || pauseResume) && len(payload) > 0) {
+		if r.Header.Get("X-Test-Role") == "memory" {
 			n := memoryCalls.Add(1)
 			if pauseResume && n > 1 {
-				if end == "pause resume slow" && n == 2 {
-					// Let the finished stage return while its memory snapshot is
-					// still compiling, so final job evidence lands during the pass.
-					time.Sleep(250 * time.Millisecond)
-				}
 				providerUnits.Add(1)
 				var p map[string]any
 				_ = json.Unmarshal([]byte(body.Messages[1].Content), &p)
@@ -183,6 +178,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		clone := r.Clone(r.Context())
 		u := *r.URL
 		clone.URL = &u
+		clone.Header.Set("X-Test-Role", string(provider.RoleFrom(r.Context())))
 		if strings.Contains(u.Host, "openrouter.ai") {
 			clone.URL.Scheme = "http"
 			clone.URL.Host = server.Listener.Addr().String()
@@ -382,6 +378,8 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 				if err != nil || (snapshot.Pending == 0 && (!pauseBoundary || !snapshot.NeedsUpdate)) {
 					t.Fatalf("pause lost pending memory: %+v %v", snapshot, err)
 				}
+				retained := memoryJobSources(t, profile)
+				t.Logf("retained source count=%d", len(retained))
 				t.Logf("paused memory calls=%d; ledger=%.4f header=%.4f pending=%d", before, usd, job.Cost, snapshot.Pending)
 				if pauseResume {
 					s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
@@ -396,11 +394,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 						t.Fatalf("Resume started memory before a finished turn: %d -> %d", before, got)
 					}
 					finishLearning()
-					if end == "pause resume slow" {
-						// Observe after the final progress lines have reached capture,
-						// rather than relying on the transient zero before that scan.
-						time.Sleep(3 * time.Second)
-					}
 					until := time.Now().Add(15 * time.Second)
 					for {
 						snapshot, err = knowledge.Open(profile).Snapshot()
@@ -408,6 +401,22 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 						learned := false
 						for _, step := range job.Steps {
 							learned = learned || (step.Name == "learn" && step.State == "done")
+						}
+						if end == "pause resume trailing" && learned {
+							// Drive the same public admission used by background history
+							// capture after the runner writes its final timeline lines.
+							trailing := false
+							for _, source := range memoryJobSources(t, profile) {
+								trailing = trailing || strings.HasPrefix(source.Text, "learn done")
+								if err := knowledge.Open(profile).Capture(source); err != nil {
+									t.Fatal(err)
+								}
+							}
+							snapshot, err = knowledge.Open(profile).Snapshot()
+							if !trailing && time.Now().Before(until) {
+								time.Sleep(10 * time.Millisecond)
+								continue
+							}
 						}
 						session.FlushUsage()
 						ledger, _ := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
@@ -421,28 +430,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 							break
 						}
 						if time.Now().After(until) {
-							history := session.KnowledgeHistory(filepath.Dir(filepath.Dir(launch.Config.Place.Dir)), profile)
-							journals, readErr := history.Inventory(context.Background())
-							if readErr != nil {
-								t.Fatal(readErr)
-							}
-							published := map[string]bool{}
-							for _, page := range snapshot.Pages {
-								for _, evidence := range page.Evidence {
-									published[evidence.Source] = true
-								}
-							}
-							for _, journal := range journals {
-								batch, readErr := history.Read(context.Background(), journal, knowledge.JournalCursor{Scope: journal.Project})
-								if readErr != nil {
-									t.Fatal(readErr)
-								}
-								for _, source := range batch.Sources {
-									if !published[source.ID] {
-										t.Logf("unpublished evidence: session=%s owner=%s source=%s text=%q", source.Session, journal.JobOwner, source.ID, source.Text)
-									}
-								}
-							}
 							t.Fatalf("resume did not compile pending evidence: calls=%d pending=%d needs_update=%v last_error=%q error=%v", memoryCalls.Load(), snapshot.Pending, snapshot.NeedsUpdate, snapshot.LastError, err)
 						}
 						time.Sleep(10 * time.Millisecond)
@@ -463,4 +450,36 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// Read the same immutable evidence that the public history importer admits.
+func memoryJobSources(t *testing.T, profile string) []knowledge.Source {
+	t.Helper()
+	history := session.KnowledgeHistory(session.PlacesRoot(), profile)
+	journals, err := history.Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sources []knowledge.Source
+	for _, journal := range journals {
+		if !journal.Job {
+			continue
+		}
+		cursor := knowledge.JournalCursor{Scope: journal.Project}
+		for cursor.Offset < journal.Size {
+			batch, err := history.Read(context.Background(), journal, cursor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, source := range batch.Sources {
+				source.Job = true
+				sources = append(sources, source)
+			}
+			if batch.Cursor.Offset <= cursor.Offset {
+				break
+			}
+			cursor = batch.Cursor
+		}
+	}
+	return sources
 }

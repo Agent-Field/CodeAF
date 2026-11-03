@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,7 +100,6 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 			return err
 		}
 	}
-	log.Printf("[DEBUG-c52] boundary session=%s through=%d", provider.SessionFrom(ctx), through)
 	before, err := pendingCompilerSources(db, ctx, through)
 	if err != nil {
 		return err
