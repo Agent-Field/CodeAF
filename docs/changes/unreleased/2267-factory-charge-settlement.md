@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf collects Factory charges after failed and unmetered calls
-pr: 0
+pr: 2267
 surface: [engine]
 invalidates:
   - "A Factory stream's interim usage could prevent its final receipt from reaching the ledger and job total."
