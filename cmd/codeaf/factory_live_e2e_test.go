@@ -209,7 +209,11 @@ func (r *liveRecorder) read(chunk []byte) {
 	r.cost += m.Usage.Cost
 }
 
-func TestLiveFactoryStageDrivesARealModelToTheApproveGate(t *testing.T) {
+// liveFactoryRig is the live lane's floor: the opt-in and key checks, a
+// re-rooted profile, every model call through a [liveRecorder], and a local
+// seam over the real runner and stage maker pinned to [liveFactoryModel].
+func liveFactoryRig(t *testing.T) (runRig, *liveRecorder, factory.Seam) {
+	t.Helper()
 	if os.Getenv(liveFactoryOptIn) != "1" {
 		t.Skipf("opt-in live lane: set %s=1 (spends a few cents on OpenRouter)", liveFactoryOptIn)
 	}
@@ -219,8 +223,6 @@ func TestLiveFactoryStageDrivesARealModelToTheApproveGate(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatal("BLOCKED: git is not installed")
 	}
-	started := time.Now()
-
 	root := resolvedTempDir(t)
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv(home.EnvVar, filepath.Join(root, "state"))
@@ -250,7 +252,12 @@ func TestLiveFactoryStageDrivesARealModelToTheApproveGate(t *testing.T) {
 	maker := factoryStageMaker(g.st, g.workspace, "", launch.Config)
 	r := buildFactoryRunner(g.st, g.st, g.workspace, "", maker, nil)
 	stopAll(t, g.st, r)
-	seam := factory.LocalSeam(g.st, time.Now(), factory.WithRunner(r))
+	return g, recorder, factory.LocalSeam(g.st, time.Now(), factory.WithRunner(r))
+}
+
+func TestLiveFactoryStageDrivesARealModelToTheApproveGate(t *testing.T) {
+	started := time.Now()
+	g, recorder, seam := liveFactoryRig(t)
 
 	const want = "hello factory"
 	id, err := g.st.Add(context.Background(), factory.Item{
@@ -324,6 +331,13 @@ func TestLiveFactoryStageDrivesARealModelToTheApproveGate(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(got)) != want {
 		t.Fatalf("HELLO.txt in the item's worktree = %q, %v", got, err)
 	}
+	assertLiveRecorder(t, recorder)
+}
+
+// assertLiveRecorder fails the lane on any call that was not the pinned
+// model, any policy refusal, or spend over the lane's budget.
+func assertLiveRecorder(t *testing.T, recorder *liveRecorder) {
+	t.Helper()
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	if recorder.calls == 0 {
@@ -341,6 +355,69 @@ func TestLiveFactoryStageDrivesARealModelToTheApproveGate(t *testing.T) {
 	if recorder.cost > liveFactoryBudget {
 		t.Fatalf("cost $%.4f exceeds the $%.2f budget", recorder.cost, liveFactoryBudget)
 	}
+}
+
+// A WRITE THAT CHANGES NOTHING IS HELD BEFORE ANY CHECK RUNS. The checkout
+// already holds what the ask wants, so an honest model reports write done
+// without changing a file; the check after it would pass on the unchanged
+// tree. The runner must refuse that done and ask, and the check must not run.
+func TestLiveFactoryWriteThatChangesNothingIsHeldBeforeTheCheck(t *testing.T) {
+	started := time.Now()
+	g, recorder, seam := liveFactoryRig(t)
+	const want = "hello factory"
+	if err := os.WriteFile(filepath.Join(g.workspace, "HELLO.txt"), []byte(want+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "HELLO.txt"}, {"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "greeting"}} {
+		if out, err := exec.Command("git", append([]string{"-C", g.workspace}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	id, err := g.st.Add(context.Background(), factory.Item{
+		Title: "make sure of the greeting", Repo: "api", Tier: factory.TierOwner, Cap: liveFactoryBudget,
+		Stages: []factory.Stage{
+			{Name: "write", Kind: factory.StageChat, On: true, Until: "done",
+				Ask: "Make sure HELLO.txt in the current directory contains exactly `" + want + "` and a trailing newline. Read it first. Then call stage_result with done true, findings 0 and a one-line output."},
+			{Name: "verify", Kind: factory.StageCheck, On: true, Ask: "grep -qx '" + want + "' HELLO.txt"},
+			{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), liveFactoryWall)
+	defer cancel()
+	if err := seam.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	var it factory.Item
+	for {
+		it, _ = g.st.Get(id)
+		if it.State == factory.StateLanded || it.Failure != nil || it.Question != "" || ctx.Err() != nil {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	summary := map[string]any{"state": string(it.State), "question": it.Question, "seconds": int(time.Since(started).Seconds())}
+	recorder.mu.Lock()
+	summary["request_models"], summary["response_models"], summary["calls"], summary["cost_usd"] = recorder.requests, recorder.replies, recorder.calls, recorder.cost
+	recorder.mu.Unlock()
+	if it.Stream != nil {
+		summary["item_spent_usd"] = it.Stream.Spent
+		for _, ph := range it.Stream.Phases {
+			summary["phase_"+ph.Name] = string(ph.State)
+		}
+	}
+	writeLiveFactoryLog(t, summary)
+
+	const q = "write did not finish: the checkout has no change from where the run began · try again, or stop the job?"
+	if it.Question != q || it.QKind != factory.QKindOutOfAttempts {
+		t.Fatalf("item is %s asking %q (%s); summary %v", it.State, it.Question, it.QKind, summary)
+	}
+	if verify := it.Stream.Phases[1]; verify.State != factory.PhasePending || verify.Round != 0 {
+		t.Fatalf("the check ran on an unchanged write: %+v", verify)
+	}
+	assertLiveRecorder(t, recorder)
 }
 
 // writeLiveFactoryLog keeps the summary outside the repository, for the person
