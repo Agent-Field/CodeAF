@@ -940,7 +940,7 @@ func (a *Agent) reportNoticeFailure(err error) {
 // set stay together, so a correction never applies to a newer turn's memories.
 // The job remains owned by memoryCtx and memoryJobs, including its backoff.
 func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string, texts []string, askMemory bool) (reflex.NoticeResult, error) {
-	if !a.noticing() {
+	if !config.MemoryEnabledAt(a.config.ProfileDir) {
 		return reflex.NoticeResult{}, nil
 	}
 	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
@@ -958,7 +958,7 @@ func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string
 	if err := a.memoryCtx.Err(); err != nil {
 		return reflex.NoticeResult{}, err
 	}
-	if !a.noticing() {
+	if !config.MemoryEnabledAt(a.config.ProfileDir) {
 		return reflex.NoticeResult{}, nil
 	}
 	return reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
