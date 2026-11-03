@@ -920,8 +920,12 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
- if err:=factoryCallRefusal(ctx);err!=nil{return err}
- if c.RouteCrew==nil{return nil}
+		if err := factoryCallRefusal(ctx); err != nil {
+			return err
+		}
+		if c.RouteCrew == nil {
+			return nil
+		}
 		if isCrewSeatCall(ctx) || tag == string(purposeTurn) {
 			return nil
 		}
