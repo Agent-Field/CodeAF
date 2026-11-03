@@ -670,10 +670,20 @@ func (w *usageWriter) run(path string) {
 			dropUsageRow()
 			_ = file.Close()
 			file = nil
-			continue
+			return
 		}
 		announceUsageWritten()
 	}
+	for work := range w.queue {
+		if work.done != nil {
+			w.writeOverflow(write)
+			close(work.done)
+			continue
+		}
+		write(work.line)
+		w.writeOverflow(write)
+	}
+	w.writeOverflow(write)
 }
 
 // usageWatchers are told after a row reaches the file. Spending happens outside
@@ -948,17 +958,7 @@ func (w *usageWriter) writeOverflow(write func([]byte)) {
 	w.overflowRows = nil
 	w.overflowMu.Unlock()
 	for _, row := range rows {
-<<<<<<< HEAD
-		if file == nil {
-			dropUsageRow()
-		} else if _, err := file.Write(row.line); err != nil {
-			dropUsageRow()
-		} else {
-			announceUsageWritten()
-		}
-=======
 		write(row.line)
->>>>>>> c52/spend-failed-calls
 		w.overflowMu.Lock()
 		delete(w.overflow, row.done)
 		w.overflowMu.Unlock()
