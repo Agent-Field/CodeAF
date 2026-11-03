@@ -8,10 +8,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // ItemStore is what the local seam needs of a store of items, and
@@ -107,6 +109,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 				return errors.New("a budget is never below nothing")
 			}
 			return st.Update(id, func(it *Item) error {
+				TouchIssue(it)
 				it.Cap = usd
 				return nil
 			})
@@ -373,6 +376,14 @@ const (
 func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) error) {
 	busy, _ := st.(BusyKeeper)
 	refresh := func(ctx context.Context, it Item) error {
+		write := st.Update
+		if a, ok := st.(annotator); ok {
+			write = a.Annotate
+		}
+		if err := write(it.ID, func(cur *Item) error { TouchIssue(cur); return nil }); err != nil {
+			return err
+		}
+
 		if busy != nil {
 			_ = busy.SetBusy(it.ID, BusyRefreshing)
 			defer func() { _ = busy.SetBusy(it.ID, "") }()
@@ -633,6 +644,19 @@ func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, err
 	return it, nil
 }
 
+var liftedAskSeparators = regexp.MustCompile(`(?:\s+[,;:])+`)
+
+func askAfterLifting(words, rest string) string {
+	rest = strings.TrimSpace(rest)
+	if rest == strings.TrimSpace(words) {
+		return rest
+	}
+	rest = liftedAskSeparators.ReplaceAllString(rest, "")
+	return strings.TrimRightFunc(rest, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == ';' || r == ':'
+	})
+}
+
 // localNew makes an item from words typed on the floor. The chips lift out
 // (a cap, a gate word, a round count, an effort, a security pass) and what is left,
 // tidied, is the title. The stages are the repo's recipe for an issue, with
@@ -642,11 +666,11 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 	c := Lift(words)
 	security, rest := LiftSecurity(c.Rest)
 	title := TidyWords(rest)
-	it, err := localJob(repo, title, title, now, recipe)
+	it, err := localJob(repo, title, askAfterLifting(words, rest), now, recipe)
 	if err != nil {
 		return 0, err
 	}
-	// Terminal input keeps its existing body and ask shape.
+	// The ask drops orphan chip separators; the title alone is tidied.
 	it.Body = ""
 	it.Cap = c.Cap
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`

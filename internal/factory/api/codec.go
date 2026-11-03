@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -109,6 +110,10 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"Item.GitHubIssueID": "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
+	"Item.SourceClosed":  "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
+	"Item.PersonTouched": "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
+
 	"Item.MemorySpent":             "runner-local provenance already included in total cost; completed-round checks compare only charges since local admission, so readers and a newly admitted worker need no historical split",
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
@@ -116,6 +121,7 @@ var Lost = map[string]string{
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
+	"Phase.RoundCosts":             "worker admission carries the complete round table; readers get only its sum as step.cost",
 	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
 	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
@@ -1087,8 +1093,9 @@ func runStep(s Step, p factory.Phase) Step {
 	}
 	if r := p.Result; r != nil {
 		s.Files = r.Files
-		s.Result, s.Cost, s.Tests, s.Model = r.Output, r.Spent, r.Tests, r.Model
+		s.Result, s.Tests, s.Model = r.Output, r.Tests, r.Model
 	}
+	s.Cost = p.StepCost()
 	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
 	s.Failure = failureWireOrNil(p.Failure)
 	s.Rounds = roundsWire(p.Rounds)
@@ -1194,8 +1201,12 @@ func toPhase(s Step) factory.Phase {
 		res := stageResultItem(*r)
 		res.Model = s.Model
 		p.Result = &res
-	} else if s.Files != nil || s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
-		p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
+	} else if s.Files != nil || s.Result != "" || (s.Cost != 0 && s.RoundCosts == nil) || s.Tests != nil || s.Model != "" {
+		spent := s.Cost
+		if s.RoundCosts != nil {
+			spent = s.RoundCosts[max(1, s.Round)]
+		}
+		p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: spent, Tests: s.Tests, Model: s.Model}
 	}
 	if s.At != nil {
 		p.At = *s.At
@@ -1203,6 +1214,7 @@ func toPhase(s Step) factory.Phase {
 	if s.StartedAt != nil {
 		p.Started = *s.StartedAt
 	}
+	p.RoundCosts = maps.Clone(s.RoundCosts)
 	p.Failure = failureItem(s.Failure)
 	p.Rounds = roundsItem(s.Rounds)
 	return p

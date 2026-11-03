@@ -151,6 +151,33 @@ func TestLocalNewLiftsChips(t *testing.T) {
 	}
 }
 
+func TestLocalNewCleansLiftedSeparators(t *testing.T) {
+	for _, tc := range []struct {
+		words string
+		want  string
+	}{
+		{"Fix the login, $8, then the logout.", "Fix the login, then the logout."},
+		{"Report these findings:", "Report these findings:"},
+		{" \tReport these findings: \t", "Report these findings:"},
+		{"Fix what you find,", "Fix what you find,"},
+	} {
+		t.Run(tc.words, func(t *testing.T) {
+			_, st := openLocal(t)
+			seam := factory.LocalSeam(st, time.Now())
+			if _, err := seam.New("agentfield/codeaf", tc.words); err != nil {
+				t.Fatal(err)
+			}
+			snap, err := seam.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ask := snap.Items[0].Ask; ask == nil || ask.Text != tc.want {
+				t.Fatalf("ask = %+v, want %q", ask, tc.want)
+			}
+		})
+	}
+}
+
 // Every door that changes an item writes it to disk: a fresh store on the
 // same root reads the change back.
 func TestLocalDoorsPersistAcrossOpen(t *testing.T) {

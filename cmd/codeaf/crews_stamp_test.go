@@ -29,7 +29,7 @@ func TestTheCrewsWatchersSeeTwoWritesInOneClockTick(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := &appCrewRun{cursors: map[string]string{}}
+	run := newAppCrewRun()
 	inputs := backend.crewInputs(run)
 	var graph appWorkGraph
 	if _, _, err := graph.crewFile(profile, "0d0d0d0d0d0d"); err != nil {

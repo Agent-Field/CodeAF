@@ -58,6 +58,11 @@ func NewMoney(st *store.Store, ledger func(item int, usd float64), clock func() 
 // Spend is the hook for Job.Spend of item id. A cost of nothing, or less, is
 // not recorded.
 func (m *Money) Spend(id int) func(usd float64) {
+	return m.SpendRound(id, "", 0)
+}
+
+// SpendRound books a step receipt together with its job charge.
+func (m *Money) SpendRound(id int, step string, round int) func(usd float64) {
 	return func(usd float64) {
 		if m == nil || usd <= 0 {
 			return
@@ -69,7 +74,7 @@ func (m *Money) Spend(id int) func(usd float64) {
 				if it.Stream == nil {
 					it.Stream = &factory.Stream{}
 				}
-				addCost(it, usd)
+				spendRound(it, step, round, usd)
 				it.Stream.Activity = bump(it.Stream.Activity, slide)
 				return nil
 			})

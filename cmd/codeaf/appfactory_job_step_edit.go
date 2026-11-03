@@ -63,7 +63,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 	}
 	for _, a := range p.Edit.Add {
 		body.Add = append(body.Add, api.StepAddition{
-			Step:  api.StepDef{Name: a.Step.Name, Label: strings.TrimSpace(a.Step.Label), Kind: a.Step.Kind, Ask: a.Step.Ask, Until: a.Step.Until, Effort: a.Step.Effort, Max: a.Step.Max},
+			Step:  api.StepDef{Name: a.Step.Name, Label: strings.TrimSpace(a.Step.Label), Kind: a.Step.Kind, Ask: a.Step.Ask, Until: a.Step.Until, When: a.Step.When, Effort: a.Step.Effort, Max: a.Step.Max},
 			After: a.After,
 		})
 	}

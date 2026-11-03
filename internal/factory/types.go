@@ -283,11 +283,13 @@ const (
 // Phase is one stage as it runs: its state, what round it is on, how many
 // tasks it fanned out into.
 type Phase struct {
-	Name  string
-	Kind  StageKind
-	State PhaseState
-	Note  string
-	Round int
+	// RoundCosts holds cumulative dollars for every logical round in this run.
+	RoundCosts map[int]float64 `json:",omitempty"`
+	Name       string
+	Kind       StageKind
+	State      PhaseState
+	Note       string
+	Round      int
 	// RoundLimit is the effective limit, including explicit user extensions.
 	// Persist it before a round starts so reopening cannot revoke that grant.
 	RoundLimit   int               `json:",omitempty"`
@@ -501,6 +503,13 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
+	GitHubIssueID int64 `json:",omitempty"`
+	// SourceClosed distinguishes an automatic close from a person's Done.
+	SourceClosed bool `json:",omitempty"`
+	// PersonTouched survives edits being undone and prevents automatic reconciliation.
+	PersonTouched bool `json:",omitempty"`
+
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
