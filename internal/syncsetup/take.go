@@ -696,7 +696,17 @@ const (
 // withVaultWithin is withVault for a caller that waits up to within for another
 // codeaf on this computer to finish its own exchange; zero never waits.
 func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
-	if err := lockStateRound(ctx, within); err != nil {
+	return s.withVaultRound(ctx, within, false, use, extra...)
+}
+
+// Only idle certification may skip a competing in-process exchange. Ordinary
+// callers serialize as before, with cancellation belonging to their context.
+func (s *Sync) withVaultRound(ctx context.Context, within time.Duration, idle bool, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
+	if idle {
+		if !stateMu.TryLock() {
+			return errStateBusy
+		}
+	} else if err := lockDrive(ctx, &stateMu); err != nil {
 		return err
 	}
 	defer stateMu.Unlock()
@@ -725,34 +735,6 @@ func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use fu
 }
 
 var errStateBusy = errors.New("sync: another home-state exchange is in progress")
-
-// The process gate follows the same bounded rule as the cross-process lock.
-// A stalled home-state upload cannot lend its lifetime to another caller.
-func lockStateRound(ctx context.Context, within time.Duration) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if stateMu.TryLock() {
-		return nil
-	}
-	if within <= 0 {
-		return errStateBusy
-	}
-	ctx, cancel := context.WithTimeout(ctx, within)
-	defer cancel()
-	tick := time.NewTicker(vaultBusyRetry)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.Join(errStateBusy, ctx.Err())
-		case <-tick.C:
-			if stateMu.TryLock() {
-				return nil
-			}
-		}
-	}
-}
 
 // lockState takes the vault's lock without blocking, and while another process
 // holds it retries every vaultBusyRetry until within has passed or ctx ends. The

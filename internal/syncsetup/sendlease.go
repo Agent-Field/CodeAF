@@ -55,9 +55,17 @@ func (s *Sync) SendLease(id string) (string, uint64, error) {
 }
 
 func (d *Drive) recordSendLease() error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return d.recordSendLeaseWithin(ctx)
+	fence := d.batcher.Fence()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.lost || d.viewer.Line != "" || fence == 0 || fence == d.recordedFence {
+		return nil
+	}
+	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
+		return err
+	}
+	d.recordedFence = fence
+	return nil
 }
 
 func (d *Drive) recordSendLeaseWithin(ctx context.Context) error {
@@ -104,9 +112,39 @@ func (s *Sync) reconcileSendLease(id, remoteID string, view directory.CellView) 
 }
 
 func (s *Sync) recordSendLease(id string, held sendLease) error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return s.recordSendLeaseWithin(ctx, id, held)
+	lock, err := s.lockChat(id, "")
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	raw, err := json.Marshal(held)
+	if err != nil {
+		return err
+	}
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return err
+	}
+	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".hold-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	_, writeErr := tmp.Write(raw)
+	closeErr := tmp.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := fsreplace.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Sync) recordSendLeaseWithin(ctx context.Context, id string, held sendLease) error {
@@ -153,9 +191,34 @@ func (s *Sync) recordSendLeaseWithin(ctx context.Context, id string, held sendLe
 
 // forgetSendLease retires only this writer's fence, preserving a newer local owner.
 func (s *Sync) forgetSendLease(id string, expected sendLease) error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return s.forgetSendLeaseWithin(ctx, id, expected)
+	lock, err := s.lockChat(id, "")
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var held sendLease
+	if err := json.Unmarshal(raw, &held); err != nil {
+		return err
+	}
+	if held != expected {
+		return nil
+	}
+	err = os.Remove(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func (s *Sync) forgetSendLeaseWithin(ctx context.Context, id string, expected sendLease) error {
@@ -190,9 +253,22 @@ func (s *Sync) forgetSendLeaseWithin(ctx context.Context, id string, expected se
 }
 
 func (s *Sync) lockChat(id, suffix string) (*os.File, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return s.lockChatWithin(ctx, id, suffix)
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(path+suffix+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := filelock.Lock(lock, true, false); err != nil {
+		lock.Close()
+		return nil, err
+	}
+	return lock, nil
 }
 
 func (s *Sync) lockChatWithin(ctx context.Context, id, suffix string) (*os.File, error) {
