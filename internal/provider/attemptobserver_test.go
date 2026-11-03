@@ -971,20 +971,26 @@ func TestObservedAllMediaAdaptersRefuseAtSharedHTTPDoor(t *testing.T) {
 }
 
 func TestRouteGateRechecksEveryRetryBeforeSending(t *testing.T) {
- var hits atomic.Int32
- server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  hits.Add(1)
-  w.Header().Set("Content-Type","application/json")
-  w.WriteHeader(http.StatusServiceUnavailable)
-  fmt.Fprint(w,`{"error":{"message":"overloaded","code":503}}`)
- }))
- t.Cleanup(server.Close)
- client:=observedClient(t,server)
- stopped:=errors.New("the person stopped this job")
- client.config.RouteGate=func(context.Context,string,string)error{
-  if hits.Load()>0{return stopped}
-  return nil
- }
- if _,err:=client.CompleteWithMessages(t.Context(),userMessages("hi"));!errors.Is(err,stopped){t.Fatalf("retry ignored person stop: %v",err)}
- if hits.Load()!=1{t.Fatalf("sent %d model calls after Stop; want only the already-running call",hits.Load())}
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"message":"overloaded","code":503}}`)
+	}))
+	t.Cleanup(server.Close)
+	client := observedClient(t, server)
+	stopped := errors.New("the person stopped this job")
+	client.config.RouteGate = func(context.Context, string, string) error {
+		if hits.Load() > 0 {
+			return stopped
+		}
+		return nil
+	}
+	if _, err := client.CompleteWithMessages(t.Context(), userMessages("hi")); !errors.Is(err, stopped) {
+		t.Fatalf("retry ignored person stop: %v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("sent %d model calls after Stop; want only the already-running call", hits.Load())
+	}
 }
