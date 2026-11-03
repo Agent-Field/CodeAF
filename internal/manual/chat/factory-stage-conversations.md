@@ -459,6 +459,11 @@ runner announces the final stage outcome. Progress uses paths relative to the ch
 Completed stage results carry command receipts in their notes: the command, starting folder,
 outcome and explicit test outcomes when the output has them. A final PASS summary is not a test.
 Later steps receive these receipts instead of rediscovering the working directory and flags.
+The journal records the tool producer’s outcome separately from command output.
+A command refused for approval or policy reads `refused` with the actual reason;
+it did not run. Interrupted commands read `cancelled` or `timed out`, even if partial
+output includes PASS. These outcomes remain unresolved for the completion guard.
+Older journals without enough evidence of success retain `completed`; this is not a passing check.
 
 In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
 Auto records and carries out that routine approval automatically. Its description
