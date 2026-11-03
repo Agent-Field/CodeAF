@@ -1,7 +1,14 @@
 package main
 
 import (
+ "bytes"
  "context"
+ "encoding/json"
+ "io"
+ "net/http"
+ "net/http/httptest"
+ "net/http/httputil"
+ "net/url"
   "path/filepath"
  "sync"
  "strings"
@@ -47,6 +54,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
    }})
    
    status := s.start()
+   workerURL, replays := replayBudgetReports(t, status.URL)
    it, err := st.Create(factory.Item{Title: "Lifetime budget", Repo: "acme/api", Num: 99, Kind: factory.KindIssue, State: factory.StateNew, Cap: 6, Autonomy: factory.AutonomyManual, Talk: transcript,
     Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: "done", Max: 1, On: true}}})
    if err != nil { t.Fatal(err) }; t.Cleanup(func() { _ = runner.Stop(it.ID) })
@@ -60,7 +68,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 								Dial: func(slot int) *client.WorkerClient {
 									mu.Lock()
 									defer mu.Unlock()
-									return client.Open(status.URL, s.backend.local.host.token).Worker(credentials[slot])
+									return client.Open(workerURL, s.backend.local.host.token).Worker(credentials[slot])
 								},
 								Keep: func(slot int, w *client.WorkerClient) {
 									mu.Lock()
@@ -97,6 +105,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
    held := wait("job total 6.25 must ask at 6",func(j api.Job) bool { return j.SpendingLimit!=nil })
    if held.LifetimeCost!=6.25 || held.SpendingLimit.Spent!=6.25 { t.Fatalf("budget must read lifetime: %+v",held) }
    if len(held.Questions)==0 || !strings.Contains(held.Questions[0].Text,"$6.25") || !strings.Contains(held.Questions[0].Text,"$6") { t.Fatalf("missing totals: %+v",held.Questions) }
+   if action!="old saved total" && action!="bring back" && replays.Load()==0 { t.Fatal("no paid report replayed") }
    before:=calls.Load()
    if action=="old saved total" || action=="bring back" { if before!=0 { t.Fatalf("exhausted start ran %d calls",before) } }
    j0:=read(); _, code, _ := s.call("factory.job_step_rerun",map[string]any{"factory":status.Factory,"job":it.ID,"step":"write","expect":map[string]any{"version":j0.Version}}); if code=="" || calls.Load()!=before { t.Fatal("exhausted rerun started work") }
@@ -111,4 +120,35 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
    wait("raise permits spending that still counts",func(j api.Job) bool { return calls.Load()>before && j.LifetimeCost==7.25 && j.SpendingLimit==nil })
   })
  }
+}
+
+// Re-deliver the exact acknowledged paid request, including its receipt key.
+// The app reads below must still show each dollar once.
+func replayBudgetReports(t *testing.T, base string) (string, *atomic.Int32) {
+ t.Helper()
+ target, err := url.Parse(base)
+ if err != nil { t.Fatal(err) }
+ var replays atomic.Int32
+ proxy := httputil.NewSingleHostReverseProxy(target)
+ proxy.Transport = roundTripper(func(r *http.Request) (*http.Response,error) {
+  if r.Method!=http.MethodPost || !strings.HasSuffix(r.URL.Path,"/report") { return http.DefaultTransport.RoundTrip(r) }
+  body, err := io.ReadAll(r.Body)
+  if err!=nil { return nil,err }; _=r.Body.Close()
+  r.Body=io.NopCloser(bytes.NewReader(body))
+  response, err := http.DefaultTransport.RoundTrip(r)
+  if err!=nil { return nil,err }
+  var report api.WorkerReport
+  if response.StatusCode==http.StatusOK && json.Unmarshal(body,&report)==nil && report.Cost>0 {
+   replay:=r.Clone(r.Context()); replay.Body=io.NopCloser(bytes.NewReader(body))
+   duplicate, err:=http.DefaultTransport.RoundTrip(replay)
+   if err!=nil { t.Errorf("replay paid report: %v",err) } else {
+    _,_=io.Copy(io.Discard,duplicate.Body); _=duplicate.Body.Close()
+    if duplicate.StatusCode!=http.StatusOK { t.Errorf("replay paid report status=%d",duplicate.StatusCode) } else { replays.Add(1) }
+   }
+  }
+  return response,nil
+ })
+ server:=httptest.NewServer(proxy)
+ t.Cleanup(server.Close)
+ return server.URL,&replays
 }
