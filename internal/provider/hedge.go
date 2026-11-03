@@ -1962,6 +1962,10 @@ func (r *hedgeRace) spend(arm int) (arms int, waste float64, note, refused strin
 // settle writes the ledger and the report, and hands back the winner's answer.
 func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Response, bool, error) {
 	r.withdraw()
+	// A loser may already have completed when the winner cancels it. Collect
+	// its response before returning so discarded usage reaches the same call's
+	// ledger and budget, rather than disappearing with the race.
+	r.drainArms(seen)
 	arms, model := r.armsAndModel()
 	// The model as the ANSWER spelled it, because a router may pin a variant
 	// the config never named and a belief keyed on the wrong id is a belief
@@ -1993,6 +1997,7 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 		tokens := 0
 		if done, ok := seen[arm.index]; ok && done.response != nil && done.response.Usage != nil {
 			tokens = done.response.Usage.CompletionTokens
+			noteDiscardedUsage(r.base, done.response)
 		}
 		// A HEDGE IS A MEASUREMENT, whichever way it landed: the loser's
 		// first-token wait is the only cheap evidence there is about the lane

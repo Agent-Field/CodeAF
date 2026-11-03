@@ -341,7 +341,8 @@ from the job's budget like the job's steps: everything done for the job spends f
 - **During a run** the manager, stages and their delegated workers record priced calls
   immediately against the same job. Child totals folded back into a parent are not charged again.
 - **Counted once.** The spend page still lists every call once. The job's figure reads the
-  same dollars; it is not an additional charge.
+  same dollars; it is not an additional charge. If a slow call races another provider,
+  both completed calls count toward the job, including the answer that was discarded.
 - **At the budget** new model calls and tools are refused. The job's owned agent families
   stop promptly, including delegated tasks, background commands and adaptive runs. This
   applies while the manager is idle too. Calls already sent can still report charges afterward;
