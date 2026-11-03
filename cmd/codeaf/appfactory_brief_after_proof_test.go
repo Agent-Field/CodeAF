@@ -142,7 +142,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 			}},
 		} {
 			t.Run(c.name, func(t *testing.T) {
-				s, _, id, params := briefAfterProofSetup(t, factory.StateLanded)
+				s, door, id, params := briefAfterProofSetup(t, factory.StateLanded)
 				var first appwire.FactoryJobBriefWritten
 				s.must("factory.job_brief_write", params, &first)
 				if !first.Kept {
@@ -151,7 +151,11 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 				if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error { c.change(it); return nil }); err != nil {
 					t.Fatal(err)
 				}
-				briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+				if c.name == "stopped" {
+					assertStoppedBrief(t, s, door, params, first.Current.Brief)
+				} else {
+					briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+				}
 			})
 		}
 	})
@@ -247,7 +251,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 && g["verdict_behind"] == false })
 	})
 	t.Run("stop without an active round refreshes", func(t *testing.T) {
-		s, _, id, params := briefAfterProofSetup(t, factory.StateQueued)
+		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
 		var first appwire.FactoryJobBriefWritten
 		s.must("factory.job_brief_write", params, &first)
 		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
@@ -258,7 +262,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		if cur.Failure != nil {
 			t.Fatalf("stop cut a step unexpectedly: %+v", cur.Failure)
 		}
-		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+		assertStoppedBrief(t, s, door, params, first.Current.Brief)
 	})
 
 	t.Run("stop before a run starts refreshes", func(t *testing.T) {
@@ -277,13 +281,8 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		if err := r.Stop(id); err != nil {
 			t.Fatal(err)
 		}
-		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
-		door.mu.Lock()
-		input := door.asks[len(door.asks)-1].Messages[0].Text
-		door.mu.Unlock()
-		if !strings.Contains(input, `"end":"stopped"`) {
-			t.Fatalf("writer lacks stopped outcome: %s", input)
-		}
+		assertStoppedBrief(t, s, door, params, first.Current.Brief)
+
 	})
 	t.Run("plain step still costs too much", func(t *testing.T) {
 		it := factory.Item{Stream: &factory.Stream{Spent: 0.01}, Briefs: []factory.BriefVersion{{CostUSD: 0.02, InputHash: "old"}}}
@@ -378,4 +377,18 @@ func (d *heldBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (s
 		}
 	}
 	return d.briefDoor.RunErrand(ctx, ask)
+}
+
+func assertStoppedBrief(t *testing.T, s *localSetup, door *briefDoor, params map[string]any, paid factory.BriefVersion) {
+	t.Helper()
+	read := briefAfterProofRead(t, s, params, func(g map[string]any) bool { return g["status"] == factory.BriefStatusFailed })
+	if briefRev(read) != paid.Rev || briefBody(read)["verdict"] != paid.Verdict || read["failure"] != factory.PersonStopReason {
+		t.Fatalf("stopped brief lost paid content or stop reason: %+v", read)
+	}
+	door.mu.Lock()
+	calls := len(door.asks)
+	door.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("Stop bought %d new model calls; want zero", calls-1)
+	}
 }

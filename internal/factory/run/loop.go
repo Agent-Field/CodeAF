@@ -2009,9 +2009,6 @@ func (r *Runner) Stop(id int) error {
 	lp := r.loop()
 	if c := lp.ctl(id); c != nil {
 		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			if !factory.UnderWay(*it) {
-				return fmt.Errorf("%s is not running", it.Ref())
-			}
 			factory.MarkPersonStopped(it)
 			it.Asking = nil
 			return nil

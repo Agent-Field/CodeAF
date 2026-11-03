@@ -281,14 +281,14 @@ func (d *Doors) Pause(id int) error {
 func (d *Doors) Hold(id int, on bool) error {
 	resumed := false
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := factory.CheckPersonStop(*it); err != nil {
-			return false, err
-		}
 		if !on && !factory.UnderWay(*it) {
 			return false, fmt.Errorf("%s is not paused", it.Ref())
 		}
 		if on && it.State != factory.StateQueued && (it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing) {
 			return false, fmt.Errorf("%s is not running", it.Ref())
+		}
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return false, err
 		}
 		paused := run.StoredPaused(*it)
 		switch {

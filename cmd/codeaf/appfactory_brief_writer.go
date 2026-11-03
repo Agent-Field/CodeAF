@@ -313,7 +313,7 @@ func (b *appBackend) briefJobChanged(before, after factory.Item) {
 	if end := factory.BriefEndOf(after); end != "" && end != factory.BriefEndOf(before) {
 		// A job that ended with nothing done on it has no outcome to write up,
 		// and a brief is a model call.
-		if !factory.JobUnworked(after) {
+		if factory.StoppedByPerson(after) || !factory.JobUnworked(after) {
 			b.briefs.note(after.ID, factory.BriefTriggerEnd)
 		}
 		return

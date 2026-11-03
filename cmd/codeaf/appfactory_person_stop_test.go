@@ -293,7 +293,7 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
 			s, status, it := stoppedAppJob(t, factory.StateNeedsYou)
 			var stopped api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &stopped)
-			s.must("factory.job_resume", map[string]any{"factory": status.Factory, "job": it.ID, "expect": map[string]any{"version": stopped.Version}}, &appwire.FactoryJobActed{})
+			s.must("factory.job_step_rerun", map[string]any{"factory": status.Factory, "job": it.ID, "step": "test", "expect": map[string]any{"version": stopped.Version}}, &appwire.FactoryJobActed{})
 			floor := s.backend.local.host.floor
 			if _, err := s.backend.local.host.seam.Talk(context.Background(), it.ID); err != nil {
 				t.Fatal(err)
@@ -363,6 +363,9 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("fake model did not enter the manager wake")
 			}
+			// The runner turn is also broadcast to WatchWakes. Consume its own
+			// subscription before waiting for a later person's answer.
+			initialWake := <-wakes
 			var before api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &before)
 			s.must("factory.job_stop", map[string]any{"factory": status.Factory, "job": it.ID, "expect": map[string]any{"version": before.Version}}, &appwire.FactoryJobActed{})
@@ -377,6 +380,8 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
 			var words strings.Builder
 			for event := range events {
 				words.WriteString(event.Text)
+			}
+			for range initialWake {
 			}
 			if mode == "queued_person" {
 				for range queued {
