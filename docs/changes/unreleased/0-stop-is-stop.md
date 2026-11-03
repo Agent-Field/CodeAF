@@ -33,3 +33,9 @@ also cancels a runner whose stored job was already stopped by another door.
 Stopped briefs settle unpaid with failed status and the Stop reason, preserving
 the last paid content. A queued stopped job reads needs_you and Stopped by you,
 rather than returning to backlog.
+
+An opt-in live check exercises a real Test-stage question, a person's Stop,
+delayed question traffic and a 95-second watch. It checks the usage ledger,
+manager chat, engine restart and a person's explicit step rerun. All requests
+use one pinned model under a $0.10 cap. GitHub is refused and counted; no real
+PR is created.
