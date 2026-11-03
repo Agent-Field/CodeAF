@@ -71,10 +71,6 @@ func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []s
 		rows[it.ID] = it
 		if factory.UntouchedIssue(it) && it.SourceClosed && listed[itemKey(it)] && !closed[itemKey(it)] {
 			reopened[it.ID] = true
-			// A new open listing warrants a fresh check even after a failed read.
-			c := q.pending[it.ID]
-			c.retry = time.Time{}
-			q.pending[it.ID] = c
 		}
 	}
 	ids := make([]int, 0, len(q.pending))
