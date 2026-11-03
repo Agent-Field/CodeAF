@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 // POST /v1/repos/{owner}/{repo}/pipeline/open-pr opens a pull request that
@@ -578,6 +579,10 @@ func (f *pipelinePRFlow) call(method, path string, in, out any) (int, error) {
 // answer into out. An error means there is no usable answer; a non-2xx status
 // is an answer, and its body is never read.
 func (h *Handler) githubREST(ctx context.Context, token, method, path string, in, out any, limit int) (int, error) {
+	return h.githubRESTRevision(ctx, token, method, path, in, out, limit, "")
+}
+
+func (h *Handler) githubRESTRevision(ctx context.Context, token, method, path string, in, out any, limit int, revision string) (int, error) {
 	var raw []byte
 	if in != nil {
 		var err error
@@ -595,7 +600,12 @@ func (h *Handler) githubREST(ctx context.Context, token, method, path string, in
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
 	client := h.githubClient()
-	response, err := client.Do(req)
+	var response *http.Response
+	if revision != "" {
+		response, _, err = forge.ReadHTTP(&client, req, revision)
+	} else {
+		response, err = client.Do(req)
+	}
 	if err != nil {
 		return 0, errGitHubUnreachable
 	}
