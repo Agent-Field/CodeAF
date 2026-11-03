@@ -368,13 +368,13 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		j.spendBaseline = it.Stream.Spent
 	}
 	defer j.settleAccounting(ctx)
-    o.Runner.SetStepBegin(it.ID, func(ctx context.Context, step factory.StageReport) error {
-        readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
-        defer cancel()
-        return w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{step}}))
-    })
-    defer o.Runner.SetStepBegin(it.ID, nil)
-    if err := start(o.Runner, it.ID); err != nil {
+	o.Runner.SetStepBegin(it.ID, func(ctx context.Context, step factory.StageReport) error {
+		readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		defer cancel()
+		return w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{step}}))
+	})
+	defer o.Runner.SetStepBegin(it.ID, nil)
+	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
 	}

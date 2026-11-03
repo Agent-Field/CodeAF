@@ -782,6 +782,13 @@ current budget, job total, and next absolute budget: `budget of $0.01 reached ·
 raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
 the desktop's raise button at $5 does the same. It does not add $5 to the cap.
 
+The factory checks its own saved job total before granting a worker lease and
+when a worker reports a step beginning. At or above the cap, it holds the job
+with this budget question. Current workers wait for that step report to be
+accepted before starting paid work. A running worker whose next report reaches
+the cap loses its lease and stops, including older workers. Already incurred
+charges remain recorded.
+
 The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
 spending. If the job has spent $5.25, the next budget is $10 even when the old cap
 was $0.01. Once spending reaches $30, double the current cap, repeatedly if

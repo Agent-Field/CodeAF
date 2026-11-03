@@ -35,3 +35,10 @@ That refusal is a conflict, so the desktop does not automatically retry it.
 Finished and dropped jobs refuse. Existing clients need no wire change.
 Older documents conservatively retain their first observed revision as the
 budget baseline; an older untracked read must be refreshed once.
+
+The server also checks its authoritative lifetime total under the job lock at
+lease admission and worker reports, including step begin. An exhausted job keeps
+its budget question and refuses execution. Current workers await step begin
+acknowledgment; older workers obey the existing lease-withdrawn response on their
+next report. No worker version gate is added. A late archived receipt cannot let
+an admitted worker start from a stale accounting mirror.

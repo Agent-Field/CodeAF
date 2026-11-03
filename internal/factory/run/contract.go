@@ -283,7 +283,7 @@ type Runner struct {
 	loopOnce      sync.Once
 	floor         *floorLoop
 	stepBegins    sync.Map
- stopReaders   sync.Map
+	stopReaders   sync.Map
 	publishChecks sync.Map
 }
 
