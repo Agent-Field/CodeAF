@@ -39,7 +39,7 @@ func quietLazyRun(t *testing.T, count int) (*appBackend, *appCrewRun, appCrewRea
 	if err := os.MkdirAll(filepath.Dir(teamstore.TrafficPath(b.crewProfile(), file.Teams[0].ID)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	run := &appCrewRun{held: map[string][]string{}}
+	run := newAppCrewRun()
 	b.subscribeCrewTraffic(run)
 	if run.watcher != nil {
 		watcher := run.watcher
@@ -119,6 +119,39 @@ func TestAppLazyQuietColdSweepBoundAndCoverage(t *testing.T) {
 			t.Logf("%d cold chats: startup %d local/budget probes; each tick %d; full coverage in 30 ticks", count, 6*count+1, 6*bound+1)
 		})
 	}
+}
+
+// A cold-sweep fixture must also reconcile a changed crew through the wire.
+// Drive one heartbeat directly so this exercises the poll without a timer.
+func TestAppLazyQuietRefreshPublishesChangedCrew(t *testing.T) {
+	b, run, read, _, _, rec := quietLazyRun(t, 1)
+	b.neededMembers(run, read, true)
+	run.read, run.inputs = read, b.crewInputs(run)
+	file, err := teamstore.Load(b.crewProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const name = "changed during cold sweep"
+	if err := teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
+		f.Teams[teamstore.Index(f.Teams, file.Teams[0].ID)].Name = name
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !b.crewRefresh(run) {
+		t.Fatal("changed crew was not reconciled")
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for i, event := range rec.events {
+		if event == appwire.EventCrewChanged {
+			changed := rec.data[i].(appwire.CrewChanged).Crew
+			if changed.ID == file.Teams[0].ID && changed.Name == name {
+				return
+			}
+		}
+	}
+	t.Fatal("changed crew was not published on the wire")
 }
 
 // B2/B4: existing crew holds are hot even when no engine was established.
@@ -319,9 +352,6 @@ func TestAppLazyFirstRefreshUsesOnlyOneColdBatch(t *testing.T) {
 	b, run, read, now, counts, _ := quietLazyRun(t, 100)
 	b.neededMembers(run, read, true)
 	clear(counts)
-	run.prints, run.members, run.cursors = map[string]string{}, map[string]string{}, map[string]string{}
-	run.acted, run.packets, run.asks = map[string]bool{}, map[string]teamstore.Packet{}, map[string]appwire.Ask{}
-	run.opening = map[string]bool{}
 	*now = now.Add(2 * time.Second)
 	b.crewRefresh(run)
 	// The real crew contains one member, leaving 99 cold candidates.
@@ -442,9 +472,6 @@ func TestAppLazyWorkInputsInvalidateHotAndColdAdmission(t *testing.T) {
 // watcher with no subscriptions isolates this signal from ordinary events.
 func TestAppLazyWatcherErrorsStillReconcileCrews(t *testing.T) {
 	b, run, _, _, _, rec := quietLazyRun(t, 13)
-	run.prints, run.members, run.cursors = map[string]string{}, map[string]string{}, map[string]string{}
-	run.acted, run.packets, run.asks = map[string]bool{}, map[string]teamstore.Packet{}, map[string]appwire.Ask{}
-	run.opening = map[string]bool{}
 	b.crewTick(run, true)
 	if run.watcher != nil {
 		_ = run.watcher.Close()
@@ -457,7 +484,6 @@ func TestAppLazyWatcherErrorsStillReconcileCrews(t *testing.T) {
 	for id := range run.prints {
 		run.prints[id] = "stale view"
 	}
-	run.stop, run.done = make(chan struct{}), make(chan struct{})
 	go b.crewLoop(run)
 	defer run.close()
 	select {

@@ -167,3 +167,27 @@ func TestBriefNewsTriggersTheJobsWrite(t *testing.T) {
 		t.Fatalf("fired %+v", got)
 	}
 }
+
+// A job that ended with no work on it has nothing to brief: a closed issue a
+// poll or a start finishes must not buy a model call. Work on it still does.
+func TestABriefEndNeedsWorkOnTheJob(t *testing.T) {
+	fired := make(chan string, 2)
+	b := &appBackend{briefs: newBriefDebounce(time.Millisecond, func(_ int, trigger string) { fired <- trigger })}
+	backlog := factory.Item{ID: 1, Kind: factory.KindIssue, State: factory.StateNew}
+	closed := backlog
+	closed.State, closed.DoneHow = factory.StateShipped, "closed"
+	b.briefJobChanged(backlog, closed)
+	select {
+	case trigger := <-fired:
+		t.Fatalf("a no-work closed job asked for a brief: %s", trigger)
+	case <-time.After(50 * time.Millisecond):
+	}
+	worked, ended := backlog, closed
+	worked.Stream, ended.Stream = &factory.Stream{Spent: 0.1}, &factory.Stream{Spent: 0.1}
+	b.briefJobChanged(worked, ended)
+	select {
+	case <-fired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a job with work wrote no end brief")
+	}
+}

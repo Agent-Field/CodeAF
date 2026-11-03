@@ -341,20 +341,36 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	issueTag := s.issueTags[full]
 	s.mu.Unlock()
 
-	issues, newIssueTag, err := s.api.ListIssues(ctx, owner, name, mark, issueTag)
+	list := s.api.ListIssues
+	changes, hasChanges := s.api.(interface {
+		ListIssueChanges(context.Context, string, string, time.Time, string) ([]forge.Issue, string, error)
+	})
+	if hasChanges && !mark.IsZero() {
+		list = changes.ListIssueChanges
+	}
+	issues, newIssueTag, err := list(ctx, owner, name, mark, issueTag)
 	switch {
 	case errors.Is(err, forge.ErrNotModified):
 		issues, newIssueTag = nil, issueTag
 	case err != nil:
 		return nil, mark, err
 	}
-	var listed []factory.Item
-	var listedIssues []forge.Issue
 	for _, is := range issues {
 		if is.Updated.After(newest) {
 			newest = is.Updated
 		}
+	}
+	var listed []factory.Item
+	var listedIssues []forge.Issue
+	for _, is := range issues {
 		if is.Pull {
+			continue
+		}
+		if strings.EqualFold(is.State, "closed") {
+			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, GitHubIssueID: is.ID, Origin: factory.OriginForge, Changed: is.Updated, DoneHow: StandingClosed})
+			s.mu.Lock()
+			delete(s.owed[full], is.Number)
+			s.mu.Unlock()
 			continue
 		}
 		listed = append(listed, s.issueItem(ctx, owner, name, is))
@@ -363,6 +379,7 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	// THE ROWS FIRST: the issues as listed, comments not read yet, so the
 	// floor has them while their comments are read.
 	run.items += len(listed)
+	run.hand(items)
 	run.hand(listed)
 	run.tell(full)
 	s.mu.Lock()
@@ -457,7 +474,7 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 	body := clip(is.Body, bodyLimit)
 	return factory.Item{
 		Repo: name, Product: owner, Places: []string{name},
-		Num: is.Number, Kind: factory.KindIssue,
+		Num: is.Number, Kind: factory.KindIssue, GitHubIssueID: is.ID,
 		Title: is.Title, Body: body, Author: is.User,
 		Tier:   s.tier(ctx, owner, name, is.User),
 		Origin: factory.OriginForge, Synced: true,
@@ -621,7 +638,16 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 		if err != nil {
 			return factory.Item{}, err
 		}
+		if is.Redirected || is.Number != it.Num || (it.GitHubIssueID != 0 && is.ID != it.GitHubIssueID) {
+			return factory.Item{}, errors.New("GitHub issue identity changed or redirected")
+		}
+
 		out := s.issueItem(ctx, owner, name, is)
+		// A transferred issue answers with its new number, which here would be
+		// some other issue, so only the issue asked about can read as closed.
+		if strings.EqualFold(is.State, "closed") && is.Number == it.Num {
+			out.DoneHow = StandingClosed
+		}
 		if out.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, true); err != nil {
 			return factory.Item{}, err
 		}

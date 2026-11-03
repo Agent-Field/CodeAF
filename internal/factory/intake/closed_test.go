@@ -47,16 +47,16 @@ func TestAutomaticIntakeChecksClosedIssues(t *testing.T) {
 					return st.Update(id, func(it *factory.Item) error { it.State = factory.StateQueued; return nil })
 				}}
 				if standing != "nil" {
-					opts.Standing = func(ctx context.Context, _ factory.Item) (string, error) {
+					opts.Standing = func(ctx context.Context, _ factory.Item) (factory.SourceStanding, error) {
 						reads++
 						deadline, ok := ctx.Deadline()
 						if !ok || time.Until(deadline) > 5*time.Second {
 							t.Error("standing read lacks five second bound")
 						}
 						if standing == "error" {
-							return "", errors.New("unreachable")
+							return factory.SourceStanding{}, errors.New("unreachable")
 						}
-						return standing, nil
+						return factory.SourceStanding{How: standing}, nil
 					}
 				}
 				in := intake.New(st, opts)
@@ -150,7 +150,10 @@ func TestClosedIssueCacheSharedByAutomaticPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	reads := 0
-	standing := func(context.Context, factory.Item) (string, error) { reads++; return "closed", nil }
+	standing := func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		reads++
+		return factory.SourceStanding{How: "closed"}, nil
+	}
 	opts := intake.Options{Standing: standing, Record: history, Load: func(string) (pipeline.File, error) { return pipeline.Parse("start:\n  labels: [ready]\n") }, Launch: func(int) error { t.Error("closed issue launched"); return nil }}
 	if err := intake.New(st, opts).Once(ctx); err != nil {
 		t.Fatal(err)
