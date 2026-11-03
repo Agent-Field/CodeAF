@@ -36,7 +36,7 @@ func TestFollowPRNoChangeFeedbackCorrectsReportWithoutAnotherRound(t *testing.T)
 	}}
 	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: NewChatExecutor(maker)}, func(o *Options) {
 		o.Workdir = func(factory.Item) (string, error) { return dir, nil }
-		o.Push = func(string, string) error { t.Error("no-change review pushed a commit"); return nil }
+		o.Push = func(string, string, ...func() error) error { t.Error("no-change review pushed a commit"); return nil }
 	})
 	id := g.add("read harmless comment", chat("proof"))
 	if err := g.st.Update(id, func(it *factory.Item) error {
