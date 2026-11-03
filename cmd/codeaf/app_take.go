@@ -62,6 +62,10 @@ func appTakeWords(words string) string {
 	return words
 }
 func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
+	return b.takeAgent(p, false)
+}
+
+func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (appwire.Agent, error) {
 	if p.Cell == "" || p.Seen.Device == "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "a chat and its seen computer are required")
 	}
@@ -95,6 +99,9 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		return appwire.Agent{}, appTakeError(err)
 	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
+	if available && view.Cell.Lease.Expires > view.Now {
+		return appwire.Agent{}, appAvailableRefusal(ctx, s, view.Cell.Lease)
+	}
 	if !seen.Matches(view.Cell) {
 		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
 	}
@@ -120,7 +127,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 			if busy {
 				return appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before continuing it here.")
 			}
-			if view.Cell.Lease.Device != s.Device.ID() {
+			if available || view.Cell.Lease.Device != s.Device.ID() {
 				b.release(existing)
 			}
 			return nil
@@ -129,8 +136,19 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 			return appwire.Agent{}, err
 		}
 	}
-	got, err := chatContinuer(s, nil).TakeSeen(ctx, p.Cell, seen)
+	continuer := chatContinuer(s, nil)
+	var got syncsetup.Continued
+	if available {
+		got, err = continuer.OpenAvailable(ctx, p.Cell, seen)
+	} else {
+		got, err = continuer.TakeSeen(ctx, p.Cell, seen)
+	}
 	if err != nil {
+		if available && (errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale)) {
+			if fresh, readErr := s.Dir.Cell(ctx, p.Cell); readErr == nil && fresh.Cell.Lease.Expires > fresh.Now {
+				return appwire.Agent{}, appAvailableRefusal(ctx, s, fresh.Cell.Lease)
+			}
+		}
 		return appwire.Agent{}, appTakeError(err)
 	}
 	// The continuer's already-here shortcut may observe a local acquisition
@@ -164,7 +182,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		location.Seen.Head = ""
 	}
 	b.located(a, location)
-	agent, err := b.OpenAgent(id)
+	agent, err := b.openAgent(id, false)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
@@ -195,4 +213,13 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		b.startChatInventory()
 	}
 	return agent, nil
+}
+
+func appAvailableRefusal(ctx context.Context, s *syncsetup.Sync, lease directory.Lease) error {
+	name := chatlist.DeviceName(nil, lease.Device, nil)
+	if listing, err := s.Dir.List(ctx); err == nil {
+		key := directory.MetadataKey(s.Identity.CellKey())
+		name = chatlist.DeviceName(listing.Devices, lease.Device, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+	}
+	return appLocationRefusal(&appwire.Location{Holder: &appwire.LocationHolder{ID: lease.Device, Name: name}, Line: chatlist.Superseded(name)})
 }

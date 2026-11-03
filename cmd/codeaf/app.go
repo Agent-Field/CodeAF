@@ -1700,7 +1700,25 @@ func appSendUnsure(err error) bool {
 }
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
-func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) { return b.openAgent(id, false) }
+func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
+	// Only a row already read for this paired identity can enable automatic
+	// pull. Ordinary local opens and single-device homes add no relay request.
+	b.chats.mu.Lock()
+	row, found := b.chats.byAgent[id]
+	if !found {
+		for _, candidate := range b.chats.rows {
+			if candidate.Cell == id {
+				row, found = candidate, true
+				break
+			}
+		}
+	}
+	b.chats.mu.Unlock()
+	if found && row.CanOpen && !row.Here {
+		return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}, true)
+	}
+	return b.openAgent(id, false)
+}
 
 // WarmAgent is OpenAgent for a window's guess at a view (a hover's prefetch):
 // an agent in Closed or the archive is refused, never taken out again
@@ -2375,7 +2393,7 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 func (b *appBackend) knownWorkRefusalGated(a *appAgent) error {
 	a.gate.Lock()
 	defer a.gate.Unlock()
-	return b.knownWorkRefusal(a)
+	return b.idleWorkRefusal(a)
 }
 
 // Retry sends the words of the agent's last failed turn again.
