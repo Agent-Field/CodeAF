@@ -795,6 +795,10 @@ to resume work. A budget at or below that total keeps work held and names the
 total and budget in the question or refusal. No automatic decision raises it;
 your yes or continue chooses the next budget. Stop keeps recorded spend and work.
 
+A budget choice remains valid while a running job reports spending or progress.
+If someone changed the budget after you read it, read the job again before
+choosing. Finished and dropped jobs refuse budget changes.
+
 ## Why does Spending show Factory AI — the third part of today's money
 
 Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.

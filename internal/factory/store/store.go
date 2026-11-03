@@ -42,6 +42,7 @@ const Schema = 1
 type doc struct {
 	Schema   int          `json:"schema"`
 	Revision int          `json:"revision"`
+	BudgetRevision int `json:"budget_revision"`
 	Item     factory.Item `json:"item"`
 }
 
@@ -122,7 +123,7 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 		}
 		it.ID = highest + 1
 		st.retainOutput(&it)
-		data, err := marshalDoc(doc{Revision: 1, Item: it})
+		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, Item: it})
 		if err != nil {
 			return err
 		}
@@ -309,7 +310,7 @@ func (st *Store) Save(it factory.Item) error {
 			return err
 		}
 		st.retainOutput(&it)
-		data, err := marshalDoc(doc{Revision: rev, Item: it})
+		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
 			return err
 		}
@@ -343,6 +344,13 @@ func (st *Store) Update(id int, change func(*factory.Item) error) error {
 // called, when the job moved.
 func (st *Store) UpdateExpected(id, revision int, change func(*factory.Item) error) error {
 	return st.update(id, writeWork, &revision, change)
+}
+
+// UpdateBudgetExpected accepts progress since the revision read, but refuses
+// any intervening budget edit. The comparison and change share the item lock.
+// A nil revision preserves the unguarded HTTP door.
+func (st *Store) UpdateBudgetExpected(id int, revision *int, change func(*factory.Item) error) error {
+	return st.update(id, writeBudget, revision, change)
 }
 
 // StaleError is [Store.UpdateExpected]'s refusal: the document is at Revision,
@@ -398,10 +406,11 @@ var errUnchanged = errors.New("factory store: nothing changed")
 
 // writeMode is what a write says about the job besides its change: whether the
 // work moved (Changed stamped) and whether the document is a new revision.
-type writeMode struct{ stamp, bump bool }
+type writeMode struct{ stamp, bump, budget bool }
 
 var (
 	writeWork       = writeMode{stamp: true, bump: true}
+	writeBudget = writeMode{stamp: true, bump: true, budget: true}
 	writeAnnotation = writeMode{stamp: false, bump: true}
 	writePersonal   = writeMode{stamp: false, bump: false}
 )
@@ -454,7 +463,8 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err != nil {
 			return err
 		}
-		if expect != nil && current.Revision != *expect {
+		if expect != nil && current.Revision != *expect &&
+			(!mode.budget || *expect < current.BudgetRevision || *expect > current.Revision) {
 			return &StaleError{ID: id, Expected: *expect, Revision: current.Revision}
 		}
 		it := current.Item
@@ -504,7 +514,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if mode.bump {
 			rev++
 		}
-		data, err := marshalDoc(doc{Revision: rev, Item: it})
+		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
 			return err
 		}
@@ -573,7 +583,21 @@ func (st *Store) read(path string) (doc, error) {
 	if n, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), ".json")); err == nil {
 		d.Item.ID = n
 	}
+	// Older documents have no budget history. Their observed revision is the
+	// earliest read we can safely accept, and later writes retain it.
+	if d.BudgetRevision == 0 {
+		d.BudgetRevision = d.Revision
+	}
 	return d, nil
+}
+
+// nextDoc retains the last budget edit across all item writers, including Save.
+func nextDoc(before doc, it factory.Item, revision int) doc {
+	budgetRevision := before.BudgetRevision
+	if budgetRevision == 0 || before.Item.Cap != it.Cap {
+		budgetRevision = revision
+	}
+	return doc{Revision: revision, BudgetRevision: budgetRevision, Item: it}
 }
 
 // highestID is the largest id with a document under the root, read off the

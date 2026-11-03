@@ -5,6 +5,7 @@ pr: 0
 surface: [factory, app]
 invalidates:
   - "Job budget stops previously compared only the current run. They now compare all known saved spending on the job."
+  - "Budget edits previously conflicted with worker progress. They now conflict only with intervening budget edits or an ended job."
 ---
 
 The job budget uses SpentBefore plus the current run's spending. Start,
@@ -25,3 +26,11 @@ Stage attempt limits and step costs, pipeline intake start.max_cost, the daily
 rail and Pareto model selection retain their meanings. Existing cumulative
 receipt accounting still retains growth once, including resumed segments,
 replayed reports and late usage after a run ends; raising a cap clears no spend.
+
+Budget edits accept the version a person read when only spend or run progress
+moved. The store retains the revision of the latest budget change and checks
+it under the same lock as the edit, including changes made outside the app.
+Another budget edit still refuses, even if the budget was changed back.
+Finished and dropped jobs refuse. Existing clients need no wire change.
+Older documents conservatively retain their first observed revision as the
+budget baseline; an older untracked read must be refreshed once.
