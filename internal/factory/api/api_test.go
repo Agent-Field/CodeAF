@@ -163,6 +163,10 @@ func TestEveryFieldRoundTrips(t *testing.T) {
 			break
 		}
 	}
+	// Tool identity travels in the existing tone through worker reports and
+	// derives the optional desk kind without adding a persisted field.
+	want.Items[0].Stream.Log[0].Tone = "tool"
+	want.Items[0].Stream.Log[0].Text = "bash go test"
 	got := wire(t, want)
 	for _, d := range diff(reflect.ValueOf(want), reflect.ValueOf(got), "Snapshot") {
 		t.Error(d)
