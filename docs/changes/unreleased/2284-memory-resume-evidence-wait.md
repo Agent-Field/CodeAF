@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Memory resume verification follows retained source citations
-pr: 0
+pr: 2284
 surface: [engine]
 invalidates: []
 ---
