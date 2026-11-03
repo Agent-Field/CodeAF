@@ -71,6 +71,9 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 			if err := teams.AppendTraffic(profile, room, teams.Entry{Kind: teams.KindQuestion, From: "test", To: teams.ToManager, Text: item.Question}); err != nil {
 				t.Fatal(err)
 			}
+			if err := teams.AppendTraffic(profile, room, teams.Entry{Kind: teams.KindEvent, From: "test", To: teams.ToManager, State: teams.StateAsking, Text: "asks: " + item.Question}); err != nil {
+				t.Fatal(err)
+			}
 			read := func(w *factoryWire) api.Job {
 				var job api.Job
 				w.must("factory.job", map[string]any{"factory": status.Factory, "job": item.ID}, &job)
@@ -128,6 +131,11 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 				if startBelt && !answered {
 					delta = map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "stop-start", "type": "function", "function": map[string]string{"name": "factory_start", "arguments": "{}"}}}}
 					finish = "tool_calls"
+				} else if !startBelt && len(req.Tools) > 0 {
+					select {
+					case toolResult <- "start is unavailable on this wake":
+					default:
+					}
 				}
 				chunk, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": delta}}})
 				w.Header().Set("Content-Type", "text/event-stream")
@@ -165,6 +173,16 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 				if job.State == api.StateQueued || job.State == api.StateRunning {
 					t.Fatalf("run started after person's Stop: state=%s", job.State)
 				}
+				traffic, err := teams.ReadTraffic(profile, room, "", 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, e := range traffic {
+					if strings.Contains(e.Text, "could not wake") && strings.Contains(e.Text, "stopped") {
+						return
+					}
+				}
+				t.Fatal("reproduction inconclusive: queued question neither completed a manager turn nor acknowledged Stop")
 			}
 		})
 	}
