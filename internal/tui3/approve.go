@@ -92,8 +92,19 @@ const (
 	approveDeclining = "declining…"
 	approveDenied    = "%s was declined."
 	approveTimeout   = 8 * time.Second
-	joinedFleetWord  = "%s is now paired. Your chats can continue there."
+	// approveAnswerTimeout covers an answer's steps: the device record, the
+	// relay's decision, and the lookup when that reply is lost.
+	approveAnswerTimeout = 20 * time.Second
+	joinedFleetWord      = "%s is now paired. Your chats can continue there."
 )
+
+// ErrAnswerNotArrived is an answer the door looked for after a timeout and
+// found the request still waiting: nothing was decided, so trying again is safe.
+var ErrAnswerNotArrived = errors.New("the answer did not arrive")
+
+// ErrAlreadyPaired is a link whose request this fleet already approved, as
+// when an approval's reply was lost: there is nothing left to answer.
+var ErrAlreadyPaired = errors.New("that device is already paired — there is nothing left to approve")
 
 // linkShape is what link pairing is typed as (contract section 2): a short
 // code with an optional key, or a codeaf URL from any channel's hosted origin
@@ -239,7 +250,11 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 // already says what happened in words a person can act on, so they are shown
 // as they are; only a silent wait, which has no sentence of its own, gets one.
 // A wait on an answer that was sent may still have been decided by sync.
+// One the door found still waiting was not decided, so it is the plain retry.
 func approveFailure(err error, answered bool) string {
+	if errors.Is(err, ErrAnswerNotArrived) {
+		return approveSlow
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		if answered {
 			return approveUnsure
@@ -326,7 +341,7 @@ func (c *approveCard) key(a *app, name string) (tea.Cmd, bool) {
 func (a *app) decide(c *approveCard, approve bool) tea.Cmd {
 	door, req := a.approvals, *c.req
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), approveTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), approveAnswerTimeout)
 		defer cancel()
 		call := door.Deny
 		if approve {

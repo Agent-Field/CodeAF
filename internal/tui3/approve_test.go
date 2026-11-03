@@ -405,3 +405,14 @@ func TestApproveTimeoutSaysTheAnswerMayHaveArrived(t *testing.T) {
 		t.Fatalf("door sentence = %q, want it as it is", got)
 	}
 }
+
+// T1: an answer the door found still waiting after a timeout was not decided,
+// so it is the plain retry, not "may still have arrived".
+func TestApproveThatDidNotArriveIsAPlainRetry(t *testing.T) {
+	if got := approveFailure(ErrAnswerNotArrived, true); got != approveSlow {
+		t.Fatalf("not arrived = %q, want %q", got, approveSlow)
+	}
+	if approveAnswerTimeout < 2*approveTimeout {
+		t.Fatalf("an answer's %v cannot cover the record, the decision and the lookup", approveAnswerTimeout)
+	}
+}
