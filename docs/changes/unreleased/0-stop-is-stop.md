@@ -60,3 +60,9 @@ cancelled them itself; a later timeout is an accounting failure.
 A person's stopped-manager chat shows the current execution refusal before the
 model's explanation. The status receipt stays exact when the model paraphrases
 its answer, and person chat remains available.
+
+The live proxy also records unpriced request timing relative to Stop, HTTP
+status, stream completion, client closure and request purpose. It keeps the
+missing-cost failure visible for requests started after Stop; a disconnect
+alone is not proof that a request was open when Stop landed. A regression
+specifies the separate pre-Stop completion case pending its accounting fix.

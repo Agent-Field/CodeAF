@@ -111,7 +111,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}
 	recorder := newLiveRecorder(t, config.DefaultBaseURL)
 	recorder.budget = liveStopSpendMost
-	accounting := &stopLiveAccounting{}
+	accounting := &stopLiveAccounting{logf: t.Logf}
 	t.Cleanup(func() {
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
@@ -523,6 +523,9 @@ func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
 
 // stopLiveAccounting serializes calls and retains unpriced request evidence.
 type stopLiveAccounting struct {
+	stopAt            time.Time
+	logf              func(string, ...any)
+	evidence          []stopLiveEvidence
 	requestMu         sync.Mutex
 	request           context.Context
 	cancel            context.CancelCauseFunc
@@ -538,6 +541,7 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 			inner.ServeHTTP(w, req)
 			return
 		}
+		started := time.Now()
 		accounting.paid.Lock()
 		defer accounting.paid.Unlock()
 		recorder.mu.Lock()
@@ -567,13 +571,21 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 		accounting.requestMu.Lock()
 		accounting.request, accounting.cancel = ctx, cancel
 		accounting.requestMu.Unlock()
-		inner.ServeHTTP(w, req.WithContext(ctx))
+		observed := &stopLiveResponse{ResponseWriter: w}
+		inner.ServeHTTP(observed, req.WithContext(ctx))
+		ended := time.Now()
 		accounting.requestMu.Lock()
 		accounting.request, accounting.cancel = nil, nil
+		stopAt := accounting.stopAt
 		cancelledByStop := errors.Is(context.Cause(ctx), errStopLiveRequest)
 		accounting.requestMu.Unlock()
 		recorder.mu.Lock()
 		if recorder.cost <= spent {
+			e := stopLiveEvidence{Started: started, Ended: ended, Status: observed.status, Finished: observed.finished, ClientClosed: req.Context().Err() != nil || observed.writeError, Cause: fmt.Sprint(context.Cause(ctx)), Purpose: stopLivePurpose(body)}
+			accounting.evidence = append(accounting.evidence, e)
+			if accounting.logf != nil {
+				accounting.logf("UNPRICED: request=%d evidence=%+v stop=%s start_relative=%s end_relative=%s", recorder.calls, e, stopAt.Format(time.RFC3339Nano), stopLiveRelative(started, stopAt), stopLiveRelative(ended, stopAt))
+			}
 			if cancelledByStop {
 				accounting.cancelledRequests++
 			} else {
@@ -592,6 +604,7 @@ var errStopLiveRequest = errors.New("live rig cancelled request open at Stop")
 func (a *stopLiveAccounting) stop() {
 	a.requestMu.Lock()
 	defer a.requestMu.Unlock()
+	a.stopAt = time.Now()
 	if a.request != nil && a.request.Err() == nil {
 		a.cancel(errStopLiveRequest)
 	}
@@ -635,5 +648,87 @@ func TestStopLiveRigCancelsOnlyRequestOpenAtStop(t *testing.T) {
 	<-done
 	if !rigCancelled || accounting.cancelledRequests != 1 || len(recorder.problems) != 0 {
 		t.Fatalf("open request cancellation not proved: rig=%v cancelled=%d problems=%v", rigCancelled, accounting.cancelledRequests, recorder.problems)
+	}
+}
+
+// stopLiveResponse observes only response lifecycle, never headers or content.
+type stopLiveResponse struct {
+	http.ResponseWriter
+	status     int
+	finished   bool
+	writeError bool
+	pending    []byte
+}
+
+func (w *stopLiveResponse) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *stopLiveResponse) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	w.pending = append(w.pending, p...)
+	for {
+		line, rest, ok := bytes.Cut(w.pending, []byte("\n"))
+		if !ok {
+			break
+		}
+		if bytes.Equal(bytes.TrimSpace(line), []byte("data: [DONE]")) {
+			w.finished = true
+		}
+		w.pending = rest
+	}
+	n, err := w.ResponseWriter.Write(p)
+	w.writeError = w.writeError || err != nil
+	return n, err
+}
+func (w *stopLiveResponse) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+type stopLiveEvidence struct {
+	Started, Ended         time.Time
+	Status                 int
+	Finished, ClientClosed bool
+	Cause, Purpose         string
+}
+
+func stopLiveRelative(at, stop time.Time) string {
+	if stop.IsZero() {
+		return "Stop not yet issued"
+	}
+	return at.Sub(stop).String()
+}
+func stopLivePurpose(body map[string]json.RawMessage) string {
+	tools := string(body["tools"])
+	switch {
+	case strings.Contains(tools, "stage_result"):
+		return "Test stage worker"
+	case strings.Contains(tools, "factory.") || strings.Contains(tools, "ask_person"):
+		return "factory manager"
+	default:
+		return "auxiliary (no stage_result or manager tools)"
+	}
+}
+
+func TestStopLiveAccountingNamesUnpricedPreStopCompletion(t *testing.T) {
+	recorder := &liveRecorder{}
+	recorder.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer recorder.server.Close()
+	accounting := &stopLiveAccounting{}
+	handler := stopLiveAccountingHandler(recorder, accounting)
+	req := httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	if len(accounting.evidence) != 1 || !accounting.evidence[0].Finished || accounting.evidence[0].Status != http.StatusOK {
+		t.Fatalf("missing completion evidence: %+v", accounting.evidence)
+	}
+	if len(recorder.problems) != 0 {
+		t.Fatalf("a completed pre-Stop request must reserve spend, not block the Stop scenario: %v", recorder.problems)
 	}
 }
