@@ -88,13 +88,118 @@ func TestARepoWithoutHistoryBorrowsFromAllRepos(t *testing.T) {
 	}
 }
 
-func TestAnUnscoredItemHasNoFigure(t *testing.T) {
+// unread is a job that finished with no read: no rubric, no size from one.
+func unread(id int, repo string, kind factory.Kind, usd float64, start time.Time, minutes int) factory.Item {
+	it := finished(id, repo, nil, usd, start, minutes)
+	it.Kind = kind
+	return it
+}
+
+func TestAnUnreadItemIsEstimatedFromItsRepositorysJobsOfTheSameKind(t *testing.T) {
 	var items []factory.Item
 	for i := range 6 {
-		items = append(items, finished(i+1, "acme/api", rubric(0, 0, 0, 0, 0), 1, t0, 5))
+		items = append(items, unread(i+1, "acme/api", factory.KindIssue, float64(i+1), t0.Add(time.Duration(i)*time.Hour), 10))
 	}
-	if _, ok := estimate.Open(items).For(open("acme/api", nil)); ok {
-		t.Fatal("an item nobody scored got a figure")
+	r, ok := estimate.Open(items).For(open("acme/api", nil))
+	if !ok || r.Basis != estimate.BasisKind || r.Repo != "acme/api" || r.N != 6 {
+		t.Fatalf("range = %+v ok %v, want six acme/api issue jobs by kind", r, ok)
+	}
+}
+
+func TestAReadItemWithTooFewSimilarReadJobsFallsBackToItsKind(t *testing.T) {
+	var items []factory.Item
+	for i := range 5 {
+		items = append(items, unread(i+1, "acme/api", factory.KindIssue, 1, t0, 10))
+	}
+	r, ok := estimate.Open(items).For(open("acme/api", rubric(1, 0, 1, 0, 0)))
+	if !ok || r.Basis != estimate.BasisKind {
+		t.Fatalf("range = %+v ok %v, want the kind pool", r, ok)
+	}
+}
+
+func TestAMatchOnTheReadComesBeforeTheKindPool(t *testing.T) {
+	var items []factory.Item
+	for i := range 5 {
+		items = append(items, finished(i+1, "acme/api", rubric(1, 0, 1, 0, 0), 1, t0, 10),
+			unread(10+i, "acme/api", factory.KindIssue, 9, t0, 10))
+	}
+	r, ok := estimate.Open(items).For(open("acme/api", rubric(1, 0, 1, 0, 0)))
+	if !ok || r.Basis != estimate.BasisRead || r.USDHi != 1 {
+		t.Fatalf("range = %+v ok %v, want the five read jobs", r, ok)
+	}
+}
+
+func TestTheKindPoolBorrowsFromEveryRepositoryButNeverAnotherKind(t *testing.T) {
+	var items []factory.Item
+	for i := range 5 {
+		items = append(items, unread(i+1, "acme/web", factory.KindIssue, 1, t0, 10),
+			unread(10+i, "acme/api", factory.KindPR, 1, t0, 10))
+	}
+	book := estimate.Open(items)
+	r, ok := book.For(open("acme/api", nil))
+	if !ok || r.Basis != estimate.BasisKind || r.Repo != "" || r.N != 5 {
+		t.Fatalf("range = %+v ok %v, want five issue jobs from every repository", r, ok)
+	}
+	if r, ok := book.ForNew("acme/api", factory.KindChore); ok {
+		t.Fatalf("a kind with no finished jobs got a figure: %+v", r)
+	}
+}
+
+func TestTheKindPoolIsItsMostRecentJobs(t *testing.T) {
+	var items []factory.Item
+	for i := range estimate.Nearest + 3 {
+		usd := 100.0
+		if i >= 3 {
+			usd = 1
+		}
+		items = append(items, unread(i+1, "acme/api", factory.KindIssue, usd, t0.Add(time.Duration(i)*time.Hour), 10))
+	}
+	r, ok := estimate.Open(items).For(open("acme/api", nil))
+	if !ok || r.N != estimate.Nearest || r.USDHi != 1 {
+		t.Fatalf("range = %+v ok %v, want the %d latest jobs only", r, ok, estimate.Nearest)
+	}
+}
+
+// Before a job exists there is only its repository and kind: the figure
+// comes from the kind pool, with the same five-job floor.
+func TestANewJobIsEstimatedFromItsKindBeforeItExists(t *testing.T) {
+	var items []factory.Item
+	for i := range 4 {
+		items = append(items, unread(i+1, "acme/api", factory.KindIssue, 2, t0, 30))
+	}
+	if r, ok := estimate.Open(items).ForNew("acme/api", factory.KindIssue); ok {
+		t.Fatalf("four jobs gave a figure: %+v", r)
+	}
+	items = append(items, finished(9, "acme/api", rubric(2, 2, 2, 2, 2), 2, t0, 30))
+	r, ok := estimate.Open(items).ForNew("ACME/api", factory.KindIssue)
+	if !ok || r.Basis != estimate.BasisKind || r.N != 5 || r.USDLo != 2 || r.MinHi != 30 || r.Repo != "acme/api" {
+		t.Fatalf("range = %+v ok %v, want five acme/api issue jobs", r, ok)
+	}
+}
+
+// Each basis is backtested on its own: read matches that land do not hide
+// a kind pool that misses, and only the pool that misses is widened.
+func TestCalibrationIsKeptPerBasis(t *testing.T) {
+	var items []factory.Item
+	for i := range 11 {
+		items = append(items, finished(i+1, "acme/api", rubric(1, 0, 1, 0, 0), 1, t0.Add(time.Duration(i)*time.Hour), 10))
+	}
+	for i := range 11 {
+		items = append(items, unread(20+i, "acme/web", factory.KindIssue, 1+float64(i*i), t0.Add(time.Duration(i)*time.Hour), 10))
+	}
+	book := estimate.Open(items)
+	read, kind := book.CalibrationBy(estimate.BasisRead), book.CalibrationBy(estimate.BasisKind)
+	if read.Of == 0 || read.Poor() || kind.Of == 0 || !kind.Poor() {
+		t.Fatalf("read %+v kind %+v, want read good and kind poor", read, kind)
+	}
+	if all := book.Calibration(); all.Hit != read.Hit+kind.Hit || all.Of != read.Of+kind.Of {
+		t.Fatalf("all %+v is not read %+v plus kind %+v", all, read, kind)
+	}
+	if r, _ := book.For(open("acme/api", rubric(1, 0, 1, 0, 0))); r.Widened {
+		t.Fatalf("a read match was widened by the kind pool's misses: %+v", r)
+	}
+	if r, _ := book.For(open("acme/web", nil)); !r.Widened {
+		t.Fatalf("the missing kind pool was not widened: %+v", r)
 	}
 }
 

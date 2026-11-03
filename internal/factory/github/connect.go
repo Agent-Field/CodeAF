@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
@@ -165,6 +166,7 @@ func GHLogin(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()
 	// gh writes its status to stderr on some versions and stdout on others.
+	githubcalls.NoteGH(ctx, "auth status")
 	cmd := exec.CommandContext(ctx, gh, "auth", "status", "--hostname", "github.com")
 	cmd.WaitDelay = time.Second // a child holding the output open must not outlast the timeout
 	out, _ := cmd.CombinedOutput()
@@ -230,7 +232,7 @@ func Lister(profileDir string) factory.RepoLister {
 func RepoInfos(in []RepoInfo) []factory.RepoInfo {
 	out := make([]factory.RepoInfo, 0, len(in))
 	for _, r := range in {
-		out = append(out, factory.RepoInfo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open})
+		out = append(out, factory.RepoInfo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open, OpenIssues: r.OpenIssues})
 	}
 	return out
 }
