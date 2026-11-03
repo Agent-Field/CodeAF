@@ -15,3 +15,11 @@ func TestPersonPublishesAnywayThroughJobAction(t *testing.T) {
  out := alice.act(t, "factory.job_publish_anyway", it.ID, nil)
  if out.Current == nil { t.Fatal("publish anyway did not return the job") }
 }
+
+func TestPublishAnywayRefusesOtherPerson(t *testing.T) {
+ f := startActionFactory(t)
+ _ = signedIn(t, f, 1, "alice")
+ bob := signedIn(t, f, 2, "bob")
+ it := f.create(t, factory.Item{State:factory.StateNeedsYou, Assignee:"alice"})
+ bob.refused(t, "factory.job_publish_anyway", bob.params(t, it.ID, nil), "forbidden")
+}
