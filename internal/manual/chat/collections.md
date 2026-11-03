@@ -3,7 +3,7 @@
 ## How do I group chats in logical folders
 
 `codeaf collections` is a local command for organizing references to conversations,
-tasks and files. A collection is a logical folder with a stable ID
+tasks, Factory jobs and files. A collection is a logical folder with a stable ID
 and name. Several collections can reference the same record. Collections can
 contain other collections, including one child shared by several parents;
 circular membership is refused. Renaming a collection preserves its ID.
@@ -71,7 +71,8 @@ belong to collections.
 ## Adding, removing and finding a chat or work reference
 
 Use `codeaf collections add <collection-id> <kind> <record-id>`.
-The kinds are `collection`, `conversation`, `task`, `process`, `crew` and `artifact`. There is no kind
+The kinds are `collection`, `conversation`, `task`, `process`, `crew`,
+`factory_job` and `artifact`. There is no kind
 for an automation. `standing` named a standing item, which codeaf no longer has: a
 row that already holds one can still be found and removed, and adding a new one is
 refused with `standing items are gone, so a collection cannot gain one`.
@@ -100,6 +101,21 @@ something that was never there is not an error. Automatic organization,
 inherited instructions and communication between conversations are not
 implemented by these commands.
 
+## Adding, finding and removing a Factory job
+
+Use `codeaf collections add <collection-id> factory_job <job-number> --factory
+<factory-id>`. The job number must be a positive decimal without a sign or leading
+zeroes. The factory ID is required: the same number in two factories names two
+different jobs. Use the same `--factory` with `find` and `remove`. Other kinds
+refuse a factory ID. `show` prints `factory_job  <job-number>  factory <factory-id>`;
+`--json` includes the `factory` field.
+
+A plain collection can reference a job alongside any other records. A job can
+belong to only one workstream collection. Adding a job already in another
+workstream answers `that job belongs to another workstream` and leaves every
+reference in that add unchanged. These commands retain references without asking
+the Factory whether the job is available and never start a job.
+
 ## Deleting or duplicating a collection
 
 `codeaf collections delete <collection-id>` deletes the collection, its
@@ -108,3 +124,43 @@ memberships, and every membership naming it in another collection, answering
 referenced is deleted, moved or stopped. `codeaf collections duplicate
 <collection-id> <name>` makes a new collection holding the same references, in
 the same order; the new name follows the same uniqueness rule as `create`.
+
+A workstream collection refuses deletion with `mark a workstream done instead`.
+Duplicating one makes a plain collection with the same references; it creates no
+workstream and claims no jobs.
+
+## Workstreams in an app client: stages and agent chats
+
+An app client can create a workstream backed by a collection with the same ID.
+It includes one agent conversation, an optional origin chat, and the references
+you choose. Creation opens the agent without sending a first message or running
+a model. Repeating a nonempty client ID returns the original workstream.
+Names follow collection naming rules; the client ID is at most 128 bytes and a
+create takes at most 200 explicit references.
+
+A workstream starts in Shaping. Observing a member job queued, running, needing
+you or done changes it to Building, which persists even if jobs return to Backlog.
+Only marking the workstream done gives Done; all jobs merged does not. Reopening
+returns it to Building. Marking done can archive its member chats while keeping
+the agent's record. Collection rename and membership commands use the same store.
+
+## Workstream pages, records, plans and go-aheads
+
+Pages, page history, plans, decisions, questions and settings live in SQLite.
+Markdown is an export, not a second store. A new workstream has an Overview page;
+it can be renamed but cannot move or be deleted. Other pages can form a tree;
+deleting a page deletes its descendants. Saving a stale page or plan refuses
+without changing it. Restoring a page creates a new version. Page titles take
+1–200 bytes and editor documents at most 1 MiB; record text takes 1–2000 bytes.
+
+Records can be proposed, kept, dropped and replaced. Keep can undo a drop;
+a replaced record cannot change again. Plans store milestones, ordered waves
+and job or draft items. Wave auto-start is stored without starting jobs.
+
+A go-ahead requires a member job, a planned wave or milestone, a positive cap
+at most $10,000 and an end in the future at most 90 days away. Expired grants
+read as ended. Marking done ends every still-active grant; granting on a done
+workstream is refused. These are stored permissions; Factory enforcement is a
+separate capability. Workstream numbers use recorded job facts and agent spend.
+Unavailable readings stay absent; a measured zero is present. Budgets and autonomy
+settings do not themselves start work.
