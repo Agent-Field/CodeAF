@@ -48,9 +48,13 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 				command = "set -e\nrm -rf /tmp/ledger-race-check\ncp -r /checkout /tmp/ledger-race-check\ncd /tmp/ledger-race-check\ngo test -race -run TestConcurrentAddProbe ./... 2>&1 | head -40\ngo test ./... 2>&1 | tail -5"
 			}
 			args, _ := json.Marshal(map[string]string{"command": command})
+			var presentation any = map[string]any{"audience": "tool", "refused": tc.refused, "invoked": tc.invoked, "outcome": status}
+			if tc.name == "approval without resolver" || tc.name == "legacy policy" {
+				presentation = nil
+			}
 			for _, row := range []any{
 				map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": "probe", "function": map[string]string{"name": "bash", "arguments": string(args)}}}},
-				map[string]any{"role": "tool", "toolCallId": "probe", "content": tc.output, "presentation": map[string]any{"audience": "tool", "refused": tc.refused, "invoked": tc.invoked, "outcome": status}},
+				map[string]any{"role": "tool", "toolCallId": "probe", "content": tc.output, "presentation": presentation},
 			} {
 				if err := enc.Encode(row); err != nil {
 					t.Fatal(err)

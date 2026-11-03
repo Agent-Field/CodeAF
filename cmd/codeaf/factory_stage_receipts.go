@@ -118,8 +118,8 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			Content      string `json:"content"`
 			ToolCallID   string `json:"toolCallId"`
 			Presentation *struct {
-				Refused bool `json:"refused"`
-				Invoked bool `json:"invoked"`
+				Refused bool   `json:"refused"`
+				Invoked bool   `json:"invoked"`
 				Outcome string `json:"outcome"`
 			} `json:"presentation"`
 			Calls []struct {
@@ -174,15 +174,15 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		lastLine := text[strings.LastIndex(text, "\n")+1:]
 		// The producer's refusal mark is authoritative. Older journals lack it,
 		// so recognize their gate wording only when invocation is not recorded.
-		refused := row.Presentation != nil && row.Presentation.Refused
-		if row.Presentation == nil || !row.Presentation.Invoked {
-			for _, prefix := range []string{"needs approval but no resolver is attached:", "denied by approval rule:", "denied by the person:", "refused in a task:", "not approved:"} {
-				refused = refused || strings.HasPrefix(text, prefix)
-			}
-		}
 		status := ""
 		if row.Presentation != nil {
 			status = row.Presentation.Outcome
+		}
+		refused := row.Presentation != nil && row.Presentation.Refused
+		if status == "" && (row.Presentation == nil || !row.Presentation.Invoked) {
+			for _, prefix := range []string{"needs approval but no resolver is attached:", "denied by approval rule:", "denied by the person:", "refused in a task:", "not approved:"} {
+				refused = refused || strings.HasPrefix(text, prefix)
+			}
 		}
 		switch {
 		case refused || status == "refused":
