@@ -1229,3 +1229,16 @@ func TestClosedStartReportsConcurrentRowState(t *testing.T) {
 		t.Fatal("start check moved concurrent work")
 	}
 }
+
+func TestReviewStartRejectsChangedIdentity(t *testing.T) {
+ f := newV2Jobs(t)
+ f.h.Close()
+ it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", GitHubIssueID: 1001})
+ f.cfg.Recheck = func(context.Context, factory.Item) (string, error) {
+  return github.StandingClosed, nil
+ }
+ f.h = serve.New(f.seam, f.cfg)
+ f.post(t, it, "start_now", "", 409)
+ got, _ := f.st.Get(it.ID)
+ if got.State != factory.StateNew { t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State) }
+}
