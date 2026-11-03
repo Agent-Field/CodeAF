@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+ "fmt"
  "os"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"strings"
@@ -126,5 +127,24 @@ func TestPersonStopCancelsEveryManagerCommandWithoutSerialGrace(t *testing.T) {
  select {
  case <-a.jobs.find(second).done:
  case <-time.After(750*time.Millisecond): t.Fatal("second manager command kept running through the first command's TERM grace")
+ }
+}
+
+func TestStoppedManagerPersonChatShowsCurrentStopReceipt(t *testing.T) {
+ for _, stopped := range []bool{false, true} {
+  t.Run(fmt.Sprintf("stopped=%v", stopped), func(t *testing.T) {
+   model := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+    provider.Emit(ctx, provider.StreamDelta, "Here is the model's explanation.")
+    return textResponse("Here is the model's explanation."), nil
+   }}}
+   a, _ := newTestAgent(t, model, func(c *Config) {
+    c.JobBudget = &liveBudgetStub{cap: 10}
+    c.FactoryWorkRefusal = func() string { if stopped { return factory.PersonStopReason }; return "" }
+   })
+   var words strings.Builder
+   for _, e := range collect(t, mustSubmit(t, a, "Why is this job waiting?")) { if e.Kind == EventTextDelta { words.WriteString(e.Text) } }
+   if strings.Contains(words.String(), factory.PersonStopReason) != stopped { t.Fatalf("stopped=%v current Stop receipt missing or stale: %q", stopped, words.String()) }
+   if !strings.Contains(words.String(), "model's explanation") || model.requests() != 1 { t.Fatalf("person answer was blocked: %q calls=%d", words.String(), model.requests()) }
+  })
  }
 }
