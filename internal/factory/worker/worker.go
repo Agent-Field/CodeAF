@@ -369,7 +369,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	}
 	defer j.settleAccounting(ctx)
 	type admission struct {
-		ctx context.Context
+		ctx  context.Context
 		step factory.StageReport
 		done chan error
 	}
