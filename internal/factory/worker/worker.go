@@ -288,6 +288,7 @@ func backoff(d time.Duration) time.Duration {
 type job struct {
 	o     Options
 	w     *client.WorkerClient
+	tables bool
 	lease string
 	id    int
 	sent  factory.Item // the mirror as last reported
@@ -317,7 +318,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
+	j := &job{tables: pulled.Job.RoundCostTables, o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer j.clearMirror()
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes

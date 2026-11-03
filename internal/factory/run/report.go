@@ -2,7 +2,6 @@ package run
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"strings"
 	"time"
@@ -385,16 +384,17 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 				return fmt.Errorf("round cost must have a positive round and finite nonnegative dollars")
 			}
 		}
-		// Reject an older whole receipt. Replacing only part of it would silently
-		// erase coalesced rounds or roll back a resumed round's spending.
-		for round, spent := range ph.RoundCosts {
-			if next, ok := step.RoundCosts[round]; !ok || next < spent {
-				return nil
-			}
-		}
 		before := ph.StepCost()
-		ph.RoundCosts = maps.Clone(step.RoundCosts)
+		if ph.RoundCosts == nil {
+			ph.RoundCosts = make(map[int]float64)
+		}
+		for round, spent := range step.RoundCosts {
+			ph.RoundCosts[round] = max(ph.RoundCosts[round], spent)
+		}
 		addCost(it, max(0, ph.StepCost()-before))
+	} else if step.Result != nil {
+		// A legacy worker reports only its last result, with spending in Cost.
+		ph.RoundCosts = nil
 	}
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil

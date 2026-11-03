@@ -14,7 +14,7 @@ import (
 )
 
 // tableReport exercises the worker JSON, including workers that coalesce or
-// resend reports. The table is the worker's complete receipt, not a delta.
+// resend reports. Each row is a cumulative receipt, not a delta.
 func tableReport(t *testing.T, round int, rows map[int]float64) factory.RunReport {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{"steps": []any{map[string]any{
@@ -99,7 +99,7 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 			baseline := clone(worker)
 			report := func() factory.RunReport {
 				r, _ := run.Diff(baseline, worker)
-				raw, _ := json.Marshal(api.FromRunReport(r))
+				raw, _ := json.Marshal(api.FromRunReport(r, true))
 				var wire api.WorkerReport
 				if err := json.Unmarshal(raw, &wire); err != nil {
 					t.Fatal(err)
@@ -108,14 +108,25 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 			}
 			real := 0.0
 			var pending []factory.RunReport
+			maxima := map[int]float64{}
+			expected := 0.0
 			flush := func(r factory.RunReport) {
 				t.Helper()
+				for _, step := range r.Stages {
+					for round, usd := range step.RoundCosts {
+						if usd > maxima[round] {
+							expected += usd - maxima[round]
+							maxima[round] = usd
+						}
+					}
+				}
 				if err := run.ApplyReport(&it, r, time.Now()); err != nil {
 					t.Fatal(err)
 				}
+				checkTableCost(t, it, expected)
 			}
 			for n := 0; n < 120; n++ {
-				switch rng.Intn(8) {
+				switch rng.Intn(10) {
 				case 0, 1, 2: // Spend, including resumed work in the same logical round.
 					usd := float64(1+rng.Intn(20)) / 10000
 					ph := &worker.Stream.Phases[0]
@@ -150,17 +161,21 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 						t.Fatal(err)
 					}
 					worker.State = factory.StateRunning
+				case 8, 9: // Partial, contradictory receipts can arrive in either order.
+					round := 1 + rng.Intn(max(1, worker.Stream.Phases[0].Round))
+					usd := float64(rng.Intn(40)) / 10000
+					flush(tableReport(t, round, map[int]float64{round: usd}))
 				case 7: // A fresh snapshot recovers all dropped and coalesced rounds.
 					baseline = reviewItem()
 					flush(report())
-					checkTableCost(t, it, real)
+					checkTableCost(t, it, expected)
 				}
 			}
 			baseline = reviewItem()
 			flush(report())
-			checkTableCost(t, it, real)
-			if got := factory.JobSpent(it); math.Abs(got-real) > 1e-9 {
-				t.Fatalf("job spend doubled: %.4f, real %.4f", got, real)
+			checkTableCost(t, it, expected)
+			if got := factory.JobSpent(it); math.Abs(got-expected) > 1e-9 || got+1e-9 < real {
+				t.Fatalf("job spend doubled: %.4f, maxima %.4f, real %.4f", got, expected, real)
 			}
 		})
 	}

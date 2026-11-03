@@ -1,6 +1,7 @@
 package run_test
 
 import (
+ "encoding/json"
  "math"
  "testing"
  "time"
@@ -24,4 +25,19 @@ func TestPR2294OldWorkerAfterTableAdmission(t *testing.T) {
  old:=api.WorkerReport{Cost:.01,Steps:[]api.StepReport{{Name:"proof",Round:2,Result:&api.StepResult{Cost:.01}}}}
  if err:=run.ApplyReport(&it,api.ToWorkerReport(old),time.Now());err!=nil {t.Fatal(err)}
  if got:=api.FromItem(it).Steps[0].Cost; math.Abs(got-.01)>1e-9 {t.Fatalf("old worker fallback step cost=%.2f, want last Spent 0.01",got)}
+}
+
+func TestPR2294NewWorkerNormalReportsKeepTable(t *testing.T) {
+ it := reviewItem()
+ if err := run.ApplyReport(&it, tableReport(t, 1, map[int]float64{1:.2}), time.Now()); err != nil {t.Fatal(err)}
+ previous := api.ToItem(api.WorkerJob(it))
+ raw, _ := json.Marshal(previous)
+ var current factory.Item
+ if err := json.Unmarshal(raw, &current); err != nil {t.Fatal(err)}
+ current.Stream.Phases[0].Result = &factory.StageResult{Spent:.01, Output:"progress"}
+ report, _ := run.Diff(previous, current)
+ if err := run.ApplyReport(&it, api.ToWorkerReport(api.FromRunReport(report, true)), time.Now()); err != nil {t.Fatal(err)}
+ checkTableCost(t, it, .2)
+ if err := run.ApplyReport(&it, factory.RunReport{Stages:[]factory.StageReport{{Name:"proof", State:factory.PhaseRunning}}}, time.Now()); err != nil {t.Fatal(err)}
+ checkTableCost(t, it, .2)
 }

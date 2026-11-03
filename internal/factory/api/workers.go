@@ -179,6 +179,7 @@ func stageResultItem(r StepResult) factory.StageResult {
 // only the lease holder may read (serve's withholdChats).
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
+	j.RoundCostTables = true
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
 	if it.Stream == nil {
@@ -246,8 +247,11 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 }
 
 // FromRunReport is the worker's half of the same boundary: what its runner
-// wrote, in the wire's words. [ToWorkerReport] reads it back.
-func FromRunReport(r factory.RunReport) WorkerReport {
+// wrote, in the wire's words. Tables require explicit factory admission.
+// Without admission, Cost includes table spending; incremental delivery replaces
+// it with the full job-spend delta from its acknowledged snapshot.
+func FromRunReport(r factory.RunReport, tables ...bool) WorkerReport {
+	acceptsTables := len(tables) > 0 && tables[0]
 	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models}
 	// Keep the existing log vocabulary on the worker wire.
@@ -265,6 +269,13 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		if res := s.Result; res != nil {
 			step.Result = stepResultWire(*res)
 			step.Model = res.Model
+		}
+		if !acceptsTables {
+			// Keep the established body for strict older factories.
+			for _, spent := range step.RoundCosts {
+				out.Cost += spent
+			}
+			step.RoundCosts = nil
 		}
 		out.Steps = append(out.Steps, step)
 	}

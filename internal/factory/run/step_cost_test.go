@@ -102,7 +102,7 @@ func TestStepCostWorkerReceiptBeforeResult(t *testing.T) {
 	if !ok {
 		t.Fatal("paid round produced no report")
 	}
-	report = api.ToWorkerReport(api.FromRunReport(report))
+	report = api.ToWorkerReport(api.FromRunReport(report, true))
 	if err := run.ApplyReport(&it, report, time.Now()); err != nil {
 		t.Fatal(err)
 	}
