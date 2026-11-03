@@ -11,8 +11,8 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 ## Idle chats release their hold — open on another paired computer, even when the first is off
 
 With two or more paired computers, an idle chat gives up its hold after its
-saved turns, journal, working files, shared memory and settings have reached the
-relay. The open window stays as a reader. A running turn, queued or steering
+saved turns, journal, working files, shared memory and settings are saved by the
+sync service. The open window stays as a reader. A running turn, queued or steering
 work, a running task or job, unsaved tail writes or an upload failure keeps the
 hold. Rebuildable folders such as `node_modules` follow the usual transfer
 exclusions.
@@ -503,8 +503,8 @@ A current window understands the earlier outage and removed-computer notices too
 
 ## Changing thinking or model settings after idle release
 
-In a paired set, changing this chat's thinking, model, automatic model choice,
-approval posture or attached folders in its released window first takes the
+In a paired set, changing this chat's name, thinking, model, automatic model
+choice, approval posture or attached folders in its released window first takes the
 hold back in place. The setting is saved with the chat before it is handed
 back again. `/remember` after the last turn also travels with the saved chat.
 
@@ -512,3 +512,21 @@ If another computer took the chat, the setting is refused through the usual
 held-elsewhere message. The terminal keeps the requested `/effort` or `/model`
 choice in the input box. Open the newest free chat before applying it there.
 Your already-held chat can still work offline, including starting a task.
+
+## Renaming, rewinding or compacting a released chat
+
+A manual name is saved in both the chat's title and journal. Renaming, rewinding,
+undoing a rewind, compacting, anchoring a workspace, changing project autonomy,
+editing a plan, changing a task's next model, reviewing, applying, resolving or deleting task work,
+landing a folder and moving a memory line first take back this window's released
+hold. If another computer continued the chat, these changes are refused before
+writing. Open its newest saved chat before applying the change there.
+
+## Large workspaces keep their hold when the idle save check is too large
+
+Idle release requires a complete comparison. Its check allows 20,000 paths,
+50,000 directory entries, 8 MiB per comparison output or diagnostic stream and
+64 MiB of chat-file contents across the saved and current copies. It checks
+shared directories once. If any budget or the 30-second comparison deadline is
+exceeded, the chat keeps its hold and retries later. Ordinary work and saving
+keep their existing behavior; no incomplete comparison releases the chat.

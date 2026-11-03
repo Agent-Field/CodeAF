@@ -33,3 +33,10 @@ keeps sealing turns. Saved conversation choices retake the idle hold before
 acknowledging a change, or retain the requested choice on a held-elsewhere
 refusal. Ordinary held tasks keep their existing offline admission, and
 home-state exchanges serialize behind competing flushes under their own context.
+
+Delayed idle-release observations cannot close the work gate after this window
+has acquired a newer hold. Manual renames and other durable edits outside a turn
+retake the released hold before writing. Idle comparison visits shared ancestors
+once and retains the hold beyond its bounded complete-proof budgets. Closing
+always stops the writer even when its budget expires, and model RPCs preserve
+the factory's existing lent-view restriction.
