@@ -1254,3 +1254,14 @@ func TestReviewStartRejectsChangedIdentity(t *testing.T) {
 		t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State)
 	}
 }
+
+func TestReviewStartPinsFirstDirectIdentity(t *testing.T) {
+ f := newV2Jobs(t)
+ f.h.Close()
+ it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+ f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) { return factory.SourceStanding{How: github.StandingClosed, IssueID: 1001}, nil }
+ f.h = serve.New(f.seam, f.cfg)
+ f.post(t, it, "start_now", "", 409)
+ got, _ := f.st.Get(it.ID)
+ if got.GitHubIssueID != 1001 { t.Fatalf("Start lost first direct identity: got=%d want=1001", got.GitHubIssueID) }
+}

@@ -2,10 +2,10 @@ package github_test
 
 import (
 	"context"
-"fmt"
-"math/rand"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	source "github.com/Agent-Field/codeaf/internal/factory/github"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -45,19 +45,23 @@ func TestReviewRepoReuseListCannotChangePinnedRow(t *testing.T) {
 }
 
 func TestReviewFailuresCannotStarveOldestHealthyNominee(t *testing.T) {
- for _, seed := range []int64{7, 52, 2280} {
-  t.Run(fmt.Sprint(seed), func(t *testing.T) {
-   rng := rand.New(rand.NewSource(seed))
-   f := newIssueScript(t, 41)
-   for n := 1; n <= 40; n++ { f.status[n] = 404 }
-   f.state[41] = "closed"
-   for poll := 0; poll < 2; poll++ {
-    f.now = f.now.Add(time.Duration(9 + rng.Intn(10)) * time.Minute)
-    f.poll()
-   }
-   if f.row(41).State != factory.StateShipped { t.Fatalf("healthy issue #41 starved for 2 polls: %d direct reads", len(f.reads)) }
-  })
- }
+	for _, seed := range []int64{7, 52, 2280} {
+		t.Run(fmt.Sprint(seed), func(t *testing.T) {
+			rng := rand.New(rand.NewSource(seed))
+			f := newIssueScript(t, 41)
+			for n := 1; n <= 40; n++ {
+				f.status[n] = 404
+			}
+			f.state[41] = "closed"
+			for poll := 0; poll < 2; poll++ {
+				f.now = f.now.Add(time.Duration(9+rng.Intn(10)) * time.Minute)
+				f.poll()
+			}
+			if f.row(41).State != factory.StateShipped {
+				t.Fatalf("healthy issue #41 starved for 2 polls: %d direct reads", len(f.reads))
+			}
+		})
+	}
 }
 
 func TestReviewLegacyDisabledStageDoesNotMove(t *testing.T) {
@@ -97,10 +101,16 @@ func TestReviewStandingRejectsReplacementIssue(t *testing.T) {
 }
 
 func TestReviewClosedRefetchPinsFirstIdentity(t *testing.T) {
- f := newIssueScript(t, 1)
- f.state[1] = "closed"
- fresh, err := f.src.Refetch(context.Background(), f.row(1))
- if err != nil { t.Fatal(err) }
- if err := source.Merge(f.st, source.Name, []factory.Item{fresh}); err != nil { t.Fatal(err) }
- if f.row(1).GitHubIssueID != 1001 { t.Fatal("closed first direct read lost permanent identity") }
+	f := newIssueScript(t, 1)
+	f.state[1] = "closed"
+	fresh, err := f.src.Refetch(context.Background(), f.row(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Merge(f.st, source.Name, []factory.Item{fresh}); err != nil {
+		t.Fatal(err)
+	}
+	if f.row(1).GitHubIssueID != 1001 {
+		t.Fatal("closed first direct read lost permanent identity")
+	}
 }

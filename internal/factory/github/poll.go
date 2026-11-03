@@ -263,7 +263,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if it.GitHubIssueID == 0 {
 					it.GitHubIssueID = in.GitHubIssueID
 				}
-				if in.DoneHow == StandingClosed { return nil }
+				if in.DoneHow == StandingClosed {
+					return nil
+				}
 				words := it.Title != in.Title || it.Body != in.Body
 				labels := !sameLabels(it.Labels, in.Labels)
 				switch {
