@@ -42,6 +42,7 @@ func jobBrief(f api.Factory, it factory.Item, since int) api.JobBrief {
 	}
 	if factory.StoppedByPerson(it) {
 		out.Failure = factory.PersonStopReason
+		out.FailureKind = factory.CodeStopped
 	}
 	return out
 }

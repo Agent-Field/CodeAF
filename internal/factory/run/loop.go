@@ -2162,6 +2162,9 @@ func (r *Runner) Hold(id int, on bool) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}

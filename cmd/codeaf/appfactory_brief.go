@@ -35,7 +35,7 @@ func (b *appBackend) FactoryJobBrief(ctx context.Context, p appwire.FactoryJobBr
 		changed = []string{}
 	}
 	return appwire.FactoryJobBrief{
-		Factory: p.Factory, Job: p.Job, Status: got.Status, Failure: got.Failure, FailedAfter: got.FailedAfter,
+		Factory: p.Factory, Job: p.Job, Status: got.Status, Failure: got.Failure, FailureKind: got.FailureKind, FailedAfter: got.FailedAfter,
 		Since: got.Since, Brief: got.Brief, VerdictBehind: got.VerdictBehind, ChangedSinceSeen: changed,
 	}, nil
 }

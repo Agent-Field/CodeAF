@@ -87,7 +87,7 @@ func (b *appBackend) writeBrief(ctx context.Context, factoryID string, job int, 
 	return appwire.FactoryJobBriefWritten{
 		Kept: kept.Kept, Drops: orDrops(kept.Drops), Model: answer.Model, CostUSD: answer.Usage.CostUSD,
 		Current: appwire.FactoryJobBrief{
-			Factory: factoryID, Job: job, Status: kept.Status, Failure: kept.Failure, FailedAfter: kept.FailedAfter,
+			Factory: factoryID, Job: job, Status: kept.Status, Failure: kept.Failure, FailureKind: kept.FailureKind, FailedAfter: kept.FailedAfter,
 			Brief: kept.Brief, VerdictBehind: kept.VerdictBehind, ChangedSinceSeen: orKeys(kept.ChangedSinceSeen),
 		},
 	}, nil
