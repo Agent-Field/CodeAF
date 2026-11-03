@@ -20,7 +20,7 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	worker := client.Open(st.URL, s.backend.factoryHub().tokenFor(st.Factory)).Worker("")
-	if _, err := worker.Attach(ctx, api.WorkerAttach{Machine: "approval-fixture", Handle: "owner", Slots: 1}); err != nil {
+	if _, err := worker.Attach(ctx, api.WorkerAttach{Machine: "approval-fixture", Name: "fixture", Handle: "owner", Slots: 1}); err != nil {
 		t.Fatal(err)
 	}
 	it, err := s.backend.local.host.floor.Create(factory.Item{
