@@ -438,23 +438,31 @@ func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
 	for range 12 {
 		wg.Go(func() {
 			got, err := b.ProcessActions(context.Background(), id)
-			if err != nil || !got.Rerun.Available {
-				t.Errorf("light owner's actions: %+v %v", got, err)
+			if err != nil || got.State != appwire.ProcessEnded || got.Rerun.Available || got.Rerun.Reason != appwire.ProcessActionNotHeld {
+				t.Errorf("opening owner's saved actions: %+v %v", got, err)
 			}
 		})
 	}
-	wg.Wait()
+	answersWithin(t, 2*time.Second, "actions while the owner opens", wg.Wait)
+	t.Log("interleaving: concurrent reads returned ended and not_held without waiting for the opener")
 	releaseOpen()
-	<-first
 	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
 		changed, ok := data.(appwire.AgentChanged)
 		return event == appwire.EventAgentChanged && ok && changed.Agent.ID == appAgentID(paths[0])
 	})
 	t.Log("interleaving: opener released; agent.changed received")
-	got, err := b.ProcessActions(context.Background(), id)
-	if err != nil || !got.Rerun.Available {
-		t.Fatalf("ready owner's actions: %+v %v", got, err)
+	<-first
+	// The readiness event, rather than another caller's timing, makes an
+	// owner-backed answer available to every subsequent read.
+	for range 12 {
+		wg.Go(func() {
+			got, err := b.ProcessActions(context.Background(), id)
+			if err != nil || !got.Rerun.Available {
+				t.Errorf("ready owner's actions: %+v %v", got, err)
+			}
+		})
 	}
+	wg.Wait()
 	if got := opens.Load(); got != 1 {
 		t.Fatalf("concurrent actions opened %d owners", got)
 	}
