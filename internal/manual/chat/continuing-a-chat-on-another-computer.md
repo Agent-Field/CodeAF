@@ -1,12 +1,35 @@
 # Continuing a chat that one of your machines holds
 
-To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
+To continue on this machine, select the chat on home. In a paired set, a released or lapsed chat opens here automatically. A chat with a live hold still offers `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
 ## Continue on another computer — moving chats and pairing availability
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+
+## Idle chats release their hold — open on another paired computer, even when the first is off
+
+With two or more paired computers, an idle chat gives up its hold after its
+saved turns, journal, working files, shared memory and settings have reached the
+relay. The open window stays as a reader. A running turn, queued or steering
+work, a running task or job, unsaved tail writes or an upload failure keeps the
+hold. Rebuildable folders such as `node_modules` follow the usual transfer
+exclusions.
+
+Select a released or lapsed chat on terminal Home to bring its latest saved
+state here without a Continue-here question. The original computer can be off.
+If another computer still has a live hold, including an older build that keeps
+idle holds, Continue here remains your choice. Existing local edits use the
+ordinary kept-work rules during transfer.
+
+Sending new work in the original idle window takes the unchanged saved chat
+back before recording your words or calling a model. If another computer has
+taken it, the window names that computer and refuses new work. Only one computer
+can win a simultaneous open and send. A released window needs a successful
+ownership check before it can accept work; an outage leaves that work unsent.
+Homes with sync off, no pairing or only one computer keep their existing
+behavior.
 
 ## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
@@ -28,6 +51,15 @@ Your words stay in the box. Nothing was sent, and no branch nobody asked for was
 An attended window keeps following your other devices while the chat is open, so a move is shown without returning to home first. Slash commands such as `/help` always work.
 
 If you continue it, the other device's window stops taking new turns and says `<device> continued this chat; this window now only shows it`. The page *Home* has the rest of that card.
+
+## Which folder does a continued chat use — repeated moves and long copy-folder names
+
+A chat that already has a local folder keeps that folder when you bring it back.
+A first incoming copy is filed under this computer's `v3/projects` folder.
+Copy-folder names stay bounded and stable across repeated moves; long original
+paths receive a short stable suffix. Existing short folder names stay as they
+are. A long path on the other computer does not make the folder name grow on
+every round trip.
 
 ## Where an older chat's copy lives — the .moving folder, README.txt, can I delete it
 
@@ -83,9 +115,9 @@ If unpublished work needs to be kept separately, the number of kept turns counts
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Home lists chats from your other devices. A chat another device still holds says `held on <device>`. The hold alone does not establish that work is running there. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
+Home lists chats from your other devices. On paired computers, press enter on a released or lapsed chat to bring its latest saved copy here and open it directly. There is no Continue-here card. A fully saved idle chat releases within a few seconds; older builds may keep their idle hold.
 
-Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
+A live hold says `held on <device>` and still asks before a move. The hold alone does not establish that work is running there. For a chat running on that computer, the card offers **Move here**. A device that has stopped answering may say `<device> offline` while its hold remains live: offline alone does not make the chat free. Enter offers the existing Continue-here choice and explains how fresh the copy is and how many turns may still be there. `esc` leaves it there. Watching never takes a live hold.
 
 ## Continue on this machine — Continue where you left off, alt+c and alt+x
 
@@ -218,7 +250,7 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
+A chat has one holder at a time. To take a chat back from the computer that took it, press enter on its row on that computer. A released or lapsed paired chat opens directly; a live hold still asks for `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `held on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
@@ -229,8 +261,7 @@ Once this window learns that another computer holds the chat, Enter opens
 as the live update or the `<device> continued this chat; this window now only
 shows it` notice arrives; it does not wait for the next background ownership
 check. Enter cannot start a reply, publish a turn or create a separate chat
-from this displaced window. Choose `continue here` to bring the latest chat
-back before sending.
+from this displaced window. Open the latest chat from Home to bring it back before sending. A released or lapsed paired chat opens directly; a live hold still asks for `continue here`.
 
 A chat this computer still holds sends on one Enter without an extra request
 to the sync service. A chat that has never been shared does too.
@@ -238,8 +269,7 @@ to the sync service. A chat that has never been shared does too.
 ## Take my chat back after a crash, a killed process or a power loss
 
 If this computer was killed and another computer continued the chat, reopen
-codeaf and choose **continue here** from Home or from the question raised by
-Enter in the old local copy. The move brings the latest saved chat here and
+codeaf and open the chat from Home. A released or lapsed paired chat opens directly; a live hold still asks for **continue here**, as does the question raised by Enter in the old local copy. The move brings the latest saved chat here and
 says `Moved from <device>`. An old saved hold cannot keep the chat here or
 make that copy send a message. The question uses the other computer and last
 saved turn reported by the sync service. An offline holder is named as
@@ -253,7 +283,9 @@ need another upload before the move.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Reopening an older copy does not replace newer history on your other devices, even if the other computer has closed the chat. This window only shows its local copy until you choose `continue here`. Submitting a message opens that question and keeps your words in the box. Continuing brings the newer history here before writing can resume.
+On paired computers, opening a released or lapsed chat from Home brings the latest saved history here automatically before you can write, including when an older viewer tab is already open. An older local copy does not overwrite newer history. A live hold on another computer still asks for Continue here.
+
+An already-open older window remains a reader after another computer continues the chat. Sending there refuses before recording your words. Open the latest chat from Home to resume it; if its hold is still live elsewhere, the move remains your choice.
 
 Locally saved turns that never reached your other devices are kept as a branch before the newer copy replaces them, including turns already sealed on disk. Unsaved workspace edits are sealed and kept too. The move says `your unsaved edits here were kept as <K> turns from <device>`. Open that branch as a separate chat or discard it; merging is unavailable.
 
@@ -269,7 +301,9 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
 
-When the holder is off (its lid is shut), the row reads `<device> offline` and you can still continue the chat here: the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; if its window is still running when it reconnects, it keeps those turns as a branch. After a restart, the turns stay in the local copy until you choose `continue here`, which keeps them as a branch before replacing that copy. Open the branch separately or discard it. Merging into the original chat is unavailable.
+When the holder stops answering (for example, its lid is shut), the row may read `<device> offline`. While its hold is live, Continue here still asks and the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Once the hold is released or lapsed, opening the paired chat brings it here directly.
+
+Turns that never left that computer are not in the copy you get. If its window is still running when it reconnects, it keeps those turns as a branch. After a restart, opening the latest copy keeps unpublished local turns and workspace edits as a branch before replacing them. Open the branch separately or discard it. Merging into the original chat is unavailable.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
@@ -417,7 +451,7 @@ Yes. Directory requests from older builds keep the existing 1 MiB request limit,
 
 ## Why did Enter show Continue here instead of sending my message
 
-Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Choose **continue here** to bring the saved chat here, then press Enter to send.
+Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Open it from Home to bring the saved chat here, then press Enter to send. A released or lapsed paired chat opens directly; a live hold still asks for **continue here**.
 
 Once this window says another computer continued the chat, its first Enter
 raises that question without running a turn or making a branch. A saved hold
@@ -442,7 +476,7 @@ Run `codeaf doctor` from a terminal to inspect this computer's engine store and 
 - `unfinished continue · chat <id>`: a continue started on this computer never completed or let go.
 - `duplicate rows · chat <id> (2 local folders)`: more than one local folder on disk shares one chat id.
 - `duplicate rows · chat <id> (branch copy <branch>, all turns in main chat)` or `duplicate rows · chat <id> (branch copy <branch>, 3 turns not in main chat)`: branch copies exist for a chat.
-- `lapsed hold on this computer · chat <id>`: an expired hold from this computer would raise a question on open.
+- `lapsed hold on this computer · chat <id>`: a stale local hold receipt needs repair. Current builds open a free paired chat directly; an unchanged expired hold last held here also resumes without a question.
 
 Run `codeaf doctor --fix` to repair what is safe. It prints one line per repair:
 

@@ -41,7 +41,21 @@ Older chats become movable through independent copies after pairing; their origi
 
 ## My idle chat was continued on another computer — sending, queueing, steering and retrying
 
-Before accepting new work, an open synced chat checks who holds it if its last ownership confirmation is older than two seconds. Back-to-back submissions reuse that confirmation. The check waits at most three quarters of a second. If the relay is slow or unreachable, it is logged, you keep working locally, and the chat does not ask again for 30 seconds.
+Before accepting new work, an open synced chat checks who holds it if its last ownership confirmation is older than two seconds. Back-to-back submissions reuse that confirmation. The ownership read waits at most three quarters of a second. Sending cancels idle handoff preparation immediately and uses the same ownership deadline. Slow capture or upload does not extend that wait. A task also confirms ownership again after slow preparation before it starts. If the relay is slow or unreachable, a window that still holds its chat keeps working locally and does not ask again for 30 seconds. A window that released its idle hold must confirm ownership again before accepting work; if that check fails, your work stays unsent.
+
+With two or more paired computers, a fully saved idle chat releases its hold
+within a few seconds. Its window stays open as a reader. A running turn, queued
+or steering work, tasks, jobs, unsaved writes or failed uploads keep the hold.
+Selecting a released or lapsed chat on terminal Home brings the latest saved
+copy here automatically; a live hold still offers Continue here. Sending in the
+original window takes the unchanged chat back in place if nobody else has taken it.
+Ordinary messages, shell work, queueing, steering, retries and tasks use the same
+ownership gate. This does not restore files or show a moved/setup card; local
+ignored install folders stay intact. A newer saved head leaves this window a
+reader until you open the latest chat from Home.
+The journal, working files, shared memory and settings must reach the relay
+before release; rebuildable folders remain excluded under the usual rules.
+Sync off, unpaired and single-computer homes keep their existing behavior.
 
 If another computer has continued the chat, this window only shows it. Sending, queueing, steering and retrying are refused before saving your words or calling a model. The moved notice names the other computer. You can still answer an existing question or stop work. Desktop and terminal chats share this check. With sync off, an unpaired home, unavailable sync or no sync drive, there is no added network wait.
 
