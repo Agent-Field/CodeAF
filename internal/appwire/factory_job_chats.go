@@ -18,9 +18,9 @@ import (
 // runs, which for the factory this engine serves is this engine; any other
 // factory is refused, because its chats are on the machine running its jobs.
 //
-// Reading makes the job's agent when the job has none yet (no model call, no
-// job started), and holds every answered conversation open so the app can draw
-// it at once. A step that has not run yet has no chat and is not listed. A
+// Reading returns only existing chats and holds each answered conversation
+// open so the app can draw it at once. When no manager chat exists, Agent is
+// empty; factory.job_send makes it when the person sends their first message. A step that has not run yet has no chat and is not listed. A
 // DROPPED JOB HAS NONE AND IS GIVEN NONE: the drop deleted them, and the read
 // is refused with the factory's dropped sentence.
 //
@@ -39,7 +39,8 @@ type FactoryJobChatsParams struct {
 	Job     int    `json:"job"`
 }
 
-// FactoryJobChats is a job's conversations: Agent is the job's agent, and
+// FactoryJobChats is a job's conversations: Agent is the job's agent (empty
+// before its first conversation), and
 // Steps the latest chat of each step that ran, in the run's order. Each is an
 // agent id the app opens as it opens any conversation.
 type FactoryJobChats struct {
@@ -77,6 +78,9 @@ func withFactoryJobChatsFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryJobChatter); ok {
 		hello = withFeature(hello, FeatureFactoryJobChats)
+	}
+	if _, ok := e.(FactoryJobSender); ok {
+		hello = withFeature(hello, FeatureFactoryJobSend)
 	}
 	return hello
 }
