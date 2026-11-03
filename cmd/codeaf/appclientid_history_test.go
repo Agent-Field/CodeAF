@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -33,16 +34,6 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 	before := len(appModelRequests(model))
 	appTurnDoneFor(t, rec, appSendMessageWhenIdle(t, first, agent.ID, appwire.AgentMessage{Text: "named words", ClientID: "p-1"}))
 	appTurnDoneFor(t, rec, appSendMessageWhenIdle(t, first, agent.ID, appwire.AgentMessage{Text: "anonymous words"}))
-	// An id the record would not keep refuses the message before the model or
-	// the record hears of it.
-	asked := len(appModelRequests(model))
-	_, err = first.SendMessage(agent.ID, appwire.AgentMessage{Text: "too named", ClientID: strings.Repeat("i", session.MaxClientIDBytes+1)})
-	if wireCode(err) != appwire.CodeBadParams {
-		t.Fatalf("an oversize client id answered %v", err)
-	}
-	if got := len(appModelRequests(model)); got != asked {
-		t.Fatalf("a refused message asked the model %d times", got-asked)
-	}
 	named, anonymous := false, false
 	for _, request := range appModelRequests(model)[before:] {
 		joined := strings.Join(request.texts(), "\n")
@@ -55,10 +46,32 @@ func TestAppOrdinaryClientIDSurvivesABackendRestart(t *testing.T) {
 	if !named || !anonymous {
 		t.Fatal("the model was not sent both messages' words")
 	}
+	// An id the record would not keep refuses the message before the model or
+	// the record hears of it.
+	// A memory request for the preceding accepted exchange may arrive while
+	// the next message is being refused. Replay it at that exact boundary.
+	response, err := http.Post(model.server.URL+"/chat/completions", "application/json", strings.NewReader(`{"messages":[{"role":"system","content":"You read one exchange between a person and an assistant."},{"role":"user","content":"USER:\nanonymous words\n\nASSISTANT:\ndone\n\nKEPT:\n(nothing yet)"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	_, err = first.SendMessage(agent.ID, appwire.AgentMessage{Text: "too named", ClientID: strings.Repeat("i", session.MaxClientIDBytes+1)})
+	if wireCode(err) != appwire.CodeBadParams {
+		t.Fatalf("an oversize client id answered %v", err)
+	}
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 	closed = true
+	refused := 0
+	for _, request := range appModelRequests(model)[before:] {
+		if strings.Contains(strings.Join(request.texts(), "\n"), "too named") {
+			refused++
+		}
+	}
+	if refused != 0 {
+		t.Fatalf("a refused message asked the model %d times", refused)
+	}
 
 	second := newAppBackend(newAppRecorder(), appOpenInProcess)
 	defer second.Close()

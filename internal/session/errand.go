@@ -46,8 +46,10 @@ const (
 	ErrandMaxSchemaBytes = 8 << 10
 	ErrandMaxCacheKey    = 128
 	ErrandDefaultTokens  = 400
-	ErrandMaxTokens      = 4096
-	ErrandMinDeadline    = time.Second
+	// ErrandMaxTokens bounds the answer. The wire ceiling adds the thinking
+	// share on top ([provider.reasoningCeiling]): 10240 at low effort.
+	ErrandMaxTokens   = 8192
+	ErrandMinDeadline = time.Second
 	// ErrandDefaultDeadline is the whole errand's wall, admission to answer.
 	ErrandDefaultDeadline = 10 * time.Second
 	ErrandMaxDeadline     = 60 * time.Second
@@ -66,6 +68,9 @@ const (
 	ErrandCancelled   = "cancelled"
 	ErrandModelFailed = "model_failed"
 	ErrandInvalidJSON = "invalid_json"
+	// ErrandNoAnswer is a call that was made and billed and said nothing: a
+	// reasoning model can spend its whole output bound before it answers.
+	ErrandNoAnswer = "no_answer"
 )
 
 // ErrErrandAsk is an ask outside the errand's shape or limits; the message
@@ -364,8 +369,8 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	go a.watchErrand(ctx, cancel)
 	pick := errandPick{model: ask.Model, effort: ask.Effort}
 	// EVERY CALL THE ERRAND MADE IS ITS COST, the answers the adapter asked
-	// again for included: those were paid for, and the caller books this
-	// answer's usage to its job.
+	// again for included: those were paid for. Session billing charges the
+	// job once; the returned usage describes those charges.
 	var superseded ErrandUsage
 	callCtx := provider.WithDiscardedUsage(withErrandPick(withFirstRungOnly(withDetachedUsage(ctx)), pick),
 		func(_, _ string, r *ai.Response) { superseded = superseded.plus(errandUsage(r)) })
@@ -385,6 +390,10 @@ func (a *Agent) callErrand(ctx context.Context, ask ErrandAsk, check func(string
 	}
 	answer.Provider = a.errandProvider(model)
 	if answer.Reason = a.errandFailure(ctx, err, response); answer.Reason != "" {
+		return answer
+	}
+	if strings.TrimSpace(response.Text()) == "" {
+		answer.Reason = ErrandNoAnswer
 		return answer
 	}
 	answer.Text, answer.Reason = ask.shape(response.Text(), check)

@@ -129,6 +129,9 @@ func TestKnowledgeRefinesTwoDirtySubjectsWithoutUnchangedRetries(t *testing.T) {
 
 func TestKnowledgeFrozenReplayReportsFailedSourceContracts(t *testing.T) {
 	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
 	withKnowledgeModel(t, func(p map[string]any) map[string]any { return map[string]any{"claims": []any{}} })
 	raw, err := v.RunSupportContracts(context.Background(), "fixture")
 	if err == nil {

@@ -51,6 +51,9 @@ type Seam struct {
 
 	// Answer resolves a waiting question: yes, no, or words.
 	Answer func(id int, yes bool, words string) error
+
+	// SpendAnswer checks the spending question and caller on the locked revision.
+	SpendAnswer func(id, revision int, yes bool, may func(Item) error) (Item, error)
 	// Steer hands words into a running stream. Words that name an effort or
 	// a round count change the item; the rest is folded into the work.
 	Steer func(id int, words string) error

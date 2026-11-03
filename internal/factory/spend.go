@@ -265,6 +265,81 @@ func SpentIn(it Item, start, end time.Time) (float64, bool) {
 	return usd, usd > 0 && !at.Before(start) && at.Before(end)
 }
 
+// ModelUse is one model's priced calls on a job. It is recorded as each call
+// is priced. A job from before the field has none, and its spend is not
+// assigned to Item.Model or a step's model.
+type ModelUse struct {
+	Model  string  `json:"model"`
+	USD    float64 `json:"usd"`
+	Calls  int     `json:"calls,omitempty"`
+	Input  int64   `json:"input,omitempty"`
+	Output int64   `json:"output,omitempty"`
+}
+
+// AddModelUse books one priced call on the model that answered, beside the
+// dollars [AddChatSpend] or the run already added. An empty model or a cost
+// of nothing is not a split: the dollars stay untied. The row lives on the
+// run while there is one, and on the chat's split before any run.
+func AddModelUse(it *Item, model string, usd float64, calls int, in, out int64) {
+	model = strings.TrimSpace(model)
+	if it == nil || model == "" || usd <= 0 {
+		return
+	}
+	if calls < 0 {
+		calls = 0
+	}
+	if in < 0 {
+		in = 0
+	}
+	if out < 0 {
+		out = 0
+	}
+	row := ModelUse{Model: model, USD: usd, Calls: calls, Input: in, Output: out}
+	if it.Stream != nil {
+		it.Stream.Models = putModelUse(it.Stream.Models, row)
+		return
+	}
+	it.ChatModels = putModelUse(it.ChatModels, row)
+}
+
+// ModelUses is the model split of the job's spend: the run's while it has
+// one, and the chat's before any run.
+func ModelUses(it Item) []ModelUse {
+	if it.Stream != nil {
+		return it.Stream.Models
+	}
+	return it.ChatModels
+}
+
+// JoinModelUses adds b's rows onto a copy of a, one row per model.
+func JoinModelUses(a, b []ModelUse) []ModelUse {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	out := append([]ModelUse(nil), a...)
+	for _, row := range b {
+		out = putModelUse(out, row)
+	}
+	return out
+}
+
+func putModelUse(rows []ModelUse, row ModelUse) []ModelUse {
+	if row.Model == "" || (row.USD <= 0 && row.Calls <= 0 && row.Input <= 0 && row.Output <= 0) {
+		return rows
+	}
+	for i := range rows {
+		if rows[i].Model != row.Model {
+			continue
+		}
+		rows[i].USD += row.USD
+		rows[i].Calls += row.Calls
+		rows[i].Input += row.Input
+		rows[i].Output += row.Output
+		return rows
+	}
+	return append(rows, row)
+}
+
 // SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
 // run's start, or its creation when it has no run that started.
 func SpentAt(it Item) time.Time {
@@ -272,4 +347,13 @@ func SpentAt(it Item) time.Time {
 		return it.Stream.Started
 	}
 	return it.Created
+}
+
+// AddMemorySpend books optional learning in the total and identifies its share.
+func AddMemorySpend(it *Item, usd float64) {
+	if it == nil || usd <= 0 {
+		return
+	}
+	AddChatSpend(it, usd)
+	it.MemorySpent += usd
 }

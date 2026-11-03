@@ -23,20 +23,21 @@ import (
 )
 
 const (
-	StepEdited      = "step_edited"
-	StepStopped     = "step_stopped"
-	StepRerun       = "step_rerun"
-	HandOffNotNow   = "hand_off_not_now"
-	Dismissed       = "dismissed"
-	Assigned        = "assigned"
-	Unassigned      = "unassigned"
-	Nudged          = "nudged"
-	PriorityChanged = "priority_changed"
-	BudgetRaised    = "budget_raised"
-	BudgetChanged   = "budget_changed"
-	Undone          = "undone"
-	Started         = "started"
-	RunAsNew        = "run_as_new"
+	StepEdited           = "step_edited"
+	StepStopped          = "step_stopped"
+	StepRerun            = "step_rerun"
+	HandOffNotNow        = "hand_off_not_now"
+	Dismissed            = "dismissed"
+	Assigned             = "assigned"
+	Unassigned           = "unassigned"
+	Nudged               = "nudged"
+	PriorityChanged      = "priority_changed"
+	BudgetRaised         = "budget_raised"
+	BudgetChanged        = "budget_changed"
+	StopAfterStepChanged = "stop_after_step_changed"
+	Undone               = "undone"
+	Started              = "started"
+	RunAsNew             = "run_as_new"
 	// Held is a person keeping a queued job from starting; Resumed is the
 	// same person, or another owner, letting it go on.
 	Held          = "held"
@@ -57,6 +58,8 @@ const (
 	// PRMerged and PRClosed are the poll noticing a pull request this factory
 	// opened. The handle, when GitHub named one, is who merged it.
 	PRMerged = "pr_merged"
+	// PRReady records a person marking the job's draft ready for review.
+	PRReady  = "pr_ready"
 	PRClosed = "pr_closed"
 	// Restored is a person bringing a dropped job back to Backlog.
 	Restored = "restored"
@@ -138,6 +141,10 @@ func (r *Record) Root() string {
 // Append mints identity and time here, never from an agent's reported fields.
 // SYNC BEFORE CONSENT: a returned receipt must already be on disk.
 func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
+	// An approval without a handle must explicitly name the factory as actor.
+	if event.Kind == Approved && factory.NormalizeHandle(event.Handle) == "" && event.Actor.Kind != "factory" {
+		return Event{}, errors.New("factory record: approval requires a forge handle")
+	}
 	enrich(&event)
 	if err := validate(event); err != nil {
 		return Event{}, err
@@ -195,7 +202,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case RunAsNew, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
+	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, PRReady:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
@@ -205,7 +212,7 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
-	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "undone", "claimed factory", "granted GitHub read access":
+	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "marked ready for review":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}
@@ -219,7 +226,7 @@ func validate(e Event) error {
 		return errors.New("factory record: cost must not be negative")
 	}
 	handle := factory.NormalizeHandle(e.Handle)
-	if e.Kind == Approved && handle == "" {
+	if e.Kind == Approved && handle == "" && e.Actor.Kind != "factory" {
 		return errors.New("factory record: approval requires a forge handle")
 	}
 	for _, c := range handle {
@@ -305,7 +312,11 @@ func (r *Record) TrailerFor(ctx context.Context, id int, commit string) (string,
 			if e.Commit != commit {
 				return "", publish.ErrCommitChanged
 			}
-			trailer := "Factory-Approval: " + e.ID + " @" + factory.NormalizeHandle(e.Handle)
+			actor := "@" + factory.NormalizeHandle(e.Handle)
+			if e.Actor.Kind == "factory" {
+				actor = "factory"
+			}
+			trailer := "Factory-Approval: " + e.ID + " " + actor
 			if e.Commit != "" {
 				trailer += " " + e.Commit
 			}

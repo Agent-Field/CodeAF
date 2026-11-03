@@ -1,10 +1,11 @@
 package run
 
-// ── PUBLISHING: A PERSON'S APPROVAL, CARRIED OUT ──────────────────────────
+// ── PUBLISHING: RECORDED APPROVAL, CARRIED OUT ──────────────────────────
 //
-// PUBLISH IS A PERSON. Approving at the proof gate is a server-side event in
+// Approving at the proof gate is a server-side event in
 // the factory's record (`evt_…`, internal/factory/record); the factory turns
-// it into the trailer `Factory-Approval: evt_… @handle <commit>` and hands the trailer
+// it into the trailer `Factory-Approval: evt_… @handle <commit>` (or `factory`
+// in place of `@handle` for an automatic approval) and hands the trailer
 // to the worker that publishes. AGENTS NEVER ATTEST: nothing here publishes
 // without a trailer in that exact shape, and the trailer never comes from a
 // model's words.
@@ -33,9 +34,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
-// trailerShape carries the record's approval id, its person and the exact
+// trailerShape carries the record's approval id, its actor and the exact
 // approved head. An older receipt remains valid only for an unreported head.
-var trailerShape = regexp.MustCompile(`^Factory-Approval: evt_[0-9a-f]{8} @[a-z0-9-]+(?: (?:[0-9a-f]{40}|[0-9a-f]{64}))?$`)
+var trailerShape = regexp.MustCompile(`^Factory-Approval: evt_[0-9a-f]{8} (?:@[a-z0-9-]+|factory)(?: (?:[0-9a-f]{40}|[0-9a-f]{64}))?$`)
 
 // ErrNoApproval is a publish asked for without a recorded approval.
 var ErrNoApproval = errors.New("job requires a recorded approval before publishing")
@@ -396,6 +397,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		pr.CI = ""
 		pr.CheckRuns = nil
 		pr.Checks = factory.PRChecks{}
+		pr.NoWorkflows, pr.NoChecksSince, pr.NoChecks = false, time.Time{}, false
 		pr.ReadinessKey, pr.ReadinessContext = "", ""
 		return published{pr: &pr}, nil
 	}

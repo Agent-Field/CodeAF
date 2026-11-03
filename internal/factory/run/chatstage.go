@@ -59,6 +59,9 @@ type StageDoor interface {
 
 // ConversationSpec is everything the maker needs to open one stage round.
 type ConversationSpec struct {
+	// JobContext owns optional work that may outlive this stage conversation.
+	JobContext   context.Context
+	PendingSpend func() func()
 	// VerifyRepair makes successful PR-repair reports pass the concrete receipt guard.
 	// Read-only readiness reviews retain their separate current-PR snapshot contract.
 	VerifyRepair      bool
@@ -91,6 +94,10 @@ type ConversationSpec struct {
 	// is "" and its launch is not pinned to one model for every task.
 	FactoryModel string
 	Effort       string
+	// StepEffort is the step's own effort word (cheap, strong or ""): with
+	// no model of the step's or the job's, the maker opens the step on the
+	// model that effort runs on, before the factory's default.
+	StepEffort string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -236,6 +243,12 @@ func stageAutomatic(job Job) *bool {
 	return job.Item.AutomaticModels
 }
 
+// planFilesMissing is a finished plan report that needs its one bounded
+// correction attempt. Other steps and unfinished reports keep their own path.
+func planFilesMissing(job Job, result factory.StageResult) bool {
+	return strings.EqualFold(stageLabel(job.Stage), planStep) && result.Done && !result.Checkpoint && result.PlanFiles() == nil
+}
+
 // Run opens the round's conversation, forwards steering and captions while it
 // works, and answers the last thing it reported, or the report made for it.
 func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, error) {
@@ -246,12 +259,16 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	door.ask, door.stage = job.Ask, job.Stage
 	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && f.Readiness != nil {
 		door.readinessHead = f.Readiness.Head
+	} else if p := job.Item.PullRequest; factory.IsCIRepairStage(job.Stage) && p != nil && p.FeedbackTracked {
+		door.feedbackHead = p.HeadSHA
 	}
 	log := job.Log
 	if log == nil {
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
+		JobContext:        job.Lifetime,
+		PendingSpend:      job.PendingSpend,
 		Item:              job.Item,
 		Team:              itemTeam(job.Item),
 		Name:              stageChatName(job),
@@ -262,6 +279,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		AutomaticModels:   stageAutomatic(job),
 		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
 		Effort:            job.Item.Effort,
+		StepEffort:        job.Stage.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
 		VerifyChecks:      checksVerification(job.Stage),
@@ -316,6 +334,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	asker := stageAsker{job: job}
 	walled := false
 	corrections := 0
+	planFilesAsked := false
 	var idleFailure *factory.StageResult
 	wall := time.NewTimer(stageWall)
 	defer wall.Stop()
@@ -413,6 +432,17 @@ loop:
 					}
 				}
 			}
+			// A missing plan list uses one existing correction attempt. Keep the
+			// original report if it still cannot supply one, so the plan gate can
+			// explain the unknown list and ask the person without losing the draft.
+			if !planFilesAsked && corrections < stageVerificationCorrections && ctx.Err() == nil && planFilesMissing(job, door.result()) {
+				planFilesAsked = true
+				corrections++
+				if conv.Note(ctx, "The factory could not read a valid plan file list. Keep your plan and call stage_result once more with files: an array of every repository-relative path you will touch or add. Do not guess if the list is unknown; report files: [] instead. "+briefPlanFiles) == nil {
+					go func() { idle <- conv.Wait(ctx) }()
+					continue
+				}
+			}
 			if (!door.empty() && !door.result().Checkpoint) || ctx.Err() != nil {
 				break loop
 			}
@@ -479,7 +509,9 @@ loop:
 		made.Edit = res.Edit
 		res = made
 	}
-	if stop, ok := spendStopOf(waitErr); ok {
+	// A final successful result survives optional work charged as the turn
+	// settles. The next stage still reads the complete live job spend.
+	if stop, ok := spendStopOf(waitErr); ok && !(stop.Job && stop.Memory && !stop.Daily && res.Done) {
 		res.JobBudgetStopped = stop.Job
 		res.Reports, res.Inferred = 0, false
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()
@@ -873,6 +905,7 @@ type stageDoor struct {
 	// until done, which no report contradicts.
 	stage         factory.Stage
 	readinessHead string
+	feedbackHead  string
 	// ask is the round's road to the manager (Job.Ask), nil for none.
 	ask func(ctx context.Context, q factory.Asked) (string, error)
 }
@@ -912,8 +945,12 @@ func newStageDoor() *stageDoor { return &stageDoor{} }
 // claim marked ok: false, is held like any report and judged into another
 // round. A refused call is not counted in Reports: nothing was reported.
 func (d *stageDoor) Report(_ context.Context, result factory.StageResult) error {
-	if !result.Checkpoint && d.readinessHead != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
-		if why := factory.ReadinessReportFault(d.readinessHead, result); why != "" {
+	head := d.readinessHead
+	if head == "" && result.Repair != nil && result.Repair.Decision == "no_change" {
+		head = d.feedbackHead
+	}
+	if !result.Checkpoint && head != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
+		if why := factory.ReadinessReportFault(head, result); why != "" {
 			d.RejectReport()
 			return errors.New(why)
 		}

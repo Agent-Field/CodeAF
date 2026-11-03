@@ -91,7 +91,7 @@ func AutonomyBlockReason(it Item) string {
 	// to be asked, so Auto asks.
 	if it.QKind == QKindApprove && it.RuleHold != "" {
 		if words, ok := planNoFilesWords(it.RuleHold); ok {
-			return words + ". Approve, or send it back to list them."
+			return words + ". Read the plan, then approve it or send it back."
 		}
 		return ruleHoldWords(it.RuleHold) + ". Review the plan, then press Approve."
 	}
@@ -151,14 +151,8 @@ func ruleHoldWords(hold string) string {
 	return "A rule asks first: " + hold
 }
 
-// planNoFilesWords is a hold for a plan that listed no files ([PlanNoFiles])
-// as what happened, in a person's words: `protected · auth/ · the plan names
-// no files` is "The plan didn't list its files, so the factory couldn't check
-// them against auth/". False for any other hold.
-//
-// "A PROTECTED PATH: THE PLAN NAMES NO FILES" SAID NEITHER. Until 2026-10-28
-// that was the whole sentence, and a person read it as a plan touching a
-// protected path; it means the factory could not tell whether it did.
+// planNoFilesWords describes the missing checkable list without claiming the
+// plan's prose names no files. The stored hold suffix stays compatible.
 func planNoFilesWords(hold string) (string, bool) {
 	rest, ok := strings.CutPrefix(hold, "protected · ")
 	if !ok {
@@ -172,5 +166,5 @@ func planNoFilesWords(hold string) (string, bool) {
 	if paths = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(paths), "·")); paths != "" {
 		against = paths
 	}
-	return "The plan didn't list its files, so the factory couldn't check them against " + against, true
+	return "This plan didn't give the factory a file list it can check against " + against, true
 }
