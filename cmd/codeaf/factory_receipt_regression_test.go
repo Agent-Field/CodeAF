@@ -13,11 +13,13 @@ import (
 )
 
 func TestReviewLegacySuccessfulOutput(t *testing.T) {
+ for _, ending := range []string{"Command aborted", "Command cancelled", "Command timed out after 1 seconds"} {
+ t.Run(ending, func(t *testing.T) {
  root:=t.TempDir()
  bin:=filepath.Join(root,"bin")
  if err:=os.Mkdir(bin,0700);err!=nil {t.Fatal(err)}
  if err:=os.WriteFile(filepath.Join(bin,"go"),[]byte("#!/bin/sh\nprintf 'PASS\\nok  example 1s\\n'\n"),0700);err!=nil {t.Fatal(err)}
- command:=`go test ./...; printf '\nCommand aborted\n'`
+ command:=`go test ./...; printf '\n` + ending + `\n'`
  run:=exec.Command("bash","-c",command)
  run.Env=append(os.Environ(),"PATH="+bin+":"+os.Getenv("PATH"))
  output,err:=run.CombinedOutput()
@@ -36,6 +38,8 @@ func TestReviewLegacySuccessfulOutput(t *testing.T) {
  door:=&receiptStageDoor{StageDoor:&repairReportDoor{},file:file,dir:root,requireFresh:true}
  defer door.closeVerification()
  if err:=door.Report(t.Context(),factory.StageResult{Done:true});err!=nil {t.Errorf("successful old journal held: %v",err)}
+ })
+ }
 }
 
 func TestReviewBackgroundValidation(t *testing.T) {
