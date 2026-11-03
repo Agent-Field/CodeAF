@@ -24,7 +24,7 @@ import (
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
- h.postJob("publish_anyway", stored && h.seam.Answer != nil, h.publishAnyway)
+	h.postJob("publish_anyway", stored && h.seam.Answer != nil, h.publishAnyway)
 	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))

@@ -103,9 +103,9 @@ func PublishBody(it Item, trailer string) string {
 		}
 	}
 	if PublishedAnyway(it) {
- fmt.Fprintf(&b, "- Published anyway by @%s at %s; skipped checks remain unmeasured.\n", it.PublishAnyway.DecidedBy, it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z"))
- }
- seen := map[string]bool{}
+		fmt.Fprintf(&b, "- Published anyway by @%s at %s; skipped checks remain unmeasured.\n", it.PublishAnyway.DecidedBy, it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	seen := map[string]bool{}
 	for _, cmd := range commands {
 		if seen[cmd] || lastOutcome[cmd] != "passed" {
 			continue

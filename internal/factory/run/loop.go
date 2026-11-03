@@ -774,7 +774,7 @@ func (lp *floorLoop) back(c *loopCtl, i, prev int, words string) bool {
 // at i wait again, prev in a new round, and the run's current step is prev.
 // It answers prev's name.
 func rewindToStep(it *factory.Item, i, prev int, words string, now time.Time) string {
- it.PublishAnyway = nil
+	it.PublishAnyway = nil
 	for _, k := range []int{prev, i} {
 		setPhaseState(&it.Stream.Phases[k], factory.PhasePending, now)
 		it.Stream.Phases[k].Left = 0

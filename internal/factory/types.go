@@ -505,8 +505,8 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
- // PublishAnyway preserves the person decision without changing measured proof.
- PublishAnyway *Approval `json:",omitempty"`
+	// PublishAnyway preserves the person decision without changing measured proof.
+	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
 	GitHubIssueID int64 `json:",omitempty"`
 	// SourceClosed distinguishes an automatic close from a person's Done.

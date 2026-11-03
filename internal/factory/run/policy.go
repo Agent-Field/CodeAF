@@ -214,9 +214,9 @@ func skippedPolicyWait(it factory.Item) string {
 		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
 	}
 	if factory.SkippedChecksIdentity(it) != "" {
- action = "Publish anyway, " + strings.ToLower(action[:1]) + action[1:]
- }
- return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
+		action = "Publish anyway, " + strings.ToLower(action[:1]) + action[1:]
+	}
+	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
 }
 
 func skippedPolicyQuestion(it factory.Item, res factory.StageResult) string {
