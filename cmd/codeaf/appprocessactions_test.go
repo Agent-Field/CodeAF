@@ -398,15 +398,21 @@ func TestStopAllOnANotHeldConversationNeverOpensItOrInventsAnEmptyJobSnapshot(t 
 }
 
 func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
-	b, _, paths, opens := lazyBackend(t, 1)
+	b, rec, paths, opens := lazyBackend(t, 1)
 	b.crews()
 	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Started: time.UnixMilli(1700000000000)}
 	seedRecords(t, filepath.Dir(paths[0]), job)
 	engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, facts: session.ProcessActions{
 		Record: job, Rerun: session.ProcessAction{Available: true},
 	}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	releaseOpen := func() { once.Do(func() { close(release) }) }
+	defer releaseOpen()
 	opener := b.open
 	b.open = func(ask appOpenAsk) (*appConn, error) {
+		close(entered)
+		<-release
 		conn, err := opener(ask)
 		if err == nil {
 			conn.Conv = engine
@@ -414,12 +420,45 @@ func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
 		return conn, err
 	}
 	id := appProcessID(appAgentID(paths[0]), job)
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		got, err := b.ProcessActions(context.Background(), id)
+		if err != nil || !got.Rerun.Available {
+			t.Errorf("opening caller's actions: %+v %v", got, err)
+		}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the owner was never asked to open")
+	}
+	t.Log("interleaving: first actions caller entered the opener; owner publication is blocked")
 	var wg sync.WaitGroup
 	for range 12 {
 		wg.Go(func() {
 			got, err := b.ProcessActions(context.Background(), id)
+			if err != nil || got.State != appwire.ProcessEnded || got.Rerun.Available || got.Rerun.Reason != appwire.ProcessActionNotHeld {
+				t.Errorf("opening owner's saved actions: %+v %v", got, err)
+			}
+		})
+	}
+	answersWithin(t, 2*time.Second, "actions while the owner opens", wg.Wait)
+	t.Log("interleaving: concurrent reads returned ended and not_held without waiting for the opener")
+	releaseOpen()
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		changed, ok := data.(appwire.AgentChanged)
+		return event == appwire.EventAgentChanged && ok && changed.Agent.ID == appAgentID(paths[0])
+	})
+	t.Log("interleaving: opener released; agent.changed received")
+	<-first
+	// The readiness event, rather than another caller's timing, makes an
+	// owner-backed answer available to every subsequent read.
+	for range 12 {
+		wg.Go(func() {
+			got, err := b.ProcessActions(context.Background(), id)
 			if err != nil || !got.Rerun.Available {
-				t.Errorf("light owner's actions: %+v %v", got, err)
+				t.Errorf("ready owner's actions: %+v %v", got, err)
 			}
 		})
 	}
