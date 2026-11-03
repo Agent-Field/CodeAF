@@ -56,3 +56,35 @@ func TestLocalNewPreservesAskPunctuation(t *testing.T) {
 	}
 	t.Fatal("new job missing from Load")
 }
+
+func TestLocalNewLiftsChipsAndPreservesAskPunctuation(t *testing.T) {
+	_, st := openLocal(t)
+	seam := factory.LocalSeam(st, time.Now())
+	const ask = "Fix the login page."
+	id, err := seam.New("acme/api", " \t"+ask+" $8 self-ship two review rounds stronger with security \t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := seam.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range snap.Items {
+		if item.ID != id {
+			continue
+		}
+		if item.Ask == nil || item.Ask.Text != ask {
+			t.Errorf("stored job ask = %+v, want %q", item.Ask, ask)
+		}
+		if item.Cap != 8 {
+			t.Errorf("cap = %v, want 8", item.Cap)
+		}
+		for _, stage := range item.Stages {
+			if factory.IsApprove(stage) {
+				t.Errorf("self-ship retained approval stage %q", stage.Name)
+			}
+		}
+		return
+	}
+	t.Fatal("new job missing from Load")
+}
