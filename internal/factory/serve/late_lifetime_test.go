@@ -64,6 +64,10 @@ func TestLateArchivedUsageStopsAdmittedWorker(t *testing.T) {
 			return factory.StageResult{Done: true, Spent: .125}, nil
 		}),
 	}})
+	w := client.Open(f.server.URL, config.AccessToken).Worker(worker.Credential)
+	runner.SetStepBegin(it.ID, func(ctx context.Context, step factory.StageReport) error {
+		return w.Report(ctx, replacement.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{step}}))
+	})
 	t.Cleanup(func() { _ = runner.Stop(it.ID) })
 	if err := runner.Launch(it.ID); err != nil {
 		t.Fatal(err)
