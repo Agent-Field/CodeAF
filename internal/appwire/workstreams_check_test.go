@@ -34,6 +34,12 @@ func TestWorkstreamBoundsBeforeDelegation(t *testing.T) {
 		{"page.history", `{"id":"x","limit":0}`, CodeBadParams},
 		{"page.history", `{"id":"x","limit":201}`, CodeBadParams},
 		{"page.restore", `{"id":"x","version":0,"base_version":1}`, CodeBadParams},
+		// WP-F1 (a), (b): version reads are positive and restore versions are paired.
+		{"page.get", `{"id":"x","version":0}`, CodeBadParams},
+		{"page.get", `{"id":"x","version":-1}`, CodeBadParams},
+		{"page.restore", `{"id":"x","version":1}`, CodeBadParams},
+		{"page.restore", `{"id":"x","base_version":1}`, CodeBadParams},
+		{"page.restore", `{"id":"x","version":1,"base_version":-1}`, CodeBadParams},
 		{"record.list", `{"workstream_id":"x","state":"active"}`, CodeBadParams},
 		{"record.propose", `{"workstream_id":"x","kind":"decision","text":""}`, CodeBadParams},
 		{"record.propose", `{"workstream_id":"x","kind":"decision","text":"` + strings.Repeat("t", 2001) + `"}`, CodeBadParams},
@@ -60,6 +66,10 @@ func TestWorkstreamBoundsPreserveExplicitZeroAndFalse(t *testing.T) {
 		"workstream.plan_set": `{"id":"x","base_version":0,"milestones":[],"waves":[]}`,
 		"workstream.update":   `{"id":"x","patch":{"why":"","budget_usd":0,"wake":{"morning":false,"related_issues":false}}}`,
 		"page.create":         `{"workstream_id":"x","title":"x","read_by_jobs":false}`,
+		// WP-F1 (a), (b): additive params, including id-only restore, reach dispatch.
+		"page.get":     `{"id":"x","version":1}`,
+		"page.list":    `{"workstream_id":"x","include_deleted":true}`,
+		"page.restore": `{"id":"x"}`,
 	} {
 		_, err := methods[method].call(fake, json.RawMessage(params))
 		if err != ErrWorkstreamsNotYet {

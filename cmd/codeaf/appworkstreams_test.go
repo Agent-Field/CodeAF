@@ -464,7 +464,7 @@ func TestAppWorkstreamPageVersions(t *testing.T) {
 	if len(workstreamEvents(rec)) != before {
 		t.Fatal("stale save or reads emitted")
 	}
-	restored, err := b.WorkstreamPageRestore(appwire.WorkstreamPageRestoreParams{ID: id, Version: 1, BaseVersion: 2})
+	restored, err := b.WorkstreamPageRestore(appwire.WorkstreamPageRestoreParams{ID: id, Version: workstreamPtr(1), BaseVersion: workstreamPtr(2)})
 	if err != nil || restored.Page.Version != 3 || string(restored.Page.Doc) != `{"type":"doc","content":[]}` {
 		t.Fatalf("restore %+v, %v", restored, err)
 	}
@@ -781,7 +781,7 @@ func TestAppWorkstreamEveryWriteEmitsOnce(t *testing.T) {
 			return err
 		}},
 		{"page.restore", []string{"workstream", "pages"}, false, func(f *fixture) error {
-			_, err := f.b.WorkstreamPageRestore(appwire.WorkstreamPageRestoreParams{ID: f.page, Version: 1, BaseVersion: f.base})
+			_, err := f.b.WorkstreamPageRestore(appwire.WorkstreamPageRestoreParams{ID: f.page, Version: workstreamPtr(1), BaseVersion: workstreamPtr(f.base)})
 			return err
 		}},
 		{"record.propose", []string{"workstream", "records"}, false, func(f *fixture) error {

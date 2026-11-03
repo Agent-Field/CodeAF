@@ -146,6 +146,7 @@ type WorkstreamPageNode struct {
 	UpdatedAt    time.Time         `json:"updated_at"`
 	UpdatedBy    string            `json:"updated_by" enum:"you,agent"`
 	UpdatedFrom  *WorkstreamSource `json:"updated_from,omitempty"`
+	DeletedAt    time.Time         `json:"deleted_at,omitzero"`
 }
 
 type WorkstreamPage struct {
@@ -160,6 +161,7 @@ type WorkstreamPage struct {
 	UpdatedAt    time.Time         `json:"updated_at"`
 	UpdatedBy    string            `json:"updated_by" enum:"you,agent"`
 	UpdatedFrom  *WorkstreamSource `json:"updated_from,omitempty"`
+	DeletedAt    time.Time         `json:"deleted_at,omitzero"`
 	Doc          json.RawMessage   `json:"doc"`
 	Markdown     *string           `json:"markdown,omitempty"`
 }
@@ -305,16 +307,19 @@ type WorkstreamPlanSetResult struct {
 }
 
 type WorkstreamPageListParams struct {
-	WorkstreamID string `json:"workstream_id"`
+	WorkstreamID   string `json:"workstream_id"`
+	IncludeDeleted *bool  `json:"include_deleted,omitempty"`
 }
 
 type WorkstreamPageListResult struct {
-	Pages []WorkstreamPageNode `json:"pages"`
+	Pages   []WorkstreamPageNode `json:"pages"`
+	Deleted []WorkstreamPageNode `json:"deleted,omitzero"`
 }
 
 type WorkstreamPageGetParams struct {
 	ID       string `json:"id"`
 	Markdown *bool  `json:"markdown,omitempty"`
+	Version  *int   `json:"version,omitempty"`
 }
 
 type WorkstreamPageGetResult struct {
@@ -385,8 +390,8 @@ type WorkstreamPageHistoryResult struct {
 
 type WorkstreamPageRestoreParams struct {
 	ID          string `json:"id"`
-	Version     int    `json:"version"`
-	BaseVersion int    `json:"base_version"`
+	Version     *int   `json:"version,omitempty"`
+	BaseVersion *int   `json:"base_version,omitempty"`
 }
 
 type WorkstreamPageRestoreResult struct {

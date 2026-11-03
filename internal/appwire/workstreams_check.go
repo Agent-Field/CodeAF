@@ -197,12 +197,17 @@ func workstreamSource(p *WorkstreamSource) error {
 	return p.Check()
 }
 
-func (p WorkstreamListParams) Check() error          { return nil }
-func (p WorkstreamGetParams) Check() error           { return workstreamID(p.ID) }
-func (p WorkstreamReopenParams) Check() error        { return workstreamID(p.ID) }
-func (p WorkstreamPlanGetParams) Check() error       { return workstreamID(p.ID) }
-func (p WorkstreamPageListParams) Check() error      { return workstreamID(p.WorkstreamID) }
-func (p WorkstreamPageGetParams) Check() error       { return workstreamID(p.ID) }
+func (p WorkstreamListParams) Check() error     { return nil }
+func (p WorkstreamGetParams) Check() error      { return workstreamID(p.ID) }
+func (p WorkstreamReopenParams) Check() error   { return workstreamID(p.ID) }
+func (p WorkstreamPlanGetParams) Check() error  { return workstreamID(p.ID) }
+func (p WorkstreamPageListParams) Check() error { return workstreamID(p.WorkstreamID) }
+func (p WorkstreamPageGetParams) Check() error {
+	if p.Version != nil && *p.Version < 1 {
+		return Errorf(CodeBadParams, "version must be positive")
+	}
+	return workstreamID(p.ID)
+}
 func (p WorkstreamPageDeleteParams) Check() error    { return workstreamID(p.ID) }
 func (p WorkstreamRecordKeepParams) Check() error    { return workstreamID(p.ID) }
 func (p WorkstreamRecordDropParams) Check() error    { return workstreamID(p.ID) }
@@ -329,7 +334,10 @@ func (p WorkstreamPageHistoryParams) Check() error {
 	return workstreamChecks(workstreamID(p.ID), err)
 }
 func (p WorkstreamPageRestoreParams) Check() error {
-	if p.Version < 1 || p.BaseVersion < 0 {
+	if (p.Version == nil) != (p.BaseVersion == nil) {
+		return Errorf(CodeBadParams, "version and base_version must be supplied together")
+	}
+	if p.Version != nil && (*p.Version < 1 || *p.BaseVersion < 0) {
 		return Errorf(CodeBadParams, "restore requires positive version and nonnegative base_version")
 	}
 	return workstreamID(p.ID)
