@@ -678,7 +678,9 @@ func (w *usageWriter) run(path string) {
 			close(work.done)
 			continue
 		}
-		write(work.line)
+		if work.line != nil {
+			write(work.line)
+		}
 		if len(w.queue) == 0 {
 			w.writeOverflow(write)
 		}
@@ -906,6 +908,17 @@ func (w *usageWriter) addOverflow(line []byte) {
 	defer w.overflowMu.Unlock()
 	w.overflow[done] = struct{}{}
 	w.overflowRows = append(w.overflowRows, usageOverflowRow{line: line, done: done})
+	w.wakeForOverflow()
+}
+
+// wakeForOverflow covers a writer that emptied the queue between the caller
+// seeing it full and keeping the row: an empty item sends it back to the kept
+// rows. If the queue is full again, the writer has work and will reach them.
+func (w *usageWriter) wakeForOverflow() {
+	select {
+	case w.queue <- usageWrite{}:
+	default:
+	}
 }
 
 // addBarrier closes done once the rows kept before it have been written.
@@ -913,6 +926,7 @@ func (w *usageWriter) addBarrier(done chan struct{}) {
 	w.overflowMu.Lock()
 	defer w.overflowMu.Unlock()
 	w.overflowRows = append(w.overflowRows, usageOverflowRow{done: done})
+	w.wakeForOverflow()
 }
 
 // writeOverflow writes the rows kept so far.
