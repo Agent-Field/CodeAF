@@ -3,6 +3,7 @@ package worker
 import (
  "context"
  "encoding/json"
+ "errors"
  "net/http"
  "net/http/httptest"
  "reflect"
@@ -56,7 +57,8 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    it, _ = st.Get(it.ID); it.State=factory.StateNew; if err := mirror.Save(it); err != nil { t.Fatal(err) }
    entered := make(chan struct{})
    finished := make(chan struct{})
-   runner := run.New(run.Options{Store:mirror, RepoDir:func(string) string{return t.TempDir()}, Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context, _ run.Job)(factory.StageResult,error){close(entered); defer close(finished); <-ctx.Done(); return factory.StageResult{},ctx.Err()})}})
+   var writes atomic.Int32
+   runner := run.New(run.Options{Publisher:func(context.Context,factory.Item)(run.PublishTarget,error){writes.Add(1);return run.PublishTarget{},errors.New("test forge unavailable")}, Store:mirror, RepoDir:func(string) string{return t.TempDir()}, Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context, _ run.Job)(factory.StageResult,error){close(entered); defer close(finished); <-ctx.Done(); return factory.StageResult{},ctx.Err()})}})
    if err := runner.Launch(it.ID); err != nil { t.Fatal(err) }
    select { case <-entered: case <-time.After(3*time.Second): t.Fatal("runner did not start") }
    defer func(){ _ = runner.Stop(it.ID); select {case <-finished: case <-time.After(3*time.Second): t.Error("runner did not stop") }; waitSignalRunner(t,runner,it.ID) }()
@@ -64,6 +66,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    replied := make(chan struct{}, 4)
    j := &job{o:Options{Runner:runner, Mirror:mirror, Reply:func(context.Context,factory.Item,string)error{ turns.Add(1); replied<-struct{}{}; return nil }},w:wc,lease:held.ID,id:it.ID,accepted:map[string]bool{},acknowledged:map[string]bool{}}
    signal := lease.Signal{Verb:verb,Words:"chosen",Budget:8,Yes:true}
+   if verb=="publish"{signal.Words="Factory-Approval: evt_12345678 @me"}
    if verb=="reconcile_results" {
     _=runner.Stop(it.ID)
     waitSignalRunner(t,runner,it.ID)
@@ -80,8 +83,16 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    j.beat(t.Context()); second:= <-replies
    if verb == "publish" || verb == "merge" {
     if len(first.Signals)!=0 || len(second.Signals)!=0 {t.Fatal("publish/merge crossed the live heartbeat")}
-    pulled,err:=desk.Drain(held.ID,held.Worker); if err!=nil || len(pulled)!=1 || pulled[0].Verb!=verb {t.Fatalf("lost deferred signal: %+v %v",pulled,err)}
-    again,err:=desk.Drain(held.ID,held.Worker); if err!=nil || len(again)!=0 {t.Fatalf("deferred signal repeated: %+v %v",again,err)}
+    _=runner.Stop(it.ID);waitSignalRunner(t,runner,it.ID)
+    if err:=desk.Apply(held.ID,held.Worker,true,func(it *factory.Item)error{if verb=="merge"{it.Merging=&factory.MergeRun{State:factory.MergeQueued,Commit:signal.Words}};return nil});err!=nil{t.Fatal(err)}
+    pulled,ok,err:=wc.Pull(t.Context());if !ok || err!=nil || len(pulled.Signals)!=1 || pulled.Signals[0].Verb!=verb{t.Fatalf("lost deferred pull: %+v %t %v",pulled,ok,err)}
+    cur:=api.ToItem(pulled.Job);start:=stand(&cur,pulled.Signals)
+    if err:=mirror.Save(cur);err!=nil{t.Fatal(err)}
+    if err:=start(runner,it.ID);err!=nil{t.Fatal(err)}
+    waitSignalRunner(t,runner,it.ID)
+    j.lease=pulled.Lease.ID
+    for range 2{j.beat(t.Context());hb:= <-replies;if len(hb.Signals)!=0{t.Fatalf("deferred signal repeated live: %+v",hb.Signals)}}
+    if writes.Load()!=1{t.Fatalf("forge operation attempted %d times",writes.Load())}
     return
    }
    if len(first.Signals)!=1 || len(second.Signals)!=1 || second.Signals[0].Verb!=verb {t.Fatalf("signal lost after heartbeat reply: first=%+v next=%+v",first.Signals,second.Signals)}
