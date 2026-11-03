@@ -83,3 +83,23 @@ func TestGuardOwedAndBound(t *testing.T) {
   })
  }
 }
+
+func TestGuardSameUnrunPass(t *testing.T) {
+ root,file,run := staleGuardFixture(t)
+ run("go test ./...")
+ raw,err := os.ReadFile(file)
+ if err!=nil { t.Fatal(err) }
+ var row struct { Calls []struct { Function struct { Arguments string `json:"arguments"` } `json:"function"` } `json:"toolCalls"` }
+ if err:=json.Unmarshal([]byte(strings.Split(string(raw),"\n")[0]),&row); err!=nil { t.Fatal(err) }
+ var args struct { Command string `json:"command"` }
+ if err:=json.Unmarshal([]byte(row.Calls[0].Function.Arguments),&args); err!=nil { t.Fatal(err) }
+ if err:=os.WriteFile(file,nil,0600); err!=nil { t.Fatal(err) }
+ guardUnrunJournal(t,file,args.Command,"refused")
+ f,err:=os.OpenFile(file,os.O_APPEND|os.O_WRONLY,0600)
+ if err!=nil { t.Fatal(err) }
+ if _,err=f.Write(raw); err!=nil { t.Fatal(err) }
+ if err=f.Close(); err!=nil { t.Fatal(err) }
+ door:=&receiptStageDoor{StageDoor:&repairReportDoor{},file:file,dir:root,requireFresh:true,requireAnyCheck:true}
+ t.Cleanup(door.closeVerification)
+ if err:=door.Report(t.Context(),factory.StageResult{Done:true}); err!=nil { t.Fatal(err) }
+}
