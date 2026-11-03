@@ -14,8 +14,8 @@ import (
 
 // The public completion and reconciliation doors must retain paid partial work.
 func TestBilledCancellation(t *testing.T) {
- for _, tc := range []struct {name string; usage, noID, noReceipt, direct bool}{
- {name:"usage", usage:true}, {name:"before-usage"},
+ for _, tc := range []struct {name string; usage, noID, noReceipt, direct, final bool}{
+ {name:"usage", usage:true}, {name:"factory-final", usage:true, final:true}, {name:"factory-fallback", usage:true, final:true, noReceipt:true}, {name:"before-usage"},
  {name:"interim-fallback", usage:true, noReceipt:true},
  {name:"unpriced", noReceipt:true},
  {name:"no-id", usage:true, noID:true},
@@ -44,6 +44,7 @@ func TestBilledCancellation(t *testing.T) {
    client := receiptTestClient(t, server)
    client.config.Direct = tc.direct
    results := make(chan Reconciled, 3)
+   if tc.final { ctx = WithFinalReceipts(ctx) }
    ctx = WithCallTag(WithReconcile(ctx, func(r Reconciled) { results <- r }), "caption")
    ctx = WithStreamObserver(ctx, func(e StreamEvent) { if e.Kind == StreamDelta { cancel() } })
    _, err := client.CompleteWithMessages(ctx, []ai.Message{{Role:"user", Content:[]ai.ContentPart{{Type:"text", Text:"hello"}}}})
