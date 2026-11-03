@@ -12,7 +12,7 @@ var teamsShareChoices = []string{"off", "on"}
 // settings memo deliberately treats either as missing for other settings.
 var teamsShareMemo = filememo.Stamped(SettingsGeneration, func(path string, raw []byte, missing bool) (bool, error) {
 	if missing {
-		return true, nil
+		return false, nil
 	}
 	var values map[string]json.RawMessage
 	if json.Unmarshal(raw, &values) != nil || values == nil {
@@ -20,17 +20,17 @@ var teamsShareMemo = filememo.Stamped(SettingsGeneration, func(path string, raw 
 	}
 	encoded, exists := values[KeyTeamsShare]
 	if !exists {
-		return true, nil
+		return false, nil
 	}
 	var value *string
 	if json.Unmarshal(encoded, &value) != nil || value == nil {
 		return false, nil
 	}
-	return *value == "" || *value == "on", nil
+	return *value == "on", nil
 })
 
-// TeamsShareAt reads the local preference at use time. Missing choices default
-// on, but damaged files must not erase a person's earlier decision to turn off.
+// TeamsShareAt reads the local preference at use time. Missing choices remain
+// off, and damaged files cannot enable sharing.
 func TeamsShareAt(profileDir string) bool {
 	on, _ := teamsShareMemo.ReadStrict(BudgetConfigPath(profileDir))
 	return on

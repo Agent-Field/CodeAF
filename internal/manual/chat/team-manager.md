@@ -566,7 +566,7 @@ while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
-messages written on this computer. Team sharing is on by default for paired
+messages written on this computer. Team sharing is off by default. Enable it on both paired
 computers through **Settings → General → share teams**. Turning it off on either
 computer stops teams moving between them: that computer stops sending and receiving.
 What was already exchanged stays, including encrypted copies in the vault. History
@@ -623,7 +623,7 @@ Review manager choices in Teams.
 
 ## Shared team spending caps and continued members
 
-Teams and their settings share automatically between paired computers by default;
+Teams and their settings share between paired computers after both turn on share teams;
 an unpaired computer is unaffected. A shared team's spending cap counts spending
 on each computer separately. A member continued on the other computer is metered
 there. The cap does not combine ongoing spending across computers, so inspect

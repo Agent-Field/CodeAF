@@ -32,6 +32,11 @@ Dashes and spaces in the code do not matter. `42-715-302`, `42 715 302` and `427
 
 The code is good for 10 minutes. It works once.
 
+## Share my conversation with my other computer
+
+Pair the computers with `/pair` or `codeaf pair`. Your existing solo chats are
+kept and shared. Continue here moves a conversation to the other computer.
+
 ## Sync my chats — how to sync between paired computers
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.

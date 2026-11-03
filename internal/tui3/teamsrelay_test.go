@@ -659,7 +659,7 @@ func TestTeamSharingAdoptsPairingChangesWithoutLoopReads(t *testing.T) {
 		t.Fatal("pairing did not adopt sharing")
 	}
 	old := runCmd(a.refreshTeamsSharing())
-	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir}).Row(config.KeyTeamsShare)
+	row, _ = config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir}).Row(config.KeyTeamsShare)
 	if err := row.Apply("off"); err != nil {
 		t.Fatal(err)
 	}

@@ -452,7 +452,7 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-Team sharing is on by default for paired computers. The local switch is
+Team sharing is off by default for paired computers. Turn it on on both computers to share teams. The local switch is
 **Settings → General → share teams**. Sharing includes teams, members, handles, the
 manager and team settings, plus recent Traffic as read-only history. Team changes
 show within a few seconds, even with no chat open. The Teams dropdown, Teams page
@@ -483,7 +483,7 @@ wait while this computer finishes sending an earlier change to the relay.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
-Team sharing is on by default for paired computers. With **Settings → General →
+Team sharing is off by default for paired computers. Turn it on on both computers to share teams. With **Settings → General →
 share teams** enabled on both computers, a deleted team stays deleted. A desktop that was
 offline catches up when it reconnects. Renaming its old copy while offline does
 not bring the team back. Deleting a team does not delete its conversations.
@@ -497,7 +497,7 @@ consistently, and a removed member cannot remain the manager.
 
 ## Does Traffic sync between computers?
 
-Traffic sharing is on by default for paired computers through **Settings → General →
+Traffic sharing is off by default for paired computers. Turn it on through **Settings → General →
 share teams**. Turning it off on either computer stops sharing between them.
 Traffic from another computer shows its newest history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
 at most 64 KiB, with the most recently active teams first. It can take up to
@@ -521,7 +521,7 @@ on the other computer's history.
 
 ## How do I turn on team sharing?
 
-Team sharing is on by default for paired computers. If it was turned off, open
+Team sharing is off by default for paired computers. Turn it on on both computers to share teams. If it was turned off, open
 **Settings → General → share teams** on that computer and choose **on** to resume.
 Sharing exchanges teams, members, manager choices and settings, and recent Traffic as read-only history
 while the switch stays enabled on both paired computers.
@@ -534,7 +534,7 @@ Turn **share teams** to **off** to stop all team sharing immediately. Teams alre
 
 ## Stop sharing teams with my other computer
 
-Team sharing is on by default for paired computers. Open **Settings → General →
+Team sharing is off by default for paired computers. Turn it on on both computers to share teams. Open **Settings → General →
 share teams** on either computer and choose **off**. Turning it off on either computer stops sharing
 teams, members, manager choices and settings, and recent Traffic between them immediately.
 That computer stops sending and receiving teams and Traffic. Teams already received
@@ -550,7 +550,7 @@ arrive within a few seconds; recent Traffic can take about 2 minutes.
 ## First team sharing: backup, duplicate names and global managers
 
 Paired computers exchange teams automatically while **Settings → General →
-share teams** is on, its default. An unpaired computer is unaffected. Before the
+share teams** is on. This opt-in is off by default. An unpaired computer is unaffected. Before the
 first exchange, this computer keeps a copy of its teams as
 `teams.before-sharing.json` beside the original, once, never replacing an earlier
 copy. If that copy cannot be saved, incoming team changes wait and a sync notice
@@ -581,7 +581,7 @@ With share teams on, pairing with `--replace` puts this computer's teams aside,
 and the newly joined computers supply the team list. Local chats and Traffic stay
 here. The receipt says where the teams went:
 `This computer's teams were set aside to <path>.`
-That copy is named `teams.json.unreadable-<timestamp>` beside the original (or the
+That copy is named `teams.db.unreadable-<timestamp>` beside the original (or the
 older layout's equivalent name). Keep it to recover the original teams.
 
 The chat and a terminal ask before replacement, even when this computer has teams

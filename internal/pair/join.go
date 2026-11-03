@@ -136,8 +136,21 @@ func adopt(j Joining, grant Grant) (Joined, error) {
 }
 
 func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
-	if err := Resume(j.Home, j.SaveSyncURL); err != nil {
+	recovered, err := j.resumeApproved()
+	if err != nil {
+		if recovered != nil {
+			return *recovered, err
+		}
 		return Joined{}, err
+	}
+	if recovered != nil {
+		held, err := identity.Load(j.Home)
+		if err != nil {
+			return *recovered, err
+		}
+		if held.ID() == grant.Identity.ID() {
+			return *recovered, nil
+		}
 	}
 	// No-op and refusal paths must not even create a lock file. Recheck the
 	// destination under the lock below before making any actual switch.

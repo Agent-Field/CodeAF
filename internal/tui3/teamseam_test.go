@@ -337,7 +337,7 @@ func TestALocalStoreItCannotReadIsNotHeldEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	var watch teamstore.Watch
-	seam := localTeams(dir, &watch)
+	seam := localTeams(dir, &watch, nil)
 	if teams, _, known := seam.Load(nil); known {
 		t.Fatalf("a newer store loaded as known with %d teams", len(teams))
 	}

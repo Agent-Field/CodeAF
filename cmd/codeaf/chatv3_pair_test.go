@@ -17,8 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // M8: ordinary refusals never steer a person into the destructive opt-in door.
@@ -187,13 +189,14 @@ func TestTerminalPairReplaceWithoutTerminalNeverWaitsForInput(t *testing.T) {
 // R3/F3 completes non-terminal teams-only replacement and prints the preserved team's actual path.
 func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	rig := newPairRig(t)
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: rig.homeB}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
 	if err := teams.Update(rig.homeB, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "local", Name: "harbor"}}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(teams.Path(rig.homeB))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := teamstest.JSON(t, rig.homeB)
 	shown := rig.show(t)
 	code := shown.code(t)
 	in, writer := io.Pipe()
@@ -226,15 +229,21 @@ func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	if err := shown.end(t); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := filepath.Glob(teams.Path(rig.homeB) + ".unreadable-*")
+	paths, err := filepath.Glob(teams.Path(rig.homeB) + ".unreadable-*[0-9]")
 	if err != nil || len(paths) != 1 {
 		t.Fatal("replacement did not set teams aside", paths, err, out.String())
 	}
 	if !strings.Contains(out.String(), pair.TeamsAsideLine(paths[0])) || strings.Contains(out.String(), pair.ReplaceAskLine) {
 		t.Fatal("missing non-terminal receipt", out.String())
 	}
-	got, err := os.ReadFile(paths[0])
-	if err != nil || !bytes.Equal(got, before) {
+	kept := t.TempDir()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(paths[0]+suffix, teams.Path(kept)+suffix); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	got := teamstest.JSON(t, kept)
+	if !bytes.Equal(got, before) {
 		t.Fatal("receipt's file did not preserve teams", string(got), err)
 	}
 }

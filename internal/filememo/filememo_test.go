@@ -121,7 +121,7 @@ func TestACallersStampInvalidatesWithoutTouchingTheFile(t *testing.T) {
 }
 
 // F6 preserves the ordinary absence fallback while strict readers fail closed on unreadable files.
-func TestStrictReadsKeepErrorsWithoutChangingOrdinaryFallback(t *testing.T) {
+func TestStrictAndOrdinaryReadsPreserveFilesystemErrors(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	memo := New(func(_ string, raw []byte, missing bool) (string, error) {
 		if missing {
@@ -135,8 +135,8 @@ func TestStrictReadsKeepErrorsWithoutChangingOrdinaryFallback(t *testing.T) {
 	if got, err := memo.ReadStrict(path); err == nil || got != "" {
 		t.Fatal("strict read hid a filesystem error", got, err)
 	}
-	if got, err := memo.Read(path); err != nil || got != "missing" {
-		t.Fatal("ordinary fallback changed", got, err)
+	if got, err := memo.Read(path); err == nil || got != "" {
+		t.Fatal("ordinary read hid a filesystem error", got, err)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)

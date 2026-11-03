@@ -2,6 +2,7 @@ package pair
 
 import (
 	"bytes"
+	"errors"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -102,10 +103,14 @@ func TestTeamsReplacementWithSharingOffPreservesTeamsAndLedgers(t *testing.T) {
 // F3 returns the preserved file through real adoption and names it in the receipt.
 func TestPairReplacementReceiptNamesPreservedTeamsFile(t *testing.T) {
 	home := t.TempDir()
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: home}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
 	if err := teams.Update(home, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "local", Name: "harbor"}}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	before, _ := os.ReadFile(teams.Path(home))
+	before := teamstest.JSON(t, home)
 	other, err := identity.Ensure(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -114,11 +119,51 @@ func TestPairReplacementReceiptNamesPreservedTeamsFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	kept, err := os.ReadFile(joined.TeamsAside)
-	if err != nil || !bytes.Equal(before, kept) {
+	keptProfile := t.TempDir()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(joined.TeamsAside+suffix, teams.Path(keptProfile)+suffix); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	kept := teamstest.JSON(t, keptProfile)
+	if !bytes.Equal(before, kept) {
 		t.Fatal("receipt did not identify original team file", joined, err)
 	}
 	if !strings.Contains(joined.Sentence(), "This computer's teams were set aside to "+joined.TeamsAside+".") {
 		t.Fatal("receipt omitted teams recovery path", joined.Sentence())
+	}
+}
+
+func TestInterruptedReplacementRetainsTeamsReceiptOnResume(t *testing.T) {
+	home := t.TempDir()
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: home}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.Save(home, []teams.Team{{ID: "local", Name: "harbor"}}); err != nil {
+		t.Fatal(err)
+	}
+	other, err := identity.Ensure(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted := errors.New("interrupted after cleanup")
+	j := Joining{Home: home, Replace: true, TeamsPaired: func() bool { return true }, After: func(step string) error {
+		if step == "staged" {
+			return interrupted
+		}
+		return nil
+	}}
+	joined, err := adopt(j, Grant{Identity: other})
+	if !errors.Is(err, interrupted) || joined.TeamsAside == "" {
+		t.Fatalf("interruption lost receipt: %+v, %v", joined, err)
+	}
+	j.After = nil
+	resumed, err := adopt(j, Grant{Identity: other})
+	if err != nil || resumed.TeamsAside != joined.TeamsAside {
+		t.Fatalf("resume lost receipt: %+v, %v", resumed, err)
+	}
+	if _, err := os.Stat(resumed.TeamsAside); err != nil {
+		t.Fatal(err)
 	}
 }

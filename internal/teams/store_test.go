@@ -431,7 +431,7 @@ func TestWrapUpRoundTripThroughChange(t *testing.T) {
 func TestBackupBeforeSharingFallsBackWithoutOverwriting(t *testing.T) {
 	dir := t.TempDir()
 	raw := []byte(`{"version":2,"teams":[{"id":"local","name":"harbor"}]}`)
-	if err := os.WriteFile(Path(dir), raw, 0600); err != nil {
+	if err := Save(dir, []Team{{ID: "local", Name: "harbor"}}); err != nil {
 		t.Fatal(err)
 	}
 	link := func(string, string) error { return errors.New("hard links unavailable") }
@@ -440,14 +440,15 @@ func TestBackupBeforeSharingFallsBackWithoutOverwriting(t *testing.T) {
 	}
 	backup := filepath.Join(dir, "teams.before-sharing.json")
 	got, err := os.ReadFile(backup)
-	if err != nil || string(got) != string(raw) {
+	if err != nil || !json.Valid(got) || !bytes.Contains(got, []byte(`"name": "harbor"`)) {
 		t.Fatalf("fallback backup = %s, %v", got, err)
 	}
+	raw = got
 	info, err := os.Stat(backup)
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("backup permissions", info, err)
 	}
-	if err := os.WriteFile(Path(dir), []byte("later teams"), 0600); err != nil {
+	if err := Save(dir, []Team{{ID: "later", Name: "later teams"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := backupBeforeSharing(dir, link); err != nil {
@@ -472,5 +473,29 @@ func TestBackupBeforeSharingFallsBackWithoutOverwriting(t *testing.T) {
 	got, err = os.ReadFile(backup)
 	if err != nil || string(got) != string(raw) {
 		t.Fatal("exclusive fallback replaced an existing backup", string(got), err)
+	}
+}
+
+func TestBackupBeforeSharingPreservesSQLiteTeamsAndBriefs(t *testing.T) {
+	dir := t.TempDir()
+	if err := Save(dir, []Team{{ID: "local", Name: "harbor", Members: []Member{{Key: "worker", Word: "worker", FactoryBrief: "keep the factory brief"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := BackupBeforeSharing(dir); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "teams.before-sharing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backup struct {
+		Version int    `json:"version"`
+		Teams   []Team `json:"teams"`
+	}
+	if err := json.Unmarshal(raw, &backup); err != nil {
+		t.Fatalf("backup is not a team document: %v", err)
+	}
+	if len(backup.Teams) != 1 || backup.Teams[0].Name != "harbor" || len(backup.Teams[0].Members) != 1 || backup.Teams[0].Members[0].FactoryBrief != "keep the factory brief" {
+		t.Fatalf("backup lost saved team data: %+v", backup)
 	}
 }
