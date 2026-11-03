@@ -315,7 +315,13 @@ func (s *Store) workstreamWakePageUndoIn(ctx context.Context, tx *sql.Tx, w Work
 	if err != nil {
 		return err
 	}
-	if p.WorkstreamID != w.ID || p.Owner != "agent" || p.Version != item.Undo.Version || item.Undo.Page == nil || !reflect.DeepEqual(p.PageNode, *item.Undo.Page) {
+	if p.WorkstreamID != w.ID || p.Owner != "agent" || p.Version != item.Undo.Version || item.Undo.Page == nil {
+		return ErrConflict
+	}
+	// Sibling compaction or reordering alone must not block undo.
+	postImage := *item.Undo.Page
+	postImage.Position = p.Position
+	if !reflect.DeepEqual(p.PageNode, postImage) {
 		return ErrConflict
 	}
 	if item.Undo.Created {
@@ -333,8 +339,9 @@ func (s *Store) workstreamWakePageUndoIn(ctx context.Context, tx *sql.Tx, w Work
 		_, err = tx.ExecContext(ctx, "UPDATE workstream_pages SET position=position-1 WHERE workstream_id=? AND parent_id IS ? AND position>? AND deleted_at IS NULL", w.ID, nullString(p.ParentID), p.Position)
 		return err
 	}
-	var title, doc string
-	if err := tx.QueryRowContext(ctx, "SELECT title,doc FROM workstream_page_versions WHERE page_id=? AND version=?", p.ID, item.Undo.PreviousVersion).Scan(&title, &doc); err != nil {
+	// Wake updates never change titles, so undo restores only the document.
+	var doc string
+	if err := tx.QueryRowContext(ctx, "SELECT doc FROM workstream_page_versions WHERE page_id=? AND version=?", p.ID, item.Undo.PreviousVersion).Scan(&doc); err != nil {
 		return found(err)
 	}
 	source := workstreamWakeSource(w, event)
@@ -345,7 +352,7 @@ func (s *Store) workstreamWakePageUndoIn(ctx context.Context, tx *sql.Tx, w Work
 	if err != nil {
 		return err
 	}
-	return workstreamSavePageIn(ctx, tx, p, title, json.RawMessage(doc), "agent", raw, s.now().UnixMilli())
+	return workstreamSavePageIn(ctx, tx, p, p.Title, json.RawMessage(doc), "agent", raw, s.now().UnixMilli())
 }
 
 // ActOnWake applies one item atomically or all eligible items best effort.
