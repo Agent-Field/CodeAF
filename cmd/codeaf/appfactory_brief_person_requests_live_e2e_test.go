@@ -112,8 +112,8 @@ func TestLiveBriefPersonRequests(t *testing.T) {
 	if recorder.cost > 1 || recorder.calls != 2 || len(recorder.problems) != 0 || len(recorder.replies) != 1 || recorder.replies[liveFactoryModel] != 2 {
 		t.Fatal("paired probe exceeded its budget or model/call limits")
 	}
-	if !strings.Contains(strings.ToLower(verdicts["with_request"]), "see you") {
-		t.Error("verdict did not name the later request")
+	if !strings.Contains(texts["with_request"], "see you") {
+		t.Error("brief did not name the later request")
 	}
 	// These checks catch the reported false-fault vocabulary; the paired logs
 	// retain the full checked text for the caller to assess the judgment.
