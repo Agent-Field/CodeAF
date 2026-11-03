@@ -30,6 +30,7 @@ func (b *appBackend) factoryLifetimeCosts(id string) map[string]float64 {
 	if err != nil {
 		return c.totals
 	}
+	// The ledger writer only appends, so new spending cannot preserve the file size.
 	if info.Size() == c.size && info.ModTime().Equal(c.modified) {
 		return c.totals
 	}
