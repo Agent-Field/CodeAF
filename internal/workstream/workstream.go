@@ -157,6 +157,7 @@ type PageNode struct {
 	UpdatedAt         time.Time
 	UpdatedBy         string
 	UpdatedFrom       *Source
+	DeletedAt         time.Time
 }
 type Page struct {
 	PageNode

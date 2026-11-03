@@ -480,11 +480,11 @@ func workstreamSource(p *appwire.WorkstreamSource) *workstream.Source {
 	return &workstream.Source{Kind: p.Kind, ID: p.ID, ChatID: workstreamValue(p.ChatID), Factory: workstreamValue(p.Factory), Label: workstreamValue(p.Label)}
 }
 func appWorkstreamPageNode(p workstream.PageNode) appwire.WorkstreamPageNode {
-	return appwire.WorkstreamPageNode{ID: p.ID, WorkstreamID: p.WorkstreamID, ParentID: workstreamOptional(p.ParentID), Title: p.Title, Owner: p.Owner, ReadByJobs: p.ReadByJobs, Position: p.Position, Version: p.Version, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy, UpdatedFrom: appWorkstreamSource(p.UpdatedFrom)}
+	return appwire.WorkstreamPageNode{ID: p.ID, WorkstreamID: p.WorkstreamID, ParentID: workstreamOptional(p.ParentID), Title: p.Title, Owner: p.Owner, ReadByJobs: p.ReadByJobs, Position: p.Position, Version: p.Version, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy, UpdatedFrom: appWorkstreamSource(p.UpdatedFrom), DeletedAt: p.DeletedAt}
 }
 func appWorkstreamPage(p workstream.Page) appwire.WorkstreamPage {
 	n := appWorkstreamPageNode(p.PageNode)
-	return appwire.WorkstreamPage{ID: n.ID, WorkstreamID: n.WorkstreamID, ParentID: n.ParentID, Title: n.Title, Owner: n.Owner, ReadByJobs: n.ReadByJobs, Position: n.Position, Version: n.Version, UpdatedAt: n.UpdatedAt, UpdatedBy: n.UpdatedBy, UpdatedFrom: n.UpdatedFrom, Doc: p.Doc, Markdown: p.Markdown}
+	return appwire.WorkstreamPage{ID: n.ID, WorkstreamID: n.WorkstreamID, ParentID: n.ParentID, Title: n.Title, Owner: n.Owner, ReadByJobs: n.ReadByJobs, Position: n.Position, Version: n.Version, UpdatedAt: n.UpdatedAt, UpdatedBy: n.UpdatedBy, UpdatedFrom: n.UpdatedFrom, DeletedAt: n.DeletedAt, Doc: p.Doc, Markdown: p.Markdown}
 }
 func (b *appBackend) WorkstreamPageList(p appwire.WorkstreamPageListParams) (appwire.WorkstreamPageListResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamPageListResult, workstream.Change, error) {
@@ -493,12 +493,26 @@ func (b *appBackend) WorkstreamPageList(p appwire.WorkstreamPageListParams) (app
 		for _, page := range pages {
 			out.Pages = append(out.Pages, appWorkstreamPageNode(page))
 		}
+		if err == nil && workstreamValue(p.IncludeDeleted) {
+			var deleted []workstream.PageNode
+			deleted, err = s.DeletedPages(context.Background(), p.WorkstreamID)
+			out.Deleted = []appwire.WorkstreamPageNode{}
+			for _, page := range deleted {
+				out.Deleted = append(out.Deleted, appWorkstreamPageNode(page))
+			}
+		}
 		return out, workstream.Change{}, err
 	})
 }
 func (b *appBackend) WorkstreamPageGet(p appwire.WorkstreamPageGetParams) (appwire.WorkstreamPageGetResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamPageGetResult, workstream.Change, error) {
-		v, err := s.Page(context.Background(), p.ID, workstreamValue(p.Markdown))
+		var v workstream.Page
+		var err error
+		if p.Version != nil {
+			v, err = s.PageAtVersion(context.Background(), p.ID, *p.Version, workstreamValue(p.Markdown))
+		} else {
+			v, err = s.Page(context.Background(), p.ID, workstreamValue(p.Markdown))
+		}
 		return appwire.WorkstreamPageGetResult{Page: appWorkstreamPage(v)}, workstream.Change{}, err
 	})
 }
@@ -510,7 +524,11 @@ func (b *appBackend) WorkstreamPageSave(p appwire.WorkstreamPageSaveParams) (app
 }
 func (b *appBackend) WorkstreamPageCreate(p appwire.WorkstreamPageCreateParams) (appwire.WorkstreamPageCreateResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamPageCreateResult, workstream.Change, error) {
-		v, c, err := s.CreatePage(context.Background(), workstream.PageCreate{WorkstreamID: p.WorkstreamID, ParentID: workstreamValue(p.ParentID), AfterID: workstreamValue(p.AfterID), Title: p.Title, Owner: workstreamValue(p.Owner), ReadByJobs: workstreamValue(p.ReadByJobs), Doc: p.Doc})
+		read := workstream.ReadByJobsDefault(p.Title)
+		if p.ReadByJobs != nil {
+			read = *p.ReadByJobs
+		}
+		v, c, err := s.CreatePage(context.Background(), workstream.PageCreate{WorkstreamID: p.WorkstreamID, ParentID: workstreamValue(p.ParentID), AfterID: workstreamValue(p.AfterID), Title: p.Title, Owner: workstreamValue(p.Owner), ReadByJobs: read, Doc: p.Doc})
 		return appwire.WorkstreamPageCreateResult{Page: appWorkstreamPage(v)}, c, err
 	})
 }
@@ -548,7 +566,14 @@ func (b *appBackend) WorkstreamPageHistory(p appwire.WorkstreamPageHistoryParams
 }
 func (b *appBackend) WorkstreamPageRestore(p appwire.WorkstreamPageRestoreParams) (appwire.WorkstreamPageRestoreResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamPageRestoreResult, workstream.Change, error) {
-		v, c, err := s.RestorePage(context.Background(), p.ID, p.Version, p.BaseVersion, workstream.Attribution{})
+		var v workstream.Page
+		var c workstream.Change
+		var err error
+		if p.Version == nil {
+			v, c, err = s.UndeletePage(context.Background(), p.ID)
+		} else {
+			v, c, err = s.RestorePage(context.Background(), p.ID, *p.Version, *p.BaseVersion, workstream.Attribution{})
+		}
 		return appwire.WorkstreamPageRestoreResult{Page: appWorkstreamPage(v)}, c, err
 	})
 }
