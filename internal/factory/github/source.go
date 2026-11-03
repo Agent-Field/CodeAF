@@ -816,18 +816,22 @@ func (s *Source) openPull(ctx context.Context, owner, name string, a factory.Act
 	} else if n > 0 {
 		// A retry carries the approved proof again, including its trailer;
 		// merely returning the old URL could leave a different commit's body.
-        if a.BeforeWrite != nil {
-            if err := a.BeforeWrite(ctx); err != nil { return forge.Posted{}, err }
-        }
+		if a.BeforeWrite != nil {
+			if err := a.BeforeWrite(ctx); err != nil {
+				return forge.Posted{}, err
+			}
+		}
 		return s.api.UpdatePullRequest(context.WithoutCancel(ctx), owner, name, n, title, a.Body)
 	}
 	base, err := s.api.DefaultBranch(ctx, owner, name)
 	if err != nil {
 		return forge.Posted{}, err
 	}
-    if a.BeforeWrite != nil {
-        if err := a.BeforeWrite(ctx); err != nil { return forge.Posted{}, err }
-    }
+	if a.BeforeWrite != nil {
+		if err := a.BeforeWrite(ctx); err != nil {
+			return forge.Posted{}, err
+		}
+	}
 	return s.api.CreatePullRequest(context.WithoutCancel(ctx), owner, name, branch, base, title, a.Body, a.Draft)
 }
 

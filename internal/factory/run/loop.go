@@ -432,7 +432,9 @@ func (lp *floorLoop) move(c *loopCtl, stage string, kind EventKind, text string,
 		return errLoopStopped
 	}
 	if err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
-        if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() { return errLoopStopped }
+		if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+			return errLoopStopped
+		}
 		if it.Stream == nil {
 			it.Stream = &factory.Stream{}
 		}
@@ -1992,7 +1994,7 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // when why is the step's own error, stopped when it is a person's; nil when it
 // cut none, and the line is then about the job.
 func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.StepProgress {
-    opened := why == nil && it.State == factory.StateShipped && it.PublishStatus != nil && it.PublishStatus.State == "opened"
+	opened := why == nil && it.State == factory.StateShipped && it.PublishStatus != nil && it.PublishStatus.State == "opened"
 	event := factory.ProgressStopped
 	if why != nil {
 		event = factory.ProgressFailed
@@ -2006,7 +2008,7 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	it.Approval = nil
 	it.PublishError = ""
 	it.Publishing = false
-    it.PublishStatus = nil
+	it.PublishStatus = nil
 	it.State = factory.StateNew
 	it.Question, it.QKind = "", ""
 	s := it.Stream
@@ -2033,12 +2035,12 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	s.Ended = now
 	s.Paused = false
-    if opened && it.PullRequest != nil {
-        it.State = factory.StateShipped
-        it.MarkPublishing("opened", "", "", now)
-        loopSay(it, now, "said", stoppedPRWords(it.PullRequest.URL))
-        return cut
-    }
+	if opened && it.PullRequest != nil {
+		it.State = factory.StateShipped
+		it.MarkPublishing("opened", "", "", now)
+		loopSay(it, now, "said", stoppedPRWords(it.PullRequest.URL))
+		return cut
+	}
 	loopSay(it, now, "fail", "stopped · branch kept")
 	return cut
 }
