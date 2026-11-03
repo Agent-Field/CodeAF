@@ -79,10 +79,12 @@ func TestLiveBriefPersonRequests(t *testing.T) {
 		var reply struct {
 			Model   string `json:"model"`
 			Choices []struct {
+				Finish  string `json:"finish_reason"`
 				Message struct {
 					Content string `json:"content"`
 				} `json:"message"`
 			} `json:"choices"`
+			Usage map[string]any `json:"usage"`
 		}
 		if err := json.Unmarshal(body, &reply); err != nil {
 			t.Fatal(err)
@@ -91,7 +93,7 @@ func TestLiveBriefPersonRequests(t *testing.T) {
 			t.Fatalf("unexpected model or choice count: %q, %d", reply.Model, len(reply.Choices))
 		}
 		draft := reply.Choices[0].Message.Content
-		t.Logf("LIVE BRIEF %s draft=%s", label, draft)
+		t.Logf("LIVE BRIEF %s finish=%s usage=%v draft=%s", label, reply.Choices[0].Finish, reply.Usage, draft)
 		v, drops, fault := factory.CheckBriefDraft(it, []byte(draft))
 		t.Logf("LIVE BRIEF %s verdict=%q blocks=%+v drops=%+v fault=%q", label, v.Verdict, v.Blocks, drops, fault)
 		if fault != "" || len(v.Blocks) == 0 {
