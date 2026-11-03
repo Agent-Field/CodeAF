@@ -25,8 +25,10 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if !reflect.DeepEqual(prev.FollowUp, cur.FollowUp) {
 		r.FollowUp = cur.FollowUp
 	}
-	if pipelineMoved(prev, cur) || completedCostMoved(ps.Phases, cs.Phases) {
+	if pipelineMoved(prev, cur) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
+	} else if completedCostMoved(ps.Phases, cs.Phases) {
+		r.Pipeline = &factory.PipelineChange{Phases: cs.Phases}
 	}
 	if !reflect.DeepEqual(prev.Change, cur.Change) {
 		r.Change = cur.Change

@@ -255,7 +255,7 @@ func reportRoom(it *factory.Item, room string) error {
 // an approve step on the job stays on, so no worker can skip a person's gate.
 // A phase the job already has keeps the state the server holds for it.
 func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
-	if change == nil {
+	if change == nil || len(change.Stages) == 0 {
 		return nil
 	}
 	for _, st := range it.Stages {

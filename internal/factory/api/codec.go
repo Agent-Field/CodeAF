@@ -1206,8 +1206,8 @@ func toPhase(s Step) factory.Phase {
 	}
 	if s.Cost != 0 {
 		p.Cost, p.CostRound = s.Cost, max(1, s.Round)
-		if s.State == StepPending && s.Report == nil {
-			// A retry has no current result; its cost belongs to earlier rounds.
+		if s.State == StepPending {
+			// Pending rounds retain the previous result, even without chat history.
 			p.CostRound = max(1, s.Round-1)
 		}
 		if p.Result != nil {
