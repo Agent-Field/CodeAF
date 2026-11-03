@@ -2,6 +2,7 @@ package serve_test
 
 import (
 	"fmt"
+"math/rand"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -63,19 +64,27 @@ func TestThePullCarriesEachStepsWholeReportAndAReaderNone(t *testing.T) {
 }
 
 func TestWorkerRoundTripKeepsFloorReconciliationFields(t *testing.T) {
-	f := workerSetup(t)
+	for _, seed := range []int64{7, 52, 2280} {
+ t.Run(fmt.Sprint(seed), func(t *testing.T) {
+ rng := rand.New(rand.NewSource(seed))
+ f := workerSetup(t)
 	job := f.add(t, "sam")
 	if err := f.st.Update(job.ID, func(it *factory.Item) error { it.GitHubIssueID = 1001; factory.TouchIssue(it); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	worker := f.attach(t, "sam")
 	pulled := f.pull(t, worker)
-	before, local := api.ToItem(pulled.Job), api.ToItem(pulled.Job)
+	for step := 0; step < 12; step++ {
+ var wire api.Job
+ f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "", nil, 200, &wire)
+ before, local := api.ToItem(wire), api.ToItem(wire)
 	// These service-owned fields are deliberately absent from the worker's copy.
 	if local.GitHubIssueID != 0 || local.SourceClosed || local.PersonTouched {
 		t.Fatal("worker unexpectedly owns reconciliation fields")
 	}
-	local.Stream = &factory.Stream{Spent: .01}
+	spent := 0.0
+ if local.Stream != nil { spent = local.Stream.Spent }
+ local.Stream = &factory.Stream{Spent: spent + float64(1 + rng.Intn(10)) / 100}
 	report, moved := run.Diff(before, local)
 	if !moved {
 		t.Fatal("worker spending did not produce a report")
@@ -89,4 +98,7 @@ func TestWorkerRoundTripKeepsFloorReconciliationFields(t *testing.T) {
 	if floor.GitHubIssueID != 1001 || !floor.PersonTouched || floor.SourceClosed {
 		t.Fatalf("worker round trip changed floor reconciliation fields: id=%d touched=%t closed=%t", floor.GitHubIssueID, floor.PersonTouched, floor.SourceClosed)
 	}
+ }
+ })
+ }
 }

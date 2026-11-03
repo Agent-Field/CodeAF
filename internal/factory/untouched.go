@@ -15,11 +15,6 @@ func UntouchedIssue(it Item) bool {
 			return false
 		}
 	}
-	for _, stage := range it.Stages {
-		if stage.By != "" && stage.By != ByRecipe {
-			return false
-		}
-	}
 	return IsIssueJob(it) && it.Origin == OriginForge && it.Num > 0 && !it.PersonTouched &&
 		!it.Marked && !it.StopAfterStep && len(it.Followers) == 0 && len(it.BriefSeen) == 0 && it.Triage.TriagedAt.IsZero() &&
 		it.Cap == 0 && it.Model == "" && it.Effort == "" && it.Priority == nil && !it.Manual && it.AutomaticModels == nil &&

@@ -643,7 +643,6 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 		}
 
 		out := s.issueItem(ctx, owner, name, is)
-		out.GitHubIssueID = is.ID
 		// A transferred issue answers with its new number, which here would be
 		// some other issue, so only the issue asked about can read as closed.
 		if strings.EqualFold(is.State, "closed") && is.Number == it.Num {

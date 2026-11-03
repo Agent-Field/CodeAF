@@ -2,6 +2,8 @@ package github_test
 
 import (
 	"context"
+"fmt"
+"math/rand"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	source "github.com/Agent-Field/codeaf/internal/factory/github"
 	"testing"
@@ -43,21 +45,19 @@ func TestReviewRepoReuseListCannotChangePinnedRow(t *testing.T) {
 }
 
 func TestReviewFailuresCannotStarveOldestHealthyNominee(t *testing.T) {
-	f := newIssueScript(t, 41)
-	for n := 1; n <= 40; n++ {
-		f.status[n] = 404
-	}
-	f.state[41] = "closed"
-	for poll := 0; poll < 20; poll++ {
-		f.now = f.now.Add(9 * time.Minute)
-		f.poll()
-	}
-	for _, n := range f.reads {
-		if n == 41 {
-			return
-		}
-	}
-	t.Fatalf("healthy issue #41 starved for 20 polls: %d direct reads, zero for #41; state=%s", len(f.reads), f.row(41).State)
+ for _, seed := range []int64{7, 52, 2280} {
+  t.Run(fmt.Sprint(seed), func(t *testing.T) {
+   rng := rand.New(rand.NewSource(seed))
+   f := newIssueScript(t, 41)
+   for n := 1; n <= 40; n++ { f.status[n] = 404 }
+   f.state[41] = "closed"
+   for poll := 0; poll < 2; poll++ {
+    f.now = f.now.Add(time.Duration(9 + rng.Intn(10)) * time.Minute)
+    f.poll()
+   }
+   if f.row(41).State != factory.StateShipped { t.Fatalf("healthy issue #41 starved for 2 polls: %d direct reads", len(f.reads)) }
+  })
+ }
 }
 
 func TestReviewLegacyDisabledStageDoesNotMove(t *testing.T) {
