@@ -115,8 +115,9 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 
 // placedToday is the spend placed ([SpentIn]) on now's calendar day, in now's
 // location. A job keeps one total, so a job that began on an earlier day counts
-// nothing today, even if it spent today: this figure can be low but never claims
-// more than today's spend. Triage reads are not added.
+// nothing today, even if it spent today. A restarted job places earlier runs
+// on its latest start day too; this is not an exact daily usage figure.
+// Triage reads are not added.
 func placedToday(items []Item, now time.Time) float64 {
 	y, m, d := now.Date()
 	start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
@@ -360,7 +361,7 @@ func putModelUse(rows []ModelUse, row ModelUse) []ModelUse {
 	return append(rows, row)
 }
 
-// SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
+// SpentAt is the instant a job's whole spend ([JobLifetimeSpent]) is placed at: its
 // run's start, or its creation when it has no run that started.
 func SpentAt(it Item) time.Time {
 	if it.Stream != nil && !it.Stream.Started.IsZero() {

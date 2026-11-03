@@ -697,15 +697,15 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// SpentBefore holds spending from runs whose work was cleared.
+	SpentBefore float64 `json:",omitempty"`
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
 	// BUDGET, and with no run there is no
 	// Stream to hold it; the next start carries it into the run's Spent and
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
-	// SpentBefore holds spending from runs whose work was cleared.
-	SpentBefore float64 `json:",omitempty"`
-	ChatSpent   float64 `json:",omitempty"`
+	ChatSpent float64 `json:",omitempty"`
 	// MemorySpent is the memory portion already included in the job total.
 	MemorySpent float64 `json:",omitempty"`
 	// ChatModels is the model split of ChatSpent. The next start carries it

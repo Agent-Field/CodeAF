@@ -446,7 +446,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 // starts; starting it is the person's own start. The drop threw its work on
 // this machine away (its local branch and folder, its conversations and its
 // crew), so its next run begins on a fresh branch, from the first step, with
-// nothing spent, and makes an agent and a crew of its own.
+// its lifetime money kept, and makes an agent and a crew of its own.
 //
 // FRESH MEANS FRESH (the owner's decision of 2026-10-19): no earlier
 // conversation reaches the job again. Its agent's conversation, what the
@@ -505,7 +505,7 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 // forgetRun takes every trace of a run off the job: its state and ending, its
-// steps and what they spent, its question, failure, approval and stop, its
+// steps, its question, failure, approval and stop, its
 // proof, its change and the commits and machine it was made on, and what it
 // published; and every trace of what was said about it: its conversations
 // ([forgetChats]), the notes for its steps, and the changes made to its
