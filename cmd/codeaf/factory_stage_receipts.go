@@ -82,10 +82,17 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		}
 	}
 	observed := map[string]bool{}
+	diagnosticOnly := map[string]bool{}
+	ownedCommand := map[string]bool{}
 	checks = verification.Resolve(checks, state, fresh)
 	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
 		observed[check.Command] = true
+		if check.Diagnostic {
+			diagnosticOnly[check.Command] = true
+		} else {
+			ownedCommand[check.Command] = true
+		}
 		if check.Diagnostic {
 			notes = append(notes, "Diagnostic check retained outside job requirements: "+check.Label()+" · "+check.DiagnosticReason)
 			continue
@@ -218,6 +225,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
 	}
 	for command, outcome := range lastOutcome {
+		if diagnosticOnly[command] && !ownedCommand[command] {
+			continue
+		}
 		if outcome == "failed" && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
 			pending = append(pending, command)
 		}
