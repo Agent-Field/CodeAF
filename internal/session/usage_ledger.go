@@ -681,7 +681,9 @@ func (w *usageWriter) run(path string) {
 			continue
 		}
 		write(work.line)
-		w.writeOverflow(write)
+		if len(w.queue) == 0 {
+			w.writeOverflow(write)
+		}
 	}
 	w.writeOverflow(write)
 }
@@ -837,8 +839,9 @@ func enqueueUsageFlush() []chan struct{} {
 		select {
 		case writer.queue <- usageWrite{done: done}:
 		default:
-			// A rejected marker cannot certify a flush. Its unresolved barrier
-			// reports false under the existing deadline.
+			// The queue is full, so its writer will reach the kept rows, and
+			// it takes them only once everything queued has been written.
+			writer.addBarrier(done)
 		}
 		dones = append(dones, done)
 	}
@@ -931,14 +934,22 @@ func RecordUsage(path string, line UsageLine) {
 }
 
 // addOverflow keeps a row the full queue couldn't take. The queue's own writer
-// takes it next, so rows stay in order and a stalled mount holds one thread.
-// A full queue means that writer has work, so it will come round to this row.
+// takes it once the queue is empty, so rows stay in order and a stalled mount
+// holds one thread. A full queue means that writer has work, so it will reach
+// this row.
 func (w *usageWriter) addOverflow(line []byte) {
 	done := make(chan struct{})
 	w.overflowMu.Lock()
 	defer w.overflowMu.Unlock()
 	w.overflow[done] = struct{}{}
 	w.overflowRows = append(w.overflowRows, usageOverflowRow{line: line, done: done})
+}
+
+// addBarrier closes done once the rows kept before it have been written.
+func (w *usageWriter) addBarrier(done chan struct{}) {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	w.overflowRows = append(w.overflowRows, usageOverflowRow{done: done})
 }
 
 // writeOverflow writes the rows kept so far.
@@ -948,7 +959,9 @@ func (w *usageWriter) writeOverflow(write func([]byte)) {
 	w.overflowRows = nil
 	w.overflowMu.Unlock()
 	for _, row := range rows {
-		write(row.line)
+		if row.line != nil {
+			write(row.line)
+		}
 		w.overflowMu.Lock()
 		delete(w.overflow, row.done)
 		w.overflowMu.Unlock()
