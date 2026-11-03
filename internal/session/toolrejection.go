@@ -62,8 +62,10 @@ func (a *Agent) recordToolResult(message ai.Message, result toolResult) {
 		a.presentation = &presentationIndex{}
 	}
 	message.Content = append([]ai.ContentPart(nil), message.Content...)
-    outcome := toolStatus(result)
-    if result.interruption != "" { outcome = result.interruption }
+	outcome := toolStatus(result)
+	if result.interruption != "" {
+		outcome = result.interruption
+	}
 	a.presentation.remember(message, &messagePresentation{Audience: "tool", ToolOutcome: outcome, ToolInvoked: result.invoked, RejectedBeforeRun: result.rejected, HarnessMade: result.harness, Refused: result.harness && result.refusedBy != "", MediaAttempt: result.attempt, ToolProcess: result.process})
 	a.recordLocked(message)
 }

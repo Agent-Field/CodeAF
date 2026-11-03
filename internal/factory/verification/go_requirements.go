@@ -193,11 +193,11 @@ func CoversUnrun(command, cwd string, pass Check) bool {
 	for i, arg := range args {
 		// Admit whole literal quoted words, including single-quoted regex dollars.
 		if len(arg) >= 2 && arg[0] == '\'' && arg[len(arg)-1] == '\'' && !strings.Contains(arg[1:len(arg)-1], "'") {
-			args[i] = arg[1:len(arg)-1]
+			args[i] = arg[1 : len(arg)-1]
 			continue
 		}
 		if len(arg) >= 2 && arg[0] == '"' && arg[len(arg)-1] == '"' {
-			arg = arg[1:len(arg)-1]
+			arg = arg[1 : len(arg)-1]
 		}
 		if strings.ContainsAny(arg, "\"'`$;&|<>\\()") {
 			return false

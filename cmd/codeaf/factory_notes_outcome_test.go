@@ -41,8 +41,8 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 				status = "ok"
 			}
 			if tc.outcome == "cancelled" || tc.outcome == "timed out" {
-                status = tc.outcome
-            }
+				status = tc.outcome
+			}
 			if tc.refused {
 				status = "refused"
 			}
