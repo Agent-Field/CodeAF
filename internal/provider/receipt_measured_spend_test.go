@@ -15,10 +15,10 @@ import (
 // The public completion and reconciliation doors must retain paid partial work.
 func TestTokenOnlyReceiptKeepsMeasuredSpend(t *testing.T) {
 	for _, tc := range []struct {
-		name							string
-		usage, noID, noReceipt, direct, final, tokenOnly, raw	bool
-		price							string
-		wantCost						float64
+		name                                                  string
+		usage, noID, noReceipt, direct, final, tokenOnly, raw bool
+		price                                                 string
+		wantCost                                              float64
 	}{
 		{name: "token-only-receipt", usage: true},
 		{name: "priced-receipt", usage: true, price: `,"total_cost":0.12`, wantCost: 0.12},
