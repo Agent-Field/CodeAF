@@ -224,7 +224,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		// A manager looking at its team: the states, and a member's page.
 		"team_status", "team_read",
 		// The foreman reading the factory floor (a mark is a proposal, not a change).
-		"factory_floor", "factory_status", "workstream_read":
+		"factory_floor", "factory_status":
 		return ActionRead
 
 	// Changing something that exists.
@@ -234,8 +234,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 
 	// Writing content or generating an artifact.
 	case "write", "generate_image", "generate_music", "generate_video",
-		"remember", "propose_subharness", "factory_add", "factory_recipe", "factory_item", "build_harness", "calendar_create",
-		"propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page", "suggest_page_edit":
+		"remember", "propose_subharness", "factory_add", "factory_recipe", "factory_item", "build_harness", "calendar_create":
 		return ActionCreate
 
 	// Executing and waiting on what it prints.

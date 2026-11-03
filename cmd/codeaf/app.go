@@ -201,7 +201,6 @@ func runApp(args []string) error {
 	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
 	services := openAppServices()
 	appServiceDoor.Store(services)
-	appWorkstreamAgents.Store(backend)
 	appClientToolsBackend.Store(backend)
 	backend.attachServices(services)
 	guard.Go("app/crews-start", func() { backend.crews() })
@@ -215,7 +214,6 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
-	guard.Go("app/workstream-wakes", func() { backend.watchWorkstreamWakes(backend.sweepStop) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()
@@ -746,7 +744,7 @@ type appBackend struct {
 	collections       *workspace.Store
 	collectionsClosed bool
 	collectionsPath   string
-	workstreams       appWorkstreams
+	collectionFactory collectionFactory
 	// services is the app's one supervisor of kept-running processes
 	// (appservices.go); nil is the capability absent.
 	services *appServices
@@ -2998,10 +2996,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	if held {
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.spendMoved(func(spend appwire.Spend) {
-		b.moneyAfter(a, live, spend.TodayUSD)
-		b.workstreamAgentTurnSettled(id)
-	})
+	b.spendMoved(func(spend appwire.Spend) { b.moneyAfter(a, live, spend.TodayUSD) })
 }
 
 // ── entry ids ───────────────────────────────────────────────────────────────

@@ -1152,7 +1152,6 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// `factory_floor`, now that the hello has settled which conversation this
 	// is: on the foreman's belt and no other (factory_foreman.go).
 	cfg.Floor = foremanFloorDoor(floorStore, workspace, cfg.SessionFile)
-	cfg.Workstream = appWorkstreamAgentDoor(cfg.SessionFile)
 
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each

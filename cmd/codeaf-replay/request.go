@@ -299,9 +299,6 @@ var callSiteRoles = map[string]lane.Role{
 	// it sets lane.RoleStanding on its own context. The older tag stays so a
 	// log written before the change still reads.
 	"automation-check": lane.RoleStanding,
-	// internal/session/workstream_wake.go: one workstream's event turn sets
-	// lane.RoleStanding on its context; nobody is waiting on its stream.
-	"workstream-wake": lane.RoleStanding,
 	// internal/session/tools_doc.go: the model's own eyes on a document the
 	// `read` tool cannot open as text. A TOOL CALL INSIDE A TURN, so somebody IS
 	// waiting — the one of the three whose seconds are a person's.

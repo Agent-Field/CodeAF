@@ -32,10 +32,4 @@ func TestPartACollectionFactoryJobRefs(t *testing.T) {
 	if err != nil || !strings.Contains(string(raw), `"factory":"f"`) {
 		t.Fatalf("factory: %s %v", raw, err)
 	}
-	for _, flag := range []bool{false, true} {
-		raw, err := json.Marshal(Collection{ID: "c", Name: "Name", Workstream: flag})
-		if err != nil || strings.Contains(string(raw), `"workstream":true`) != flag {
-			t.Fatalf("flag: %s %v", raw, err)
-		}
-	}
 }
