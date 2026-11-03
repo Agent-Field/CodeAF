@@ -286,12 +286,12 @@ func backoff(d time.Duration) time.Duration {
 
 // job is one leased job on this machine.
 type job struct {
-	o     Options
-	w     *client.WorkerClient
+	o      Options
+	w      *client.WorkerClient
 	tables bool
-	lease string
-	id    int
-	sent  factory.Item // the mirror as last reported
+	lease  string
+	id     int
+	sent   factory.Item // the mirror as last reported
 
 	mu            sync.Mutex
 	replying      bool
