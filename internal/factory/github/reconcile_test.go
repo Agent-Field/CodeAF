@@ -17,6 +17,7 @@ import (
 	source "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
+ "github.com/Agent-Field/codeaf/internal/factory/scout"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -371,4 +372,37 @@ func TestPersonalWorkDuringDirectReadWins(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLookCloserAdmissionPreventsAutomaticClose(t *testing.T) {
+ f:=newIssueScript(t,1);f.state[1]="closed"
+ d:=scout.Door{Floor:f.st,Now:time.Now,Limits:scout.DefaultLimits,
+  Head:func(context.Context,string)(string,error){return "head",nil},
+  Run:func(context.Context,factory.Item)(factory.Scout,error){f.poll();return factory.Scout{},nil},
+ }
+ if _,_,err:=d.Look(context.Background(),1,false);err!=nil{t.Fatal(err)}
+ if f.row(1).State!=factory.StateNew{t.Fatal("Look closer spent while poll finished the row")}
+}
+
+func TestLegacyPersonalEditsAreUntouchedGateInputs(t *testing.T) {
+ for _,name:=range []string{"budget","model","steps"}{t.Run(name,func(t *testing.T){
+  f:=newIssueScript(t,1);f.state[1]="closed"
+  if err:=f.st.Update(1,func(it *factory.Item)error{
+   switch name{case "budget":it.Cap=7;case "model":it.Model="chosen";case "steps":it.Stages=[]factory.Stage{{Name:"review",By:factory.ByYou}}};return nil
+  });err!=nil{t.Fatal(err)}
+  // This models an existing row written before touch provenance was stored.
+  if err:=f.st.Update(1,func(it *factory.Item)error{it.PersonTouched=false;return nil});err!=nil{t.Fatal(err)}
+  f.poll();if f.row(1).State!=factory.StateNew{t.Fatal("legacy personal edit was finished")}
+ })}
+}
+
+func TestFailedDirectReadUsesOneRequest(t *testing.T) {
+ f:=newIssueScript(t,1);f.status[1]=500;f.poll()
+ if len(f.reads)!=1{t.Fatalf("failed direct read used %d requests; budget counts requests",len(f.reads))}
+}
+
+func TestTransferredIssueRefetchDoesNotReadNumberZero(t *testing.T) {
+ f:=newIssueScript(t,1);f.redirect[1]=true
+ if _,err:=f.src.Refetch(context.Background(),f.row(1));err==nil{t.Fatal("transferred issue refresh accepted redirected data")}
+ if len(f.reads)!=1{t.Fatalf("transfer followed into another issue: %v",f.reads)}
 }
