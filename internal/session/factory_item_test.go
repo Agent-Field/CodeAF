@@ -244,32 +244,32 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 		head   string
 		rows   []string
 	}{
-		{"skip", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}}, "", "#1 · skip the review stage?",
+		{"skip", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}}, "", "job 1 · skip the review stage?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof"}},
-		{"on", ItemChange{Edit: factory.PlanEdit{On: []string{"security"}}}, "touches auth", "#1 · add a security stage?",
+		{"on", ItemChange{Edit: factory.PlanEdit{On: []string{"security"}}}, "touches auth", "job 1 · add a security stage?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · review · +security · proof", "why: touches auth"}},
-		{"add", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, read it for auth holes"}}}}, "", "#1 · add a " + security + " stage?",
+		{"add", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, read it for auth holes"}}}}, "", "job 1 · add a " + security + " stage?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · +" + security + " · review · proof"}},
 		// WHERE THE RUN HOLDS FOR THE PERSON IS AN APPROVE STEP, added or
 		// skipped like any stage.
-		{"approve", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, approve"}}}}, "", "#1 · add an approve step?",
+		{"approve", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, approve"}}}}, "", "job 1 · add an approve step?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · +approve2 · review · proof"}},
 		// A REMOVAL IS SAID AS ONE, never as a skip, and names the stage gone
 		// even when it was off and on neither row; a move is the order alone.
-		{"remove", ItemChange{Edit: factory.PlanEdit{Remove: []string{"review"}}}, "", "#1 · remove the review stage?",
+		{"remove", ItemChange{Edit: factory.PlanEdit{Remove: []string{"review"}}}, "", "job 1 · remove the review stage?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "removed: review"}},
-		{"remove an off stage", ItemChange{Edit: factory.PlanEdit{Remove: []string{"security"}}}, "", "#1 · remove the security stage?",
+		{"remove an off stage", ItemChange{Edit: factory.PlanEdit{Remove: []string{"security"}}}, "", "job 1 · remove the security stage?",
 			[]string{"removed: security"}},
-		{"remove two", ItemChange{Edit: factory.PlanEdit{Remove: []string{"security", "review"}}}, "", "#1 · remove the review and security stages?",
+		{"remove two", ItemChange{Edit: factory.PlanEdit{Remove: []string{"security", "review"}}}, "", "job 1 · remove the review and security stages?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "removed: review · security"}},
-		{"move", ItemChange{Edit: factory.PlanEdit{Move: []factory.Moved{{Stage: "review", After: "plan"}}}}, "", "#1 · move the review stage?",
+		{"move", ItemChange{Edit: factory.PlanEdit{Move: []factory.Moved{{Stage: "review", After: "plan"}}}}, "", "job 1 · move the review stage?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · review · approve · write · test · proof"}},
-		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
-		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
-		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  plan — → strong · write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong"}},
-		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "#1 · save a note on the job?",
+		{"cap up", ItemChange{Cap: 12.5}, "", "job 1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
+		{"cap down", ItemChange{Cap: 3}, "", "job 1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
+		{"effort", ItemChange{Effort: "strong"}, "", "job 1 · think strong?", []string{"thinking  plan — → strong · write — → strong · test — → strong · review — → strong · proof — → strong · security(off) — → strong"}},
+		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "job 1 · save a note on the job?",
 			[]string{"note: the fixture in testdata is flaky"}},
-		{"several", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Note: "keep it small"}, "small change", "#1 · change the plan?",
+		{"several", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Note: "keep it small"}, "small change", "job 1 · change the plan?",
 			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "budget  $5 → $8", "note: keep it small", "why: small change"}},
 	} {
 		n := itemCard(t, c.change, c.why)
@@ -375,7 +375,7 @@ func TestFactoryItemCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	results := runFactoryItem(t, agent, ctx, itemArgs)
 
 	q := awaitItemQuestion(t, questions)
-	if q.Head != "#1 · raise the budget to $8?" {
+	if q.Head != "job 1 · raise the budget to $8?" {
 		t.Errorf("head = %q", q.Head)
 	}
 	if q.Reason != "budget  $5 → $8; why: the stages need room for a second review" {
@@ -415,7 +415,7 @@ func TestFactoryItemYesAppliesTheChangeOnce(t *testing.T) {
 	if err := agent.ResolveQuestion(Answer{Kind: QuestionItem, Ref: q.Ref, Key: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	want := "#1 now: plan · approve · write · test · proof · budget $8\n" +
+	want := "job 1 now: plan · approve · write · test · proof · budget $8\n" +
 		"The person said yes and the factory has the change; there is nothing left to answer. The note was saved on the job; plan reads it next when it runs. It is not in the pull request."
 	if out := awaitResult(t, results); out != want {
 		t.Errorf("result = %q, want %q", out, want)
@@ -774,7 +774,7 @@ func TestFactoryItemFixedFirstStageStillRaisesTheThinkingCard(t *testing.T) {
 	t.Cleanup(stopQ)
 	results := runFactoryItem(t, agent, context.Background(), `{"item":1,"effort":"strong"}`)
 	q := awaitItemQuestion(t, questions)
-	if q.Head != "#1"+DecisionSep+"think strong?" {
+	if q.Head != "job 1"+DecisionSep+"think strong?" {
 		t.Errorf("head = %q", q.Head)
 	}
 	if !strings.Contains(q.Reason, "write — → strong") || strings.Contains(q.Reason, "plan") {
@@ -905,7 +905,7 @@ func TestFactoryItemOffStageThinkingRaisesTheCardAndStaysOff(t *testing.T) {
 	if rows != "thinking  security(off) cheap → strong" {
 		t.Errorf("rows = %q", rows)
 	}
-	if head := ItemHead(*n); head != "#1"+DecisionSep+"think strong?" {
+	if head := ItemHead(*n); head != "job 1"+DecisionSep+"think strong?" {
 		t.Errorf("head = %q", head)
 	}
 	out := yesItem(t, door, `{"item":1,"effort":"strong"}`)
@@ -935,7 +935,7 @@ func TestFactoryItemCapAndEffortPreviewNamesTheOffStage(t *testing.T) {
 	if !strings.Contains(rows, "budget  $5 → $9") || !strings.Contains(rows, "security(off) cheap → strong") {
 		t.Errorf("rows = %q", rows)
 	}
-	if head := ItemHead(*n); head != "#1"+DecisionSep+"change the plan?" {
+	if head := ItemHead(*n); head != "job 1"+DecisionSep+"change the plan?" {
 		t.Errorf("head = %q", head)
 	}
 	out := yesItem(t, door, `{"item":1,"effort":"strong","cap":9}`)
@@ -952,7 +952,7 @@ func TestFactoryItemOffStageDefaultResetAndNoOp(t *testing.T) {
 	if rows := strings.Join(ItemRows(*n), "\n"); rows != "thinking  plan strong → — · write strong → — · test strong → — · review strong → — · proof strong → — · security(off) cheap → —" {
 		t.Errorf("default reset rows = %q", rows)
 	}
-	if head := ItemHead(*n); head != "#1"+DecisionSep+"think the usual amount?" {
+	if head := ItemHead(*n); head != "job 1"+DecisionSep+"think the usual amount?" {
 		t.Errorf("head = %q", head)
 	}
 	out := yesItem(t, door, `{"item":1,"effort":"default"}`)
@@ -1051,7 +1051,7 @@ func TestFactoryItemHeadRowsAndReceiptAgreeOnEveryShape(t *testing.T) {
 		_ = json.Unmarshal([]byte(c.args), &args)
 		n := offSecurityCard(t, door, ItemChange{Effort: args.Effort})
 		n.Effort = args.Effort
-		if got := ItemHead(*n); got != "#1"+DecisionSep+c.head {
+		if got := ItemHead(*n); got != "job 1"+DecisionSep+c.head {
 			t.Errorf("%s: head = %q, want %q", c.name, got, c.head)
 		}
 		if got := strings.Join(ItemRows(*n), "\n"); got != c.rows {
