@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Factory holds survive lost heartbeat replies and finishing drives
-pr: 0
+pr: 2330
 surface: [factory]
 invalidates:
   - A hold used to be forgotten when its heartbeat reply was lost; live heartbeats now repeat the factory's current hold until the worker releases the lease.
