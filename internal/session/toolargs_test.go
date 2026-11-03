@@ -489,6 +489,8 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	// whole-number-shaped anywhere else is still caught.
 	fractionalIn := map[string]map[string]bool{
 		"tools_factory_item.go": {"cap": true},
+		// A GO-AHEAD'S proposed cap is dollars, a float64 where twelve fifty is ordinary.
+		"workstream_schema.go": {"cap_usd": true},
 	}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)

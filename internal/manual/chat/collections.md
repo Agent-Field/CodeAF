@@ -169,3 +169,35 @@ Updating, marking done and reopening persist the first observed start and return
 those numbers using the same reads as getting the workstream.
 Unavailable readings stay absent; a measured zero is present. Budgets and autonomy
 settings do not themselves start work.
+
+## What a workstream's agent can do: proposals and its own pages
+
+A workstream's own agent in the app has six tools. Other conversations, tasks
+and errands do not receive them. `workstream_read` reads the workstream, pages,
+decisions, questions, plan and go-aheads. Counts, costs, states and dates come
+from records. An absent number is unknown; the agent must say so and never
+estimate it. Page live blocks such as `[live: jobs]` show current facts.
+
+`propose_decision` and `propose_question` create proposals by the agent. The
+agent proposes; the person keeps. `propose_jobs` adds 1–20 draft jobs to the
+plan, leaving existing waves and settings intact. Drafts create no Factory
+jobs and start nothing; the person launches them. A plan conflict is retried
+once against a fresh read, then refused if it changes again.
+
+`propose_goahead` makes a proposed decision beginning `Proposed go-ahead (not
+granted): `. Its scope, cap and end date are proposals. It grants nothing; the
+person chooses the real permission. The proposed cap is greater than zero and
+at most $10,000, including fractional dollars such as $12.50; its end date is
+after today in UTC and within 90 days.
+
+`write_agent_page` creates or updates only the agent's own pages. Every write
+carries an AI mark, its written-at time and a named source; history keeps that
+attribution. New pages have Read by jobs off. The agent refuses the person's
+pages with “That page is the person's. You write only your own pages;
+suggesting edits on theirs is not available yet.” Page documents are limited
+to 1 MiB. A page that changed must be read again before writing. Done
+workstreams refuse all these writes.
+
+Tool arguments refuse unknown fields and repeated object keys, including inside
+sources and draft jobs, before reading or writing the workstream. The agent keeps
+its page titled “Where it stands” current; the Overview shows it with the AI mark.

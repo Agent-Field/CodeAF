@@ -649,9 +649,19 @@ func (fixture *workstreamWireFixture) saveByAgent(t *testing.T) {
 	if err != nil || store == nil {
 		t.Fatalf("seed page store: %v", err)
 	}
-	_, _, err = store.SavePage(context.Background(), fixture.IDs["pg_31d0"], 1,
-		json.RawMessage(`{"type":"doc","content":[]}`), workstream.Attribution{By: "agent", From: workstreamSource(fixture.source())})
-	if err != nil {
+	// The agent writes only its own pages, so the seed hands it the Overview
+	// for the one save the contract's examples show and then hands it back,
+	// still attributed to the agent, without a new version.
+	ctx, id := context.Background(), fixture.IDs["pg_31d0"]
+	agent := workstream.Attribution{By: "agent", From: workstreamSource(fixture.source())}
+	lent, kept := "agent", "you"
+	if _, _, err := store.UpdatePage(ctx, id, workstream.PagePatch{Owner: &lent, Attribution: agent}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.SavePage(ctx, id, 1, json.RawMessage(`{"type":"doc","content":[]}`), agent); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.UpdatePage(ctx, id, workstream.PagePatch{Owner: &kept, Attribution: agent}); err != nil {
 		t.Fatal(err)
 	}
 }

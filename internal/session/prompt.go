@@ -399,6 +399,7 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(catalog)
 	}
 
+	out.WriteString(workstreamSection(config))
 	out.WriteString(workerFooter(config, now))
 	return out.String()
 }

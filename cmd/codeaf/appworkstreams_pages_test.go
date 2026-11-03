@@ -55,7 +55,7 @@ func TestAppWorkstreamPageGetVersion(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 	doc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Earlier"}]}]}`)
-	first, _, err := store.CreatePage(context.Background(), workstream.PageCreate{WorkstreamID: w.ID, Title: "Before", Doc: doc,
+	first, _, err := store.CreatePage(context.Background(), workstream.PageCreate{WorkstreamID: w.ID, Title: "Before", Owner: "agent", Doc: doc,
 		Attribution: workstream.Attribution{By: "agent", From: &workstream.Source{Kind: "chat", ID: "old-source"}}})
 	if err != nil {
 		t.Fatal(err)

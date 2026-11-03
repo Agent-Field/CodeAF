@@ -201,6 +201,7 @@ func runApp(args []string) error {
 	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
 	services := openAppServices()
 	appServiceDoor.Store(services)
+	appWorkstreamAgents.Store(backend)
 	backend.attachServices(services)
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
@@ -2981,7 +2982,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	if held {
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.spendMoved(func(spend appwire.Spend) { b.moneyAfter(a, live, spend.TodayUSD) })
+	b.spendMoved(func(spend appwire.Spend) {
+		b.moneyAfter(a, live, spend.TodayUSD)
+		b.workstreamAgentTurnSettled(id)
+	})
 }
 
 // ── entry ids ───────────────────────────────────────────────────────────────

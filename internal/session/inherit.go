@@ -386,7 +386,7 @@ func adoptSeed(child *Agent, quick *quickTaskSpec) {
 	// prompt over the top of it an hour later — the same mark a Config that
 	// carries a System gets at construction (agent.go), said here because this
 	// page arrives after the agent was built.
-	child.system = promotedSystem(quick.system)
+	child.system = promotedSystem(workstreamWithoutPage(quick.system))
 	child.systemOwn = false
 	messages[0] = textMessage("system", child.system)
 	child.messages = messages
