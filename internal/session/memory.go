@@ -818,6 +818,11 @@ func (a *Agent) AlwaysMemories(everywhere bool) ([]MemoryLine, error) {
 // or `project` (this conversation's project, or the person everywhere when it
 // has none). It answers the receipt.
 func (a *Agent) MoveMemory(id, scope string) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	if !a.memoryWritable() {
 		return "", errors.New("this conversation keeps no memory")
 	}

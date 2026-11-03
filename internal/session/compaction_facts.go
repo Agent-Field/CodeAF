@@ -147,6 +147,11 @@ func (a *Agent) ContextUse() ContextUse {
 // for the length of the pass ([Agent.manualPass]) and Interrupt, StopWork and
 // Close cut it too: the model request ends, not only what a surface draws.
 func (a *Agent) CompactObserved(ctx context.Context, observe func(Event)) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cut := &manualPassCut{cancel: cancel, done: make(chan struct{})}

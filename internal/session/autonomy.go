@@ -55,6 +55,11 @@ func (a *Agent) legacyAutonomyFile() string {
 
 // SetAutonomy is the one door surfaces use for the D-key promise.
 func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	// THE TWO ROWS NOBODY MAY CHANGE, refused at the door that writes them so
 	// that no surface has to hold a second copy of the rule.
 	//

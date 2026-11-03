@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -67,5 +68,60 @@ func TestIdleRelease_R5_1_SettingAdmissionRetainsTheHoldWhileBusy(t *testing.T) 
 	}
 	if watch.IdleReady() {
 		t.Fatal("setting admission still owns the choice, but the chat looks idle")
+	}
+}
+
+func TestIdleRelease_R8_DurableWritesOutsideTurnsRefuseBeforeMutation(t *testing.T) {
+	want := &executor.WorkRefusal{Line: "laptop continued this chat", HolderID: "B"}
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+		c.Seat = executor.Gated(c.Seat, func() error { return nil }, nil, nil, func() error { return want })
+	})
+	for _, check := range []struct {
+		name string
+		run  func() error
+	}{
+		{"rename", func() error { return a.RenameByPerson("person's title") }},
+		{"rewind", func() error { _, err := a.Rewind(); return err }},
+		{"rewind at", func() error { _, err := a.RewindAt(0); return err }},
+		{"rewind keep", func() error { _, err := a.RewindKeep(0); return err }},
+		{"undo rewind", func() error { return a.UndoRewind("token") }},
+		{"compact", func() error { return a.Compact(t.Context()) }},
+		{"observed compact", func() error { return a.CompactObserved(t.Context(), nil) }},
+		{"anchor", func() error { _, err := a.AnchorWorkspace(t.TempDir()); return err }},
+		{"move memory", func() error { _, err := a.MoveMemory("id", "project"); return err }},
+		{"plan note", func() error { return a.PlanNote("id", "person's note") }},
+		{"delete task", func() error { return a.DeleteTask("id") }},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, want) {
+				t.Fatalf("durable write refusal=%v", err)
+			}
+		})
+	}
+}
+
+func TestIdleRelease_R8_MoreDurableWritesOutsideTurnsRefuse(t *testing.T) {
+	want := &executor.WorkRefusal{Line: "laptop continued this chat", HolderID: "B"}
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Seat = executor.Gated(c.Seat, func() error { return nil }, nil, nil, func() error { return want })
+	})
+	for _, check := range []struct {
+		name string
+		run  func() error
+	}{
+		{"resolve unverified", func() error { return a.ResolveUnverified(1, TaskAccept, "accepted") }},
+		{"review root", func() error { _, err := a.ReviewTaskWorkspaceRoot(t.Context(), 1, "slot"); return err }},
+		{"apply root", func() error { _, err := a.ApplyTaskWorkspaceRoot(t.Context(), 1, "slot"); return err }},
+		{"task model", func() error { _, err := a.RetargetTask(1, "new/model"); return err }},
+		{"conflict resolution", func() error { return a.ResolveConflict(1) }},
+		{"land", func() error { _, err := a.Land("folder"); return err }},
+		{"autonomy", func() error { return a.SetAutonomy(AskConfirmation, Policy{Kind: PolicyAsk}) }},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, want) {
+				t.Fatalf("durable write refusal=%v", err)
+			}
+		})
 	}
 }

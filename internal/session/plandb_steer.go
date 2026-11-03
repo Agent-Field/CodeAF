@@ -52,6 +52,11 @@ func planNoTask(id string) error {
 // cancelled, a revision is only for work that has not started — travels back
 // as the store wrote it, because the store is the one that knows its own laws.
 func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	for _, notice := range a.historicalPlanNotices() {
 		if planTaskID(notice.PlanTask) == planTaskID(id) {
 			return errPlanEndedRun

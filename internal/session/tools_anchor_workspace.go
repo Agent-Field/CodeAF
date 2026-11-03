@@ -52,6 +52,11 @@ func (a *Agent) anchorWorkspaceTools() []bare.Tool {
 // project-less conversation may acquire its subject, but an ordinary project
 // conversation does not silently become a different project midway through.
 func (a *Agent) AnchorWorkspace(path string) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !a.config.Place.Owned {
