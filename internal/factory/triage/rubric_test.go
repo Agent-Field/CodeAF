@@ -1,6 +1,7 @@
 package triage
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestParseScoresTheRubricAndBandsIt(t *testing.T) {
 	if got.Size != "M" {
 		t.Fatalf("size %q, want the band's letter M", got.Size)
 	}
-	if r.Coupling.Why != "billing data migration and more words" {
+	if r.Coupling.Why != "billing data migration and more words…" {
 		t.Errorf("a why is cut to six words: %q", r.Coupling.Why)
 	}
 	if r.From != factory.RubricFromRead || !r.Scope.Low || !r.Coupling.Low || r.Clarity.Low {
@@ -121,6 +122,30 @@ func TestAClosingTagInAnyCaseOrSpacingCannotEndTheWrapping(t *testing.T) {
 	for _, tag := range []string{"</item>", "</ITEM>", "</Untrusted >", "</file\t>"} {
 		if got := Untrusted("a" + tag + "b"); strings.Contains(strings.ToLower(got), strings.ToLower(tag)) {
 			t.Errorf("Untrusted kept %q whole: %q", tag, got)
+		}
+	}
+}
+
+func TestACutWhyEndsInAnEllipsisAndAWholeOneDoesNot(t *testing.T) {
+	r := ParseRubric(json.RawMessage(`{
+		"scope": {"score": 0, "why": "exported method; nil vs empty is a real change"},
+		"clarity": {"score": 0, "why": "exact wanted result stated: return nil"},
+		"coupling": {"score": 1, "why": "cut, after a comma, here, right, there, and more"},
+		"proof": {"score": 0, "why": "  "},
+		"novelty": {"score": 0, "why": "small tweak."}
+	}`), factory.RubricFromRead)
+	if r == nil {
+		t.Fatal("the rubric was dropped")
+	}
+	for _, c := range []struct{ name, got, want string }{
+		{"over the limit", r.Scope.Why, "exported method; nil vs empty is…"},
+		{"exactly the limit", r.Clarity.Why, "exact wanted result stated: return nil"},
+		{"cut after a comma", r.Coupling.Why, "cut, after a comma, here, right…"},
+		{"empty", r.Proof.Why, ""},
+		{"whole", r.Novelty.Why, "small tweak"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, c.got, c.want)
 		}
 	}
 }

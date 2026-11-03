@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -299,38 +301,158 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 	t.Fatalf("no comment in the record: %+v", events)
 }
 
-// A raised limit must reach the running mirror, not merely the service's row.
-func TestRaisedJobBudgetReachesTheAssigneesRunner(t *testing.T) {
+// capParked is a job held by the rig's worker whose runner parked it at its
+// budget: the first step spends first, the second spends five more. autonomy
+// is the job's mode; the rig's own server is the worker-backed desk.
+func capParked(t *testing.T, autonomy string, first, budget float64) (rig, int) {
+	t.Helper()
 	g := newRigWith(t, nil, func(o *run.Options) {
 		o.Exec = map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(_ context.Context, j run.Job) (factory.StageResult, error) {
-			cost := 2.0
+			cost := first
 			if j.Stage.Name == "after" {
 				cost = 5
 			}
 			return factory.StageResult{Done: true, Spent: cost}, nil
 		})}
-	})
+	}, "me")
 	id := g.add(t, factory.Stage{Name: "charge", Kind: factory.StageCheck, On: true}, factory.Stage{Name: "after", Kind: factory.StageCheck, On: true})
-	if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = 2; it.Assignee = "me"; return nil }); err != nil {
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = budget; it.Assignee = "me"; it.Autonomy = autonomy; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := g.doors.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	g.waitFor(t, id, factory.StateNeedsYou)
-	seam := g.doors
-	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "me"}, nil }
-	h := serve.New(seam, serve.Config{Store: g.st, Record: g.record})
-	defer h.Close()
-	r := httptest.NewRequest("POST", fmt.Sprintf("/v1/jobs/%d/raise_budget", id), strings.NewReader(`{"budget":10}`))
-	r.RemoteAddr = "127.0.0.1:1234"
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	if w.Code != 200 {
-		t.Fatalf("raise %d %s", w.Code, w.Body)
+	if it := g.waitFor(t, id, factory.StateNeedsYou); it.QKind != "cap" {
+		t.Fatalf("job parked on %q (%q), not its budget", it.QKind, it.Question)
+	}
+	return g, id
+}
+
+// raise posts a budget raise to the rig's worker-backed desk.
+func (g rig) raise(t *testing.T, id int, budget float64) {
+	t.Helper()
+	resp, err := http.Post(fmt.Sprintf("%s/v1/jobs/%d/raise_budget", g.base, id), "application/json", strings.NewReader(fmt.Sprintf(`{"budget":%g}`, budget)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("raise %d %s", resp.StatusCode, body)
+	}
+}
+
+// staysParked fails when the job leaves its cap question within a while.
+func (g rig) staysParked(t *testing.T, id int, cap float64) factory.Item {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		it, err := g.st.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.State != factory.StateNeedsYou || it.QKind != "cap" || it.Cap != cap {
+			t.Fatalf("parked job moved: state=%s qkind=%q cap=%v", it.State, it.QKind, it.Cap)
+		}
+		if time.Now().After(deadline) {
+			return it
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// THE DESK'S COPY OF A HELD JOB THAT ITS RUNNER PARKED AT THE BUDGET CARRIES
+// THE ASK: the worker's report names the question, and the desk keeps it as
+// Asking. A raise must therefore see the cap ask through Asking.
+func TestCapParkedHeldJobDeskCopyCarriesTheAsk(t *testing.T) {
+	g, id := capParked(t, factory.AutonomyAuto, 2, 2)
+	it, err := g.st.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Asking == nil || it.Asking.Question != it.Question {
+		t.Fatalf("desk copy asking=%+v question=%q", it.Asking, it.Question)
+	}
+}
+
+// RAISING THE BUDGET OF AN AUTO JOB ITS RUNNER PARKED AT THE CAP RESUMES IT:
+// the raise answers the cap question "continue" through the person's answer
+// door, so the ask is taken down, the ledger says who raised it to what and
+// that the job carried on, and the worker's runner finishes the job.
+func TestRaisedJobBudgetReachesTheAssigneesRunner(t *testing.T) {
+	g, id := capParked(t, factory.AutonomyAuto, 2, 2)
+	g.raise(t, id, 10)
+	it := g.waitFor(t, id, factory.StateLanded)
+	if it.Cap != 10 || it.Stream.Spent != 7 || it.Question != "" || it.QKind != "" || it.Asking != nil {
+		t.Fatalf("runner budget=%v spent=%v question=%q qkind=%q asking=%+v", it.Cap, it.Stream.Spent, it.Question, it.QKind, it.Asking)
+	}
+	if logHas(it, "budget raised to $10 · carrying on") == 0 {
+		t.Fatalf("timeline does not say the budget was raised: %+v", it.Stream.Log)
+	}
+	events, err := g.record.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kinds []string
+	for _, e := range events {
+		if e.Job == id && (e.Kind == record.BudgetChanged || e.Kind == record.Answered) {
+			kinds = append(kinds, e.Kind+":"+e.Detail)
+		}
+	}
+	if want := []string{record.BudgetChanged + ":$10.00", record.Answered + ":" + factory.ChoiceContinue}; strings.Join(kinds, ",") != strings.Join(want, ",") {
+		t.Fatalf("ledger %v, want %v", kinds, want)
+	}
+}
+
+// A raise above spend answers Manual's cap question. The next step still
+// needs the person's approval before it runs.
+func TestRaisedBudgetResumesManualCapAskThenAsksBeforeNextStep(t *testing.T) {
+	g, id := capParked(t, factory.AutonomyManual, 2, 2)
+	g.raise(t, id, 10)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		it, err := g.st.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove {
+			if it.Question != "after is next · continue, or send back the step before?" || it.Cap != 10 || it.Stream.Spent != 2 || it.Stream.Phases[1].Round != 0 {
+				t.Fatalf("Manual did not keep its next-step decision: %+v", it)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("raise did not pass the Manual cap ask: state=%s qkind=%q question=%q", it.State, it.QKind, it.Question)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := g.floor.Answer(id, true, ""); err != nil {
+		t.Fatal(err)
 	}
 	it := g.waitFor(t, id, factory.StateLanded)
-	if it.Cap != 10 || (it.Stream.Spent < 7 || it.Stream.Spent > 10) || it.Question != "" {
-		t.Fatalf("runner budget=%v spent=%v question=%q phases=%+v", it.Cap, it.Stream.Spent, it.Question, it.Stream.Phases)
+	if it.Cap != 10 || it.Stream.Spent != 7 || it.Question != "" || it.Asking != nil || it.Stream.Phases[1].Round != 1 {
+		t.Fatalf("approved Manual step did not finish once: %+v", it)
+	}
+}
+
+// A cap increase that leaves no room for more spend keeps Manual parked.
+func TestRaisedBudgetAtOrBelowSpendLeavesManualJobParked(t *testing.T) {
+	for _, spent := range []float64{5, 7} {
+		t.Run(fmt.Sprintf("spent_%g", spent), func(t *testing.T) {
+			g, id := capParked(t, factory.AutonomyManual, spent, 2)
+			g.raise(t, id, 5)
+			if it := g.staysParked(t, id, 5); it.Asking == nil || it.Asking.Question != it.Question || it.Stream.Spent != spent {
+				t.Fatalf("raise changed the Manual cap ask: %+v", it)
+			}
+		})
+	}
+}
+
+// A RAISE THAT DOES NOT CLEAR THE SPEND IS NO ROOM TO CARRY ON.
+func TestRaisedBudgetAtTheSpendLeavesAnAutoJobParked(t *testing.T) {
+	g, id := capParked(t, factory.AutonomyAuto, 5, 2)
+	g.raise(t, id, 5)
+	if it := g.staysParked(t, id, 5); it.Asking == nil {
+		t.Fatal("a raise to the spend took down the cap question")
 	}
 }

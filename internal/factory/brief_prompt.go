@@ -15,10 +15,12 @@ const BriefInputMost = 40 << 10
 // constants, so the prompt and the check that reads the answer cannot drift.
 func BriefSystem() string {
 	return fmt.Sprintf(`You write the brief of one factory job: its state in one screen, for the person who owns it.
-You are given the job as JSON: the issue, the plan, each step's result per try, the change's stats and hunk index, the rule checks, the facts row and the brief before.
+You are given the job as JSON: the issue, person_requests, the plan, each step's result per try, the change's stats and hunk index, the rule checks, the facts row and the brief before.
+What was asked is the issue plus person_requests, oldest first. A later request wins over the issue and the plan where they disagree.
+Work that follows a person's request is never reported as a fault, a surprise or scope creep. The verdict names the request as asked. A real miss against a request is still reported. Judge the work against those requests using the recorded evidence.
 Answer ONE JSON object and nothing else:
 {"verdict": string, "verdict_evidence": [evidence], "blocks": [block]}
-Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; change is the whole change's stat (files, added, removed); hunk names "file:start" in ref; rule_checks names no step.
+Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; change is the whole change's stat (files, added, removed); hunk names "file:start" in ref; rule_checks names no step; pr names the published PR and shows its number, with no step.
 The verdict says the outcome, not the activity, in at most %d words ("Fixed. Retries no longer double-send after a worker restart.").
 Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and their fields:
 - bullets: "bullets": [{"text","evidence"}], at most %d, at most %d words each, a **bold** lead word allowed.
@@ -38,7 +40,8 @@ EVERY NUMBER YOU WRITE MUST BE ONE ITS EVIDENCE SHOWS; a claim or block that bre
 
 // BriefInputText is the input as the writer reads it, cut to
 // [BriefInputMost]: the hunk index first, then the steps' outputs, then the
-// issue's body, so what is kept is what the brief rests on most.
+// issue's body and plan, then the previous brief. Person requests are bounded
+// when assembled and never removed by these cuts: they define what was asked.
 func BriefInputText(in BriefInput) string {
 	cuts := []func(*BriefInput){
 		func(in *BriefInput) { in.Hunks = in.Hunks[:len(in.Hunks)/2] },
@@ -93,12 +96,12 @@ func briefAfterStep(it Item) string {
 	return step
 }
 
-// EndBrief ends a write: the writer's cost is the job's, whatever came of it;
-// a draft whose verdict passes is kept with what survived the check; anything
+// EndBrief ends a write. The session already charged the job for the call;
+// the version keeps its cost for the brief guard without charging it again.
+// A draft whose verdict passes is kept with what survived the check; anything
 // else leaves the versions as they were and the write failed. It answers the
 // version kept (false when none), and the parts dropped.
 func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDrop, bool) {
-	AddChatSpend(it, w.CostUSD)
 	after := briefAfterStep(*it)
 	if it.BriefWriting != nil && it.BriefWriting.AfterStep != "" {
 		after = it.BriefWriting.AfterStep
