@@ -52,7 +52,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    if err := lease.NewDoors(desk).Launch(it.ID); err != nil { t.Fatal(err) }
    held, err := desk.Pull(lease.Worker{ID:attached.WorkerID,Handle:"me",TakesUnassigned:map[string]bool{lease.EveryRepo:true}}); if err != nil { t.Fatal(err) }
    mirror, err := store.Open(t.TempDir()); if err != nil { t.Fatal(err) }
-   it, _ = st.Get(it.ID); if err := mirror.Save(it); err != nil { t.Fatal(err) }
+   it, _ = st.Get(it.ID); it.State=factory.StateNew; if err := mirror.Save(it); err != nil { t.Fatal(err) }
    entered := make(chan struct{})
    finished := make(chan struct{})
    runner := run.New(run.Options{Store:mirror, RepoDir:func(string) string{return t.TempDir()}, Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context, _ run.Job)(factory.StageResult,error){close(entered); defer close(finished); <-ctx.Done(); return factory.StageResult{},ctx.Err()})}})
