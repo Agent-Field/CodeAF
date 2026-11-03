@@ -1179,6 +1179,11 @@ role pins and checked as the other pins are.
 |---|---|---|
 | `slash.catalog` | `{}` | `SlashCatalogResult` |
 
+
+## One engine on a home
+
+`codeaf app` holds an OS lock on its home until it exits. A second `codeaf app` on that home waits before `hello`, starting no recovery, Factory work or clock, and starts as soon as the first ends. If the first is still there when the wait runs out, it exits with status 1 and its stderr says `another codeaf app is still closing this home`. A crash releases the lock. No method or feature changes.
+
 ## spend methods
 
 | method | params | result |
