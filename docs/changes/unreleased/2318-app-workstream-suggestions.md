@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Workstream agents suggest edits on your pages for you to keep or drop
-pr: 0
+pr: 2318
 surface: [app]
 invalidates:
   - "The agent could not act on the person's pages at all; it now suggests edits there that the person keeps or drops."
