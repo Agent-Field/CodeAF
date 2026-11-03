@@ -555,6 +555,7 @@ type Job struct {
 	Ask           *JobAsk               `json:"ask,omitempty"`
 	PublishError  string                `json:"publish_error,omitempty"`
 	Cost          float64               `json:"cost"`
+	LifetimeCost  float64               `json:"lifetime_cost,omitempty"`
 	CreatedAt     time.Time             `json:"created_at"`
 	// HeldBy is the hold on this job now. The machine and heartbeat in it are
 	// set only for the caller's own machine: ALL PEER MACHINE INFORMATION IS
