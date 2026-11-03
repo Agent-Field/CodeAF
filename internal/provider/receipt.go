@@ -261,7 +261,10 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// answered only after the sink has banked it, so a caller waiting for its
 	// receipts cannot see zero owed while money is between the two
 	// ([ReceiptPending]).
-	if pending := receiptPendingFrom(ctx); !bankedUsage && pending != nil {
+	// A finished answer that only lacks usage doesn't hold up the job's next step
+	// for its receipt: the job has moved on, and the row lands when it is answered.
+	moved := finalReceiptsFrom(ctx) && result.Reason == receiptUnmeteredReason
+	if pending := receiptPendingFrom(ctx); !bankedUsage && !moved && pending != nil {
 		done := pending()
 		work.sink = func(answer Reconciled) {
 			defer done()
