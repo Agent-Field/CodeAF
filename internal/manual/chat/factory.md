@@ -460,7 +460,9 @@ continues the job. Repeated spending reports count once and cannot lower a round
 conversation when it can be reopened. It takes a free Jobs at once slot, or
 waits in the ordinary queue until a slot is available. No model round starts
 while it waits. Completed steps are kept and are not run again. The activity
-says `paused`, then `resumed`; both actions record who made them.
+says `paused`, then `resumed`; both actions record who made them. If a heartbeat
+reply is lost, the factory repeats its current hold on later heartbeats. Resume
+supersedes an older hold still waiting to be collected.
 
 Only the job's person may pause or resume it. A job waiting for you, finished
 or publishing cannot be paused. Pause releases its Jobs at once slot after

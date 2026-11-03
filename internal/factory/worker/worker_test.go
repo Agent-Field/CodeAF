@@ -2,6 +2,8 @@ package worker_test
 
 import (
 	"context"
+ "encoding/json"
+ "fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -73,9 +75,15 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 		}
 		captured := httptest.NewRecorder()
 		handler.ServeHTTP(captured, req)
-		if !strings.HasSuffix(req.URL.Path, "/heartbeat") || strings.Contains(captured.Body.String(), `"verb"`) {
-			seen.add(req.URL.Path + " request=" + body + " response=" + captured.Body.String())
-		}
+  if isReport(req) || strings.HasSuffix(req.URL.Path, "/done") {
+   seen.add(fmt.Sprintf("%s status=%d request=%s", req.URL.Path, captured.Code, body))
+  }
+  if strings.HasSuffix(req.URL.Path, "/heartbeat") && strings.Contains(captured.Body.String(), `"verb"`) {
+   var beat api.WorkerHeartbeat
+   if err := json.Unmarshal(captured.Body.Bytes(), &beat); err == nil {
+    seen.add(fmt.Sprintf("heartbeat signals=%+v", beat.Signals))
+   }
+  }
 		for key, values := range captured.Header() {
 			w.Header()[key] = values
 		}
@@ -118,7 +126,13 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 			Attach:      api.WorkerAttach{Machine: "laptop", Name: "laptop (pid 123)", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
 			Runner:      r,
 			Mirror:      mirror,
-			LocalLease:  keepLocal,
+			LocalLease: func(base string, held api.WorkerLease) {
+    if held.ID == "" {
+     local, err := mirror.Get(held.Job)
+     seen.add(fmt.Sprintf("worker release job=%d state=%s stream=%+v error=%v", held.Job, local.State, local.Stream, err))
+    }
+    if keepLocal != nil { keepLocal(base, held) }
+   },
 			Slots:       2,
 			ReportEvery: 20 * time.Millisecond,
 			BeatEvery:   20 * time.Millisecond,
