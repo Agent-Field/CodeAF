@@ -1,7 +1,7 @@
 ---
 kind: added
 title: codeaf keeps conditions on steps added to one job
-pr: 0
+pr: 2293
 surface: [engine]
 invalidates:
   - "Added job steps previously refused when through the app and HTTP edit route; direct edits accepted unknown conversation and check conditions and silently dropped unknown approval conditions. Added conversation, check and approval steps now keep a supported condition, and unknown conditions are refused."
