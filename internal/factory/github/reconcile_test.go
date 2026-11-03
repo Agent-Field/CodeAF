@@ -2,8 +2,8 @@ package github_test
 
 import (
 	"context"
- "errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -16,9 +16,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	source "github.com/Agent-Field/codeaf/internal/factory/github"
+	"github.com/Agent-Field/codeaf/internal/factory/scout"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
- "github.com/Agent-Field/codeaf/internal/factory/scout"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -273,7 +273,7 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 	for _, seed := range []int64{7, 52, 2280} {
 		t.Run(strconv.FormatInt(seed, 10), func(t *testing.T) {
 			f := newIssueScript(t, 6)
- _ = f.st.Update(6,func(it *factory.Item)error{it.State=factory.StateShipped;it.DoneHow="closed";return nil})
+			_ = f.st.Update(6, func(it *factory.Item) error { it.State = factory.StateShipped; it.DoneHow = "closed"; return nil })
 			rng := rand.New(rand.NewSource(seed))
 			for step := 0; step < 120; step++ {
 				n := 1 + rng.Intn(6)
@@ -377,69 +377,136 @@ func TestPersonalWorkDuringDirectReadWins(t *testing.T) {
 }
 
 func TestLookCloserAdmissionPreventsAutomaticClose(t *testing.T) {
- f:=newIssueScript(t,1);f.state[1]="closed"
- d:=scout.Door{Floor:f.st,Now:time.Now,Limits:scout.DefaultLimits,
-  Head:func(context.Context,string)(string,error){return "head",nil},
-  Run:func(context.Context,factory.Item)(factory.Scout,error){f.poll();return factory.Scout{},nil},
- }
- if _,_,err:=d.Look(context.Background(),1,false);err!=nil{t.Fatal(err)}
- if f.row(1).State!=factory.StateNew{t.Fatal("Look closer spent while poll finished the row")}
+	f := newIssueScript(t, 1)
+	f.state[1] = "closed"
+	d := scout.Door{Floor: f.st, Now: time.Now, Limits: scout.DefaultLimits,
+		Head: func(context.Context, string) (string, error) { return "head", nil },
+		Run:  func(context.Context, factory.Item) (factory.Scout, error) { f.poll(); return factory.Scout{}, nil },
+	}
+	if _, _, err := d.Look(context.Background(), 1, false); err != nil {
+		t.Fatal(err)
+	}
+	if f.row(1).State != factory.StateNew {
+		t.Fatal("Look closer spent while poll finished the row")
+	}
 }
 
 func TestLegacyPersonalEditsAreUntouchedGateInputs(t *testing.T) {
- for _,name:=range []string{"budget","model","steps","marked"}{t.Run(name,func(t *testing.T){
-  f:=newIssueScript(t,1);f.state[1]="closed"
-  if err:=f.st.Update(1,func(it *factory.Item)error{
-   switch name{case "budget":it.Cap=7;case "model":it.Model="chosen";case "marked":it.Marked=true;case "steps":it.Stages=[]factory.Stage{{Name:"review",By:factory.ByYou}}};return nil
-  });err!=nil{t.Fatal(err)}
-  // This models an existing row written before touch provenance was stored.
-  if err:=f.st.Update(1,func(it *factory.Item)error{it.PersonTouched=false;return nil});err!=nil{t.Fatal(err)}
-  f.poll();if f.row(1).State!=factory.StateNew{t.Fatal("legacy personal edit was finished")}
- })}
+	for _, name := range []string{"budget", "model", "steps", "marked"} {
+		t.Run(name, func(t *testing.T) {
+			f := newIssueScript(t, 1)
+			f.state[1] = "closed"
+			if err := f.st.Update(1, func(it *factory.Item) error {
+				switch name {
+				case "budget":
+					it.Cap = 7
+				case "model":
+					it.Model = "chosen"
+				case "marked":
+					it.Marked = true
+				case "steps":
+					it.Stages = []factory.Stage{{Name: "review", By: factory.ByYou}}
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			// This models an existing row written before touch provenance was stored.
+			if err := f.st.Update(1, func(it *factory.Item) error { it.PersonTouched = false; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			f.poll()
+			if f.row(1).State != factory.StateNew {
+				t.Fatal("legacy personal edit was finished")
+			}
+		})
+	}
 }
 
 func TestFailedDirectReadUsesOneRequest(t *testing.T) {
- f:=newIssueScript(t,1);f.status[1]=500;f.poll()
- if len(f.reads)!=1{t.Fatalf("failed direct read used %d requests; budget counts requests",len(f.reads))}
+	f := newIssueScript(t, 1)
+	f.status[1] = 500
+	f.poll()
+	if len(f.reads) != 1 {
+		t.Fatalf("failed direct read used %d requests; budget counts requests", len(f.reads))
+	}
 }
 
 func TestTransferredIssueRefetchDoesNotReadNumberZero(t *testing.T) {
- f:=newIssueScript(t,1);f.redirect[1]=true
- if _,err:=f.src.Refetch(context.Background(),f.row(1));err==nil{t.Fatal("transferred issue refresh accepted redirected data")}
- if len(f.reads)!=1{t.Fatalf("transfer followed into another issue: %v",f.reads)}
+	f := newIssueScript(t, 1)
+	f.redirect[1] = true
+	if _, err := f.src.Refetch(context.Background(), f.row(1)); err == nil {
+		t.Fatal("transferred issue refresh accepted redirected data")
+	}
+	if len(f.reads) != 1 {
+		t.Fatalf("transfer followed into another issue: %v", f.reads)
+	}
 }
 
 func TestFailedLookCloserStillProtectsSpentRow(t *testing.T) {
- f:=newIssueScript(t,1);f.state[1]="closed"
- d:=scout.Door{Floor:f.st,Now:time.Now,Limits:scout.DefaultLimits,
-  Head:func(context.Context,string)(string,error){return "head",nil},
-  Run:func(context.Context,factory.Item)(factory.Scout,error){f.poll();return factory.Scout{USD:.01},errors.New("scripted failure")},
- }
- if _,_,err:=d.Look(context.Background(),1,false);err==nil{t.Fatal("expected scripted failure")}
- f.poll()
- if got:=f.row(1);got.State!=factory.StateNew || !got.PersonTouched{t.Fatal("failed paid Look closer was finished")}
+	f := newIssueScript(t, 1)
+	f.state[1] = "closed"
+	d := scout.Door{Floor: f.st, Now: time.Now, Limits: scout.DefaultLimits,
+		Head: func(context.Context, string) (string, error) { return "head", nil },
+		Run: func(context.Context, factory.Item) (factory.Scout, error) {
+			f.poll()
+			return factory.Scout{USD: .01}, errors.New("scripted failure")
+		},
+	}
+	if _, _, err := d.Look(context.Background(), 1, false); err == nil {
+		t.Fatal("expected scripted failure")
+	}
+	f.poll()
+	if got := f.row(1); got.State != factory.StateNew || !got.PersonTouched {
+		t.Fatal("failed paid Look closer was finished")
+	}
 }
 
 func TestRefreshClearsAutomaticCloseMark(t *testing.T) {
- f:=newIssueScript(t,1);f.state[1]="closed";f.poll()
- seam:=factory.LocalSeam(f.st,time.Now(),factory.WithRefetch(func(context.Context,factory.Item)error{return nil}))
- if err:=seam.Refresh(context.Background(),1);err!=nil{t.Fatal(err)}
- if f.row(1).SourceClosed{t.Fatal("personal Refresh retained automatic close mark")}
- f.state[1]="open";f.poll()
- if f.row(1).State!=factory.StateShipped{t.Fatal("personal Refresh was undone by reopen")}
+	f := newIssueScript(t, 1)
+	f.state[1] = "closed"
+	f.poll()
+	seam := factory.LocalSeam(f.st, time.Now(), factory.WithRefetch(func(context.Context, factory.Item) error { return nil }))
+	if err := seam.Refresh(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if f.row(1).SourceClosed {
+		t.Fatal("personal Refresh retained automatic close mark")
+	}
+	f.state[1] = "open"
+	f.poll()
+	if f.row(1).State != factory.StateShipped {
+		t.Fatal("personal Refresh was undone by reopen")
+	}
 }
 
 func TestPersonalMetadataClearsAutomaticCloseMark(t *testing.T) {
- f:=newIssueScript(t,1);f.state[1]="closed";f.poll()
- if err:=f.st.UpdatePersonal(1,func(it *factory.Item)bool{it.BriefSeen=map[string]int{"sam":1};return true});err!=nil{t.Fatal(err)}
- // Exercise an in-place edit of existing personal metadata as well.
- if err:=f.st.Update(1,func(it *factory.Item)error{it.PersonTouched=false;it.SourceClosed=true;return nil});err!=nil{t.Fatal(err)}
- if err:=f.st.UpdatePersonal(1,func(it *factory.Item)bool{it.BriefSeen["sam"]=2;return true});err!=nil{t.Fatal(err)}
- if f.row(1).SourceClosed{t.Fatal("personal metadata action retained automatic close mark")}
+	f := newIssueScript(t, 1)
+	f.state[1] = "closed"
+	f.poll()
+	if err := f.st.UpdatePersonal(1, func(it *factory.Item) bool { it.BriefSeen = map[string]int{"sam": 1}; return true }); err != nil {
+		t.Fatal(err)
+	}
+	// Exercise an in-place edit of existing personal metadata as well.
+	if err := f.st.Update(1, func(it *factory.Item) error { it.PersonTouched = false; it.SourceClosed = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.UpdatePersonal(1, func(it *factory.Item) bool { it.BriefSeen["sam"] = 2; return true }); err != nil {
+		t.Fatal(err)
+	}
+	if f.row(1).SourceClosed {
+		t.Fatal("personal metadata action retained automatic close mark")
+	}
 }
 
 func TestLegacyPaidArrivalReadProtectsRow(t *testing.T) {
- f:=newIssueScript(t,1);f.state[1]="closed"
- if err:=f.st.Annotate(1,func(it *factory.Item)error{it.Triage.TriagedAt=time.Now();return nil});err!=nil{t.Fatal(err)}
- f.poll();if f.row(1).State!=factory.StateNew{t.Fatal("previously paid arrival read was finished")}
+	f := newIssueScript(t, 1)
+	f.state[1] = "closed"
+	if err := f.st.Annotate(1, func(it *factory.Item) error { it.Triage.TriagedAt = time.Now(); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	f.poll()
+	if f.row(1).State != factory.StateNew {
+		t.Fatal("previously paid arrival read was finished")
+	}
 }

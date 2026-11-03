@@ -108,7 +108,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			}
 			return st.Update(id, func(it *Item) error {
 				TouchIssue(it)
- it.Cap = usd
+				it.Cap = usd
 				return nil
 			})
 		},
@@ -374,9 +374,13 @@ const (
 func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) error) {
 	busy, _ := st.(BusyKeeper)
 	refresh := func(ctx context.Context, it Item) error {
-  write:=st.Update
-  if a,ok:=st.(annotator);ok {write=a.Annotate}
-  if err:=write(it.ID,func(cur *Item)error {TouchIssue(cur);return nil});err!=nil{return err}
+		write := st.Update
+		if a, ok := st.(annotator); ok {
+			write = a.Annotate
+		}
+		if err := write(it.ID, func(cur *Item) error { TouchIssue(cur); return nil }); err != nil {
+			return err
+		}
 
 		if busy != nil {
 			_ = busy.SetBusy(it.ID, BusyRefreshing)
