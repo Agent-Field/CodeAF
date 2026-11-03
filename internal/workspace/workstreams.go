@@ -193,10 +193,11 @@ CREATE TABLE workstream_page_versions (
 );
 CREATE TABLE workstream_records (
  id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id) ON DELETE CASCADE,
- kind TEXT NOT NULL CHECK(kind IN ('decision','question')), text TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('decision','question','goahead')), text TEXT NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('proposed','kept','dropped','superseded')),
  actor TEXT NOT NULL CHECK(actor IN ('you','agent')), source TEXT, created_at INTEGER NOT NULL,
- decided_at INTEGER, supersedes TEXT REFERENCES workstream_records(id), superseded_by TEXT REFERENCES workstream_records(id)
+ decided_at INTEGER, supersedes TEXT REFERENCES workstream_records(id), superseded_by TEXT REFERENCES workstream_records(id),
+ goahead TEXT, goahead_id TEXT
 );
 CREATE INDEX workstream_record_list ON workstream_records(workstream_id,created_at);
 CREATE TABLE workstream_goaheads (
@@ -228,7 +229,7 @@ var workstreamSchemaReads = []string{
 	"SELECT member_seq,workstream_id,factory,job FROM workstream_jobs LIMIT 0",
 	"SELECT id,workstream_id,parent_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc,overview,deleted_at,deleted_root FROM workstream_pages LIMIT 0",
 	"SELECT page_id,version,saved_at,saved_by,source,title,doc,bytes FROM workstream_page_versions LIMIT 0",
-	"SELECT id,workstream_id,kind,text,state,actor,source,created_at,decided_at,supersedes,superseded_by FROM workstream_records LIMIT 0",
+	"SELECT id,workstream_id,kind,text,state,actor,source,created_at,decided_at,supersedes,superseded_by,goahead,goahead_id FROM workstream_records LIMIT 0",
 	"SELECT id,workstream_id,scope,factory,job,wave,milestone_id,cap_usd,ends_at,state,end_reason,granted_at,ended_at FROM workstream_goaheads LIMIT 0",
 	"SELECT workstream_id,version,updated_at,updated_by,milestones,waves FROM workstream_plans LIMIT 0",
 }

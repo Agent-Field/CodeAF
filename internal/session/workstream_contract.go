@@ -14,6 +14,7 @@ type WorkstreamDoor interface {
 	Brief() (WorkstreamBrief, bool)
 	Read(context.Context, WorkstreamReadAsk) (json.RawMessage, error)
 	Propose(context.Context, WorkstreamProposal) (WorkstreamProposed, error)
+	Source(context.Context, *workstream.Source) (*workstream.Source, error)
 	Plan(context.Context) (WorkstreamPlanState, error)
 	SetPlan(context.Context, int, WorkstreamPlanState) (WorkstreamPlanState, error)
 	WritePage(context.Context, WorkstreamPageWrite) (WorkstreamPageWritten, error)
@@ -28,8 +29,6 @@ var ErrWorkstreamVersion = errors.New("the workstream version changed")
 var ErrWorkstreamNotAgentPage = errors.New("That page is the person's. You write only your own pages; suggesting edits on theirs is not available yet.")
 
 var ErrWorkstreamTooLarge = errors.New("That page is too large; the encoded document must be at most 1 MiB.")
-
-const WorkstreamGoAheadProposalPrefix = "Proposed go-ahead (not granted): "
 
 // WorkstreamWhereItStandsTitle is the agent page the app shows on the Overview as
 // the agent's summary, so the agent keeps the page with exactly this title current.

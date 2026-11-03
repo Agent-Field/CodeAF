@@ -171,6 +171,9 @@ func (p WorkstreamSource) Check() error {
 	if err := workstreamChecks(workstreamID(p.ID), workstreamOptionalLine(p.Label, 0, 200, "source label")); err != nil {
 		return err
 	}
+	if p.Kind != "message" && p.ChatID != nil || p.Kind != "factory_job" && p.Factory != nil {
+		return Errorf(CodeBadParams, "chat_id is only for message and factory is only for factory_job")
+	}
 	switch p.Kind {
 	case "chat", "page", "url":
 	case "message":
@@ -280,6 +283,9 @@ func (p WorkstreamPlanSetParams) Check() error {
 			return err
 		}
 		for _, item := range w.Items {
+			if err := workstreamDraftFields(item); err != nil {
+				return err
+			}
 			if item.Job != nil && *item.Job <= 0 {
 				return Errorf(CodeBadParams, "plan job must be positive")
 			}
@@ -318,10 +324,10 @@ func (p WorkstreamPageSaveParams) Check() error {
 	if p.BaseVersion < 0 {
 		return Errorf(CodeBadParams, "base_version must be nonnegative")
 	}
-	return workstreamChecks(workstreamID(p.ID), workstreamDoc(p.Doc, true))
+	return workstreamChecks(workstreamID(p.ID), workstreamDoc(p.Doc, true), workstreamSource(p.Source))
 }
 func (p WorkstreamPageCreateParams) Check() error {
-	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamOptionalID(p.ParentID), workstreamOptionalID(p.AfterID), workstreamLine(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"), workstreamDoc(p.Doc, false))
+	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamOptionalID(p.ParentID), workstreamOptionalID(p.AfterID), workstreamLine(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"), workstreamDoc(p.Doc, false), workstreamSource(p.Source))
 }
 func (p WorkstreamPageUpdateParams) Check() error {
 	return workstreamChecks(workstreamID(p.ID), workstreamOptionalLine(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"))
@@ -343,10 +349,18 @@ func (p WorkstreamPageRestoreParams) Check() error {
 	return workstreamID(p.ID)
 }
 func (p WorkstreamRecordListParams) Check() error {
-	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamOptionalEnum(p.Kind, "decision", "question"), workstreamOptionalEnum(p.State, "proposed", "kept", "dropped", "superseded"))
+	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamOptionalEnum(p.Kind, "decision", "question", "goahead"), workstreamOptionalEnum(p.State, "proposed", "kept", "dropped", "superseded"))
 }
 func (p WorkstreamRecordProposeParams) Check() error {
-	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamEnum(p.Kind, "decision", "question"), workstreamText(p.Text, 1, 2000, "record text"), workstreamSource(p.Source))
+	if (p.Kind == "goahead") != (p.GoAhead != nil) || p.Kind == "goahead" && p.Kept != nil && *p.Kept {
+		return Errorf(CodeBadParams, "goahead is required only for kind goahead, which cannot be proposed kept")
+	}
+	if p.GoAhead != nil {
+		if err := p.GoAhead.Check(); err != nil {
+			return err
+		}
+	}
+	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamEnum(p.Kind, "decision", "question", "goahead"), workstreamText(p.Text, 1, 2000, "record text"), workstreamSource(p.Source))
 }
 func (p WorkstreamRecordSupersedeParams) Check() error {
 	return workstreamChecks(workstreamID(p.ID), workstreamOptionalEnum(p.Kind, "decision", "question"), workstreamText(p.Text, 1, 2000, "record text"), workstreamSource(p.Source))
@@ -355,6 +369,10 @@ func (p WorkstreamGoAheadGrantParams) Check() error {
 	if err := workstreamID(p.WorkstreamID); err != nil {
 		return err
 	}
+	return (WorkstreamGoAheadProposal{Scope: p.Scope, Factory: p.Factory, Job: p.Job, Wave: p.Wave, MilestoneID: p.MilestoneID, CapUSD: p.CapUSD, EndsAt: p.EndsAt}).Check()
+}
+
+func (p WorkstreamGoAheadProposal) Check() error {
 	if math.IsNaN(p.CapUSD) || math.IsInf(p.CapUSD, 0) || p.CapUSD <= 0 || p.CapUSD > workspace.WorkstreamGoAheadCapMax || p.EndsAt.IsZero() {
 		return Errorf(CodeBadParams, "go-ahead requires cap_usd greater than 0 and at most %d, and ends_at", workspace.WorkstreamGoAheadCapMax)
 	}
@@ -377,4 +395,14 @@ func (p WorkstreamGoAheadGrantParams) Check() error {
 		return Errorf(CodeBadParams, "unknown go-ahead scope %q", p.Scope)
 	}
 	return nil
+}
+
+func workstreamDraftFields(item WorkstreamPlanItem) error {
+	if item.Kind != "draft" && (item.Size != nil || item.BudgetUSD != nil || item.Source != nil) {
+		return Errorf(CodeBadParams, "size, budget_usd and source are allowed only on drafts")
+	}
+	if item.BudgetUSD != nil && (math.IsNaN(*item.BudgetUSD) || math.IsInf(*item.BudgetUSD, 0) || *item.BudgetUSD <= 0 || *item.BudgetUSD > workspace.WorkstreamGoAheadCapMax) {
+		return Errorf(CodeBadParams, "draft budget_usd must be greater than 0 and at most %d", workspace.WorkstreamGoAheadCapMax)
+	}
+	return workstreamChecks(workstreamOptionalEnum(item.Size, "S", "M", "L"), workstreamSource(item.Source))
 }

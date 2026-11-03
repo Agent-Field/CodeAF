@@ -3,41 +3,50 @@ package workstream
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
+	"time"
 )
 
-const recordSelect = `SELECT id,workstream_id,kind,text,state,actor,source,created_at,decided_at,coalesce(supersedes,''),coalesce(superseded_by,'') FROM workstream_records`
+const recordSelect = `SELECT id,workstream_id,kind,text,state,actor,source,created_at,decided_at,coalesce(supersedes,''),coalesce(superseded_by,''),goahead,coalesce(goahead_id,'') FROM workstream_records`
 
 func recordIn(ctx context.Context, tx *sql.Tx, id string) (Record, error) {
 	var r Record
 	var source sql.NullString
+	var proposal sql.NullString
 	var at int64
 	var decided sql.NullInt64
-	err := tx.QueryRowContext(ctx, recordSelect+" WHERE id=?", id).Scan(&r.ID, &r.WorkstreamID, &r.Kind, &r.Text, &r.State, &r.By, &source, &at, &decided, &r.Supersedes, &r.SupersededBy)
+	err := tx.QueryRowContext(ctx, recordSelect+" WHERE id=?", id).Scan(&r.ID, &r.WorkstreamID, &r.Kind, &r.Text, &r.State, &r.By, &source, &at, &decided, &r.Supersedes, &r.SupersededBy, &proposal, &r.GoAheadID)
 	if err != nil {
 		return r, found(err)
 	}
 	r.CreatedAt, r.DecidedAt = instant(at), optionalInstant(decided)
+	if proposal.Valid {
+		if err := json.Unmarshal([]byte(proposal.String), &r.GoAhead); err != nil {
+			return r, err
+		}
+	}
 	r.Source, err = readSource(source)
 	return r, err
 }
 func recordText(kind, text string) error {
-	if kind != "decision" && kind != "question" {
-		return invalid("record kind must be decision or question")
+	if kind != "decision" && kind != "question" && kind != "goahead" {
+		return invalid("record kind must be decision, question or goahead")
 	}
 	if strings.TrimSpace(text) == "" || !textWithin(text, 2000) {
 		return invalid("record text must be 1–2000 bytes")
 	}
 	return nil
 }
-func (s *Store) Records(ctx context.Context, id, kind, state string) ([]Record, error) {
-	if kind != "" && kind != "decision" && kind != "question" {
+func (s *Store) Records(ctx context.Context, id, kind, state string, includeGoAheads ...bool) ([]Record, error) {
+	if kind != "" && kind != "decision" && kind != "question" && kind != "goahead" {
 		return nil, invalid("unknown record kind")
 	}
 	if state != "" && state != "proposed" && state != "kept" && state != "dropped" && state != "superseded" {
 		return nil, invalid("unknown record state")
 	}
 	out := []Record{}
+	include := len(includeGoAheads) > 0 && includeGoAheads[0]
 	err := s.workspace.Read(ctx, func(tx *sql.Tx, v int) error {
 		if v < 3 {
 			return ErrNotFound
@@ -45,7 +54,7 @@ func (s *Store) Records(ctx context.Context, id, kind, state string) ([]Record, 
 		if _, err := getIn(ctx, tx, id); err != nil {
 			return err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM workstream_records WHERE workstream_id=? AND (?='' OR kind=?) AND (?='' OR state=?) ORDER BY created_at DESC,rowid DESC`, id, kind, kind, state, state)
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM workstream_records WHERE workstream_id=? AND (?='' OR kind=?) AND (?!='' OR ? OR kind!='goahead') AND (?='' OR state=?) ORDER BY created_at DESC,rowid DESC`, id, kind, kind, kind, include, state, state)
 		if err != nil {
 			return err
 		}
@@ -80,8 +89,17 @@ func (s *Store) ProposeRecord(ctx context.Context, p RecordPropose) (Record, Cha
 	if err := recordText(p.Kind, p.Text); err != nil {
 		return Record{}, Change{}, err
 	}
-	// Only an explicitly attributed agent write is refused on a done workstream;
-	// the wire's unattributed proposal keeps the behaviour it always had.
+	if (p.Kind == "goahead") != (p.GoAhead != nil) || p.Kind == "goahead" && p.Kept {
+		return Record{}, Change{}, invalid("goahead is required only for kind goahead, which cannot be proposed kept")
+	}
+	if p.GoAhead != nil {
+		// Store the end at the grant's millisecond precision, so keeping it grants the same end.
+		proposal := *p.GoAhead
+		proposal.EndsAt = instant(proposal.EndsAt.UnixMilli())
+		p.GoAhead = &proposal
+	}
+	// Decisions and questions preserve the wire's unattributed done behavior.
+	// Go-ahead proposals check done with the grant rules inside the transaction.
 	asked := p.By
 	if p.By == "" {
 		if p.Kept {
@@ -101,21 +119,35 @@ func (s *Store) ProposeRecord(ctx context.Context, p RecordPropose) (Record, Cha
 	var out Record
 	var c Change
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, asked); err != nil {
-			return err
+		if p.Kind != "goahead" {
+			if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, asked); err != nil {
+				return err
+			}
+		}
+		now := s.now()
+		var proposal any
+		if p.GoAhead != nil {
+			if err := workstreamGoAheadAllowedIn(ctx, tx, p.GoAhead.grant(p.WorkstreamID), now); err != nil {
+				return err
+			}
+			encoded, err := json.Marshal(p.GoAhead)
+			if err != nil {
+				return err
+			}
+			proposal = string(encoded)
 		}
 		id, err := s.newID()
 		if err != nil {
 			return err
 		}
-		at := s.now().UnixMilli()
+		at := now.UnixMilli()
 		state := "proposed"
 		var decided any
 		if p.Kept {
 			state = "kept"
 			decided = at
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_records(id,workstream_id,kind,text,state,actor,source,created_at,decided_at) VALUES (?,?,?,?,?,?,?,?,?)`, id, p.WorkstreamID, p.Kind, p.Text, state, by, source, at, decided); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_records(id,workstream_id,kind,text,state,actor,source,created_at,decided_at,goahead) VALUES (?,?,?,?,?,?,?,?,?,?)`, id, p.WorkstreamID, p.Kind, p.Text, state, by, source, at, decided, proposal); err != nil {
 			return err
 		}
 		if err := touch(ctx, tx, p.WorkstreamID, at); err != nil {
@@ -151,8 +183,13 @@ func (s *Store) setRecordState(ctx context.Context, id, state string) (Record, C
 			out = r
 			return nil
 		}
-		at := s.now().UnixMilli()
-		if _, err := tx.ExecContext(ctx, "UPDATE workstream_records SET state=?,decided_at=? WHERE id=?", state, at, id); err != nil {
+		now := s.now()
+		goaheadChanged, err := s.workstreamRecordGoAheadIn(ctx, tx, &r, state, now)
+		if err != nil {
+			return err
+		}
+		at := now.UnixMilli()
+		if _, err := tx.ExecContext(ctx, "UPDATE workstream_records SET state=?,decided_at=?,goahead_id=? WHERE id=?", state, at, nullString(r.GoAheadID), id); err != nil {
 			return err
 		}
 		if err := touch(ctx, tx, r.WorkstreamID, at); err != nil {
@@ -160,6 +197,9 @@ func (s *Store) setRecordState(ctx context.Context, id, state string) (Record, C
 		}
 		out, err = recordIn(ctx, tx, id)
 		c = changed(r.WorkstreamID, PartRecords)
+		if goaheadChanged {
+			c.Parts = append(c.Parts, PartGoAheads)
+		}
 		return err
 	})
 	if err != nil {
@@ -186,6 +226,9 @@ func (s *Store) SupersedeRecord(ctx context.Context, id string, p RecordReplacem
 		r, err := recordIn(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if r.Kind == "goahead" || p.Kind == "goahead" {
+			return invalid("goahead records cannot supersede or be superseded")
 		}
 		if r.State == "superseded" {
 			return ErrConflict
@@ -223,4 +266,26 @@ func (s *Store) SupersedeRecord(ctx context.Context, id string, p RecordReplacem
 		return Record{}, Record{}, Change{}, err
 	}
 	return out, old, c, nil
+}
+
+func (s *Store) workstreamRecordGoAheadIn(ctx context.Context, tx *sql.Tx, r *Record, state string, now time.Time) (bool, error) {
+	if r.Kind != "goahead" {
+		return false, nil
+	}
+	if state == "kept" {
+		if r.GoAhead == nil {
+			return false, invalid("goahead record requires a proposal")
+		}
+		g, err := s.grantGoAheadIn(ctx, tx, r.GoAhead.grant(r.WorkstreamID), now)
+		if err != nil {
+			return false, err
+		}
+		r.GoAheadID = g.ID
+		return true, nil
+	}
+	if r.State == "kept" && r.GoAheadID != "" {
+		_, ended, err := revokeGoAheadIn(ctx, tx, r.GoAheadID, now)
+		return ended, err
+	}
+	return false, nil
 }

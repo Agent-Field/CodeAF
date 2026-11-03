@@ -156,7 +156,7 @@ Client IDs, titles and source labels refuse control characters. Why, how it went
 record text and draft text allow newline and tab, and refuse other control
 characters. Malformed app requests return `bad_params`.
 
-Records can be proposed, kept, dropped and replaced. Keep can undo a drop;
+Decisions and questions can be proposed, kept, dropped and replaced. Keep can undo a drop;
 a replaced record cannot change again. Plans store milestones, ordered waves
 and job or draft items. Wave auto-start is stored without starting jobs.
 
@@ -174,7 +174,7 @@ settings do not themselves start work.
 
 A workstream's own agent in the app has six tools. Other conversations, tasks
 and errands do not receive them. `workstream_read` reads the workstream, pages,
-decisions, questions, plan and go-aheads. Counts, costs, states and dates come
+decisions, questions, go-ahead proposals, plan and grants. Counts, costs, states and dates come
 from records. An absent number is unknown; the agent must say so and never
 estimate it. Page live blocks such as `[live: jobs]` show current facts.
 
@@ -183,12 +183,6 @@ agent proposes; the person keeps. `propose_jobs` adds 1–20 draft jobs to the
 plan, leaving existing waves and settings intact. Drafts create no Factory
 jobs and start nothing; the person launches them. A plan conflict is retried
 once against a fresh read, then refused if it changes again.
-
-`propose_goahead` makes a proposed decision beginning `Proposed go-ahead (not
-granted): `. Its scope, cap and end date are proposals. It grants nothing; the
-person chooses the real permission. The proposed cap is greater than zero and
-at most $10,000, including fractional dollars such as $12.50; its end date is
-after today in UTC and within 90 days.
 
 `write_agent_page` creates or updates only the agent's own pages. Every write
 carries an AI mark, its written-at time and a named source; history keeps that
@@ -201,3 +195,38 @@ workstreams refuse all these writes.
 Tool arguments refuse unknown fields and repeated object keys, including inside
 sources and draft jobs, before reading or writing the workstream. The agent keeps
 its page titled “Where it stands” current; the Overview shows it with the AI mark.
+
+## Workstream draft size, budget and sources
+
+Draft plan items accept optional size `S`, `M` or `L`, a budget greater than zero
+and at most $10,000, and a source. Job plan items refuse these fields. Older
+plans without them still read normally. These fields are stored without
+starting work. The agent cannot set draft size or budget. `propose_jobs` gives
+each added draft the agent conversation as its source, or an explicit page,
+member job or HTTP(S) link. Existing items and a conflict retry keep their sources.
+
+App page creation and saves accept an optional source: chat, message, Factory
+job, page or URL. A message source needs its chat ID; a job source needs its
+Factory ID. Source labels take at most 200 bytes on one line. The source becomes
+the page's `updated_from` and that version's `from` in history. A later save
+without a source clears `updated_from` and has no `from` on its version.
+
+## Workstream go-ahead proposals, keeping and undo
+
+`propose_goahead` makes a proposed `goahead` record with the reason as its text
+and structured scope, target, cap and end. It grants nothing. Keeping it grants
+exactly one go-ahead atomically; keeping it again changes nothing. Dropping a
+kept proposal revokes its still-active grant. Keeping it after that grants a
+new one. Records retain the latest grant ID, including after a drop. Go-ahead
+records cannot be replaced with `record.supersede`.
+
+The proposed cap is greater than zero and at most $10,000, including fractional
+dollars such as $12.50. The agent's `ends_on` date must be after today in UTC and
+at most 89 days ahead; the end is that day's 23:59:59 UTC. Proposal and keep both
+check that the target exists and the end is future and within 90 days. Proposing
+or keeping on a done workstream conflicts. A refused keep changes nothing.
+Expiry, revocation and marking done leave a kept record kept while ending its grant.
+
+`record.list` returns decisions and questions by default. Use
+`include_goaheads: true` for every kind, or `kind: goahead` for only go-ahead
+records. The agent's record reads include go-ahead proposals and their grant IDs.

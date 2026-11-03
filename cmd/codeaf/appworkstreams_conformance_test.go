@@ -527,7 +527,10 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 	unknown := name == "workstream.list" && situation == 1
 	params := appwire.WorkstreamCreateParams{Name: "Usage-based billing", Why: workstreamPtr("Charge for recorded usage.")}
 	if !zero {
-		params.OriginChatID = &origin.ID
+		// WP-F2 (c), (f): the unknown list example deliberately has no origin.
+		if !unknown {
+			params.OriginChatID = &origin.ID
+		}
 		if name != "collections.add" {
 			ref := workstreamJobRef("1107")
 			ref.Factory = workstreamPtr("f_local")
@@ -580,6 +583,13 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 		}
 	case "page.history":
 		fixture.saveByAgent(t)
+	case "page.save":
+		// WP-F2 (b), (f): example_1 saves version 3 with a source.
+		if situation == 1 {
+			if _, err := backend.WorkstreamPageSave(appwire.WorkstreamPageSaveParams{ID: fixture.IDs["pg_31d0"], BaseVersion: 1, Doc: json.RawMessage(`{"type":"doc","content":[]}`)}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	// WP-F1 (g): prepare all three additive example_1 pairs with the exact
 	// optional keys illustrated by the wire contract.
 	case "page.list":
@@ -598,12 +608,21 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 		}
 	}
 	if name == "record.list" || name == "record.keep" || name == "record.drop" || name == "record.supersede" || name == "workstream.changed" {
-		fixture.record(t)
+		// WP-F2 (d), (f): only the illustrated kind is present in each example.
+		if situation == 1 && (name == "record.list" || name == "record.keep") {
+			fixture.plan(t)
+			fixture.goaheadRecord(t)
+		} else {
+			fixture.record(t)
+		}
 		if name == "record.supersede" {
 			if _, err := backend.WorkstreamRecordKeep(appwire.WorkstreamRecordKeepParams{ID: fixture.IDs["rec_7a1e"]}); err != nil {
 				t.Fatal(err)
 			}
 		}
+	}
+	if name == "record.propose" && situation == 1 {
+		fixture.plan(t)
 	}
 	if strings.HasPrefix(name, "goahead.") || name == "workstream.changed" {
 		fixture.plan(t)
@@ -675,6 +694,18 @@ func (fixture *workstreamWireFixture) record(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture.IDs["rec_7a1e"] = record.Record.ID
+}
+
+func (fixture *workstreamWireFixture) goaheadRecord(t *testing.T) {
+	t.Helper()
+	record, err := fixture.Backend.WorkstreamRecordPropose(appwire.WorkstreamRecordProposeParams{
+		WorkstreamID: fixture.Stream.ID, Kind: "goahead", Text: "Wave 1 is small; let it run without asking.", Source: fixture.source(),
+		GoAhead: &appwire.WorkstreamGoAheadProposal{Scope: "wave", Wave: workstreamPtr(1), CapUSD: 40, EndsAt: fixture.Now.Add(time.Hour)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.IDs["rec_5c20"] = record.Record.ID
 }
 
 func (fixture *workstreamWireFixture) plan(t *testing.T) {
@@ -1009,6 +1040,9 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 					if name == "collections.add" {
 						workstreamWireCollectionResult(t, result)
 					}
+					if name == "record.keep" && i == 1 {
+						workstreamWireKeptGoAhead(t, connection, fixture.Stream.ID, result)
+					}
 				})
 			}
 		})
@@ -1033,6 +1067,26 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 			}
 		}
 	})
+}
+
+// WP-F2 (d), (f): the keep example grants exactly its structured permission.
+func workstreamWireKeptGoAhead(t *testing.T, connection *workstreamWireConnection, id string, result any) {
+	t.Helper()
+	record := result.(map[string]any)["record"].(map[string]any)
+	proposal := record["goahead"].(map[string]any)
+	listed := workstreamWireResult(t, connection.call(t, "goahead.list", map[string]any{"workstream_id": id})).(map[string]any)["goaheads"].([]any)
+	if len(listed) != 1 {
+		t.Fatalf("keep granted %d go-aheads, want one", len(listed))
+	}
+	grant := listed[0].(map[string]any)
+	if grant["id"] != record["goahead_id"] || grant["state"] != "active" {
+		t.Fatalf("keep grant identity/state: %v %v", record, grant)
+	}
+	for _, key := range []string{"scope", "wave", "cap_usd", "ends_at"} {
+		if !reflect.DeepEqual(grant[key], proposal[key]) {
+			t.Errorf("keep grant %s: got %v, want %v", key, grant[key], proposal[key])
+		}
+	}
 }
 
 func workstreamWireCoverage(t *testing.T, contract *workstreamWireContract, files map[string]workstreamWireExamples, cases []string, errorCases []workstreamWireErrorCase) {

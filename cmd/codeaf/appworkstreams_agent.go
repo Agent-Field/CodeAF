@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -133,7 +133,7 @@ func workstreamAgentReadPages(ctx context.Context, s *workstream.Store, id strin
 }
 
 func workstreamAgentReadRecords(ctx context.Context, s *workstream.Store, id string, ask session.WorkstreamReadAsk) (json.RawMessage, error) {
-	records, err := s.Records(ctx, id, ask.Kind, ask.State)
+	records, err := s.Records(ctx, id, ask.Kind, ask.State, true)
 	if err != nil {
 		return nil, err
 	}
@@ -169,25 +169,38 @@ func (d *workstreamAgentDoor) Propose(ctx context.Context, p session.WorkstreamP
 	if err != nil {
 		return session.WorkstreamProposed{}, err
 	}
+	var proposal *workstream.GoAheadProposal
 	if p.GoAhead != nil {
-		p.Kind = "decision"
-		p.Text, err = d.workstreamGoAheadText(ctx, s, w, *p.GoAhead)
+		proposal, err = d.workstreamGoAheadProposal(*p.GoAhead)
 		if err != nil {
 			return session.WorkstreamProposed{}, err
 		}
+		p.Kind, p.Text = "goahead", p.GoAhead.Why
 	}
 	source, err := d.workstreamSource(ctx, s, w, p.Source)
 	if err != nil {
 		return session.WorkstreamProposed{}, err
 	}
-	r, change, err := s.ProposeRecord(ctx, workstream.RecordPropose{WorkstreamID: w.ID, Kind: p.Kind, Text: p.Text, Source: source, By: "agent", Kept: false})
+	r, change, err := s.ProposeRecord(ctx, workstream.RecordPropose{WorkstreamID: w.ID, Kind: p.Kind, Text: p.Text, Source: source, By: "agent", Kept: false, GoAhead: proposal})
 	d.backend.workstreamChanged(change)
 	return session.WorkstreamProposed{ID: r.ID}, workstreamAgentError(err)
+}
+
+// Source resolves a draft call once, so its conflict retry keeps that attribution.
+func (d *workstreamAgentDoor) Source(ctx context.Context, asked *workstream.Source) (*workstream.Source, error) {
+	s, w, err := d.workstreamOwner(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	return d.workstreamSource(ctx, s, w, asked)
 }
 
 func (d *workstreamAgentDoor) workstreamSource(ctx context.Context, s *workstream.Store, w workstream.Workstream, asked *workstream.Source) (*workstream.Source, error) {
 	if asked == nil {
 		return &workstream.Source{Kind: "chat", ID: d.agentID}, nil
+	}
+	if err := appWorkstreamSource(asked).Check(); err != nil {
+		return nil, err
 	}
 	source := *asked
 	if source.ChatID != "" || source.Kind != "factory_job" && source.Factory != "" {
@@ -256,42 +269,12 @@ func (d *workstreamAgentDoor) SetPlan(ctx context.Context, base int, p session.W
 	return workstreamAgentPlan(saved), workstreamAgentError(err)
 }
 
-func (d *workstreamAgentDoor) workstreamGoAheadText(ctx context.Context, s *workstream.Store, w workstream.Workstream, ask session.WorkstreamGoAheadAsk) (string, error) {
+func (d *workstreamAgentDoor) workstreamGoAheadProposal(ask session.WorkstreamGoAheadAsk) (*workstream.GoAheadProposal, error) {
 	if err := session.WorkstreamValidateGoAhead(ask, d.backend.now()); err != nil {
-		return "", err
+		return nil, err
 	}
-	scope, err := workstreamAgentGoAheadScope(ctx, s, w, ask)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s%s, up to $%.2f, until %s. %s", session.WorkstreamGoAheadProposalPrefix, scope, ask.CapUSD, ask.EndsOn, ask.Why), nil
-}
-
-func workstreamAgentGoAheadScope(ctx context.Context, s *workstream.Store, w workstream.Workstream, ask session.WorkstreamGoAheadAsk) (string, error) {
-	if ask.Scope == "job" {
-		if !workstreamAgentMember(w, ask.Factory, ask.Job) {
-			return "", errors.New("The proposed go-ahead job must be a member of this workstream.")
-		}
-		return fmt.Sprintf("job %s#%d", ask.Factory, ask.Job), nil
-	}
-	p, err := s.Plan(ctx, w.ID)
-	if err != nil {
-		return "", err
-	}
-	if ask.Scope == "wave" {
-		for _, wave := range p.Waves {
-			if wave.N == ask.Wave {
-				return fmt.Sprintf("wave %d", wave.N), nil
-			}
-		}
-		return "", errors.New("The proposed go-ahead wave must exist in the plan.")
-	}
-	for _, milestone := range p.Milestones {
-		if milestone.ID == ask.MilestoneID {
-			return fmt.Sprintf("milestone \"%s\" (%s)", milestone.Title, milestone.ID), nil
-		}
-	}
-	return "", errors.New("The proposed go-ahead milestone must exist in the plan.")
+	end, _ := time.Parse("2006-01-02", ask.EndsOn)
+	return &workstream.GoAheadProposal{Scope: ask.Scope, Factory: ask.Factory, Job: ask.Job, Wave: ask.Wave, MilestoneID: ask.MilestoneID, CapUSD: ask.CapUSD, EndsAt: end.Add(24*time.Hour - time.Second)}, nil
 }
 
 func (d *workstreamAgentDoor) WritePage(ctx context.Context, ask session.WorkstreamPageWrite) (session.WorkstreamPageWritten, error) {

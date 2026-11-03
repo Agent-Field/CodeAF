@@ -151,8 +151,7 @@ func TestWorkstreamGoAheadDecodesFractionalDollarsAndWholeTargets(t *testing.T) 
 			t.Fatalf("%s: %q bad=%v rejected=%v err=%v", tc.name, text, bad, mark.RejectedBeforeRun(), err)
 		}
 		proposal := d.proposals[0]
-		want := WorkstreamGoAheadProposalPrefix + tc.scope + ", up to $12.50, until 2026-11-04. Review"
-		if proposal.GoAhead == nil || proposal.GoAhead.CapUSD != 12.5 || proposal.Text != want || proposal.Kind != "decision" {
+		if proposal.GoAhead == nil || proposal.GoAhead.CapUSD != 12.5 || proposal.Text != "Review" || proposal.Kind != "goahead" || proposal.GoAhead.Scope != tc.name || (tc.name == "job" && (proposal.GoAhead.Factory != "f" || proposal.GoAhead.Job != 7)) || (tc.name == "wave" && proposal.GoAhead.Wave != 2) {
 			t.Fatalf("fractional dollars changed: %+v", proposal)
 		}
 	}

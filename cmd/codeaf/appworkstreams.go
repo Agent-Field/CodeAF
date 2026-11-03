@@ -192,7 +192,7 @@ func (b *appBackend) WorkstreamList(p appwire.WorkstreamListParams) (appwire.Wor
 		}
 		b.workstreamRememberBrief(w)
 		v := appWorkstream(w, facts, b.workstreamSpend(w.AgentID))
-		out.Workstreams = append(out.Workstreams, appwire.WorkstreamRow{ID: v.ID, Name: v.Name, Stage: v.Stage, Total: v.Total, Merged: v.Merged, NeedsYou: v.NeedsYou, SpendUSD: v.SpendUSD, BudgetUSD: v.BudgetUSD, UpdatedAt: v.UpdatedAt})
+		out.Workstreams = append(out.Workstreams, appwire.WorkstreamRow{ID: v.ID, Name: v.Name, Stage: v.Stage, Total: v.Total, Merged: v.Merged, NeedsYou: v.NeedsYou, SpendUSD: v.SpendUSD, BudgetUSD: v.BudgetUSD, UpdatedAt: v.UpdatedAt, AgentID: v.AgentID, OriginChatID: v.OriginChatID})
 	}
 	return out, nil
 }
@@ -461,7 +461,7 @@ func appWorkstreamPlan(p workstream.Plan) appwire.WorkstreamPlan {
 	for _, w := range p.Waves {
 		wave := appwire.WorkstreamWave{N: w.N, Title: workstreamOptional(w.Title), MilestoneID: workstreamOptional(w.MilestoneID), AutoStart: w.AutoStart, Items: []appwire.WorkstreamPlanItem{}}
 		for _, i := range w.Items {
-			wave.Items = append(wave.Items, appwire.WorkstreamPlanItem{Kind: i.Kind, Factory: workstreamOptional(i.Factory), Job: workstreamPositive(i.Job), DraftID: workstreamOptional(i.DraftID), Title: workstreamOptional(i.Title), Repo: workstreamOptional(i.Repo), Text: workstreamOptional(i.Text)})
+			wave.Items = append(wave.Items, appwire.WorkstreamPlanItem{Kind: i.Kind, Factory: workstreamOptional(i.Factory), Job: workstreamPositive(i.Job), DraftID: workstreamOptional(i.DraftID), Title: workstreamOptional(i.Title), Repo: workstreamOptional(i.Repo), Text: workstreamOptional(i.Text), Size: workstreamOptional(i.Size), BudgetUSD: workstreamDraftBudget(i.BudgetUSD), Source: appWorkstreamSource(i.Source)})
 		}
 		out.Waves = append(out.Waves, wave)
 	}
@@ -483,13 +483,20 @@ func (b *appBackend) WorkstreamPlanSet(p appwire.WorkstreamPlanSetParams) (appwi
 		for _, w := range p.Waves {
 			wave := workstream.Wave{N: w.N, Title: workstreamValue(w.Title), MilestoneID: workstreamValue(w.MilestoneID), AutoStart: w.AutoStart, Items: []workstream.PlanItem{}}
 			for _, i := range w.Items {
-				wave.Items = append(wave.Items, workstream.PlanItem{Kind: i.Kind, Factory: workstreamValue(i.Factory), Job: workstreamValue(i.Job), DraftID: workstreamValue(i.DraftID), Title: workstreamValue(i.Title), Repo: workstreamValue(i.Repo), Text: workstreamValue(i.Text)})
+				wave.Items = append(wave.Items, workstream.PlanItem{Kind: i.Kind, Factory: workstreamValue(i.Factory), Job: workstreamValue(i.Job), DraftID: workstreamValue(i.DraftID), Title: workstreamValue(i.Title), Repo: workstreamValue(i.Repo), Text: workstreamValue(i.Text), Size: workstreamValue(i.Size), BudgetUSD: workstreamValue(i.BudgetUSD), Source: workstreamSource(i.Source)})
 			}
 			waves = append(waves, wave)
 		}
 		v, c, err := s.SetPlan(context.Background(), p.ID, p.BaseVersion, milestones, waves, workstream.Attribution{})
 		return appwire.WorkstreamPlanSetResult{Plan: appWorkstreamPlan(v)}, c, err
 	})
+}
+
+func workstreamDraftBudget(budget float64) *float64 {
+	if budget == 0 {
+		return nil
+	}
+	return &budget
 }
 
 func appWorkstreamSource(p *workstream.Source) *appwire.WorkstreamSource {
@@ -543,7 +550,7 @@ func (b *appBackend) WorkstreamPageGet(p appwire.WorkstreamPageGetParams) (appwi
 }
 func (b *appBackend) WorkstreamPageSave(p appwire.WorkstreamPageSaveParams) (appwire.WorkstreamPageSaveResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamPageSaveResult, workstream.Change, error) {
-		v, c, err := s.SavePage(context.Background(), p.ID, p.BaseVersion, p.Doc, workstream.Attribution{})
+		v, c, err := s.SavePage(context.Background(), p.ID, p.BaseVersion, p.Doc, workstream.Attribution{From: workstreamSource(p.Source)})
 		return appwire.WorkstreamPageSaveResult{Page: appWorkstreamPage(v)}, c, err
 	})
 }
@@ -553,7 +560,7 @@ func (b *appBackend) WorkstreamPageCreate(p appwire.WorkstreamPageCreateParams) 
 		if p.ReadByJobs != nil {
 			read = *p.ReadByJobs
 		}
-		v, c, err := s.CreatePage(context.Background(), workstream.PageCreate{WorkstreamID: p.WorkstreamID, ParentID: workstreamValue(p.ParentID), AfterID: workstreamValue(p.AfterID), Title: p.Title, Owner: workstreamValue(p.Owner), ReadByJobs: read, Doc: p.Doc})
+		v, c, err := s.CreatePage(context.Background(), workstream.PageCreate{WorkstreamID: p.WorkstreamID, ParentID: workstreamValue(p.ParentID), AfterID: workstreamValue(p.AfterID), Title: p.Title, Owner: workstreamValue(p.Owner), ReadByJobs: read, Doc: p.Doc, Attribution: workstream.Attribution{From: workstreamSource(p.Source)}})
 		return appwire.WorkstreamPageCreateResult{Page: appWorkstreamPage(v)}, c, err
 	})
 }
@@ -604,11 +611,25 @@ func (b *appBackend) WorkstreamPageRestore(p appwire.WorkstreamPageRestoreParams
 }
 
 func appWorkstreamRecord(r workstream.Record) appwire.WorkstreamRecord {
-	return appwire.WorkstreamRecord{ID: r.ID, WorkstreamID: r.WorkstreamID, Kind: r.Kind, Text: r.Text, State: r.State, By: r.By, Source: appWorkstreamSource(r.Source), CreatedAt: r.CreatedAt, DecidedAt: r.DecidedAt, Supersedes: workstreamOptional(r.Supersedes), SupersededBy: workstreamOptional(r.SupersededBy)}
+	return appwire.WorkstreamRecord{ID: r.ID, WorkstreamID: r.WorkstreamID, Kind: r.Kind, Text: r.Text, State: r.State, By: r.By, Source: appWorkstreamSource(r.Source), CreatedAt: r.CreatedAt, DecidedAt: r.DecidedAt, Supersedes: workstreamOptional(r.Supersedes), SupersededBy: workstreamOptional(r.SupersededBy), GoAhead: appWorkstreamGoAheadProposal(r.GoAhead), GoAheadID: workstreamOptional(r.GoAheadID)}
+}
+
+func appWorkstreamGoAheadProposal(p *workstream.GoAheadProposal) *appwire.WorkstreamGoAheadProposal {
+	if p == nil {
+		return nil
+	}
+	return &appwire.WorkstreamGoAheadProposal{Scope: p.Scope, Factory: workstreamOptional(p.Factory), Job: workstreamPositive(p.Job), Wave: workstreamPositive(p.Wave), MilestoneID: workstreamOptional(p.MilestoneID), CapUSD: p.CapUSD, EndsAt: p.EndsAt}
+}
+
+func workstreamGoAheadProposal(p *appwire.WorkstreamGoAheadProposal) *workstream.GoAheadProposal {
+	if p == nil {
+		return nil
+	}
+	return &workstream.GoAheadProposal{Scope: p.Scope, Factory: workstreamValue(p.Factory), Job: workstreamValue(p.Job), Wave: workstreamValue(p.Wave), MilestoneID: workstreamValue(p.MilestoneID), CapUSD: p.CapUSD, EndsAt: p.EndsAt}
 }
 func (b *appBackend) WorkstreamRecordList(p appwire.WorkstreamRecordListParams) (appwire.WorkstreamRecordListResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamRecordListResult, workstream.Change, error) {
-		records, err := s.Records(context.Background(), p.WorkstreamID, workstreamValue(p.Kind), workstreamValue(p.State))
+		records, err := s.Records(context.Background(), p.WorkstreamID, workstreamValue(p.Kind), workstreamValue(p.State), workstreamValue(p.IncludeGoAheads))
 		out := appwire.WorkstreamRecordListResult{Records: []appwire.WorkstreamRecord{}}
 		for _, r := range records {
 			out.Records = append(out.Records, appWorkstreamRecord(r))
@@ -618,7 +639,7 @@ func (b *appBackend) WorkstreamRecordList(p appwire.WorkstreamRecordListParams) 
 }
 func (b *appBackend) WorkstreamRecordPropose(p appwire.WorkstreamRecordProposeParams) (appwire.WorkstreamRecordProposeResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamRecordProposeResult, workstream.Change, error) {
-		v, c, err := s.ProposeRecord(context.Background(), workstream.RecordPropose{WorkstreamID: p.WorkstreamID, Kind: p.Kind, Text: p.Text, Source: workstreamSource(p.Source), Kept: workstreamValue(p.Kept)})
+		v, c, err := s.ProposeRecord(context.Background(), workstream.RecordPropose{WorkstreamID: p.WorkstreamID, Kind: p.Kind, Text: p.Text, Source: workstreamSource(p.Source), Kept: workstreamValue(p.Kept), GoAhead: workstreamGoAheadProposal(p.GoAhead)})
 		return appwire.WorkstreamRecordProposeResult{Record: appWorkstreamRecord(v)}, c, err
 	})
 }

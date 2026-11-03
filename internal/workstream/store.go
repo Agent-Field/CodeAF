@@ -93,6 +93,14 @@ func sourceJSON(source *Source) (any, error) {
 	if source.ID == "" || !textWithin(source.ID, 4096) || !lineWithin(source.Label, 200) {
 		return nil, invalid("source needs an id and a label of at most 200 bytes")
 	}
+	if source.Kind != "message" && source.ChatID != "" || source.Kind != "factory_job" && source.Factory != "" {
+		return nil, invalid("source chat_id is only for message and factory is only for factory_job")
+	}
+	if source.ChatID != "" {
+		if err := (workspace.Ref{Kind: workspace.ConversationKind, ID: source.ChatID}).Validate(); err != nil {
+			return nil, err
+		}
+	}
 	switch source.Kind {
 	case "chat", "page", "url":
 	case "message":

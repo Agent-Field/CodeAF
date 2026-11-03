@@ -5,6 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
+
+	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
 func planIn(ctx context.Context, tx *sql.Tx, id string) (Plan, error) {
@@ -109,6 +113,9 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 				return invalid("wave milestone does not exist")
 			}
 			for _, item := range wave.Items {
+				if err := workstreamDraftFields(item); err != nil {
+					return err
+				}
 				switch item.Kind {
 				case "job":
 					if item.Job <= 0 || !jobs[Job{Factory: item.Factory, Number: item.Job}] {
@@ -153,4 +160,18 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 		return Plan{}, Change{}, err
 	}
 	return out, c, nil
+}
+
+func workstreamDraftFields(item PlanItem) error {
+	if item.Kind != "draft" && (item.Size != "" || item.BudgetUSD != 0 || item.Source != nil) {
+		return invalid("size, budget_usd and source are allowed only on drafts")
+	}
+	if item.Size != "" && item.Size != "S" && item.Size != "M" && item.Size != "L" {
+		return invalid("draft size must be S, M or L")
+	}
+	if math.IsNaN(item.BudgetUSD) || math.IsInf(item.BudgetUSD, 0) || item.BudgetUSD < 0 || item.BudgetUSD > workspace.WorkstreamGoAheadCapMax {
+		return invalid(fmt.Sprintf("draft budget_usd must be greater than 0 and at most %d when set", workspace.WorkstreamGoAheadCapMax))
+	}
+	_, err := sourceJSON(item.Source)
+	return err
 }
