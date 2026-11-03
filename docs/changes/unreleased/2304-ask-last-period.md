@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Factory asks retain their final punctuation
-pr: 0
+pr: 2304
 surface: [factory]
 invalidates: []
 ---
