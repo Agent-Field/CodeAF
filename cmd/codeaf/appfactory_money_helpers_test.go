@@ -95,6 +95,7 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 		Agent appwire.Agent `json:"agent"`
 	}
 	s.must("agents.create", map[string]any{"workspace": t.TempDir()}, &created)
+	s.must("agents.open", map[string]any{"id": created.Agent.ID}, &struct{}{})
 	for _, path := range []struct{ purpose, role string }{{"pipeline_ai", "insight_pipeline"}, {"view_topic", "insight_views"}} {
 		var answer appwire.Errand
 		deadline := time.Now().Add(5 * time.Second)
@@ -108,7 +109,7 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		if answer.Reason != "" || math.Abs(answer.Usage.CostUSD-.01) > 1e-9 {
+		if answer.Reason != "" || answer.Role != path.role || math.Abs(answer.Usage.CostUSD-.01) > 1e-9 {
 			t.Fatalf("%s: %+v", path.purpose, answer)
 		}
 	}
@@ -120,10 +121,10 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ledger float64
-	roles := map[string]int{}
+	purposes := map[string]int{}
 	for _, line := range lines {
 		ledger += line.USD
-		roles[line.Role] += line.Calls
+		purposes[line.Role] += line.Calls
 		if line.FactoryJob != "" {
 			t.Errorf("page AI charged job %q", line.FactoryJob)
 		}
@@ -133,8 +134,8 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 	s.must("spend.report", map[string]any{"from": day, "to": day}, &spending)
 	var header api.Job
 	s.must("factory.job", map[string]any{"factory": st.Factory, "job": it.ID}, &header)
-	if calls.Load() != 2 || math.Abs(ledger-.02) > 1e-9 || spending.Totals.CostUSD == nil || math.Abs(*spending.Totals.CostUSD-.02) > 1e-9 || header.Cost != 0 || roles["insight_pipeline"] != 1 || roles["insight_views"] != 1 {
-		t.Fatalf("provider=%.4f ledger=%.4f spending=%+v job=%.4f roles=%v", float64(calls.Load())*.01, ledger, spending.Totals, header.Cost, roles)
+	if calls.Load() != 2 || math.Abs(ledger-.02) > 1e-9 || spending.Totals.CostUSD == nil || math.Abs(*spending.Totals.CostUSD-.02) > 1e-9 || header.Cost != 0 || purposes["pipeline_ai"] != 1 || purposes["view_topic"] != 1 {
+		t.Fatalf("provider=%.4f ledger=%.4f spending=%+v job=%.4f purposes=%v", float64(calls.Load())*.01, ledger, spending.Totals, header.Cost, purposes)
 	}
 	t.Logf("provider=0.0200 ledger=%.4f Spending=%.4f viewed job=%.4f", ledger, *spending.Totals.CostUSD, header.Cost)
 }
