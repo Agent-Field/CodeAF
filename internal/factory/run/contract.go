@@ -186,7 +186,7 @@ type Options struct {
 	// approval is carried out ([Runner.Publish]); the wire hands [GitPush]
 	// with the person's token. Nil publishes nothing: an approval then fails
 	// with the sentence that this machine cannot push.
-	Push func(dir, branch string) error
+	Push func(dir, branch string, before ...func() error) error
 	// Git commits an approved item's worktree ([Runner.Publish]); nil is
 	// [ExecGit].
 	Git Git
@@ -242,7 +242,7 @@ type Options struct {
 // PublishTarget keeps one attempt's GitHub writes on the same person's account.
 type PublishTarget struct {
 	Source factory.Source
-	Push   func(dir, branch string) error
+	Push   func(dir, branch string, before ...func() error) error
 	// Git reads and moves the remote with Push's own credential when a push is
 	// refused; nil uses the runner's Git.
 	Git Git
@@ -280,9 +280,10 @@ type Runner struct {
 	// loopOnce makes floor, the state machine's own state (loop.go), on the
 	// first door anybody calls, so New stays the one-line constructor the
 	// lanes were handed.
-	loopOnce    sync.Once
-	floor       *floorLoop
-	stopReaders sync.Map
+	loopOnce      sync.Once
+	floor         *floorLoop
+	stopReaders   sync.Map
+	publishChecks sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.

@@ -1,6 +1,9 @@
 package lease
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -11,7 +14,7 @@ import (
 func (d *Desk) Renew(id, worker string) (Lease, error) {
 	var renewed Lease
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
-		held, err := identified(doc, id, worker)
+		held, err := receiptIdentity(doc, id, worker, now)
 		if err != nil {
 			return false, err
 		}
@@ -30,6 +33,49 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 	return d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
+			for i, receipt := range doc.Receipts {
+				if receipt.Lease.ID != id || !receipt.Lease.live(now) {
+					continue
+				}
+				if receipt.Lease.Worker != worker {
+					return false, ErrWorker
+				}
+				if err := d.store.Update(receipt.Lease.Job, func(it *factory.Item) error {
+					if !receipt.Restarted {
+						return change(it)
+					}
+					// Validate the old report against an isolated stopped job. Only its
+					// opened PR receipt may cross into the replacement run.
+					raw, err := json.Marshal(receipt.Item)
+					if err != nil {
+						return err
+					}
+					var candidate factory.Item
+					if err := json.Unmarshal(raw, &candidate); err != nil {
+						return err
+					}
+					candidate.State = factory.StateNew
+					if candidate.Stream == nil {
+						candidate.Stream = &factory.Stream{}
+					}
+					candidate.Stream.Ended = now
+					candidate.PullRequest = nil
+					if err := change(&candidate); err != nil {
+						return err
+					}
+					if candidate.PullRequest != nil && candidate.PublishStatus != nil && candidate.PublishStatus.State == "opened" {
+						it.PullRequest = candidate.PullRequest
+						it.Note(now, "PR opened by the stopped publisher: "+candidate.PullRequest.URL+"; not closed. Review it on GitHub.")
+					}
+					return nil
+				}); err != nil {
+					return false, err
+				}
+				if complete {
+					doc.Receipts = append(doc.Receipts[:i], doc.Receipts[i+1:]...)
+				}
+				return complete, nil
+			}
 			return false, err
 		}
 		if err := d.store.Update(held.Job, func(it *factory.Item) error {
@@ -59,7 +105,7 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 func (d *Desk) ThreadOnly(id, worker string) (bool, error) {
 	var only bool
 	err := d.change(func(doc *document, _ time.Time) (bool, error) {
-		held, err := identified(doc, id, worker)
+		held, err := receiptIdentity(doc, id, worker, d.now())
 		if err != nil {
 			return false, err
 		}
@@ -84,4 +130,38 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 		return nil, ErrWithdrawn
 	}
 	return nil, ErrNoLease
+}
+
+// CheckPublish reads the current job under its row lock and the worker's lease.
+// A worker must check again at each push and immediately before its PR request.
+func (d *Desk) CheckPublish(id, worker string) error {
+	return d.change(func(doc *document, _ time.Time) (bool, error) {
+		held, err := identified(doc, id, worker)
+		if err != nil {
+			return false, err
+		}
+		return false, d.store.Update(held.Job, func(it *factory.Item) error {
+			if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
+				return fmt.Errorf("publication stopped; no write is permitted")
+			}
+			return nil
+		})
+	})
+}
+
+func receiptIdentity(doc *document, id, worker string, now time.Time) (*Lease, error) {
+	held, err := identified(doc, id, worker)
+	if !errors.Is(err, ErrNoLease) {
+		return held, err
+	}
+	for i := range doc.Receipts {
+		held := &doc.Receipts[i].Lease
+		if held.ID == id && id != "" && held.live(now) {
+			if held.Worker != worker {
+				return nil, ErrWorker
+			}
+			return held, nil
+		}
+	}
+	return nil, err
 }
