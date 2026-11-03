@@ -642,11 +642,11 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 	c := Lift(words)
 	security, rest := LiftSecurity(c.Rest)
 	title := TidyWords(rest)
-	it, err := localJob(repo, title, words, now, recipe)
+	it, err := localJob(repo, title, strings.TrimSpace(rest), now, recipe)
 	if err != nil {
 		return 0, err
 	}
-	// The ask keeps the original input; the title alone is tidied.
+	// The ask keeps punctuation after chips are lifted; the title alone is tidied.
 	it.Body = ""
 	it.Cap = c.Cap
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`
