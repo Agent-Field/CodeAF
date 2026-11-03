@@ -73,6 +73,9 @@ func TestRunnerDecidesFileConditionsAtTheStep(t *testing.T) {
 			}
 			if !tc.want {
 				reason := "skipping inspect: when " + tc.when + " does not match the change files"
+				if ph := it.Stream.Phases[1]; ph.State != factory.PhaseState("skipped") {
+					t.Fatalf("skipped step state = %q, want skipped", ph.State)
+				}
 				if !logHas(it, reason) {
 					t.Fatalf("missing skip reason %q: %+v", reason, it.Stream.Log)
 				}
