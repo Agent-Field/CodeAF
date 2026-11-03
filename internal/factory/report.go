@@ -45,8 +45,7 @@ type RunReport struct {
 
 // PipelineChange is the job's stages and the run's phase list as the worker's
 // runner left them. A phase already on the job keeps its state on the server;
-// only the shape is taken from the report before results are folded. Phase
-// state is retained.
+// only the shape is taken from the report before results are folded.
 type PipelineChange struct {
 	Stages []Stage
 	Phases []Phase

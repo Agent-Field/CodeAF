@@ -452,7 +452,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
 
 // applyModelUses adds a report's model rows where the job's spend is. The
-// dollars themselves arrived as Cost; these rows only say which model.
+// dollars arrive through round tables and Cost; these rows identify the model.
 func applyModelUses(it *factory.Item, rows []factory.ModelUse) {
 	if it == nil {
 		return

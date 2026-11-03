@@ -112,7 +112,7 @@ func TestStepCostWorkerReceiptBeforeResult(t *testing.T) {
 	}
 }
 
-func TestStepCostDelayedRetryKeepsWorkerHighWater(t *testing.T) {
+func TestStepCostDelayedReportThenResume(t *testing.T) {
 	it := factory.Item{State: factory.StateRunning, Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat}}}}
 	for _, receipt := range []struct {
 		round int

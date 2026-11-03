@@ -81,6 +81,11 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 			rng := rand.New(rand.NewSource(seed))
 			it := reviewItem()
 			worker := reviewItem()
+			worker.State = factory.StateNew
+			if err := run.QueueItem(&worker, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			worker.State = factory.StateRunning
 			worker.Stream.Phases[0].Round = 1
 			worker.Stream.Phases[0].State = factory.PhaseRunning
 			clone := func(it factory.Item) factory.Item {
