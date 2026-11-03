@@ -31,7 +31,7 @@ Changed state and evidence sites (relative to `internal/factory/`):
   `ToWorkerReport`, `FromRunReport`), and `api/codec.go` (`runStep`, `toPhase`)
   carry `skipped` and `skip_reason`.
 - `run/loop.go` (`nextPhase`, `approve`, `runPhase`, `revive`,
-  `sendBackStored`), `run/inbox.go` (`askingStep`), `recovery.go`
+  `sendBackStored`), `run/inbox.go` (`askingPhase`), `recovery.go`
   (`PlanStepRecovery`) and `giveback.go` (`CheckAgainFrom`) handle progress,
   resume, recovery and rechecking files. `run/diff.go` (`stepsMoved`) and
   `run/report.go` (`reportStep`, `skipPhase`, `setPhaseState`) replicate skips
