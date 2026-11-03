@@ -51,11 +51,8 @@ func TeamsAsideLine(path string) string {
 }
 
 // JoinedLine is what the joining device says when it worked.
-// keptChatsLine is the shared tail of every successful join: a solo computer's
-// own chats stay, and the other computers' chats arrive as sharing finishes.
-const keptChatsLine = ". Your chats are kept. Both computers' chats will appear as sharing finishes."
-
-const JoinedLine = "Paired" + keptChatsLine
+const openChatsLine = ". Run codeaf to open your chats."
+const JoinedLine = "Paired with your other device" + openChatsLine
 
 // AlreadyPairedLine is the no-change result on every pairing surface.
 const AlreadyPairedLine = "already paired; nothing changed"
@@ -189,14 +186,14 @@ func RenamedAloneLine(name string) string {
 // RenamedLine is what a computer in a fleet says after it was named and the
 // sync service has the new name, so every other device shows it.
 func RenamedLine(name string) string {
-	return RenamedAloneLine(name)
+	return fmt.Sprintf("This computer is now called %s on all your devices.", name)
 }
 
 // RenamedHereLine is what it says when the new name is kept here but the sync
 // service could not be reached: the next time this computer connects it tells
 // the others, so nothing needs to be typed again.
 func RenamedHereLine(name string) string {
-	return fmt.Sprintf("This computer is now called %s. Your other computers will see it once this computer is back online.", name)
+	return fmt.Sprintf("This computer is now called %s. Your other devices will show it after this one next connects.", name)
 }
 
 // NamePrompt is the question a person is asked while a computer joins: the name
@@ -216,5 +213,5 @@ func PairedWithLine(name string) string {
 	if name == "" {
 		return JoinedLine
 	}
-	return "Paired with " + name + keptChatsLine
+	return "Paired with " + name + openChatsLine
 }

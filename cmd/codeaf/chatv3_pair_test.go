@@ -23,9 +23,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
-// M8: ordinary refusals never steer a person into the destructive opt-in door.
-func TestM8ChatPairRefusalDoesNotAdviseReplace(t *testing.T) {
-	if strings.Contains(pair.ErrDifferentChats.Error(), "--replace") || !strings.Contains(pair.ErrDifferentChats.Error(), "nothing was changed") {
+// A used computer is told how to confirm replacement without changing its chats.
+func TestChatPairRefusalExplainsReplacement(t *testing.T) {
+	if !strings.Contains(pair.ErrDifferentChats.Error(), "--replace") || !strings.Contains(pair.ErrDifferentChats.Error(), "nothing was changed") {
 		t.Fatal(pair.ErrDifferentChats)
 	}
 }
@@ -49,15 +49,8 @@ func TestM1M8ChatPairDoorUsedSoloHome(t *testing.T) {
 		_, err := (chatPairDoor{}).Join(t.Context(), code, joinScreen{newTerminal(strings.NewReader(""), io.Discard)})
 		done <- err
 	}()
-	shown.out.waitFor(t, `wants your chats\. Same three words`)
-	if _, err := io.WriteString(shown.typed, "y\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if err := shown.end(t); err != nil {
-		t.Fatal(err)
+	if err := <-done; !errors.Is(err, pair.ErrDifferentChats) {
+		t.Fatalf("used solo pairing = %v", err)
 	}
 	if got, err := os.ReadFile(chat); err != nil || string(got) != "history kept\n" {
 		t.Fatalf("M1 /pair history: %q, %v", got, err)

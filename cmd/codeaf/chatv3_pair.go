@@ -41,8 +41,7 @@ func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) 
 	return label, explainSyncUnreachable(err, route.URL)
 }
 
-// Join shares this solo computer's chats with the other computer, keeping
-// its local history and saved keys.
+// Join pairs this computer; submitted chats require explicit replacement.
 func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error) {
 	route, err := pairMailbox("")
 	if err != nil {

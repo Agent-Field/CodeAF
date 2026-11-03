@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -66,6 +67,15 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 	code, err := ReadJoinCode(typed)
 	if err != nil {
 		return Joined{}, err
+	}
+	// A solo identity cannot be the grant's identity, so known local work can
+	// refuse before the approver spends an approval or hears a success receipt.
+	if !j.Replace {
+		if _, err := identity.Load(j.Home); err == nil && identity.Solo(j.Home) {
+			if can, err := identity.Joinable(j.Home); err != nil || !can {
+				return Joined{}, differentChats(j.Home)
+			}
+		}
 	}
 	if err := checkRelay(ctx, route); err != nil {
 		return Joined{}, err
@@ -128,9 +138,8 @@ func joinOffer(label string, platform ...string) ([]byte, error) {
 	return append([]byte(name), nonce...), nil
 }
 
-// adopt takes the grant into this home, keeping a solo computer's chats and
-// shared state. Their local objects stay in place; sync exports them under the
-// shared keys and a new publication ledger after pairing.
+// adopt takes the grant into this home. Submitted chats require explicit
+// replacement; a startup-only home retains its state through the durable switch.
 func adopt(j Joining, grant Grant) (Joined, error) {
 	return adoptWithDevice(j, grant, nil)
 }
@@ -161,9 +170,9 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	if err == nil && !j.Replace && held.ID() == grant.Identity.ID() {
 		return Joined{Already: true}, nil
 	}
-	if err == nil && !j.Replace && !identity.Solo(j.Home) && !slices.Contains(grant.Replaces, held.ID()) {
+	if err == nil && !j.Replace && !slices.Contains(grant.Replaces, held.ID()) {
 		if ok, err := identity.Joinable(j.Home); err != nil || !ok {
-			return Joined{}, ErrDifferentChats
+			return Joined{}, differentChats(j.Home)
 		}
 	}
 	unlock, err := keys.LockHome(j.Home)
@@ -194,14 +203,11 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 		return j.merge(grant, dev, nil)
 	}
 	merge := false
-	if err == nil && !j.Replace {
-		merge = identity.Solo(j.Home)
-		if !merge {
-			var checkErr error
-			merge, checkErr = identity.Joinable(j.Home)
-			if checkErr != nil {
-				return Joined{}, ErrDifferentChats
-			}
+	if err == nil {
+		var checkErr error
+		merge, checkErr = identity.Joinable(j.Home)
+		if checkErr != nil || !merge {
+			return Joined{}, differentChats(j.Home)
 		}
 	}
 	if merge && err == nil {
@@ -245,3 +251,23 @@ func adoptFailure(err error) error {
 	}
 	return err
 }
+
+func differentChats(home string) error {
+	n, err := identity.ChatCount(home)
+	if err != nil {
+		return ErrDifferentChats
+	}
+	if n == 0 {
+		return ErrDifferentChats
+	}
+	count, kept := fmt.Sprintf("%d chats", n), fmt.Sprintf("those %d chats stay on this computer but no longer sync", n)
+	if n == 1 {
+		count, kept = "1 chat", "that chat stays on this computer but no longer syncs"
+	}
+	return differentChatError{"this computer already has " + count + " of its own, so nothing was changed. To pair it anyway, run this again with --replace: " + kept + "; shared memories and settings are cleared"}
+}
+
+type differentChatError struct{ line string }
+
+func (e differentChatError) Error() string { return e.line }
+func (e differentChatError) Unwrap() error { return ErrDifferentChats }

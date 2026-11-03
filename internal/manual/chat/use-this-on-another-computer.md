@@ -34,8 +34,8 @@ The code is good for 10 minutes. It works once.
 
 ## Share my conversation with my other computer
 
-Pair the computers with `/pair` or `codeaf pair`. Your existing solo chats are
-kept and shared. Continue here moves a conversation to the other computer.
+Pair the computers with `/pair` or `codeaf pair`. A computer with submitted
+chats requires `--replace`. Continue here moves a conversation to the other computer.
 
 ## Sync my chats — how to sync between paired computers
 
@@ -107,11 +107,11 @@ laptop is now paired. Your chats can continue there.
 and the other computer says:
 
 ```
-Paired with laptop-a. Your chats are kept. Both computers' chats will appear as sharing finishes.
+Paired with laptop-a. Run codeaf to open your chats.
 ```
 
 When the other computer's name cannot be read yet, it says
-`Paired. Your chats are kept. Both computers' chats will appear as sharing finishes.`
+`Paired with your other device. Run codeaf to open your chats.`
 
 The code is now dead. It cannot pair a third computer.
 
@@ -199,12 +199,13 @@ It is not a view of your chats. It is a copy of you. Pair only a computer you ow
 
 Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
 
-## Pairing a computer that already has chats — merge, keeping history, sharing progress and interrupted pairing
+## Pairing a computer that already has chats — refusal and replacement
 
-Pairing a computer that has never shared its chats keeps its chats, full history,
-saved keys, memory and preferences. It asks no replacement question. Each
-computer's own chats stay here; the other computer's chats appear with Continue
-here. Continuing a chat moves it, just as before.
+A computer whose conversations have no submitted turns can pair directly. If it already has its own saved pairing keys and chats with submitted turns, the refusal counts them and explains `--replace`. Chats made with `codeaf chat --once` before any pairing keys exist are kept on first pairing, and reach the newly joined computers the next time codeaf's window opens here. For three chats on a computer with its own keys:
+
+```
+this computer already has 3 chats of its own, so nothing was changed. To pair it anyway, run this again with --replace: those 3 chats stay on this computer but no longer sync; shared memories and settings are cleared
+```
 
 After approval, codeaf saves the pairing and keeps the saved keys readable before
 it says Paired. Existing chats are shared in the background. The chat list updates
@@ -220,14 +221,13 @@ or sharing is interrupted, reopen codeaf: it finishes the saved pairing and
 retries sharing the same chats without making duplicates. Older chats still use
 the independent-copy policy described above.
 
-A used computer already sharing a different set refuses with
-`This computer already shares chats with another set of computers; nothing was changed.` Its
-chats stay readable where they are.
+A computer with local work refuses without changing it. When there are
+submitted chats, the refusal counts them and explains `--replace`.
 
 Only an explicit `codeaf pair <code> --replace` or `/pair <code> --replace` asks
 to give up this computer's shared state for the other computer's. The existing
 confirmation remains; a no or Esc leaves everything as it was. This clean-slate
-option is never needed for a solo computer to bring its chats along. Old chat
+option is required for a solo computer with submitted chats. Old chat
 folders are set aside outside the chat list and are not shared into the new set.
 
 ## Interrupted explicit replacement — clean slate and saved keys
