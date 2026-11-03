@@ -40,3 +40,12 @@ retake the released hold before writing. Idle comparison visits shared ancestors
 once and retains the hold beyond its bounded complete-proof budgets. Closing
 always stops the writer even when its budget expires, and model RPCs preserve
 the factory's existing lent-view restriction.
+
+Durable edits read the published drive without waiting on installation or
+catch-up's mutex. Taking back an idle-released hold has a separate 15-second
+write budget; ordinary held admission keeps its 750 ms read. A lost acquire reply
+stays retryable and keeps the draft. A newer own-device fence cannot identify the
+window that acquired it, so an uncertain window does not adopt or renew it and
+never offers itself a Continue-here card. If nobody adopted the hold, retrying
+after its ordinary lease lapses takes a new hold through the existing conditional
+acquire. No directory protocol or replicated lease record changes are included.

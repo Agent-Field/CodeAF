@@ -530,3 +530,20 @@ Idle release requires a complete comparison. Its check allows 20,000 paths,
 shared directories once. If any budget or the 30-second comparison deadline is
 exceeded, the chat keeps its hold and retries later. Ordinary work and saving
 keep their existing behavior; no incomplete comparison releases the chat.
+
+## Take-back timeout: retry a released chat when the sync service is slow
+
+Taking back your released chat is a bounded ownership write, with up to 15 seconds
+to finish. The terminal can show `waiting for <service>; still checking` while it
+waits. An already-held chat keeps its ordinary short ownership check and offline
+behavior.
+
+If the answer is lost, codeaf says `couldn't confirm taking this chat back from the sync service; try again`. Your words stay unsent. Press Enter again to retry
+in the same window. The chat may be briefly unavailable: another hold on this
+computer does not prove which window acquired it. codeaf does not offer its own
+uncertain hold through “Continue this chat here?”.
+
+If no window adopted that uncertain hold, nobody renews it. It lapses within the
+ordinary 90-second hold, and a retry then takes a new hold before sending your
+words. A live hold belonging to another window or computer never grants this
+window permission to write.
