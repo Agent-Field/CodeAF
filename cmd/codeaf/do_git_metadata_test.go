@@ -25,6 +25,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,12 +147,30 @@ func TestDoOnTheRunEngineRefusesReplacingTheFoldersGitMetadata(t *testing.T) {
 	if !asExitStatus(runErr, &status) || status != exitIncomplete {
 		t.Fatalf("the refused-only run exited with %v, want incomplete (%d)", runErr, exitIncomplete)
 	}
-	outcome := decodeErrand(t, stdout.String())
-	if outcome.status() != exitIncomplete || outcome.Settled != true {
-		t.Fatalf("the refused-only receipt is not a settled incomplete outcome: %+v", outcome)
+	// THE RECEIPT IS THE SERIALIZED ENVELOPE, not the private outcome: its `stop`
+	// is a JSON field, while headlessOutcome.stop is unexported and never
+	// survives a round trip, so the incomplete verdict must be read from the
+	// envelope the run actually printed.
+	var receipt struct {
+		Stop    stopReason `json:"stop"`
+		OK      bool       `json:"ok"`
+		Settled bool       `json:"settled"`
+		Error   string     `json:"error"`
 	}
-	if !strings.Contains(outcome.Error, "is outside your copy") {
-		t.Fatalf("the incomplete receipt omits the boundary refusal: %+v", outcome)
+	if err := json.Unmarshal([]byte(stdout.String()), &receipt); err != nil {
+		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout.String())
+	}
+	if receipt.Stop != stopIncomplete || receipt.OK || !receipt.Settled {
+		t.Fatalf("the refused-only receipt is not a settled incomplete outcome: %+v", receipt)
+	}
+	// The incomplete ending carries a reason in its own words. Which reason
+	// depends on where the worker gave up -- the boundary's refusal when it
+	// finished after the refusals, the same-step ending when it kept retrying
+	// them -- and both are a run that ran, was refused, and did not finish. The
+	// boundary's own words are proved against the answers the worker was handed
+	// below, which the seat records whichever ending the run reached.
+	if strings.TrimSpace(receipt.Error) == "" {
+		t.Fatalf("the incomplete receipt omits its reason: %+v", receipt)
 	}
 
 	if info, err := os.Stat(filepath.Join(repo, ".git")); err != nil || !info.IsDir() {
