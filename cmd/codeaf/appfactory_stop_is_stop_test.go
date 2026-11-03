@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+ "sync/atomic"
 	"testing"
 	"time"
 
@@ -101,9 +102,12 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 				s.backend.Close()
 				wire, _ = reopened(t, s.backend.factoryHub())
 			}
-			toolResult := make(chan string, 1)
+			var calls atomic.Int32
+ t.Cleanup(func() { if got := calls.Load(); got != 0 { t.Errorf("Stop allowed %d automatic model calls; want zero", got) } })
+ toolResult := make(chan string, 1)
 			model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var req recordedRequest
+				calls.Add(1)
+ var req recordedRequest
 				if json.NewDecoder(r.Body).Decode(&req) != nil {
 					http.Error(w, "invalid fake model request", http.StatusBadRequest)
 					return
