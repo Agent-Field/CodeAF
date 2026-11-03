@@ -817,6 +817,8 @@ commands retain their obligation. Holds name every owed check on one line; three
 unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
 
+## Owed commands from another machine — absolute executable paths
+
 Owed literal checks name known tools through PATH, such as `go test ./...`,
 rather than retaining another machine's installation path. A measured rerun
 with that name can resolve a saved absolute invocation with the same scope.
