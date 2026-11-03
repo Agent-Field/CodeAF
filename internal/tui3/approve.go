@@ -86,8 +86,8 @@ const (
 	approveKeys      = "a approve · d decline · esc later"
 	approveLoading   = "looking up the request…"
 	approveGone      = "that request has run out — ask the new device for a new link"
-	approveSlow      = "the sync service did not answer in time — try again"
-	approveUnsure    = "the sync service did not answer in time — your answer may still have arrived; check /devices before answering again"
+	approveSlow      = "sync did not answer in time — try again"
+	approveUnsure    = "sync did not answer in time — your answer may still have arrived; check /devices before answering again"
 	approveWorking   = "approving…"
 	approveDeclining = "declining…"
 	approveDenied    = "%s was declined."
@@ -238,7 +238,7 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 // approveFailure is the one sentence for a refused or failed answer. The door
 // already says what happened in words a person can act on, so they are shown
 // as they are; only a silent wait, which has no sentence of its own, gets one.
-// A wait on an answer that was sent may still have been decided by the service.
+// A wait on an answer that was sent may still have been decided by sync.
 func approveFailure(err error, answered bool) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		if answered {

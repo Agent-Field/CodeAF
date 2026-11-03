@@ -124,7 +124,7 @@ a approve · d decline · esc later
 
 The line under the name says what system the new device runs (Mac, Linux, Windows, iPhone or iPad, Android, or unknown system), when it asked, and how many minutes are left. A request that ran out says `run out`, and the screen says `that request has run out — ask the new device for a new link`.
 
-While your answer is on its way the screen says `approving…` or `declining…` and offers no keys but `esc close`. If the sync service does not answer in time it says `the sync service did not answer in time — your answer may still have arrived; check /devices before answering again`, and `a` and `d` work again. If looking up the request times out it says `the sync service did not answer in time — try again`. When the request has run out, `a` and `d` are not offered at all.
+While your answer is on its way the screen says `approving…` or `declining…` and offers no keys but `esc close`. If sync does not answer in time it says `sync did not answer in time — your answer may still have arrived; check /devices before answering again`, and `a` and `d` work again. If looking up the request times out it says `sync did not answer in time — try again`. When the request has run out, `a` and `d` are not offered at all.
 
 When you approve, your screen says:
 
