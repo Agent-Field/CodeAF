@@ -42,17 +42,17 @@ func (usageIndex) Present(c cell.Cell) bool {
 // copy this machine held was older than the one a take just brought.
 func (usageIndex) Behind(c cell.Cell, d session.Digest) bool {
 	lines, err := usageLines(c, d)
-	return err == nil && len(unrecordedUsage(session.UsageLedgerPath(), lines, c.ID, d.ID)) > 0
+	return err == nil && len(lines) > heldRows(session.UsageLedgerPath(), c.ID, d.ID)
 }
 
-// Build appends only saved calls absent from both ledger aliases.
+// Build appends the saved calls past the ones the ledger holds ([heldRows]).
 func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 	lines, err := usageLines(c, d)
 	if err != nil {
 		return err
 	}
 	path := session.UsageLedgerPath()
-	for _, line := range unrecordedUsage(path, lines, c.ID, d.ID) {
+	for _, line := range lines[min(heldRows(path, c.ID, d.ID), len(lines)):] {
 		session.RecordUsage(path, line)
 	}
 	session.FlushUsage()
@@ -82,66 +82,11 @@ func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.
 	}
 }
 
-// unrecordedUsage matches each saved call to at most one row per alias. A
-// live row precedes its receipt's seal; a rebuilt row carries the seal time.
-// Match in call order, retaining distinct equal-cost calls and ignoring repeated
-// ledger IDs. Receipt costs are rounded to microdollars, unlike live costs.
-// Legacy rows have no shared receipt ID; each alias must retain its saved prefix
-// in call order when identical calls share a seal.
-func unrecordedUsage(path string, lines []session.UsageLine, sessions ...string) []session.UsageLine {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return lines
-	}
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	used := map[string][]bool{}
-	for _, id := range sessions {
-		if id != "" {
-			used[id] = make([]bool, len(lines))
-		}
-	}
-	seenIDs := map[string]bool{}
-	held := make([]bool, len(lines))
-	r := bufio.NewReaderSize(f, 1<<20)
-	for {
-		data, err := r.ReadBytes('\n')
-		var row session.UsageLine
-		if json.Unmarshal(data, &row) == nil && used[row.Session] != nil && (row.ID == "" || !seenIDs[row.ID]) {
-			if row.ID != "" {
-				seenIDs[row.ID] = true
-			}
-			match := -1
-			for i, call := range lines {
-				if used[row.Session][i] || row.Model != call.Model || row.Role != call.Role || max(row.Calls, 1) != max(call.Calls, 1) || row.Input != call.Input || row.Output != call.Output || math.Round(row.USD*1e6) != math.Round(call.USD*1e6) {
-					continue
-				}
-				if match < 0 {
-					match = i
-				}
-				if row.At.UnixMilli() <= call.At.UnixMilli() {
-					match = i
-					break
-				}
-			}
-			if match >= 0 {
-				used[row.Session][match] = true
-				held[match] = true
-			}
-		}
-		if err != nil {
-			break
-		}
-	}
-	var missing []session.UsageLine
-	for i, line := range lines {
-		if !held[i] {
-			missing = append(missing, line)
-		}
-	}
-	return missing
+// heldRows is how many of a chat's calls the ledger holds. Saved calls are in
+// call order and a chat's rows under either id are a prefix of them, so old rows
+// doubled under both ids count once, and a row is never booked again.
+func heldRows(path, folderID, journalID string) int {
+	return max(ledgerRows(path, folderID), ledgerRows(path, journalID))
 }
 
 // ledgerRows counts the ledger rows that name the session, without parsing any
