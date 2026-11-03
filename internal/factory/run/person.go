@@ -87,9 +87,6 @@ func PauseItem(it *factory.Item, now time.Time) error {
 		return fmt.Errorf("%s is not running", it.Ref())
 	}
 	if it.Stream == nil {
-		if it.Stream != nil && begun(it.Stream) {
-			factory.ClearJobRun(it)
-		}
 		it.Stream = freshStream(it, now)
 	}
 	it.Stream.Paused = true
@@ -105,9 +102,6 @@ func HoldQueued(it *factory.Item, now time.Time) error {
 		return fmt.Errorf("%s is not queued", it.Ref())
 	}
 	if it.Stream == nil {
-		if it.Stream != nil && begun(it.Stream) {
-			factory.ClearJobRun(it)
-		}
 		it.Stream = freshStream(it, now)
 	}
 	it.Stream.Paused = true
