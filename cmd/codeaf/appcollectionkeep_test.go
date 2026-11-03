@@ -217,7 +217,7 @@ func TestCollectionKeepMissingUnreadableAndNoWrites(t *testing.T) {
 }
 
 // Contract (g): a restart recovers every identity field from a never-spoken meta.
-func TestCollectionHeldConversationFindAndOpenAfterRestart(t *testing.T) {
+func TestCollectionHeldConversationIsFoundAndOpenedAfterRestart(t *testing.T) {
 	root, bucket := collectionKeepEnvironment(t)
 	const id = "reserved-agent"
 	dir := writeV3Session(t, bucket, id, "", time.Time{})

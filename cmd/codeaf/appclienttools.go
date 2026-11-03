@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -280,9 +281,7 @@ func (d *appClientToolDoor) CallClientTool(ctx context.Context, call session.Cli
 	}
 	id := clientToolCallID(d.agent, call.TurnCall)
 	r := &d.backend.clientTools
-	r.mu.Lock()
-	pending, answer, emit := r.beginLocked(ctx, d.agent, id, call)
-	r.mu.Unlock()
+	pending, answer, emit := r.begin(ctx, d.agent, id, call)
 	if pending == nil {
 		return answer, nil
 	}
@@ -311,7 +310,7 @@ func (r *appClientTools) queueEmission(emit appwire.Emitter, pending *clientTool
 	if r.senderWake == nil {
 		r.senderWake = make(chan struct{}, 1)
 		r.senderDone = make(chan struct{})
-		go r.sendEvents(emit)
+		guard.Go("app/client-tools", func() { r.sendEvents(emit) })
 	}
 	select {
 	case r.senderWake <- struct{}{}:
@@ -346,6 +345,14 @@ func (r *appClientTools) nextEmission() *appwire.AgentsToolCall {
 		}
 	}
 	return nil
+}
+
+// begin takes the registry lock for [appClientTools.beginLocked] alone, so a
+// panic inside it cannot leave the lock held.
+func (r *appClientTools) begin(ctx context.Context, agent, id string, call session.ClientToolCall) (*clientToolPending, session.ClientToolAnswer, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.beginLocked(ctx, agent, id, call)
 }
 
 // Register before emitting, so even a synchronous client answer finds its waiter.
