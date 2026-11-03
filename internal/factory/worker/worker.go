@@ -765,7 +765,7 @@ func (j *job) converse(ctx context.Context) {
 				return
 			}
 			j.mu.Lock()
-			finished := !j.replying && len(j.accepted) > 0
+			finished := !j.replying && len(j.accepted) > 0 && len(j.signalPending) == 0
 			j.mu.Unlock()
 			if finished && j.flushFinal(ctx) {
 				_ = j.w.Done(ctx, j.lease, api.WorkerDone{})
