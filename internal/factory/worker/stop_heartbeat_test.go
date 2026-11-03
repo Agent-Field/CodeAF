@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +15,8 @@ import (
 func TestAStopSurvivesALostHeartbeatReply(t *testing.T) {
 	var armed, lost, subsequent atomic.Bool
 	captured, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	releaseReply := func() { releaseOnce.Do(func() { close(release) }) }
 	g, _ := compatRig(t, func(next http.Handler, _ *reportLog) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if lost.Load() && !subsequent.Load() && strings.HasSuffix(r.URL.Path, "/report") {
@@ -42,6 +45,7 @@ func TestAStopSurvivesALostHeartbeatReply(t *testing.T) {
 			_, _ = w.Write(reply.Body.Bytes())
 		})
 	})
+	t.Cleanup(releaseReply)
 	next := check("echo paid-next-step")
 	next.Name = "next"
 	id := g.add(t, check("sleep 30"), next)
@@ -64,10 +68,10 @@ func TestAStopSurvivesALostHeartbeatReply(t *testing.T) {
 		t.Fatal("heartbeat never entered")
 	}
 	if err := g.floor.Stop(id); err != nil {
-		close(release)
+		releaseReply()
 		t.Fatal(err)
 	}
-	close(release)
+	releaseReply()
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
 		if subsequent.Load() && !g.run.Running(id) {
 			break

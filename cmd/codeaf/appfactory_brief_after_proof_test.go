@@ -250,6 +250,18 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		}
 		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 && g["verdict_behind"] == false })
 	})
+	t.Run("stopped brief settles without a writer", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		s.backend.briefs.stop()
+		s.backend.briefs = newBriefDebounce(time.Hour, s.backend.writeBriefLater)
+		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
+		if err := r.Stop(id); err != nil {
+			t.Fatal(err)
+		}
+		assertStoppedBrief(t, s, door, params, first.Current.Brief)
+	})
 	t.Run("stop without an active round refreshes", func(t *testing.T) {
 		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
 		var first appwire.FactoryJobBriefWritten

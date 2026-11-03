@@ -365,7 +365,12 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
 			}
 			// The runner turn is also broadcast to WatchWakes. Consume its own
 			// subscription before waiting for a later person's answer.
-			initialWake := <-wakes
+			var initialWake <-chan session.Event
+			select {
+			case initialWake = <-wakes:
+			case <-time.After(10 * time.Second):
+				t.Fatal("runner turn was not broadcast to wake watchers")
+			}
 			var before api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &before)
 			s.must("factory.job_stop", map[string]any{"factory": status.Factory, "job": it.ID, "expect": map[string]any{"version": before.Version}}, &appwire.FactoryJobActed{})
