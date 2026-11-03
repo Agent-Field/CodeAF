@@ -17,7 +17,7 @@ func TestAStopSurvivesALostHeartbeatReply(t *testing.T) {
 	captured, release := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
 	releaseReply := func() { releaseOnce.Do(func() { close(release) }) }
-	g, _ := compatRig(t, func(next http.Handler, _ *reportLog) http.Handler {
+	g, seen := compatRig(t, func(next http.Handler, _ *reportLog) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if lost.Load() && !subsequent.Load() && strings.HasSuffix(r.URL.Path, "/report") {
 				http.Error(w, "report unavailable", http.StatusServiceUnavailable)
@@ -79,6 +79,9 @@ func TestAStopSurvivesALostHeartbeatReply(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("next heartbeat did not end runner: next=%t running=%t", subsequent.Load(), g.run.Running(id))
 		}
+	}
+	if seen.steps.Load() != 1 {
+		t.Fatalf("Stop admitted %d further paid steps; want zero", seen.steps.Load()-1)
 	}
 	it, err := g.st.Get(id)
 	if err != nil {
