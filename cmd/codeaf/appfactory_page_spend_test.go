@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,6 +45,14 @@ func TestAppFactoryPageChargesReachSpendingOnce(t *testing.T) {
 				t.Cleanup(server.Close)
 				readLoopsProfile(t, &readLoopsWorld{model: server}, readLoopsPin)
 				st := s.start()
+				dir := t.TempDir()
+				gitCheckout(t, dir, "acme/api")
+				if out, err := exec.Command("git", "-C", dir, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--allow-empty", "-qm", "fixture").CombinedOutput(); err != nil {
+					t.Fatalf("checkout: %v: %s", err, out)
+				}
+				if err := s.backend.local.host.floor.SetCheckout("acme/api", dir); err != nil {
+					t.Fatal(err)
+				}
 				item, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Check retries", Kind: factory.KindIssue, State: factory.StateNew})
 				if err != nil {
 					t.Fatal(err)
