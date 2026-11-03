@@ -38,6 +38,10 @@ func TestMemoryPauseRetainsPendingForResume(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause resume", 0)
 }
 
+func TestMemoryPauseResumeDrainsLateEvidence(t *testing.T) {
+	memoryLateReceiptFactoryHeader(t, "pause resume slow", 0)
+}
+
 func TestMemoryPauseClosesTailAdmission(t *testing.T) {
 	memoryLateReceiptFactoryHeader(t, "pause boundary", 0)
 }
@@ -63,7 +67,7 @@ func TestMemoryLateReceiptReachesFactoryHeaderWhenQuitInterruptsSettlement(t *te
 }
 
 func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) {
-	pauseResume := end == "pause resume"
+	pauseResume := end == "pause resume" || end == "pause resume slow"
 	pauseBoundary := end == "pause boundary"
 	pauseTail := end == "pause tail" || pauseBoundary || pauseResume
 	settlingQuit := end == "settling quit"
@@ -112,6 +116,11 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		if payload["messages"] != nil || ((pauseBoundary || pauseResume) && len(payload) > 0) {
 			n := memoryCalls.Add(1)
 			if pauseResume && n > 1 {
+				if end == "pause resume slow" && n == 2 {
+					// Let the finished stage return while its memory snapshot is
+					// still compiling, so final job evidence lands during the pass.
+					time.Sleep(2500 * time.Millisecond)
+				}
 				providerUnits.Add(1)
 				var p map[string]any
 				_ = json.Unmarshal([]byte(body.Messages[1].Content), &p)
