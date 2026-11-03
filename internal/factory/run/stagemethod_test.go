@@ -54,3 +54,24 @@ func TestStageBriefShippedMethodsAndEvidenceScope(t *testing.T) {
 		t.Error("Follow PR lacks publication instruction")
 	}
 }
+
+func TestCIFollowUpBriefOwnsConflictsButNotPublication(t *testing.T) {
+	it := factory.Item{
+		PullRequest: &factory.PullRequest{Number: 7},
+		FollowUp:    &factory.PRFollowUp{State: "running", Attempt: 1, Limit: 3},
+	}
+	brief := ciFollowUpBrief(it)
+	for _, want := range []string{
+		"The service has merged the PR's remote head into this checkout",
+		"conflicts left there are yours to resolve, keeping the intent of both sides and other people's work",
+		"Use needs_you only for",
+		"Do not push, force-push, create another PR, mark ready or merge",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("Follow PR brief lacks %q", want)
+		}
+	}
+	if strings.Contains(brief, "If reconciliation is unresolved, ask") {
+		t.Error("Follow PR delegates its conflict resolution to the person")
+	}
+}

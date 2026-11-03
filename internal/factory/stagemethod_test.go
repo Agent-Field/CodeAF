@@ -10,7 +10,7 @@ import (
 )
 
 func TestStageMethodShippedAndPersonalAsks(t *testing.T) {
-	budgets := map[string]int{"plan": 620, "write": 580, "test": 600, "review": 720, "security": 550, "proof": 570, "read": 450, "checks": 410, "bisect": 650, "fix": 600}
+	budgets := map[string]int{"plan": 470, "write": 530, "test": 430, "review": 580, "security": 420, "proof": 370, "read": 300, "checks": 250, "bisect": 490, "fix": 450}
 	for _, st := range factory.ShippedStages() {
 		if utf8.RuneCountInString(st.Ask) > factory.AskMost {
 			t.Errorf("%s ask exceeds %d cells", st.Name, factory.AskMost)
