@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: codeaf reuses exact daily spending rollups between reports
-pr: 0
+pr: 2269
 surface: [engine, app, docs]
 invalidates:
   - Every spend.report request scans the complete usage ledger.
