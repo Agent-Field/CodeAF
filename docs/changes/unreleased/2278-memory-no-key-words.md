@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf app's memory list says where to add a model key
-pr: 0
+pr: 2278
 surface: [engine]
 invalidates:
   - "Was true: with no key at launch the memory list read `saved memory can't be read: OPENROUTER_API_KEY is required`."
