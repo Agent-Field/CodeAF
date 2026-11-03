@@ -3,10 +3,12 @@ package cellindex
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -29,14 +31,18 @@ func (usageIndex) Name() string { return "usage.jsonl" }
 
 // Present reports whether the ledger already names the session in any row.
 func (usageIndex) Present(c cell.Cell) bool {
-	return ledgerRows(session.UsageLedgerPath(), c.ID) > 0
+	path := session.UsageLedgerPath()
+	if ledgerRows(path, c.ID) > 0 {
+		return true
+	}
+	return ledgerRows(path, usageJournalID(c)) > 0
 }
 
 // Behind reports whether the chat spent on calls the ledger has no row for: the
 // copy this machine held was older than the one a take just brought.
 func (usageIndex) Behind(c cell.Cell, d session.Digest) bool {
 	lines, err := usageLines(c, d)
-	return err == nil && len(lines) > ledgerRows(session.UsageLedgerPath(), c.ID)
+	return err == nil && len(lines) > ledgerRows(session.UsageLedgerPath(), c.ID, usageJournalID(c))
 }
 
 // Build appends the rows the ledger lacks. Rows are in call order and a copy
@@ -47,7 +53,7 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 		return err
 	}
 	path := session.UsageLedgerPath()
-	for _, line := range lines[min(ledgerRows(path, c.ID), len(lines)):] {
+	for _, line := range lines[min(ledgerRows(path, c.ID, d.ID), len(lines)):] {
 		session.RecordUsage(path, line)
 	}
 	session.FlushUsage()
@@ -73,13 +79,13 @@ func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.
 	return session.UsageLine{
 		At: time.UnixMilli(s.SealedAtMs), Model: s.Model, Role: s.Role, Calls: 1,
 		Input: int(s.TokensIn), Output: int(s.TokensOut), USD: float64(s.CostMicroUSD) / 1e6,
-		Session: c.ID, Workspace: d.Workspace,
+		Session: usageOwner(c, d), Workspace: d.Workspace,
 	}
 }
 
 // ledgerRows counts the ledger rows that name the session, without parsing any
 // row. An unreadable ledger answers as if it were full: it is not ours to append to.
-func ledgerRows(path, session string) int {
+func ledgerRows(path string, sessions ...string) int {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0
@@ -88,16 +94,49 @@ func ledgerRows(path, session string) int {
 		return math.MaxInt
 	}
 	defer f.Close()
-	marker := []byte(`"session":"` + session + `"`)
+	markers := make([][]byte, 0, len(sessions))
+	for _, id := range sessions {
+		if id != "" {
+			markers = append(markers, []byte(`"session":"`+id+`"`))
+		}
+	}
 	n := 0
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, err := r.ReadBytes('\n')
-		if bytes.Contains(line, marker) {
-			n++
+		for _, marker := range markers {
+			if bytes.Contains(line, marker) {
+				n++
+				break
+			}
 		}
 		if err != nil {
 			return n
 		}
 	}
+}
+
+// Seeded cells from older builds can have a journal identity different from
+// their folder. Live calls use the journal identity; recognize both names so
+// reopening never books the receipt again under its folder's name.
+func usageJournalID(c cell.Cell) string {
+	f, err := os.Open((session.Place{Dir: c.Root}).Transcript())
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var header struct {
+		ID string `json:"id"`
+	}
+	if json.NewDecoder(f).Decode(&header) != nil {
+		return ""
+	}
+	return strings.TrimSpace(header.ID)
+}
+
+func usageOwner(c cell.Cell, d session.Digest) string {
+	if d.ID != "" {
+		return d.ID
+	}
+	return c.ID
 }

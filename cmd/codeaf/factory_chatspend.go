@@ -65,7 +65,7 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 			if talk.is(it.Talk) {
 				return &jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}
 			}
-			if ownsStageChat(it, talk) {
+			if ownsBudgetChat(d.floor, it, talk) {
 				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}}
 			}
 		}
@@ -79,7 +79,7 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 			if talk.is(it.Talk) {
 				return &jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}
 			}
-			if ownsStageChat(it, talk) {
+			if ownsBudgetChat(d.floor, it, talk) {
 				return ownedStageBudget{&jobChat{floor: d.floor, id: it.ID, talk: talk, name: factory.LedgerName(it)}}
 			}
 		}
@@ -110,7 +110,7 @@ func (c ownedStageBudget) FactoryAuto() bool {
 func (c *jobChat) FactoryAuto() bool {
 	for _, st := range c.holders() {
 		it, err := st.Get(c.id)
-		if err == nil && (c.talk.is(it.Talk) || ownsStageChat(it, c.talk)) {
+		if err == nil && (c.talk.is(it.Talk) || ownsBudgetChat(c.floor, it, c.talk)) {
 			return factory.Automatic(it)
 		}
 	}
@@ -162,7 +162,7 @@ func (c *jobChat) SpendModel(usd float64, model string, calls, input, output int
 func (c *jobChat) book(usd float64, model string, calls, input, output int) {
 	for _, st := range c.holders() {
 		err := st.Annotate(c.id, func(it *factory.Item) error {
-			if !c.talk.is(it.Talk) && !ownsStageChat(*it, c.talk) {
+			if !c.talk.is(it.Talk) && !ownsBudgetChat(c.floor, *it, c.talk) {
 				return errNotThisChat
 			}
 			factory.AddChatSpend(it, usd)
@@ -208,7 +208,7 @@ func (c *jobChat) readOf(st *store.Store) (chatRead, bool) {
 	if err != nil {
 		return chatRead{}, false
 	}
-	r := chatRead{file: info, ours: c.talk.is(it.Talk) || ownsStageChat(it, c.talk)}
+	r := chatRead{file: info, ours: c.talk.is(it.Talk) || ownsBudgetChat(c.floor, it, c.talk)}
 	if r.ours {
 		r.refusal = factoryrun.ChatRefusal(it)
 	}
@@ -357,6 +357,21 @@ func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) 
 	return "Follow PR resumed with your request. Verified repairs will update the existing PR; merge remains yours.", nil
 }
 
+// A manager made alongside another opener still belongs to its job after
+// Talk chooses the other conversation. Its durable ownership also outlives
+// stage history, so every owned conversation spends from the same budget.
+func ownsBudgetChat(floor *store.Store, it factory.Item, talk talkKey) bool {
+	if ownsStageChat(it, talk) {
+		return true
+	}
+	owner, ok := readFactoryOwner(talk.clean)
+	if !ok || owner.Job != it.ID || owner.Repo != it.Repo {
+		return false
+	}
+	root := chatKey(floor.Root())
+	return owner.Root == root || strings.HasPrefix(owner.Root, filepath.Join(root, "workers")+string(filepath.Separator))
+}
+
 func ownsStageChat(it factory.Item, talk talkKey) bool {
 	if it.Stream == nil {
 		return false
@@ -377,7 +392,7 @@ func ownsStageChat(it factory.Item, talk talkKey) bool {
 func (c *jobChat) MemoryRefusal() string {
 	// Admission follows the owning factory before a worker's delayed mirror.
 	for _, st := range append([]*store.Store{c.floor}, liveMirrors(c.floor, strconv.Itoa(c.id)+".json")...) {
-		if it, err := st.Get(c.id); err == nil && (c.talk.is(it.Talk) || ownsStageChat(it, c.talk)) {
+		if it, err := st.Get(c.id); err == nil && (c.talk.is(it.Talk) || ownsBudgetChat(c.floor, it, c.talk)) {
 			return jobMemoryRefusal(it)
 		}
 	}
