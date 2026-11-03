@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"testing"
@@ -160,5 +163,136 @@ func TestApprovalsDoorTellsAStoppedComputerItWasStopped(t *testing.T) {
 	}
 	if err := stopped.Revoke(ctx, p.Device); err == nil || err.Error() != chatlist.RemovedChat {
 		t.Fatalf("the stopped computer's revoke said %v, want %q", err, chatlist.RemovedChat)
+	}
+}
+
+// lostReply is a slow relay seen from the approving computer: with decide it
+// lets the device in but the reply never comes back; without, the approval
+// never reaches it at all.
+type lostReply struct {
+	directory.Client
+	decide bool
+}
+
+func (l lostReply) ApproveRequest(ctx context.Context, code string, a directory.Approval) error {
+	if l.decide {
+		if err := l.Client.ApproveRequest(ctx, code, a); err != nil {
+			return err
+		}
+	}
+	return context.DeadlineExceeded
+}
+
+// withLostReply points the door's approver at a relay that loses replies.
+func withLostReply(door *approvalsDoor, home string, decide bool) {
+	door.approver = func(route pair.Mailbox) (pair.Approver, error) {
+		who, err := linkApprover(home)(route)
+		who.Dir = lostReply{who.Dir, decide}
+		return who, err
+	}
+}
+
+// pendingAt opens the new device's link on the first computer.
+func (r *pairRig) pendingAt(t *testing.T, door *approvalsDoor) (string, tui3.PendingDevice, chan error) {
+	t.Helper()
+	screen, done := r.asking(t)
+	link := screen.waitFor(t, regexp.QuoteMeta(r.url)+`/p/\S+#\S+`)[0]
+	r.enrol(t, door, "this computer")
+	// A first computer that has never shared its identity is solo.
+	if err := os.WriteFile(filepath.Join(r.homeA, "identity-solo"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := door.Pending(context.Background(), link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return link, p, done
+}
+
+// T1: the relay lets the device in but the reply is lost. The door looks the
+// request up, so the approval counts, the first computer stops being solo and
+// both computers end up paired.
+func TestApprovalsDoorApprovalWhoseReplyWasLostStillPairs(t *testing.T) {
+	rig := newPairRig(t)
+	door := rig.approvalsAt(rig.homeA)
+	_, p, done := rig.pendingAt(t, door)
+	if !identity.Solo(rig.homeA) {
+		t.Fatal("the first computer did not start solo")
+	}
+	withLostReply(door, rig.homeA, true)
+	if err := door.Approve(context.Background(), p); err != nil {
+		t.Fatalf("approve = %v, want the lost reply settled as approved", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the new device did not join: %v", err)
+	}
+	if identity.Solo(rig.homeA) {
+		t.Fatal("the first computer stays solo, so it never shares")
+	}
+	rows, err := door.Devices(context.Background())
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("devices = %+v, %v; want both computers", rows, err)
+	}
+}
+
+// An approval that never reached the relay is said as a plain retry, and the
+// retry lets the device in.
+func TestApprovalsDoorApprovalThatNeverArrivedCanBeRetried(t *testing.T) {
+	rig := newPairRig(t)
+	door := rig.approvalsAt(rig.homeA)
+	_, p, done := rig.pendingAt(t, door)
+	withLostReply(door, rig.homeA, false)
+	if err := door.Approve(context.Background(), p); !errors.Is(err, tui3.ErrAnswerNotArrived) {
+		t.Fatalf("approve = %v, want ErrAnswerNotArrived", err)
+	}
+	if !identity.Solo(rig.homeA) {
+		t.Fatal("nothing was approved, yet the first computer stopped being solo")
+	}
+	door.approver = linkApprover(rig.homeA)
+	if err := door.Approve(context.Background(), p); err != nil {
+		t.Fatalf("retry = %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the new device did not join: %v", err)
+	}
+	if identity.Solo(rig.homeA) {
+		t.Fatal("the first computer stays solo after the retry")
+	}
+}
+
+// T3: an approval landed in an earlier attempt that never heard back (here, a
+// screen that closed). Opening the same link again says the device is already
+// paired and ends solo, instead of asking to approve again.
+func TestApprovalsDoorReopenedLinkOfALostApprovalEndsSolo(t *testing.T) {
+	rig := newPairRig(t)
+	door := rig.approvalsAt(rig.homeA)
+	link, p, done := rig.pendingAt(t, door)
+	earlier := rig.approvalsAt(rig.homeA)
+	if _, err := earlier.Pending(context.Background(), link); err != nil {
+		t.Fatal(err)
+	}
+	as, _ := earlier.recall(p)
+	who, err := earlier.who()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := who.Approve(context.Background(), as); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the new device did not join: %v", err)
+	}
+	if !identity.Solo(rig.homeA) {
+		t.Fatal("setup: the earlier attempt should have left the marker")
+	}
+	if _, err := door.Pending(context.Background(), link); !errors.Is(err, tui3.ErrAlreadyPaired) {
+		t.Fatalf("reopened link = %v, want ErrAlreadyPaired", err)
+	}
+	if identity.Solo(rig.homeA) {
+		t.Fatal("the first computer stays solo after the reopened link")
+	}
+	// A retried answer on the old card settles the same way.
+	if err := door.Approve(context.Background(), p); err != nil {
+		t.Fatalf("retried approve = %v, want it settled as approved", err)
 	}
 }
