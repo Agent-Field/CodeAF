@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Saved-key sync returns vault read failures instead of panicking
-pr: 0
+pr: 2265
 surface: [engine, app]
 invalidates:
   - "Checking whether a saved key was removed previously could panic on a local vault read failure; it now returns the read error."
