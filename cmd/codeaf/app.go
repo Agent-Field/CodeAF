@@ -182,8 +182,11 @@ func runApp(args []string) error {
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
 		proc, err := openAppEngineProcess()
-		if err != nil || proc.Memory == nil {
-			return nil, errors.New("memory is off")
+		if err != nil {
+			return nil, err
+		}
+		if proc.Memory == nil {
+			return nil, errors.New("this engine has no saved memory store")
 		}
 		return proc.Memory, nil
 	}

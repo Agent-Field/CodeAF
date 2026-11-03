@@ -3,6 +3,7 @@ package identity_test
 import (
 	"context"
 	"database/sql"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"os"
 	"path/filepath"
 	"testing"
@@ -77,7 +78,9 @@ func firstStart(t *testing.T) string {
 			<-done
 			t.Fatal(err)
 		}
-		if snapshot.Build.Phase == knowledge.BuildWaiting {
+		// Memory is off on a first start, so its worker records an empty inventory
+		// as unbuilt and stays that way.
+		if snapshot.Build.Phase == knowledge.BuildUnbuilt {
 			break
 		}
 		if ctx.Err() != nil {
@@ -185,5 +188,41 @@ func TestL4Fix2GraphMemoryRemainsJoinable(t *testing.T) {
 	startupSQL(t, home, "graph.db", `INSERT INTO events(ts,node_id,kind,payload) VALUES('now','root','unknown_work','{}')`)
 	if ok, err := identity.Joinable(home); ok || err != nil {
 		t.Fatalf("unknown work event: %v %v", ok, err)
+	}
+}
+
+// A first start where the person turned memory on is still a first start.
+func TestL4Fix2MemoryOnFirstStartCanJoin(t *testing.T) {
+	home := t.TempDir()
+	if _, err := identity.EnsureSolo(home); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteMemoryEnabled(home, true); err != nil {
+		t.Fatal(err)
+	}
+	vault := knowledge.Open(home)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	guard.Go("identity/startup-fixture-on", func() {
+		done <- vault.Run(ctx, session.KnowledgeHistory(filepath.Join(home, "v3/projects")), func() string { return "" })
+	})
+	for {
+		snapshot, err := vault.Status()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.Build.Phase == knowledge.BuildWaiting {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal("memory-on worker did not reach waiting", <-done)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if ok, err := identity.Joinable(home); err != nil || !ok {
+		t.Fatalf("a first start with memory on cannot join: %v %v", ok, err)
 	}
 }

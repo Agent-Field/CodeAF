@@ -235,3 +235,8 @@ One desktop engine runs on your codeaf home at a time, so two can't spend on the
 
 If the last one is still there after about two minutes, the new one stops and the log says `another codeaf app is still closing this home`. Quit it, then open the app again. Terminal `codeaf`, headless runs and other `--home` folders don't wait.
 
+## Saved-key sync when the local vault is unreadable
+
+A removal check returns a local vault read error rather than stopping the
+background sync worker. Background sync can retry on a later round. This does
+not repair a damaged vault or change the saved keys shared between computers.

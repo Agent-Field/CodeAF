@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,6 +58,8 @@ func (a *Agent) KnowledgeCaptureError() string {
 }
 
 type knowledgeJournal struct {
+	ctx       context.Context
+	compile   *jobKnowledgeCompile
 	vault     *knowledge.Vault
 	project   string
 	scope     string
@@ -77,7 +80,7 @@ func (a *Agent) initKnowledge() {
 	if strings.TrimSpace(a.config.transcriptPath()) == "" || a.config.InTask || a.config.taskID != 0 {
 		return
 	}
-	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""))
+	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, "")).WithCalls(a.knowledgeCallContext)
 }
 
 // wakeKnowledge is called by the journal writer's hook. It never blocks or
@@ -99,11 +102,24 @@ func (a *Agent) startKnowledge() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &knowledgeJournal{cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
+	j := &knowledgeJournal{ctx: ctx, cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
 	a.knowledgeMu.Lock()
 	a.knowledgeJournal = j
 	a.knowledgeMu.Unlock()
 	sessionID := a.id
+	if a.jobBudgetOf() != nil {
+		// The marker survives a restart: recovery must not turn a stage into an
+		// independent source of spending after its job has stopped.
+		marker := "turn-owned\n"
+		if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+			marker = "job:" + named.FactoryJob() + "\n"
+		}
+		if err := os.WriteFile(path+".knowledge-job", []byte(marker), 0600); err != nil {
+			j.lastError = err.Error()
+		}
+		close(j.done)
+		return
+	}
 	go func() {
 		defer close(j.done)
 		safety := time.NewTicker(knowledgeSafetyTick)
@@ -171,7 +187,7 @@ func (a *Agent) rebindKnowledgeLocked(project string) {
 		old.cancel()
 		a.knowledgeRetired = append(a.knowledgeRetired, old)
 	}
-	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, ""))
+	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, "")).WithCalls(a.knowledgeCallContext)
 	a.knowledgeJournal = nil
 	a.knowledgeMu.Unlock()
 	a.startKnowledge()
@@ -185,6 +201,9 @@ func (a *Agent) stopKnowledge() {
 	a.knowledgeMu.RUnlock()
 	for _, j := range workers {
 		j.cancel()
+		if a.config.JobContext == nil {
+			a.cancelJobKnowledge()
+		}
 	}
 	timer := time.NewTimer(closeGrace)
 	defer timer.Stop()
@@ -262,6 +281,7 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 			if stamp.Before(since) {
 				continue
 			}
+			source.Job = a.jobBudgetOf() != nil
 			if e = j.vault.Capture(source); e != nil {
 				return e
 			}
