@@ -980,6 +980,8 @@ cap and only optional memory crosses it, the finished step stays done. The next
 step asks before starting, using the full job spend. On the last step, the job
 finishes with its true spend shown and no question for work it will not run.
 
+## Job budget read unavailable — existing work and new paid calls
+
 If a job budget cannot be read, new paid calls wait with
 `job budget could not be read; new work held`. The read error alone does not
 cancel work already running. A later successful read can admit work again;

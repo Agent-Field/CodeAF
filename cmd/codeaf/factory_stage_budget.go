@@ -6,7 +6,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
- "github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // One live meter per round; descendants share it. The store is the worker's
