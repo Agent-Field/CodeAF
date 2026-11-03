@@ -463,18 +463,25 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 			prose.Reset()
 		case session.EventToolBegin:
 			flush()
-			hint := c.relativeHint(event.Hint)
-			if hint != "" {
-				c.say(event.Tool + " " + hint)
-			} else {
-				c.say(event.Tool)
+			hint := strings.TrimSpace(event.Hint)
+			if event.Tool == "bash" {
+				var args struct {
+					Command string `json:"command"`
+				}
+				if json.Unmarshal([]byte(event.Args), &args) == nil && args.Command != "" {
+					hint = "bash " + strings.Join(strings.Fields(args.Command), " ")
+				}
 			}
+			if hint != event.Tool && !strings.HasPrefix(hint, event.Tool+" ") {
+				hint = strings.TrimSpace(event.Tool + " " + hint)
+			}
+			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(hint, c.dir))
 		case session.EventToolFailed:
 			reason := event.Hint
 			if reason == "" && event.Err != nil {
 				reason = event.Err.Error()
 			}
-			c.say(event.Tool + " failed: " + reason)
+			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(event.Tool+" failed: "+reason, c.dir))
 		case session.EventNotice:
 			// THE ACCEPTANCE NOTICE IS THE STAGE'S OWN BUSINESS: every stage
 			// would log a `done when · …` line, which says nothing to the
@@ -903,15 +910,6 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 		return nil
 	})
 	return id, err
-}
-
-// relativeHint spends the visible log on the filename and command, not a home path.
-func (c *stageConversation) relativeHint(s string) string {
-	if c.dir == "" {
-		return s
-	}
-	s = strings.ReplaceAll(s, c.dir+string(os.PathSeparator), "")
-	return strings.ReplaceAll(s, c.dir, ".")
 }
 
 // watchVerification relays bounded structured facts even while a model turn parks.

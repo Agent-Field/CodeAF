@@ -50,6 +50,11 @@ type WorkerAttach struct {
 	OS              string          `json:"os,omitempty"`
 	CodeafVersion   string          `json:"codeaf_version,omitempty"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned,omitempty"`
+	// Needs is a runner state word naming what this worker lacks before it
+	// can run a step, such as [RunnerNeedsProvider]; empty when it lacks
+	// nothing. The factory leases nothing to a worker that needs something,
+	// and its runner list shows that state instead of idle.
+	Needs string `json:"needs,omitempty"`
 }
 
 // WorkerAttached returns the credential only at registration, so reads of
@@ -241,6 +246,13 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 func FromRunReport(r factory.RunReport) WorkerReport {
 	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models}
+	// Reports retain the established body shape for strict older factories.
+	for i := range out.Log {
+		if out.Log[i].Kind == "tool" {
+			out.Log[i].Tone = "tool"
+		}
+		out.Log[i].Kind = ""
+	}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}

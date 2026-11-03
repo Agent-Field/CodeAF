@@ -554,6 +554,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalReply:
 			j.reply(ctx, s)
 		case lease.SignalBudget:
+			// The cap arrives before the answer that lets the runner carry on.
 			if s.Budget <= 0 {
 				continue
 			}
@@ -568,9 +569,6 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 				return nil
 			}); err != nil {
 				return false
-			}
-			if it, err := j.o.Mirror.Get(j.id); s.Yes && err == nil && it.QKind == "cap" && s.Budget > factory.JobSpent(it) && !it.Publishing {
-				_ = r.Answer(j.id, true, factory.ChoiceContinue)
 			}
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)

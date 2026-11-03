@@ -1523,10 +1523,16 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		dirErr:          dirErr,
 		Steer:           c.steer,
 		ModelSelections: c.modelSelections,
-		Log:             func(line string) { lp.say(c, "thought", line) },
-		Progress:        lp.followProgress(c, st, i, round),
-		Verification:    lp.verificationProgress(c, i, round),
-		Spend:           lp.spender(c),
+		Log: func(line string) {
+			tone := "thought"
+			if strings.HasPrefix(line, factory.ToolCaptionPrefix) {
+				tone, line = "tool", strings.TrimPrefix(line, factory.ToolCaptionPrefix)
+			}
+			lp.say(c, tone, line)
+		},
+		Progress:     lp.followProgress(c, st, i, round),
+		Verification: lp.verificationProgress(c, i, round),
+		Spend:        lp.spender(c),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
 		},

@@ -58,11 +58,14 @@ type registeredWorker struct {
 	Attached  time.Time
 	Checkouts []api.Checkout
 	Asleep    bool
-	Name      string
-	OS        string
-	Version   string
-	Last      time.Time
-	Worker    lease.Worker
+	// Needs is what the worker said at attach it lacks before a step can run
+	// ([api.WorkerAttach.Needs]); a new attach replaces it.
+	Needs   string
+	Name    string
+	OS      string
+	Version string
+	Last    time.Time
+	Worker  lease.Worker
 }
 
 type workerKey struct{}
@@ -286,7 +289,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
-		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts,
+		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Needs: strings.TrimSpace(body.Needs),
 	}
 	h.workers.forgetQuietLocked(worker, held, h.runnerOfflineAfter())
 	err = h.workers.saveRegistry()
@@ -418,7 +421,9 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		worker.Slots = current.Worker.Slots
-		if h.workers.machineAsleepLocked(worker) {
+		// A worker that cannot run a step yet is answered as an asleep one is:
+		// nothing to do, so the job stays queued for a runner that can.
+		if h.workers.machineAsleepLocked(worker) || current.Needs != "" {
 			h.workers.mu.RUnlock()
 			w.WriteHeader(http.StatusNoContent)
 			return

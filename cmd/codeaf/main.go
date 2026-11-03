@@ -786,6 +786,9 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        also record each call's whole request and response —
                        your prompts included. Off by default, and for one run
                        at a time.
+  CODEAF_GITHUB_LOG    a file: one line per GitHub request, by endpoint and
+                       status, with the rate limit GitHub reported. Names,
+                       paths and tokens are not written. Off by default.
   CODEAF_TELEMETRY    on (default). off turns the anonymous usage counts off;
                        docs/TELEMETRY.md in the repository says what they are,
                        DO_NOT_TRACK=1 does the same, and so does the telemetry

@@ -50,10 +50,10 @@ func TestHoldTwiceHoldsOnceAndGoOnTwiceGoesOnOnce(t *testing.T) {
 func TestHoldOnAnItemNotRunningIsRefused(t *testing.T) {
 	g := newRig(t, map[factory.StageKind]Executor{}, nil)
 	id := g.add("one", chat("write"))
-	if err := g.r.Hold(id, true); err == nil || err.Error() != "#1 is not running" {
+	if err := g.r.Hold(id, true); err == nil || err.Error() != "job 1 is not running" {
 		t.Fatalf("hold on a new item = %v", err)
 	}
-	if err := g.r.Hold(id, false); err == nil || err.Error() != "#1 is not running" {
+	if err := g.r.Hold(id, false); err == nil || err.Error() != "job 1 is not running" {
 		t.Fatalf("go on with a new item = %v", err)
 	}
 }
