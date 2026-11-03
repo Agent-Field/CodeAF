@@ -114,14 +114,14 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	}
 	for {
 		var row struct {
-			Role       string `json:"role"`
-			Content    string `json:"content"`
-			ToolCallID string `json:"toolCallId"`
+			Role         string `json:"role"`
+			Content      string `json:"content"`
+			ToolCallID   string `json:"toolCallId"`
 			Presentation *struct {
 				Refused bool `json:"refused"`
 				Invoked bool `json:"invoked"`
 			} `json:"presentation"`
-			Calls      []struct {
+			Calls []struct {
 				ID       string `json:"id"`
 				Function struct {
 					Name      string `json:"name"`

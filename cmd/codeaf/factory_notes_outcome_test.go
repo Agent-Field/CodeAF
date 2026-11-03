@@ -13,7 +13,7 @@ import (
 func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 	cases := []struct {
 		name, output, outcome string
-		refused, invoked bool
+		refused, invoked      bool
 	}{
 		{"passed", "PASS\nok  example 1s\n", "passed", false, true},
 		{"failed", "FAIL\nCommand exited with code 1", "failed", false, true},
@@ -30,7 +30,9 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "journal.jsonl")
 			f, err := os.Create(file)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			enc := json.NewEncoder(f)
 			command := "go test ./..."
 			if tc.name == "approval without resolver" {
@@ -41,23 +43,37 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 				map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": "probe", "function": map[string]string{"name": "bash", "arguments": string(args)}}}},
 				map[string]any{"role": "tool", "toolCallId": "probe", "content": tc.output, "presentation": map[string]any{"audience": "tool", "refused": tc.refused, "invoked": tc.invoked}},
 			} {
-				if err := enc.Encode(row); err != nil { t.Fatal(err) }
+				if err := enc.Encode(row); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if err := f.Close(); err != nil { t.Fatal(err) }
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
 			notes, _ := (&stageConversation{file: file, dir: t.TempDir()}).ExecutionNotes()
 			found, blocked := false, false
 			for _, note := range notes {
 				blocked = blocked || strings.HasPrefix(note, verification.FailurePrefix)
 				if raw, ok := strings.CutPrefix(note, "Command receipt: "); ok {
-					var receipt struct { Outcome, Reason string }
-					if err := json.Unmarshal([]byte(raw), &receipt); err != nil { t.Fatal(err) }
+					var receipt struct{ Outcome, Reason string }
+					if err := json.Unmarshal([]byte(raw), &receipt); err != nil {
+						t.Fatal(err)
+					}
 					found = true
-					if receipt.Outcome != tc.outcome { t.Errorf("outcome=%q want %q", receipt.Outcome, tc.outcome) }
-					if tc.outcome == "refused" && receipt.Reason != tc.output { t.Errorf("reason=%q want %q", receipt.Reason, tc.output) }
+					if receipt.Outcome != tc.outcome {
+						t.Errorf("outcome=%q want %q", receipt.Outcome, tc.outcome)
+					}
+					if tc.outcome == "refused" && receipt.Reason != tc.output {
+						t.Errorf("reason=%q want %q", receipt.Reason, tc.output)
+					}
 				}
 			}
-			if !found { t.Fatal("missing command receipt", notes) }
-			if tc.outcome != "passed" && !blocked { t.Fatal("completion guard lost unresolved command", notes) }
+			if !found {
+				t.Fatal("missing command receipt", notes)
+			}
+			if tc.outcome != "passed" && !blocked {
+				t.Fatal("completion guard lost unresolved command", notes)
+			}
 		})
 	}
 }
