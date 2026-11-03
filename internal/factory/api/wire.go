@@ -555,6 +555,8 @@ type Job struct {
 	Ask           *JobAsk               `json:"ask,omitempty"`
 	PublishError  string                `json:"publish_error,omitempty"`
 	Cost          float64               `json:"cost"`
+	// LedgerUnambiguous permits local ledger recovery only after a whole-floor read.
+	LedgerUnambiguous bool `json:"ledger_unambiguous,omitempty"`
 	// LifetimeCost includes earlier runs; Cost remains the current run.
 	LifetimeCost float64   `json:"lifetime_cost,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`

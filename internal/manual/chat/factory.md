@@ -723,7 +723,11 @@ range. Earlier spending without a kept model split appears as unknown. The
 daily spending rail keeps its existing reading.
 
 For this computer's factory, app job and queue reads also use tagged spend
-ledger rows when their total is larger than the saved lifetime. A missing or
+ledger rows when their total is larger than the saved lifetime and the factory
+can identify exactly one job with that ledger name across its readable floor.
+Run as new copies and jobs whose source issue shares that name use only saved
+money. Ambiguous names or a factory unable to establish uniqueness also use
+only saved money. A missing or
 smaller ledger never lowers known spending. Other computers' job mirrors show
 what their saved fields know. Untagged earlier money cannot be recovered or
 guessed. Ledger recovery on job reads does not rewrite the factory's saved

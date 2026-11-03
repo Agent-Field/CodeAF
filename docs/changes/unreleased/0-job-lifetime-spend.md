@@ -23,7 +23,12 @@ a second run includes earlier runs too; these are placed job totals, not exact
 per-call range totals. Earlier money without a model split stays unknown.
 
 App job and queue reads for this computer's factory use the larger of the saved
-lifetime and its tagged ledger total. The ledger is read again only when its
+lifetime and its tagged ledger total only when the factory confirms one job
+with that name across the whole readable floor, before queue filters. Copies
+with FromJob and jobs whose source issue shares the name keep only saved money;
+older factories without this proof also keep saved money. Run as new normally
+clears the issue number, so its new floor ID gives it a distinct ledger name.
+Supported forget paths preserve the ID high-water mark. The ledger is read again only when its
 path, size or modification time changes. Missing or smaller totals do not lower
 known spending. Other machines show saved totals. Untagged lost spending cannot
 be guessed. This read does not rewrite the factory's saved Spending totals.

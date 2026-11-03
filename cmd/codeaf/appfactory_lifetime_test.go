@@ -69,3 +69,61 @@ func TestFactoryLifetimeCostUsesTaggedLedgerWithoutLoweringKnownSpend(t *testing
 	write(.01)
 	read(.230189)
 }
+
+func TestFactoryLifetimeLedgerRequiresUnambiguousJob(t *testing.T) {
+	for _, mode := range []string{"unique", "duplicate", "dismissed duplicate", "copy without source", "same source issue"} {
+		t.Run(mode, func(t *testing.T) {
+			s := newLocalSetup(t)
+			st := s.start()
+			floor := s.backend.local.host.floor
+			item := factory.Item{Repo: "acme/api", Num: 7, Title: "Known money", Kind: factory.KindIssue, State: factory.StateNew, SpentBefore: .1, Stream: &factory.Stream{Spent: .03}}
+			if mode == "copy without source" {
+				item.FromJob = 999
+			}
+			if mode == "same source issue" {
+				item.SourceIssue = "https://github.com/acme/api/issues/7"
+			}
+			it, err := floor.Create(item)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "duplicate" || mode == "dismissed duplicate" {
+				other := item
+				if mode == "dismissed duplicate" {
+					other.State = factory.StateDismissed
+				}
+				if _, err := floor.Create(other); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ledger := filepath.Join(t.TempDir(), session.UsageLedgerName)
+			old := appLedgerPath
+			appLedgerPath = func() string { return ledger }
+			t.Cleanup(func() { appLedgerPath = old })
+			data, err := json.Marshal(session.UsageLine{At: time.Now(), FactoryJob: factory.LedgerName(it), USD: .5})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(ledger, append(data, '\n'), 0600); err != nil {
+				t.Fatal(err)
+			}
+			want := .13
+			if mode == "unique" {
+				want = .5
+			}
+			var job api.Job
+			s.must("factory.job", map[string]any{"factory": st.Factory, "job": it.ID}, &job)
+			var queue api.Queue
+			s.must("factory.queue", map[string]any{"factory": st.Factory}, &queue)
+			for _, row := range queue.Jobs {
+				if row.ID == it.ID {
+					if math.Abs(job.LifetimeCost-want) > 1e-9 || math.Abs(row.LifetimeCost-want) > 1e-9 || job.Cost != .03 || row.Cost != .03 {
+						t.Fatalf("job lifetime=%g queue lifetime=%g, want %g; runs=%g/%g", job.LifetimeCost, row.LifetimeCost, want, job.Cost, row.Cost)
+					}
+					return
+				}
+			}
+			t.Fatal("job missing from queue")
+		})
+	}
+}
