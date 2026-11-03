@@ -18,6 +18,7 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 		{"passed", "PASS\nok  example 1s\n", "passed", false, true},
 		{"failed", "FAIL\nCommand exited with code 1", "failed", false, true},
 		{"approval without resolver", `needs approval but no resolver is attached: critical command "rm -rf /*"`, "refused", false, false},
+		{"legacy policy", "denied by approval rule: protected files", "refused", false, false},
 		{"policy", "denied by approval rule: protected files", "refused", true, false},
 		{"typed refusal", "This command requires an operator", "refused", true, false},
 		{"cancelled", "PASS\n\nCommand aborted", "cancelled", false, true},
@@ -31,7 +32,11 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 			f, err := os.Create(file)
 			if err != nil { t.Fatal(err) }
 			enc := json.NewEncoder(f)
-			args, _ := json.Marshal(map[string]string{"command": "go test ./..."})
+			command := "go test ./..."
+			if tc.name == "approval without resolver" {
+				command = "set -e\nrm -rf /tmp/ledger-race-check\ncp -r /checkout /tmp/ledger-race-check\ncd /tmp/ledger-race-check\ngo test -race -run TestConcurrentAddProbe ./... 2>&1 | head -40\ngo test ./... 2>&1 | tail -5"
+			}
+			args, _ := json.Marshal(map[string]string{"command": command})
 			for _, row := range []any{
 				map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": "probe", "function": map[string]string{"name": "bash", "arguments": string(args)}}}},
 				map[string]any{"role": "tool", "toolCallId": "probe", "content": tc.output, "presentation": map[string]any{"audience": "tool", "refused": tc.refused, "invoked": tc.invoked}},
