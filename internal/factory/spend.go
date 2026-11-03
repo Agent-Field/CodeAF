@@ -46,13 +46,14 @@ func JobSpent(it Item) float64 {
 	return it.ChatSpent
 }
 
-// JobUnworked says nothing has been done on the job: no start, run, chat, work
-// folder, pull request, spend, failure, change, brief, note, reply or approval.
+// JobUnworked says nothing has been done on the job: no start, taker, run,
+// chat, work folder, pull request, spend, failure, change, brief, note, reply,
+// answer, edited steps, Look closer or approval.
 func JobUnworked(it Item) bool {
-	return it.Starter == "" && it.Stream == nil && it.Talk == "" && it.WorktreeMachine == "" &&
+	return it.Starter == "" && it.Taker == "" && it.Stream == nil && it.Talk == "" && it.WorktreeMachine == "" &&
 		it.PullRequest == nil && !it.Publishing && JobSpent(it) == 0 && it.Failure == nil &&
 		it.Change == nil && it.BriefWriting == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 &&
-		len(it.Thread) == 0 && it.Approval == nil
+		len(it.Thread) == 0 && len(it.AnsweredQuestions) == 0 && len(it.Adapted) == 0 && it.Scout == nil && it.Approval == nil
 }
 
 // AddChatSpend books usd that the job's own conversation spent where the

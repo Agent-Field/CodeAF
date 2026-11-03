@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -15,9 +16,20 @@ import (
 )
 
 // closeSweepBudget bounds direct reads of rows the open list lacks, per
-// repository per tick. It never lists closed history. Each process sweeps once
-// ([store.Store.ClearBusy] starts it over), because each polls from no cursor.
+// repository per tick. It never lists closed history. Each process sweeps once,
+// because each polls from no cursor and so never hears of a close while nothing
+// ran; progress lives here because a poll may build a fresh [Source] each tick.
 const closeSweepBudget = 40
+
+type issueSweep struct {
+	Last, Through int
+	Done          bool
+}
+
+var (
+	sweepsMu sync.Mutex
+	sweeps   = map[string]issueSweep{}
+)
 
 // untouchedBacklog is a Backlog row that nothing has started or worked on. A
 // held start decision with no work is safe to finish just like a new row.
@@ -37,20 +49,21 @@ func closedWithoutWork(it factory.Item) bool {
 	return closableIssue(it) && it.State == factory.StateShipped && it.DoneHow == StandingClosed
 }
 
-func reopenClosed(st *store.Store, id int) error {
+func reopenClosed(st *store.Store, id int, changed time.Time) error {
 	back := false
 	err := st.Update(id, func(it *factory.Item) error {
 		if !closedWithoutWork(*it) {
 			return nil
 		}
 		it.State, it.DoneHow, it.DoneAt = factory.StateNew, "", time.Time{}
+		it.Changed = changed
 		back = true
 		return nil
 	})
 	if err != nil || !back {
 		return err
 	}
-	return recordEnding(st, record.Restored, "reopened", id)
+	return recordEnding(st, record.Restored, "brought back", "reopened on GitHub", id)
 }
 
 func finishClosed(st *store.Store, id int) error {
@@ -67,26 +80,19 @@ func finishClosed(st *store.Store, id int) error {
 	if err != nil || !finished {
 		return err
 	}
-	return recordEnding(st, record.SourceClosed, StandingClosed, id)
+	return recordEnding(st, record.SourceClosed, StandingClosed, "on GitHub", id)
 }
 
-func recordEnding(st *store.Store, kind, verb string, id int) error {
+func recordEnding(st *store.Store, kind, verb, detail string, id int) error {
 	history, err := record.Open(st, record.Options{})
 	if err != nil {
 		return err
 	}
-	_, err = history.Append(context.Background(), record.Event{Kind: kind, Verb: verb, Job: id, Detail: "on GitHub"})
+	_, err = history.Append(context.Background(), record.Event{Kind: kind, Verb: verb, Job: id, Detail: detail})
 	return err
 }
 
 func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []string, before, fresh []factory.Item) error {
-	meta, err := st.SourceMeta(Name)
-	if err != nil {
-		return err
-	}
-	if meta.IssueSweeps == nil {
-		meta.IssueSweeps = map[string]store.IssueSweep{}
-	}
 	seen := map[string]bool{}
 	for _, it := range fresh {
 		seen[itemKey(it)] = true
@@ -94,8 +100,10 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 	sort.Slice(before, func(i, j int) bool { return before[i].ID < before[j].ID })
 	var errs []error
 	for _, repo := range repos {
-		key := strings.ToLower(repo)
-		sweep, exists := meta.IssueSweeps[key]
+		key := st.Root() + "|" + strings.ToLower(repo)
+		sweepsMu.Lock()
+		sweep, exists := sweeps[key]
+		sweepsMu.Unlock()
 		if sweep.Done {
 			continue
 		}
@@ -139,7 +147,9 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 			sweep.Through = it.ID
 		}
 		sweep.Done = sweep.Through >= sweep.Last
-		meta.IssueSweeps[key] = sweep
+		sweepsMu.Lock()
+		sweeps[key] = sweep
+		sweepsMu.Unlock()
 	}
-	return errors.Join(append(errs, st.SetSourceMeta(Name, meta))...)
+	return errors.Join(errs...)
 }

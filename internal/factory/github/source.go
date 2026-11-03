@@ -367,7 +367,7 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 			continue
 		}
 		if strings.EqualFold(is.State, "closed") {
-			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, Origin: factory.OriginForge, DoneHow: StandingClosed})
+			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, Origin: factory.OriginForge, Changed: is.Updated, DoneHow: StandingClosed})
 			s.mu.Lock()
 			delete(s.owed[full], is.Number)
 			s.mu.Unlock()
@@ -639,6 +639,9 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 			return factory.Item{}, err
 		}
 		out := s.issueItem(ctx, owner, name, is)
+		if strings.EqualFold(is.State, "closed") {
+			out.DoneHow = StandingClosed
+		}
 		if out.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, true); err != nil {
 			return factory.Item{}, err
 		}

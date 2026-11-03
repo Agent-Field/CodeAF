@@ -11,13 +11,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
-// IssueSweep keeps the bounded reconciliation of rows imported before closure polling.
-type IssueSweep struct {
-	Last    int  `json:"last"`
-	Through int  `json:"through"`
-	Done    bool `json:"done"`
-}
-
 // SourceMeta is what a polling source last said about itself: when a read
 // last succeeded, when one was last tried, and the trouble when the last try
 // failed. It lives on disk beside the items, at <root>/sources.json, because
@@ -25,10 +18,9 @@ type IssueSweep struct {
 // engine behind it may both poll, taking turns through the poller lock, and
 // whichever read last, every window draws from this one file.
 type SourceMeta struct {
-	IssueSweeps map[string]IssueSweep `json:"issue_sweeps,omitempty"`
-	Polled      time.Time             `json:"polled,omitzero"`
-	Tried       time.Time             `json:"tried,omitzero"`
-	Trouble     string                `json:"trouble,omitempty"`
+	Polled  time.Time `json:"polled,omitzero"`
+	Tried   time.Time `json:"tried,omitzero"`
+	Trouble string    `json:"trouble,omitempty"`
 	// Polling is true while a read is in flight. The poll writes it at the
 	// start and the end of each read, and [Store.ClearBusy] takes it off when
 	// a process starts, so a poll a crash cut short never reads as running.

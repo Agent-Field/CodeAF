@@ -126,9 +126,6 @@ func (st *Store) ClearBusy() error {
 		for name, m := range d.Sources {
 			m.Polling = false
 			m.Reading, m.Read, m.Of, m.Items = "", 0, 0, 0
-			// A new process polls from no cursor, so closes while nothing ran
-			// come only from a new check of the rows the open list lacks.
-			m.IssueSweeps = nil
 			d.Sources[name] = m
 		}
 	})
