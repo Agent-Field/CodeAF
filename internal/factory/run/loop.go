@@ -1556,7 +1556,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		},
 		Progress:     lp.followProgress(c, st, i, round),
 		Verification: lp.verificationProgress(c, i, round),
-		Spend:        lp.spender(c),
+		Spend:        lp.spender(c, st.Name, round),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
 		},
@@ -1565,9 +1565,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 
 // spender is the Job.Spend hook: the money's when there is one, else the
 // loop's own plain reckoning onto Stream.Spent.
-func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
+func (lp *floorLoop) spender(c *loopCtl, step string, round int) func(usd float64) {
 	if p := lp.r.opts.Pool; p != nil {
-		return p.Spend(c.id)
+		return p.spend(c.id, step, round)
 	}
 	return func(usd float64) {
 		if usd <= 0 {
@@ -1577,10 +1577,20 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 			if it.Stream == nil {
 				it.Stream = &factory.Stream{}
 			}
-			addCost(it, usd)
+			spendRound(it, step, round, usd)
 			return nil
 		})
 	}
+}
+
+// spendRound writes the job charge and its round receipt atomically, so a
+// worker report cannot mistake the interval between them for manager spending.
+func spendRound(it *factory.Item, step string, round int, usd float64) {
+ addCost(it,usd)
+ for i:=range it.Stream.Phases {
+  ph:=&it.Stream.Phases[i]
+  if step!="" && ph.Name==step { ph.RecordRoundSpend(round,ph.RoundCosts[round]+usd); break }
+ }
 }
 
 // capCheck parks the item when its budget is reached after a round: yes raises

@@ -13,9 +13,9 @@ type RunReport struct {
 	// Pipeline is the job's steps after the worker's runner reshaped them (the
 	// manager's first turn, or a plan's edit, both bounded by the recipe). Nil
 	// is no change. A reshape lands before Stages, which may name a new step.
-	Pipeline     *PipelineChange
-	Stages       []StageReport
-	Log          []LogLine
+	Pipeline *PipelineChange
+	Stages   []StageReport
+	Log      []LogLine
 	// Cost excludes growth in round tables carried by this report.
 	Cost         float64
 	Claims       []Claim

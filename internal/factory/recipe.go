@@ -382,7 +382,7 @@ type StageResult struct {
 	Edit *PlanEdit
 	// Spent is cumulative dollars for this logical round, including resumed
 	// work and descendants, 0 when nothing was priced. Repeated reports replace
-	// the round high-water mark; they are not additional spending.
+	// that round's table entry; they are not additional spending.
 	Spent float64
 	// SpendRecorded means the live meter already booked each provider receipt.
 	SpendRecorded bool `json:"-"`

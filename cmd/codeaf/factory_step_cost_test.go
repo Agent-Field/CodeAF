@@ -29,7 +29,17 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 	}
 	serverItem := api.ToItem(api.WorkerJob(it))
  baseline := api.ToItem(api.WorkerJob(it))
- flush := func() { t.Helper(); paid,err:=st.Get(it.ID); if err!=nil{t.Fatal(err)}; delta,_:=factoryrun.Diff(baseline,paid); wire:=api.ToWorkerReport(api.FromRunReport(delta)); for n:=0;n<1;n++ { if err:=factoryrun.ApplyReport(&serverItem,wire,time.Now());err!=nil{t.Fatal(err)} }; baseline=api.ToItem(api.WorkerJob(paid)) }
+ flush := func() {
+ t.Helper()
+ paid,err:=st.Get(it.ID); if err!=nil {t.Fatal(err)}
+ delta,_:=factoryrun.Diff(baseline,paid)
+ wire:=api.ToWorkerReport(api.FromRunReport(delta))
+ if err:=factoryrun.ApplyReport(&serverItem,wire,time.Now());err!=nil{t.Fatal(err)}
+ // Transport idempotency handles Cost deltas. Table replacement itself
+ // must also tolerate repeats without charging those rows again.
+ if wire.Cost == 0 { if err:=factoryrun.ApplyReport(&serverItem,wire,time.Now());err!=nil{t.Fatal(err)} }
+ baseline=api.ToItem(api.WorkerJob(paid))
+ }
  // Two rounds; round two is interrupted and reopened with a new live meter.
 	for admission, round := range []int{1, 2, 2, 0} {
 		if err := st.Annotate(it.ID, func(cur *factory.Item) error {
