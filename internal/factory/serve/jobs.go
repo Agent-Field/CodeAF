@@ -336,6 +336,7 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 	state := factory.JobState(it)
 	finished := false
 	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+  state=factory.JobState(*cur)
 		if !factory.UntouchedIssue(*cur) {
 			return nil
 		}
