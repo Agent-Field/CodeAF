@@ -472,7 +472,7 @@ no running slot.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
-**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Reading the chat does not start work; you can still ask the manager questions without starting the job. A job whose run already ended has nothing to stop and refuses with `#12 is not running`.
+**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
