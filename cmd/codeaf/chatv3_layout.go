@@ -719,6 +719,9 @@ func v3EmptySession(dir string) bool {
 }
 
 func v3EmptyUnassignedSession(dir string) bool {
+	if workstreamKeepsConversation(dir) {
+		return false
+	}
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
 	if spoken || !sure || session.HasSavedTasks(dir) {
