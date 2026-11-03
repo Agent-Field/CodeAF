@@ -584,7 +584,7 @@ func skipPhase(it *factory.Item, ph *factory.Phase, reason string, now time.Time
 	if ph.Result != nil {
 		claims := ph.Result.Claims
 		stale := func(c factory.Claim) bool {
-			return slices.ContainsFunc(claims, func(old factory.Claim) bool { return old.Text == c.Text })
+			return slices.ContainsFunc(claims, func(old factory.Claim) bool { return claimKey(old.Text) == claimKey(c.Text) })
 		}
 		it.Proof = slices.DeleteFunc(slices.Clone(it.Proof), stale)
 		it.Policy = slices.DeleteFunc(slices.Clone(it.Policy), stale)
