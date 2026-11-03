@@ -112,7 +112,7 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 						}
 						return seam
 					}
-					cap := .01
+					cap := 1.0
 					if budget == 0 {
 						cap = 5
 					}
@@ -190,7 +190,7 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 						if held.Budget != budget || held.SpendingLimit == nil || calls.Load() != 1 {
 							t.Fatalf("exhausted edit released work: %+v", held)
 						}
-						if len(held.Questions) == 0 || !strings.Contains(held.Questions[0].Text, fmt.Sprintf("$%g", budget)) || strings.Contains(held.Questions[0].Text, "$0.01") {
+						if len(held.Questions) == 0 || !strings.Contains(held.Questions[0].Text, fmt.Sprintf("$%g", budget)) || strings.Contains(held.Questions[0].Text, fmt.Sprintf("budget of $%g reached", cap)) {
 							t.Fatalf("stale budget question: %+v", held.Questions)
 						}
 						return
