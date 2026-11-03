@@ -258,7 +258,7 @@ func strangerWrites(it factory.Item) error {
 		return nil
 	}
 	for _, s := range it.Stages {
-		if s.On && s.Name == "write" && factory.Fits(s, it) {
+		if s.On && s.Name == "write" && runsIn(it, s) {
 			return errors.New("a stranger's work does not run write in this factory")
 		}
 	}
@@ -293,8 +293,8 @@ func launchable(it factory.Item) error {
 }
 
 // loopPhases compiles an item's stages into its phases, in order: a stage
-// that is on and fits the item is a pending phase, and one that does not is
-// left out. The tail is re-read at each round: what has not started yet is
+// that is on and fits the item is a pending phase. File conditions stay
+// pending until their turn; other nonmatching stages are left out. The tail is re-read at each round: what has not started yet is
 // compiled again from the item's stages as they stand then ([tailPhases]), so
 // the manager's edit during a run (its own `factory_run`) reaches the stages
 // after it.
@@ -309,7 +309,8 @@ func loopPhases(it factory.Item) []factory.Phase {
 	return out
 }
 
-// runsIn says whether stage s is a phase of it's run: on and fitting it, or
+// runsIn says whether stage s belongs in the run, retaining file conditions
+// until their turn: on and fitting it, or
 // the plan's approve step turned off while the rules the job started under
 // guard paths ([forcedGate]).
 func runsIn(it factory.Item, s factory.Stage) bool {
@@ -861,10 +862,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	// recorded their change. A skipped phase is finished and keeps its reason.
 	if factory.FileCondition(st) && !factory.Fits(st, it) {
 		reason := "skipping " + name + ": when " + st.When + " does not match the change files"
-		if it.Change == nil || len(it.Change.Files) == 0 {
-			if len(it.Files) == 0 {
-				reason = "skipping " + name + ": when " + st.When + " does not match the triage area"
-			}
+		if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 {
+			reason = "skipping " + name + ": when " + st.When + " does not match the triage area"
 		}
 		now := lp.r.now()
 		return lp.write(c, func(it *factory.Item) error {

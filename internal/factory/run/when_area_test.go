@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
- "github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
 func TestRunnerDecidesFileConditionsAtTheStep(t *testing.T) {
@@ -76,16 +76,28 @@ func TestRunnerDecidesFileConditionsAtTheStep(t *testing.T) {
 				if !logHas(it, reason) {
 					t.Fatalf("missing skip reason %q: %+v", reason, it.Stream.Log)
 				}
-    // The worker's real report must carry the reason to the live job.
-    server := factory.Item{ID: id, State: factory.StateRunning, Stages: it.Stages, Stream: &factory.Stream{}}
-    report, ok := Diff(server, it)
-    if !ok { t.Fatal("skip produced no worker report") }
-    if err := ApplyReport(&server, report, g.r.now()); err != nil { t.Fatal(err) }
-    job := api.FromItem(server)
-    if job.Desk == nil || job.Desk.Run == nil { t.Fatal("job has no run log") }
-    found := false
-    for _, line := range job.Desk.Run.Log { if line.Text == reason { found = true } }
-    if !found { t.Fatalf("live job lost skip reason: %+v", job.Desk.Run.Log) }
+				// The worker's real report must carry the reason to the live job.
+				server := factory.Item{ID: id, State: factory.StateRunning, Stages: it.Stages, Stream: &factory.Stream{}}
+				report, ok := Diff(server, it)
+				if !ok {
+					t.Fatal("skip produced no worker report")
+				}
+				if err := ApplyReport(&server, report, g.r.now()); err != nil {
+					t.Fatal(err)
+				}
+				job := api.FromItem(server)
+				if job.Desk == nil || job.Desk.Run == nil {
+					t.Fatal("job has no run log")
+				}
+				found := false
+				for _, line := range job.Desk.Run.Log {
+					if line.Text == reason {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("live job lost skip reason: %+v", job.Desk.Run.Log)
+				}
 
 			} else if !logHas(it, "inspect: finished") {
 				t.Fatalf("missing run result: %+v", it.Stream.Log)
@@ -98,14 +110,16 @@ func TestRunnerDecidesFileConditionsAtTheStep(t *testing.T) {
 }
 
 func TestLaunchRefusesStrangerWriteWithDeferredCondition(t *testing.T) {
- g := newRig(t, nil, nil)
- id, err := g.st.Add(context.Background(), factory.Item{
-  Title: "stranger condition", Tier: factory.TierStranger,
-  Triage: factory.Triage{Area: "docs"},
-  Stages: []factory.Stage{{Name: "write", On: true, When: "touches auth"}},
- })
- if err != nil { t.Fatal(err) }
- if err := g.r.Launch(id); err == nil || err.Error() != "a stranger's work does not run write in this factory" {
-  t.Fatalf("deferred stranger write launched: %v", err)
- }
+	g := newRig(t, nil, nil)
+	id, err := g.st.Add(context.Background(), factory.Item{
+		Title: "stranger condition", Tier: factory.TierStranger,
+		Triage: factory.Triage{Area: "docs"},
+		Stages: []factory.Stage{{Name: "write", On: true, When: "touches auth"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Launch(id); err == nil || err.Error() != "a stranger's work does not run write in this factory" {
+		t.Fatalf("deferred stranger write launched: %v", err)
+	}
 }

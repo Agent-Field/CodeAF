@@ -43,8 +43,10 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 				t.Fatal("conditional step skips an auth item")
 			}
 
-   // A known nonmatching area is still a reason to skip at the step.
-   if err := f.st.Update(it.ID, func(it *factory.Item) error { it.Triage.Area = "docs"; return nil }); err != nil { t.Fatal(err) }
+			// A known nonmatching area is still a reason to skip at the step.
+			if err := f.st.Update(it.ID, func(it *factory.Item) error { it.Triage.Area = "docs"; return nil }); err != nil {
+				t.Fatal(err)
+			}
 
 			runner := run.New(run.Options{Store: f.st, Exec: map[factory.StageKind]run.Executor{
 				factory.StageChat: run.ExecutorFunc(func(_ context.Context, job run.Job) (factory.StageResult, error) {
