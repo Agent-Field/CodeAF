@@ -69,6 +69,7 @@ func (d *Desk) Drain(id, worker string) ([]Signal, error) {
 
 // DrainLive carries interactive verbs through a heartbeat. Publishing stays
 // queued until the finishing run releases its lease and a publish pull takes it.
+// Holds repeat the stored pause intent until the worker releases its lease.
 func (d *Desk) DrainLive(id, worker string) ([]Signal, error) {
 	return d.drain(id, worker, false)
 }

@@ -2168,49 +2168,49 @@ func (r *Runner) Hold(id int, on bool) error {
 // it is in, under the loop's lock, and says the word on the stream and into
 // the manager's conversation only when that changed anything.
 func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
- lp := r.loop()
- id := c.id
- lp.mu.Lock()
- unchanged := want(c.paused) == c.paused
- lp.mu.Unlock()
- if unchanged {
-  return nil
- }
- now := r.now()
- var paused, changed bool
- // Enter the store write before exposing the hold to the drive. Its exit
- // cancels c.ctx, which would otherwise refuse the pause's own log write.
- if err := lp.write(c, func(it *factory.Item) error {
-  lp.mu.Lock()
-  defer lp.mu.Unlock()
-  paused = want(c.paused)
-  changed = paused != c.paused
-  if !changed {
-   return nil
-  }
-  word := sayResumed
-  if paused {
-   word = sayPaused
-  }
-  it.Stream.Paused = paused
-  loopSay(it, now, "said", word)
-  c.paused = paused
-  if paused && c.roundCancel != nil {
-   c.roundCancel()
-  }
-  return nil
- }); err != nil {
-  return err
- }
- if changed {
-  kind, word := EventResumed, sayResumed
-  if paused {
-   kind, word = EventPaused, sayPaused
-  }
-  lp.emit(id, "", kind, word)
-  lp.tell(id, word)
- }
- return nil
+	lp := r.loop()
+	id := c.id
+	lp.mu.Lock()
+	unchanged := want(c.paused) == c.paused
+	lp.mu.Unlock()
+	if unchanged {
+		return nil
+	}
+	now := r.now()
+	var paused, changed bool
+	// Enter the store write before exposing the hold to the drive. Its exit
+	// cancels c.ctx, which would otherwise refuse the pause's own log write.
+	if err := lp.write(c, func(it *factory.Item) error {
+		lp.mu.Lock()
+		defer lp.mu.Unlock()
+		paused = want(c.paused)
+		changed = paused != c.paused
+		if !changed {
+			return nil
+		}
+		word := sayResumed
+		if paused {
+			word = sayPaused
+		}
+		it.Stream.Paused = paused
+		loopSay(it, now, "said", word)
+		c.paused = paused
+		if paused && c.roundCancel != nil {
+			c.roundCancel()
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if changed {
+		kind, word := EventResumed, sayResumed
+		if paused {
+			kind, word = EventPaused, sayPaused
+		}
+		lp.emit(id, "", kind, word)
+		lp.tell(id, word)
+	}
+	return nil
 }
 
 // storedPaused says the item's document holds it paused: a run that was cut
