@@ -89,12 +89,16 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	observed := map[string]bool{}
 	observedCall := map[string]bool{}
 	callExit := map[string]*int{}
+	unmeasuredCall := map[string]bool{}
 	diagnosticOnly := map[string]bool{}
 	ownedCommand := map[string]bool{}
 	checks = verification.Resolve(checks, state, fresh)
 	latest, superseded := verification.RequiredChecks(checks, state, fresh)
 	for _, check := range checks {
 		observed[check.Command] = true
+		if check.CallID != "" && check.Exit == nil {
+			unmeasuredCall[check.CallID] = true
+		}
 		if check.CallID != "" && check.Exit != nil {
 			observedCall[check.CallID] = true
 			if exit := callExit[check.CallID]; exit == nil || *exit == 0 {
@@ -200,6 +204,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			started = started || row.Presentation.Process != nil
 		}
 		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, callExit[row.ToolCallID])
+		if outcome == "passed" && unmeasuredCall[row.ToolCallID] {
+			outcome = "completed"
+		}
 		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": outcome}
 		if reason != "" {
 			receipt["reason"] = reason
@@ -366,7 +373,7 @@ func commandReceiptOutcome(content, status string, invoked, refused, started boo
 		return "passed", ""
 	case status != "ok" && strings.Contains(content, "Command exited with code"):
 		return "failed", ""
-	case (strings.Contains(content, "\nPASS\n") || strings.HasPrefix(content, "PASS\n") || strings.Contains(content, "ok  ")) && !strings.Contains(content, "\nFAIL") && !strings.Contains(content, "Command exited with code"):
+	case (strings.Contains(content, "\nPASS\n") || strings.HasPrefix(content, "PASS\n") || strings.Contains(content, "ok  ")) && !strings.Contains(content, "\nFAIL") && !strings.HasPrefix(content, "FAIL") && !strings.Contains(content, "Command exited with code"):
 		return "passed", ""
 	default:
 		return "completed", ""

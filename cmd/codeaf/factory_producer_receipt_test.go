@@ -129,10 +129,10 @@ func TestReceiptLeadingFAIL(t *testing.T) {
 
 func TestReceiptCompoundCheckExits(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		command string
+		name       string
+		command    string
 		unmeasured string
-		want string
+		want       string
 	}{
 		{"failed_then_passed", "CHECK_EXIT=7 cargo test --test cli first; cargo test --test cli second", "", "failed"},
 		{"passed_then_failed", "cargo test --test cli first; CHECK_EXIT=7 cargo test --test cli second", "", "failed"},
@@ -144,7 +144,7 @@ func TestReceiptCompoundCheckExits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, file, run := repairCheckFixture(t)
-			run(tc.command)
+			run("printf 'PASS\\n'; " + tc.command)
 			if tc.unmeasured != "" {
 				paths, err := filepath.Glob(file + ".checks/call-*/check-*")
 				if err != nil {
