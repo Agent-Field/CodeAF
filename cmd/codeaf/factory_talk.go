@@ -116,74 +116,69 @@ func talkMakerReading(st, copies *store.Store, workspace, profileDir string) fun
 	dirs := factoryRepoDirs(st, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
 		factoryReconcileOnce(profileDir, st)
-		unlock, err := talkMintLock(st)
-		if err != nil {
-			return "", err
-		}
-		defer unlock()
-		ours, held, err := talkHeld(st, it)
-		if held != "" || err != nil {
-			return held, err
-		}
-		where, err := talkFolder(st, dirs, it)
-		if err != nil {
-			return "", err
-		}
-		bucket, err := v3ProjectDir(where)
-		if err != nil {
-			return "", err
-		}
-		place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
-		if err != nil {
-			return "", err
-		}
-		transcript := place.Transcript()
-		if err := markFactoryChat(st, it, transcript); err != nil {
-			return "", err
-		}
-		name := talkTeamName(it)
-		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(copies, dirs, it))); err != nil {
-			return "", err
-		}
-		if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
-			return "", err
-		}
-		if ours {
-			err = st.Update(it.ID, func(cur *factory.Item) error {
-				if strings.TrimSpace(cur.Talk) == "" {
-					cur.Talk = transcript
-				}
-				return nil
-			})
+		return withTalkMintLock(st, func() (string, error) {
+			ours, held, err := talkHeld(st, it)
+			if held != "" || err != nil {
+				return held, err
+			}
+			where, err := talkFolder(st, dirs, it)
 			if err != nil {
 				return "", err
 			}
-		}
-		return transcript, nil
+			bucket, err := v3ProjectDir(where)
+			if err != nil {
+				return "", err
+			}
+			place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
+			if err != nil {
+				return "", err
+			}
+			transcript := place.Transcript()
+			if err := markFactoryChat(st, it, transcript); err != nil {
+				return "", err
+			}
+			name := talkTeamName(it)
+			if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(copies, dirs, it))); err != nil {
+				return "", err
+			}
+			if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
+				return "", err
+			}
+			if ours {
+				err = st.Update(it.ID, func(cur *factory.Item) error {
+					if strings.TrimSpace(cur.Talk) == "" {
+						cur.Talk = transcript
+					}
+					return nil
+				})
+				if err != nil {
+					return "", err
+				}
+			}
+			return transcript, nil
+		})
 	}
 }
 
-// talkMintLock lets one maker at a time make a job's manager, across every
+// withTalkMintLock lets one maker at a time make a job's manager, across every
 // process on this floor (the runner and the app's job chats race when a job
 // starts). A second manager costs money and answers its team's replies, so the
 // loser must never be created, not merely lose the write to Talk.
-func talkMintLock(st *store.Store) (func(), error) {
+func withTalkMintLock(st *store.Store, mint func() (string, error)) (string, error) {
 	root := st.Root()
 	if root == "" {
-		return func() {}, nil
+		return mint()
 	}
 	file, err := os.OpenFile(filepath.Join(root, "talk.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+	defer file.Close()
 	if err := filelock.Lock(file, true, false); err != nil {
-		_ = file.Close()
-		return nil, err
+		return "", err
 	}
-	return func() {
-		_ = filelock.Unlock(file)
-		_ = file.Close()
-	}, nil
+	defer func() { _ = filelock.Unlock(file) }()
+	return mint()
 }
 
 // talkHeld reads st's own row for it under the mint lock: ours says the row is
