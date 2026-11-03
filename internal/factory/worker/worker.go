@@ -298,6 +298,7 @@ type job struct {
 	replyCancel   context.CancelFunc
 	accepted      map[string]bool
 	signalIDs     map[string]bool
+	signalPending map[string]bool
 	acknowledged  map[string]bool
 	thread        []factory.Message
 	pending       *pendingDelivery
@@ -384,7 +385,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	beat := time.NewTicker(o.BeatEvery)
 	defer beat.Stop()
 	for {
-		if !o.Runner.Running(it.ID) && !j.replyingNow() && j.pending == nil && j.blocked == "" {
+		if !o.Runner.Running(it.ID) && !j.replyingNow() && !j.signalsWaiting() && j.pending == nil && j.blocked == "" {
 			if j.flushFinal(ctx) {
 				if cur, err := o.Mirror.Get(it.ID); err == nil {
 					_ = w.Done(ctx, j.lease, final(cur))
@@ -559,6 +560,11 @@ func (j *job) beat(ctx context.Context) bool {
 			redelivered[signal.Delivery] = true
 		}
 		j.mu.Lock()
+		for id := range j.signalPending {
+			if !redelivered[id] {
+				delete(j.signalPending, id)
+			}
+		}
 		for _, id := range acknowledged {
 			if !redelivered[id] {
 				delete(j.signalIDs, id)
@@ -577,6 +583,12 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 	for _, s := range signals {
 		j.mu.Lock()
 		seen := s.Delivery != "" && j.signalIDs[s.Delivery]
+		if !seen && s.Delivery != "" {
+			if j.signalPending == nil {
+				j.signalPending = map[string]bool{}
+			}
+			j.signalPending[s.Delivery] = true
+		}
 		j.mu.Unlock()
 		if seen {
 			continue
@@ -679,6 +691,12 @@ func (j *job) signalMoot(s api.WorkerSignal) bool {
 	return false
 }
 
+func (j *job) signalsWaiting() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return len(j.signalPending) != 0
+}
+
 // ackSignal retains handled delivery until the factory confirms removal.
 func (j *job) ackSignal(id string) {
 	if id == "" {
@@ -690,12 +708,18 @@ func (j *job) ackSignal(id string) {
 		j.signalIDs = map[string]bool{}
 	}
 	j.signalIDs[id] = true
+	delete(j.signalPending, id)
 }
 
 // reply serializes manager turns while reporting and renewing continue.
 func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
 	j.mu.Lock()
-	if j.replying || j.accepted[s.ID] || j.o.Reply == nil {
+	if j.accepted[s.ID] {
+		j.mu.Unlock()
+		j.ackSignal(s.Delivery)
+		return
+	}
+	if j.replying || j.o.Reply == nil {
 		j.mu.Unlock()
 		return
 	}
