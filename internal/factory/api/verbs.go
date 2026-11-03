@@ -12,8 +12,8 @@ type Verb struct {
 // (`POST /v1/jobs/{id}/<verb>`), then the floor's own. The client seam wires
 // exactly these doors; the server answers exactly these names.
 var Verbs = []Verb{
-	{"start_now", nil}, {"run_again", nil}, {"restore", nil}, {"close", nil}, {"reopen", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
-	{"unassign", nil}, {"nudge", nil}, {"priority", nil}, {"raise_budget", nil}, {"undo", nil},
+	{"start_now", nil}, {"run_again", nil}, {"run-as-new", nil}, {"restore", nil}, {"close", nil}, {"reopen", nil}, {"dismiss", nil}, {"assign_to_me", nil}, {"change_assignee", nil},
+	{"unassign", nil}, {"nudge", nil}, {"priority", nil}, {"raise_budget", nil}, {"stop-after-step", nil}, {"spend_answer", nil}, {"undo", nil},
 	{"queue", []string{"Load"}},
 	{"job", []string{"Load"}},
 	{"repos", []string{"Repos"}},
@@ -30,6 +30,7 @@ var Verbs = []Verb{
 	{"retry_publish", nil},
 	// Merge is the factory's own: its gate and the lease's merge signal.
 	{"merge", nil},
+	{"pr-ready", nil},
 	// A job's model is the factory's own record and the lease's model signal.
 	{"model", nil},
 	{"request_changes", []string{"SendBack"}},
@@ -51,7 +52,9 @@ var Verbs = []Verb{
 // it is attached to a factory rather than serving one. EVERY SEAM FIELD IS IN
 // [Verbs] OR HERE; the structural test fails on one that is in neither.
 var TUIOnly = map[string]string{
-	"ForJob": "selects the local doors for a job held by a worker on this machine",
+	"SpendAnswer": "the factory's own check under the job's write lock; `POST /v1/jobs/{id}/spend_answer` reaches it, and no client seam calls it",
+	"NewJob":      "local structured creation used by POST /v1/jobs; the client seam exposes terminal New",
+	"ForJob":      "selects the local doors for a job held by a worker on this machine",
 	// Doors that answer a chat session file: a session lives on the machine
 	// that made it, so its id means nothing to another machine. The thread
 	// read (`/v1/jobs/{id}/thread`) reads replicated messages instead.

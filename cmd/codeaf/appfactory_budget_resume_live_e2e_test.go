@@ -50,7 +50,7 @@ const (
 
 // liveRaiseSpendMost is this lane's whole model spend; the recorder refuses
 // any call past it.
-const liveRaiseSpendMost = 0.25
+const liveRaiseSpendMost = 0.05
 
 func TestLiveRaisedBudgetResumesAnAutoJobParkedAtItsCap(t *testing.T) {
 	if os.Getenv(liveFactoryOptIn) != "1" {

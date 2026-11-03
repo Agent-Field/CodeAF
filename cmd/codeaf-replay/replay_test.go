@@ -243,6 +243,11 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 // that passes forever the moment somebody builds a tag out of a variable, which
 // is exactly how the log came to carry 2,309 untagged rows in the first place.
 var derivedTags = map[string]func(yield func(tag, where string)){
+	// internal/knowledge/compiler_provider.go tags each compile call with the
+	// lane role memory runs under; that is the whole of what it can be.
+	"string(lanes.RoleMemory)": func(yield func(tag, where string)) {
+		yield("memory", "internal/knowledge/compiler_provider.go, a memory compile call")
+	},
 	// internal/session/toolask.go: a tool's own call carries the tool's name
 	// after the role word, and no walk can enumerate the belt.
 	"toolCallTag(question.tool)": func(yield func(tag, where string)) {
@@ -257,6 +262,11 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	// constant can be.
 	"factoryTriageName": func(yield func(tag, where string)) {
 		yield("factory triage", "cmd/codeaf/factory_triage.go, the factory's small-work read")
+	},
+	// cmd/codeaf/factory_scout.go tags each turn of a look closer with the
+	// constant that names it on the spend ledger.
+	"factoryScoutName": func(yield func(tag, where string)) {
+		yield("factory scout", "cmd/codeaf/factory_scout.go, a look closer's turns")
 	},
 	// internal/session/clientdoor.go is the ONE place that package writes a tag
 	// now, and what it writes is whatever purpose its caller handed it. It

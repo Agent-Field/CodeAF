@@ -143,7 +143,7 @@ var runFactoryRunner = func(ctx context.Context, attached factoryAttachment, out
 	workspace, _ := os.Getwd()
 	sessions := factorySessions(newFactorySessions())
 	sessions.SetFactorySession(attached.URL, attached.Token)
-	host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: config.ProfileDir(), credentials: sessions, parent: factoryWorkerParent}
+	host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: config.ProfileDir(), credentials: sessions, pin: factoryWorkerParent}
 	var me api.Me
 	if appFactoryRequest(ctx, factoryTarget{attached.URL, attached.Token}, "GET", "/v1/me", nil, &me) == nil && me.Handle != "" {
 		fmt.Fprintf(out, "running %s's jobs for %s on this machine; stop with ctrl-c\n", "@"+strings.TrimPrefix(me.Handle, "@"), attached.URL)

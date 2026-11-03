@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -345,6 +346,7 @@ type rewindUndo struct {
 	tail        []ai.Message
 	reasoning   []provider.MessageReasoning
 	marks       []*messagePresentation
+	instants    []time.Time
 }
 
 // RewindKeep uses the terminal's cut and retains one tail until another turn or cut.
@@ -372,6 +374,7 @@ func (a *Agent) RewindKeep(index int) (string, error) {
 	undo := &rewindUndo{token: hex.EncodeToString(bytes[:]), tail: append([]ai.Message(nil), a.messages[index:]...), reasoning: append([]provider.MessageReasoning(nil), a.messageReasoning[index:]...)}
 	for _, m := range undo.tail {
 		undo.marks = append(undo.marks, a.presentation.of(m))
+		undo.instants = append(undo.instants, a.file.written(m))
 	}
 	a.cutLocked(index)
 	undo.fingerprint = rewindFingerprint(a.messages)
@@ -394,6 +397,7 @@ func (a *Agent) UndoRewind(token string) error {
 		a.presentation.remember(m, u.marks[i])
 		if a.file != nil {
 			a.file.presentation.remember(m, u.marks[i])
+			a.file.rememberStamp(m, u.instants[i])
 		}
 	}
 	if a.file != nil {

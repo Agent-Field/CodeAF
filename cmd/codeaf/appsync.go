@@ -305,10 +305,7 @@ func (b *appBackend) workAllowed(a *appAgent) error {
 	b.locked(func() { transcript, drives = a.transcript, b.drives })
 	dir, folder := session.FolderOf(transcript)
 	if drives != nil && folder {
-		drives.mu.Lock()
-		d := drives.drive[filepath.Base(dir)]
-		drives.mu.Unlock()
-		if gate := driveWorkGate(d); gate != nil {
+		if gate := driveWorkGate(drives.renewalsOf(filepath.Base(dir))); gate != nil {
 			if err := gate(); err != nil {
 				return appEngineError(err)
 			}

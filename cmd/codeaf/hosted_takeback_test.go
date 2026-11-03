@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +51,7 @@ type hostedMoveRig struct {
 	mu         sync.Mutex
 	requests   []string
 	acquires   []time.Time
+	resumes    []time.Time
 	changes    chan struct{}
 }
 
@@ -65,7 +68,14 @@ func (m moveRenewals) RenewalChanges() <-chan struct{} { return m.changes }
 func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *hostedMoveRig {
 	t.Helper()
 	cfg, c := doorChat(t)
-	short, err := os.MkdirTemp("", "cf-move-")
+	// The workspace host's socket lives under this home. macOS's temporary
+	// folder leaves it only a few bytes under the socket limit, and none once
+	// that folder is spelled through /private, so Unix homes start at /tmp.
+	base := ""
+	if runtime.GOOS != "windows" {
+		base = "/tmp"
+	}
+	short, err := os.MkdirTemp(base, "cf-move-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +96,9 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 		h.requests = append(h.requests, r.Method+" "+r.URL.Path)
 		if strings.HasSuffix(r.URL.Path, "/acquire") {
 			h.acquires = append(h.acquires, time.Now())
+		}
+		if strings.HasSuffix(r.URL.Path, "/heartbeat") {
+			h.resumes = append(h.resumes, time.Now())
 		}
 		h.mu.Unlock()
 		service.ServeHTTP(w, r)
@@ -321,7 +334,7 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("take-back card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
 	h.mu.Lock()
 	h.requests = nil
-	h.acquires = nil
+	h.acquires, h.resumes = nil, nil
 	h.mu.Unlock()
 	started = time.Now()
 	if _, err := io.WriteString(typed, "1\r"); err != nil {
@@ -330,8 +343,18 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("hosted take-back arrival", func() bool { return strings.Contains(screen.String(), "Moved from other computer") })
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.acquires) < 2 {
-		t.Fatalf("take and reopened hosted writer made %d acquires; want both", len(h.acquires))
+	if len(h.acquires) == 0 {
+		t.Fatal("take-back made no acquire")
+	}
+	// The reopened writer resumes the hold the take acquired (F1, #2009): it
+	// renews that fence rather than acquiring another.
+	resumed := slices.IndexFunc(h.resumes, func(at time.Time) bool { return !at.Before(h.acquires[0]) })
+	if resumed < 0 {
+		t.Fatal("the reopened hosted writer never resumed the taken hold")
+	}
+	t.Logf("relay resume after first acquire: %s", h.resumes[resumed].Sub(h.acquires[0]))
+	if gap := h.resumes[resumed].Sub(h.acquires[0]); gap >= 5*time.Second {
+		t.Errorf("resume gap=%s", gap)
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {

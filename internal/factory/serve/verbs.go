@@ -25,11 +25,13 @@ func (h *Handler) verbs() {
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
 	h.postJob("drop", h.config.Store != nil || s.Dismiss != nil, h.onlyOwner(h.drop))
 	h.postJob("answer", s.Answer != nil, h.answer)
+	h.postJob("spend_answer", s.SpendAnswer != nil, h.spendAnswer)
 	h.postJob("reject_plan", h.config.Store != nil && s.Answer != nil, h.rejectPlan)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
 	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
 	h.postJob("merge", h.config.Store != nil, h.onlyOwner(h.mergeJob))
+	h.postJob("pr-ready", h.config.Store != nil, h.onlyOwner(h.prReady))
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Take and release are the lease desk's own doors, not seam fields. The
@@ -47,7 +49,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -61,7 +63,7 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if !ok {
 				return
 			}
-			if it.DoneHow == "closed_locally" && verb != "reopen" && verb != "close" {
+			if it.DoneHow == "closed_locally" && verb != "reopen" && verb != "close" && verb != "run-as-new" {
 				h.refuse(w, 409, "Job closed locally; Reopen keeps its work and spending.", "conflict", "", nil, "done")
 				return
 			}
@@ -216,15 +218,10 @@ func (h *Handler) idVerb(door func(int) error) jobAction {
 	}
 }
 
-// holdVerb is pause (on) and resume. A hold of a queued job, or the end of
-// one, is a decision on the queue that only the job's person makes, and it is
-// recorded with who made it.
+// holdVerb is pause (on) and resume. Only the job's person may hold or
+// resume its queue or running step, and each action records who made it.
 func (h *Handler) holdVerb(on bool) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
-		if it.State != factory.StateQueued {
-			h.finish(w, h.seam.Hold(it.ID, on))
-			return
-		}
 		if !h.owns(w, r, it) {
 			return
 		}
@@ -278,10 +275,11 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		if h.workers != nil {
 			now = h.workers.now()
 		}
-		if err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
+		err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
 			run.NoteContinue(item, now)
 			return nil
-		}); h.failed(w, err) {
+		})
+		if h.failed(w, err) {
 			return
 		}
 	}
@@ -361,6 +359,9 @@ func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, r
 // mayAnswer refuses a job-person kind when the caller is not that person.
 // A job with no person yet, and a free question, are not this check.
 func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if it.QKind == factory.QKindSpendStopped {
+		return h.owns(w, r, it)
+	}
 	if h.mode() == api.FactorySolo {
 		return true
 	}
@@ -739,7 +740,7 @@ func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item)
 }
 
 func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
-	if !h.requireVerb(w, h.seam.New != nil) {
+	if !h.requireVerb(w, h.seam.New != nil || h.seam.NewJob != nil) {
 		return
 	}
 	var body api.NewJob
@@ -837,10 +838,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			recipe = f.Recipe()
 			copied, decided = f.Copy, true
 		}
-		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
-		if body.Pipeline == "issue" {
-			selected = recipe.For(factory.KindIssue)
-		}
+		selected = pipelineStages(recipe, body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return
@@ -861,13 +859,22 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// New has one words argument today. Join the title and brief here so a
-	// wire client does not need to know the seam's terminal-input shape.
-	words := body.Title
-	if body.Text != "" {
-		words += "\n\n" + body.Text
+	// Separate fields are prose, not a terminal sentence with chips.
+	var id int
+	var err error
+	literal := body.Source == factory.AskApp || body.Source == "hand-off" || body.Text != ""
+	if literal && h.seam.NewJob != nil {
+		id, err = h.seam.NewJob(body.Repo, body.Title, body.Text)
+	} else {
+		if !h.requireVerb(w, h.seam.New != nil) {
+			return
+		}
+		words := body.Title
+		if body.Text != "" {
+			words += "\n\n" + body.Text
+		}
+		id, err = h.seam.New(body.Repo, words)
 	}
-	id, err := h.seam.New(body.Repo, words)
 	if h.failed(w, err) {
 		return
 	}
@@ -911,8 +918,8 @@ func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if err != nil {
 		return err
 	}
-	ask := strings.TrimSpace(body.Text)
-	if ask == "" {
+	ask := body.Text
+	if ask == "" && (body.Source == "" || body.Source == factory.AskTUI) {
 		ask = strings.TrimSpace(body.Title)
 	}
 	now := h.clock()
@@ -922,7 +929,7 @@ func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	}
 	return h.config.Store.Update(id, func(it *factory.Item) error {
 		if body.Source == "hand-off" {
-			it.Title = body.Title
+			it.Title = strings.TrimSpace(body.Title)
 		}
 		if body.Start == "now" {
 			it.Marked = true

@@ -45,8 +45,17 @@ type StopUndo struct {
 	Stream   *Stream   `json:"stream,omitempty"`
 }
 
-// JobRef is the stable human reference; the numeric document id remains compatible.
+// JobRef is display text. A local job id is never a GitHub issue number.
 func JobRef(it Item) string {
+	if it.Num == 0 {
+		return fmt.Sprintf("job %d", it.ID)
+	}
+	return JobKey(it)
+}
+
+// JobKey preserves the reference accepted by existing clients and saved links.
+// It is an opaque identity, never display text or a GitHub issue number.
+func JobKey(it Item) string {
 	repo := it.Repo
 	if n := strings.LastIndex(repo, "/"); n >= 0 {
 		repo = repo[n+1:]
@@ -310,6 +319,16 @@ func JobReason(it Item) string {
 	return ""
 }
 
+// JobApprovalSummary keeps the latest settled decision visible while a later
+// gate waits. JobApproval separately decides whether that gate needs consent.
+func JobApprovalSummary(it Item) *Approval {
+	if it.Approval != nil && it.Approval.State == "approved" {
+		a := *it.Approval
+		return &a
+	}
+	return JobApproval(it)
+}
+
 func JobApproval(it Item) *Approval {
 
 	kind := ""
@@ -396,4 +415,9 @@ func PriorityRank(it Item) int {
 		}
 	}
 	return 4
+}
+
+// CanRunAsNew says the work has ended, so a person may start its request anew.
+func CanRunAsNew(it Item) bool {
+	return RunEnded(it) || JobState(it) == "done"
 }

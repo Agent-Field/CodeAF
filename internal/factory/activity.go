@@ -64,10 +64,10 @@ func NoteChanges(before Item, after *Item, at time.Time) {
 }
 
 // ClearRead takes the triage's read off so the worker reads the item again:
-// the sentence, the estimate, the risk, the duplicate, the priority, its
+// the sentence, the rubric, the risk, the duplicate, the priority, its
 // reason and the stamp. EVERY FIELD THE MODEL WROTE GOES, not only the stamp,
 // because the read fills only what is empty (triage.Apply) and would
-// otherwise keep yesterday's estimate under today's sentence. The start
+// otherwise keep yesterday's rubric under today's sentence. The start
 // evidence goes too (StartJudged, StartMatched, StartPaths, StartRules): it is
 // the model's judgement of the OLD text, so an unjudged item must read as "not
 // judged" until the new read lands. The type stays: it came from the source's
@@ -80,7 +80,7 @@ func ClearRead(t *Triage) {
 		t.Size, t.SizeFrom = "", ""
 	}
 	t.Read = ""
-	t.Est = 0
+	t.Rubric = nil
 	t.Risk = nil
 	t.Dup = ""
 	t.DupOf = 0

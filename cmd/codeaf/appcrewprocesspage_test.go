@@ -38,7 +38,10 @@ func newCrewFixture(t *testing.T) *crewFixture {
 	if err := os.MkdirAll(f.profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	f.backend = newFakeBackend(newAppRecorder(), nil)
+	f.backend = newFakeBackend(newAppRecorder(), func(appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: crewEnginePager{&fakeConversation{}}, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { _ = f.backend.Close() })
 	f.backend.profileDir = f.profile
 	f.backend.crewHistory.visit = f.visit
 	return f
@@ -948,8 +951,10 @@ func (f *crewFixture) hold(id, path string) {
 	f.backend.locked(func() {
 		a := f.backend.agentLocked(id)
 		a.transcript = path
-		a.live = &appLive{conn: &appConn{Conv: crewEnginePager{&fakeConversation{}}, Release: func() {}}}
 	})
+	if _, err := f.backend.OpenAgent(id); err != nil {
+		f.t.Fatal(err)
+	}
 }
 
 func commands(res *appwire.ProcessPageResult) string {
@@ -1004,6 +1009,11 @@ func TestCrewHeldOwnerNeedsTheExactVerifiedRecordedFile(t *testing.T) {
 	second, err := f.ask("t", 50, "")
 	if err != nil || strings.Contains(commands(second), "from the engine") {
 		t.Fatalf("a held conversation whose stored file is gone was asked: %q %v", commands(second), err)
+	}
+	for _, id := range []string{"held1", "held2"} {
+		if err := f.backend.CloseAgent(id); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

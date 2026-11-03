@@ -8,12 +8,12 @@ package main
 // decides whether to write, marks the brief generating and hands back the
 // prompt and the job as the writer reads it), ONE errand on the job's agent
 // under the brief role, and the factory's POST brief/keep (which checks the
-// answer against the job, keeps what passes and books the cost).
+// answer against the job and keeps what passes with its already-booked cost).
 //
 // TRIGGERS are the runner's progress news for a job on this machine (a step
 // done, failed or stopped is a step result, and a step waiting on its person
-// is an ask) and a person's change to a job's steps or model through this
-// engine. A GitHub comment read is not a trigger yet: nothing in the engine
+// is an ask), the store's committed lifecycle changes (proof approval and
+// publication or end), and a person's step or model edits through this engine. A GitHub comment read is not a trigger yet: nothing in the engine
 // says when the manager has read one. Each job's news is taken as one after factory.BriefDebounce,
 // the strongest trigger of the burst kept, so a burst of results is one
 // version. A person's Retry is factory.job_brief_write.
@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -41,7 +42,11 @@ var _ appwire.FactoryJobBriefWriter = (*appBackend)(nil)
 const briefPurpose = "factory_brief"
 
 // briefMaxTokens bounds the writer's answer: four blocks of short claims.
-const briefMaxTokens = 2000
+// MEASURED, NOT GUESSED: ten live briefs on deepseek/deepseek-v4.1-flash with
+// the bound at 4096 wrote 1189 to 2860 tokens (median 2036, p95 about 2830),
+// and at the old 2000 about half were cut, which read as invalid JSON or as
+// an empty answer the adapter asked again for. The p95 and a quarter's margin.
+const briefMaxTokens = 3600
 
 func (b *appBackend) FactoryJobBriefWrite(ctx context.Context, p appwire.FactoryJobBriefWriteParams) (appwire.FactoryJobBriefWritten, error) {
 	if _, err := b.localHostOf(p.Factory); err != nil {
@@ -83,7 +88,7 @@ func (b *appBackend) writeBrief(ctx context.Context, factoryID string, job int, 
 		Kept: kept.Kept, Drops: orDrops(kept.Drops), Model: answer.Model, CostUSD: answer.Usage.CostUSD,
 		Current: appwire.FactoryJobBrief{
 			Factory: factoryID, Job: job, Status: kept.Status, Failure: kept.Failure, FailedAfter: kept.FailedAfter,
-			Brief: kept.Brief, ChangedSinceSeen: orKeys(kept.ChangedSinceSeen),
+			Brief: kept.Brief, VerdictBehind: kept.VerdictBehind, ChangedSinceSeen: orKeys(kept.ChangedSinceSeen),
 		},
 	}, nil
 }
@@ -105,6 +110,9 @@ func (b *appBackend) briefErrand(ctx context.Context, factoryID string, job int,
 	}
 	answer, err := b.Errand(ctx, chats.Agent, ask)
 	if err != nil && answer.Reason == "" {
+		// A refused ask or route is the writer's own fault; its words go to
+		// the log beside the reason the brief keeps.
+		fmt.Fprintf(errandLog, "codeaf app: job %d brief errand refused: %v\n", job, err)
 		answer.Reason = session.ErrandModelFailed
 	}
 	if answer.Reason != "" {
@@ -182,14 +190,20 @@ func (d *briefDebounce) note(job int, trigger string) {
 }
 
 func (d *briefDebounce) take(job int) {
+	if trigger := d.claim(job); trigger != "" {
+		d.fire(job, trigger)
+	}
+}
+
+// claim takes a job's waiting trigger off the debounce, so the write fires
+// outside the lock.
+func (d *briefDebounce) claim(job int) string {
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	trigger := d.pending[job]
 	delete(d.pending, job)
 	delete(d.timers, job)
-	d.mu.Unlock()
-	if trigger != "" {
-		d.fire(job, trigger)
-	}
+	return trigger
 }
 
 // stop drops every trigger still waiting.
@@ -245,8 +259,15 @@ func (b *appBackend) writeBriefLater(job int, trigger string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), appwire.BriefWriteBudget)
 	defer cancel()
-	if _, err := b.writeBrief(ctx, id, job, trigger); err != nil {
+	written, err := b.writeBrief(ctx, id, job, trigger)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "codeaf app: job %d brief not written: %v\n", job, err)
+		return
+	}
+	// A forced transition still matters when an earlier model call holds the
+	// writer. Keep it in the debounce until that call lets the next one begin.
+	if written.Skip == factory.BriefSkipWriting && factory.BriefForced(trigger) && b.briefs != nil {
+		b.briefs.note(job, trigger)
 	}
 }
 
@@ -268,5 +289,24 @@ func (b *appBackend) localNow() (*appFactoryHost, string, bool) {
 func (b *appBackend) briefEdited(factoryID string, job int) {
 	if _, id, running := b.localNow(); running && id == factoryID && b.briefs != nil {
 		b.briefs.note(job, factory.BriefTriggerEdit)
+	}
+}
+
+// briefJobChanged hears lifecycle facts at the common committed-write seam,
+// separately from step progress so landing and publish lines keep their shape.
+func (b *appBackend) briefJobChanged(before, after factory.Item) {
+	if b.briefs == nil {
+		return
+	}
+	if end := factory.BriefEndOf(after); end != "" && end != factory.BriefEndOf(before) {
+		b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		return
+	}
+	if p := after.PublishStatus; p != nil && !reflect.DeepEqual(p, before.PublishStatus) && (p.State == "opened" || p.State == "failed") {
+		b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		return
+	}
+	if factory.BriefProofApprovalWaiting(after) && !factory.BriefProofApprovalWaiting(before) {
+		b.briefs.note(after.ID, factory.BriefTriggerAsk)
 	}
 }

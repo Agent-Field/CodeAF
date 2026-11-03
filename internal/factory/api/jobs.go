@@ -279,6 +279,7 @@ type JobBrief struct {
 	FailedAfter      string               `json:"failed_after,omitempty"`
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`
+	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
 }
 
