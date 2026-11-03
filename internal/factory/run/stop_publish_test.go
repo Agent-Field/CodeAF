@@ -79,3 +79,27 @@ func TestStopBeatsPublishWorkerReport(t *testing.T) {
  if err := ApplyReport(&it,report,now); err != nil { t.Fatalf("successful in-flight PR receipt rejected after Stop: %v",err) }
  if it.State != factory.StateShipped || it.PullRequest == nil || !strings.Contains(logText(it),"not closed") { t.Fatalf("PR receipt not shown after Stop: %+v",it) }
 }
+
+func TestStopBeatsPublishProofAndBetweenSteps(t *testing.T) {
+ for _, point := range []string{"proof_finishing", "between_steps"} {
+  t.Run(point,func(t *testing.T) {
+   g := newRig(t,map[factory.StageKind]Executor{factory.StageChat:ExecutorFunc(func(context.Context,Job)(factory.StageResult,error){ return factory.StageResult{Done:true,Claims:[]factory.Claim{{Text:"works",OK:true,Evidence:"scripted test",Medium:"test"}}},nil })},nil)
+   id := g.add("Stop finishing proof",chat("proof"))
+   stopped := false
+   g.st.ObserveWrites(func(before,after factory.Item) {
+    if stopped || after.Stream == nil || len(after.Stream.Phases)==0 { return }
+    ph := after.Stream.Phases[0]
+    ready := ph.Result != nil
+    if point == "between_steps" { ready = ph.State == factory.PhaseDone }
+    if !ready { return }
+    stopped = true
+    if err := g.st.Update(id,func(it *factory.Item)error{return StopItem(it,time.Now())}); err != nil { t.Error(err) }
+   })
+   if err := g.r.Launch(id); err != nil { t.Fatal(err) }
+   deadline := time.After(10*time.Second)
+   for g.r.Running(id) { select {case <-deadline:t.Fatal("proof did not settle");default:runtime.Gosched()} }
+   it,err := g.st.Get(id)
+   if err != nil || !stopped || it.State != factory.StateNew || it.Publishing { t.Fatalf("Stop lost at %s: state=%s publishing=%v stopped=%v err=%v",point,it.State,it.Publishing,stopped,err) }
+  })
+ }
+}
