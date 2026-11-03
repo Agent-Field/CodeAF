@@ -309,6 +309,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, false
 	case "use_code":
 		joining := pairJoiningAt(dir)(false)
+		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
 		if p.Name != "" {
 			joining.Label = p.Name
 		}
@@ -323,6 +324,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, !joined.Already
 	case "request_link":
 		joining := linkJoining(dir)(route, false)
+		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
 		if p.Name != "" {
 			joining.Label = p.Name
 		}
