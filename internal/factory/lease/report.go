@@ -29,7 +29,9 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 // Apply keeps ownership and the item's write in one lease critical section.
 // Expiry cannot reassign the job between the holder check and its report.
 // A completed job is written before release so a crash cannot offer it twice.
-func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item) error) error {
+// capWait acknowledges a worker already parked on its reported budget question;
+// it never admits a running step and retains the existing continue signal path.
+func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*factory.Item) error) error {
 	blocked := false
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
@@ -83,8 +85,8 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 			if err := change(it); err != nil {
 				return err
 			}
-			if !complete && holdAtJobBudget(it) {
-				blocked = true
+			if !complete && holdAtJobBudget(it, now) {
+				blocked = !capWait
 			}
 			if complete && !held.ThreadOnly {
 				it.Publishing = false

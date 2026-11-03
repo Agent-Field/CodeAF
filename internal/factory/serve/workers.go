@@ -550,7 +550,7 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusBadRequest, "manager reply cannot change job steps")
 			return
 		}
-		h.applyWorker(w, r, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
+		h.applyWorker(w, r, false, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
 		return
 	}
 	headers := http.Header{}
@@ -560,8 +560,14 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
-	h.applyWorker(w, r, false, func(it *factory.Item) error {
-		before := failureKey(it.Failure)
+    capWait := report.Question != nil && report.QuestionKind == "cap"
+    for _, step := range report.Stages {
+        if step.State == factory.PhaseRunning {
+            capWait = false
+        }
+    }
+    h.applyWorker(w, r, false, capWait, func(it *factory.Item) error {
+        before := failureKey(it.Failure)
 		spentBefore := factory.JobSpent(*it)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
 			return err
@@ -618,7 +624,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if only {
-		h.applyWorker(w, r, true, func(*factory.Item) error { return nil })
+		h.applyWorker(w, r, true, false, func(*factory.Item) error { return nil })
 		return
 	}
 	state, ok := api.ToWorkerState(body)
@@ -634,7 +640,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		// A MERGE'S DONE IS NOT A PUBLISH. The job's pull request is already
 		// out; its report said what the merge did, and the job stays done or
 		// waits on the person whose merge failed.
-		h.applyWorker(w, r, true, func(it *factory.Item) error {
+		h.applyWorker(w, r, true, false, func(it *factory.Item) error {
 			it.State = factory.StateShipped
 			if m := it.Merging; m != nil && (m.State == factory.MergeQueued || m.State == factory.MergeMerging) {
 				cp := *m
@@ -645,7 +651,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	h.applyWorker(w, r, true, func(it *factory.Item) error {
+	h.applyWorker(w, r, true, false, func(it *factory.Item) error {
 		now := h.workers.now()
 		if state != factory.StateShipped {
 			if it.PublishStatus != nil && it.PublishStatus.State == "failed" {
@@ -702,11 +708,11 @@ func (h *Handler) approval(ctx context.Context, id int) string {
 	return trailer
 }
 
-func (h *Handler) applyWorker(w http.ResponseWriter, r *http.Request, complete bool, apply func(*factory.Item) error) {
+func (h *Handler) applyWorker(w http.ResponseWriter, r *http.Request, complete, capWait bool, apply func(*factory.Item) error) {
 	// Validation failures are distinct from storage failures, so a caller can
 	// correct its report without mistaking disk failure for bad input.
 	var invalid error
-	err := h.workers.desk.Apply(r.PathValue("lease"), requestWorker(r).ID, complete, func(it *factory.Item) error {
+	err := h.workers.desk.Apply(r.PathValue("lease"), requestWorker(r).ID, complete, capWait, func(it *factory.Item) error {
 		invalid = apply(it)
 		return invalid
 	})

@@ -268,7 +268,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
-		if holdAtJobBudget(it) {
+		if holdAtJobBudget(it, d.now()) {
 			blocked = true
 			return nil
 		}
@@ -299,13 +299,18 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 }
 
 // holdAtJobBudget uses the server's saved total while its item lock is held.
-func holdAtJobBudget(it *factory.Item) bool {
+func holdAtJobBudget(it *factory.Item, now time.Time) bool {
 	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap {
 		return false
 	}
-	it.State = factory.StateNeedsYou
-	it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
-	it.Asking = nil
+	ask := factory.Asked{With: factory.AskedYou, At: now}
+    if it.QKind == "cap" && it.Asking != nil {
+        ask = *it.Asking
+    }
+    it.State = factory.StateNeedsYou
+    it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
+    ask.Question = it.Question
+    it.Asking = &ask
 	it.OverLimit = false
 	return true
 }
