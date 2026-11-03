@@ -200,7 +200,7 @@ func skippedPolicyWait(it factory.Item) string {
 		if ph.Kind != factory.StageCheck || ph.State != factory.PhaseSkipped {
 			continue
 		}
-		reasons = append(reasons, "check " + ph.Name + " was skipped (" + ph.SkipReason + ")")
+		reasons = append(reasons, "check " + ph.Name + " was skipped (" + strings.TrimPrefix(ph.SkipReason, "skipping " + ph.Name + ": ") + ")")
 		if len(reasons) == 1 {
 			if prev := factory.PreviousWork(it.Stream.Phases, i); prev >= 0 {
 				back = it.Stream.Phases[prev].Name
@@ -215,4 +215,13 @@ func skippedPolicyWait(it factory.Item) string {
 		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
 	}
 	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
+}
+
+func skippedPolicyQuestion(it factory.Item, res factory.StageResult) string {
+	for _, claim := range res.Claims {
+		if claim.Medium == "policy" && !claim.OK && shapeOf(claim.Evidence) == shapeTestsFirst {
+			return strings.TrimSpace(skippedPolicyWait(it))
+		}
+	}
+	return ""
 }

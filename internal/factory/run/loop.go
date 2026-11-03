@@ -1205,6 +1205,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				q += ": " + why
 			}
 			q += " · " + stepShortChoices(back)
+			if st.Kind == factory.StagePost {
+				if reason := skippedPolicyQuestion(job.Item, res); reason != "" {
+					q = reason
+				}
+			}
 			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
 			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
 			if !ok {
