@@ -153,7 +153,6 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		d.recordOwnDeviceOrSay(ctx, route)
 		joined.Joined.With = joined.Fleet.With
 		d.term.say(joined.Joined.Sentence())
-		d.term.say(terminalSharingLine)
 	}
 	return nil
 }

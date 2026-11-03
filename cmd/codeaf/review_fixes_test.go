@@ -16,8 +16,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
-	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -123,11 +123,8 @@ func TestR1_7PendingMergeResumesThenGoesIdle(t *testing.T) {
 	}
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	v, err := keys.Open(rig.homeB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := v.Put("kept", keys.Entry{Name: "KEY", Value: "kept"}); err != nil {
+	// Preferences are legal startup-only state under dev's pairing policy.
+	if err := config.WriteChatModel(rig.homeB, "fixture/saved"); err != nil {
 		t.Fatal(err)
 	}
 	r1PairHomes(t, rig)
@@ -428,10 +425,10 @@ func TestR1_4TerminalExplainsAndResumesDeferredSharing(t *testing.T) {
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, rig.url)
 	t.Cleanup(cellstore.StopSpawned)
-	c := r1SavedChat(t, rig.homeB, "brought chat")
 	out := r1PairHomes(t, rig)
-	if !strings.Contains(out.String(), "Sharing finishes the next time codeaf runs.\n") {
-		t.Fatalf("terminal omitted when sharing finishes: %s", out.String())
+	c := r1SavedChat(t, rig.homeB, "brought chat")
+	if !strings.Contains(out.String(), ". Run codeaf to open your chats.\n") {
+		t.Fatalf("terminal omitted dev completion copy: %s", out.String())
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})

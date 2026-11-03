@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"strings"
 	"sync"
 
@@ -373,6 +374,9 @@ func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door R
 		default:
 			stream.close()
 		}
+	}
+	if door != nil {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
 	}
 	events := a.startTurnLocked(ctx, user, nil, watchers...)
 	if door != nil {

@@ -50,6 +50,12 @@ func (b *appBackend) Errand(ctx context.Context, id string, ask session.ErrandAs
 			return session.ErrandAnswer{}, err
 		}
 	}
+	// Factory page calls and the brief writer borrow the agent for one errand.
+	// Ordinary calls on that same agent retain their refusal policy.
+	switch ask.Purpose {
+	case "repo_ask", "repo_notes", "repo_themes", "repo_eval", "pipeline_ai", "view_topic", briefPurpose:
+		ask.DropRefusedEffort = true
+	}
 	answer, err := door.RunErrand(ctx, ask)
 	if err == nil || errors.Is(err, session.ErrErrandAsk) || errors.Is(err, session.ErrErrandRoute) {
 		return answer, err

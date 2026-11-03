@@ -216,8 +216,8 @@ Keep codeaf open to retry. Failed chats
 retry with pauses growing from five seconds to one minute; completed chats are left alone. In the app, sharing
 saved keys, memory and preferences after pairing stops after its first successful
 pass. A home with no unfinished pairing makes no periodic requests for that pass.
-Terminal pairing says `Sharing finishes the next time codeaf runs.` If pairing
-or sharing is interrupted, reopen codeaf: it finishes the saved pairing and
+Terminal pairing says `Paired with <name>. Run codeaf to open your chats.`
+If pairing or sharing is interrupted, reopen codeaf: it finishes the saved pairing and
 retries sharing the same chats without making duplicates. Older chats still use
 the independent-copy policy described above.
 

@@ -823,7 +823,7 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		// The compatible usage option earns only its own repair. Peeking at an
 		// unrelated refusal must not admit it to the older learning road.
 		repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
-		dropEffort := c.config.DropRefusedEffort && c.refusedEffortRepairable(model, knobs, response.StatusCode)
+		dropEffort := (c.config.DropRefusedEffort || knobs.effort.dropRefused) && c.refusedEffortRepairable(model, knobs, response.StatusCode)
 		if !foreign && !repairable && !dropEffort && !(streamUsage && usageRefusalStatus) {
 			return response, nil
 		}

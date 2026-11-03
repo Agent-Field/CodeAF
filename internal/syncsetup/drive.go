@@ -583,7 +583,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err := cellstore.Captured(ctx, d.cell); err != nil {
 		return err
 	}
-	if d.batcher == nil || d.displaced() {
+	if d.batcher == nil {
 		return nil
 	}
 	id, fence := d.batcher.Lease()
@@ -594,6 +594,10 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
 		d.retireHold(ctx, held)
 		d.availableAfter(held, v.Cell.Lease)
+		return nil
+	}
+	// A released takeover updates the viewer, but never reopens its old hold.
+	if d.displaced() {
 		return nil
 	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {

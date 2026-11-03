@@ -375,10 +375,12 @@ After your yes, the answer names the thinking the item was saved with, step by s
 
 ## models that refuse thinking or reasoning effort
 
-If a stage's model explicitly rejects its thinking setting, codeaf retries once
-without that setting. The repair stays local to that client and model, including
-stage helpers and delegated tasks. Switching models or connected accounts keeps
-this recovery available. Ordinary conversations still return the model's refusal.
+If a Factory model explicitly rejects its thinking setting, codeaf retries once
+without that setting. This covers stages and their helpers, manager turns on an
+already-open conversation, brief writing, and the repository, pipeline and topic
+page AI. Switching models or connected accounts keeps recovery available.
+Recovery belongs to the Factory call: an ordinary turn or errand on the same
+conversation still returns the model's refusal.
 
 ## which model a cheap or strong step runs on — small work, checks model, effort models
 

@@ -34,15 +34,29 @@ func TestM1M2M3M4M5PairMergeRealHomes(t *testing.T) {
 	h.homeB = t.TempDir()
 	old, err := identity.EnsureSolo(h.homeB)
 	mustNil(t, err)
-	v, err := keys.Open(h.homeB)
-	mustNil(t, err)
-	mustNil(t, v.Put("p/KEY", keys.Entry{Name: "KEY", Value: "kept", Scope: "p"}))
 	mustNil(t, os.WriteFile(filepath.Join(h.homeB, "config.json"), []byte(`{"ui.icons":"ascii","machine.path":"local"}`), 0600))
 	brain, err := store.Open(filepath.Join(h.homeB, "graph.db"))
 	mustNil(t, err)
 	memory, err := brain.AddMemory(store.Memory{Owner: store.OwnerUser, Text: "Remember this pairing preference."})
 	mustNil(t, err)
 	mustNil(t, brain.Close())
+	wantA, err := os.ReadFile(transcriptOf(h.cell))
+	mustNil(t, err)
+	route := pair.Mailbox{Box: pairbox.NewHTTP(h.url, http.DefaultClient), URL: h.url, Host: "loopback"}
+	screen := pairScreen{codes: make(chan *pair.Code, 1)}
+	done := make(chan error, 1)
+	go func() {
+		_, err := pair.Offer(ctx, route, pair.Grant{Identity: h.a.Identity}, screen)
+		done <- err
+	}()
+	code := <-screen.codes
+	_, err = pair.Join(ctx, route, pair.Joining{Home: h.homeB, Label: nameB}, code.Shown(), screen)
+	mustNil(t, err)
+	mustNil(t, <-done)
+	// Local chats and provider keys are created only after the legal startup switch.
+	v, err := keys.Open(h.homeB)
+	mustNil(t, err)
+	mustNil(t, v.Put("p/KEY", keys.Entry{Name: "KEY", Value: "kept", Scope: "p"}))
 	c, err := cell.CreateIn(filepath.Join(h.homeB, "v3", "projects", "local"), cell.Options{Class: cell.FilesOnly})
 	mustNil(t, err)
 	work := filepath.Join(c.Root, "work")
@@ -59,19 +73,6 @@ func TestM1M2M3M4M5PairMergeRealHomes(t *testing.T) {
 	}
 	wantB, err := os.ReadFile(transcriptOf(c))
 	mustNil(t, err)
-	wantA, err := os.ReadFile(transcriptOf(h.cell))
-	mustNil(t, err)
-	route := pair.Mailbox{Box: pairbox.NewHTTP(h.url, http.DefaultClient), URL: h.url, Host: "loopback"}
-	screen := pairScreen{codes: make(chan *pair.Code, 1)}
-	done := make(chan error, 1)
-	go func() {
-		_, err := pair.Offer(ctx, route, pair.Grant{Identity: h.a.Identity}, screen)
-		done <- err
-	}()
-	code := <-screen.codes
-	_, err = pair.Join(ctx, route, pair.Joining{Home: h.homeB, Label: nameB}, code.Shown(), screen)
-	mustNil(t, err)
-	mustNil(t, <-done)
 	h.b = openSync(t, h.homeB)
 	mustNil(t, h.b.SyncState(ctx))
 	mustNil(t, h.a.SyncState(ctx))
