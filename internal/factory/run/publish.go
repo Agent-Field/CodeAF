@@ -324,7 +324,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	}
 	body := PublishBody(it, trailer)
 	if isPull(it) {
-		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body})
+        if err := r.publishBoundary(ctx, it.ID); err != nil {
+            return published{}, err
+        }
+        rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 		if err != nil {
 			return published{}, err
 		}
@@ -373,7 +376,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
 	}
 	if mode == "comment" {
-		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body})
+        if err := r.publishBoundary(ctx, it.ID); err != nil {
+            return published{}, err
+        }
+        rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 		if err != nil {
 			return published{}, err
 		}
