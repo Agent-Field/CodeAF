@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hostedFixture } from './hosted-fixture.js';
 import { encode } from '../../src/frame.js';
-import { createHash, sign } from 'node:crypto';
+import { createHash, randomBytes, sign } from 'node:crypto';
 import { encodeCanonical } from '../../src/raft/codec.js';
 
 test('warm blob and directory reads reuse confirmed authority without proposals or barriers',{timeout:30000},async()=>{
@@ -70,6 +70,55 @@ test('a selected member recovering cannot reuse its previous activation certific
   assert.equal((await h.call(a,'GET','/v1/dir/list')).status,200);
  }finally{await h.close();}
 });
+
+for(const interruption of ['member recovery','one scheduled interruption','continuous scheduled interruptions']){
+ test('link approvals use fresh quorum authority after '+interruption,{timeout:30000},async()=>{
+  const h=await hostedFixture({fixture:true}),a=h.client(),b=h.client();
+  const openLink=async client=>{
+   const opened=await h.mf.dispatchFetch('http://local/v1/link/requests',{method:'POST',body:JSON.stringify({pubkey:Buffer.from(client.cert.device,'hex').toString('base64url'),x25519:randomBytes(32).toString('base64url'),name_sealed:randomBytes(45).toString('base64url'),platform:'linux'})});
+   assert.equal(opened.status,201);
+   const pending=await opened.json();
+   return {code:pending.code,approval:{device:{V:1,name:'c2VhbGVk',platform:'linux'},cert:Buffer.from(JSON.stringify(client.cert)).toString('base64url'),grant:randomBytes(64).toString('base64url')}};
+  };
+  const decision=async code=>{
+   const reply=await h.mf.dispatchFetch('http://local/v1/link/requests/'+code);
+   assert.equal(reply.status,200);return reply.json();
+  };
+  try{
+   await h.start();
+   assert.equal((await h.call(a,'PUT','/v1/dir/devices/'+a.device,{V:1,name:'c2VhbGVk',platform:'linux'})).status,204);
+   await h.control({op:'form-cluster'});
+   const configuration=await h.control({op:'formation-turn'});
+   assert.deepEqual(configuration.conf.voters.map(String),['1','2','3']);
+   assert.equal(configuration.conf.outgoing?.length??0,0);assert.equal(configuration.forming,false);
+   const pending=await openLink(b);
+   assert.equal((await h.call(a,'GET','/v1/dir/list')).status,200);
+   if(interruption==='member recovery'){
+    const replacement=await h.control({op:'replace-read-member'});
+    assert.equal(replacement.after,replacement.before,'recovery preserves the applied index');
+    assert.equal(replacement.refused,true,'the old activation remains fenced');
+   }else await h.control({op:'interrupt-next-read',records:interruption==='one scheduled interruption'?'once':'always'});
+   const approved=await h.call(a,'POST','/v1/dir/requests/'+pending.code+'/approve',pending.approval);
+   assert.equal(approved.status,204,'the first approval must succeed: '+JSON.stringify(approved));
+   const delivered=await decision(pending.code);
+   assert.equal(delivered.state,'approved','the decision is delivered to the link request');
+   assert.equal(delivered.grant,pending.approval.grant,'the sealed grant is delivered unchanged');
+   assert.equal((await h.call(a,'GET','/v1/dir/list')).status,200);
+   assert.equal((await h.call(b,'GET','/v1/dir/list')).status,200,'the admitted device can read the directory');
+   await h.control({op:'interrupt-next-read',records:false});
+   assert.equal((await h.call(a,'POST','/v1/dir/devices/'+b.device+'/revoke')).status,204);
+   assert.deepEqual(await h.call(b,'GET','/v1/dir/list'),{status:401,body:{err:'revoked'}});
+   const next=await openLink(h.client());
+   assert.deepEqual(await h.call(b,'POST','/v1/dir/requests/'+next.code+'/approve',next.approval),{status:401,body:{err:'revoked'}});
+   assert.equal((await decision(next.code)).state,'pending');
+   assert.equal((await h.call(a,'GET','/v1/dir/list')).status,200);
+   await h.control({op:'expire-read-quorum'});
+   assert.deepEqual(await h.call(a,'POST','/v1/dir/requests/'+next.code+'/approve',next.approval),{status:503,body:{err:'unreachable',retry_after:1}});
+   assert.equal((await decision(next.code)).state,'pending','an isolated leader cannot deliver an approval');
+   assert.equal((await h.call(a,'GET','/v1/dir/list')).status,503);
+  }finally{await h.close();}
+ });
+}
 
 test('snapshot traffic invalidates warm authority before the following read',{timeout:30000},async()=>{
  const h=await hostedFixture({fixture:true}),a=h.client();

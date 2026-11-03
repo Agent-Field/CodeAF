@@ -885,7 +885,8 @@ export class HostedIdentity {
     const join=/^\/v1\/dir\/requests\/([^/]+)\/(approve|deny)$/.exec(path);
     let joinCode,joinBox;
     if(join){
-      const authority=await this.authorize(device,cert,true,fresh);joinCode=decodeURIComponent(join[1]).trim().toLowerCase();joinBox=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(joinCode));
+      // Link decisions need fresh quorum authorization because dispatch does not retry them.
+      const authority=await this.authorize(device,cert,true,true);joinCode=decodeURIComponent(join[1]).trim().toLowerCase();joinBox=this.env.LINK_REQUEST.get(this.env.LINK_REQUEST.idFromName(joinCode));
       // Invalid approvals cannot reserve a request for this cluster. The Go
       // command still checks authority and revocation at its committed index.
       const pending=unwrap(await joinBox.read(0));

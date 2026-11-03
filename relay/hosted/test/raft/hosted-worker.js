@@ -35,7 +35,10 @@ export class IdentityDO extends Source {
     ctx.storage.sql.exec=(query,...args)=>{if(!/^\s*(SELECT|PRAGMA)/i.test(query))measurements.writes++;return exec(query,...args);};
   }
   interruptNextRead(mode){
+    this.stopReadInterruption?.();
+    if(mode===false)return true;
     const host=this.current.host;let pending=true,views=0;
+    this.stopReadInterruption=()=>{pending=false;};
     for(const [id,member] of host.members){
       host.members.set(id,new Proxy(member,{get(target,name){
         const call=Reflect.get(target,name,target);
