@@ -51,3 +51,18 @@ func TestReviewNewWorkerOldFactoryPaidReport(t *testing.T) {
 		t.Fatalf("old factory job spend %.2f < real spend %.2f", oldReport.Cost, realSpend)
 	}
 }
+
+func TestWorkerAdmissionAdvertisesRoundCostTables(t *testing.T) {
+ for _, tc := range []struct{name string; job api.Job; want bool}{
+  {"worker admission", api.WorkerJob(factory.Item{}), true},
+  {"reader", api.FromItem(factory.Item{}), false},
+ } {
+  t.Run(tc.name,func(t *testing.T){
+   raw, err := json.Marshal(tc.job)
+   if err != nil {t.Fatal(err)}
+   var body map[string]any
+   if err := json.Unmarshal(raw,&body); err != nil {t.Fatal(err)}
+   if got, _ := body["round_cost_tables"].(bool); got != tc.want {t.Fatalf("admission round_cost_tables=%v, want %v",got,tc.want)}
+  })
+ }
+}
