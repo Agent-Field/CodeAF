@@ -212,7 +212,7 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 				}
 			}
 			if recent.DoneHow != "closed" {
-				t.Fatal("issue closed after cursor remains in Backlog")
+				t.Fatalf("issue closed after cursor remains in Backlog: state=%s changed=%s starter=%q taker=%q adapted=%v scout=%v answered=%d decided=%t", recent.State, recent.Changed, recent.Starter, recent.Taker, recent.Adapted, recent.Scout != nil, len(recent.AnsweredQuestions), recent.PipelineDecided)
 			}
 			closed, reopened = false, true
 			if _, err = source.PollOnce(ctx, src, st, cursor, time.Now); err != nil {
