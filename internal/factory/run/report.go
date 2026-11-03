@@ -2,6 +2,7 @@ package run
 
 import (
 	"fmt"
+ "encoding/json"
 	"math"
 	"strings"
 	"time"
@@ -24,7 +25,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	// cancelled round. That holder still owes the job its work and spending.
     if it.State == factory.StateNew && report.Publishing != nil {
         // Validate the whole report before preserving a sent request's receipt.
-        candidate := *it
+        raw, err := json.Marshal(it)
+        if err != nil { return err }
+        var candidate factory.Item
+        if err := json.Unmarshal(raw, &candidate); err != nil { return err }
         candidate.State = factory.StateRunning
         if err := ApplyReport(&candidate, report, now); err != nil { return err }
         if report.PR == nil {
