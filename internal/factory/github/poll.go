@@ -274,6 +274,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				errs = append(errs, finishClosed(st, old.ID))
 				continue
 			}
+			if closedWithoutWork(old) {
+				errs = append(errs, reopenClosed(st, old.ID))
+			}
 			if !forgeChanged(old, in) {
 				continue
 			}

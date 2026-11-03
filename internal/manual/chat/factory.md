@@ -709,7 +709,8 @@ from that poll's results. Progress survives restarts. A missing issue stays
 unchanged and does not block later rows; other read failures retry next poll.
 Larger backlogs continue over subsequent polls; the factory never walks the repository's closed history.
 
-Reopening an issue on GitHub refreshes its text but keeps a poll-finished job
-Done. A person must choose **Run again** after reopening; reopening alone
-never authorizes more spending. Triage or Look closer already in flight may
+An issue reopened on GitHub returns to Backlog when nothing was done on it, and
+it counts like any new issue, so a start rule can start it. A job with work on
+it stays Done until a person chooses **Run again**. A job that ended with nothing
+done on it gets no end brief, so a closed issue costs no model call. never authorizes more spending. Triage or Look closer already in flight may
 finish before the closure arrives.

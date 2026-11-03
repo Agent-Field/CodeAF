@@ -18,15 +18,38 @@ import (
 // tick. It never lists closed history, and its progress survives a restart.
 const closeSweepBudget = 40
 
-// untouchedBacklog excludes every job that started or has work to preserve.
-// A held start decision with no work is safe to finish just like a new row.
+// untouchedBacklog is a Backlog row that nothing has started or worked on. A
+// held start decision with no work is safe to finish just like a new row.
 func untouchedBacklog(it factory.Item) bool {
-	return factory.IsIssueJob(it) && it.Origin == factory.OriginForge && it.Num > 0 &&
-		(it.State == factory.StateNew || it.State == factory.StateNeedsYou) &&
-		it.DoneHow == "" && it.Starter == "" && !it.PipelineDecided && it.Stream == nil &&
-		it.Talk == "" && it.WorktreeMachine == "" && it.PullRequest == nil &&
-		!it.Publishing && factory.JobSpent(it) == 0 && it.Failure == nil &&
-		it.Change == nil && it.BriefWriting == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 && len(it.Thread) == 0 && it.Approval == nil
+	return closableIssue(it) && (it.State == factory.StateNew || it.State == factory.StateNeedsYou) &&
+		it.DoneHow == "" && !it.PipelineDecided
+}
+
+func closableIssue(it factory.Item) bool {
+	return factory.IsIssueJob(it) && it.Origin == factory.OriginForge && it.Num > 0 && factory.JobUnworked(it)
+}
+
+// closedWithoutWork is the row an issue reopened on GitHub takes back to
+// Backlog: it left because GitHub closed it, with nothing done on it. A job
+// with work on it keeps its ending, and a person chooses Run again.
+func closedWithoutWork(it factory.Item) bool {
+	return closableIssue(it) && it.State == factory.StateShipped && it.DoneHow == StandingClosed
+}
+
+func reopenClosed(st *store.Store, id int) error {
+	back := false
+	err := st.Update(id, func(it *factory.Item) error {
+		if !closedWithoutWork(*it) {
+			return nil
+		}
+		it.State, it.DoneHow, it.DoneAt = factory.StateNew, "", time.Time{}
+		back = true
+		return nil
+	})
+	if err != nil || !back {
+		return err
+	}
+	return recordEnding(st, record.Restored, "reopened", id)
 }
 
 func finishClosed(st *store.Store, id int) error {
@@ -43,11 +66,15 @@ func finishClosed(st *store.Store, id int) error {
 	if err != nil || !finished {
 		return err
 	}
+	return recordEnding(st, record.SourceClosed, StandingClosed, id)
+}
+
+func recordEnding(st *store.Store, kind, verb string, id int) error {
 	history, err := record.Open(st, record.Options{})
 	if err != nil {
 		return err
 	}
-	_, err = history.Append(context.Background(), record.Event{Kind: record.SourceClosed, Verb: StandingClosed, Job: id, Detail: "on GitHub"})
+	_, err = history.Append(context.Background(), record.Event{Kind: kind, Verb: verb, Job: id, Detail: "on GitHub"})
 	return err
 }
 
@@ -90,14 +117,15 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 				left--
 				how, err := Standing(ctx, s.api, it)
 				if err != nil {
-					errs = append(errs, err)
 					var apiErr *forge.APIError
 					if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusGone) {
 						// A missing issue is unknown, not closed. Leave its row
-						// alone without blocking the rest of the old backlog.
+						// alone, with no trouble on the poll and no block on the
+						// rest of the old backlog.
 						sweep.Through = it.ID
 						continue
 					}
+					errs = append(errs, err)
 					break
 				}
 				if how == StandingClosed {
