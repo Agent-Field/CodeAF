@@ -630,8 +630,8 @@ allowed. `&&` chains and `|` pipes remain eligible, including `cd sub && go test
 `bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
 app/v3. This is an existing observation limit, not a check failure.
 A measured-zero command with a refused shell form reads `completed`; that outcome
-does not hold completion. Later measured passes for the same checks on the current
-checkout clear earlier failures, even when the rerun uses `;` and publishes nothing.
+does not hold completion. Rerunning the identical compound on the current checkout with every measured exit
+zero clears its earlier failure, even when it uses `;` and publishes nothing.
 
 Factory publication renders known local factory checkout prefixes as repo-relative
 paths, and other local home prefixes as `[local home]`. The preview and final

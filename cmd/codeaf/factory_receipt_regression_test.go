@@ -184,7 +184,7 @@ func TestBackgroundReceiptWaitsForMeasuredExit(t *testing.T) {
 					found = true
 					want := "started"
 					if tc.measured {
-						want = "passed"
+						want = "completed"
 						if tc.failed {
 							want = "failed"
 						}
