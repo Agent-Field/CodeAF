@@ -80,6 +80,9 @@ type File struct {
 	// anything after plan runs) or fixed (the steps as written). Empty when
 	// the file says nothing, which is adapt.
 	Adapt factory.AdaptMode
+	// AdaptKinds is `adapt:` written as a map, one word per pipeline: a kind
+	// it does not name is adapt. At most one of Adapt and AdaptKinds is set.
+	AdaptKinds map[factory.Kind]factory.AdaptMode
 	// Merge is the `merge:` key. AUTO-MERGE IS OFF unless a file turns it on;
 	// a personal file may only turn it off ([Merge]).
 	Merge factory.MergePolicy
@@ -533,10 +536,14 @@ func (f File) RecipeProblems() []factory.Problem {
 	return out
 }
 
-// adaptByKind is the recipe's adapt word per kind: the file's `adapt:` for the
-// issue pipeline and every pipeline the file lists, else the Markdown recipe's
-// words carried over, else none (the default, adapt).
+// adaptByKind is the recipe's adapt word per kind: the file's per-pipeline
+// map, else its one `adapt:` word for the issue pipeline and every pipeline
+// the file lists, else the Markdown recipe's words carried over, else none
+// (the default, adapt).
 func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
+	if len(f.AdaptKinds) > 0 {
+		return copyAdapt(f.AdaptKinds)
+	}
 	if f.Adapt == "" {
 		return copyAdapt(f.markdownAdapt)
 	}

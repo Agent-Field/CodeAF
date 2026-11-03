@@ -46,7 +46,10 @@ func TestStalePublishRefusalMakesViewerAndNotifiesOnce(t *testing.T) {
 	}
 	h.block.set(false)
 	want := chatlist.Superseded(nameB)
-	waitFor(t, "A to become a viewer after stale publish", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	// The window refuses work at once, first with an unnamed line while the
+	// holder's name is read, and announces the move once pending saves have
+	// settled (#1971). The announcement is the settled state.
+	waitFor(t, "A to announce the move after stale publish", func() bool { return h.wall.has(want) })
 	if line, viewer := a.drive.Viewer(); !viewer || line != want {
 		t.Fatalf("viewer = %q, %v; want %q, true", line, viewer, want)
 	}

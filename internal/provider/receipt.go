@@ -104,6 +104,8 @@ type receiptWork struct {
 	queued time.Time
 	usage  func(int, int, bool, bool)
 	base   string
+	// requirePrice keeps token-only receipts unknown for final-price consumers.
+	requirePrice bool
 	// attempt is the send this receipt prices, captured when the receipt was
 	// owed (attemptobserver.go). It is NOT read from the trace at arrival: by
 	// then the call may be on a later send, or over.
@@ -175,7 +177,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// bank exactly once, but it cannot prove the completed price of an observed
 	// send. Only that send's final generation receipt can settle its token.
 	handle := attemptOf(traces...)
-	bankedUsage := response != nil && response.Usage != nil
+	bankedUsage := response != nil && response.Usage != nil && !finalReceiptsFrom(ctx)
 	if bankedUsage {
 		if handle == nil {
 			c.bill(ctx, model, response, traces...)
@@ -190,6 +192,20 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// calling the router's route on the vendor would send that vendor a
 	// request and bearer for a fact this client already knows cannot be there.
 	if c.config.Direct {
+		if finalReceiptsFrom(ctx) {
+			if sink := reconcileFrom(ctx); sink != nil {
+				result := Reconciled{Billed: Billed{Model: model, Billing: c.answeredBilling(traces...)}, Reason: reason}
+				if response != nil && response.Usage != nil && response.Usage.Cost != nil {
+					result.Found = true
+					result.Cost = *response.Usage.Cost
+					result.PromptTokens = response.Usage.PromptTokens
+					result.CompletionTokens = response.Usage.CompletionTokens
+					sink(result)
+				} else if answerBytes > 0 {
+					sink(result)
+				}
+			}
+		}
 		handle.unknown()
 		return
 	}
@@ -231,7 +247,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	if len(traces) > 0 && traces[0] != nil {
 		attemptID = traces[0].attemptID
 	}
-	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
+	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, requirePrice: finalReceiptsFrom(ctx), usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
 		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
 		AccountingSource: "provider", ReceiptID: usageReceiptID(base, result.Ref, attemptID),
@@ -245,7 +261,10 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// answered only after the sink has banked it, so a caller waiting for its
 	// receipts cannot see zero owed while money is between the two
 	// ([ReceiptPending]).
-	if pending := receiptPendingFrom(ctx); !bankedUsage && pending != nil {
+	// A finished answer that only lacks usage doesn't hold up the job's next step
+	// for its receipt: the job has moved on, and the row lands when it is answered.
+	moved := finalReceiptsFrom(ctx) && result.Reason == receiptUnmeteredReason
+	if pending := receiptPendingFrom(ctx); !bankedUsage && !moved && pending != nil {
 		done := pending()
 		work.sink = func(answer Reconciled) {
 			defer done()
@@ -348,6 +367,11 @@ func (c *Client) reconcile(work receiptWork) {
 			return
 		}
 		if found {
+			if work.requirePrice && read.financial.State != FinancialKnown {
+				work.attempt.unknown()
+				work.sink(result)
+				return
+			}
 			work.attempt.financial(last)
 			billed.Node = result.Node
 			billed.Model = result.Model

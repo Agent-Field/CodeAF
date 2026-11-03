@@ -129,7 +129,7 @@ func retainedWorkerReport(body api.WorkerRecovery) (factory.RunReport, string, e
 			return factory.RunReport{}, "", fmt.Errorf("retained result header names must be canonical")
 		}
 		switch http.CanonicalHeaderKey(name) {
-		case "Idempotency-Key", api.StepModelsHeader, api.StepChatsHeader, api.StepRuntimeHeader:
+		case "Idempotency-Key", api.StepModelsHeader, api.StepChatsHeader, api.StepRuntimeHeader, api.ModelSpendHeader:
 		default:
 			return factory.RunReport{}, "", fmt.Errorf("retained results contain an unsupported header")
 		}

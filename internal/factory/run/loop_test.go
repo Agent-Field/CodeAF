@@ -186,7 +186,7 @@ func TestLaunchRefusesWhatIsAlreadyRunningAndAStrangersWrite(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
+	if err := g.r.Launch(id); err == nil || err.Error() != "job 1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("second launch = %v", err)
 	}
 	close(release)
@@ -262,7 +262,7 @@ func TestAnApproveStepHoldsYesGoesOnNoSendsBack(t *testing.T) {
 	if !strings.Contains(got, "plan/2:use the other file") || !strings.Contains(got, "write/1:use the other file;only the parser") {
 		t.Fatalf("briefs = %s", got)
 	}
-	if err := g.r.Answer(yes, true, ""); err == nil || err.Error() != "#1 is not waiting on you" {
+	if err := g.r.Answer(yes, true, ""); err == nil || err.Error() != "job 1 is not waiting on you" {
 		t.Fatalf("an answer to nothing = %v", err)
 	}
 
@@ -381,6 +381,7 @@ func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
 		{"walled", factory.Stage{Name: "write"}, 1, factory.StageResult{Output: stageWalled}, "write ran out of time without reporting", ""},
 		{"one try, could not", factory.Stage{Name: "plan"}, 1, factory.StageResult{Output: "the issue names a file that is gone\nmore"}, "plan did not finish", "the issue names a file that is gone"},
 		{"one try, until held back", factory.Stage{Name: "test", Until: factory.UntilProven, Max: 1}, 1, factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "a", OK: true, Evidence: "x"}, {Text: "b"}}}, "test is not proven", "1 of 2 claims shown"},
+		{"a command failed", factory.Stage{Name: "mustfail", Kind: factory.StageCheck, Until: factory.UntilGreen, Max: 1}, 1, factory.StageResult{Exit: 1, Findings: 1, Output: ""}, "mustfail is not green", "exit 1"},
 		{"loops", factory.Stage{Name: "review", Until: factory.UntilClean, Max: 2}, 2, factory.StageResult{Done: true, Findings: 2}, "review is not clean after 2 rounds", "2 findings"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -549,7 +550,7 @@ func TestStopMidRound(t *testing.T) {
 		t.Fatalf("stopped stream = %+v", it.Stream)
 	}
 	assertStoppedByYou(t, it, "write")
-	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
+	if err := g.r.Stop(id); err == nil || err.Error() != "job 1 is not running" {
 		t.Fatalf("a second stop = %v", err)
 	}
 	// The stream is kept for the log, and the item launches again from new.
@@ -599,7 +600,7 @@ func TestStopWithNoRunMarksTheJobAndTheStepItCut(t *testing.T) {
 	if it.Failure.Attempts != 2 {
 		t.Fatalf("the stop forgot the step's rounds: %+v", it.Failure)
 	}
-	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
+	if err := g.r.Stop(id); err == nil || err.Error() != "job 1 is not running" {
 		t.Fatalf("a second stop = %v", err)
 	}
 }
@@ -769,7 +770,7 @@ func TestSignOffShipsACleanSheetAndRefusesAFailedClaim(t *testing.T) {
 	if len(it.Proof) != 1 || len(it.Policy) != 1 {
 		t.Fatalf("proof %+v policy %+v", it.Proof, it.Policy)
 	}
-	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "#1 has a claim not shown" {
+	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "job 1 has a claim not shown" {
 		t.Fatalf("a failed claim signed off: %v", err)
 	}
 	if due, err := g.r.SignOff(bad, true); err != nil || due {
@@ -797,7 +798,7 @@ func TestSignOffShipsACleanSheetAndRefusesAFailedClaim(t *testing.T) {
 	if dues[0] || dues[1] || !dues[2] {
 		t.Fatalf("habit due = %v", dues)
 	}
-	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "#1 has not landed" {
+	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "job 1 has not landed" {
 		t.Fatalf("a shipped item signed off again: %v", err)
 	}
 }
@@ -954,7 +955,7 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	it := g.asked(id, "budget of $1 reached · $1.50 spent · raise it to $5, or stop?")
 	if it.QKind != "cap" || it.Stream.Spent != 1.5 {
 		t.Fatalf("kind %q spent %v", it.QKind, it.Stream.Spent)
 	}
@@ -962,7 +963,7 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateLanded)
-	if it.Cap != 2 || !logHas(it, "budget raised to $2 · carrying on") {
+	if it.Cap != 5 || !logHas(it, "budget raised to $5 · carrying on") {
 		t.Fatalf("cap %v log %+v", it.Cap, it.Stream.Log)
 	}
 }
@@ -1164,8 +1165,10 @@ func TestAPausedItemStaysPausedAcrossARestartAndRunsInTheSameChat(t *testing.T) 
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
 	// The process dies: its control goes, the document stays.
-	old := g.r.loop().ctl(id)
-	old.cancel()
+	// A pause ends the drive and frees its slot; it may already have gone.
+	if old := g.r.loop().ctl(id); old != nil {
+		old.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 	it, _ := g.st.Get(id)
 	if it.State != factory.StateRunning || !it.Stream.Paused || it.Stream.Phases[0].Chat != "chat-x" {
@@ -1208,7 +1211,9 @@ func TestAResumedStepAfterARestartStillReadsTheStepsBefore(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
-	g.r.loop().ctl(id).cancel()
+	if c := g.r.loop().ctl(id); c != nil {
+		c.cancel()
+	}
 	time.Sleep(20 * time.Millisecond)
 	if it, _ := g.st.Get(id); it.Stream.Phases[0].Result == nil || it.Stream.Phases[0].Result.Output != "three files" {
 		t.Fatalf("the plan's result is not kept on its step: %+v", it.Stream.Phases[0])
@@ -1239,7 +1244,7 @@ func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitStarted(t, p)
-	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
+	if err := g.r.Launch(id); err == nil || err.Error() != "job 1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("launch on a running item = %v", err)
 	}
 	close(p.release)
