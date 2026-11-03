@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -116,7 +115,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	t.Cleanup(func() {
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
-		t.Logf("live attempt: requests=%d request_models=%v response_models=%v spend=%.8f cancelled_requests=%d conservative_spend=%.8f problems=%v", recorder.calls, recorder.requests, recorder.replies, recorder.cost, accounting.cancelledRequests, recorder.cost+float64(accounting.cancelledRequests)*accounting.highestCost, recorder.problems)
+		t.Logf("live attempt: requests=%d request_models=%v response_models=%v spend=%.8f cancelled_requests=%d conservative_spend=%.8f problems=%v", recorder.calls, recorder.requests, recorder.replies, recorder.cost, accounting.cancelledRequests, recorder.cost+float64(accounting.cancelledRequests)*max(0.02, accounting.highestCost), recorder.problems)
 	})
 	recorder.server.Config.Handler = stopLiveAccountingHandler(recorder, accounting)
 
@@ -221,7 +220,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		t.Helper()
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
-		if len(recorder.problems) != 0 || recorder.cost+float64(accounting.cancelledRequests)*accounting.highestCost >= liveStopSpendMost || recorder.cost >= 0.30 {
+		if len(recorder.problems) != 0 || recorder.cost+float64(accounting.cancelledRequests)*max(0.02, accounting.highestCost) >= liveStopSpendMost || recorder.cost >= 0.30 {
 			t.Fatalf("recorder policy: spend=%.8f problems=%v", recorder.cost, recorder.problems)
 		}
 	}
@@ -524,7 +523,9 @@ func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
 
 // stopLiveAccounting serializes calls and retains unpriced request evidence.
 type stopLiveAccounting struct {
- stopAt atomic.Int64
+ requestMu sync.Mutex
+ request context.Context
+ cancel context.CancelCauseFunc
  cancelledRequests int
  highestCost float64
  paid sync.Mutex
@@ -541,7 +542,7 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 		defer accounting.paid.Unlock()
 		recorder.mu.Lock()
 		spent, bad := recorder.cost, len(recorder.problems) > 0
-		reserved := spent + float64(accounting.cancelledRequests)*accounting.highestCost
+		reserved := spent + float64(accounting.cancelledRequests)*max(0.02, accounting.highestCost)
 		recorder.mu.Unlock()
 		// Reserve each unpriced cancellation at the highest observed call cost.
 		if bad || reserved+max(0.02, accounting.highestCost) >= liveStopSpendMost {
@@ -561,21 +562,19 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 		raw, _ = json.Marshal(body)
 		req.Body = io.NopCloser(bytes.NewReader(raw))
 		req.ContentLength = int64(len(raw))
-		var cancelledAt atomic.Int64
-		cancelled := make(chan struct{})
-		stopWatching := context.AfterFunc(req.Context(), func() {
-			cancelledAt.Store(time.Now().UnixNano())
-			close(cancelled)
-		})
-		defer stopWatching()
-		inner.ServeHTTP(w, req)
-		if req.Context().Err() != nil {
-			<-cancelled
-		}
+		ctx, cancel := context.WithCancelCause(req.Context())
+		defer cancel(nil)
+		accounting.requestMu.Lock()
+		accounting.request, accounting.cancel = ctx, cancel
+		accounting.requestMu.Unlock()
+		inner.ServeHTTP(w, req.WithContext(ctx))
+		accounting.requestMu.Lock()
+		accounting.request, accounting.cancel = nil, nil
+		cancelledByStop := errors.Is(context.Cause(ctx), errStopLiveRequest)
+		accounting.requestMu.Unlock()
 		recorder.mu.Lock()
 		if recorder.cost <= spent {
-			at := accounting.stopAt.Load()
-			if at != 0 && cancelledAt.Load() >= at {
+			if cancelledByStop {
 				accounting.cancelledRequests++
 			} else {
 				recorder.problems = append(recorder.problems, "request has no recorded cost")
@@ -590,7 +589,13 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 
 var errStopLiveRequest = errors.New("live rig cancelled request open at Stop")
 
-func (a *stopLiveAccounting) stop() { a.stopAt.Store(time.Now().UnixNano()) }
+func (a *stopLiveAccounting) stop() {
+ a.requestMu.Lock()
+ defer a.requestMu.Unlock()
+ if a.request != nil && a.request.Err() == nil {
+  a.cancel(errStopLiveRequest)
+ }
+}
 
 func TestStopLiveAccountingRejectsTimeoutAfterStop(t *testing.T) {
  recorder := &liveRecorder{}
