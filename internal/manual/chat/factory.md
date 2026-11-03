@@ -177,6 +177,14 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 
 A step that falls short goes round again until its rounds run out, and only then asks you what to do. New jobs default to Auto, which passes routine optional approvals and publishes passing proof as a draft PR within the job budget. Manual asks before enabled approval gates and publication; the job header switch saves that choice. Activity credits automatic approvals and their publications to the factory, without naming the job owner or starter. A stale action says "approved automatically at" and the approval time in UTC. Personal approvals still name the person; saved activity is unchanged. Fixed gates and critical unresolved decisions still ask. Merge remains your decision. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
 
+## approval decisions — you approved the plan, and later gates still ask
+
+The job keeps your latest settled approval and who approved it while later
+steps or gates wait, including when you open the app again. Approving
+a plan does not approve a later gate: that gate still waits for its own answer.
+When another approval begins, the job shows that decision with its own undo
+window. Activity keeps the earlier approval receipts.
+
 ## the factory's own rules — rules for every repository, instructions, protected paths, ask first, never, "don't touch auth without checking with me"
 
 A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. A change to a file the repository already has reaches the next start; a file added where there was none (the first `factory.yaml`, or a `CODEOWNERS`) is read within five minutes of its merge. **Use on this factory** runs the edit at once instead (see the next section). The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
@@ -494,7 +502,7 @@ Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs 
 
 Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. A look never writes a price.
 
-A look stops asking for files at 12 tool calls, one minute or $0.10, whichever comes first, and then answers once. The button shows what a typical look costs on this factory (`Look closer ≈ $0.02`, never under `≈ $0.01`) once one has run; its cost goes on Spending as `factory scout`. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
+A look stops asking for files at 12 tool calls, one minute or $0.10, whichever comes first, and then answers once. The button shows what a typical look costs on this factory (`Look closer ≈ $0.02`, never under `≈ $0.01`) once one has run; its cost goes on Spending as `factory scout`. AI read and Look closer charges appear on Spending even when the model call fails; each charge is counted once. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
 
 Its complexity replaces the read's, and its questions become the job's when the job has none. Credential-looking files (`.env`, keys, `.ssh/`) are never listed or read, and the repository's text is treated as data, so an instruction inside a file or the issue is not followed.
 
@@ -685,3 +693,10 @@ uses this same rule.
 
 The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
 Other amounts are refused. Stop keeps the recorded spend and work.
+
+## Why does Spending show Factory AI — the third part of today's money
+
+Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.
+
+The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (asking about a repo, Build with AI, AI views). A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
+

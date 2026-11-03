@@ -513,6 +513,13 @@ the protected-path gate then pauses safely. The stored unknown-list hold suffix
 remains `the plan names no files`; visible words describe the missing checkable
 list rather than claiming the plan names no files in prose.
 
+`factory.job.approval` keeps the latest settled decision, including its kind,
+actor and times, while later work or gates wait and after restarting the app.
+A later gate retains its own waiting step, `needs_you` and `can.approve`; the
+earlier decision never passes it. Beginning another approval replaces the single
+summary with that decision and its own undo window. Activity keeps the receipts.
+No method, parameter, reply field, error code or hello feature changes.
+
 `factory.activity` records automatic approvals and their publications with
 `actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
 approval keeps `actor: {kind: "person", name: "@handle"}` and their handle.
@@ -706,6 +713,8 @@ failed}`: jobs read now; jobs skipped (already read, not an issue job, not
 visible to the caller, or past the first 20 read); jobs whose model call
 failed, left unread to try again. A factory with no model key fails every job.
 `queue.desk.last_read_cost` is what the last read cost, for "about $X".
+Both read and scout bank each reported provider charge once on Spending,
+including failed generations. Their methods, replies and hello features are unchanged.
 
 An engine whose hello carries the feature `factory.repo_checkout` answers
 `factory.queue` with `checkout_state` on each of `repos[]`: how a run of that
