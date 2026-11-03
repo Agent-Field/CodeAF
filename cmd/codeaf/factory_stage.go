@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -295,6 +296,7 @@ func factoryStagePosture() string {
 // name) still hold, because they sit under every policy and they are not a
 // person's preference. A person who wants a stage narrower says so with
 // [factoryPostureEnv].
+// An unreadable profile still requires a person: its saved denials are unknown.
 type stageApprovalGate struct {
 	rows    *v3ApprovalGate
 	posture string
@@ -304,6 +306,11 @@ type stageApprovalGate struct {
 func (g stageApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 	if posture != session.PostureAllow {
 		return g.rows.Build(posture)
+	}
+	if g.rows != nil {
+		if _, err := config.ReadProfileApprovalConfig(g.rows.profileDir); err != nil {
+			return g.rows.Build(posture)
+		}
 	}
 	policy, err := stageAllowPolicy()
 	return policy, false, err

@@ -65,10 +65,11 @@ package session
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
-// [approval.Policy] the conversation uses — allow everything, with the critical
+// approval machinery the conversation uses — allow everything, with the critical
 // table (rm -rf /, mkfs, a redirect onto a raw disk, shutdown) still a floor
-// under it — and where a conversation would raise a question, the node reads a
-// refusal it can act on. That is exactly consent.go's law for a headless run,
+// under it and any profile read failure carried forward. Where a conversation
+// would raise a question, the node reads a refusal it can act on.
+// That is exactly consent.go's law for a headless run,
 // said in the node's own words.
 
 import (
@@ -89,7 +90,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
@@ -7898,7 +7898,8 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
 		// read (consent.go, InTask) — never a question and never a hang.
-		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
+		// An unreadable profile also requires a person because saved denials are unknown.
+		ApprovalPolicy: a.taskApprovalPolicy(),
 		AskConsent:     false,
 		InTask:         true,
 		// InTask is also what makes this agent's calls PATIENT with a provider
