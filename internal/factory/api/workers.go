@@ -1,7 +1,7 @@
 package api
 
 import (
- "maps"
+	"maps"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -112,7 +112,7 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
- RoundCosts map[int]float64 `json:"round_costs,omitempty"`
+	RoundCosts   map[int]float64           `json:"round_costs,omitempty"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Chat         string                    `json:"chat,omitempty"`

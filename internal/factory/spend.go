@@ -361,17 +361,23 @@ func AddMemorySpend(it *Item, usd float64) {
 // StepCost sums the worker's round receipts. Historical jobs without a table
 // retain their last reported spend; reading never rewrites saved rows.
 func (p Phase) StepCost() float64 {
- if p.RoundCosts != nil {
-  var total float64
-  for _, spent := range p.RoundCosts { total += spent }
-  return total
- }
- if p.Result != nil { return p.Result.Spent }
- return 0
+	if p.RoundCosts != nil {
+		var total float64
+		for _, spent := range p.RoundCosts {
+			total += spent
+		}
+		return total
+	}
+	if p.Result != nil {
+		return p.Result.Spent
+	}
+	return 0
 }
 
 // RecordRoundSpend records a worker's cumulative receipt for one logical round.
 func (p *Phase) RecordRoundSpend(round int, spent float64) {
- if p.RoundCosts == nil { p.RoundCosts = make(map[int]float64) }
- p.RoundCosts[max(1, round)] = spent
+	if p.RoundCosts == nil {
+		p.RoundCosts = make(map[int]float64)
+	}
+	p.RoundCosts[max(1, round)] = spent
 }

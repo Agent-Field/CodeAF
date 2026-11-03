@@ -54,7 +54,7 @@ type PipelineChange struct {
 // StageReport addresses a pipeline step by name, so a report cannot invent a
 // new step or depend on an index that a person changed between reports.
 type StageReport struct {
- RoundCosts map[int]float64
+	RoundCosts   map[int]float64
 	RoundLimit   int
 	Verification *StepVerification
 	Name         string

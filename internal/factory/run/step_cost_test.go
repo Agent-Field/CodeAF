@@ -29,8 +29,8 @@ func TestStepCostAcrossRounds(t *testing.T) {
 				Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}},
 				Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat}}}}
 			rows := map[int]float64{}
- for i, round := range tc.rounds {
- rows[round] = tc.costs[i]
+			for i, round := range tc.rounds {
+				rows[round] = tc.costs[i]
 				err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{
 					Name: "proof", RoundCosts: rows, Round: round, State: factory.PhaseRunning,
 					Result: &factory.StageResult{Done: true, Spent: tc.costs[i]},
@@ -60,7 +60,7 @@ func TestStepCostAfterWorkerPullBetweenRounds(t *testing.T) {
 	apply := func(item *factory.Item, round int, cost float64, chat string) {
 		t.Helper()
 		result := factory.StageResult{Spent: cost, Chat: chat}
-		if err := run.ApplyReport(item, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1:.2025, round:cost}, Round: round, Result: &result}}}, time.Now()); err != nil {
+		if err := run.ApplyReport(item, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1: .2025, round: cost}, Round: round, Result: &result}}}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -81,7 +81,7 @@ func TestStepCostOldSavedJobNextRound(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := factory.StageResult{Spent: .0153, Chat: "second"}
-	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1:.2025,2:.0153}, Round: 2, Result: &result}}}, time.Now()); err != nil {
+	if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1: .2025, 2: .0153}, Round: 2, Result: &result}}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if got := api.FromItem(it).Steps[0].Cost; math.Abs(got-.2178) > 1e-9 {
@@ -119,7 +119,7 @@ func TestStepCostDelayedRetryKeepsWorkerHighWater(t *testing.T) {
 		cost  float64
 	}{{1, .01}, {2, .02}, {2, .01}} {
 		res := factory.StageResult{Spent: receipt.cost, Chat: fmt.Sprintf("chat-%d", receipt.round)}
-		if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1:.01,receipt.round:receipt.cost}, Round: receipt.round, Result: &res}}}, time.Now()); err != nil {
+		if err := run.ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: map[int]float64{1: .01, receipt.round: receipt.cost}, Round: receipt.round, Result: &res}}}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -2,8 +2,8 @@ package run
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
- "maps"
 	"slices"
 	"strings"
 	"time"
@@ -28,7 +28,7 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	if pipelineMoved(prev, cur) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
-		}
+	}
 	if !reflect.DeepEqual(prev.Change, cur.Change) {
 		r.Change = cur.Change
 	}
@@ -48,14 +48,21 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	if spent := cs.Spent - ps.Spent; spent > 0 {
 		// Table growth is booked by ApplyReport. Cost carries only work
-        // outside those steps, such as the manager's own calls.
-        for _, ph := range cs.Phases {
-         if ph.RoundCosts == nil { continue }
-         before := 0.0
-         for _, old := range ps.Phases { if old.Name == ph.Name { before = old.StepCost(); break } }
-         spent -= max(0, ph.StepCost()-before)
-        }
-        r.Cost = max(0, spent)
+		// outside those steps, such as the manager's own calls.
+		for _, ph := range cs.Phases {
+			if ph.RoundCosts == nil {
+				continue
+			}
+			before := 0.0
+			for _, old := range ps.Phases {
+				if old.Name == ph.Name {
+					before = old.StepCost()
+					break
+				}
+			}
+			spent -= max(0, ph.StepCost()-before)
+		}
+		r.Cost = max(0, spent)
 	}
 	r.Models = modelDelta(ps.Models, cs.Models)
 	r.Claims = append(claimsMoved(prev.Proof, cur.Proof), claimsMoved(prev.Policy, cur.Policy)...)

@@ -1700,7 +1700,9 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 	}
 	now := lp.r.now()
 	_ = lp.write(c, func(it *factory.Item) error {
-		if !res.Checkpoint { it.Stream.Phases[i].RecordRoundSpend(it.Stream.Phases[i].Round, res.Spent) }
+		if !res.Checkpoint {
+			it.Stream.Phases[i].RecordRoundSpend(it.Stream.Phases[i].Round, res.Spent)
+		}
 		foldResult(it, st, i, res, now)
 		if res.Edit == nil {
 			return nil

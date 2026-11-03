@@ -14,8 +14,8 @@ import (
 func reviewApply(t *testing.T, it *factory.Item, round int, cost float64) {
 	t.Helper()
 	r := factory.StageResult{Spent: cost, Chat: map[int]string{1: "first", 2: "second"}[round]}
- rows := map[int]float64{1: .2025}
- rows[round] = cost
+	rows := map[int]float64{1: .2025}
+	rows[round] = cost
 	if err := run.ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", RoundCosts: rows, Round: round, Result: &r}}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}

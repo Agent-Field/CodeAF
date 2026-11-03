@@ -1,8 +1,8 @@
 package api
 
 import (
- "maps"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -117,7 +117,7 @@ var Lost = map[string]string{
 	"Item.OldGate":                 "read into approve steps on load and never in memory",
 	"Stage.OldGate":                "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
-	"Phase.RoundCosts": "worker admission carries the complete round table; readers get only its sum as step.cost",
+	"Phase.RoundCosts":             "worker admission carries the complete round table; readers get only its sum as step.cost",
 	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
 	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
 	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
