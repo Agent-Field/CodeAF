@@ -3107,6 +3107,13 @@ func (a *app) windowFor(id string) int {
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
 	a.agent.SetModel(id)
+	if result, ok := a.agent.(interface{ SettingError() error }); ok {
+		if err := result.SettingError(); err != nil {
+			a.input.setText("/model " + id)
+			a.note(err.Error())
+			return
+		}
+	}
 	a.model = a.agent.Model()
 	if a.model == "" {
 		a.model = id

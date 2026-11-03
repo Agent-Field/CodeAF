@@ -3131,7 +3131,7 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	if !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
 		id := homeSessionID(line.row)
 		for _, row := range a.machineRead.rows {
-			if row.Cell == id && (heldElsewhere(row) || row.AutoOpen && (!row.Mine || a.machineRead.sendHolds[id].blocked)) {
+			if row.Cell == id && row.AutoOpen && (!row.Mine || a.machineRead.sendHolds[id].blocked) {
 				return a.homeMachineEnter(homeLine{remote: &row})
 			}
 		}

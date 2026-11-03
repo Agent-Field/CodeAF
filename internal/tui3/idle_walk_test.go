@@ -186,12 +186,12 @@ func TestIdleOpen_C7_D2_LocalViewerKeepsLiveHoldChoice(t *testing.T) {
 	if !found {
 		t.Fatal("fixture did not expose the existing local row")
 	}
-	// The selected local row predates the news that B resumed work. Even
-	// this retained handle must honor the new live hold before reusing a tab.
+	// A live hold keeps the base's existing local-viewer shortcut. Only a
+	// paired free row may redirect that shortcut through automatic open.
 	source.change(func(r *chatlist.Row) { r.Status, r.Released, r.AutoOpen = chatlist.Running, false, false })
 	drain(t, a, a.askMachines())
 	drain(t, a, a.homeOpenLine(selected))
-	if taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), continueAsk) {
-		t.Fatal("D2 opening an existing live viewer bypassed the person's choice")
+	if taker.opens != 0 || len(taker.cells) != 0 || strings.Contains(homeText(a), continueAsk) {
+		t.Fatal("a live local viewer changed the base open shortcut")
 	}
 }
