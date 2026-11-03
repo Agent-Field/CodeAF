@@ -30,7 +30,7 @@ const compatSpend = 0.25
 
 // reportLog is every report body the factory's wrapper saw, in order.
 type reportLog struct {
-	steps atomic.Int32
+	steps  atomic.Int32
 	mu     sync.Mutex
 	bodies []string
 }
