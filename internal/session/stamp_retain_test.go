@@ -128,7 +128,7 @@ func TestResumeRetainsOnlyLiveStamps(t *testing.T) {
 	assertLiveStamps(t, a, journalStampInstants(t, a, nil))
 }
 
-const resumeDiscardedWindowBytes = 54 * 48 * (len("long conversation ") * 128)
+const resumeDiscardedWindowBytes = int64(54 * 48 * (len("long conversation ") * 128))
 
 func TestResumeHeapDoesNotScaleWithDiscardedWindows(t *testing.T) {
 	short, long := resumeHeapSample(t, 6, false), resumeHeapSample(t, 60, false)
