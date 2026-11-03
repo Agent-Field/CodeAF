@@ -214,7 +214,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		t.Fatal(err)
 	}
 	stages := []factory.Stage{
-		{Name: "write", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."},
+		{Name: "work", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."},
 		{Name: factory.ApproveName, Kind: factory.StageGate, On: true},
 	}
 	if detachedTail {
@@ -251,7 +251,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 		finished := false
 		for _, step := range job.Steps {
-			finished = finished || (step.Name == "write" && step.State == "done")
+			finished = finished || (step.Name == "work" && step.State == "done")
 		}
 		if finished {
 			break
