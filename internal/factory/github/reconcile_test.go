@@ -7,6 +7,7 @@ import (
  "net/http"
  "net/http/httptest"
  "reflect"
+ "math/rand"
  "strconv"
  "strings"
  "testing"
@@ -15,6 +16,7 @@ import (
  "github.com/Agent-Field/codeaf/internal/factory"
  source "github.com/Agent-Field/codeaf/internal/factory/github"
  "github.com/Agent-Field/codeaf/internal/factory/store"
+ "github.com/Agent-Field/codeaf/internal/factory/triage"
  forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -148,4 +150,62 @@ func TestClosedPollNeverStopsRunningOrQueuedJobs(t *testing.T) {
  if len(f.reads)!=0 || f.row(1).State!=factory.StateRunning || f.row(2).State!=factory.StateQueued {t.Fatal("poll interfered with work")}
  calls:=0
  if !factory.ClosedForAutomation(context.Background(),f.st.Root(),f.row(1),func(context.Context,factory.Item)(string,error){calls++;return "closed",nil}) || calls!=1 {t.Fatal("separate spend guard missing")}
+}
+
+func TestClosedIssueRandomSequences(t *testing.T) {
+ for _,seed:=range []int64{7,52,2280} {t.Run(strconv.FormatInt(seed,10),func(t *testing.T){
+  f:=newIssueScript(t,6);rng:=rand.New(rand.NewSource(seed))
+  for step:=0;step<120;step++ {
+   n:=1+rng.Intn(6)
+   switch rng.Intn(9) {
+   case 0:f.state[n]="closed"
+   case 1:f.state[n]="open"
+   case 2:f.redirect[n]=!f.redirect[n]
+   case 3:f.identity[n]+=10000
+   case 4:
+    seam:=factory.LocalSeam(f.st,time.Now());if err:=seam.SetCap(n,float64(step+1));err!=nil{t.Fatal(err)}
+   case 5:
+    if err:=f.st.Update(n,func(it *factory.Item)error{it.Scout=&factory.Scout{Plan:[]string{"inspect"}};return nil});err!=nil{t.Fatal(err)}
+   case 6:
+    source.ForgetSweeps();f.src=source.New(f.api,nil,func()time.Time{return f.now});f.cursor=""
+   case 7:f.status[n]=404
+   case 8:f.status[n]=0
+   }
+   // Lists deliberately disagree with direct reads, and arrive reordered.
+   f.lists=nil
+   for _,i:=range rng.Perm(6) {
+    if rng.Intn(3)==0{continue}
+    state:="open";if rng.Intn(2)==0{state="closed"}
+    f.lists=append(f.lists,map[string]any{"id":f.identity[i+1],"number":i+1,"title":"issue","state":state,"updated_at":f.now})
+   }
+   before:=make([]factory.Item,6);for i:=range before{before[i]=f.row(i+1)}
+   start:=len(f.reads);f.poll()
+   read:=map[int]bool{};for _,i:=range f.reads[start:]{read[i]=true}
+   for i,old:=range before {
+    num:=i+1;got:=f.row(num)
+    if old.PersonTouched && (got.State!=old.State || got.DoneHow!=old.DoneHow){t.Fatalf("seed=%d step=%d touched #%d moved",seed,step,num)}
+    if old.State==factory.StateShipped && !old.SourceClosed && got.State!=old.State{t.Fatalf("seed=%d step=%d person's Done came back",seed,step)}
+    if read[num] && f.status[num]!=0 && (got.State!=old.State || got.GitHubIssueID!=old.GitHubIssueID || got.SourceClosed!=old.SourceClosed){t.Fatalf("seed=%d step=%d failed read changed #%d",seed,step,num)}
+    same:=old.GitHubIssueID==0 || old.GitHubIssueID==f.identity[num]
+    if read[num] && same && !f.redirect[num] && f.status[num]==0 && f.state[num]=="open" && old.SourceClosed && !old.PersonTouched && factory.JobUnworked(old) && got.State!=factory.StateNew{t.Fatalf("seed=%d step=%d direct-open #%d stayed Done",seed,step,num)}
+   }
+  }
+ })}
+}
+
+func TestPersonalWorkDuringDirectReadWins(t *testing.T) {
+ for _,action:=range []string{"edit","look closer","start","arrival read"} {t.Run(action,func(t *testing.T){
+  f:=newIssueScript(t,1);f.state[1]="closed"
+  f.during=func(int){
+   f.during=nil
+   switch action {
+   case "edit":if err:=factory.LocalSeam(f.st,time.Now()).SetCap(1,9);err!=nil{t.Error(err)}
+   case "look closer":_ = f.st.Update(1,func(it *factory.Item)error{it.Scout=&factory.Scout{};return nil})
+   case "start":_ = f.st.Update(1,func(it *factory.Item)error{it.State=factory.StateQueued;return nil})
+   case "arrival read":triage.ReadOne(context.Background(),f.st,func(context.Context,string)(string,error){return `{"read":"inspect"}`,nil},triage.Options{})
+   }
+  }
+  f.poll()
+  if f.row(1).State==factory.StateShipped {t.Fatal("direct read overwrote concurrent work")}
+ })}
 }

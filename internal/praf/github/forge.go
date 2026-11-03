@@ -52,17 +52,17 @@ const listPages = 10
 // the issues list that are pull requests, which the source skips there and
 // reads from the pulls list instead.
 type Issue struct {
- ID int64
- Redirected bool
-	Number  int
-	Title   string
-	Body    string
-	User    string
-	Labels  []string
-	Created time.Time
-	Updated time.Time
-	URL     string
-	Pull    bool
+	ID         int64
+	Redirected bool
+	Number     int
+	Title      string
+	Body       string
+	User       string
+	Labels     []string
+	Created    time.Time
+	Updated    time.Time
+	URL        string
+	Pull       bool
 	// Comments is how many comments the issue has, as the list says it; the
 	// comments themselves are [client.IssueComments]'s.
 	Comments int
@@ -164,7 +164,7 @@ type labelJSON struct {
 }
 
 type issueJSON struct {
- ID int64 `json:"id"`
+	ID          int64       `json:"id"`
 	Number      int         `json:"number"`
 	Title       string      `json:"title"`
 	Body        *string     `json:"body"`

@@ -499,12 +499,12 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
- // GitHubIssueID pins the permanent issue identity, learned only by a direct read.
- GitHubIssueID int64 `json:",omitempty"`
- // SourceClosed distinguishes an automatic close from a person's Done.
- SourceClosed bool `json:",omitempty"`
- // PersonTouched survives edits being undone and prevents automatic reconciliation.
- PersonTouched bool `json:",omitempty"`
+	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
+	GitHubIssueID int64 `json:",omitempty"`
+	// SourceClosed distinguishes an automatic close from a person's Done.
+	SourceClosed bool `json:",omitempty"`
+	// PersonTouched survives edits being undone and prevents automatic reconciliation.
+	PersonTouched bool `json:",omitempty"`
 
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`

@@ -4,12 +4,27 @@ title: codeaf removes closed GitHub issues from untouched Backlog
 pr: 2280
 surface: [engine]
 invalidates:
-  - "The GitHub poll only imported open issues, leaving closed issues in Backlog until a person tried to start them."
+  - "Lists and remembered GitHub update times can decide that a Backlog issue is closed."
 ---
 
-Normal polls now finish untouched issues closed on GitHub and record the finish
-in Activity. Each time the factory opens, untouched rows the open list lacks get one check, at
-most 40 direct reads per repository per poll; closed history is never imported. Running, queued, previously started and worked jobs are preserved.
-An issue reopened on GitHub returns to Backlog when nothing was done on it; a job
-with work stays Done. Finished jobs no longer qualify for the paid arrival read,
-and a job that ended with no work gets no end brief. App wire fields are unchanged.
+Lists now nominate rows; a direct issue read is the sole authority for automatic
+close and reopen. The row lock protects one shared untouched gate. Personal
+edits, Look closer, paid arrival reads, spend, chats, answers, runs and queued
+work prevent this path from moving a row. This path never stops work; the
+separate ClosedForAutomation spend guard remains in place.
+
+An explicit automatic-close mark permits reopen, and personal activity clears
+it. Permanent issue IDs prevent repository-name reuse from moving old rows;
+redirects do nothing. Old rows learn identity only within the read budget.
+Failed reads, including missing or deleted issues, leave the row unchanged and
+retry with backoff. No GitHub change-time comparison or open-read memory remains.
+
+Each repository gets at most 40 direct reads per poll, oldest nomination first.
+The scheduling set is rebuilt after restart, with periodic sweeps every ten
+minutes. Closed history is never listed. Automatically finished rows are checked
+again, so a close and reopen within one read gap corrects on a later poll without
+starting a Done row. Large sets can take several polls to check.
+
+Finished rows still skip paid arrival reads; a job with no work still gets no end
+brief. Identity, automatic-close provenance and personal-touch fields stay on
+the service and are documented in the wire codec's Lost list.

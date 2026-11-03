@@ -548,14 +548,20 @@ func (w *worker) closed(ctx context.Context, it factory.Item) bool {
 // with nothing learned) only at its tries-th failure, so a passing outage is
 // tried again; tries 1 never stamps a failure, for a person who can retry.
 func (w *worker) read(ctx context.Context, it factory.Item, tries int) tick {
- // Admission and reconciliation use the same row lock. Once a paid read is
- // admitted the close poll cannot finish that row while the call is running.
- err := w.st.Annotate(it.ID, func(cur *factory.Item) error {
-  if factory.JobState(*cur)=="done" {return errAlreadyRead}
-  if factory.UntouchedIssue(*cur) {factory.TouchIssue(cur)}
-  return nil
- })
- if err!=nil {return tickIdle}
+	// Admission and reconciliation use the same row lock. Once a paid read is
+	// admitted the close poll cannot finish that row while the call is running.
+	err := w.st.Annotate(it.ID, func(cur *factory.Item) error {
+		if factory.JobState(*cur) == "done" {
+			return errAlreadyRead
+		}
+		if factory.UntouchedIssue(*cur) {
+			factory.TouchIssue(cur)
+		}
+		return nil
+	})
+	if err != nil {
+		return tickIdle
+	}
 
 	// THE READ IS MARKED IN FLIGHT on the store, when the store keeps such
 	// marks, so a window drawing the floor shows `reading` on this row for
