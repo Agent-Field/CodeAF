@@ -226,3 +226,17 @@ func TestGuardUnmeasuredSameCommandCannotClearRefusal(t *testing.T) {
 		t.Fatal("old pass erased a newer refused test without a later measured receipt")
 	}
 }
+
+func TestGuardCompoundRerunClearsMeasuredFailure(t *testing.T) {
+	root, file, run := staleGuardFixture(t)
+	run("CHECK_EXIT=7 go test ./a; go test ./b")
+	door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+	t.Cleanup(door.closeVerification)
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil {
+		t.Fatal("measured failure did not hold completion")
+	}
+	run("go test ./a; go test ./b")
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err != nil {
+		t.Fatal(err)
+	}
+}

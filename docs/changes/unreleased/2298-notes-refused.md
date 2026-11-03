@@ -17,8 +17,8 @@ journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
 timeouts remain unresolved until later measured covering evidence qualifies. Later
 stage briefs retain the reason instead of implying that the refused command ran. PR validation
-continues to publish only passed command receipts. Only measured exits of 0 for every check bound to the call and its exact command read
-`passed`; any non-zero exit reads `failed`. Producer refusals, cancellations and
+continues to publish only passed command receipts. Only measured exits of 0 for every check bound to the call and its exact command,
+with no shell form that can hide an unobserved failure, read `passed`; any non-zero exit reads `failed`. Producer refusals, cancellations and
 timeouts retain their outcomes. Without measured exits, legacy PASS or `ok  `
 output reads `completed`, never `passed`. Named test counts attach only to
 measured passed or failed receipts. Publication uses each command's last outcome:
@@ -34,3 +34,12 @@ receipts, narrower passes and mismatched targets still hold completion.
 A hold names every remaining obligation on one line. All guarded completion paths,
 including no-change repair reports, stop after three unchanged refusals or six
 refusals overall, retaining incomplete work rather than declaring success.
+
+A compound with unquoted `;` or `||` publishes nothing, even when every observed
+check passed. Single `&`, newlines, command substitutions and backticks likewise
+lower an otherwise passing call to `completed`. Quoted literal separators, `&&`
+chains and `|` pipes remain eligible. Measured failures still read `failed`.
+The completion guard is unchanged: current-checkout measured covering passes clear
+earlier failures even when the surrounding command reads `completed`.
+`bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
+app/v3. This existing observation limit is not a fault fixed by this change.

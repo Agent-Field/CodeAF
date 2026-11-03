@@ -216,7 +216,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			measuredExit = nil
 		}
 		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, measuredExit)
-		if outcome == "passed" && unmeasuredCall[row.ToolCallID] {
+		if outcome == "passed" && (unmeasuredCall[row.ToolCallID] || shellCanHideFailure(cmd)) {
 			outcome = "completed"
 		}
 		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": outcome}
@@ -391,6 +391,49 @@ func commandReceiptOutcome(content, status string, invoked, refused, started boo
 	default:
 		return "completed", ""
 	}
+}
+
+// shellCanHideFailure rejects shell forms whose unobserved work could fail
+// despite every measured check succeeding. Quotes and escapes protect literals.
+func shellCanHideFailure(command string) bool {
+	quote := byte(0)
+	escaped := false
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != '\'' && (ch == '`' || (ch == '$' && i+1 < len(command) && command[i+1] == '(')) {
+			return true
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch ch {
+		case '\'', '"':
+			quote = ch
+		case ';', '\n':
+			return true
+		case '|':
+			if i+1 < len(command) && command[i+1] == '|' {
+				return true
+			}
+		case '&':
+			if i+1 >= len(command) || command[i+1] != '&' {
+				return true
+			}
+			i++
+		}
+	}
+	return false
 }
 
 // Old transcripts have only a pipeline's exit. Match a newly observed rerun

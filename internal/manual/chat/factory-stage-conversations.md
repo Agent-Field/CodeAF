@@ -621,6 +621,18 @@ spend/attempt limits and human merge authority continue to apply.
 
 ## public PR descriptions and private command receipts
 
+A local command publishes as passed only when every measured check exit is zero
+and its shell form cannot hide an unobserved failure. A compound with unquoted
+`;` or `||` publishes nothing. Single `&`, newlines, command substitutions and
+backticks also prevent a passing command claim. Quoted literal separators are
+allowed. `&&` chains and `|` pipes remain eligible, including `cd sub && go test
+./...`, `go test ./a && go test ./b` and `go test ./... | tail -5`.
+`bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
+app/v3. This is an existing observation limit, not a check failure.
+A measured-zero command with a refused shell form reads `completed`; that outcome
+does not hold completion. Later measured passes for the same checks on the current
+checkout clear earlier failures, even when the rerun uses `;` and publishes nothing.
+
 Factory publication renders known local factory checkout prefixes as repo-relative
 paths, and other local home prefixes as `[local home]`. The preview and final
 GitHub write both apply this privacy boundary to descriptions, titles and comments,
