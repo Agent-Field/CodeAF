@@ -386,6 +386,13 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 	badWhen := 0
 	for _, p := range pairs {
 		switch p.name {
+		case "label":
+			s, ok := scalar(p.val)
+			if !ok {
+				probs = append(probs, Problem{Line: p.line, Where: "label", Why: "a label is text"})
+				continue
+			}
+			step.Label = strings.TrimSpace(s)
 		case "prompt":
 			s, ok := scalar(p.val)
 			if !ok {
@@ -519,6 +526,7 @@ func (d draft) file(defaults bool) File {
 	for name, step := range d.steps {
 		if defaults {
 			base := f.Steps[name]
+			base.Label = step.Label
 			if step.wrotePrompt {
 				base.Prompt = step.Prompt
 				base.wrotePrompt = true

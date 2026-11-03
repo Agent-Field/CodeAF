@@ -252,6 +252,26 @@ Issues are the factory's only work items, including briefs handed over from chat
 
 An issue keeps the PR it opens, its checks, reviews and merge status. One final Follow PR step handles bounded CI, requested-review and conflict repairs until merge or closure. Initial publication approval permits checked maintenance pushes to the same PR within budget; merge remains your decision. Take over pauses automation for an ordinary working conversation; Resume pipeline checks that work and continues. On upgrade, the factory permanently removes old standalone PR jobs, their factory-owned conversations, local worktrees, generated local branches and activity records, including worker copies. No archive of those jobs is kept. Issue jobs and their linked PR information remain. Nothing on GitHub is deleted or changed by this cleanup.
 
+## step label — readable names without changing step ids
+
+A step definition in `.codeaf/factory.yaml` may set `label: Security review`
+beside its `prompt`. A step added to one job may also carry `label`.
+The label is its readable display name, including in the
+job's brief facts. The step id stays unchanged: pipelines and actions still use
+the step's key. Empty or whitespace labels use the existing name. Jobs without
+labels keep their existing display and saved form.
+
+Apps send labels on added job steps as `edit.add[].step.label` and change an
+existing job step with `edit.label: {write: Security review}` only when hello
+announces `factory.job_step_edit_label`. Job edits keep the same fixed-step,
+already-run and proof restrictions as other field edits.
+
+Pipeline previews accept `edits[].label` on `set_step` and `add_step` when hello
+announces `factory.pipeline_edit_label`. Labels are trimmed, limited to one line
+of 200 characters, and shown in the preview's changed fields. An empty label
+clears it; saved YAML omits `label:` when empty. Locked steps remain locked;
+added approval gates may carry a label.
+
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
 A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job removes chips and their leftover comma, semicolon and colon separators from its ask, preserving periods, question marks and exclamation marks. With no chips, only surrounding whitespace is trimmed. Its short title still removes stray punctuation.

@@ -60,7 +60,7 @@ func TestJobStepEditMethodsAreRegisteredAndAbsentWithoutTheEditor(t *testing.T) 
 		t.Fatalf("a non-factory engine announced %v", h.Features)
 	}
 	h := withFactoryJobStepEditFeature(Hello{}, &stepEditEngine{})
-	if len(h.Features) != 3 || h.Features[0] != FeatureFactoryJobStepEdit || h.Features[1] != FeatureFactoryJobStepEditChecks || h.Features[2] != FeatureFactoryJobStepEditStructure {
+	if len(h.Features) != 4 || h.Features[0] != FeatureFactoryJobStepEdit || h.Features[1] != FeatureFactoryJobStepEditChecks || h.Features[2] != FeatureFactoryJobStepEditStructure || h.Features[3] != FeatureFactoryJobStepEditLabel {
 		t.Fatalf("an editor announced %v", h.Features)
 	}
 	// The feature is independent of factory.job_actions.
