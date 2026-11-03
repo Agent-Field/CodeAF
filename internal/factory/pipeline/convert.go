@@ -31,7 +31,7 @@ func Encode(f File) ([]byte, error) {
 	steps := make(map[string]step)
 	for _, name := range names {
 		s := f.Steps[name]
-		// A PERSON IS WRITTEN ONLY FOR WHO IT WAITS ON: approve has no prompt.
+		// An approval carries its label and who it waits on, but no prompt.
 		if factory.ApproveWord(name) {
 			if s.Who != "" || strings.TrimSpace(s.Label) != "" {
 				steps[name] = step{Label: strings.TrimSpace(s.Label), Who: s.Who}

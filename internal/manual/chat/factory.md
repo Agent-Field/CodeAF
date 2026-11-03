@@ -255,7 +255,8 @@ An issue keeps the PR it opens, its checks, reviews and merge status. One final 
 ## step label — readable names without changing step ids
 
 A step definition in `.codeaf/factory.yaml` may set `label: Security review`
-beside its `prompt`. The label is its readable display name, including in the
+beside its `prompt`. A step added to one job may also carry `label`.
+The label is its readable display name, including in the
 job's brief facts. The step id stays unchanged: pipelines and actions still use
 the step's key. Empty or whitespace labels use the existing name. Jobs without
 labels keep their existing display and saved form.
