@@ -20,13 +20,19 @@ func measureStageReceipt(t *testing.T, file, root, id, command, output string, e
 	t.Helper()
 	bin := t.TempDir()
 	stub := fmt.Sprintf("#!/bin/sh\nprintf '%%s' %s\nexit %d\n", repairShellQuote(output), exit)
-	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(stub), 0700); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(stub), 0700); err != nil {
+		t.Fatal(err)
+	}
 	wrapped, err := verification.PrepareCallIn(file, "", command, id)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	run := exec.Command("bash", "-c", wrapped)
 	run.Dir = root
 	run.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
-	if out, err := run.CombinedOutput(); err != nil && exit == 0 { t.Fatalf("measured fixture: %s: %v", out, err) }
+	if out, err := run.CombinedOutput(); err != nil && exit == 0 {
+		t.Fatalf("measured fixture: %s: %v", out, err)
+	}
 }
 
 func TestStageCommandReceiptsPreserveCwdAndExcludeSummaryPASS(t *testing.T) {
@@ -38,7 +44,9 @@ func TestStageCommandReceiptsPreserveCwdAndExcludeSummaryPASS(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "nested"), 0700); err != nil { t.Fatal(err) }
+	if err := os.Mkdir(filepath.Join(root, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	measureStageReceipt(t, file, root, "t1", "cd nested && GOPROXY=direct go test -race -v ./internal/retrieval", "--- PASS: TestA (0s)\n--- PASS: TestA/sub (0s)\n--- PASS: TestB (0s)\nPASS\n", 0)
 	c := stageConversation{file: file, dir: root}
 	notes, counts := c.ExecutionNotes()

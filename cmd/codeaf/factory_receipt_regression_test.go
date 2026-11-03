@@ -173,7 +173,9 @@ func TestBackgroundReceiptWaitsForMeasuredExit(t *testing.T) {
 					want := "started"
 					if tc.measured {
 						want = "passed"
-						if tc.failed { want = "failed" }
+						if tc.failed {
+							want = "failed"
+						}
 					}
 					if !strings.Contains(note, `"outcome":"`+want+`"`) {
 						t.Errorf("outcome must be %s: %s", want, note)
