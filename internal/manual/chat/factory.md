@@ -405,6 +405,15 @@ also stops a job that is publishing: Stop prevents a push that has not begun
 and wins until the PR request is sent, including automatic publication after proof.
 If that request was already sent, the job reports the opened PR with its link
 and tells you it was not closed; review it on GitHub. Nothing is closed automatically.
+Run again is available immediately after Stop. An old publisher can still report
+an already opened PR, but that receipt does not change the new run's state.
+
+Workers confirm Stop immediately before executing each push and sending the PR
+request. A transient confirmation error gets up to three attempts within two
+seconds. If confirmation still fails, publication fails with "could not confirm
+Stop"; press **Approve** again to retry. An older factory that answers 404 has no
+publish-check endpoint: publication uses its earlier behavior, without a fresh
+server check at these boundaries. Upgrade the factory to gain that check.
 
 ## drop a job — Drop, delete a job's branch, uncommitted work, throw away a job's work and its conversations
 

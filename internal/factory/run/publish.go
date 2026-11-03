@@ -381,11 +381,11 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if existingPR != nil && existingPR.HeadBranch != "" {
 		branch = existingPR.HeadBranch
 	}
-	guardedPush := func(dir, ref string) error {
+	guardedPush := func(dir, ref string, before ...func() error) error {
 		if err := r.publishBoundary(ctx, it.ID); err != nil {
 			return err
 		}
-		return pushBranch(dir, ref)
+		return pushBranch(dir, ref, func() error { return r.publishBoundary(ctx, it.ID) })
 	}
 	if err := r.publishBoundary(ctx, it.ID); err != nil {
 		return published{}, err
@@ -441,7 +441,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 // ended up on, with a line for the job when that is another name. A push a
 // remote refused as behind goes to [placeRejected], except a repair: the PR's own
 // branch moved, so the person reads what landed there first.
-func pushApproved(git Git, pushBranch func(dir, ref string) error, dir string, it factory.Item, branch string, repair bool) (pushed, moved string, err error) {
+func pushApproved(git Git, pushBranch func(dir, ref string, before ...func() error) error, dir string, it factory.Item, branch string, repair bool) (pushed, moved string, err error) {
 	head := it.HeadCommit
 	if head == "" {
 		out, err := git.Run(dir, "rev-parse", "HEAD")

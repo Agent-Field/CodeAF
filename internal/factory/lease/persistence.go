@@ -13,7 +13,13 @@ import (
 
 const schema = 1
 
+type publisherReceipt struct {
+ Lease Lease `json:"lease"`
+ Restarted bool `json:"restarted,omitempty"`
+}
+
 type document struct {
+ Receipts []publisherReceipt `json:"publisher_receipts,omitempty"`
 	Schema int     `json:"schema"`
 	Leases []Lease `json:"leases"`
 	// Signals are what people asked of a job that its worker has not yet

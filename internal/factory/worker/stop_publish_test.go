@@ -71,7 +71,7 @@ func testStopPublishWorker(t *testing.T, point string) {
 		mirror = o.Store
 		o.Source = func(string) factory.Source { return src }
 		o.Workdir = func(it factory.Item) (string, error) { return dirs.For(it, checkout) }
-		o.Push = func(string, string) error {
+		o.Push = func(string, string, ...func() error) error {
 			pushes.Add(1)
 			if point == "after_push" {
 				block()

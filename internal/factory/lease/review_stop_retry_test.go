@@ -34,6 +34,8 @@ func TestReviewStopAllowsImmediateRunAgain(t *testing.T) {
 	if err := doors.Launch(it.ID); err != nil {
 		t.Fatalf("Run again after Stop blocked: %v", err)
 	}
+ replacement, err := f.desk.Pull(worker("replacement", "sam"))
+ if err != nil { t.Fatal(err) }
  if err := f.desk.CheckPublish(held.ID, held.Worker); err == nil { t.Fatal("stopped publisher authorized after Run again") }
  before, _ := f.store.Get(it.ID)
  report := factory.RunReport{PR: &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen}, Publishing: &factory.Publishing{State: "opened", Attempt: 1}}
@@ -43,4 +45,5 @@ func TestReviewStopAllowsImmediateRunAgain(t *testing.T) {
  if err := f.desk.Apply(held.ID, held.Worker, true, func(it *factory.Item) error { it.State = factory.StateShipped; return nil }); err != nil { t.Fatal(err) }
  saved, _ = f.store.Get(it.ID)
  if saved.State != before.State { t.Fatal("old publisher completion took over new run") }
+ if _, err := f.desk.Renew(replacement.ID, replacement.Worker); err != nil { t.Fatalf("new lease lost: %v", err) }
 }

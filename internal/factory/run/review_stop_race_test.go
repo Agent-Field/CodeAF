@@ -1,7 +1,6 @@
 package run
 
 import (
-    "context"
     "strings"
     "testing"
     "time"
@@ -34,4 +33,3 @@ func TestReviewStopDuringPushPreparation(t *testing.T) {
     if branches != "" {t.Fatalf("Stop recorded before git push, but remote branch was created: %s; job=%s",strings.TrimSpace(branches),it.State)}
 }
 
-var _ = context.Background

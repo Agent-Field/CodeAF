@@ -72,7 +72,7 @@ func TestLiveFollowPRConsidersNothingToChangeWithoutDiff(t *testing.T) {
 	}
 	id := made.ID
 	maker := factoryStageMaker(g.st, g.workspace, profile, launch.Config)
-	r := factoryrun.New(factoryrun.Options{Store: g.st, Workdir: func(factory.Item) (string, error) { return g.workspace, nil }, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryChatStage(g.st, profile, factoryrun.NewChatExecutor(maker))}, Push: func(string, string) error { t.Error("no-change review tried to push"); return factory.ErrReadOnly }})
+	r := factoryrun.New(factoryrun.Options{Store: g.st, Workdir: func(factory.Item) (string, error) { return g.workspace, nil }, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryChatStage(g.st, profile, factoryrun.NewChatExecutor(maker))}, Push: func(string, string, ...func() error) error { t.Error("no-change review tried to push"); return factory.ErrReadOnly }})
 	stopAll(t, g.st, r)
 	if err := r.Hold(id, false); err != nil {
 		t.Fatal(err)

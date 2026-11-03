@@ -52,7 +52,7 @@ func TestStopBeatsPublishBoundaries(t *testing.T) {
 			}
 			pushes := 0
 			originalPush := g.r.opts.Push
-			g.r.opts.Push = func(dir, ref string) error { pushes++; return originalPush(dir, ref) }
+			g.r.opts.Push = func(dir, ref string, before ...func() error) error { pushes++; return originalPush(dir, ref) }
 			switch point {
 			case "publish_started":
 				g.r.opts.Publisher = func(context.Context, factory.Item) (PublishTarget, error) {

@@ -314,6 +314,23 @@ func (w *WorkerClient) StopAfterStep(ctx context.Context, lease string) (bool, e
 
 // CheckPublish confirms publication is still authorized on the factory's current row.
 func (w *WorkerClient) CheckPublish(ctx context.Context, lease string) error {
-	_, err := w.send(ctx, http.MethodGet, leasePath(lease, "publish-check"), w.credential, nil, nil)
-	return err
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		var status int
+		status, err = w.send(ctx, http.MethodGet, leasePath(lease, "publish-check"), w.credential, nil, nil)
+		// Older factories have no endpoint and cannot confirm Stop at this boundary.
+		if status == http.StatusNotFound && errors.Is(err, ErrLeaseGone) && !errors.Is(err, ErrLeaseWithdrawn) { return nil }
+		if err == nil { return nil }
+		if status >= 400 && status < 500 { return err }
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("could not confirm Stop before publishing; press Approve again: %w", ctx.Err())
+			case <-time.After(100*time.Millisecond):
+			}
+		}
+	}
+	return fmt.Errorf("could not confirm Stop before publishing; press Approve again: %w", err)
 }

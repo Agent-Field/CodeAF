@@ -179,9 +179,13 @@ func (d *Doors) Launch(id int) error {
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
 		}
+		for i := range doc.Receipts {
+			if doc.Receipts[i].Lease.Job == id { doc.Receipts[i].Restarted = true }
+		}
 		it.House = &house
 		it.FactoryModel = spending.DefaultModel
 		_, stale := doc.Signals[id]
+		for _, receipt := range doc.Receipts { if receipt.Lease.Job == id { stale = true } }
 		delete(doc.Signals, id)
 		return stale, nil
 	})
@@ -225,11 +229,12 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 			return false, nil
 		}
 		if held.Publish != "" {
-			// Keep only this publisher's receipt channel; Stop withdraws all queued writes.
-			held.Publish = ""
-			delete(doc.Signals, id)
-			signal(doc, id, Signal{Verb: SignalStop})
-			return true, nil
+			// Retain receipt ownership without retaining execution authority or capacity.
+			var live []publisherReceipt
+			for _, receipt := range doc.Receipts {
+				if receipt.Lease.live(now) { live = append(live, receipt) }
+			}
+			doc.Receipts = append(live, publisherReceipt{Lease: *held})
 		}
 		release(doc, id)
 		return true, nil

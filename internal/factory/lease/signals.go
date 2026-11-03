@@ -246,7 +246,7 @@ func carriedOut(verb string) bool { return verb == SignalPublish || verb == Sign
 func (d *Desk) CarriedMerge(id, worker string) (bool, error) {
 	var merge bool
 	err := d.change(func(doc *document, _ time.Time) (bool, error) {
-		held, err := identified(doc, id, worker)
+		held, err := receiptIdentity(doc, id, worker, d.now())
 		if err != nil {
 			return false, err
 		}
