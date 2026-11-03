@@ -2,7 +2,6 @@ package cellindex
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -83,8 +82,11 @@ func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.
 	}
 }
 
-// ledgerRows counts the ledger rows that name the session, without parsing any
-// row. An unreadable ledger answers as if it were full: it is not ours to append to.
+// ledgerRows counts calls across the folder and journal aliases. Rebuilt rows
+// have different ledger IDs and recording times, so match their call facts and
+// take each fact's largest occurrence count under one alias. Repeated identical
+// calls under one alias still count separately. Existing rows are never changed.
+// An unreadable ledger answers as if it were full: it is not ours to append to.
 func ledgerRows(path string, sessions ...string) int {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -94,22 +96,32 @@ func ledgerRows(path string, sessions ...string) int {
 		return math.MaxInt
 	}
 	defer f.Close()
-	markers := make([][]byte, 0, len(sessions))
-	for _, id := range sessions {
-		if id != "" {
-			markers = append(markers, []byte(`"session":"`+id+`"`))
-		}
-	}
+	aliases := make(map[string]bool, len(sessions))
+ for _, id := range sessions {
+  if id != "" { aliases[id] = true }
+ }
+ type call struct {
+  Model, Role string
+  Calls, Input, Output int
+  USD float64
+ }
+ counts := map[call]map[string]int{}
+ most := map[call]int{}
+
 	n := 0
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, err := r.ReadBytes('\n')
-		for _, marker := range markers {
-			if bytes.Contains(line, marker) {
-				n++
-				break
-			}
-		}
+  var row session.UsageLine
+  if json.Unmarshal(line, &row) == nil && aliases[row.Session] {
+   key := call{row.Model, row.Role, row.Calls, row.Input, row.Output, row.USD}
+   if counts[key] == nil { counts[key] = map[string]int{} }
+   counts[key][row.Session]++
+   if counts[key][row.Session] > most[key] {
+    most[key] = counts[key][row.Session]
+    n++
+   }
+  }
 		if err != nil {
 			return n
 		}
