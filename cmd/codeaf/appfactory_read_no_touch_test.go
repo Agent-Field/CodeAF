@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -93,9 +94,20 @@ func TestFactoryExistingJobSendTouchesJob(t *testing.T) {
 	}
 }
 
+// The scripted errand charges the same job budget as a real model call.
+type untouchedBriefDoor struct {
+	*briefDoor
+	budget *stageBudget
+}
+
+func (d *untouchedBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (session.ErrandAnswer, error) {
+	d.budget.SpendModel(0.002, "scripted", 1, 10, 5)
+	return d.briefDoor.RunErrand(ctx, ask)
+}
+
 func TestFactoryAutomaticBriefDoesNotTouchJob(t *testing.T) {
 	s := newLocalSetup(t)
-	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: `{"verdict":"Waiting to start.","blocks":[]}`, Model: "scripted"}}
+	door := &untouchedBriefDoor{briefDoor: &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: `{"verdict":"Waiting to start.","blocks":[]}`, Model: "scripted", Usage: session.ErrandUsage{CostUSD: 0.002}}}}
 	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
 		return &appConn{Conv: door, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	}
@@ -105,6 +117,7 @@ func TestFactoryAutomaticBriefDoesNotTouchJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	door.budget = &stageBudget{floor: floor, item: it}
 	var written appwire.FactoryJobBriefWritten
 	s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &written)
 	after, err := floor.Get(it.ID)
@@ -117,7 +130,18 @@ func TestFactoryAutomaticBriefDoesNotTouchJob(t *testing.T) {
 	if !factory.JobUnworked(after) || after.PersonTouched {
 		t.Fatalf("automatic brief touched job: unworked=%t PersonTouched=%t", factory.JobUnworked(after), after.PersonTouched)
 	}
+	if !factory.UntouchedIssue(after) || factory.JobSpent(after) != 0.002 {
+		t.Fatalf("brief billing changed reconciliation eligibility: %+v", after)
+	}
 	if !written.Kept {
 		t.Fatalf("scripted brief was not kept: %+v", written)
+	}
+	s.must("agents.send", map[string]any{"id": appAgentID(after.Talk), "text": "Please check the ledger"}, nil)
+	after, err = floor.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if factory.JobUnworked(after) || !after.PersonTouched {
+		t.Fatalf("personal send after automatic brief did not touch job: %+v", after)
 	}
 }

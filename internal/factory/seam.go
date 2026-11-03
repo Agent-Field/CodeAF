@@ -138,8 +138,8 @@ type Seam struct {
 	// now — inside the item's own team, with the item in front of it — and
 	// kept on the item ([Item.Talk]), so a second ask answers the same one.
 	// chat is the conversation's session file, which is how the surface opens
-	// a conversation. NOTHING IS MADE UNTIL A PERSON ASKS: no item has one by
-	// default.
+	// a conversation. Creation records no personal touch: system callers such
+	// as the brief writer need a manager too. Accepted personal sends touch it.
 	Talk func(ctx context.Context, id int) (chat string, err error)
 	// Say hands the person's words to the item's own conversation (the one
 	// [Seam.Talk] answers, made now when the item has none) as their message,

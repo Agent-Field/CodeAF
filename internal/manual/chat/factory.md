@@ -785,7 +785,9 @@ feature and render a composer when `agent` is empty. Older desktops discard an
 empty agent and omit the manager chat and composer; update the desktop before
 using this engine with jobs that have no manager.
 Later messages can use the same method or `agents.send`. Sending a message counts
-as personal work. A dropped job still refuses its conversations.
+as personal work. Automatic brief writing may create a manager; the conversation,
+brief and its model cost do not count as personal work or disable automatic
+closed-issue handling. A dropped job still refuses its conversations.
 
 Jobs already marked by earlier page views keep their marks. codeaf cannot safely
 infer which old marks came only from viewing, so this fix does not migrate them.

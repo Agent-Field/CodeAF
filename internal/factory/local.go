@@ -468,7 +468,8 @@ func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) 
 // localTalk is the Talk door: the item's conversation when it has one, and
 // otherwise one made by maker and kept on the item. ONE PER ITEM: the store's
 // read-modify-write keeps the first conversation written, so two asks that
-// raced to make one both answer the same file.
+// raced to make one both answer the same file. Creation alone is system
+// activity; accepted personal messages record their touch separately.
 func localTalk(ctx context.Context, st ItemStore, id int, maker func(context.Context, Item) (string, error)) (string, error) {
 	it, err := localItem(st, id)
 	if err != nil {
