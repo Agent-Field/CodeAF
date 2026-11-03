@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+ "sync/atomic"
 	"testing"
 	"time"
 
@@ -109,10 +110,13 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}
 	recorder := newLiveRecorder(t, config.DefaultBaseURL)
 	recorder.budget = liveStopSpendMost
+ var stopAt atomic.Int64
+ var cancelledRequests int
+ var highestCost float64
 	t.Cleanup(func() {
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
-		t.Logf("live attempt: requests=%d request_models=%v response_models=%v spend=%.8f problems=%v", recorder.calls, recorder.requests, recorder.replies, recorder.cost, recorder.problems)
+		t.Logf("live attempt: requests=%d request_models=%v response_models=%v spend=%.8f cancelled_requests=%d conservative_spend=%.8f problems=%v", recorder.calls, recorder.requests, recorder.replies, recorder.cost, cancelledRequests, recorder.cost+float64(cancelledRequests)*highestCost, recorder.problems)
 	})
 	inner := recorder.server.Config.Handler
 	var paid sync.Mutex
@@ -125,9 +129,10 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		defer paid.Unlock()
 		recorder.mu.Lock()
 		spent, bad := recorder.cost, len(recorder.problems) > 0
+ reserved := spent + float64(cancelledRequests)*highestCost
 		recorder.mu.Unlock()
-		// Serial requests have at most $0.02 outstanding. Unknown costs stop work.
-		if bad || spent+0.02 >= liveStopSpendMost {
+		// Reserve each unpriced cancellation at the highest observed call cost.
+		if bad || reserved+max(0.02, highestCost) >= liveStopSpendMost {
 			recorder.note("hard spend stop")
 			http.Error(w, "hard spend stop", http.StatusBadRequest)
 			return
@@ -144,11 +149,26 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		raw, _ = json.Marshal(body)
 		req.Body = io.NopCloser(bytes.NewReader(raw))
 		req.ContentLength = int64(len(raw))
-		inner.ServeHTTP(w, req)
-		recorder.mu.Lock()
+        var cancelledAt atomic.Int64
+        cancelled := make(chan struct{})
+        stopWatching := context.AfterFunc(req.Context(), func() {
+            cancelledAt.Store(time.Now().UnixNano())
+            close(cancelled)
+        })
+        defer stopWatching()
+        inner.ServeHTTP(w, req)
+        if req.Context().Err() != nil { <-cancelled }
+        recorder.mu.Lock()
 		if recorder.cost <= spent {
-			recorder.problems = append(recorder.problems, "request has no recorded cost")
-		}
+			at := stopAt.Load()
+            if at != 0 && cancelledAt.Load() >= at {
+                cancelledRequests++
+            } else {
+                recorder.problems = append(recorder.problems, "request has no recorded cost")
+            }
+		} else {
+ highestCost = max(highestCost, recorder.cost-spent)
+ }
 		recorder.mu.Unlock()
 	})
 
@@ -253,7 +273,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		t.Helper()
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
-		if len(recorder.problems) != 0 || recorder.cost >= liveStopSpendMost || recorder.cost >= 0.30 {
+		if len(recorder.problems) != 0 || recorder.cost+float64(cancelledRequests)*highestCost >= liveStopSpendMost || recorder.cost >= 0.30 {
 			t.Fatalf("recorder policy: spend=%.8f problems=%v", recorder.cost, recorder.problems)
 		}
 	}
@@ -329,6 +349,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
+	stopAt.Store(time.Now().UnixNano())
 	act("factory.job_stop", nil)
 	stoppedAt := time.Now()
 	baseline := read()
