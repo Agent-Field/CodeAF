@@ -457,32 +457,72 @@ func signalLogCount(it factory.Item, text string) int {
 }
 
 func TestReconcileDeliveryWaitsForRunnerCleanupBeforeAcknowledging(t *testing.T) {
- var attempts atomic.Int32
- j,_:=deliveryJob(t,http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  if strings.HasPrefix(r.URL.Path,"/v1/workers/recover/"){attempts.Add(1);w.WriteHeader(422);return}
-  var report api.WorkerReport
-  _=json.NewDecoder(r.Body).Decode(&report)
-  if report.Question!=nil{w.WriteHeader(200);return}
-  w.WriteHeader(422)
- }))
- entered:=make(chan struct{})
- release:=make(chan struct{})
- if err:=j.o.Mirror.Update(j.id,func(it *factory.Item)error{it.State=factory.StateNew;it.Stages=[]factory.Stage{{Name:"check",Kind:factory.StageCheck,On:true,Ask:"true"}};return nil});err!=nil{t.Fatal(err)}
- dir:=t.TempDir()
- j.o.Runner=run.New(run.Options{Store:j.o.Mirror,RepoDir:func(string)string{return dir},Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context,_ run.Job)(factory.StageResult,error){close(entered);<-ctx.Done();<-release;return factory.StageResult{},ctx.Err()})}})
- defer func(){select{case <-release:default:close(release)};_=j.o.Runner.Stop(j.id);waitSignalRunner(t,j.o.Runner,j.id)}()
- if err:=j.o.Runner.Launch(j.id);err!=nil{t.Fatal(err)}
- select{case <-entered:case <-time.After(3*time.Second):t.Fatal("runner did not start")}
- setDeliverySpend(t,j,.25)
- j.flush(t.Context())
- if j.blocked=="" || j.pending==nil || !j.o.Runner.Running(j.id){t.Fatal("fixture did not block with cleanup still running")}
- var signals []api.WorkerSignal
- if err:=json.Unmarshal([]byte(`[{"verb":"reconcile_results","delivery":"lease:cleanup"}]`),&signals);err!=nil{t.Fatal(err)}
- j.signals(t.Context(),signals)
- if attempts.Load()!=0{t.Fatal("reconciliation ran during cleanup")}
- close(release)
- waitSignalRunner(t,j.o.Runner,j.id)
- j.signals(t.Context(),signals)
- j.signals(t.Context(),signals)
- if attempts.Load()!=1{t.Fatalf("reconcile delivery was lost during cleanup or repeated: attempts=%d",attempts.Load())}
+	var attempts atomic.Int32
+	j, _ := deliveryJob(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/workers/recover/") {
+			attempts.Add(1)
+			w.WriteHeader(422)
+			return
+		}
+		var report api.WorkerReport
+		_ = json.NewDecoder(r.Body).Decode(&report)
+		if report.Question != nil {
+			w.WriteHeader(200)
+			return
+		}
+		w.WriteHeader(422)
+	}))
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
+		it.State = factory.StateNew
+		it.Stages = []factory.Stage{{Name: "check", Kind: factory.StageCheck, On: true, Ask: "true"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	j.o.Runner = run.New(run.Options{Store: j.o.Mirror, RepoDir: func(string) string { return dir }, Exec: map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, _ run.Job) (factory.StageResult, error) {
+		close(entered)
+		<-ctx.Done()
+		<-release
+		return factory.StageResult{}, ctx.Err()
+	})}})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+		_ = j.o.Runner.Stop(j.id)
+		waitSignalRunner(t, j.o.Runner, j.id)
+	}()
+	if err := j.o.Runner.Launch(j.id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("runner did not start")
+	}
+	setDeliverySpend(t, j, .25)
+	j.flush(t.Context())
+	if j.blocked == "" || j.pending == nil || !j.o.Runner.Running(j.id) {
+		t.Fatal("fixture did not block with cleanup still running")
+	}
+	var signals []api.WorkerSignal
+	if err := json.Unmarshal([]byte(`[{"verb":"reconcile_results","delivery":"lease:cleanup"}]`), &signals); err != nil {
+		t.Fatal(err)
+	}
+	j.signals(t.Context(), signals)
+	if attempts.Load() != 0 {
+		t.Fatal("reconciliation ran during cleanup")
+	}
+	close(release)
+	waitSignalRunner(t, j.o.Runner, j.id)
+	j.signals(t.Context(), signals)
+	j.signals(t.Context(), signals)
+	if attempts.Load() != 1 {
+		t.Fatalf("reconcile delivery was lost during cleanup or repeated: attempts=%d", attempts.Load())
+	}
 }

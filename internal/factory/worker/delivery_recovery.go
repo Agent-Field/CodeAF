@@ -144,7 +144,9 @@ func (j *job) recoverBlocked(ctx context.Context, manual bool, delivery ...strin
 		return false
 	}
 	if manual {
-        if len(delivery)>0{j.ackSignal(delivery[0])}
+		if len(delivery) > 0 {
+			j.ackSignal(delivery[0])
+		}
 		j.pending.RecoveryAttempts = 0
 		j.pending.RecoveryNextAt = time.Time{}
 	}
