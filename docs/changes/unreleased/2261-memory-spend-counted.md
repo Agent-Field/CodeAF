@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf counts memory spending and keeps job learning inside its turn
-pr: 0
+pr: 2261
 surface: [engine]
 invalidates:
   - "Memory compiler costs were kept only in its private receipts, so Spending and job headers understated provider spending. Memory calls now enter the usage ledger with the memory role, and owned calls charge the job's existing meter."

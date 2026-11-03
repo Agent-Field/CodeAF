@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf retains memory spending after a stage closes
-pr: 0
+pr: 2261
 surface: [engine]
 invalidates:
   - "A closed stage could lose paid memory from its saved conversation total."

@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf keeps paused job memory pending without spending
-pr: 0
+pr: 2261
 surface: [engine]
 invalidates:
   - "A memory pass could keep spending after its job paused without appearing in the job's spending."

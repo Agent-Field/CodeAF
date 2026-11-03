@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf preserves stage budget questions and bounded knowledge batches
-pr: 0
+pr: 2261
 surface: [engine]
 invalidates:
   - "A completed stage was exempt from every budget stop instead of only a crossing caused by optional memory."

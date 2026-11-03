@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf gives paid job calls a bounded settlement on quit
-pr: 0
+pr: 2261
 surface: [engine]
 invalidates:
   - "Quitting cancelled the worker's final accounting request before it could report paid calls."
