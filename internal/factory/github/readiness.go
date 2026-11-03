@@ -63,6 +63,7 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 // Ready is executed only by the recorded publication door, on the assignee's
 // existing GitHub identity. It never pushes, replaces the body or merges.
 func (s *Source) Ready(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+ if err := factory.CheckPersonStop(it); err != nil { return factory.PullRequest{}, err }
 	var pr factory.PullRequest
 	var err error
 	for attempt := 0; attempt < readyAttempts; attempt++ {

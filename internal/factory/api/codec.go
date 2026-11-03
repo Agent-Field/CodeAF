@@ -315,7 +315,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	a := factory.MayAct(it, caller)
  if factory.StoppedByPerson(it) {
  owner := it.Person() == "" || it.Person() == factory.NormalizeHandle(caller)
- return Can{Run:owner, StartNow:owner, RunAgain:owner, RunAsNew:owner, Close:owner, Drop:owner, RaiseBudget:owner, Reply:a.Reply, Undo:owner && it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)}
+ return Can{StartNow:owner, RunAgain:owner, RunAsNew:owner, Close:owner, Drop:owner, RaiseBudget:owner, Reply:a.Reply, Undo:owner && it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)}
  }
 	person := it.Person()
 	owner := person == "" || person == factory.NormalizeHandle(caller)

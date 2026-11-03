@@ -13,8 +13,6 @@ const WaitingForComputer = "waiting_for_computer"
 func PresentJob(j *Job) {
 	p := StatePresentation{Kind: j.State}
 	switch {
-	case j.Desk != nil && j.Desk.PersonStopped:
- p.Kind, p.Title, p.Detail = "stopped", "Stopped by you", factory.PersonStopReason
 	case j.DoneHow == "closed_locally":
 		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
@@ -24,6 +22,8 @@ func PresentJob(j *Job) {
 		if j.Failure.Code == factory.CodeStopped {
 			p.Title = "Step stopped"
 		}
+	case j.Desk != nil && j.Desk.PersonStopped:
+ p.Kind, p.Title, p.Detail = "stopped", "Stopped by you", factory.PersonStopReason
 	case j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsOutOfAttempts:
 		p.Kind, p.Title = "out_of_rounds", "Stuck"
 		if j.FollowUp != nil && j.FollowUp.BlockedBy == "verification" {
