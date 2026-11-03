@@ -112,6 +112,13 @@ func HoldQueued(it *factory.Item, now time.Time) error {
 // passed (yes) or sent back to wait (no) here, because only a person's door
 // moves it. Passing it stamps the step's finish, which the brief's clock reads.
 func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) error {
+	answerWords := ""
+	if len(words) > 0 {
+		answerWords = words[0]
+	}
+	if err := followAnswerRefusal(*it, yes, answerWords); err != nil {
+		return err
+	}
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
@@ -183,6 +190,9 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if err := followAnswerRefusal(*it, yes, words); err != nil {
+		return err
+	}
 	if it.QKind == "cap" && factory.IsContinue(yes, words) {
 		ReleaseCap(it, now)
 		return nil
