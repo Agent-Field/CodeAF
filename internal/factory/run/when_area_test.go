@@ -96,3 +96,16 @@ func TestRunnerDecidesFileConditionsAtTheStep(t *testing.T) {
 		})
 	}
 }
+
+func TestLaunchRefusesStrangerWriteWithDeferredCondition(t *testing.T) {
+ g := newRig(t, nil, nil)
+ id, err := g.st.Add(context.Background(), factory.Item{
+  Title: "stranger condition", Tier: factory.TierStranger,
+  Triage: factory.Triage{Area: "docs"},
+  Stages: []factory.Stage{{Name: "write", On: true, When: "touches auth"}},
+ })
+ if err != nil { t.Fatal(err) }
+ if err := g.r.Launch(id); err == nil || err.Error() != "a stranger's work does not run write in this factory" {
+  t.Fatalf("deferred stranger write launched: %v", err)
+ }
+}
