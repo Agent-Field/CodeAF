@@ -333,6 +333,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		_, installed := local[r.Cell]
 		here := r.Mine && (r.Status == chatlist.Here || installed)
 		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence, Head: r.Head}, CanTake: !here && r.Head != ""}
+		row.CanOpen = r.AutoOpen && r.Head != ""
 		if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
 			row.Seen.Head = ""
 		}

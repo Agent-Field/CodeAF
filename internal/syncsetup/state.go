@@ -81,7 +81,7 @@ func (s *Sync) SyncState(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	err = s.withVault(func(v vaultsync.Syncer) error {
+	err = s.withVaultWithin(ctx, 0, func(v vaultsync.Syncer) error {
 		sharing := s.teamsSharing()
 		if sharing != s.teamsShared {
 			s.stateVaultKnown = false

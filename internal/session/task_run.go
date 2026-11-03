@@ -1151,7 +1151,7 @@ type TaskGraph struct {
 	// [TaskGraph.handBackLane] WITHOUT settling, on purpose, so that recovery
 	// resumes it — its `done` is never closed, and a stop that waited on that
 	// channel would wait for something nobody is going to send.
-	runners sync.WaitGroup
+	runners sessionJobs
 	// quitting closes the frontier: after it is set, nothing starts. The graph's
 	// bounded stop sets it when the session quits so no goroutine can join the
 	// wait already under way; the wall sets it because a run past its ceiling

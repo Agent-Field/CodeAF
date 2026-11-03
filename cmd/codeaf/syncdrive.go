@@ -32,6 +32,8 @@ type driveBook struct {
 	// notices is installed by an app assembly before any drive starts. Nil
 	// retains the terminal's desk and its marking first-run behaviour.
 	notices *driveNotices
+	// idleCheck includes app work waiting outside the session's own queue.
+	idleCheck func(string) bool
 }
 
 type driveNotices struct {
@@ -86,6 +88,9 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 	d := newAdmissionDrive(func(changed func()) (*syncsetup.Drive, error) {
 		return startDriveWith(c, engine, report, b.notices, changed)
 	})
+	if check := b.idleCheck; check != nil {
+		d.surfaceIdle = func() bool { return check(c.ID) }
+	}
 	d.transcript = (session.Place{Dir: c.Root}).Transcript()
 	if d != nil {
 		if b.drive == nil {
@@ -264,6 +269,34 @@ func driveWorkGate(d *liveDrive) func() error {
 	return func() error {
 		if started := d.started(); started != nil {
 			return check.admit(started)
+		}
+		return nil
+	}
+}
+
+func driveSettingsGate(d *liveDrive) func() error {
+	if d == nil {
+		return nil
+	}
+	return func() error {
+		if started := d.started(); started != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+			defer cancel()
+			return started.ConfirmSettingsWork(ctx)
+		}
+		return nil
+	}
+}
+
+func drivePreparedGate(d *liveDrive) func() error {
+	if d == nil {
+		return nil
+	}
+	return func() error {
+		if started := d.started(); started != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+			defer cancel()
+			return started.ConfirmPreparedWork(ctx)
 		}
 		return nil
 	}

@@ -3148,7 +3148,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if refresh := sess.engine.RefreshModelSources; refresh != nil {
 			refresh()
 		}
-		agent.SetModel(model)
+		if checked, ok := agent.(interface{ SetModelChecked(string) error }); ok {
+			if err := checked.SetModelChecked(model); err != nil {
+				return nil, err
+			}
+		} else {
+			agent.SetModel(model)
+		}
 		// AND EVERY SURFACE IS TOLD, not only the one that turned the knob. Two
 		// windows on one conversation is a shape this protocol supports
 		// ([Welcome.Attached]), and a model changed in one of them is a fact the
@@ -3228,7 +3234,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		took := door.SetConversationEffort(rung)
+		var took bool
+		if checked, ok := agent.(interface{ SetConversationEffortChecked(string) (bool, error) }); ok {
+			took, err = checked.SetConversationEffortChecked(rung)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			took = door.SetConversationEffort(rung)
+		}
 		// AND EVERY SURFACE IS TOLD, on [MethodSetModel]'s terms: the rung rides
 		// the fact set every window on this conversation draws from, and a dial
 		// moved in one of them is a cell the others are painting right now.

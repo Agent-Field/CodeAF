@@ -306,7 +306,7 @@ happened. The row says where the chat is only where that tells you something:
 
 ## Why a chat says held on build-box or build-box offline
 
-For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, including while it is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, for example during work or while an older build is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A live hold on a computer that is `offline` still asks before Continue here; the card says how many turns may still be there. Offline alone does not make the chat free. On paired computers a released or lapsed chat opens here directly with its latest saved copy and no Continue-here card, including when its older viewer tab is already open. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -340,7 +340,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Press enter on a row that says `<device> offline` or `held on <device>` and home asks **Continue this chat here?**
+On paired computers a released or lapsed chat opens directly with its latest saved copy. If the row still has a live hold, whether it says `<device> offline` or `held on <device>`, press enter and Home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a

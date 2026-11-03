@@ -362,6 +362,12 @@ func (a *app) cycleEffort() tea.Cmd {
 // outside, which is the exact defect the ladder was written to end.
 func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 	if !dial.SetConversationEffort(rung.String()) {
+		if result, ok := dial.(interface{ SettingError() error }); ok {
+			if err := result.SettingError(); err != nil {
+				a.input.setText("/effort " + rung.String())
+				a.note(err.Error())
+			}
+		}
 		return nil
 	}
 	a.effortLit = effortMoved{where: effortScopeConversation, at: a.now()}

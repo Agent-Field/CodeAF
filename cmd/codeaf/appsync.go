@@ -42,6 +42,7 @@ func (*appBackend) ChatLocationsKnown() bool { return true }
 // keeps the default desk, including its home notices and FirstRun marker.
 func (b *appBackend) useSyncDrives(book *driveBook) {
 	b.locked(func() { b.drives = book })
+	book.idleCheck = b.idleForRelay
 	book.notices = &driveNotices{
 		firstRun: b.syncStarted,
 		say:      func(c cell.Cell, line string) { b.syncFact(c, appSyncFact{line: line}) },
@@ -54,6 +55,26 @@ func (b *appBackend) useSyncDrives(book *driveBook) {
 		},
 		driving: func(c cell.Cell) { b.syncFact(c, appSyncFact{located: true}) },
 	}
+}
+
+// idleForRelay includes queue and steering entries the app has accepted but
+// not yet handed to the session. A busy snapshot keeps the existing hold.
+func (b *appBackend) idleForRelay(id string) bool {
+	if !b.mu.TryLock() {
+		return false
+	}
+	defer b.mu.Unlock()
+	for _, a := range b.agents {
+		if a.view.ID != id && filepath.Base(session.DirOf(a.transcript)) != id {
+			continue
+		}
+		if !a.gate.TryLock() {
+			return false
+		}
+		a.gate.Unlock()
+		return !a.starting && !a.opening && len(a.queue) == 0 && len(a.early) == 0 && (a.live == nil || !a.live.running && a.live.adopting == 0 && len(a.live.asks) == 0)
+	}
+	return true
 }
 
 // syncFact uses the physical folder, rather than assuming the app id and the
@@ -293,11 +314,32 @@ func (b *appBackend) refreshWorkRefusal(a *appAgent) error {
 	return b.knownWorkRefusal(a)
 }
 
-// workAllowed reads cached ownership before handing new work to an open
-// conversation. A joined host also checks its session's cached fact remotely.
+// idleWorkRefusal lets every work door take back a voluntarily released chat.
+// Other viewers retain their cached held-elsewhere refusal.
+func (b *appBackend) idleWorkRefusal(a *appAgent) error {
+	if err := b.knownWorkRefusal(a); err != nil {
+		var transcript string
+		var drives *driveBook
+		b.locked(func() { transcript, drives = a.transcript, b.drives })
+		dir, folder := session.FolderOf(transcript)
+		if drives == nil || !folder {
+			return err
+		}
+		live := drives.renewalsOf(filepath.Base(dir))
+		if live == nil || live.started() == nil || !live.started().IdleReleased() {
+			return err
+		}
+		if err := b.refreshWorkRefusal(a); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// workAllowed checks admission before handing work to an open conversation.
 // Callers hold a.gate, never b.mu across I/O.
 func (b *appBackend) workAllowed(a *appAgent) error {
-	if err := b.knownWorkRefusal(a); err != nil {
+	if err := b.idleWorkRefusal(a); err != nil {
 		return err
 	}
 	var transcript string

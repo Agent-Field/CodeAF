@@ -156,10 +156,23 @@ Completed turns are shared while the chat stays open, including after a move.
 
 ## Does an idle desktop chat keep its hold on the relay
 
-A chat opened for viewing keeps its conversation and relay hold until it is
-explicitly closed, including while its tab is hidden. Heartbeats renew the same
-hold without releasing it or moving its fence. Reading the chat does not cause
-ownership changes or repeat unchanged chat rows.
+With two or more paired computers, a fully saved idle chat releases its relay
+hold within a few seconds, including when its tab stays open. The conversation
+remains open as a reader. Running turns, queued or steering work, running tasks
+or jobs, deferred writes and failed uploads retain the hold. Release waits for
+the journal, working files, shared memory and settings to reach the relay.
+Rebuildable files keep their existing transfer exclusions.
+
+New work in that window takes the unchanged chat back before recording it or
+calling a model. If another computer took it, the existing moved notice and
+held-elsewhere refusal name that computer. A released window stays read-only
+when ownership cannot be confirmed. A home with only one computer keeps its
+existing hold and renewal behavior.
+
+The engine can open a released or lapsed shared chat here without a
+Continue-here confirmation. App versions that only preview shared chats still
+offer Continue here in that preview. A chat another computer actively holds
+continues to require that choice, including idle chats on older builds.
 
 A conversation opened only for background work is let go after ten idle minutes;
 the sweep checks every 30 seconds. It stays released until work needs it again.

@@ -12,7 +12,7 @@ import (
 func (b *Batcher) RenewalStatus() (time.Time, time.Duration, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	held := b.Driving.Fence != 0 && !b.stale && !b.renewalEnded
+	held := b.Driving.Fence != 0 && !b.stale && !b.released && !b.renewalEnded
 	return b.renewalSince, directory.HeartbeatEvery, held
 }
 
@@ -21,7 +21,7 @@ func (b *Batcher) RenewalStatus() (time.Time, time.Duration, bool) {
 func (b *Batcher) renewalResult(seen Driving, err error) {
 	b.mu.Lock()
 	changed := false
-	if b.Driving.ID() == seen.ID() && b.Driving.Fence == seen.Fence && !b.stale && !b.renewalEnded {
+	if b.Driving.ID() == seen.ID() && b.Driving.Fence == seen.Fence && !b.stale && !b.released && !b.renewalEnded {
 		switch {
 		case errors.Is(err, directory.ErrFenceStale), errors.Is(err, wireauth.ErrRevoked), errors.Is(err, wireauth.ErrGone), errors.Is(err, wireauth.ErrRotated):
 			b.renewalEnded, b.renewalSince, changed = true, time.Time{}, true

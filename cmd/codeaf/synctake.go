@@ -292,6 +292,24 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	return surfaceTaken(got, elapsed), nil
 }
 
+func (t takeover) OpenAvailable(ctx context.Context, id string, seen *directory.LeaseExpectation) (tui3.Taken, error) {
+	began := time.Now()
+	got, err := t.c.OpenAvailable(ctx, id, seen)
+	if err != nil {
+		return tui3.Taken{}, err
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
+func (t takeover) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
+	began := time.Now()
+	got, err := t.c.OpenAvailableWithWorkspaceRoots(ctx, id, seen, roots)
+	if err != nil {
+		return tui3.Taken{}, err
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
 func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
 	began := time.Now()
 	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
@@ -325,12 +343,6 @@ func takeRootForAt(dir, id string) string {
 		return c.Root
 	}
 	return filepath.Join(dir, "v3", "projects", "copies", id)
-}
-
-// takeCopyBucket files each copy under the folder it came from, apart from
-// conversations that work in this computer's own folder of the same name.
-func takeCopyBucket(origin string) string {
-	return home.Join("v3", "projects", "copy-"+encodeWorkspace(origin))
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a
@@ -377,7 +389,7 @@ func chatContinuer(s *syncsetup.Sync, notify func(string)) *syncsetup.Continuer 
 		DeviceName: devname.Name(s.Home),
 		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
 		BucketFor: func(origin string) string {
-			return filepath.Join(s.Home, "v3", "projects", "copy-"+encodeWorkspace(origin))
+			return takeCopyBucketAt(s.Home, origin)
 		},
 		Notify: notify,
 	})

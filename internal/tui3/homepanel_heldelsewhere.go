@@ -46,10 +46,11 @@ func (a *app) heldElsewhere() (chatlist.Row, bool) {
 // tray identify what was waiting, so an answer cannot send words the person
 // changed or move a message into a different conversation.
 type ownershipReadMsg struct {
-	file, draft string
-	host        string
-	chips       []chip
-	pastes      []pasteChip
+	admissionErr error
+	file, draft  string
+	host         string
+	chips        []chip
+	pastes       []pasteChip
 	// A local startup timeout is not a failed Home directory listing.
 	writerWaitFailed bool
 	// Displacement has already been explained by the notice that ended this wait.
@@ -194,7 +195,7 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 				break
 			}
 		}
-		return msg
+		return resumeIdleSend(ctx, agent, src, msg, blocked || hold.failed)
 	}
 }
 
@@ -256,7 +257,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 // resumeOwnedSend spends only the submitted gesture after its fresh ownership
 // reading. A free chat can resume silently only from the same saved turn.
 func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
-	if msg.writerDisplaced {
+	if msg.writerDisplaced || a.refuseIdleSend(msg) {
 		return nil
 	}
 	id := filepath.Base(session.DirOf(msg.file))
@@ -307,7 +308,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			}
 			return msg.resume()
 		}
-		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
+		if !row.AutoOpen && !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
 				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})

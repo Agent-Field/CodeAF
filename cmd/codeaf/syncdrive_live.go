@@ -36,7 +36,9 @@ type liveDrive struct {
 	retry     *time.Timer
 	retryWait time.Duration
 	// changes coalesces local health updates for the host's cached surface state.
-	changes chan struct{}
+	changes     chan struct{}
+	idleCheck   func() bool
+	surfaceIdle func() bool
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
@@ -131,6 +133,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	l.ready = nil
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
 	if d != nil {
+		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
 		l.retryWait = 0
 	} else if !l.closed && cellsync.Unreachable(err) {
@@ -138,6 +141,24 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	}
 	l.renewalChanged()
 	return l.closed
+}
+
+func (l *liveDrive) setIdleCheck(check func() bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.idleCheck = check
+}
+
+func (l *liveDrive) idleReady() bool {
+	check, surface, closed := l.idleChecks()
+	return !closed && check != nil && (surface == nil || surface()) && check()
+}
+
+// idleChecks reads the checks under mu; they run after it is released.
+func (l *liveDrive) idleChecks() (check, surface func() bool, closed bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.idleCheck, l.surfaceIdle, l.closed
 }
 
 // retryStartup owns the next attempt after a transport failure. It runs under
@@ -233,6 +254,12 @@ func (l *liveDrive) Gate() error {
 		return d.Gate()
 	}
 	return nil
+}
+
+func (l *liveDrive) SavedMetadata() {
+	if d := l.started(); d != nil {
+		d.SavedMetadata()
+	}
 }
 
 // Idle uploads what is sealed, once a drive side exists.

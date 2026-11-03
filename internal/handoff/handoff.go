@@ -47,6 +47,9 @@ type Local interface {
 
 // Taker continues a chat on this device.
 type Taker struct {
+	// FreeOnly opens an available chat without consenting to displace a live
+	// holder, including one that renewed while the incoming files were fetched.
+	FreeOnly bool
 	// stagedHead joins a claim's value copies so a failure restores only
 	// a native binding that the claim may have moved.
 	stagedHead *string
@@ -116,12 +119,18 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if seen != nil && !seen.Matches(view.Cell) {
 		return Taken{}, directory.ErrLeaseHeld
 	}
+	if t.FreeOnly && view.Cell.Lease.Expires > view.Now {
+		return Taken{}, directory.ErrLeaseHeld
+	}
 	c := cell.Cell{ID: id, Root: t.RootFor(id)}
 	kept, err := t.keepLocal(ctx, c, view.Cell.Head, view.Cell.Frames)
 	if err != nil {
 		return Taken{}, err
 	}
 	how := displacing(view)
+	if t.FreeOnly {
+		how.Force = false
+	}
 	if seen != nil && seen.Head != "" {
 		how.Expect.Head = seen.Head
 	}
