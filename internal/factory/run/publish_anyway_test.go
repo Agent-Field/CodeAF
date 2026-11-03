@@ -6,6 +6,9 @@ import (
  "time"
  "github.com/Agent-Field/codeaf/internal/factory"
  "github.com/Agent-Field/codeaf/internal/factory/api"
+ "github.com/Agent-Field/codeaf/internal/factory/record"
+ "github.com/Agent-Field/codeaf/internal/factory/store"
+ "context"
 )
 
 func publishAnywayJob() factory.Item {
@@ -93,4 +96,30 @@ func TestPublishAnywayPostKeepsMeasuredPassBesideSkip(t *testing.T) {
  src:=&fakeSource{}
  res,err,_:=runPost(t,src,[]string{"tests pass before anything posts"},it,"pr",[]factory.StageResult{{Done:true}})
  if err!=nil || !res.Done || len(src.got)!=1 {t.Fatalf("measured pass plus skip did not publish: %+v %v",res,err)}
+}
+
+func TestPublishAnywayPostUsesServerReceiptWithEmptyLocalLedger(t *testing.T) {
+ serverStore,err:=store.Open(t.TempDir());if err!=nil {t.Fatal(err)}
+ serverRecord,err:=record.Open(serverStore,record.Options{});if err!=nil {t.Fatal(err)}
+ localStore,err:=store.Open(t.TempDir());if err!=nil {t.Fatal(err)}
+ localRecord,err:=record.Open(localStore,record.Options{});if err!=nil {t.Fatal(err)}
+ it:=publishAnywayJob()
+ if err:=factory.DecidePublishAnyway(&it,"alice",time.Now());err!=nil {t.Fatal(err)}
+ if _,err:=serverRecord.Append(context.Background(),record.Event{Kind:record.Approved,Job:it.ID,Handle:"alice",Commit:it.HeadCommit});err!=nil {t.Fatal(err)}
+ trailer,err:=serverRecord.TrailerFor(context.Background(),it.ID,it.HeadCommit);if err!=nil {t.Fatal(err)}
+ for _,tc:=range []struct{name,receipt string;want bool}{
+  {"server receipt",trailer,true},
+  {"wrong head",strings.ReplaceAll(trailer,it.HeadCommit,strings.Repeat("b",40)),false},
+  {"wrong person",strings.ReplaceAll(trailer,"@alice","@bob"),false},
+  {"malformed","not a receipt",false},
+ } {t.Run(tc.name,func(t *testing.T){
+  copy:=it
+  approval:=*it.PublishAnyway
+  copy.PublishAnyway=&approval
+  copy.PublishAnyway.Words=tc.receipt
+  src:=&fakeSource{}
+  ex:=NewPostExecutorWith(PostOptions{Record:localRecord,Source:func(string)factory.Source{return src},Policy:func(factory.Item)[]string{return []string{"tests pass before anything posts"}}})
+  res,err:=ex.Run(context.Background(),Job{Item:copy,Stage:factory.Stage{Name:"post",Kind:factory.StagePost,Ask:"pr"}})
+  if (err==nil && res.Done)!=tc.want || (len(src.got)==1)!=tc.want {t.Fatalf("receipt accepted=%v, err=%v writes=%d",res.Done,err,len(src.got))}
+ })}
 }

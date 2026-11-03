@@ -24,6 +24,14 @@ func TestPersonPublishesAnywayThroughJobAction(t *testing.T) {
 	if out.Current == nil || out.Current.PublishAnyway == nil || out.Current.PublishAnyway.DecidedBy != "alice" || out.Current.PublishAnyway.At.IsZero() || f.count(record.Approved)!=1 {
 		t.Fatal("publish anyway did not return the job")
 	}
+ nohead:=it
+ nohead.ID=0
+ nohead.HeadCommit=""
+ nohead.Change=&factory.Change{Patch:"complete docs patch",Files:[]factory.ChangedFile{{Path:"docs.md"}}}
+ nohead=f.create(t,nohead)
+ second:=alice.act(t,"factory.job_publish_anyway",nohead.ID,nil)
+ if second.Current==nil || second.Current.PublishAnyway==nil || strings.HasSuffix(second.Current.PublishAnyway.Words," ") {t.Fatal("files-bound approval has an invalid receipt")}
+
 }
 
 func TestPublishAnywayRefusesOtherPerson(t *testing.T) {
