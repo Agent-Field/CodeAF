@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Paired idle chats release their hold after upload and available chats open here automatically
-pr: 0
+pr: 2287
 surface: [chat, engine, app, remote, docs]
 invalidates:
   - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the relay."
