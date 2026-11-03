@@ -1005,8 +1005,8 @@ under way. A leased worker checks the saved choice before each step and landing.
 If that read fails, it retries up to three times within two seconds while the
 run is active. If the choice remains unknown, the worker holds before the next
 paid step and says `could not confirm Stop before the next step; work held:`
-with the read error. The job is not marked failed. Resume after the factory is
-reachable. A missing route on an older factory keeps the existing behavior.
+with the read error. The job is not marked failed. Answer yes to retry the
+authority read when the factory is reachable, or no to stop the job. A missing route on an older factory keeps the existing behavior.
 Unconfirmed delivery still follows the ordinary recovery cutoff.
 
 ## Follow PR — comments that need no code change
