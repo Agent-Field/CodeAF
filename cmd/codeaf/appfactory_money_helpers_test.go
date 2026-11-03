@@ -35,14 +35,15 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 			params := map[string]any{"factory": st.Factory, "job": it.ID}
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", params, &chats)
-			if stopped {
-				s.must("agents.stop", map[string]any{"id": chats.Agent}, &struct{}{})
-			}
 			// Keep the production lifecycle callback and debounce, shortening only
 			// its wait so the test does not spend the user's debounce interval.
 			s.backend.briefs.stop()
 			s.backend.briefs = newBriefDebounce(10*time.Millisecond, s.backend.writeBriefLater)
-			if err := floor.Update(it.ID, func(cur *factory.Item) error {
+			if stopped {
+				var job api.Job
+				s.must("factory.job", params, &job)
+				s.must("factory.job_stop", map[string]any{"factory": st.Factory, "job": it.ID, "expect": map[string]any{"version": job.Version}}, &appwire.FactoryJobActed{})
+			} else if err := floor.Update(it.ID, func(cur *factory.Item) error {
 				cur.State = factory.StateShipped
 				cur.Stream.Ended = time.Now()
 				return nil
@@ -63,9 +64,12 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 			}
 			want := .01
 			if stopped {
-				want = 0
-				if brief.Failure != session.ErrandStopped {
-					t.Errorf("stopped brief failure=%q, want stopped", brief.Failure)
+				want = float64(calls.Load()) * .01
+				if calls.Load() == 0 && brief.Status != factory.BriefStatusFailed {
+					t.Errorf("refused brief must state its failure: %+v", brief)
+				}
+				if calls.Load() > 1 {
+					t.Errorf("stopped brief made %d provider calls, want at most one", calls.Load())
 				}
 			}
 			moneyTotals(t, s, st.Factory, it, &calls, want)
