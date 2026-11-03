@@ -36,6 +36,9 @@ type factoryWorkerDial struct {
 	mu      sync.Mutex
 	floor   *store.Store
 	resolve func() (factoryTarget, error)
+	// awake says this machine has not said it is going to sleep. Nil never
+	// corrects the factory.
+	awake func() bool
 }
 
 func newFactoryWorkerDial(floor *store.Store, resolve func() (factoryTarget, error)) *factoryWorkerDial {
@@ -72,6 +75,12 @@ func (d *factoryWorkerDial) desiredSlots(ctx context.Context) (int, bool) {
 	self, err := w.Self(ctx)
 	if err != nil || self.Slots < 1 {
 		return 0, false
+	}
+	// A WAKE THAT NEVER ARRIVED MENDS HERE. The factory refuses a computer it has
+	// asleep every job, and a single wake can be lost to a restart or a slow
+	// answer; a runner that was not told to sleep corrects it on its next read.
+	if self.Asleep && d.awake != nil && d.awake() {
+		_ = w.Presence(ctx, false)
 	}
 	return min(self.Slots+max(self.OverLimit, 0), api.MaxRunnerSlots), true
 }

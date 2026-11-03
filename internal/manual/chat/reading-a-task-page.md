@@ -546,6 +546,10 @@ this` is the third: there was nobody inside the task to read you, because its wo
 already in front of the checker. The words are kept on the task, the check is not allowed
 to land it as done over them, and the task takes another round with them instead.
 
+A note delivered while the worker's final answer is streaming still gets a reader.
+The worker takes another request with your words before its runner closes it; merely
+saving the words in the transcript does not mark the note read.
+
 **A correction can change what the task is judged by, and only yours can.** Say "CSV
 instead of JSON" into a running task and the worker can fold it into the task's own
 done-condition, citing the line you sent; from then on that is what the checker judges the

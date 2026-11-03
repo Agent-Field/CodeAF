@@ -94,7 +94,7 @@ func (f *v2Jobs) briefPost(t *testing.T, it factory.Item, verb, body string, sta
 // A WRITE OF THE BRIEF, THROUGH THE FACTORY: begin hands the writer its
 // prompt and the job's input and marks the brief generating; the same
 // inputs begin nothing; keep checks the draft against the job, keeps what
-// passed, says each drop, and books the call's cost to the job.
+// passed and says each drop without charging the call again.
 func TestJobBriefBeginAndKeep(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Title: "Fix retries", Stream: &factory.Stream{Spent: 1, Phases: []factory.Phase{
@@ -112,11 +112,11 @@ func TestJobBriefBeginAndKeep(t *testing.T) {
 	keep, _ := json.Marshal(api.BriefKeepRequest{Hash: begin.Hash, Model: "deepseek/deepseek-v4.1-flash", CostUSD: 0.002, Draft: draft})
 	var kept api.BriefKept
 	f.briefPost(t, it, "keep", string(keep), 200, &kept)
-	if !kept.Kept || kept.Status != factory.BriefStatusReady || kept.Brief.Rev != 1 || kept.Brief.Model != "deepseek/deepseek-v4.1-flash" ||
+	if !kept.Kept || kept.Status != factory.BriefStatusReady || kept.Brief.Rev != 1 || kept.Brief.Model != "deepseek/deepseek-v4.1-flash" || kept.Brief.CostUSD != 0.002 ||
 		len(kept.Brief.Blocks) != 1 || len(kept.Brief.Blocks[0].Bullets) != 1 || len(kept.Drops) != 1 || kept.Brief.Facts[0].Value != "3 passed" {
 		t.Fatalf("kept = %+v", kept)
 	}
-	if cur, _ := f.st.Get(it.ID); cur.Stream.Spent != 1.002 {
+	if cur, _ := f.st.Get(it.ID); cur.Stream.Spent != 1 {
 		t.Fatalf("job spend = %v", cur.Stream.Spent)
 	}
 	begin = api.BriefBegin{}

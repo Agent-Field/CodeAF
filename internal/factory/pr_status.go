@@ -35,6 +35,12 @@ func PRWaitingWords(pr *PullRequest) string {
 	if pr.Checks.Pending > 0 {
 		return "Waiting for GitHub checks. Watching review feedback and conflicts."
 	}
+	if pr.NoChecks {
+		return NoChecksWords + " Watching review feedback and conflicts."
+	}
+	if pr.NoWorkflows {
+		return NoChecksSettlingWords
+	}
 	if len(pr.CheckRuns) == 0 {
 		return "No GitHub checks reported. Watching review feedback and conflicts."
 	}

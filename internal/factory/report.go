@@ -36,6 +36,10 @@ type RunReport struct {
 	Room string
 	// Merge is what the runner's merge did, nil when it carried none out.
 	Merge *MergeReport
+	// Models is the priced calls recorded since the previous report, by model.
+	// It rides a header, not the report body: a factory older than the field
+	// refuses an unknown JSON field and would drop the whole report.
+	Models []ModelUse
 }
 
 // PipelineChange is the job's stages and the run's phase list as the worker's

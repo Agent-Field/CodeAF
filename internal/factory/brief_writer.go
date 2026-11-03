@@ -17,7 +17,7 @@ import (
 //
 // The writer is one small model call, not the manager's chat turn. The
 // factory assembles everything it may read ([BriefInputOf]) from the job's
-// own records: the issue, the plan, each step's structured result per try,
+// own records: the issue, later person requests, the plan, each step's result per try,
 // the change's stats and a hunk index, the rules that applied and the brief
 // before. It is never the full diff.
 //
@@ -39,8 +39,10 @@ const (
 	BriefDebounce = 10 * time.Second
 	// briefOutputMost bounds each step output and the issue body the writer
 	// reads, in bytes.
-	briefOutputMost = 2 << 10
-	briefHunksMost  = 40
+	briefOutputMost        = 2 << 10
+	briefHunksMost         = 40
+	briefRequestsMost      = 12
+	briefRequestsBytesMost = 16 << 10
 )
 
 // The triggers of a write. A person's retry and an ask that opened are
@@ -82,6 +84,15 @@ type BriefStepInput struct {
 	Output   string      `json:"output,omitempty"`
 }
 
+// BriefPersonRequest is a person's later words, with the context the job kept.
+// Notes have no recorded step, gate or time; their saved order precedes dated answers.
+type BriefPersonRequest struct {
+	Text string    `json:"text"`
+	Step string    `json:"step,omitempty"`
+	Gate string    `json:"gate,omitempty"`
+	At   time.Time `json:"at,omitzero"`
+}
+
 // BriefInput is everything the writer reads. Previous is not part of the
 // input's hash: a new version changes it, and that alone is no reason to
 // write another.
@@ -91,24 +102,127 @@ type BriefInput struct {
 		Body   string   `json:"body,omitempty"`
 		Labels []string `json:"labels,omitempty"`
 	} `json:"issue"`
-	NeedsYou bool             `json:"needs_you"`
-	Question string           `json:"question,omitempty"`
-	Model    string           `json:"model,omitempty"`
-	Plan     string           `json:"plan,omitempty"`
-	Steps    []BriefStepInput `json:"steps"`
-	Change   *ChangeStat      `json:"change,omitempty"`
-	Hunks    []PatchHunk      `json:"hunks,omitempty"`
-	Rules    *RuleChecks      `json:"rules,omitempty"`
-	Hold     string           `json:"rule_hold,omitempty"`
-	Facts    []BriefFact      `json:"facts"`
-	Previous *BriefVersion    `json:"previous,omitempty"`
+	State                  string                 `json:"state"`
+	WaitingOnProofApproval bool                   `json:"waiting_on_proof_approval"`
+	Approval               *BriefApprovalInput    `json:"approval,omitempty"`
+	PR                     *BriefPRInput          `json:"pr,omitempty"`
+	Publication            *BriefPublicationInput `json:"publication,omitempty"`
+	CommentURL             string                 `json:"comment_url,omitempty"`
+	End                    string                 `json:"end,omitempty"`
+	NeedsYou               bool                   `json:"needs_you"`
+	Question               string                 `json:"question,omitempty"`
+	Model                  string                 `json:"model,omitempty"`
+	Plan                   string                 `json:"plan,omitempty"`
+	PersonRequests         []BriefPersonRequest   `json:"person_requests,omitempty"`
+	Steps                  []BriefStepInput       `json:"steps"`
+	Change                 *ChangeStat            `json:"change,omitempty"`
+	Hunks                  []PatchHunk            `json:"hunks,omitempty"`
+	Rules                  *RuleChecks            `json:"rules,omitempty"`
+	Hold                   string                 `json:"rule_hold,omitempty"`
+	Facts                  []BriefFact            `json:"facts"`
+	Previous               *BriefVersion          `json:"previous,omitempty"`
+}
+
+// BriefApprovalInput is consent as the writer needs it, without its timing.
+type BriefApprovalInput struct {
+	Kind      string `json:"kind"`
+	State     string `json:"state"`
+	Automatic bool   `json:"automatic"`
+}
+
+// BriefPublicationInput keeps the publication attempt and its result without
+// timestamps that would make an otherwise identical result look new.
+type BriefPublicationInput struct {
+	State   string `json:"state"`
+	Attempt int    `json:"attempt"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// BriefPRInput is the published pull request's identity and outcome.
+type BriefPRInput struct {
+	Number int    `json:"number"`
+	State  string `json:"state"`
+}
+
+// BriefProofApprovalWaiting distinguishes a person's proof gate from Auto's
+// routine passage through landed, which has no readable wait to write about.
+func BriefProofApprovalWaiting(it Item) bool {
+	if it.State != StateLanded || it.Publishing {
+		return false
+	}
+	a := JobApproval(it)
+	return a != nil && a.Kind == "proof" && a.State == "waiting" && (!Automatic(it) || AutonomyBlockReason(it) != "")
+}
+
+// BriefEndOf is the outcome of the work, including a run that stopped while
+// retaining its branch. Publication is an outcome even while the PR is open.
+func BriefEndOf(it Item) string {
+	if pr := it.PullRequest; pr != nil {
+		switch pr.State {
+		case PRMerged:
+			return "merged"
+		case PRClosed:
+			return "closed without merge"
+		}
+	}
+	if how := it.DoneHow; how != "" {
+		return strings.ReplaceAll(how, "_", " ")
+	}
+	if RunEnded(it) {
+		if it.Failure.Code == CodeStopped {
+			return "stopped"
+		}
+		return "failed: " + clip(it.Failure.Detail, briefOutputMost)
+	}
+	if it.State == StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		return "stopped"
+	}
+	if it.State == StateShipped {
+		if it.CommentURL != "" {
+			return "comment posted"
+		}
+		if it.PullRequest != nil {
+			return "published"
+		}
+		return "shipped"
+	}
+	return ""
+}
+
+// BriefVerdictBehind compares the kept version with today's inputs, never
+// with a failed write's hash. Older versions without a hash cannot attest to
+// freshness; a stub has no model verdict to mark behind.
+func BriefVerdictBehind(it Item) bool {
+	if len(it.Briefs) == 0 {
+		return false
+	}
+	return it.Briefs[len(it.Briefs)-1].InputHash != BriefInputHash(BriefInputOf(it))
 }
 
 // BriefInputOf assembles the writer's input from the job.
 func BriefInputOf(it Item) BriefInput {
 	var in BriefInput
+	in.PersonRequests = briefPersonRequests(it)
 	in.Issue.Title, in.Issue.Body, in.Issue.Labels = it.Title, clip(it.Body, briefOutputMost), it.Labels
-	in.NeedsYou, in.Question, in.Model = it.State == StateNeedsYou, it.Question, it.Model
+	in.NeedsYou, in.Question, in.Model = JobState(it) == "needs_you", it.Question, it.Model
+	in.State = strings.ReplaceAll(string(it.State), "_", " ")
+	in.WaitingOnProofApproval = BriefProofApprovalWaiting(it)
+	if it.State == StateLanded {
+		in.State = "ready to publish"
+		if in.WaitingOnProofApproval {
+			in.State = "waiting for proof approval"
+		}
+	}
+	if a := JobApproval(it); a != nil {
+		in.Approval = &BriefApprovalInput{Kind: a.Kind, State: a.State, Automatic: a.Automatic}
+	}
+	if pr := it.PullRequest; pr != nil {
+		in.PR = &BriefPRInput{Number: pr.Number, State: pr.State}
+	}
+	if p := it.PublishStatus; p != nil {
+		in.Publication = &BriefPublicationInput{State: p.State, Attempt: p.Attempt, Reason: clip(p.Detail, briefOutputMost)}
+	}
+	in.CommentURL, in.End = it.CommentURL, BriefEndOf(it)
 	in.Rules, in.Hold, in.Facts = it.RuleChecks, it.RuleHold, BriefFacts(it)
 	in.Steps = []BriefStepInput{}
 	if it.Stream != nil {
@@ -129,6 +243,46 @@ func BriefInputOf(it Item) BriefInput {
 		in.Previous = &prev
 	}
 	return in
+}
+
+// briefPersonRequests keeps the newest distinct words without inventing note clocks.
+func briefPersonRequests(it Item) []BriefPersonRequest {
+	var requests []BriefPersonRequest
+	for _, text := range it.Notes {
+		if text = strings.TrimSpace(text); text != "" {
+			requests = append(requests, BriefPersonRequest{Text: text})
+		}
+	}
+	for _, q := range it.AnsweredQuestions {
+		if q.Answer == nil {
+			continue
+		}
+		text := strings.TrimSpace(q.Answer.Text)
+		if text == "" || IsContinue(false, text) || strings.EqualFold(text, "no") {
+			continue
+		}
+		requests = append(requests, BriefPersonRequest{Text: text, Step: clip(q.FromStep, 128), Gate: clip(q.Kind, 128), At: q.Answer.At})
+	}
+	slices.SortStableFunc(requests, func(a, b BriefPersonRequest) int { return a.At.Compare(b.At) })
+	seen := map[string]bool{}
+	var kept []BriefPersonRequest
+	size := 2 // The JSON array's brackets.
+	for i := len(requests) - 1; i >= 0; i-- {
+		r := requests[i]
+		if seen[r.Text] {
+			continue
+		}
+		seen[r.Text] = true
+		r.Text = strings.ToValidUTF8(clip(r.Text, briefOutputMost), "")
+		raw, _ := json.Marshal(r)
+		size += len(raw) + 1
+		if len(kept) == briefRequestsMost || size > briefRequestsBytesMost {
+			break
+		}
+		kept = append(kept, r)
+	}
+	slices.Reverse(kept)
+	return kept
 }
 
 // stepInputs is one line per finished try of a phase, then its latest
@@ -343,20 +497,30 @@ func briefEvidenceOf(it Item) briefEvidence {
 // briefEvidenceKinds says, for each kind of evidence, the numbers it shows,
 // and false when the evidence names nothing the job has.
 var briefEvidenceKinds = map[string]func(e briefEvidence, ref BriefEvidence) ([]int, bool){
-	"tests":       stepNumbers(func(r StageResult) []int { return testNumbers(r.Tests) }),
-	"exit":        stepNumbers(func(r StageResult) []int { return []int{r.Exit} }),
-	"findings":    stepNumbers(func(r StageResult) []int { return []int{r.Findings} }),
-	"claims":      stepNumbers(claimNumbers),
-	"output":      stepNumbers(func(r StageResult) []int { return textNumbers(r.Output) }),
-	"summary":     summaryNumbers,
-	"rule_checks": ruleNumbers,
-	"file":        fileNumbers,
-	"change":      changeNumbers,
-	"hunk":        hunkNumbers,
+	"tests":         stepNumbers(func(r StageResult) []int { return testNumbers(r.Tests) }),
+	"exit":          stepNumbers(func(r StageResult) []int { return []int{r.Exit} }),
+	"findings":      stepNumbers(func(r StageResult) []int { return []int{r.Findings} }),
+	"claims":        stepNumbers(claimNumbers),
+	"output":        stepNumbers(func(r StageResult) []int { return textNumbers(r.Output) }),
+	"summary":       summaryNumbers,
+	"rule_checks":   ruleNumbers,
+	briefEvidencePR: prNumbers,
+	"file":          fileNumbers,
+	"change":        changeNumbers,
+	"hunk":          hunkNumbers,
 }
 
+const briefEvidencePR = "pr"
+
 // BriefEvidenceKinds is every kind of evidence a claim may name.
-var BriefEvidenceKinds = []string{"tests", "exit", "findings", "claims", "output", "summary", "rule_checks", "file", "change", "hunk"}
+var BriefEvidenceKinds = []string{"tests", "exit", "findings", "claims", "output", "summary", "rule_checks", "file", "change", "hunk", briefEvidencePR}
+
+func prNumbers(e briefEvidence, _ BriefEvidence) ([]int, bool) {
+	if pr := e.it.PullRequest; pr != nil && pr.Number > 0 {
+		return []int{pr.Number}, true
+	}
+	return nil, false
+}
 
 // phaseOf is the job's phase of a step's name.
 func (e briefEvidence) phaseOf(step string) (Phase, bool) {

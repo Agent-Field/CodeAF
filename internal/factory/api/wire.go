@@ -254,13 +254,22 @@ type Repo struct {
 	// CheckedOut says the factory's machine knows a checkout of the
 	// repository; false is none known, whose jobs are cloned on their first
 	// step or refused (the job's own `checkout` says which).
-	CheckedOut bool      `json:"checked_out"`
-	Pipeline   *Pipeline `json:"pipeline,omitempty"`
-	Team       string    `json:"team,omitempty"`   // desk
-	Areas      []string  `json:"areas,omitempty"`  // desk
-	Habits     []string  `json:"habits,omitempty"` // desk
-	Hue        int       `json:"hue,omitempty"`    // desk
-	CIRed      bool      `json:"ci_red,omitempty"` // desk
+	CheckedOut bool `json:"checked_out"`
+	// CheckoutState is how a run of the repository gets its folder on the
+	// factory's machine, in the words a job's own `checkout` says and from
+	// the same door a start asks ([factory.CheckoutState]): `here`,
+	// `will_clone` (the runner clones it on the first job's first step, the
+	// normal state of a repository no job has run on yet) or `missing` (a
+	// start is refused 409 needs_checkout). It names no path. Absent is a
+	// factory that does not know its machine's checkouts (its runners keep
+	// their own), never a guess.
+	CheckoutState string    `json:"checkout_state,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	Pipeline      *Pipeline `json:"pipeline,omitempty"`
+	Team          string    `json:"team,omitempty"`   // desk
+	Areas         []string  `json:"areas,omitempty"`  // desk
+	Habits        []string  `json:"habits,omitempty"` // desk
+	Hue           int       `json:"hue,omitempty"`    // desk
+	CIRed         bool      `json:"ci_red,omitempty"` // desk
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy
@@ -383,6 +392,9 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	FromJob     int    `json:"from_job,omitempty"`
+	SourceIssue string `json:"source_issue,omitempty"`
+
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
 	Following bool `json:"following,omitempty"`
@@ -414,33 +426,40 @@ type Job struct {
 	// and only a factory that knows its machine's checkouts; absent is
 	// nothing to say (no repository, or a factory whose runners keep their
 	// own).
-	Checkout          string               `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
-	Display           JobDisplay           `json:"display"`
-	StatePresentation StatePresentation    `json:"state_presentation"`
-	Controls          JobControls          `json:"controls"`
-	Assignee          string               `json:"assignee,omitempty"`
-	Runner            string               `json:"runner,omitempty"`
-	JobID             string               `json:"id"`
-	Ref               string               `json:"ref"`
-	Priority          *factory.JobPriority `json:"priority,omitempty"`
+	Checkout          string            `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	Display           JobDisplay        `json:"display"`
+	StatePresentation StatePresentation `json:"state_presentation"`
+	Controls          JobControls       `json:"controls"`
+	Assignee          string            `json:"assignee,omitempty"`
+	Runner            string            `json:"runner,omitempty"`
+
+	// JobID is the opaque compatible key; Ref is display text, not an identity.
+	JobID    string               `json:"id"`
+	Ref      string               `json:"ref"`
+	Priority *factory.JobPriority `json:"priority,omitempty"`
 	// Size is the size LABEL alone, the only size a start reads. ReadSize is
 	// what a surface may SHOW when there is no label; it never starts a job.
-	Size     string       `json:"size,omitempty"`
-	ReadSize *JobReadSize `json:"read_size,omitempty"`
-	Budget   float64      `json:"budget,omitempty"`
+	Size          string       `json:"size,omitempty"`
+	ReadSize      *JobReadSize `json:"read_size,omitempty"`
+	Budget        float64      `json:"budget,omitempty"`
+	StopAfterStep bool         `json:"stop_after_step,omitempty"`
 	// Model is the model a person chose for this job's steps; absent, they
 	// run on the factory's default (Queue.Model). Set with POST
 	// /v1/jobs/{id}/model.
-	Model           string            `json:"model,omitempty"`
-	AutomaticModels *bool             `json:"automatic_models,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	DoneHow         string            `json:"done_how,omitempty"`
-	DoneAt          time.Time         `json:"done_at"`
-	Dismissed       bool              `json:"dismissed"`
-	DismissedBy     []string          `json:"dismissed_by,omitempty"`
-	WaitingFor      string            `json:"waiting_for,omitempty"`
-	Overlap         []string          `json:"overlap,omitempty"`
-	Approval        *factory.Approval `json:"approval,omitempty"`
+	Model           string `json:"model,omitempty"`
+	AutomaticModels *bool  `json:"automatic_models,omitempty"`
+	// FactoryModel is the factory's default model the job was last queued
+	// under (factory.Spending), which a step that names no model, on a job
+	// that names none, runs on; absent when the factory sets none.
+	FactoryModel string            `json:"factory_model,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	DoneHow      string            `json:"done_how,omitempty"`
+	DoneAt       time.Time         `json:"done_at"`
+	Dismissed    bool              `json:"dismissed"`
+	DismissedBy  []string          `json:"dismissed_by,omitempty"`
+	WaitingFor   string            `json:"waiting_for,omitempty"`
+	Overlap      []string          `json:"overlap,omitempty"`
+	Approval     *factory.Approval `json:"approval,omitempty"`
 	// Estimate is what jobs like this one cost and took, measured from the
 	// factory's finished jobs; absent on a finished job, on one nobody
 	// scored, and while too few similar jobs finished ("no cost history yet").
@@ -506,6 +525,11 @@ type Job struct {
 	// (factory.RuleChecks), for its two ◆ rows; absent before either was
 	// judged.
 	RuleChecks *RuleChecks `json:"rule_checks,omitempty"`
+	// Protected is which protected paths a Backlog job names, judged on every
+	// queue read by the start rules it would start under (JobProtected).
+	// Absent is not judged: a job past the Backlog, or rules nobody could
+	// read; the hello word `factory.job_protected` says a client may read it.
+	Protected *JobProtected `json:"protected,omitempty"`
 	// Brief is the job's brief mark: the rev of its newest kept version and
 	// the brief's status, so a reader that polls the job reads the brief
 	// itself (GET /v1/jobs/{id}/brief) only when one of them moves. Absent
@@ -582,7 +606,8 @@ type NeedsQuestion struct {
 }
 
 // SpendingLimit is the cap a continue answer would raise. next_limit comes
-// from codeaf. The app never sends it. currency is USD.
+// from codeaf: the smallest allowed budget above spend, or zero when none
+// remains. The app never sends it as an answer. currency is USD.
 type SpendingLimit struct {
 	Limit     float64 `json:"limit"`
 	Spent     float64 `json:"spent"`
@@ -620,9 +645,9 @@ type RoundLine struct {
 	// Result and Reason are how the try ended (factory.TryResult): its
 	// rule's word (clean, not clean, green, not green, proven, not proven,
 	// done, not done, blocked) and a counted reason ("2 findings", "12
-	// passed", "1 of 2 claims shown"). Both are absent on a try recorded
-	// before they were and on one that ended without a report; a surface
-	// shows the try's number alone then, and never guesses from summary.
+	// passed", "1 of 2 claims shown"). A failure closed on retry says stopped,
+	// interrupted or failed from its failure code. Older tries may omit both;
+	// a surface never guesses their outcome from summary.
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
@@ -643,10 +668,13 @@ type Can struct {
 	Unassign       bool `json:"unassign"`
 	Nudge          bool `json:"nudge"`
 	RaiseBudget    bool `json:"raise_budget"`
+	StopAfterStep  bool `json:"stop_after_step"`
+	SpendAnswer    bool `json:"spend_answer"`
 	Undo           bool `json:"undo"`
 
 	Approve      bool `json:"approve"`
 	RunAgain     bool `json:"run_again"`
+	RunAsNew     bool `json:"run_as_new"`
 	CancelJob    bool `json:"cancel_job"`
 	RetryPublish bool `json:"retry_publish"`
 	Answer       bool `json:"answer"`
@@ -661,6 +689,8 @@ type Can struct {
 	RejectPlan bool `json:"reject_plan"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
+	// PRReady lets the job's person mark its open draft ready for review.
+	PRReady bool `json:"pr_ready"`
 	// Restore is POST /v1/jobs/{id}/restore (Bring back) for this caller now:
 	// the job was dropped and the caller may act on it. A factory from before
 	// the route never sends it, which reads as false.
@@ -779,6 +809,10 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	// Files is the plan answer. An explicit empty list stays (it means unknown,
+	// and prose can't fill it in). With no list the field is left out, as an
+	// older factory refuses unknown fields.
+	Files        []string                  `json:"files,omitzero"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Tests        *factory.TestCounts       `json:"tests,omitempty"`
@@ -880,6 +914,13 @@ type PR struct {
 	Mergeable   string `json:"mergeable,omitempty"`
 	ChecksRead  bool   `json:"checks_read,omitempty"`
 	ReviewsRead bool   `json:"reviews_read,omitempty"`
+	// NoWorkflows, NoChecksSince and NoChecks are the no-checks fact as
+	// factory.SettleNoChecks keeps it; NoChecks is the settled one.
+	NoWorkflows   bool       `json:"no_workflows,omitempty"`
+	NoChecksSince *time.Time `json:"no_checks_since,omitempty"`
+	NoChecks      bool       `json:"no_checks,omitempty"`
+	// HeadBranch is the branch the pull request comes from.
+	HeadBranch string `json:"head_branch,omitempty"`
 }
 
 // JobMerge is a job's merging: the pipeline's settings pinned when its proof
@@ -926,6 +967,15 @@ type RuleChecks struct {
 	Start       string `json:"start,omitempty"`
 	Publish     string `json:"publish,omitempty"`
 	PublishHead string `json:"publish_head,omitempty"`
+}
+
+// JobProtected is the protected paths (the rules' ask-first path lines and
+// never paths, as written) that the paths a job names touch: its issue, its
+// comments, its plan and its pull request's files, matched as a start
+// matches them. Empty paths is a job that names none, which is not proof its
+// change will touch none: a job's plan is checked again before it goes on.
+type JobProtected struct {
+	Paths []string `json:"paths"`
 }
 
 // PRChecks is the check-run summary. A zero count is omitted.
@@ -1051,6 +1101,7 @@ type ScoutFile struct {
 
 // LogLine is one line of a run's grain (desk).
 type LogLine struct {
+	Kind  string    `json:"kind,omitempty"`
 	At    time.Time `json:"at"`
 	Glyph string    `json:"glyph,omitempty"`
 	Tone  string    `json:"tone,omitempty"`
@@ -1211,4 +1262,10 @@ type PublishFailedEvent = live.FailedPayload
 type BriefMark struct {
 	Rev    int    `json:"rev"`
 	Status string `json:"status"`
+}
+
+// SpendAnswer answers only a spending hold at the revision the person read.
+type SpendAnswer struct {
+	CarryOn *bool   `json:"carry_on"`
+	Expect  *Expect `json:"expect"`
 }
