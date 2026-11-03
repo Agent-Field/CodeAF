@@ -1,6 +1,6 @@
-# Tools an app adds to a conversation
+# Client tools: tools an app adds to a conversation
 
-## Tools an app adds to a conversation: connection, limits and waiting
+## Client tools: connection, limits and waiting
 
 An app connected through `codeaf app` can attach its own tools and instructions
 to one conversation. The model sees each tool's name, description and input
