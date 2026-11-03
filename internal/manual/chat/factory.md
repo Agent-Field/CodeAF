@@ -292,6 +292,8 @@ An added conversation, check or approval step may use `when: touches auth` or `w
 
 A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on the wire), rather than done or passed. It supplies no proof or measured checks. The next step can run and the job can finish, but a job whose only check was skipped has no passing check. Resume keeps the skip; rerun from an earlier step re-reads the files and decides again. Engines announce `factory.step_skipped` for this state and reason.
 
+The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
+
 ## skipped required checks — publishing waits, rerun, policy approval
 
 Under `tests pass before anything posts`, a skipped check still blocks the
@@ -311,8 +313,6 @@ work step, the question names that stop-and-correct action instead.
 A skip without a check policy does not block posting. Under
 `no pull request without a green check`, a measured passing check beside a skip
 qualifies; skips alone do not. These jobs never claim that every check passed.
-
-The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 
 ## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs
 
