@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Workstream drafts and pages carry sources and kept proposals grant go-aheads
-pr: 0
+pr: 2297
 surface: [app]
 invalidates:
   - The agent's go-ahead proposals used to be decision records with a text prefix and are now goahead records.
