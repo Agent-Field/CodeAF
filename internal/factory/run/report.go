@@ -169,6 +169,17 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			return err
 		}
 	}
+	// A coalesced snapshot carries completed rounds in the existing pipeline
+	// cost. Fold the latest result first so its round high-water stays intact.
+	if report.Pipeline != nil {
+		for _, saved := range report.Pipeline.Phases {
+			if i := phaseIndex(it, saved.Name); i >= 0 {
+				ph := &it.Stream.Phases[i]
+				ph.RestoreRoundSpend()
+				ph.Cost = max(ph.StepCost(), saved.StepCost())
+			}
+		}
+	}
 	if completed {
 		// Acknowledge only the revisions captured for this attempt. Feedback
 		// arriving in flight remains pending; no worker-supplied map overwrites it.
@@ -378,9 +389,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
-	if ph.CostRound == 0 && ph.Result != nil {
-		ph.RecordRoundSpend(ph.Round, ph.Result.Spent)
-	}
+	ph.RestoreRoundSpend()
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil
 	if step.Chat != "" {

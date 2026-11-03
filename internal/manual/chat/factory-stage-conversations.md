@@ -341,6 +341,7 @@ itself: the runner clones it when the job starts.
 
 A step's cost includes every priced round once. Resuming an interrupted round
 keeps its earlier spending; a repeated result does not add another charge.
+Retrying a step keeps its earlier cost. A new run or Run as new starts from zero.
 The job total also includes the manager's calls and other work outside steps,
 so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
 Older saved jobs still open, but costs of earlier rounds that were never saved

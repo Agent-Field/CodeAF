@@ -370,6 +370,26 @@ func (p Phase) StepCost() float64 {
 	return 0
 }
 
+// RestoreRoundSpend attributes a historical result before its next round starts.
+// Pending phases may already name the next round while retaining the last result.
+func (p *Phase) RestoreRoundSpend() {
+	if p.CostRound > 0 || p.Result == nil {
+		return
+	}
+	round := max(1, p.Round)
+	if p.State == PhasePending && round > 1 {
+		round--
+	}
+	if p.Result.Chat != "" {
+		for _, line := range p.Rounds {
+			if line.Chat == p.Result.Chat {
+				round = max(1, line.Round)
+			}
+		}
+	}
+	p.Cost, p.CostRound, p.RoundSpent = p.StepCost(), round, p.Result.Spent
+}
+
 // RecordRoundSpend replaces the current round's cumulative dollars. Repeated
 // or older reports cannot add the same receipt again.
 func (p *Phase) RecordRoundSpend(round int, spent float64) {
@@ -377,12 +397,7 @@ func (p *Phase) RecordRoundSpend(round int, spent float64) {
 	if round < p.CostRound {
 		return
 	}
-	if p.CostRound == 0 {
-		p.Cost = p.StepCost()
-		if p.Result != nil {
-			p.RoundSpent = p.Result.Spent
-		}
-	}
+	p.RestoreRoundSpend()
 	if round != p.CostRound && p.CostRound > 0 {
 		p.RoundSpent = 0
 	}

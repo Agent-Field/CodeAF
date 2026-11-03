@@ -63,7 +63,12 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
-			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending}
+			p.RestoreRoundSpend()
+			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending,
+				Cost: p.Cost, CostRound: p.CostRound, RoundSpent: p.RoundSpent}
+			if p.CostRound > 0 {
+				s.Phases[i].Round = max(p.Round, p.CostRound) + 1
+			}
 		}
 		// A fresh round retains this step's history and identity. Its nonzero
 		// round marks the stream begun, even when retrying the first step, so
@@ -72,7 +77,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		if previous.Result != nil && refusedCheckout(*previous.Result) != nil {
 			target.Result = previous.Result
 		}
-		target.Round = max(previous.Round+1, 1)
+		target.Round = max(previous.Round+1, target.Round, 1)
 		grantFreshLoop(it, target)
 		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
 		if previous.Chat != "" {

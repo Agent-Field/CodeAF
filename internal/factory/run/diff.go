@@ -25,7 +25,7 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if !reflect.DeepEqual(prev.FollowUp, cur.FollowUp) {
 		r.FollowUp = cur.FollowUp
 	}
-	if pipelineMoved(prev, cur) {
+	if pipelineMoved(prev, cur) || completedCostMoved(ps.Phases, cs.Phases) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
 	}
 	if !reflect.DeepEqual(prev.Change, cur.Change) {
@@ -81,6 +81,21 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
+}
+
+// completedCostMoved detects paid rounds absent from the last flushed snapshot.
+// The existing pipeline step cost carries their total alongside the latest result.
+func completedCostMoved(prev, cur []factory.Phase) bool {
+	was := make(map[string]float64, len(prev))
+	for _, ph := range prev {
+		was[ph.Name] = ph.StepCost()
+	}
+	for _, ph := range cur {
+		if ph.CostRound > 0 && ph.Cost-ph.RoundSpent > was[ph.Name]+1e-9 {
+			return true
+		}
+	}
+	return false
 }
 
 // modelDelta is what cur recorded since prev, per model. A model whose

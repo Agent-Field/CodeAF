@@ -8,7 +8,11 @@ invalidates:
 ---
 
 Live stage receipts retain their round attribution before a final report, including
-resumed work and delegated calls. Worker transport keeps its existing wire fields.
+resumed work and delegated calls. Retries retain step spending, while a new run starts from zero. Coalesced worker
+snapshots carry accumulated step cost in the existing `pipeline[].cost` field;
+the latest result still carries its own round cost. Old pending jobs attribute
+their saved result to its completed round so new spending reaches the job budget.
+Worker transport keeps its existing wire fields.
 The job total also includes its manager and other owned work outside steps, so it
 can exceed the sum of step costs. Historical saved jobs remain readable without a
 migration; spending from earlier rounds that was never saved cannot be recovered.

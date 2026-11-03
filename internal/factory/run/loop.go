@@ -921,10 +921,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// that round (a pause cut it): the step asks again if it must.
 			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
+			ph.RestoreRoundSpend()
 			setPhaseState(ph, factory.PhaseRunning, now)
-			if ph.CostRound == 0 && ph.Result != nil {
-				ph.RecordRoundSpend(ph.Round, ph.Result.Spent)
-			}
 			ph.Round = round
 			ph.RoundLimit = limit
 			ph.Verification = nil

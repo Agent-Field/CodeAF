@@ -1206,6 +1206,10 @@ func toPhase(s Step) factory.Phase {
 	}
 	if s.Cost != 0 {
 		p.Cost, p.CostRound = s.Cost, max(1, s.Round)
+		if s.State == StepPending && s.Report == nil {
+			// A retry has no current result; its cost belongs to earlier rounds.
+			p.CostRound = max(1, s.Round-1)
+		}
 		if p.Result != nil {
 			p.RoundSpent = p.Result.Spent
 			if s.Report != nil && p.Result.Chat != "" {
