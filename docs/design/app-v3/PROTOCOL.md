@@ -240,6 +240,7 @@ decides which combinations are accepted.
 | `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
+| `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
@@ -1656,3 +1657,18 @@ captions; `text` remains readable, with one tool name and home paths replaced
 by `~` before a 240-character limit. Other lines omit `kind`. Worker reports
 retain their existing body shape, carrying tool identity in `tone: "tool"`;
 no hello feature or new error code is needed.
+
+## Factory job first message and empty agent compatibility
+
+The hello feature `factory.job_send` announces first-message creation. With this
+feature, `factory.job_chats` returns `agent: ""` when no manager exists, preserving
+existing step chats. A client must render a composer even without an agent and
+send `factory.job_send` with `factory`, `job`, `text` and optional `client_id`.
+The result contains `agent` and `turn`; later messages can use `agents.send`.
+Reads do not count as a person's touch. Storage and lifecycle maintenance remain.
+
+Older desktops reject an empty agent in `jobChatsOf`, so the Run view has no
+manager chat or composer (and discards the returned step chats). They require a
+desktop update before pairing with this engine for jobs without a manager.
+The hello feature is capability advertisement, not client negotiation; it does
+not by itself make those older desktops compatible.

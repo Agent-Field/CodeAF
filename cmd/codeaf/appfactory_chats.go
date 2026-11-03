@@ -24,50 +24,27 @@ import (
 var _ appwire.FactoryJobChatter = (*appBackend)(nil)
 
 // FactoryJobChats answers one job's conversations on this machine's factory,
-// making the job's agent when it has none yet. It starts no job and asks no
-// model.
+// returning only conversations already recorded on the job. It writes no job.
 func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobChatsParams) (appwire.FactoryJobChats, error) {
 	host, err := b.localHostOf(p.Factory)
 	if err != nil {
 		return appwire.FactoryJobChats{}, err
 	}
-	if host.seam.Talk == nil {
-		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeEngine, "this factory cannot make a job's conversation here")
-	}
-	item, err := host.floor.Get(p.Job)
-	if err != nil || !factory.IsIssueJob(item) {
+	it, err := host.floor.Get(p.Job)
+	if err != nil || !factory.IsIssueJob(it) {
 		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "issue job not found")
 	}
-	talk, err := host.seam.Talk(ctx, p.Job)
-	if err != nil {
-		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "the job's conversation could not be opened: %s", err.Error())
+	if err := factory.RefuseDropped(it); err != nil {
+		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "%s", err)
 	}
-	it, err := host.floor.Get(p.Job)
-	if err != nil {
-		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "there is no job %d in this factory", p.Job)
+	out := appwire.FactoryJobChats{Factory: p.Factory, Job: p.Job, Steps: []appwire.FactoryJobStepChat{}}
+	if talk := strings.TrimSpace(it.Talk); talk != "" {
+		out.Agent = appAgentID(talk)
 	}
-	out := appwire.FactoryJobChats{Factory: p.Factory, Job: p.Job, Agent: appAgentID(talk), Steps: []appwire.FactoryJobStepChat{}}
-	// Whenever the job's agent is opened, by this read or later by a send or
-	// Reopen, it takes the job's effort as the job then has it.
-	if a, err := b.find(out.Agent); err == nil && a != nil {
-		floor, job := host.floor, p.Job
-		b.locked(func() {
-			a.jobEffort = func() string {
-				it, err := floor.Get(job)
-				if err != nil {
-					return ""
-				}
-				return it.Effort
-			}
-		})
-	}
-	held, err := b.holdJobChat(out.Agent)
-	if err != nil {
-		return appwire.FactoryJobChats{}, err
-	}
-	// A held agent takes it now; a closed one keeps its own until it is opened.
-	if held && it.Effort != "" {
-		_, _ = b.SetEffort(out.Agent, it.Effort)
+	if out.Agent != "" {
+		if err := b.holdJobManager(host, p.Job, out.Agent); err != nil {
+			return appwire.FactoryJobChats{}, err
+		}
 	}
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
@@ -85,6 +62,26 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 		}
 	}
 	return out, nil
+}
+
+// holdJobManager binds future opens to the job's current effort without saving it.
+func (b *appBackend) holdJobManager(host *appFactoryHost, job int, id string) error {
+	a, err := b.find(id)
+	if err != nil {
+		return err
+	}
+	floor := host.floor
+	b.locked(func() {
+		a.jobEffort = func() string {
+			it, err := floor.Get(job)
+			if err != nil {
+				return ""
+			}
+			return it.Effort
+		}
+	})
+	_, err = b.holdJobChat(id)
+	return err
 }
 
 // roundChats is each finished round's chat that can be opened, held open as
