@@ -2,6 +2,7 @@ package workstream
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -118,8 +119,8 @@ func TestPartAPageTreePlacementCyclesAndDelete(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(deleted, []string{a.ID, child.ID}) {
 		t.Fatalf("delete: %v %v", deleted, err)
 	}
-	if _, err := s.Page(ctx, child.ID, false); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("child remains: %v", err)
+	if page, err := s.Page(ctx, child.ID, false); err != nil || page.DeletedAt.IsZero() {
+		t.Fatalf("deleted child must remain readable: %+v %v", page, err)
 	}
 }
 
@@ -213,5 +214,292 @@ func TestPartAOverviewIdentitySurvivesRenaming(t *testing.T) {
 	pages, err = s.Pages(ctx, w.ID)
 	if err != nil || pages[0].ID != overview.ID || pages[0].Position != 0 {
 		t.Fatalf("Overview order: %+v %v", pages, err)
+	}
+}
+
+// WP-F1 (a): saved content and attribution combine with current page metadata;
+// selecting the current version is identical to reading without a version.
+func TestWorkstreamPageGetSavedVersion(t *testing.T) {
+	s, _, now := testStore(t)
+	ctx := context.Background()
+	w := createStream(t, s, "Version reads")
+	firstDoc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"First"}]}]}`)
+	first, _, err := s.CreatePage(ctx, PageCreate{WorkstreamID: w.ID, Title: "First title", Doc: firstDoc,
+		Attribution: Attribution{By: "agent", From: &Source{Kind: "chat", ID: "first-source"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(time.Hour)
+	if _, _, err := s.SavePage(ctx, first.ID, 1, json.RawMessage(emptyDoc), Attribution{}); err != nil {
+		t.Fatal(err)
+	}
+	parent, _, err := s.CreatePage(ctx, PageCreate{WorkstreamID: w.ID, Title: "Parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.MovePage(ctx, first.ID, parent.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	title, owner, read := "Current title", "agent", true
+	if _, _, err := s.UpdatePage(ctx, first.ID, PagePatch{Title: &title, Owner: &owner, ReadByJobs: &read}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := s.Page(ctx, first.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := s.PageAtVersion(ctx, first.ID, current.Version, false)
+	if err != nil || !reflect.DeepEqual(selected, current) {
+		t.Fatalf("current version: %+v, want %+v: %v", selected, current, err)
+	}
+	check := func(deleted bool) {
+		t.Helper()
+		old, err := s.PageAtVersion(ctx, first.ID, 1, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := current
+		want.Title, want.Doc, want.Version = first.Title, first.Doc, first.Version
+		want.UpdatedAt, want.UpdatedBy, want.UpdatedFrom = first.UpdatedAt, first.UpdatedBy, first.UpdatedFrom
+		md, err := pagedoc.Markdown(firstDoc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want.Markdown = &md
+		if deleted {
+			want.DeletedAt = *now
+		}
+		if !reflect.DeepEqual(old, want) || old.Markdown == nil || !strings.Contains(*old.Markdown, "First") {
+			t.Fatalf("saved version: %+v, want %+v", old, want)
+		}
+	}
+	check(false)
+	if _, err := s.PageAtVersion(ctx, first.ID, 99, false); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown version: %v", err)
+	}
+	for _, version := range []int{0, -1} {
+		if _, err := s.PageAtVersion(ctx, first.ID, version, false); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid version %d: %v", version, err)
+		}
+	}
+	if _, _, err := s.DeletePage(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+}
+
+func createWorkstreamPage(t *testing.T, s *Store, workstreamID, parent, title string) Page {
+	t.Helper()
+	p, _, err := s.CreatePage(context.Background(), PageCreate{WorkstreamID: workstreamID, ParentID: parent, Title: title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// WP-F1 (b): delete groups preserve separate deletions, history, nesting and order;
+// undelete appends under a live parent and changes attribution without a save.
+func TestWorkstreamDeletedPageTreeRestore(t *testing.T) {
+	s, _, now := testStore(t)
+	ctx := context.Background()
+	w := createStream(t, s, "Restorable tree")
+	deleted, err := s.DeletedPages(ctx, w.ID)
+	if err != nil || deleted == nil || len(deleted) != 0 {
+		t.Fatalf("initial deleted list: %+v %v", deleted, err)
+	}
+	parent := createWorkstreamPage(t, s, w.ID, "", "Parent")
+	root := createWorkstreamPage(t, s, w.ID, parent.ID, "Root")
+	earlier := createWorkstreamPage(t, s, w.ID, root.ID, "Earlier deletion")
+	first := createWorkstreamPage(t, s, w.ID, root.ID, "First")
+	grandchild := createWorkstreamPage(t, s, w.ID, first.ID, "Grandchild")
+	second := createWorkstreamPage(t, s, w.ID, root.ID, "Second")
+	sibling := createWorkstreamPage(t, s, w.ID, parent.ID, "Sibling")
+	doc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Keep me"}]}]}`)
+	if _, _, err := s.SavePage(ctx, root.ID, 1, doc, Attribution{By: "agent", From: &Source{Kind: "chat", ID: "source"}}); err != nil {
+		t.Fatal(err)
+	}
+	lastTitle := "Last title"
+	if _, _, err := s.UpdatePage(ctx, root.ID, PagePatch{Title: &lastTitle, Attribution: Attribution{By: "agent", From: &Source{Kind: "chat", ID: "source"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.DeletePage(ctx, earlier.ID); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(time.Hour)
+	ids, change, err := s.DeletePage(ctx, root.ID)
+	if err != nil || !reflect.DeepEqual(ids, []string{root.ID, first.ID, grandchild.ID, second.ID}) || !reflect.DeepEqual(change.Parts, []ChangedPart{PartWorkstream, PartPages}) {
+		t.Fatalf("delete receipt: %v %+v %v", ids, change, err)
+	}
+	deleted, err = s.DeletedPages(ctx, w.ID)
+	if err != nil || len(deleted) != 2 || deleted[0].ID != root.ID || deleted[1].ID != earlier.ID || !deleted[0].DeletedAt.Equal(*now) || !deleted[0].DeletedAt.After(deleted[1].DeletedAt) {
+		t.Fatalf("delete roots: %+v %v", deleted, err)
+	}
+	nodes, err := s.Pages(ctx, w.ID)
+	if err != nil || len(nodes) != 3 || nodes[1].ID != parent.ID || nodes[2].ID != sibling.ID || nodes[2].Position != 0 {
+		t.Fatalf("live tree: %+v %v", nodes, err)
+	}
+	for _, id := range ids {
+		p, err := s.Page(ctx, id, true)
+		if err != nil || !p.DeletedAt.Equal(*now) {
+			t.Fatalf("deleted page %s: %+v %v", id, p, err)
+		}
+	}
+	for name, write := range map[string]func() error{
+		"save": func() error {
+			_, _, err := s.SavePage(ctx, root.ID, 2, json.RawMessage(emptyDoc), Attribution{})
+			return err
+		},
+		"update":  func() error { _, _, err := s.UpdatePage(ctx, root.ID, PagePatch{}); return err },
+		"move":    func() error { _, _, err := s.MovePage(ctx, root.ID, "", ""); return err },
+		"delete":  func() error { _, _, err := s.DeletePage(ctx, root.ID); return err },
+		"history": func() error { _, err := s.PageHistory(ctx, root.ID, 50); return err },
+		"create parent": func() error {
+			_, _, err := s.CreatePage(ctx, PageCreate{WorkstreamID: w.ID, ParentID: root.ID, Title: "No"})
+			return err
+		},
+		"create after": func() error {
+			_, _, err := s.CreatePage(ctx, PageCreate{WorkstreamID: w.ID, AfterID: root.ID, Title: "No"})
+			return err
+		},
+		"move parent": func() error { _, _, err := s.MovePage(ctx, sibling.ID, root.ID, ""); return err },
+		"move after":  func() error { _, _, err := s.MovePage(ctx, sibling.ID, "", root.ID); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := write(); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("deleted target: %v", err)
+			}
+		})
+	}
+	*now = now.Add(time.Hour)
+	restored, change, err := s.UndeletePage(ctx, root.ID)
+	if err != nil || restored.ParentID != parent.ID || restored.Position != 1 || restored.Title != lastTitle || restored.Version != 2 || string(restored.Doc) != string(doc) || !restored.DeletedAt.IsZero() || !restored.UpdatedAt.Equal(*now) || restored.UpdatedBy != "you" || restored.UpdatedFrom != nil || change.ID != w.ID || !reflect.DeepEqual(change.Parts, []ChangedPart{PartWorkstream, PartPages}) {
+		t.Fatalf("restore: %+v %+v %v", restored, change, err)
+	}
+	nodes, err = s.Pages(ctx, w.ID)
+	var liveIDs []string
+	for _, p := range nodes {
+		liveIDs = append(liveIDs, p.ID)
+	}
+	if err != nil || len(liveIDs) != 7 || !reflect.DeepEqual(liveIDs[1:], []string{parent.ID, sibling.ID, root.ID, first.ID, grandchild.ID, second.ID}) {
+		t.Fatalf("restored order: %+v %v", nodes, err)
+	}
+	for _, want := range []Page{first, grandchild, second} {
+		p, err := s.Page(ctx, want.ID, false)
+		if err != nil || p.ParentID != want.ParentID || p.Version != want.Version || !p.DeletedAt.IsZero() {
+			t.Fatalf("restored nesting: %+v %v", p, err)
+		}
+	}
+	deleted, err = s.DeletedPages(ctx, w.ID)
+	if err != nil || len(deleted) != 1 || deleted[0].ID != earlier.ID {
+		t.Fatalf("earlier deletion revived: %+v %v", deleted, err)
+	}
+	history, err := s.PageHistory(ctx, root.ID, 50)
+	if err != nil || len(history) != 2 || history[0].Title != root.Title || history[0].SavedBy != "agent" || history[0].From == nil || history[0].From.ID != "source" {
+		t.Fatalf("restore changed saved history: %+v %v", history, err)
+	}
+}
+
+// WP-F1 (b): restoring a descendant of a deleted parent restores only its own
+// group subtree, appends at the root, and remains permitted on a done workstream.
+func TestWorkstreamDeletedDescendantRestoresAtRoot(t *testing.T) {
+	s, _, _ := testStore(t)
+	ctx := context.Background()
+	w := createStream(t, s, "Detached restore")
+	root := createWorkstreamPage(t, s, w.ID, "", "Root")
+	child := createWorkstreamPage(t, s, w.ID, root.ID, "Child")
+	grandchild := createWorkstreamPage(t, s, w.ID, child.ID, "Grandchild")
+	other := createWorkstreamPage(t, s, w.ID, root.ID, "Other")
+	last := createWorkstreamPage(t, s, w.ID, "", "Last")
+	if _, _, err := s.MarkDone(ctx, w.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.DeletePage(ctx, root.ID); err != nil {
+		t.Fatal(err)
+	}
+	restored, _, err := s.UndeletePage(ctx, child.ID)
+	if err != nil || restored.ParentID != "" || restored.Position != 2 || restored.Version != 1 {
+		t.Fatalf("descendant restore: %+v %v", restored, err)
+	}
+	nodes, err := s.Pages(ctx, w.ID)
+	if err != nil || len(nodes) != 4 || nodes[1].ID != last.ID || nodes[2].ID != child.ID || nodes[3].ID != grandchild.ID {
+		t.Fatalf("detached tree: %+v %v", nodes, err)
+	}
+	for _, id := range []string{root.ID, other.ID} {
+		p, err := s.Page(ctx, id, false)
+		if err != nil || p.DeletedAt.IsZero() {
+			t.Fatalf("unrelated deleted page: %+v %v", p, err)
+		}
+	}
+	rootRestored, _, err := s.UndeletePage(ctx, root.ID)
+	if err != nil || rootRestored.ParentID != "" || rootRestored.Position != 3 {
+		t.Fatalf("root append: %+v %v", rootRestored, err)
+	}
+	p, err := s.Page(ctx, child.ID, false)
+	if err != nil || p.ParentID != "" || p.Position != 2 {
+		t.Fatalf("later root restore moved detached child: %+v %v", p, err)
+	}
+	stream, err := s.Get(ctx, w.ID)
+	if err != nil || stream.DoneAt.IsZero() {
+		t.Fatalf("restore changed done state: %+v %v", stream, err)
+	}
+}
+
+// WP-F1 (b): collection deletion still purges deleted pages and their saved
+// versions through the existing cascade, while page.delete retains both.
+func TestWorkstreamDeletedPagesCollectionCascade(t *testing.T) {
+	s, storage, _ := testStore(t)
+	ctx := context.Background()
+	w := createStream(t, s, "Page retention")
+	root := createWorkstreamPage(t, s, w.ID, "", "Root")
+	child := createWorkstreamPage(t, s, w.ID, root.ID, "Child")
+	if _, _, err := s.DeletePage(ctx, root.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{root.ID, child.ID} {
+		if p, err := s.PageAtVersion(ctx, id, 1, false); err != nil || p.DeletedAt.IsZero() {
+			t.Fatalf("retained version: %+v %v", p, err)
+		}
+	}
+	if err := storage.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, "DELETE FROM collections WHERE id=?", w.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Read(ctx, func(tx *sql.Tx, _ int) error {
+		for _, table := range []string{"workstream_pages", "workstream_page_versions"} {
+			var count int
+			if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
+				return err
+			}
+			if count != 0 {
+				t.Errorf("%s retained %d rows after collection purge", table, count)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// WP-F1 (c): the exported creation default trims Unicode space and uses case
+// folding, while the store's existing explicit boolean remains authoritative.
+func TestWorkstreamReadByJobsDefault(t *testing.T) {
+	for _, tc := range []struct {
+		title string
+		want  bool
+	}{
+		{"Spec", true}, {" decisions ", true}, {"DECISIONS", true}, {"\u2003sPeC\u2003", true},
+		{"Spec notes", false}, {"Overview", false}, {"Notes", false}, {"", false},
+	} {
+		if got := ReadByJobsDefault(tc.title); got != tc.want {
+			t.Errorf("%q: %v, want %v", tc.title, got, tc.want)
+		}
+	}
+	s, _, _ := testStore(t)
+	w := createStream(t, s, "Explicit store default")
+	p := createWorkstreamPage(t, s, w.ID, "", "Spec")
+	if p.ReadByJobs {
+		t.Fatal("store changed an explicit false to the title default")
 	}
 }

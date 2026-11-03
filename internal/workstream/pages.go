@@ -4,52 +4,88 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
 
-const pageSelect = `SELECT id,workstream_id,coalesce(parent_id,''),title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc,overview FROM workstream_pages WHERE id=?`
+const pageSelect = `SELECT id,workstream_id,coalesce(parent_id,''),title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc,overview,deleted_at FROM workstream_pages WHERE id=?`
+
+// ReadByJobsDefault chooses the creation default; later title changes do not
+// alter an existing page's explicit Read by jobs setting.
+func ReadByJobsDefault(title string) bool {
+	title = strings.TrimSpace(title)
+	return strings.EqualFold(title, "Spec") || strings.EqualFold(title, "Decisions")
+}
 
 func pageIn(ctx context.Context, tx *sql.Tx, id string) (Page, bool, error) {
 	var p Page
 	var at int64
 	var source sql.NullString
+	var deletedAt sql.NullInt64
 	var overview bool
 	var doc string
-	err := tx.QueryRowContext(ctx, pageSelect, id).Scan(&p.ID, &p.WorkstreamID, &p.ParentID, &p.Title, &p.Owner, &p.ReadByJobs, &p.Position, &p.Version, &at, &p.UpdatedBy, &source, &doc, &overview)
+	err := tx.QueryRowContext(ctx, pageSelect, id).Scan(&p.ID, &p.WorkstreamID, &p.ParentID, &p.Title, &p.Owner, &p.ReadByJobs, &p.Position, &p.Version, &at, &p.UpdatedBy, &source, &doc, &overview, &deletedAt)
 	if err != nil {
 		return p, false, found(err)
 	}
 	p.UpdatedAt = instant(at)
+	if deletedAt.Valid {
+		p.DeletedAt = instant(deletedAt.Int64)
+	}
 	p.Doc = json.RawMessage(doc)
 	p.UpdatedFrom, err = readSource(source)
 	return p, overview, err
 }
-func pageNodesIn(ctx context.Context, tx *sql.Tx, id string) ([]PageNode, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id,workstream_id,coalesce(parent_id,''),title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from FROM workstream_pages WHERE workstream_id=? ORDER BY position,id`, id)
-	if err != nil {
-		return nil, err
+func livePageIn(ctx context.Context, tx *sql.Tx, id string) (Page, bool, error) {
+	p, overview, err := pageIn(ctx, tx, id)
+	if err == nil && !p.DeletedAt.IsZero() {
+		err = ErrNotFound
 	}
+	return p, overview, err
+}
+
+const pageNodeColumns = `id,workstream_id,coalesce(parent_id,''),title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,deleted_at`
+
+func readPageNodes(rows *sql.Rows) ([]PageNode, error) {
 	defer rows.Close()
-	siblings := map[string][]PageNode{}
+	out := make([]PageNode, 0)
 	for rows.Next() {
 		var p PageNode
 		var at int64
 		var source sql.NullString
-		if err := rows.Scan(&p.ID, &p.WorkstreamID, &p.ParentID, &p.Title, &p.Owner, &p.ReadByJobs, &p.Position, &p.Version, &at, &p.UpdatedBy, &source); err != nil {
+		var deletedAt sql.NullInt64
+		if err := rows.Scan(&p.ID, &p.WorkstreamID, &p.ParentID, &p.Title, &p.Owner, &p.ReadByJobs, &p.Position, &p.Version, &at, &p.UpdatedBy, &source, &deletedAt); err != nil {
 			return nil, err
 		}
 		p.UpdatedAt = instant(at)
+		if deletedAt.Valid {
+			p.DeletedAt = instant(deletedAt.Int64)
+		}
+		var err error
 		p.UpdatedFrom, err = readSource(source)
 		if err != nil {
 			return nil, err
 		}
-		siblings[p.ParentID] = append(siblings[p.ParentID], p)
+		out = append(out, p)
 	}
-	if err := rows.Err(); err != nil {
+	return out, rows.Err()
+}
+
+func pageNodesIn(ctx context.Context, tx *sql.Tx, id string) ([]PageNode, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT `+pageNodeColumns+` FROM workstream_pages WHERE workstream_id=? AND deleted_at IS NULL ORDER BY position,id`, id)
+	if err != nil {
 		return nil, err
+	}
+	nodes, err := readPageNodes(rows)
+	if err != nil {
+		return nil, err
+	}
+	siblings := map[string][]PageNode{}
+	for _, p := range nodes {
+		siblings[p.ParentID] = append(siblings[p.ParentID], p)
 	}
 	out := make([]PageNode, 0)
 	seen := map[string]bool{}
@@ -89,7 +125,40 @@ func (s *Store) Pages(ctx context.Context, id string) ([]PageNode, error) {
 	})
 	return out, err
 }
+
+// DeletedPages lists delete roots; descendants remain readable but are not
+// separate entries unless they were deleted by their own delete operation.
+func (s *Store) DeletedPages(ctx context.Context, id string) ([]PageNode, error) {
+	out := make([]PageNode, 0)
+	err := s.workspace.Read(ctx, func(tx *sql.Tx, v int) error {
+		if v < 3 {
+			return ErrNotFound
+		}
+		if _, err := getIn(ctx, tx, id); err != nil {
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT `+pageNodeColumns+` FROM workstream_pages WHERE workstream_id=? AND deleted_at IS NOT NULL AND deleted_root=id ORDER BY deleted_at DESC,id`, id)
+		if err != nil {
+			return err
+		}
+		out, err = readPageNodes(rows)
+		return err
+	})
+	return out, err
+}
 func (s *Store) Page(ctx context.Context, id string, markdown bool) (Page, error) {
+	return s.page(ctx, id, 0, markdown)
+}
+
+// PageAtVersion reads saved content while preserving the page's current tree metadata.
+func (s *Store) PageAtVersion(ctx context.Context, id string, version int, markdown bool) (Page, error) {
+	if version < 1 {
+		return Page{}, invalid("version must be positive")
+	}
+	return s.page(ctx, id, version, markdown)
+}
+
+func (s *Store) page(ctx context.Context, id string, version int, markdown bool) (Page, error) {
 	var p Page
 	err := s.workspace.Read(ctx, func(tx *sql.Tx, v int) error {
 		if v < 3 {
@@ -97,6 +166,19 @@ func (s *Store) Page(ctx context.Context, id string, markdown bool) (Page, error
 		}
 		var err error
 		p, _, err = pageIn(ctx, tx, id)
+		if err != nil || version == 0 || version == p.Version {
+			return err
+		}
+		var at int64
+		var source sql.NullString
+		var doc string
+		err = tx.QueryRowContext(ctx, `SELECT title,doc,version,saved_at,saved_by,source FROM workstream_page_versions WHERE page_id=? AND version=?`, id, version).
+			Scan(&p.Title, &doc, &p.Version, &at, &p.UpdatedBy, &source)
+		if err != nil {
+			return found(err)
+		}
+		p.Doc, p.UpdatedAt = json.RawMessage(doc), instant(at)
+		p.UpdatedFrom, err = readSource(source)
 		return err
 	})
 	if err == nil && markdown {
@@ -118,7 +200,7 @@ func checkDoc(doc json.RawMessage) error {
 }
 func saveVersion(ctx context.Context, tx *sql.Tx, id string) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO workstream_page_versions(page_id,version,saved_at,saved_by,source,title,doc,bytes)
- SELECT id,version,updated_at,updated_by,updated_from,title,doc,length(CAST(doc AS BLOB)) FROM workstream_pages WHERE id=?`, id)
+ SELECT id,version,updated_at,updated_by,updated_from,title,doc,length(CAST(doc AS BLOB)) FROM workstream_pages WHERE id=? AND deleted_at IS NULL`, id)
 	return err
 }
 func (s *Store) SavePage(ctx context.Context, id string, base int, doc json.RawMessage, who Attribution) (Page, Change, error) {
@@ -151,6 +233,12 @@ func (s *Store) savePage(ctx context.Context, id string, base int, doc json.RawM
 		p, _, err := pageIn(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !p.DeletedAt.IsZero() {
+			if restore > 0 {
+				return invalid("deleted page restore requires only id")
+			}
+			return ErrNotFound
 		}
 		if p.Version != base {
 			return &VersionConflict{ID: id, Version: p.Version, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy}
@@ -198,7 +286,7 @@ func placePage(ctx context.Context, tx *sql.Tx, p Page, parent, after string, la
 			}
 			seen[id] = true
 			var workstreamID, next string
-			err := tx.QueryRowContext(ctx, "SELECT workstream_id,coalesce(parent_id,'') FROM workstream_pages WHERE id=?", id).Scan(&workstreamID, &next)
+			err := tx.QueryRowContext(ctx, "SELECT workstream_id,coalesce(parent_id,'') FROM workstream_pages WHERE id=? AND deleted_at IS NULL", id).Scan(&workstreamID, &next)
 			if err != nil {
 				return false, found(err)
 			}
@@ -210,7 +298,7 @@ func placePage(ctx context.Context, tx *sql.Tx, p Page, parent, after string, la
 	}
 	if after != "" {
 		var workstreamID, siblingParent string
-		err := tx.QueryRowContext(ctx, "SELECT workstream_id,coalesce(parent_id,'') FROM workstream_pages WHERE id=?", after).Scan(&workstreamID, &siblingParent)
+		err := tx.QueryRowContext(ctx, "SELECT workstream_id,coalesce(parent_id,'') FROM workstream_pages WHERE id=? AND deleted_at IS NULL", after).Scan(&workstreamID, &siblingParent)
 		if err != nil {
 			return false, found(err)
 		}
@@ -315,7 +403,7 @@ func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, err
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_pages(id,workstream_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc) VALUES (?,?,?,?,?,2147483647,1,?,?,?,?)`, id, p.WorkstreamID, p.Title, owner, p.ReadByJobs, at, by, source, string(p.Doc)); err != nil {
 			return err
 		}
-		page, _, err := pageIn(ctx, tx, id)
+		page, _, err := livePageIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -359,7 +447,7 @@ func (s *Store) UpdatePage(ctx context.Context, id string, p PagePatch) (PageNod
 	var out PageNode
 	var c Change
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		page, _, err := pageIn(ctx, tx, id)
+		page, _, err := livePageIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -398,7 +486,7 @@ func (s *Store) MovePage(ctx context.Context, id, parent, after string) (PageNod
 	var out PageNode
 	var c Change
 	err := s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		p, overview, err := pageIn(ctx, tx, id)
+		p, overview, err := livePageIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -429,7 +517,7 @@ func (s *Store) DeletePage(ctx context.Context, id string) ([]string, Change, er
 	deleted := []string{}
 	var c Change
 	err := s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		p, overview, err := pageIn(ctx, tx, id)
+		p, overview, err := livePageIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -447,10 +535,9 @@ func (s *Store) DeletePage(ctx context.Context, id string) ([]string, Change, er
 				deleted = append(deleted, n.ID)
 			}
 		}
-		// Delete leaves before parents to avoid SQLite's trigger depth limit on a
-		// deep subtree; the cascade remains a backstop for ordinary SQL deletions.
-		for i := len(deleted) - 1; i >= 0; i-- {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM workstream_pages WHERE id=?", deleted[i]); err != nil {
+		at := s.now().UnixMilli()
+		for _, deletedID := range deleted {
+			if _, err := tx.ExecContext(ctx, "UPDATE workstream_pages SET deleted_at=?,deleted_root=? WHERE id=?", at, id, deletedID); err != nil {
 				return err
 			}
 		}
@@ -463,7 +550,7 @@ func (s *Store) DeletePage(ctx context.Context, id string) ([]string, Change, er
 				i++
 			}
 		}
-		if err := touch(ctx, tx, p.WorkstreamID, s.now().UnixMilli()); err != nil {
+		if err := touch(ctx, tx, p.WorkstreamID, at); err != nil {
 			return err
 		}
 		c = changed(p.WorkstreamID, PartPages)
@@ -474,6 +561,79 @@ func (s *Store) DeletePage(ctx context.Context, id string) ([]string, Change, er
 	}
 	return deleted, c, nil
 }
+
+// UndeletePage restores only descendants removed by the same delete. Like a
+// move, it records the person as the actor and does not create a saved version.
+func (s *Store) UndeletePage(ctx context.Context, id string) (Page, Change, error) {
+	var out Page
+	var c Change
+	err := s.workspace.Write(ctx, func(tx *sql.Tx) error {
+		p, _, err := pageIn(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if p.DeletedAt.IsZero() {
+			return invalid("live page restore requires version and base_version")
+		}
+		var root string
+		if err := tx.QueryRowContext(ctx, "SELECT deleted_root FROM workstream_pages WHERE id=?", id).Scan(&root); err != nil {
+			return found(err)
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT `+pageNodeColumns+` FROM workstream_pages WHERE workstream_id=? AND deleted_root=? AND deleted_at=? ORDER BY position,id`, p.WorkstreamID, root, p.DeletedAt.UnixMilli())
+		if err != nil {
+			return err
+		}
+		nodes, err := readPageNodes(rows)
+		if err != nil {
+			return err
+		}
+		children := map[string][]string{}
+		for _, n := range nodes {
+			children[n.ParentID] = append(children[n.ParentID], n.ID)
+		}
+		parent := p.ParentID
+		if parent != "" {
+			if _, _, err := livePageIn(ctx, tx, parent); errors.Is(err, ErrNotFound) {
+				parent = ""
+			} else if err != nil {
+				return err
+			}
+		}
+		at := s.now().UnixMilli()
+		stack := []string{id}
+		seen := map[string]bool{}
+		for len(stack) > 0 {
+			last := len(stack) - 1
+			restoredID := stack[last]
+			stack = stack[:last]
+			if seen[restoredID] {
+				continue
+			}
+			seen[restoredID] = true
+			if _, err := tx.ExecContext(ctx, `UPDATE workstream_pages SET deleted_at=NULL,deleted_root=NULL,updated_at=?,updated_by='you',updated_from=NULL WHERE id=?`, at, restoredID); err != nil {
+				return err
+			}
+			stack = append(stack, children[restoredID]...)
+		}
+		// Force placement even when the old ordinal happens to equal the append
+		// index: the restored page still needs its parent and attribution written.
+		p.Position = -1
+		if _, err := placePage(ctx, tx, p, parent, "", true, at, "you", nil); err != nil {
+			return err
+		}
+		if err := touch(ctx, tx, p.WorkstreamID, at); err != nil {
+			return err
+		}
+		out, _, err = pageIn(ctx, tx, id)
+		c = changed(p.WorkstreamID, PartPages)
+		return err
+	})
+	if err != nil {
+		return Page{}, Change{}, err
+	}
+	return out, c, nil
+}
+
 func (s *Store) PageHistory(ctx context.Context, id string, limit int) ([]PageVersion, error) {
 	if limit == 0 {
 		limit = 50
@@ -486,7 +646,7 @@ func (s *Store) PageHistory(ctx context.Context, id string, limit int) ([]PageVe
 		if v < 3 {
 			return ErrNotFound
 		}
-		if _, _, err := pageIn(ctx, tx, id); err != nil {
+		if _, _, err := livePageIn(ctx, tx, id); err != nil {
 			return err
 		}
 		rows, err := tx.QueryContext(ctx, "SELECT version,saved_at,saved_by,source,title,bytes FROM workstream_page_versions WHERE page_id=? ORDER BY version DESC LIMIT ?", id, limit)

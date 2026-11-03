@@ -210,3 +210,39 @@ DELETE FROM memberships WHERE ref_id='gone';`); err != nil {
 		})
 	}
 }
+
+// WP-F1 (b), Storage: schema 3 is amended in place; either missing deletion
+// column identifies an obsolete schema-3 file and must fail at Open.
+func TestWorkstreamSchemaThreeRequiresDeletionColumns(t *testing.T) {
+	for _, column := range []string{"deleted_at", "deleted_root"} {
+		t.Run(column, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "obsolete.db")
+			s := openTestStore(t, path)
+			createTestCollection(t, s, "Schema three")
+			if userVersion(t, s) != 3 {
+				t.Fatal("fixture is not schema 3")
+			}
+			if _, err := s.db.Exec("ALTER TABLE workstream_pages DROP COLUMN " + column); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opened, err := Open(path)
+			if opened != nil {
+				_ = opened.Close()
+			}
+			if err == nil || !strings.Contains(err.Error(), column) {
+				t.Fatalf("obsolete schema 3 opened without naming %s: %v", column, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("refusal changed obsolete schema 3: %v", err)
+			}
+		})
+	}
+}

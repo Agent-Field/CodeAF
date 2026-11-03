@@ -180,7 +180,8 @@ CREATE TABLE workstream_pages (
  read_by_jobs INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL CHECK(position>=0),
  version INTEGER NOT NULL CHECK(version>0), updated_at INTEGER NOT NULL,
  updated_by TEXT NOT NULL CHECK(updated_by IN ('you','agent')), updated_from TEXT,
- doc TEXT NOT NULL, overview INTEGER NOT NULL DEFAULT 0 CHECK(overview IN (0,1))
+ doc TEXT NOT NULL, overview INTEGER NOT NULL DEFAULT 0 CHECK(overview IN (0,1)),
+ deleted_at INTEGER, deleted_root TEXT
 );
 CREATE INDEX workstream_page_tree ON workstream_pages(workstream_id,parent_id,position);
 CREATE UNIQUE INDEX workstream_overview ON workstream_pages(workstream_id) WHERE overview=1;
@@ -225,7 +226,7 @@ CREATE TABLE workstream_plans (
 var workstreamSchemaReads = []string{
 	"SELECT id,why,origin_chat_id,agent_id,autonomy,wake_morning,wake_related_issues,budget_usd,created_at,updated_at,started_at,done_at,how_it_went,client_id FROM workstreams LIMIT 0",
 	"SELECT member_seq,workstream_id,factory,job FROM workstream_jobs LIMIT 0",
-	"SELECT id,workstream_id,parent_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc,overview FROM workstream_pages LIMIT 0",
+	"SELECT id,workstream_id,parent_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc,overview,deleted_at,deleted_root FROM workstream_pages LIMIT 0",
 	"SELECT page_id,version,saved_at,saved_by,source,title,doc,bytes FROM workstream_page_versions LIMIT 0",
 	"SELECT id,workstream_id,kind,text,state,actor,source,created_at,decided_at,supersedes,superseded_by FROM workstream_records LIMIT 0",
 	"SELECT id,workstream_id,scope,factory,job,wave,milestone_id,cap_usd,ends_at,state,end_reason,granted_at,ended_at FROM workstream_goaheads LIMIT 0",
