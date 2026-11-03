@@ -444,7 +444,7 @@ func TestWorkstreamSuggestionKeepTooLarge(t *testing.T) {
 // WP-6d Schema: older pages list no suggestions; unknown keep/drop targets
 // return not found and roll back migration. Creation performs the first write.
 func TestWorkstreamSuggestionsReadOlderSchemasWithoutWriting(t *testing.T) {
-	for _, version := range []int{3, 4} {
+	for _, version := range []int{3, 4, 5} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "collections.db")
 			w, err := workspace.Open(path)
@@ -456,6 +456,9 @@ func TestWorkstreamSuggestionsReadOlderSchemasWithoutWriting(t *testing.T) {
 			ctx := context.Background()
 			if err := w.Write(ctx, func(tx *sql.Tx) error {
 				ddl := "DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions;"
+				if version < workspace.WorkstreamSourcesSchemaVersion {
+					ddl += "DROP TABLE workstream_sources;"
+				}
 				if version == 3 {
 					ddl += "DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes;"
 				}
@@ -511,8 +514,8 @@ func TestWorkstreamSuggestionsReadOlderSchemasWithoutWriting(t *testing.T) {
 			}
 			workstreamSuggestionCreate(t, s, ask)
 			if err := w.Read(ctx, func(_ *sql.Tx, got int) error {
-				if got != 5 {
-					t.Fatalf("creation did not migrate to schema 5: %d", got)
+				if got != 6 {
+					t.Fatalf("creation did not migrate to schema 6: %d", got)
 				}
 				return nil
 			}); err != nil {

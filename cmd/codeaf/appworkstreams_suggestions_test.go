@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/workspace"
 	"github.com/Agent-Field/codeaf/internal/workstream"
 	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
@@ -18,7 +19,7 @@ import (
 // WP-6d Schema, Tool: both wire lists and workstream_read pages work before
 // suggestion tables exist. Refused decisions do not commit their migration.
 func TestAppWorkstreamSuggestionsOnOlderSchemas(t *testing.T) {
-	for _, version := range []int{3, 4} {
+	for _, version := range []int{3, 4, 5} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			b, rec, w, door := workstreamAgentFixture(t)
 			ctx := context.Background()
@@ -33,6 +34,9 @@ func TestAppWorkstreamSuggestionsOnOlderSchemas(t *testing.T) {
 			}
 			if err := store.Write(ctx, func(tx *sql.Tx) error {
 				ddl := "DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions;"
+				if version < workspace.WorkstreamSourcesSchemaVersion {
+					ddl += "DROP TABLE workstream_sources;"
+				}
 				if version == 3 {
 					ddl += "DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes;"
 				}

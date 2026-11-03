@@ -121,6 +121,7 @@ func workstreamSourceMigration(t *testing.T, version int) {
 			}
 			query = "DROP TABLE workstream_sources; PRAGMA user_version=4"
 		}
+		query = "DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions; " + query
 		_, err := tx.Exec(query)
 		return err
 	}); err != nil {
@@ -181,7 +182,7 @@ func workstreamSourceMigration(t *testing.T, version int) {
 		t.Fatalf("schema %d reads wrote: %v", version, err)
 	}
 	item, _, _, err := s.AddSource(ctx, w.ID, SourceAdd{Kind: SourceLink, URL: workstreamSourcePtr("https://example.com")})
-	if err != nil || workstreamSourceSchemaVersion(t, collections) != 5 {
+	if err != nil || workstreamSourceSchemaVersion(t, collections) != 6 {
 		t.Fatalf("migration: %+v %v", item, err)
 	}
 	after := workstreamSourceStoredRows(t, collections)

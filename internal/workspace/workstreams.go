@@ -270,3 +270,29 @@ func migrateWorkstreamWakes(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, workstreamWakeSchema+workstreamCollectionKeep)
 	return err
 }
+
+// WorkstreamSuggestionSchemaVersion keeps suggestion reads tied to this step.
+const WorkstreamSuggestionSchemaVersion = 6
+
+// Suggestions are additive to schema 5 and are installed by the first write.
+const workstreamSuggestionSchema = `
+CREATE TABLE workstream_suggestions (
+ id TEXT PRIMARY KEY, workstream_id TEXT NOT NULL REFERENCES workstreams(id) ON DELETE CASCADE,
+ page_id TEXT NOT NULL REFERENCES workstream_pages(id) ON DELETE CASCADE,
+ base_version INTEGER NOT NULL, why TEXT NOT NULL, actor TEXT NOT NULL, source TEXT,
+ created_at INTEGER NOT NULL
+);
+CREATE INDEX workstream_suggestion_page ON workstream_suggestions(page_id,created_at);
+CREATE TABLE workstream_suggestion_edits (
+ suggestion_id TEXT NOT NULL REFERENCES workstream_suggestions(id) ON DELETE CASCADE,
+ id TEXT NOT NULL, position INTEGER NOT NULL, block TEXT NOT NULL, at_offset INTEGER NOT NULL,
+ del TEXT NOT NULL, ins TEXT NOT NULL, block_text TEXT NOT NULL, why TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('proposed','kept','dropped')), decided_at INTEGER,
+ PRIMARY KEY(suggestion_id,id)
+);
+`
+
+var workstreamSuggestionSchemaReads = []string{
+	"SELECT id,workstream_id,page_id,base_version,why,actor,source,created_at FROM workstream_suggestions LIMIT 0",
+	"SELECT suggestion_id,id,position,block,at_offset,del,ins,block_text,why,state,decided_at FROM workstream_suggestion_edits LIMIT 0",
+}

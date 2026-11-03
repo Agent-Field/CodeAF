@@ -23,7 +23,7 @@ import (
 // schemaVersion is the schema this build writes. Earlier schemas remain
 // readable without migration; the first successful write upgrades them.
 const (
-	schemaVersion       = WorkstreamSourcesSchemaVersion
+	schemaVersion       = WorkstreamSuggestionSchemaVersion
 	legacySchemaVersion = 1
 )
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
@@ -43,6 +43,7 @@ const (
 	schemaTwo
 	schemaThree
 	schemaFour
+	schemaFive
 	schemaRefused
 )
 
@@ -57,6 +58,8 @@ func (s schemaState) version() int {
 		return 3
 	case schemaFour:
 		return WorkstreamWakeSchemaVersion
+	case schemaFive:
+		return WorkstreamSourcesSchemaVersion
 	case schemaLegacy:
 		return legacySchemaVersion
 	}
@@ -72,8 +75,8 @@ func (s schemaState) version() int {
 // lock to do it — which is what put a plain read behind whichever peer happened
 // to be adding a membership. `version` is that question already answered (0
 // while the file is blank), and `schemaMu` keeps two goroutines on one handle
-// from both answering it. The same law covers migration: a schema-1 or schema-2 file is
-// read as it stands and rebuilt only by the first write.
+// from both answering it. The same law covers migration: older supported files
+// are read as they stand and upgraded only by the first write.
 type Store struct {
 	db       *sql.DB
 	schemaMu sync.Mutex
@@ -167,7 +170,7 @@ func (s *Store) snapshotSchema(ctx context.Context) (schemaState, error) {
 }
 
 // inspectSchema decides whether the database on the other end of q is ours and
-// built (at this schema or the legacy one), ours and still blank, or somebody
+// built at a supported schema, ours and still blank, or somebody
 // else's. It only ever reads; the caller decides what view it reads through.
 func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := ctx.Err(); err != nil {
@@ -180,7 +183,7 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := q.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return schemaBlank, err
 	}
-	if app == applicationID && (version == schemaVersion || version == WorkstreamWakeSchemaVersion || version == 3 || version == 2 || version == legacySchemaVersion) {
+	if app == applicationID && (version == schemaVersion || version == WorkstreamSourcesSchemaVersion || version == WorkstreamWakeSchemaVersion || version == 3 || version == 2 || version == legacySchemaVersion) {
 		state := schemaReady
 		collections := "SELECT seq,id,name,created_at FROM collections LIMIT 0"
 		memberships := "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at FROM memberships LIMIT 0"
@@ -192,6 +195,9 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 		}
 		if version == WorkstreamWakeSchemaVersion {
 			state = schemaFour
+		}
+		if version == WorkstreamSourcesSchemaVersion {
+			state = schemaFive
 		}
 		if version >= 3 {
 			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at,factory FROM memberships LIMIT 0"
@@ -227,6 +233,13 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 		if version >= WorkstreamSourcesSchemaVersion {
 			if _, err := q.ExecContext(ctx, workstreamSourcesRead); err != nil {
 				return state, err
+			}
+		}
+		if version >= WorkstreamSuggestionSchemaVersion {
+			for _, query := range workstreamSuggestionSchemaReads {
+				if _, err := q.ExecContext(ctx, query); err != nil {
+					return state, err
+				}
 			}
 		}
 		return state, nil
@@ -335,7 +348,7 @@ func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
 	state, err := inspectSchema(ctx, tx)
 	if err == nil {
 		switch state {
-		case schemaReady:
+		case schemaReady, schemaFive:
 			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
 		case schemaFour:
 			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
@@ -370,6 +383,9 @@ func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
 		}
 	}
 	if err == nil && state != schemaReady {
+		_, err = tx.ExecContext(ctx, workstreamSuggestionSchema)
+	}
+	if err == nil && state != schemaReady {
 		_, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))
 	}
 	if err != nil {
@@ -385,7 +401,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 }
 
 // readyForRead answers the schema a read goes through, and 0 for a blank
-// file. A handle that saw a blank or a schema-1 file looks again, because
+// file. A handle that saw a blank or an older schema looks again, because
 // another process may have initialized or migrated it since. The look is
 // still only plain reads.
 func (s *Store) readyForRead(ctx context.Context) (int, error) {
