@@ -195,7 +195,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		case passed || status == "ok":
 			receipt["outcome"] = "passed"
 		}
-		if observed[cmd] && verification.PresentationOnly(cmd) {
+		outcome := receipt["outcome"].(string)
+		interrupted := outcome == "refused" || outcome == "cancelled" || outcome == "timed out"
+		if !interrupted && observed[cmd] && verification.PresentationOnly(cmd) {
 			// The pipeline may have failed while its check passed. Keep the
 			// shell receipt honest; only the observed check decides the guard.
 			receipt["scope"] = "shell presentation; check exits recorded separately"
@@ -242,15 +244,13 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
 	}
 	for command, outcome := range lastOutcome {
+		if diagnosticOnly[command] && !ownedCommand[command] { continue }
 		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" || (outcome == "completed" && !observed[command]) {
 			covered := false
 			for _, check := range checks {
 				if journalOrder[check.Command] > journalOrder[command] && (!fresh || check.Fresh(state)) && verification.CoversUnrun(command, c.dir, check) { covered = true; break }
 			}
 			if !covered { pending = append(pending, command+" · "+outcome+"; no later measured covering pass") }
-		}
-		if diagnosticOnly[command] && !ownedCommand[command] {
-			continue
 		}
 		if outcome == "failed" && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
 			pending = append(pending, command)

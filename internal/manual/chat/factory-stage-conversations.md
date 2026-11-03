@@ -743,7 +743,9 @@ extra tests. A new or resumed job uses the same checkout boundary. Historical
 checks outside that checkout (including deleted negative-test fixtures and base
 probes) remain diagnostic records, not obligations for the job. Unknown paths,
 corrupt owned records and actual failures inside the checkout remain unresolved.
-Original histories, exits and timestamps are not rewritten.
+Original histories, exits and timestamps are not rewritten. A shell failure whose
+measured checks are all outside-checkout diagnostics does not recreate an obligation
+for those checks, even after the scratch directory is deleted.
 
 A later measured Go test pass can cover an earlier failed invocation on the
 current checkout. Output verbosity, JSON formatting and build parallelism do
@@ -753,6 +755,11 @@ settings, race mode, build tags and other semantic flags must still match.
 Unknown options remain exact. A newer actual failure still blocks completion;
 changing source invalidates old successful evidence. These rules also apply
 when a saved round is resumed or its results are carried into the next round.
+A refused, cancelled or timed-out literal Go test attempt remains owed until a
+later measured pass covers it on the current checkout with matching environment
+and test scope. A refusal is never evidence that a test passed. Unknown compound
+commands retain their obligation. Holds name every owed check on one line; three
+unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
 
 ## An already-fixed published PR does not need another commit
