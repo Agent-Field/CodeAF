@@ -613,10 +613,10 @@ cannot answer these questions for you. A headless call with nobody to ask return
 an error naming the file. Once the file is readable, its rules apply again.
 Malformed JSON still fails policy construction.
 
-Two kinds of work do not get this protection yet. A default Factory stage runs on
-its own allow posture and does not read your saved rules, whether the file is
-readable or not. A task child started by a conversation does not carry the failed
-read over from its parent, so it can run a call your saved rules would deny.
+Factory stages, task workers, repair rounds and auditors get the same protection:
+every call needs a person, and with nobody to ask it is refused. One limit remains.
+With a readable file, a default Factory stage runs on its own allow posture and
+does not apply your saved rules.
 
 ## Default YOLO in interactive conversations and headless runs
 

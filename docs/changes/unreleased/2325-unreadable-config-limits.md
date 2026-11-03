@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf keeps unreadable profile approval limits in factory stages and task children
-pr: PRNUMBER
+pr: 2325
 surface: [engine, factory]
 invalidates:
   - "A factory stage's allow posture bypassed an unreadable profile's saved approval rules. It now requires a person when those rules cannot be read."
