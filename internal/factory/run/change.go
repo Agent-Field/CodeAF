@@ -13,20 +13,68 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// sayWriteUnchanged is why a write round that reported done is not done. It
+// is the first line of that round's output, so the next round's brief and the
+// question a person reads after the last round both say it.
+const sayWriteUnchanged = "the checkout has no change from where the run began"
+
+// unchangedWrite holds back a write round that reported done while the
+// checkout has no change from the run's base. The write step is the one that
+// changes the repository, so its done on a clean checkout is a shortfall
+// found here, before test and review spend money on an unchanged tree. Every
+// other step may finish without a change, and a checkout that cannot be read
+// is never a reason to hold a round back.
+func unchangedWrite(st factory.Stage, job Job, res factory.StageResult) factory.StageResult {
+	if !res.Done || job.dirErr != nil || !strings.EqualFold(stageLabel(st), writeStep) {
+		return res
+	}
+	change, err := readChange(job.Dir, job.Item.ChangeBase)
+	if err != nil || len(change.Files) > 0 {
+		return res
+	}
+	res.Done, res.Exit = false, 1
+	res.Output = sayWriteUnchanged + "\nMake the change in the checkout, or report done: false with why none is needed.\n" + res.Output
+	return res
+}
+
 // changeBase fixes the comparison before any round can commit its edits.
-// A PR includes its existing change; other jobs start at their first HEAD.
-func changeBase(dir string, it factory.Item) string {
+// The branch keeps the pin because Stop may revoke a worker's lease before
+// its first report reaches the factory. A replacement must not pin the edited
+// HEAD. A PR includes its existing change; other jobs start at their first HEAD.
+func changeBase(dir string, it factory.Item) (string, error) {
 	if it.ChangeBase != "" {
-		return it.ChangeBase
+		return it.ChangeBase, nil
 	}
 	git := ExecGit{}
-	if isPull(it) {
-		if base, err := git.Run(dir, "merge-base", "HEAD", PullBase(it)); err == nil {
-			return base
+	branch, err := git.Run(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		branch = ""
+	}
+	key := "branch." + branch + ".codeaf-change-base"
+	if branch != "" {
+		if base, err := git.Run(dir, "config", "--local", "--get", key); err == nil && base != "" {
+			return base, nil
 		}
 	}
-	base, _ := git.Run(dir, "rev-parse", "HEAD")
-	return base
+	var base string
+	if isPull(it) {
+		base, err = git.Run(dir, "merge-base", "HEAD", PullBase(it))
+		if err != nil {
+			base = ""
+		}
+	}
+	if base == "" {
+		base, err = git.Run(dir, "rev-parse", "HEAD")
+		if err != nil {
+			return "", nil
+		}
+	}
+	if branch != "" && base != "" {
+		if _, err := git.Run(dir, "config", "--local", key, base); err != nil {
+			return "", fmt.Errorf("could not preserve the job's change base: %w", err)
+		}
+	}
+	return base, nil
 }
 
 // readChange includes committed, staged, unstaged and untracked work. Git's

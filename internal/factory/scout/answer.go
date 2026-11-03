@@ -113,7 +113,12 @@ func lines(list []string, most int) []string {
 	return out
 }
 
+// words is s at most words long, ending in an ellipsis when the model wrote
+// more, so a cut phrase never reads as a whole one.
 func words(s string, most int) string {
 	f := strings.Fields(s)
-	return strings.Join(f[:min(len(f), most)], " ")
+	if len(f) <= most {
+		return strings.Join(f, " ")
+	}
+	return strings.TrimRight(strings.Join(f[:most], " "), ".,;:") + "…"
 }

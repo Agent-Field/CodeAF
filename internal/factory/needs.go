@@ -19,6 +19,7 @@ const (
 	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
 	// Persisted question kinds keep their bytes across wire contracts.
+	QKindSpendStopped     = "spend_stopped"
 	QKindOutOfAttempts    = "out_of_attempts"
 	NeedsFailed           = "failed"
 	NeedsChangesRequested = "changes_requested"
@@ -129,9 +130,9 @@ type RoundLine struct {
 	Chat     string    `json:",omitempty"`
 	// Result and Reason are how the try ended ([TryResult]): its rule's word
 	// (clean, not clean, green, proven, blocked…) and a counted reason ("2
-	// findings"). Absent on a try recorded before they were, and on a try
-	// that ended without a report (a failure or a stop), whose word must not
-	// be guessed from its summary.
+	// findings"). A failure closed on retry says stopped, interrupted or failed
+	// from its failure code. Absent on older tries, whose outcome must not be
+	// guessed from their summary.
 	Result string `json:",omitempty"`
 	Reason string `json:",omitempty"`
 }
@@ -152,14 +153,29 @@ type Acts struct {
 	Reply        bool
 }
 
-// NextJobCap is the ceiling a continue answer allows. THE NUMBER COMES FROM
-// codeaf, NEVER FROM THE APP: it is this job's cap doubled. The TUI's cap
-// ladder is a different control and is not this figure.
-func NextJobCap(cap float64) float64 {
-	if cap <= 0 {
-		return 0
+// JobBudgetSteps are the standard absolute job budgets, in ascending US dollars.
+func JobBudgetSteps() []float64 {
+	return []float64{5, 10, 20, 30}
+}
+
+// NextJobCap chooses the smallest standard budget above recorded spending,
+// then doubles the current cap until it covers that spending.
+func NextJobCap(it Item) float64 {
+	spent := JobSpent(it)
+	steps := JobBudgetSteps()
+	for _, budget := range steps {
+		if budget > spent {
+			return budget
+		}
 	}
-	return cap * 2
+	next := it.Cap * 2
+	if next <= 0 {
+		next = steps[len(steps)-1] * 2
+	}
+	for next <= spent {
+		next *= 2
+	}
+	return next
 }
 
 // ContinueJob raises this job's cap to NextJobCap when the spend has already
@@ -169,7 +185,7 @@ func ContinueJob(it *Item) bool {
 	if it == nil || it.Cap <= 0 || it.Stream == nil || it.Stream.Spent < it.Cap {
 		return false
 	}
-	it.Cap = NextJobCap(it.Cap)
+	it.Cap = NextJobCap(*it)
 	return true
 }
 
@@ -291,6 +307,9 @@ func WhoCanAnswer(kind string) string {
 // QuestionForm is the question object for a free question or an
 // out-of-attempts ask. Other needs-you kinds have no question object.
 func QuestionForm(it Item) (kind string, options []string, who string) {
+	if it.QKind == QKindSpendStopped {
+		return AskYesNo, []string{"yes", "no"}, WhoJobPerson
+	}
 	switch NeedsKind(it) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
@@ -526,6 +545,9 @@ func MayAct(it Item, caller string) Acts {
 	case NeedsQuestion:
 		answer = true
 	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+		answer = owner
+	}
+	if it.QKind == QKindSpendStopped {
 		answer = owner
 	}
 	assign := person == ""

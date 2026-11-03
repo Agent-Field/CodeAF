@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 
@@ -11,6 +12,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// errandLog is where an owner's failure under an errand is written in its
+// own words, beside the reason the caller keeps.
+var errandLog io.Writer = os.Stderr
 
 // errandDoor is the errand on a held conversation: a local session agent, or
 // a remote owner that runs it on its own engine.
@@ -51,11 +56,14 @@ func (b *appBackend) Errand(ctx context.Context, id string, ask session.ErrandAs
 	}
 	// ANY OTHER FAILURE IS THE OWNER'S, NOT THE CALLER'S: a remote owner that
 	// closed under the errand, or a link that dropped. It is a reason like
-	// every other way of not answering, never a wire error.
+	// every other way of not answering, never a wire error. ITS WORDS ARE
+	// LOGGED, so the reason is never the only trace of why.
+	reason := appwire.ErrandUnavailable
 	if b.liveOf(a) != live {
-		return session.ErrandAnswer{Reason: session.ErrandClosed}, nil
+		reason = session.ErrandClosed
 	}
-	return session.ErrandAnswer{Reason: appwire.ErrandUnavailable}, nil
+	fmt.Fprintf(errandLog, "codeaf app: errand %s on agent %s answered %s: %v\n", ask.Purpose, id, reason, err)
+	return session.ErrandAnswer{Reason: reason}, nil
 }
 
 // errandModelServed refuses a model no connected provider offers, by the

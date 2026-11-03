@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -62,9 +63,10 @@ func StartRulesOf(f File) *factory.StartRules {
 
 // Protected is the head of every hold a protected path makes: `protected ·
 // auth/ · auth/login.go`, the path as written and the file that matched it.
-// An ask-first path line (`touch auth/`, `touches auth/`, `path: auth/`) and a
-// never path are the same kind of rule: both hold a job at its start, after
-// its plan and before its change is published, and a match waits for a person.
+// An ask-first path line (`touch auth/`, `touches auth/`, `path: auth/`, a
+// bare `auth/`) and a never path are the same kind of rule: both hold a job at
+// its start, after its plan and before its change is published, and a match
+// waits for a person.
 const Protected = "protected"
 
 // ProtectedPaths are the paths rules protect: the ask-first path lines'
@@ -165,19 +167,26 @@ func GuardsPaths(rules *factory.StartRules) bool {
 	return false
 }
 
-// AskFirstPath is the path an ask-first rule names (`touch auth/` names
-// auth/), or "" for a sentence: the reading every start and plan check makes.
+// AskFirstPath is the path an ask-first rule names (`touch auth/` and a bare
+// `auth/` both name auth/), or "" for a sentence: the reading every start and
+// plan check makes, and the one the desk shows.
 func AskFirstPath(rule string) string { return askFirstPath(rule) }
 
-// askFirstPath is the path an ask-first rule names, or "" for a sentence. Only
-// the prefix is read without case: the path keeps the case it was written in,
-// because a path is matched as written (`touch src/Auth/` guards src/Auth/).
+// askFirstPath is the path an ask-first rule names, or "" for a sentence. A
+// `touch`, `touches` or `path:` line names what follows it. A BARE LINE IS A
+// PATH when it is one word, or holds a slash or a star (`billing/`, `*.lock`,
+// `src/**`); anything else is a sentence a triage judges. Only the prefix is
+// read without case: the path keeps the case it was written in, because a
+// path is matched as written (`touch src/Auth/` guards src/Auth/).
 func askFirstPath(rule string) string {
 	words := strings.TrimSpace(rule)
 	for _, prefix := range []string{"touches ", "touch ", "path:"} {
 		if len(words) >= len(prefix) && strings.EqualFold(words[:len(prefix)], prefix) {
 			return strings.TrimSpace(words[len(prefix):])
 		}
+	}
+	if strings.ContainsAny(words, "/*") || !strings.ContainsFunc(words, unicode.IsSpace) {
+		return words
 	}
 	return ""
 }
@@ -223,4 +232,18 @@ func touchesAny(globs []string, path string) bool {
 		}
 	}
 	return false
+}
+
+// ProtectedNamed is every protected path of f's start rules (its ask-first
+// path lines and its never paths, [ProtectedPaths]) that one of paths
+// touches, by the matcher a start uses, in the rules' order; empty, never
+// nil, when none is touched.
+func (f File) ProtectedNamed(paths []string) []string {
+	out := []string{}
+	for _, rule := range ProtectedPaths(f.Start.AskFirst, f.Start.Never) {
+		if protectedWhy([]string{rule}, paths) != "" {
+			out = append(out, rule)
+		}
+	}
+	return out
 }
