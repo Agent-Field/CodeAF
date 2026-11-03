@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Factory steps receive concise engineering methods
-pr: 0
+pr: 2286
 surface: [factory]
 invalidates:
   - "Was true: shipped asks carried most step guidance and every brief requested publication bullets. Is true now: unchanged shipped asks receive a separate method; only proof and Follow PR request publication bullets."
