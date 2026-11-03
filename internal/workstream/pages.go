@@ -240,6 +240,9 @@ func (s *Store) savePage(ctx context.Context, id string, base int, doc json.RawM
 			}
 			return ErrNotFound
 		}
+		if by == "agent" && p.Owner != "agent" {
+			return ErrNotAgentPage
+		}
 		if p.Version != base {
 			return &VersionConflict{ID: id, Version: p.Version, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy}
 		}
@@ -376,6 +379,9 @@ func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, err
 	by, err := actor(p.By)
 	if err != nil {
 		return Page{}, Change{}, err
+	}
+	if by == "agent" && owner != "agent" {
+		return Page{}, Change{}, invalid("the agent creates only its own pages")
 	}
 	source, err := sourceJSON(p.From)
 	if err != nil {

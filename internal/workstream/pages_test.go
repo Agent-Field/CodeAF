@@ -28,6 +28,10 @@ func TestPartAPageSaveHistoryAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	owner := "agent"
+	if _, _, err := s.UpdatePage(ctx, first.ID, PagePatch{Owner: &owner}); err != nil {
+		t.Fatal(err)
+	}
 	doc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Saved"}]}]}`)
 	*now = now.Add(time.Hour)
 	saved, _, err := s.SavePage(ctx, first.ID, first.Version, doc, Attribution{By: "agent", From: &Source{Kind: "chat", ID: "source"}})
