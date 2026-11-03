@@ -16,6 +16,9 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 		refused, invoked      bool
 	}{
 		{"passed", "PASS\nok  example 1s\n", "passed", false, true},
+		{"ok without pass evidence", "test result: ok\n", "completed", false, true},
+		{"ok with exit line", "PASS\nCommand exited with code 7", "completed", false, true},
+		{"ok with failure output", "PASS\nFAIL\n", "completed", false, true},
 		{"failed", "FAIL\nCommand exited with code 1", "failed", false, true},
 		{"approval without resolver", `needs approval but no resolver is attached: critical command "rm -rf /*"`, "refused", false, false},
 		{"legacy policy", "denied by approval rule: protected files", "refused", false, false},
@@ -37,7 +40,7 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 			}
 			enc := json.NewEncoder(f)
 			status := "failed"
-			if tc.outcome == "passed" {
+			if tc.outcome == "passed" || tc.outcome == "completed" {
 				status = "ok"
 			}
 			if tc.outcome == "cancelled" || tc.outcome == "timed out" {

@@ -88,6 +88,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	}
 	observed := map[string]bool{}
 	observedCall := map[string]bool{}
+	callExit := map[string]*int{}
 	diagnosticOnly := map[string]bool{}
 	ownedCommand := map[string]bool{}
 	checks = verification.Resolve(checks, state, fresh)
@@ -96,6 +97,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		observed[check.Command] = true
 		if check.CallID != "" && check.Exit != nil {
 			observedCall[check.CallID] = true
+			if exit := callExit[check.CallID]; exit == nil || *exit == 0 {
+				callExit[check.CallID] = check.Exit
+			}
 		}
 		if check.Diagnostic {
 			diagnosticOnly[check.Command] = true
@@ -195,7 +199,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			status, invoked, refused = row.Presentation.Outcome, row.Presentation.Invoked, row.Presentation.Refused
 			started = started || row.Presentation.Process != nil
 		}
-		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started)
+		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, callExit[row.ToolCallID])
 		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": outcome}
 		if reason != "" {
 			receipt["reason"] = reason
@@ -328,7 +332,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 
 // commandReceiptOutcome reads producer facts before legacy output. A launch
 // acknowledges ownership of work; only a later measured check proves its result.
-func commandReceiptOutcome(content, status string, invoked, refused, started bool) (string, string) {
+func commandReceiptOutcome(content, status string, invoked, refused, started bool, measuredExit *int) (string, string) {
 	text := strings.TrimSpace(content)
 	if refused || status == "refused" {
 		return "refused", text
@@ -355,11 +359,14 @@ func commandReceiptOutcome(content, status string, invoked, refused, started boo
 		return "failed", ""
 	case started:
 		return "started", ""
-	case status == "ok":
+	case status == "ok" && measuredExit != nil:
+		if *measuredExit != 0 {
+			return "failed", ""
+		}
 		return "passed", ""
-	case strings.Contains(content, "Command exited with code"):
+	case status != "ok" && strings.Contains(content, "Command exited with code"):
 		return "failed", ""
-	case (strings.Contains(content, "\nPASS\n") || strings.HasPrefix(content, "PASS\n") || strings.Contains(content, "ok  ")) && !strings.Contains(content, "\nFAIL"):
+	case (strings.Contains(content, "\nPASS\n") || strings.HasPrefix(content, "PASS\n") || strings.Contains(content, "ok  ")) && !strings.Contains(content, "\nFAIL") && !strings.Contains(content, "Command exited with code"):
 		return "passed", ""
 	default:
 		return "completed", ""

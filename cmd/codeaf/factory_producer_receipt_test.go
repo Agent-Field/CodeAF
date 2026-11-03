@@ -92,14 +92,27 @@ func TestReceiptQuotedRefusedProbeWithoutPass(t *testing.T) {
 }
 
 func TestReceiptMaskedFailurePublication(t *testing.T) {
- root, file, run := repairCheckFixture(t)
- run(`CHECK_EXIT=7 cargo test --test cli regression; true`)
- run(`cargo test --test cli regression`)
- receiptProducerOK(t,file)
- notes,_ := (&stageConversation{file:file,dir:root}).ExecutionNotes()
- held := false
- for _, n := range notes { held = held || strings.HasPrefix(n,verification.FailurePrefix) }
- if held { t.Fatal("passing rerun did not clear failure") }
- body := factory.PublishBody(factory.Item{Title:"review",Stream:&factory.Stream{Phases:[]factory.Phase{{Name:"proof",Result:&factory.StageResult{Notes:notes}}}}},"")
- if strings.Contains(body,"CHECK_EXIT=7 cargo test --test cli regression; true") { t.Errorf("exit=7 check published as pass: %s", strings.ReplaceAll(body,"\n"," ")) }
+	root, file, run := repairCheckFixture(t)
+	run(`CHECK_EXIT=7 cargo test --test cli regression; true`)
+	receiptProducerOK(t, file)
+	door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+	t.Cleanup(door.closeVerification)
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil {
+		t.Fatal("masked failure did not hold completion")
+	}
+	run(`cargo test --test cli regression`)
+	receiptProducerOK(t, file)
+	notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
+	for _, note := range notes {
+		if strings.HasPrefix(note, verification.FailurePrefix) {
+			t.Fatal("passing rerun did not clear failure", note)
+		}
+	}
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err != nil {
+		t.Fatalf("passing rerun held completion: %v", err)
+	}
+	body := factory.PublishBody(factory.Item{Title: "review", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
+	if strings.Contains(body, "CHECK_EXIT=7 cargo test --test cli regression; true") {
+		t.Errorf("exit=7 check published as pass: %s", strings.ReplaceAll(body, "\n", " "))
+	}
 }

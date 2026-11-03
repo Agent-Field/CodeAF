@@ -473,7 +473,12 @@ Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by 
 later measured wider pass; a refused check without covering evidence still holds.
 For older journals without producer status, printed cancellation or timeout words
 are command output and do not establish an interruption.
-Older journals without enough evidence of success retain `completed`; this is not a passing check.
+For a successful foreground producer, measured check exits for that call decide:
+any non-zero exit reads `failed`; zero reads `passed`. Shell success alone cannot
+hide a failed check. A later passing rerun clears the guard but does not publish
+the earlier failure as passing. Without measured exits, a pass needs PASS or
+`ok  ` output evidence and no FAIL or exit-code line. Otherwise the receipt stays
+`completed`, even with a successful producer, and is never published as passing.
 
 In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
 Auto records and carries out that routine approval automatically. Its description

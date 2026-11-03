@@ -17,7 +17,13 @@ journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
 timeouts remain unresolved until later measured covering evidence qualifies. Later
 stage briefs retain the reason instead of implying that the refused command ran. PR validation
-continues to publish only passed command receipts.
+continues to publish only passed command receipts. For a successful foreground
+producer, measured check exits for that call decide: any non-zero exit reads
+`failed`, and zero reads `passed`. A masked failure stays unpublished even after a
+passing rerun clears the guard. Without measured exits, success still needs the
+legacy PASS or `ok  ` output evidence, with no FAIL or exit-code line; otherwise
+the receipt reads `completed` and is never published as passing. Shell success
+alone is not check success.
 
 The completion guard honors outside-checkout diagnostic ownership for shell
 history, including deleted scratch fixtures. Later measured Go test passes on the
