@@ -154,8 +154,15 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 		k.SetSink(func(items []factory.Item) { _ = Merge(st, name, items) })
 		defer k.SetSink(nil)
 	}
+	before, err := st.List()
+	if err != nil {
+		return cursor, err
+	}
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
+	if real, ok := src.(*Source); ok && readErr == nil && mergeErr == nil {
+		mergeErr = real.sweepClosed(ctx, st, repos, before, items)
+	}
 	at := now()
 	meta, _ := st.SourceMeta(src.Name())
 	meta.Tried = at
@@ -239,6 +246,10 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		}
 		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
+			if in.DoneHow == StandingClosed {
+				errs = append(errs, finishClosed(st, old.ID))
+				continue
+			}
 			if !forgeChanged(old, in) {
 				continue
 			}
@@ -310,6 +321,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				}
 				return nil
 			}))
+			continue
+		}
+		if in.DoneHow == StandingClosed {
 			continue
 		}
 		in.ID = 0

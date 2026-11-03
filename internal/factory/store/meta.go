@@ -17,10 +17,18 @@ import (
 // THE PROCESS THAT POLLS IS NOT ALWAYS THE ONE THAT DRAWS: a window and the
 // engine behind it may both poll, taking turns through the poller lock, and
 // whichever read last, every window draws from this one file.
+// IssueSweep keeps the bounded reconciliation of rows imported before closure polling.
+type IssueSweep struct {
+	Last    int  `json:"last"`
+	Through int  `json:"through"`
+	Done    bool `json:"done"`
+}
+
 type SourceMeta struct {
-	Polled  time.Time `json:"polled,omitzero"`
-	Tried   time.Time `json:"tried,omitzero"`
-	Trouble string    `json:"trouble,omitempty"`
+	IssueSweeps map[string]IssueSweep `json:"issue_sweeps,omitempty"`
+	Polled      time.Time             `json:"polled,omitzero"`
+	Tried       time.Time             `json:"tried,omitzero"`
+	Trouble     string                `json:"trouble,omitempty"`
 	// Polling is true while a read is in flight. The poll writes it at the
 	// start and the end of each read, and [Store.ClearBusy] takes it off when
 	// a process starts, so a poll a crash cut short never reads as running.

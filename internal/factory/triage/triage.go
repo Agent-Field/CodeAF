@@ -245,7 +245,7 @@ func Apply(it *factory.Item, t factory.Triage) {
 // Wants says whether an item is still waiting for its read: on the floor,
 // with no read written and never triaged.
 func Wants(it factory.Item) bool {
-	return factory.IsIssueJob(it) && it.State != factory.StateDismissed &&
+	return factory.IsIssueJob(it) && factory.JobState(it) != "done" &&
 		strings.TrimSpace(it.Triage.Read) == "" &&
 		it.Triage.TriagedAt.IsZero()
 }

@@ -685,3 +685,28 @@ uses this same rule.
 
 The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
 Other amounts are refused. Stop keeps the recorded spend and work.
+
+## Closed GitHub issues leaving Backlog, polling and reopened issues
+
+A normal GitHub poll moves an untouched Backlog issue to Done when GitHub
+reports it closed. Activity records that it closed on GitHub. Closed issues
+the factory has never imported do not become jobs. Finished jobs are excluded
+from the automatic arrival read and start rules.
+
+The poll preserves running and queued jobs, jobs already started, and jobs
+with a run, conversation, work folder, pull request, spending or failure.
+A needs-you row with no such work or decided pipeline can finish; its pending
+question clears. The poll never stops a running job. A person's Start still
+checks GitHub directly, including between polls.
+
+The initial import lists open issues. Later polls include closures updated
+since the cursor, using a conditional request when nothing changed. An older
+factory's existing rows get a one-time reconciliation: at most 40 direct
+issue checks per repository per poll, only for existing untouched rows absent
+from that poll's results. Progress survives restarts. Larger backlogs continue
+over subsequent polls; the factory never walks the repository's closed history.
+
+Reopening an issue on GitHub refreshes its text but keeps a poll-finished job
+Done. A person must explicitly start it again after reopening; reopening alone
+never authorizes more spending. Triage or Look closer already in flight may
+finish before the closure arrives.

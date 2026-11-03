@@ -313,8 +313,8 @@ func (h *Handler) needsCheckout(w http.ResponseWriter, r *http.Request, repo, st
 const recheckWait = 5 * time.Second
 
 // endedOnGitHub is the check a person's start makes on the ONE item they chose
-// (start_now, run, run_again): the poll's lists are of open items only, so a
-// job never learns from them that its issue was closed. When GitHub says the
+// (start_now, run, run_again), supplementing the poll's closure reconciliation.
+// When GitHub says the
 // issue or pull request was closed or merged, the job is finished the way a
 // pull request that ended finishes one (done, DoneHow "closed" or "merged"),
 // the factory records it, and the start is refused in one sentence.

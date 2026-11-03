@@ -25,9 +25,8 @@ const (
 // else (no comments, files or checks): the poll keeps those, and a start must
 // not wait on four reads to learn one fact.
 //
-// THE LISTS THE POLL READS ARE OF OPEN ITEMS ONLY, so an item closed after it
-// arrived is never seen leaving them. This read is how a job learns it, item
-// by item, at the one moment it matters: when it is chosen to run.
+// The poll reconciles untouched backlog rows. This check also protects a
+// person's start between polls and jobs the poll deliberately leaves alone.
 func Standing(ctx context.Context, api API, it factory.Item) (string, error) {
 	if api == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
 		return "", factory.ErrNotOnSource

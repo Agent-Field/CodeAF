@@ -341,7 +341,13 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	issueTag := s.issueTags[full]
 	s.mu.Unlock()
 
-	issues, newIssueTag, err := s.api.ListIssues(ctx, owner, name, mark, issueTag)
+	list := s.api.ListIssues
+	if changes, ok := s.api.(interface {
+		ListIssueChanges(context.Context, string, string, time.Time, string) ([]forge.Issue, string, error)
+	}); ok && !mark.IsZero() {
+		list = changes.ListIssueChanges
+	}
+	issues, newIssueTag, err := list(ctx, owner, name, mark, issueTag)
 	switch {
 	case errors.Is(err, forge.ErrNotModified):
 		issues, newIssueTag = nil, issueTag
@@ -357,12 +363,20 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 		if is.Pull {
 			continue
 		}
+		if strings.EqualFold(is.State, "closed") {
+			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, Origin: factory.OriginForge, DoneHow: StandingClosed})
+			s.mu.Lock()
+			delete(s.owed[full], is.Number)
+			s.mu.Unlock()
+			continue
+		}
 		listed = append(listed, s.issueItem(ctx, owner, name, is))
 		listedIssues = append(listedIssues, is)
 	}
 	// THE ROWS FIRST: the issues as listed, comments not read yet, so the
 	// floor has them while their comments are read.
 	run.items += len(listed)
+	run.hand(items)
 	run.hand(listed)
 	run.tell(full)
 	s.mu.Lock()

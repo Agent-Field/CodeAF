@@ -20,6 +20,7 @@ import (
 )
 
 func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
+	t.Run("bounded sweep", testClosedSweepBound)
 	for _, prior := range []string{"", `{"acme/api":"2026-10-01T00:00:00Z"}`} {
 		t.Run("cursor="+prior, func(t *testing.T) {
 			ctx := context.Background()
@@ -192,4 +193,67 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testClosedSweepBound(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	for n := 1; n <= 45; n++ {
+		_, err := st.Create(factory.Item{Product: "acme", Repo: "api", Num: n, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew, Title: "old"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	direct := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/user":
+			fmt.Fprint(w, `{"login":"owner"}`)
+		case r.URL.Path == "/repos/acme/api/issues":
+			fmt.Fprint(w, `[]`)
+		case strings.HasPrefix(r.URL.Path, "/repos/acme/api/issues/"):
+			direct++
+			// A person's concurrent start wins over the older poll snapshot.
+			if strings.HasSuffix(r.URL.Path, "/1") {
+				if err := st.Update(1, func(it *factory.Item) error { it.State = factory.StateRunning; return nil }); err != nil {
+					t.Error(err)
+				}
+			}
+			fmt.Fprint(w, `{"state":"closed"}`)
+		default:
+			t.Errorf("unexpected request %s", r.URL)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	api := forge.NewClient("bounded-close").WithBaseURL(srv.URL)
+	poll := func() {
+		t.Helper()
+		if _, err := source.PollOnce(ctx, source.New(api, nil, nil), st, "", time.Now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	poll()
+	if direct != 40 {
+		t.Fatalf("first sweep used %d direct checks, want 40", direct)
+	}
+	poll()
+	if direct != 45 {
+		t.Fatalf("resumed sweep used %d total checks, want 45", direct)
+	}
+	poll()
+	if direct != 45 {
+		t.Fatal("completed sweep repeated")
+	}
+	got, _ := st.Get(1)
+	if got.State != factory.StateRunning || got.DoneHow != "" {
+		t.Fatal("poll stopped a concurrent start")
+	}
+	t.Log("45 old rows: 40 direct checks, then 5, then 0; concurrent start preserved")
 }
