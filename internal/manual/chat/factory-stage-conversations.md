@@ -61,8 +61,10 @@ Every step hands over what changed, each command actually run and its result,
 unrun checks and why, and open work. Only proof and Follow PR are asked for
 publication bullets. Test and bisect preserve the checkout; when revision
 movement is refused, bisect uses history and recorded runs and states which
-revisions it did not run. Follow PR reproduces CI failures before repairs and
-leaves reconciliation and publication to the service.
+revisions it did not run. Follow PR reproduces CI failures before repairs. The service merges the PR's
+remote head into the checkout; Follow PR resolves conflicts left there, keeping
+the intent of both sides and other people's work. Publication stays with the
+service; the step does not push or force-push.
 
 ## plan file list — structured files, unknown paths and Auto approval
 

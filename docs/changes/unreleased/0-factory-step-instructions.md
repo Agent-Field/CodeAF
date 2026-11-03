@@ -11,4 +11,7 @@ invalidates:
 Shipped steps now describe observable acceptance, focused work, completion and
 when to ask. Edited asks and custom steps receive no shipped method. Resuming a
 chat keeps its original method without repeating it. Follow PR diagnoses CI
-failures before repairs and leaves branch reconciliation to the service.
+failures before repairs. The service merges the PR's remote head into the
+checkout; Follow PR resolves conflicts left there, keeping the intent of both
+sides and other people's work. Publication stays with the service; the step
+does not push or force-push.
