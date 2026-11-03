@@ -173,6 +173,7 @@ export class IdentityDO extends Source {
     this.pauseUpload=new Promise(resolve=>{this.releaseUpload=resolve;});
     this.host.tenant.store.put=async(...args)=>{this.uploadStarted=true;await this.pauseUpload;return put(...args);};
   }
+  startedUpload(){return !!this.uploadStarted;}
   waitingHas(){return !!this.hasWaiting;}
   releaseHeldUpload(){this.releaseUpload?.();}
   async retryWithoutQuorum(){
@@ -364,6 +365,7 @@ export default {
       if(op==='reset-metrics'){for(const key of Object.keys(measurements))measurements[key]=key==='wall'?[]:0;return Response.json(true);}
       if(op==='seed'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).seed(identity,records);return Response.json(true);}
       if(op==='hold-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).holdUpload();return Response.json(true);}
+      if(op==='upload-started')return Response.json(!!await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).startedUpload());
       if(op==='has-waiting')return Response.json(!!await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).waitingHas());
       if(op==='release-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).releaseHeldUpload();return Response.json(true);}
       if(op==='retry-without-quorum')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).retryWithoutQuorum());

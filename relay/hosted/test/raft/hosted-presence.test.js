@@ -64,6 +64,8 @@ test('a committed revoke interrupts a held store poll before its upload finishes
   for(const c of [a,b])assert.equal((await h.call(c,'PUT','/v1/dir/devices/'+c.device,{V:1,name:'c2VhbGVk',platform:'linux'})).status,204);
   await h.control({op:'hold-upload'});
   upload=h.call(a,'POST','/v1/store/frames',encode('0'.repeat(32),[{rid:'c'.repeat(64),bytes:new TextEncoder().encode('AGEO\x01sealed')}]));
+  let started=false;for(let n=0;n<500&&!started;n++){await delay(10);started=await h.control({op:'upload-started'});}
+  assert(started,'the upload reached its actual storage call before Has begins');
   poll=h.call(b,'POST','/v1/store/has',{rids:['c'.repeat(64)]});
   let waiting=false;for(let n=0;n<100&&!waiting;n++){await delay(10);waiting=await h.control({op:'has-waiting'});}
   assert(waiting,'the authenticated store poll reached its real in-flight upload wait');
@@ -81,6 +83,8 @@ test('revoking an upload keeps other devices waiting until its actual write fini
   await h.control({op:'hold-upload'});
   const rid='d'.repeat(64);
   upload=h.call(b,'POST','/v1/store/frames',encode('0'.repeat(32),[{rid,bytes:new TextEncoder().encode('AGEO\x01sealed')}]));
+  let started=false;for(let n=0;n<500&&!started;n++){await delay(10);started=await h.control({op:'upload-started'});}
+  assert(started,'the upload reached its actual storage call before Has begins');
   poll=h.call(a,'POST','/v1/store/has',{rids:[rid]});
   let waiting=false;for(let n=0;n<100&&!waiting;n++){await delay(10);waiting=await h.control({op:'has-waiting'});}
   assert(waiting,'the other device is waiting for the actual upload');
