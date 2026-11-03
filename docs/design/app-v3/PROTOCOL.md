@@ -1284,6 +1284,15 @@ role pins and checked as the other pins are.
 | `tools.output` | `in.toolCallParams` | `LinesNextLineTotalResult` |
 | `tools.unfollow` | `in.toolCallParams` | `Empty` |
 
+## wake methods
+
+| method | params | result |
+|---|---|---|
+| `wake.apply` | `in.WorkstreamWakeApplyParams` | `WorkstreamWakeApplyResult` |
+| `wake.list` | `in.WorkstreamWakeListParams` | `WorkstreamWakeListResult` |
+| `wake.not_now` | `in.WorkstreamWakeNotNowParams` | `WorkstreamWakeNotNowResult` |
+| `wake.undo` | `in.WorkstreamWakeUndoParams` | `WorkstreamWakeUndoResult` |
+
 ## work methods
 
 | method | params | result |
