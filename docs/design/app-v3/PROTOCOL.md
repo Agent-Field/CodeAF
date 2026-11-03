@@ -1255,6 +1255,14 @@ the hello feature `workstream_sources`.
 | `spend.report` | `in.SpendReportParams` | `SpendReportResult` |
 | `spend.today` | `{}` | `SpendResult` |
 
+## suggestion methods
+
+| method | params | result |
+|---|---|---|
+| `suggestion.drop` | `in.WorkstreamSuggestionDropParams` | `WorkstreamSuggestionDropResult` |
+| `suggestion.keep` | `in.WorkstreamSuggestionKeepParams` | `WorkstreamSuggestionKeepResult` |
+| `suggestion.list` | `in.WorkstreamSuggestionListParams` | `WorkstreamSuggestionListResult` |
+
 ## sync methods
 
 | method | params | result |
