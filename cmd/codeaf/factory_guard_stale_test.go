@@ -2,6 +2,7 @@ package main
 
 import (
  "encoding/json"
+ "fmt"
  "strings"
  "os"
  "path/filepath"
@@ -43,11 +44,14 @@ func guardUnrunJournal(t *testing.T, file, command, outcome string) {
  f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0600)
  if err != nil { t.Fatal(err) }
  defer f.Close()
+ stat,err := f.Stat()
+ if err!=nil { t.Fatal(err) }
+ id:=fmt.Sprint("unrun-",stat.Size())
  enc := json.NewEncoder(f)
  args, _ := json.Marshal(map[string]string{"command":command})
  for _, row := range []any{
-  map[string]any{"role":"assistant", "toolCalls": []any{map[string]any{"id":"unrun", "function":map[string]string{"name":"bash", "arguments":string(args)}}}},
-  map[string]any{"role":"tool", "toolCallId":"unrun", "content":outcome, "presentation":map[string]any{"outcome":outcome, "refused":outcome=="refused"}},
+  map[string]any{"role":"assistant", "toolCalls": []any{map[string]any{"id":id, "function":map[string]string{"name":"bash", "arguments":string(args)}}}},
+  map[string]any{"role":"tool", "toolCallId":id, "content":outcome, "presentation":map[string]any{"outcome":outcome, "refused":outcome=="refused"}},
  } { if err := enc.Encode(row); err != nil { t.Fatal(err) } }
 }
 
@@ -102,4 +106,20 @@ func TestGuardSameUnrunPass(t *testing.T) {
  door:=&receiptStageDoor{StageDoor:&repairReportDoor{},file:file,dir:root,requireFresh:true,requireAnyCheck:true}
  t.Cleanup(door.closeVerification)
  if err:=door.Report(t.Context(),factory.StageResult{Done:true}); err!=nil { t.Fatal(err) }
+}
+
+func TestGuardOlderPassCannotCoverNewerRefusal(t *testing.T) {
+ root,file,run:=staleGuardFixture(t)
+ run("go test ./...")
+ guardUnrunJournal(t,file,"go test -run TestProbe ./pkg","refused")
+ raw,err:=os.ReadFile(file)
+ if err!=nil { t.Fatal(err) }
+ var row struct { Calls []struct { Function struct { Arguments string `json:"arguments"` } `json:"function"` } `json:"toolCalls"` }
+ if err:=json.Unmarshal([]byte(strings.Split(string(raw),"\n")[0]),&row); err!=nil { t.Fatal(err) }
+ var args struct { Command string `json:"command"` }
+ if err:=json.Unmarshal([]byte(row.Calls[0].Function.Arguments),&args); err!=nil { t.Fatal(err) }
+ guardUnrunJournal(t,file,args.Command,"completed")
+ door:=&receiptStageDoor{StageDoor:&repairReportDoor{},file:file,dir:root,requireFresh:true,requireAnyCheck:true}
+ t.Cleanup(door.closeVerification)
+ if err:=door.Report(t.Context(),factory.StageResult{Done:true}); err==nil { t.Fatal("old pass erased a newer refused test without a later measured receipt") }
 }
