@@ -91,3 +91,17 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
   })
  }
 }
+
+func TestNewSignalWorkerStillUsesAnOldFactory(t *testing.T) {
+ var beats atomic.Int32
+ j,_:=deliveryJob(t,http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  decoder:=json.NewDecoder(r.Body);decoder.DisallowUnknownFields()
+  if err:=decoder.Decode(&struct{}{});err!=nil{t.Error("old factory refuses new heartbeat body",err);w.WriteHeader(422);return}
+  n:=beats.Add(1)
+  _=json.NewEncoder(w).Encode(api.WorkerHeartbeat{Signals:[]api.WorkerSignal{{Verb:"budget",Budget:float64(n+2)}}})
+ }))
+ for _,want:=range []float64{3,4}{
+  if !j.beat(t.Context()){t.Fatal("old factory heartbeat failed")}
+  it,err:=j.o.Mirror.Get(j.id);if err!=nil || it.Cap!=want{t.Fatalf("old signal without delivery ID was suppressed: cap=%v err=%v",it.Cap,err)}
+ }
+}
