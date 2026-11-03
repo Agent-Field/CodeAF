@@ -426,6 +426,9 @@ const CallTries = 3
 // that another window read meanwhile, or that a person dismissed.
 // Options connects policy reading and intake without giving triage launch authority.
 type Options struct {
+	// Standing reads GitHub before the worker pays for an arrival read. A person's
+	// Read press ([ReadThese]) isn't checked: they asked. Nil leaves reads unchanged.
+	Standing  func(context.Context, factory.Item) (string, error)
 	AskFirst  func(factory.Item) []string
 	AfterTick func(context.Context) error
 	// Off is "Read new issues as they arrive" turned off: a tick reads
@@ -521,7 +524,7 @@ func (w *worker) once(ctx context.Context) tick {
 	var it factory.Item
 	found := false
 	for _, x := range items {
-		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) {
+		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) && !w.closed(ctx, x) {
 			it, found = x, true
 			break
 		}
@@ -530,6 +533,15 @@ func (w *worker) once(ctx context.Context) tick {
 		return tickIdle
 	}
 	return w.read(ctx, it, CallTries)
+}
+
+// closed shares the process cache with intake when the store has a root.
+func (w *worker) closed(ctx context.Context, it factory.Item) bool {
+	root := ""
+	if st, ok := w.st.(interface{ Root() string }); ok {
+		root = st.Root()
+	}
+	return factory.ClosedForAutomation(ctx, root, it, w.opts.Standing)
 }
 
 // read reads one item, marked in flight. A call that fails is stamped (read,

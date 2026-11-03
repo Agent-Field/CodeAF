@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -112,34 +113,99 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 // factory runs here), which carries the file it was decided on, so this
 // machine's own copy is never read for it, nor cleared by that read.
 func talkMakerReading(st, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
-	dirs := factoryRepoDirs(st, workspace)
+	return talkMakerHolding(st, st, copies, workspace, profileDir)
+}
+
+// talkMakerHolding is [talkMakerReading] whose jobs live in st, while the
+// conversation's folder and team belong to floor: a worker's mirror holds a
+// remote job's row and goes when the worker ends; the conversation stays.
+func talkMakerHolding(st, floor, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	dirs := factoryRepoDirs(floor, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
-		factoryReconcileOnce(profileDir, st)
-		where, err := talkFolder(st, dirs, it)
-		if err != nil {
-			return "", err
+		factoryReconcileOnce(profileDir, floor)
+		if _, held, err := talkHeld(st, it); held != "" || err != nil {
+			return held, err
 		}
-		bucket, err := v3ProjectDir(where)
-		if err != nil {
-			return "", err
-		}
-		place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
-		if err != nil {
-			return "", err
-		}
-		transcript := place.Transcript()
-		if err := markFactoryChat(st, it, transcript); err != nil {
-			return "", err
-		}
-		name := talkTeamName(it)
-		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(copies, dirs, it))); err != nil {
-			return "", err
-		}
-		if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
-			return "", err
-		}
-		return transcript, nil
+		// Recipe reads can reach GitHub. Finish the brief before the floor lock.
+		brief := talkBrief(it, factoryItemRecipe(copies, dirs, it))
+		return withTalkMintLock(st, func() (string, error) {
+			ours, held, err := talkHeld(st, it)
+			if held != "" || err != nil {
+				return held, err
+			}
+			where, err := talkFolder(floor, dirs, it)
+			if err != nil {
+				return "", err
+			}
+			bucket, err := v3ProjectDir(where)
+			if err != nil {
+				return "", err
+			}
+			place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
+			if err != nil {
+				return "", err
+			}
+			transcript := place.Transcript()
+			if err := markFactoryChat(st, it, transcript); err != nil {
+				return "", err
+			}
+			name := talkTeamName(it)
+			if err := session.SeedConversation(transcript, where, name, brief); err != nil {
+				return "", err
+			}
+			if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
+				return "", err
+			}
+			if ours {
+				err = st.Update(it.ID, func(cur *factory.Item) error {
+					if strings.TrimSpace(cur.Talk) == "" {
+						cur.Talk = transcript
+					}
+					return nil
+				})
+				if err != nil {
+					return "", err
+				}
+			}
+			return transcript, nil
+		})
 	}
+}
+
+// withTalkMintLock lets one maker at a time make a job's manager, across every
+// process on this floor (the runner and the app's job chats race when a job
+// starts). A second manager costs money and answers its team's replies, so the
+// loser must never be created, not merely lose the write to Talk.
+func withTalkMintLock(st *store.Store, mint func() (string, error)) (string, error) {
+	root := st.Root()
+	if root == "" {
+		return mint()
+	}
+	file, err := os.OpenFile(filepath.Join(root, "talk.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	if err := filelock.Lock(file, true, false); err != nil {
+		return "", err
+	}
+	defer func() { _ = filelock.Unlock(file) }()
+	return mint()
+}
+
+// talkHeld reads st's own row for it: ours says the row is
+// this job, and held is the manager an earlier maker already kept on it. A job
+// another factory handed over can share a number with a row here; that row's
+// conversation is never its manager.
+func talkHeld(st *store.Store, it factory.Item) (ours bool, held string, err error) {
+	cur, err := st.Get(it.ID)
+	if err != nil || cur.Repo != it.Repo || cur.Num != it.Num || !cur.Created.Equal(it.Created) {
+		return false, "", nil
+	}
+	if err := factory.RefuseDropped(cur); err != nil {
+		return true, "", err
+	}
+	return true, strings.TrimSpace(cur.Talk), nil
 }
 
 // managerMaker is the runner's Options.Manager: the item's own conversation,

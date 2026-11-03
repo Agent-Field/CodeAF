@@ -268,6 +268,9 @@ func (b *appBackend) memoryOf() (*store.Store, error) {
 		return nil, appwire.Errorf(appwire.CodeEngine, "saved memory can't be read: this engine has no saved memory store")
 	}
 	brain, err := b.memoryStore()
+	if appMissingKey(err) {
+		return nil, appwire.Errorf(appwire.CodeEngine, "saved memory can't be read without a model key: add one in Settings › Accounts › Providers")
+	}
 	if err != nil {
 		return nil, appwire.Errorf(appwire.CodeEngine, "saved memory can't be read: %v", err)
 	}
