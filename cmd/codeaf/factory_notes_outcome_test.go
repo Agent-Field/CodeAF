@@ -37,8 +37,12 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 			}
 			enc := json.NewEncoder(f)
 			status := "failed"
-			if tc.outcome == "passed" { status = "ok" }
-			if tc.refused { status = "refused" }
+			if tc.outcome == "passed" {
+				status = "ok"
+			}
+			if tc.refused {
+				status = "refused"
+			}
 			command := "go test ./..."
 			if tc.name == "approval without resolver" {
 				command = "set -e\nrm -rf /tmp/ledger-race-check\ncp -r /checkout /tmp/ledger-race-check\ncd /tmp/ledger-race-check\ngo test -race -run TestConcurrentAddProbe ./... 2>&1 | head -40\ngo test ./... 2>&1 | tail -5"

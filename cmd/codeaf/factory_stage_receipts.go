@@ -120,6 +120,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			Presentation *struct {
 				Refused bool `json:"refused"`
 				Invoked bool `json:"invoked"`
+				Outcome string `json:"outcome"`
 			} `json:"presentation"`
 			Calls []struct {
 				ID       string `json:"id"`
@@ -179,14 +180,20 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 				refused = refused || strings.HasPrefix(text, prefix)
 			}
 		}
+		status := ""
+		if row.Presentation != nil {
+			status = row.Presentation.Outcome
+		}
 		switch {
-		case refused:
+		case refused || status == "refused":
 			receipt["outcome"], receipt["reason"] = "refused", text
+		case status == "ok":
+			receipt["outcome"] = "passed"
 		case lastLine == "Command aborted" || lastLine == "Command cancelled":
 			receipt["outcome"], receipt["reason"] = "cancelled", lastLine
 		case strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
 			receipt["outcome"], receipt["reason"] = "timed out", text
-		case strings.Contains(row.Content, "Command exited with code"):
+		case status == "failed" || strings.Contains(row.Content, "Command exited with code"):
 			receipt["outcome"] = "failed"
 		case passed:
 			receipt["outcome"] = "passed"

@@ -8,7 +8,7 @@ invalidates:
   - "Partial PASS output could previously label an interrupted command passed. Cancellation and timeout receipts now keep their interrupted outcome."
 ---
 
-Factory execution notes read the journal's producer refusal mark, with a
+Factory execution notes read the journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
 timeouts remain unresolved for the completion guard. Later stage briefs retain
 the reason instead of implying that the refused command ran. PR validation

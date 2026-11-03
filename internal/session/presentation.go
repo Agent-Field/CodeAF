@@ -46,6 +46,8 @@ type messagePresentation struct {
 	ToolInvoked       bool `json:"invoked,omitempty"`
 	HarnessMade       bool `json:"harness_made,omitempty"`
 	Refused           bool `json:"refused,omitempty"`
+	// ToolOutcome is the producer status, independent of command output.
+	ToolOutcome string `json:"outcome,omitempty"`
 	// MediaAttempt: this result's call made a render record (media_attempt.go).
 	MediaAttempt bool `json:"media_attempt,omitempty"`
 	// ToolProcess stays with this result occurrence through journal replay.
