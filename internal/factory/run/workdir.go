@@ -438,7 +438,9 @@ func GitPush(git Git) func(dir, branch string, before ...func() error) error {
 			return ErrNoRemote
 		}
 		for _, check := range before {
-			if err := check(); err != nil { return err }
+			if err := check(); err != nil {
+				return err
+			}
 		}
 		output, err := git.Run(dir, "push", "-u", "origin", branch)
 		if err != nil && strings.TrimSpace(output) != "" {

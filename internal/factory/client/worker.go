@@ -321,14 +321,20 @@ func (w *WorkerClient) CheckPublish(ctx context.Context, lease string) error {
 		var status int
 		status, err = w.send(ctx, http.MethodGet, leasePath(lease, "publish-check"), w.credential, nil, nil)
 		// Older factories have no endpoint and cannot confirm Stop at this boundary.
-		if status == http.StatusNotFound && errors.Is(err, ErrLeaseGone) && !errors.Is(err, ErrLeaseWithdrawn) { return nil }
-		if err == nil { return nil }
-		if status >= 400 && status < 500 { return err }
+		if status == http.StatusNotFound && errors.Is(err, ErrLeaseGone) && !errors.Is(err, ErrLeaseWithdrawn) {
+			return nil
+		}
+		if err == nil {
+			return nil
+		}
+		if status >= 400 && status < 500 {
+			return err
+		}
 		if attempt < 2 {
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("could not confirm Stop before publishing; press Approve again: %w", ctx.Err())
-			case <-time.After(100*time.Millisecond):
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
 	}

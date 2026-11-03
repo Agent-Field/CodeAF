@@ -14,15 +14,15 @@ import (
 const schema = 1
 
 type publisherReceipt struct {
- Lease Lease `json:"lease"`
- Item factory.Item `json:"item"`
- Restarted bool `json:"restarted,omitempty"`
+	Lease     Lease        `json:"lease"`
+	Item      factory.Item `json:"item"`
+	Restarted bool         `json:"restarted,omitempty"`
 }
 
 type document struct {
- Receipts []publisherReceipt `json:"publisher_receipts,omitempty"`
-	Schema int     `json:"schema"`
-	Leases []Lease `json:"leases"`
+	Receipts []publisherReceipt `json:"publisher_receipts,omitempty"`
+	Schema   int                `json:"schema"`
+	Leases   []Lease            `json:"leases"`
 	// Signals are what people asked of a job that its worker has not yet
 	// collected, keyed by job id. They live beside the leases, under the same
 	// lock, so a verb and the hold it is meant for can never disagree.
