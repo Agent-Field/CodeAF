@@ -14,3 +14,10 @@ labels use the existing display. Jobs saved without a label still omit it.
 State, routing, receipts and evidence continue to use the original step id.
 Desktop clients can display `label` when present and otherwise keep their current
 name formatting; actions must continue to send `name`.
+
+The engine announces `factory.job_step_edit_label` for labels on added and
+existing job steps (`edit.add[].step.label` and `edit.label`), and
+`factory.pipeline_edit_label` for `edits[].label` on pipeline `set_step` and
+`add_step`. Pipeline previews list label changes; labels are trimmed and bounded
+to one line of 200 characters. Empty labels clear the saved key. Labels were
+previously readable in pipeline edits but could not be changed there.

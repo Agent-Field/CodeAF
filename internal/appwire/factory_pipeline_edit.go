@@ -62,6 +62,9 @@ import (
 
 // FeatureFactoryPipelineEdit is announced in hello when the engine serves
 // factory.pipeline_source and factory.pipeline_preview.
+// FeatureFactoryPipelineEditLabel announces labels on set_step and add_step.
+const FeatureFactoryPipelineEditLabel = "factory.pipeline_edit_label"
+
 const FeatureFactoryPipelineEdit = "factory.pipeline_edit"
 
 // FeatureFactoryPipelineEditRuntime is announced beside FeatureFactoryPipelineEdit
@@ -299,6 +302,7 @@ type FactoryPipelineEdit struct {
 	After    *string  `json:"after,omitempty"`
 	Kind     *string  `json:"kind,omitempty" enum:"chat,check,gate"`
 	Prompt   *string  `json:"prompt,omitempty"`
+	Label    *string `json:"label,omitempty"`
 	Until    *string  `json:"until,omitempty"`
 	Max      *int     `json:"max,omitempty"`
 	When     *string  `json:"when,omitempty"`
@@ -560,12 +564,20 @@ type FactoryPipelineAdaptKindEditor interface {
 	PipelineAdaptKindEdits()
 }
 
+// FactoryPipelineLabelEditor marks an editor that applies and previews labels.
+type FactoryPipelineLabelEditor interface {
+	PipelineLabelEdits()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
 	}
 	if _, ok := e.(FactoryPipelineEditor); ok {
 		hello = withFeature(hello, FeatureFactoryPipelineEdit)
+		if _, labels := e.(FactoryPipelineLabelEditor); labels {
+			hello = withFeature(hello, FeatureFactoryPipelineEditLabel)
+		}
 		if _, guarded := e.(FactoryPipelineRuntimeGuard); guarded {
 			hello = withFeature(hello, FeatureFactoryPipelineEditRuntime)
 		}
@@ -608,7 +620,7 @@ func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 		if e.Op == PipelineEditAddStep || e.Kind != nil {
 			kind = e.Kind
 		}
-		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
+		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Label: e.Label, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
 			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
 			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, To: e.To}
 	}
@@ -770,6 +782,11 @@ func pipelinePreviewMethod(name string) method {
 		var keys map[string]json.RawMessage
 		if json.Unmarshal(raw, &keys) != nil || keys["base_text"] == nil || string(keys["base_text"]) == "null" {
 			return nil, Errorf(CodeBadParams, "base_text is required")
+		}
+		if _, labels := e.(FactoryPipelineLabelEditor); !labels {
+			for _, edit := range p.Edits {
+				if edit.Label != nil { return nil, Errorf(CodeBadParams, "this engine does not edit pipeline labels") }
+			}
 		}
 		if p, err = CheckPipelinePreview(p); err != nil {
 			return nil, err

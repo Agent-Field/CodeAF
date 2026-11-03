@@ -56,7 +56,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 		return appwire.FactoryJobStepEdited{}, err
 	}
 	body := api.StepEditsRequest{
-		Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Max: p.Edit.Max, Model: models, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
+		Label: p.Edit.Label, Ask: p.Edit.Ask, Thinking: p.Edit.Thinking, Max: p.Edit.Max, Model: models, On: p.Edit.On, Skip: p.Edit.Skip, Remove: p.Edit.Remove, Why: p.Edit.Why, Expect: p.Expect,
 	}
 	for _, mv := range p.Edit.Move {
 		body.Move = append(body.Move, api.StepMove{Step: mv.Step, After: mv.After})
@@ -70,7 +70,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 	h := b.factoryHub()
 	data, err := h.post(ctx, p.Factory, stepEditsPath(p.Job), body)
 	if err != nil {
-		if (len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Max) > 0 || len(body.Model) > 0) && unknownStepEditField(err) {
+		if (len(body.Label) > 0 || len(body.Remove) > 0 || len(body.Move) > 0 || len(body.Max) > 0 || len(body.Model) > 0) && unknownStepEditField(err) {
 			return appwire.FactoryJobStepEdited{}, factoryTooOld()
 		}
 		return appwire.FactoryJobStepEdited{}, err
@@ -101,7 +101,7 @@ func (b *appBackend) FactoryJobStepEdit(ctx context.Context, p appwire.FactoryJo
 // move as fields it does not know: the strict decode of a factory older than
 // both, which refused the whole edit as a bad request and changed nothing.
 func unknownStepEditField(err error) bool {
-	return unknownFactoryField(err, "remove", "move", "model", "max")
+	return unknownFactoryField(err, "label", "remove", "move", "model", "max")
 }
 
 // unknownFactoryField is an older factory's strict decoder refusing one of the

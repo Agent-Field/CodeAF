@@ -16,7 +16,7 @@ func TestAppFactoryLabelEditHello(t *testing.T) {
 
 func TestAppFactoryPipelineLabelEdit(t *testing.T) {
  stub := newEditStub(t, api.Me{Mode: api.FactoryTeam})
- wire := newEditWire(t, stub, false, "remote", "token")
+ wire := newEditWire(t, stub, false, api.FactoryTeam, prToken)
  var out appwire.FactoryPipelinePreview
  wire.must("factory.pipeline_preview", map[string]any{
   "factory": wire.id, "repo": prRepo, "base_sha": prBaseSHA, "base_text": editTestFile,

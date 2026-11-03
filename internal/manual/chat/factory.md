@@ -261,6 +261,17 @@ job's brief facts. The step id stays unchanged: pipelines and actions still use
 the step's key. Empty or whitespace labels use the existing name. Jobs without
 labels keep their existing display and saved form.
 
+Apps send labels on added job steps as `edit.add[].step.label` and change an
+existing job step with `edit.label: {write: Security review}` only when hello
+announces `factory.job_step_edit_label`. Job edits keep the same fixed-step,
+already-run and proof restrictions as other field edits.
+
+Pipeline previews accept `edits[].label` on `set_step` and `add_step` when hello
+announces `factory.pipeline_edit_label`. Labels are trimmed, limited to one line
+of 200 characters, and shown in the preview's changed fields. An empty label
+clears it; saved YAML omits `label:` when empty. Locked steps remain locked;
+added approval gates may carry a label.
+
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.

@@ -58,6 +58,9 @@ import (
 
 // FeatureFactoryJobStepEdit is announced in hello when the engine serves
 // factory.job_step_edits_read and factory.job_step_edit.
+// FeatureFactoryJobStepEditLabel announces labels on added and existing steps.
+const FeatureFactoryJobStepEditLabel = "factory.job_step_edit_label"
+
 const FeatureFactoryJobStepEdit = "factory.job_step_edit"
 
 // FeatureFactoryJobStepEditChecks is announced beside FeatureFactoryJobStepEdit
@@ -111,6 +114,8 @@ type FactoryStepMove struct {
 // FactoryStepEdit is the whole edit language of one request. Every name is a
 // step of the job as the person read it.
 type FactoryStepEdit struct {
+	// Label maps a step name to its display label; empty clears it.
+	Label map[string]string `json:"label,omitempty"`
 	Add []FactoryStepAddition `json:"add,omitempty"`
 	// Ask maps a step name to its new ask.
 	Ask map[string]string `json:"ask,omitempty"`
@@ -186,6 +191,7 @@ func withFactoryJobStepEditFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureFactoryJobStepEdit)
 		hello = withFeature(hello, FeatureFactoryJobStepEditChecks)
 		hello = withFeature(hello, FeatureFactoryJobStepEditStructure)
+		hello = withFeature(hello, FeatureFactoryJobStepEditLabel)
 	}
 	return hello
 }
@@ -304,7 +310,7 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 	if ed.Why, err = stepWords("why", ed.Why, MaxFactoryJobWords); err != nil {
 		return err
 	}
-	if len(ed.Add) > factory.StageMost || len(ed.Ask) > factory.StageMost || len(ed.Thinking) > factory.StageMost || len(ed.Max) > factory.StageMost || len(ed.Model) > factory.StageMost {
+	if len(ed.Label) > factory.StageMost || len(ed.Add) > factory.StageMost || len(ed.Ask) > factory.StageMost || len(ed.Thinking) > factory.StageMost || len(ed.Max) > factory.StageMost || len(ed.Model) > factory.StageMost {
 		return Errorf(CodeBadParams, "an edit changes at most %d steps in one part", factory.StageMost)
 	}
 	if ed.On, err = stepRefs("on", ed.On); err != nil {
@@ -335,6 +341,15 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 		}
 		mv.After = &after
 	}
+	labels := make(map[string]string, len(ed.Label))
+	for name, label := range ed.Label {
+		if name, err = stepRef("label", name); err != nil { return err }
+		if _, exists := labels[name]; exists { return Errorf(CodeBadParams, "label names a step twice") }
+		label, bad := factory.CleanStepLabel(label)
+		if bad != nil { return Errorf(CodeBadParams, "%s", bad.Error()) }
+		labels[name] = label
+	}
+	ed.Label = nilIfEmpty(labels)
 	asks := make(map[string]string, len(ed.Ask))
 	for name, ask := range ed.Ask {
 		if name, err = stepRef("ask", name); err != nil {
@@ -378,7 +393,7 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 			return err
 		}
 	}
-	if len(ed.Add) == 0 && len(ed.Ask) == 0 && len(ed.Thinking) == 0 && len(ed.Max) == 0 && len(ed.Model) == 0 && len(ed.On) == 0 && len(ed.Skip) == 0 && len(ed.Remove) == 0 && len(ed.Move) == 0 {
+	if len(ed.Label) == 0 && len(ed.Add) == 0 && len(ed.Ask) == 0 && len(ed.Thinking) == 0 && len(ed.Max) == 0 && len(ed.Model) == 0 && len(ed.On) == 0 && len(ed.Skip) == 0 && len(ed.Remove) == 0 && len(ed.Move) == 0 {
 		return Errorf(CodeBadParams, "the edit changes nothing: name a step to add, reword, set thinking for, switch on, skip, remove or move")
 	}
 	return nil
@@ -465,6 +480,9 @@ func checkNewStep(a *FactoryStepAddition) error {
 	}
 	if st.Max < 0 || st.Max > factory.CheckRoundsMost {
 		return Errorf(CodeBadParams, "a check runs from 1 to %d rounds", factory.CheckRoundsMost)
+	}
+	if st.Label, err = factory.CleanStepLabel(st.Label); err != nil {
+		return Errorf(CodeBadParams, "%s", err.Error())
 	}
 	if st.Ask, err = stepWords("ask", st.Ask, factory.AskMost); err != nil {
 		return err

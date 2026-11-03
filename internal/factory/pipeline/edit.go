@@ -63,6 +63,7 @@ const (
 const (
 	EditTextMax   = 256 << 10 // the pull request route's own cap on the file
 	EditPromptMax = 8 << 10   // bytes
+	EditLabelMax  = factory.StepLabelMax       // characters
 	EditUntilMax  = 200       // characters
 	EditRoundsMax = 99
 	EditBudgetMax = factory.BudgetMostUSD
@@ -114,6 +115,7 @@ type EditOp struct {
 	When     *string
 	Effort   *string
 	Fanout   *string
+	Label    *string
 	Until    *string
 	Max      *int
 	Value    *float64
@@ -188,7 +190,7 @@ type Source struct {
 }
 
 // StepChange is one step an edit really changed. Fields names what changed, in
-// the order prompt, kind, when, effort, fanout, until, max.
+// the order label, prompt, kind, when, effort, fanout, until, max.
 type StepChange struct {
 	Name   string
 	Fields []string
@@ -377,7 +379,7 @@ func stepView(f File, name string) StepView {
 	s := f.Steps[name]
 	return StepView{Name: name, Label: s.Label, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
 		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
-		InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
+		InFile: s.Label != "" || s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
 
 func describe(f File) Source {
@@ -598,8 +600,11 @@ func (st *editState) setStep(i int, op EditOp) *EditError {
 	return nil
 }
 
-// setStepWords writes the when, effort, fanout, until and max an edit names.
+// setStepWords writes the label, when, effort, fanout, until and max an edit names.
 func setStepWords(s *Step, op EditOp) {
+	if op.Label != nil {
+		s.Label = *op.Label
+	}
 	if op.When != nil {
 		s.When = *op.When
 	}
@@ -678,7 +683,7 @@ func stepChanges(before Source, out File, renamed map[string]string) []StepChang
 			name string
 			diff bool
 		}{
-			{"prompt", a.Prompt != b.Prompt}, {"kind", a.Kind != b.Kind}, {"when", a.When != b.When},
+			{"label", a.Label != b.Label}, {"prompt", a.Prompt != b.Prompt}, {"kind", a.Kind != b.Kind}, {"when", a.When != b.When},
 			{"effort", a.Effort != b.Effort}, {"fanout", a.Fanout != b.Fanout}, {"until", a.Until != b.Until}, {"max", a.Max != b.Max},
 		} {
 			if c.diff {
@@ -734,7 +739,7 @@ func checkSetStep(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "set_step does not take a value")
 	}
 	if op.Kind == nil && !stepFieldsNamed(op) {
-		return op, refuseEdit(EditBadOp, i, "set_step needs a prompt, kind, when, effort, fanout, until or max")
+		return op, refuseEdit(EditBadOp, i, "set_step needs a label, prompt, kind, when, effort, fanout, until or max")
 	}
 	if !stepNamed(op.Name) {
 		return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
@@ -779,9 +784,16 @@ func stepNamed(name string) bool {
 	return name != "" && name == stepToken(name) && validStepName(name)
 }
 
-// checkStepFields bounds and trims the prompt, when, effort, fanout, until and
+// checkStepFields bounds and trims the label, prompt, when, effort, fanout, until and
 // max an edit names; it is shared by set_step and add_step.
 func checkStepFields(i int, op EditOp) (EditOp, *EditError) {
+	if op.Label != nil {
+		label, err := factory.CleanStepLabel(*op.Label)
+		if err != nil {
+			return op, refuseEdit(EditBadValue, i, "%s", err.Error())
+		}
+		op.Label = &label
+	}
 	if op.Prompt != nil {
 		p, why := cleanPrompt(*op.Prompt)
 		if why != "" {
@@ -855,7 +867,7 @@ func stepsDiffer(back, want File) string {
 		}
 		got := back.Steps[name]
 		if got.Prompt != s.Prompt || got.Kind != s.Kind || got.When != s.When || got.Effort != s.Effort ||
-			got.Fanout != s.Fanout || got.Until != s.Until || got.Max != s.Max {
+			got.Label != s.Label || got.Fanout != s.Fanout || got.Until != s.Until || got.Max != s.Max {
 			return fmt.Sprintf("the file format cannot hold that change to %s", name)
 		}
 	}
@@ -896,16 +908,20 @@ func cleanPrompt(s string) (string, string) {
 }
 
 func cleanUntil(s string) (string, string) {
+	return cleanLine(s, "until", EditUntilMax)
+}
+
+func cleanLine(s, field string, limit int) (string, string) {
 	s = strings.TrimSpace(s)
 	switch {
-	case utf8.RuneCountInString(s) > EditUntilMax:
-		return "", fmt.Sprintf("until is one line of at most %d characters", EditUntilMax)
+	case utf8.RuneCountInString(s) > limit:
+		return "", fmt.Sprintf("%s is one line of at most %d characters", field, limit)
 	case !utf8.ValidString(s):
-		return "", "until must be valid UTF-8"
+		return "", field + " must be valid UTF-8"
 	}
 	for _, r := range s {
 		if r < 0x20 || r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029 || r == 0xfeff {
-			return "", "until is one line"
+			return "", field + " is one line"
 		}
 	}
 	return s, ""
