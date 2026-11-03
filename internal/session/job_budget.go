@@ -38,7 +38,7 @@ func (a *Agent) watchJobBudget() {
 		defer ticker.Stop()
 		for range ticker.C {
 			a.mu.Lock()
-			closed, stopped := a.closed, a.workStopped
+			closed, stopped, epoch := a.closed, a.workStopped, a.workEpoch
 			a.mu.Unlock()
 			if closed {
 				return
@@ -46,7 +46,7 @@ func (a *Agent) watchJobBudget() {
 			if !stopped {
 				stopOwned := a.factoryOwnedStop()
 				if a.jobBudgetBlock() != nil {
-					_ = a.StopWork()
+					_ = a.stopWorkEpoch(epoch)
 				} else if a.automaticFactoryRefusal() == factory.PersonStopReason {
 					stopOwned()
 				}
@@ -78,10 +78,14 @@ func (a *Agent) factoryOwnedStop() func() {
 	jobs, graph := a.jobs, a.tasks
 	cancel, automatic := a.cancel, a.running && a.factoryAutomaticTurn
 	a.mu.Unlock()
-	var ids []uint64
+	tasks := map[uint64]<-chan struct{}{}
 	if graph != nil {
 		graph.mu.Lock()
-		ids = append(ids, graph.order...)
+		for _, id := range graph.order {
+			if node := graph.nodes[id]; node != nil {
+				tasks[id] = node.done
+			}
+		}
 		graph.mu.Unlock()
 	}
 	var owned []*job
@@ -92,8 +96,8 @@ func (a *Agent) factoryOwnedStop() func() {
 		if automatic && cancel != nil {
 			cancel(stopFor(StopByWorkStopped))
 		}
-		for _, id := range ids {
-			_, _ = graph.stopFor(id, "")
+		for id, done := range tasks {
+			_, _ = graph.stopAttempt(id, "", done)
 		}
 		var stopped sync.WaitGroup
 		for _, job := range owned {

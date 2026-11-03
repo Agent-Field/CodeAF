@@ -3,7 +3,7 @@ package run
 import (
 	"context"
 	"errors"
- "fmt"
+ 
 	"sync/atomic"
 	"testing"
 
@@ -66,7 +66,9 @@ func TestStopAfterStepReaderErrorUsesStoredChoice(t *testing.T) {
 
 func TestAuthorityOutageDoesNotAdmitNextPaidStep(t *testing.T) {
  for _, transient := range []bool{true, false} {
-  t.Run(fmt.Sprint(transient), func(t *testing.T) {
+  name := "held"
+  if transient { name = "recovered_stop" }
+  t.Run(name, func(t *testing.T) {
    var steps, reads atomic.Int32
    g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) { steps.Add(1); return done("paid"), nil })}, nil)
    id := g.add("authority outage", chat("plan"), chat("write"))

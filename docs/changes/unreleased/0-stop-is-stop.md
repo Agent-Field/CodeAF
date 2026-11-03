@@ -44,9 +44,16 @@ PR is created.
 
 Fresh authority checks also cover merge after Follow, proof-only comments, PR
 repair descriptions and every poststage write and push. A gone or withdrawn
-worker lease refuses the next paid step; temporary choice-read failures retain
-the stored Stop-after-step behavior. The manager's watcher cancels owned
-background work on the person's Stop while preserving person chat.
+worker lease refuses the next paid step. Choice-read failures retry briefly,
+then hold before paid work with an explanation instead of trusting a stale
+choice; missing routes on older factories remain compatible. Healthy leased
+merges and approved post steps do not require the separate Publishing flag.
+GitHub comments, labels and closes honor the last authority check after source
+selection. The manager watcher cancels the producers it sampled on a person's
+Stop, preserving later starts and person chat; unknown authority alone does not
+cancel existing work. Budget watcher decisions cannot cross a resumed work epoch.
+The live rig excuses unpriced calls only when it recorded them open at Stop and
+cancelled them itself; a later timeout is an accounting failure.
 
 A person's stopped-manager chat shows the current execution refusal before the
 model's explanation. The status receipt stays exact when the model paraphrases
