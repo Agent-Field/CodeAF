@@ -95,3 +95,12 @@ func TestReviewStandingRejectsReplacementIssue(t *testing.T) {
 		t.Fatal("replacement identity stopped automation")
 	}
 }
+
+func TestReviewClosedRefetchPinsFirstIdentity(t *testing.T) {
+ f := newIssueScript(t, 1)
+ f.state[1] = "closed"
+ fresh, err := f.src.Refetch(context.Background(), f.row(1))
+ if err != nil { t.Fatal(err) }
+ if err := source.Merge(f.st, source.Name, []factory.Item{fresh}); err != nil { t.Fatal(err) }
+ if f.row(1).GitHubIssueID != 1001 { t.Fatal("closed first direct read lost permanent identity") }
+}
