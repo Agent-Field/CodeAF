@@ -227,9 +227,16 @@ func recordFactoryAIUsage(settings config.Config, model, name string, response *
 // returns no response. Its finisher banks them before the caller judges the
 // error. The returned usage keeps its price-presence fact on successful calls.
 func factoryAIAccounting(ctx context.Context, settings config.Config, model, name string, noted func(float64)) (context.Context, func(*ai.Response) float64) {
+	var mu sync.Mutex
 	var charges []provider.Billed
-	ctx = provider.WithBilling(ctx, func(charge provider.Billed) { charges = append(charges, charge) })
+	ctx = provider.WithBilling(ctx, func(charge provider.Billed) {
+		mu.Lock()
+		defer mu.Unlock()
+		charges = append(charges, charge)
+	})
 	return ctx, func(response *ai.Response) float64 {
+		mu.Lock()
+		defer mu.Unlock()
 		total := 0.0
 		bank := func(served string, response *ai.Response) {
 			usd := recordFactoryAIUsage(settings, served, name, response)
