@@ -259,6 +259,7 @@ and repository; an unavailable Factory produces an `unknown` target and status.
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
 | `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -482,9 +483,21 @@ A confirmed send-back reports acceptance, not worker startup; an unconfirmed
 result directs the manager to read status before retrying and explain the
 outcome to the person without internal identifiers.
 
+Cap questions use one next budget: `factory.job`'s existing
+`spending_limit.next_limit` and `questions[].next_limit` are the smallest of
+$5, $10, $20, $30 strictly above recorded spend. Once spend reaches $30,
+double the current cap, repeatedly if needed, until it is above spend.
+The next limit is never zero. A new question says
+`budget of $30 reached · $31 spent · raise it to $60, or stop?`. Yes or
+continue, including on an older saved question, uses that same next cap.
+The desk sends that next cap as the existing `factory.job_set_budget`'s
+`budget`, never as an answer field. No new field, method, hello feature, or
+error code is added; `factory.job_actions` remains the existing feature.
+
 `factory.job_set_budget` keeps its existing params (`factory`, `job`, `budget`,
-required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
-$30. Raising the cap above recorded spend resolves a `cap` question and resumes
+required `expect.version`) and `FactoryJobActed` reply. Budgets accept $5, $10, $20, $30 or exactly the job's next cap.
+Other amounts are refused with HTTP 422 (`bad_input`), mapped to app-wire
+`bad_params`. Raising the cap above recorded spend resolves a `cap` question and resumes
 the interrupted step in the same conversation and round, with spend retained,
 in Auto or Manual on local and leased runners. Manual still asks before its next
 step. Take over and publishing jobs do not resume through a budget change.
@@ -511,6 +524,13 @@ existing step budget. A provider that ignores the schema can still omit it;
 the protected-path gate then pauses safely. The stored unknown-list hold suffix
 remains `the plan names no files`; visible words describe the missing checkable
 list rather than claiming the plan names no files in prose.
+
+`factory.job.approval` keeps the latest settled decision, including its kind,
+actor and times, while later work or gates wait and after restarting the app.
+A later gate retains its own waiting step, `needs_you` and `can.approve`; the
+earlier decision never passes it. Beginning another approval replaces the single
+summary with that decision and its own undo window. Activity keeps the receipts.
+No method, parameter, reply field, error code or hello feature changes.
 
 `factory.activity` records automatic approvals and their publications with
 `actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
@@ -705,6 +725,8 @@ failed}`: jobs read now; jobs skipped (already read, not an issue job, not
 visible to the caller, or past the first 20 read); jobs whose model call
 failed, left unread to try again. A factory with no model key fails every job.
 `queue.desk.last_read_cost` is what the last read cost, for "about $X".
+Both read and scout bank each reported provider charge once on Spending,
+including failed generations. Their methods, replies and hello features are unchanged.
 
 An engine whose hello carries the feature `factory.repo_checkout` answers
 `factory.queue` with `checkout_state` on each of `repos[]`: how a run of that
@@ -1133,6 +1155,18 @@ time. `search.all` retains its existing `bad_params` error for an empty query.
 | `settings.models.set` | `in.TaskModelsPatchWire` | `TaskModelsResult` |
 | `settings.set` | `in.SettingsPatchWire` | `SettingsResult` |
 
+An engine whose hello carries `settings.memory` includes `memory` in Settings
+(`settings.get`, `settings.set`, and `settings.changed`):
+`{enabled: bool, source: "default"|"saved", cost_note: string}`. No saved choice
+means off with source `default`. A saved word (`on`/`off`) or boolean is respected.
+`settings.set` takes optional `memory_enabled: bool`; any non-boolean, including
+null, is `bad_params`. Its reply and `settings.changed` carry the updated Settings.
+The switch applies live at the next memory step. Off prevents automatic learning
+calls; saved knowledge and explicit keeps remain available. Calls already in
+flight finish and are billed. Terminal Build saves an explicit on.
+`cost_note` is the shared `config.MemoryCostNote` disclosure, including the example
+of one small DeepSeek V4.1 Flash job at 39% ($0.0124 of $0.0315).
+
 An engine whose hello carries the feature `settings.models.auxiliary` adds a
 fourth role to the task models: `roles.auxiliary` in `settings.models.get` (and
 in `settings.changed`'s `task_models`) is `{pin, warning, eligible_count}` like
@@ -1190,6 +1224,11 @@ role pins and checked as the other pins are.
 | method | params | result |
 |---|---|---|
 | `slash.catalog` | `{}` | `SlashCatalogResult` |
+
+
+## One engine on a home
+
+`codeaf app` holds an OS lock on its home until it exits. A second `codeaf app` on that home waits before `hello`, starting no recovery, Factory work or clock, and starts as soon as the first ends. If the first is still there when the wait runs out, it exits with status 1 and its stderr says `another codeaf app is still closing this home`. A crash releases the lock. No method or feature changes.
 
 ## spend methods
 
@@ -1602,6 +1641,22 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Mark a job pull request ready
+
+Hello feature `factory.job_pr_ready` advertises the optional method of the same
+name. Params are `{factory, job, expect}`; `expect.version` is required as for
+Merge. It sends one `POST /v1/jobs/{id}/pr-ready` with `{expect}` and returns
+`FactoryJobActed` with `action: "pr_ready"`, the record event and the current job.
+Job reads offer `can.pr_ready` to a signed-in person allowed to merge this job
+while its published PR is open and draft. The job's own GitHub repository and
+the caller's credential are used, with no model call or automatic retry.
+
+A confirmed mutation stores `pr.draft: false` immediately; no follow read is
+needed. Merge still applies every other gate. Another person is `forbidden`,
+a changed expected version is `stale`, and no PR or an already ready PR is
+`conflict`. An unconfirmed outcome is `uncertain`: read the job before deciding
+whether to try again. Ready has no Undo window and never merges the PR.
 
 ### Job note receipts and pull request comments
 

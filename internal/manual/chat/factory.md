@@ -177,6 +177,14 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 
 A step that falls short goes round again until its rounds run out, and only then asks you what to do. New jobs default to Auto, which passes routine optional approvals and publishes passing proof as a draft PR within the job budget. Manual asks before enabled approval gates and publication; the job header switch saves that choice. Activity credits automatic approvals and their publications to the factory, without naming the job owner or starter. A stale action says "approved automatically at" and the approval time in UTC. Personal approvals still name the person; saved activity is unchanged. Fixed gates and critical unresolved decisions still ask. Merge remains your decision. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
 
+## approval decisions — you approved the plan, and later gates still ask
+
+The job keeps your latest settled approval and who approved it while later
+steps or gates wait, including when you open the app again. Approving
+a plan does not approve a later gate: that gate still waits for its own answer.
+When another approval begins, the job shows that decision with its own undo
+window. Activity keeps the earlier approval receipts.
+
 ## the factory's own rules — rules for every repository, instructions, protected paths, ask first, never, "don't touch auth without checking with me"
 
 A repository's rules live in its `.codeaf/factory.yaml` (`rules:` and `start: {ask_first, never}`); in the app, the factory's Steps tab, in its Repository view, edits them with its pipeline, as one pull request, and a repository with no file yet gets one. A change to a file the repository already has reaches the next start; a file added where there was none (the first `factory.yaml`, or a `CODEOWNERS`) is read within five minutes of its merge. **Use on this factory** runs the edit at once instead (see the next section). The factory can also keep **its own rules**, for every repository it watches, so a rule like "don't touch auth without checking with me" is said once instead of copied into each repository. They are kept by the factory itself (on a team, the shared server, not one person's machine), and only its operator can change them; everyone signed in can read them. In the app they are the Global view of the factory's **Steps** tab.
@@ -281,6 +289,10 @@ The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
 
+## which model a cheap or strong step runs on — small work, checks model, effort models
+
+A factory step marked `cheap` opens on the **small work** model, and a step marked `strong` on the **checks** model: the same two rows the settings sheet already shows, so changing either changes the factory's cheap or strong steps from their next run. A model picked for the step, or for the whole job, wins over its effort. A step with no effort word runs on the job's model or the factory's default. With one model for every task, every step runs on that one model, whatever its effort.
+
 ## answer the factory_item card in the terminal — yes, keep it, say what to change, esc, the card never appeared
 
 In the terminal chat a `factory_item` call puts its card above the message box: a head that asks the question (`#12 · think strong?`), one row for each thing that would change (`thinking  write — → strong`, `budget  $5 → $8`, `note:`, `why:`), and two answers.
@@ -324,6 +336,20 @@ changed code, CI or feedback cannot reuse stale readiness approval. Marking read
 never grants merge authority. The repository's separate auto-merge setting is
 the explicit opt-in for automatic merge.
 
+## mark a draft pull request ready for review
+
+A job's assignee can mark its open draft pull request ready from the job,
+using their own GitHub sign-in. A job with no assignee follows the same person
+rule as Merge. The PR immediately reads ready after GitHub confirms it; there
+is no wait for the next poll. This is an explicit human decision, with no
+model review, automatic retry or Undo window.
+
+A PR that is already ready, closed, or missing cannot be marked ready. If the
+job changed since you read it, read it again first. If the outcome is uncertain,
+check the PR before trying again. Marking ready removes the draft block from
+Merge; checks, approved commits, reviews and every other merge rule still apply.
+It does not merge the PR or enable auto-merge.
+
 ## merge a job's pull request — factory auto-merge when checks pass, or why it will not merge
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
@@ -365,6 +391,8 @@ no running slot.
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
 **Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+
+A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
@@ -409,7 +437,7 @@ The manager never changes the plan from a comment on its own yet, even one that 
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
-The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
+The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows. An arrival read or a start rule checks GitHub once too, and a closed issue gets nothing from them; a Read press still reads.
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
@@ -476,7 +504,7 @@ Start rules: jobs like this one that cost more than `max_cost` ask first (`jobs 
 
 Look closer on a job asks a model to read the issue again with read-only tools on the factory's own checkout: list a folder, search, read lines of a file. It answers the files it expects to change (each with a short why), a three-step plan, what the issue does not say (as questions for its author), the tests that would prove it, and the complexity again, each factor citing a file and line. Every path shown exists in the repository; a path the model named that does not exist is dropped and counted. A look never writes a price.
 
-A look stops asking for files at 12 tool calls, one minute or $0.10, whichever comes first, and then answers once. The button shows what a typical look costs on this factory (`Look closer ≈ $0.02`, never under `≈ $0.01`) once one has run; its cost goes on Spending as `factory scout`. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
+A look stops asking for files at 12 tool calls, one minute or $0.10, whichever comes first, and then answers once. The button shows what a typical look costs on this factory (`Look closer ≈ $0.02`, never under `≈ $0.01`) once one has run; its cost goes on Spending as `factory scout`. AI read and Look closer charges appear on Spending even when the model call fails; each charge is counted once. The same issue at the same commit answers the kept look for free; an edited issue shows the look as older and offers a refresh.
 
 Its complexity replaces the read's, and its questions become the job's when the job has none. Credential-looking files (`.env`, keys, `.ssh/`) are never listed or read, and the repository's text is treated as data, so an instruction inside a file or the issue is not followed.
 
@@ -602,6 +630,21 @@ Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
 
+## Job Brief inputs — later requests, answers and saved notes
+
+The Brief reads the issue plus your later requests from gate answers and saved
+notes, alongside the plan and step results. A later request wins where it
+disagrees with the issue or plan. Work that follows your request is treated as
+asked, never as a fault, surprise or scope creep. A real miss against your
+request is still reported, and the Brief names the request as asked.
+
+Plain continue, yes and no answers are omitted. The writer keeps the newest
+12 distinct requests, up to 2 KiB per text and 16 KiB of request JSON, oldest
+first. Dated answers carry their step, gate and answer time. Saved notes have
+no recorded step or time; their saved order comes before dated answers.
+Duplicate words appear once. Requests survive cuts to fit the writer's input.
+A new request makes an earlier Brief out of date.
+
 ## Job Brief after proof, publishing and an out of date line
 
 The job's Brief refreshes when proof waits for your publication approval and
@@ -635,3 +678,27 @@ Automatic brief writes keep their existing limit: the last kept version must
 cost at most $0.03, and the kept versions plus one more at that cost must fit
 within 5% of the job's actual spend. Correcting a duplicate charge can therefore
 hold back an automatic write sooner. A requested retry still bypasses this guard.
+
+## budget reached — yes, raise the cap, next budget and stop
+
+When a job reaches its budget, the question names its current budget, what it
+spent, and the next absolute budget: `budget of $0.01 reached · $0.01 spent ·
+raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
+the desktop's raise button at $5 does the same. It does not add $5 to the cap.
+
+The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
+spending. If a round spent $5.25, the next budget is $10 even when the old cap
+was $0.01. Once spending reaches $30, double the current cap, repeatedly if
+needed, until it is above spend. A $30 cap with $31 spent offers $60.
+Saved questions on older jobs can keep their old words, but yes now
+uses this same rule.
+
+The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
+Other amounts are refused. Stop keeps the recorded spend and work.
+
+## Why does Spending show Factory AI — the third part of today's money
+
+Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.
+
+The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (AI notes and themes on a repo, asking about a repo, Build with AI, AI views). Afi's small errands count under your chats. A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
+

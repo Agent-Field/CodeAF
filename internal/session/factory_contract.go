@@ -222,6 +222,12 @@ type JobModelSpend interface {
 	SpendModel(usd float64, model string, calls, input, output int)
 }
 
+// JobMemorySpend is a job budget that keeps optional learning's portion of the
+// job's spend apart, beside the model that answered the call.
+type JobMemorySpend interface {
+	SpendMemoryModel(usd float64, model string, calls, input, output int)
+}
+
 // JobChat is one job's chat's half of the job's money.
 type JobChat interface {
 	// Spend adds usd, one call's dollars, to the job's spend. THE CALL IS
