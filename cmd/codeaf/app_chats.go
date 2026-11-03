@@ -400,6 +400,13 @@ func (c *appChats) markTaking(rows []appwire.ChatRow) {
 	}
 }
 
+func (c *appChats) landedTake(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.landed[id]
+	return ok
+}
+
 func (c *appChats) landTake(id string, fence uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -439,7 +446,7 @@ func (b *appBackend) publishTaking() {
 	c.markTaking(rows)
 	// Only taking changed, so the cache's older locations stay off the agents
 	// a take may already have placed here.
-	b.publishChatRows(rows, version, true, false)
+	b.publishChatRows(rows, version, true, nil)
 }
 
 // A finished take stops counting under the inventory lock, and this reading
@@ -467,10 +474,11 @@ func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.Sta
 // Inventory operations hold op through caching and emission. A list refreshes
 // the cache silently; only the follower compares against rows actually emitted.
 func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit bool) {
-	b.publishChatRows(rows, version, emit, true)
+	b.publishChatRows(rows, version, emit, func(appwire.ChatRow) bool { return true })
 }
 
-func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emit, locate bool) {
+// locate says which rows re-place their local agents; nil re-places none.
+func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emit bool, locate func(appwire.ChatRow) bool) {
 	old, current := b.chats.cacheRows(rows, version, emit)
 	if !current || !emit {
 		return
@@ -485,7 +493,7 @@ func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emi
 		if !exists || !reflect.DeepEqual(prev, r) {
 			b.emit.Emit(appwire.EventChatChanged, appwire.ChatChanged{Chat: r, Version: version})
 		}
-		if locate && r.LocalAgent != "" {
+		if locate != nil && r.LocalAgent != "" && locate(r) {
 			var a *appAgent
 			b.locked(func() { a = b.agents[r.LocalAgent] })
 			if a != nil {
@@ -581,7 +589,9 @@ func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Fol
 			appChatPresence(r, c.facts[r.Cell], state, known)
 		}
 		c.markTaking(rows)
-		b.publishChats(rows, version, true)
+		// Presence still refreshes local agents' lines, but a cached row from
+		// before a landed take would move its agent back elsewhere.
+		b.publishChatRows(rows, version, true, func(r appwire.ChatRow) bool { return !c.landedTake(r.Cell) })
 	}
 	return true
 }

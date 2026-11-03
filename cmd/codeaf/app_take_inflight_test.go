@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -205,4 +206,79 @@ func TestAppTakeInFlightCacheAfterALandedTakeStillSaysItRuns(t *testing.T) {
 			t.Fatalf("a landed take was announced as one that did not move the chat: %+v", changed.Chat)
 		}
 	}
+}
+
+// A watch that has announced no newer version than the cache, so its next
+// frame is presence only.
+type presenceOnlyFeed struct{ changes chan struct{} }
+
+func (f presenceOnlyFeed) State() dirwatch.State    { return dirwatch.State{Up: true} }
+func (f presenceOnlyFeed) Changes() <-chan struct{} { return f.changes }
+func (presenceOnlyFeed) Probe()                     {}
+func (presenceOnlyFeed) Close()                     {}
+
+// A take that acquired the chat but whose reconcile read failed leaves the
+// cache saying the chat is elsewhere; a device coming or going must not move
+// the agent the take put here back there.
+func TestAppTakeInFlightPresenceAfterALandedTakeLeavesTheAgentHere(t *testing.T) {
+	celltest.Available(t)
+	appDevicesRelay(t)
+	aHome, bHome := t.TempDir(), t.TempDir()
+	id, err := identity.Ensure(aHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := identity.Adopt(bHome, id, false); err != nil {
+		t.Fatal(err)
+	}
+	a, b := appDeviceSync(t, aHome), appDeviceSync(t, bHome)
+	for _, s := range []*syncsetup.Sync{a, b} {
+		if err := syncsetup.PutOwnDevice(t.Context(), s.Dir, s.Identity, s.Device, devname.Name(s.Home)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Dir.Create(t.Context(), c.ID, directory.CellInit{Head: "saved-head"}); err != nil {
+		t.Fatal(err)
+	}
+	backend, _, wire := appDeviceBackend(t, bHome)
+	var row appwire.ChatRow
+	appSyncWait(t, "the other computer's chat is listed", func() bool {
+		for _, r := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
+			if r.Cell == c.ID && r.CanTake {
+				row = r
+				return true
+			}
+		}
+		return false
+	})
+	// This computer already holds a local copy, so the cached row names its
+	// agent while saying the chat is elsewhere.
+	placed := backend.agent("taken-here")
+	backend.chats.mu.Lock()
+	for i := range backend.chats.rows {
+		if backend.chats.rows[i].Cell == c.ID {
+			backend.chats.rows[i].LocalAgent = placed.view.ID
+		}
+	}
+	backend.chats.mu.Unlock()
+	// agents.take acquires the chat and places the agent here; settleTake
+	// stops counting it, and its reading fails, leaving the cache as it was.
+	backend.chats.countTake(c.ID, 1)
+	backend.chats.landTake(c.ID, row.Seen.Fence+1)
+	here := &appwire.Location{Here: true, Cell: c.ID}
+	backend.located(placed, here)
+	backend.chats.countTake(c.ID, -1)
+
+	if !backend.refreshChatInventory(t.Context(), presenceOnlyFeed{changes: make(chan struct{})}) {
+		t.Fatal("the presence refresh stopped the follower")
+	}
+	backend.locked(func() {
+		if placed.view.Location != here {
+			t.Errorf("a presence change moved the taken agent back: %+v", placed.view.Location)
+		}
+	})
 }
