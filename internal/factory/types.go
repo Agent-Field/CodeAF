@@ -311,7 +311,7 @@ type Phase struct {
 	// out, its output cut at [ResultOutputMost]), kept so a run revived
 	// after a restart still hands the steps after it what came before.
 	Result *StageResult `json:",omitempty"`
-	// At is when the phase ended, done or failed. Zero while it has not
+	// At is when the phase ended, done, skipped or failed. Zero while it has not
 	// ended, and again once it is sent back to run. The wire's step.at is
 	// this instant.
 	At time.Time `json:",omitempty"`

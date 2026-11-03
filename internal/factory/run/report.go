@@ -402,7 +402,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	st := it.Stages[index]
 	if step.State == factory.PhaseSkipped {
 		if st.Kind == factory.StageGate && (!factory.FileCondition(st) || factory.Fits(st, *it)) {
-			return fmt.Errorf("an approve step requires a person’s answer or an unmatched file condition")
+			return fmt.Errorf("an approve step requires a person's answer or an unmatched file condition")
 		}
 		step.Result, step.Verification, step.Failure = nil, nil, nil
 	}
@@ -599,7 +599,7 @@ func skipPhase(it *factory.Item, ph *factory.Phase, reason string, now time.Time
 	ph.Note, ph.Result, ph.Failure = "", nil, nil
 }
 
-// setPhaseState moves a phase and stamps its finish. Done and failed are the
+// setPhaseState moves a phase and stamps its finish. Done, skipped and failed are the
 // ends the brief's clock reads (step.at). Pending and running clear a stamp,
 // so a step sent back does not keep the time it ended before. Waiting leaves
 // the stamp alone: a question is not an ending. Pending also clears when the
