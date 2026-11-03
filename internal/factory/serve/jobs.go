@@ -221,8 +221,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return false
 		}
-		if mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
+		if factory.StoppedByPerson(cur) || mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
+				factory.ClearPersonStop(cur)
 				if also != nil {
 					also(cur)
 				}
@@ -925,6 +926,7 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 					restored = &stream
 				}
 			}
+			factory.ClearPersonStop(cur)
 			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question

@@ -536,6 +536,9 @@ type Item struct {
 	Scout    *Scout    `json:",omitempty"`
 	DoneAt   time.Time `json:",omitempty"`
 	Approval *Approval `json:",omitempty"`
+	// PersonStopped survives state resets, expiry of Undo and engine restarts.
+	// Only an explicit person control may clear it.
+	PersonStopped bool `json:",omitempty"`
 	StopUndo *StopUndo `json:",omitempty"`
 
 	// BriefSeen is the Brief revision each person last saw, by normalised

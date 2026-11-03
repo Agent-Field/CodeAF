@@ -4538,6 +4538,12 @@ func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", fals
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
 func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
+ if why := a.automaticFactoryRefusal(); why != "" {
+ kept := a.steering[:0]
+ for _, note := range a.steering { if !note.wake { kept = append(kept, note) } }
+ a.steering = kept
+ return false
+ }
 	if !answer {
 		if err := a.CheckWork(); err != nil {
 			return false

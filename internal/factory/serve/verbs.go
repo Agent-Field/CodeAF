@@ -228,6 +228,10 @@ func (h *Handler) holdVerb(on bool) jobAction {
 		kind := record.Held
 		if !on {
 			kind = record.Resumed
+ if factory.StoppedByPerson(it) {
+ h.resumeStopped(w, r, it)
+ return
+ }
 		}
 		h.finish(w, h.recordAction(r, it, kind, "", func() error { return h.seam.Hold(it.ID, on) }))
 	}

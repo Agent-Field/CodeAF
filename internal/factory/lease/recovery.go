@@ -17,6 +17,7 @@ func (d *Doors) RecoverAutomatic(id int) (bool, error) {
 	changed, restarted := false, false
 	var detail string
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if factory.StoppedByPerson(*it) { return false, unchanged }
 		sw, err := d.desk.store.RepoSwitch()
 		if err != nil {
 			return false, err

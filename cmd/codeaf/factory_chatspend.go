@@ -324,6 +324,7 @@ func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) 
 		if !c.talk.is(it.Talk) {
 			return errNotThisChat
 		}
+		if err := factory.CheckPersonStop(*it); err != nil { return err }
 		if it.Manual {
 			return errors.New("Manual control is active. Finish the working chat and use Resume pipeline.")
 		}

@@ -25,6 +25,7 @@ type ReadinessReview struct {
 }
 
 func ReadinessGate(it Item) error {
+ if err := CheckPersonStop(it); err != nil { return err }
 	if it.Question != "" || it.Asking != nil {
 		return fmt.Errorf("a pending decision must be resolved before readiness can complete")
 	}

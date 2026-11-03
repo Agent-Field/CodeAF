@@ -136,6 +136,7 @@ func (r *Runner) Publish(id int, trailer string) error {
 	lp.mu.Unlock()
 	now := r.now()
 	err := lp.write(c, func(it *factory.Item) error {
+		if err := factory.CheckPersonStop(*it); err != nil { return err }
 		if err := factory.RequireIssueJob(*it); err != nil {
 			return err
 		}
@@ -612,6 +613,7 @@ func (r *Runner) SetPublishCheck(id int, check func(context.Context) error) {
 // publishBoundary reads Stop afresh under the row lock immediately before a write.
 func (r *Runner) publishBoundary(ctx context.Context, id int) error {
 	return r.opts.Store.Update(id, func(it *factory.Item) error {
+		if factory.StoppedByPerson(*it) { return factory.ErrPersonStopped }
 		if ctx.Err() != nil || it.State == factory.StateNew || it.State == factory.StateDismissed {
 			return errLoopStopped
 		}

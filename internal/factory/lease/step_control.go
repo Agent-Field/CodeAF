@@ -36,6 +36,7 @@ func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *i
 // lease with it.
 func (d *Doors) rewind(id int, revision *int, rerun bool, control func(it *factory.Item, now time.Time) error) error {
 	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if rerun && revision != nil { factory.ClearPersonStop(it) }
 		if err := control(it, now); err != nil {
 			return false, err
 		}
@@ -60,6 +61,7 @@ func (d *Doors) EditSteps(id int, edit factory.RunEdit, recipe factory.Recipe) (
 		if factory.JobState(*it) == "done" || it.Publishing {
 			return false, run.StepControlRefusal("finished or publishing jobs cannot edit steps")
 		}
+		if err := factory.CheckPersonStop(*it); err != nil { return false, err }
 		var err error
 		lines, err = run.EditStepsItem(it, edit, recipe)
 		if err != nil {

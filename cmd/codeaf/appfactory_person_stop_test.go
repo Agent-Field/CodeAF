@@ -1,7 +1,6 @@
 package main
 
 import (
- "context"
  "strings"
  "testing"
 
@@ -41,7 +40,6 @@ func TestFactoryPersonStopLaunchAuthorities(t *testing.T) {
    if err := factory.ReadinessGate(saved); err == nil || !strings.Contains(err.Error(), "person stopped") { t.Fatalf("readiness ignored Stop: %v",err) }
    if _, err := lease.NewDoors(desk).AnswerPending(it.ID, saved.Talk, "late-question", "yes"); err == nil || !strings.Contains(err.Error(), "person stopped") { t.Fatalf("manager answer ignored Stop: %v",err) }
    if factory.Automatic(saved) { t.Fatal("stopped job remains automatic") }
-   _ = context.Background()
   })
  }
 }
