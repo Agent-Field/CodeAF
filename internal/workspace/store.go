@@ -23,7 +23,7 @@ import (
 // schemaVersion is the schema this build writes. Earlier schemas remain
 // readable without migration; the first successful write upgrades them.
 const (
-	schemaVersion       = WorkstreamSuggestionSchemaVersion
+	schemaVersion       = 7
 	legacySchemaVersion = 1
 )
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
@@ -37,36 +37,22 @@ const busyTimeout = 10 * time.Second
 type schemaState uint8
 
 const (
-	schemaBlank schemaState = iota
-	schemaReady
-	schemaLegacy
-	schemaTwo
-	schemaThree
-	schemaFour
-	schemaFive
-	schemaRefused
+	schemaBlank   schemaState = 0
+	schemaLegacy  schemaState = 1
+	schemaTwo     schemaState = 2
+	schemaReady   schemaState = schemaVersion
+	schemaRefused schemaState = schemaVersion + 1
 )
 
-// version is the schema a state reads through: 0 for a blank file.
+// version is the schema a state reads through: 0 for a blank or refused file.
 func (s schemaState) version() int {
-	switch s {
-	case schemaReady:
-		return schemaVersion
-	case schemaTwo:
-		return 2
-	case schemaThree:
-		return 3
-	case schemaFour:
-		return WorkstreamWakeSchemaVersion
-	case schemaFive:
-		return WorkstreamSourcesSchemaVersion
-	case schemaLegacy:
-		return legacySchemaVersion
+	if s < schemaRefused {
+		return int(s)
 	}
 	return 0
 }
 
-// Store owns collection and workstream metadata. Transcripts, task checkpoints, standing
+// Store owns collection metadata only. Transcripts, task checkpoints, standing
 // items and artifacts retain their existing owners and persistence formats.
 //
 // THE SCHEMA IS BUILT BY THE FIRST WRITE THAT NEEDS IT, never by Open. Opening
@@ -183,64 +169,23 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := q.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return schemaBlank, err
 	}
-	if app == applicationID && (version == schemaVersion || version == WorkstreamSourcesSchemaVersion || version == WorkstreamWakeSchemaVersion || version == 3 || version == 2 || version == legacySchemaVersion) {
-		state := schemaReady
+	if app == applicationID && version >= legacySchemaVersion && version <= schemaVersion {
+		state := schemaState(version)
 		collections := "SELECT seq,id,name,created_at FROM collections LIMIT 0"
 		memberships := "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at FROM memberships LIMIT 0"
-		if version == 2 {
-			state = schemaTwo
-		}
-		if version == 3 {
-			state = schemaThree
-		}
-		if version == WorkstreamWakeSchemaVersion {
-			state = schemaFour
-		}
-		if version == WorkstreamSourcesSchemaVersion {
-			state = schemaFive
-		}
 		if version >= 3 {
 			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at,factory FROM memberships LIMIT 0"
 		}
 		if version == legacySchemaVersion {
-			state = schemaLegacy
 			collections = "SELECT seq,id,name FROM collections LIMIT 0"
 			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0"
 		}
-		// Preparing the actual reads catches missing tables before reporting a
-		// successful open. We never recreate a damaged initialized schema.
+		// Only the generic tables define a supported file's readable shape.
 		if _, err := q.ExecContext(ctx, collections); err != nil {
 			return state, err
 		}
 		if _, err := q.ExecContext(ctx, memberships); err != nil {
 			return state, err
-		}
-		if version >= 3 {
-			for _, query := range workstreamSchemaReads {
-				if _, err := q.ExecContext(ctx, query); err != nil {
-					return state, err
-				}
-			}
-		}
-		if version >= WorkstreamWakeSchemaVersion {
-			if _, err := q.ExecContext(ctx, "SELECT id,workstream_id,event_key,event_json,state,summary,error,cost_usd,started_at,settled_at,dismissed_at FROM workstream_wakes LIMIT 0"); err != nil {
-				return state, err
-			}
-			if _, err := q.ExecContext(ctx, "SELECT id,wake_id,position,kind,state,why,item_json,undo_json,note,applied_at,undone_at FROM workstream_wake_items LIMIT 0"); err != nil {
-				return state, err
-			}
-		}
-		if version >= WorkstreamSourcesSchemaVersion {
-			if _, err := q.ExecContext(ctx, workstreamSourcesRead); err != nil {
-				return state, err
-			}
-		}
-		if version >= WorkstreamSuggestionSchemaVersion {
-			for _, query := range workstreamSuggestionSchemaReads {
-				if _, err := q.ExecContext(ctx, query); err != nil {
-					return state, err
-				}
-			}
 		}
 		return state, nil
 	}
@@ -292,8 +237,8 @@ CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id,factory
 CREATE INDEX memberships_target ON memberships(target_collection);
 `
 
-// migrateLegacy rebuilds a schema-1 or schema-2 file as schema 3 inside the caller's
-// immediate transaction: either every row arrives in the new tables, in the
+// migrateLegacy rebuilds a schema-1 or schema-2 file in the current generic
+// shape inside the caller's immediate transaction: every row arrives in the
 // same order under the same sequence numbers, or the file is left exactly as
 // it was. A row from schema 1 says nothing of when it was made, so its
 // created_at and added_at are 0, which every reader takes as unknown.
@@ -325,7 +270,7 @@ DROP TABLE memberships;
 DROP TABLE collections;
 ALTER TABLE collections_v3 RENAME TO collections;
 ALTER TABLE memberships_v3 RENAME TO memberships;
-`, created, added)+schemaIndexes+workstreamSchema)
+`, created, added)+schemaIndexes)
 	return err
 }
 
@@ -347,43 +292,20 @@ func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
 	}
 	state, err := inspectSchema(ctx, tx)
 	if err == nil {
-		switch state {
-		case schemaReady, schemaFive:
-			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
-		case schemaFour:
-			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
-			if err == nil {
-				err = migrateWorkstreamSources(ctx, tx)
-			}
-		case schemaThree:
-			err = migrateWorkstreamWakes(ctx, tx)
-			if err == nil {
-				err = migrateWorkstreamSources(ctx, tx)
-			}
-		case schemaLegacy, schemaTwo:
+		switch {
+		case state == schemaReady:
+			// A current file needs no DDL.
+		case state == schemaLegacy || state == schemaTwo:
 			err = migrateLegacy(ctx, tx, state.version())
-			if err == nil {
-				err = migrateWorkstreamWakes(ctx, tx)
-			}
-			if err == nil {
-				err = migrateWorkstreamSources(ctx, tx)
-			}
-		case schemaBlank:
+		case state >= 3 && state < schemaReady:
+			_, err = tx.ExecContext(ctx, schemaSevenCleanup)
+		case state == schemaBlank:
 			if !create {
 				err = ErrNotFound
 			} else {
-				_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes+workstreamSchema)
-				if err == nil {
-					err = migrateWorkstreamWakes(ctx, tx)
-				}
-				if err == nil {
-					err = migrateWorkstreamSources(ctx, tx)
-				}
+				_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes)
 			}
 		}
-	}
-	if err == nil && state != schemaReady {
-		_, err = tx.ExecContext(ctx, workstreamSuggestionSchema)
 	}
 	if err == nil && state != schemaReady {
 		_, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))
@@ -397,7 +319,39 @@ func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
 
 // ensureSchema is used by bulk fixtures that initialize without adding rows.
 func (s *Store) ensureSchema(ctx context.Context) error {
-	return s.Write(ctx, func(*sql.Tx) error { return nil })
+	tx, err := s.beginWrite(ctx, true)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return storeError(tx.Commit())
+}
+
+// Read runs fn against a consistent read-only snapshot. Version 0 means blank.
+// Reads never initialize or migrate the database.
+func (s *Store) Read(ctx context.Context, fn func(tx *sql.Tx, version int) error) error {
+	tx, version, err := s.beginRead(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return storeError(fn(tx, version))
+}
+
+// beginRead keeps the schema decision and projected rows in one snapshot. A
+// peer may migrate between separate transactions, adding fields an old projection
+// cannot supply (notably factory on a new job ref).
+func (s *Store) beginRead(ctx context.Context) (*sql.Tx, int, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, storeError(err)
+	}
+	state, err := inspectSchema(ctx, tx)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, 0, storeError(err)
+	}
+	return tx, state.version(), nil
 }
 
 // readyForRead answers the schema a read goes through, and 0 for a blank
@@ -490,8 +444,11 @@ func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 		return Collection{}, storeError(err)
 	}
 	defer tx.Rollback()
+	if err := nameTaken(ctx, tx, name, ""); err != nil {
+		return Collection{}, storeError(err)
+	}
 	c := Collection{ID: id, Name: name}
-	if err := CreateIn(ctx, tx, id, name, s.millis()); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO collections(id,name,created_at) VALUES (?,?,?)", c.ID, c.Name, s.millis()); err != nil {
 		return Collection{}, storeError(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -509,10 +466,13 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 		return storeError(err)
 	}
 	defer tx.Rollback()
-	if err := RenameIn(ctx, tx, id, name); err != nil {
+	if err := requireCollection(ctx, tx, id); err != nil {
 		return storeError(err)
 	}
-	if err := touchWorkstream(ctx, tx, id, s.millis()); err != nil {
+	if err := nameTaken(ctx, tx, name, id); err != nil {
+		return storeError(err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE collections SET name=? WHERE id=?", name, id); err != nil {
 		return storeError(err)
 	}
 	return storeError(tx.Commit())
@@ -531,13 +491,6 @@ func (s *Store) Delete(ctx context.Context, id string) ([]string, error) {
 	if err := requireCollection(ctx, tx, id); err != nil {
 		return nil, storeError(err)
 	}
-	var isWorkstream bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM workstreams WHERE id=?)", id).Scan(&isWorkstream); err != nil {
-		return nil, storeError(err)
-	}
-	if isWorkstream {
-		return nil, ErrWorkstreamDelete
-	}
 	rows, err := tx.QueryContext(ctx, `SELECT c.id FROM collections c WHERE c.id!=? AND EXISTS(
  SELECT 1 FROM memberships m WHERE m.collection_id=c.id AND m.kind='collection' AND m.ref_id=?) ORDER BY c.seq`, id, id)
 	if err != nil {
@@ -554,11 +507,6 @@ func (s *Store) Delete(ctx context.Context, id string) ([]string, error) {
 	}
 	if err := rows.Close(); err != nil {
 		return nil, storeError(err)
-	}
-	for _, parent := range parents {
-		if err := touchWorkstream(ctx, tx, parent, s.millis()); err != nil {
-			return nil, storeError(err)
-		}
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM collections WHERE id=?", id); err != nil {
 		return nil, storeError(err)
@@ -610,7 +558,7 @@ func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
 		if version == 0 {
 			return nil
 		}
-		rows, err := tx.QueryContext(ctx, "SELECT c.id,c.name,"+workstreamColumn(version)+" FROM collections c ORDER BY seq")
+		rows, err := tx.QueryContext(ctx, "SELECT c.id,c.name FROM collections c ORDER BY seq")
 		if err != nil {
 			return err
 		}
@@ -628,7 +576,7 @@ func readCollections(rows *sql.Rows) ([]Collection, error) {
 	result := make([]Collection, 0)
 	for rows.Next() {
 		var c Collection
-		if err := rows.Scan(&c.ID, &c.Name, &c.Workstream); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name); err != nil {
 			return nil, err
 		}
 		result = append(result, c)
@@ -676,31 +624,11 @@ func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Memb
 		return nil, nil, storeError(err)
 	}
 	defer tx.Rollback()
-	added, already, err := AddRefsIn(ctx, tx, id, refs, s.millis())
-	if err != nil {
-		return nil, nil, storeError(err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, nil, storeError(err)
-	}
-	return added, already, nil
-}
-
-// AddRefsIn applies collection rules inside a transaction obtained from Write.
-// It is shared with workstream creation so memberships and metadata commit together.
-func AddRefsIn(ctx context.Context, tx *sql.Tx, id string, refs []Addition, now int64) ([]Member, []Ref, error) {
-	for _, ref := range refs {
-		if err := ref.Validate(); err != nil {
-			return nil, nil, err
-		}
-		if ref.AddedAt < 0 {
-			return nil, nil, ErrInvalid
-		}
-	}
 	if err := requireCollection(ctx, tx, id); err != nil {
 		return nil, nil, storeError(err)
 	}
 
+	now := s.millis()
 	added, already := make([]Member, 0, len(refs)), make([]Ref, 0)
 	for _, ref := range refs {
 		var target any
@@ -709,9 +637,6 @@ func AddRefsIn(ctx context.Context, tx *sql.Tx, id string, refs []Addition, now 
 				return nil, nil, storeError(err)
 			}
 			target = ref.ID
-		}
-		if err := checkWorkstreamJob(ctx, tx, id, ref.Ref); err != nil {
-			return nil, nil, err
 		}
 		at := ref.AddedAt
 		if at == 0 {
@@ -732,10 +657,8 @@ func AddRefsIn(ctx context.Context, tx *sql.Tx, id string, refs []Addition, now 
 			added = append(added, Member{Ref: ref.Ref, AddedAt: at})
 		}
 	}
-	if len(added) > 0 {
-		if err := touchWorkstream(ctx, tx, id, now); err != nil {
-			return nil, nil, err
-		}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, storeError(err)
 	}
 	return added, already, nil
 }
@@ -808,18 +731,12 @@ func (s *Store) Relink(ctx context.Context, id string, from, to Ref) (Member, bo
 		if _, err := tx.ExecContext(ctx, "DELETE FROM memberships WHERE seq=?", seq); err != nil {
 			return Member{}, false, storeError(err)
 		}
-		if err := touchWorkstream(ctx, tx, id, s.millis()); err != nil {
-			return Member{}, false, err
-		}
 		if err := tx.Commit(); err != nil {
 			return Member{}, false, storeError(err)
 		}
 		return Member{Ref: to, AddedAt: toAt}, true, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Member{}, false, storeError(err)
-	}
-	if err := checkWorkstreamJob(ctx, tx, id, to); err != nil {
-		return Member{}, false, err
 	}
 	var target any
 	if to.Kind == CollectionKind {
@@ -831,9 +748,6 @@ func (s *Store) Relink(ctx context.Context, id string, from, to Ref) (Member, bo
 	if _, err := tx.ExecContext(ctx, "UPDATE memberships SET kind=?,ref_id=?,session_id=?,target_collection=?,factory=? WHERE seq=?",
 		to.Kind, to.ID, to.SessionID, target, to.Factory, seq); err != nil {
 		return Member{}, false, storeError(err)
-	}
-	if err := touchWorkstream(ctx, tx, id, s.millis()); err != nil {
-		return Member{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Member{}, false, storeError(err)
@@ -876,11 +790,6 @@ func (s *Store) RemoveRefs(ctx context.Context, id string, refs []Ref) ([]Member
 			return nil, storeError(err)
 		}
 		removed = append(removed, Member{Ref: ref, AddedAt: at})
-	}
-	if len(removed) > 0 {
-		if err := touchWorkstream(ctx, tx, id, s.millis()); err != nil {
-			return nil, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, storeError(err)
@@ -926,7 +835,7 @@ func (s *Store) CollectionsFor(ctx context.Context, ref Ref) ([]Collection, erro
 		if version == 0 {
 			return nil
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT c.id,c.name,`+workstreamColumn(version)+` FROM collections c JOIN memberships m ON m.collection_id=c.id
+		rows, err := tx.QueryContext(ctx, `SELECT c.id,c.name FROM collections c JOIN memberships m ON m.collection_id=c.id
  WHERE m.kind=? AND m.ref_id=? AND m.session_id=? AND `+factoryColumn(version)+`=? ORDER BY c.seq`, ref.Kind, ref.ID, ref.SessionID, ref.Factory)
 		if err != nil {
 			return err
@@ -1022,4 +931,11 @@ func pathReason(err error) error {
 		return failure.Err
 	}
 	return err
+}
+
+func factoryColumn(version int) string {
+	if version >= 3 {
+		return "factory"
+	}
+	return "''"
 }

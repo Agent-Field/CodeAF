@@ -224,8 +224,8 @@ func summaries(ctx context.Context, tx *sql.Tx, version int, holds *Ref, only st
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT c.seq,c.id,c.name,%s,
  (SELECT count(*) FROM memberships m WHERE m.collection_id=c.id),
  (SELECT coalesce(max(%s),0) FROM memberships m WHERE m.collection_id=c.id),
- %s, %s
-FROM collections c %s ORDER BY c.seq LIMIT ?`, created, added, held, workstreamColumn(version), clause), args...)
+ %s
+FROM collections c %s ORDER BY c.seq LIMIT ?`, created, added, held, clause), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ FROM collections c %s ORDER BY c.seq LIMIT ?`, created, added, held, workstreamC
 	for rows.Next() {
 		var c Summary
 		var h bool
-		if err := rows.Scan(&c.seq, &c.ID, &c.Name, &c.CreatedAt, &c.Count, &c.LastAddedAt, &h, &c.Workstream); err != nil {
+		if err := rows.Scan(&c.seq, &c.ID, &c.Name, &c.CreatedAt, &c.Count, &c.LastAddedAt, &h); err != nil {
 			return nil, err
 		}
 		if holds != nil {
