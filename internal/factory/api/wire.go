@@ -683,6 +683,8 @@ type Can struct {
 	RejectPlan bool `json:"reject_plan"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
+	// PRReady lets the job's person mark its open draft ready for review.
+	PRReady bool `json:"pr_ready"`
 	// Restore is POST /v1/jobs/{id}/restore (Bring back) for this caller now:
 	// the job was dropped and the caller may act on it. A factory from before
 	// the route never sends it, which reads as false.

@@ -328,6 +328,20 @@ changed code, CI or feedback cannot reuse stale readiness approval. Marking read
 never grants merge authority. The repository's separate auto-merge setting is
 the explicit opt-in for automatic merge.
 
+## mark a draft pull request ready for review
+
+A job's assignee can mark its open draft pull request ready from the job,
+using their own GitHub sign-in. A job with no assignee follows the same person
+rule as Merge. The PR immediately reads ready after GitHub confirms it; there
+is no wait for the next poll. This is an explicit human decision, with no
+model review, automatic retry or Undo window.
+
+A PR that is already ready, closed, or missing cannot be marked ready. If the
+job changed since you read it, read it again first. If the outcome is uncertain,
+check the PR before trying again. Marking ready removes the draft block from
+Merge; checks, approved commits, reviews and every other merge rule still apply.
+It does not merge the PR or enable auto-merge.
+
 ## merge a job's pull request — factory auto-merge when checks pass, or why it will not merge
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
