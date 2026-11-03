@@ -85,7 +85,7 @@ Compare the engine's three words or check number on both computers, then answer
 its explicit question. Nothing is approved by pressing Enter without a choice.
 Choose Pair or Don't pair. The code's instruction says: `On your other computer,
 choose Pair a computer, then Enter a code from the other computer, and type
-<code>. This code lasts 10 minutes.` The approval names the other computer and
+<code> (dashes optional). This code lasts 10 minutes.` The approval names the other computer and
 its platform, for example `Pair with Abir (Windows)?`, including when both
 computers share a name.
 Cancel takes back the waiting code or ends the request. A wrong code shows the

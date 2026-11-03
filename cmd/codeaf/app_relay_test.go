@@ -267,7 +267,7 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 
 func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
-	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {
