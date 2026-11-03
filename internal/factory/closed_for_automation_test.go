@@ -12,7 +12,7 @@ func TestAReopenedIssueIsWorkedAgainWithinTheKeep(t *testing.T) {
 	t.Cleanup(func() { automaticNow = time.Now })
 	how := "closed"
 	calls := 0
-	standing := func(context.Context, Item) (string, error) { calls++; return how, nil }
+	standing := func(context.Context, Item) (SourceStanding, error) { calls++; return SourceStanding{How: how}, nil }
 	it := Item{Origin: OriginForge, Repo: "acme/api", Num: 7}
 	root := t.TempDir()
 	if !ClosedForAutomation(context.Background(), root, it, standing) {

@@ -36,7 +36,7 @@ func TestAppQuietCrewSpendDoesNotEmitChangedSnapshots(t *testing.T) {
 	if err := os.WriteFile(ledger, []byte(text), 0600); err != nil {
 		t.Fatal(err)
 	}
-	run := &appCrewRun{prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{}, acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{}, held: map[string][]string{}, opening: map[string]bool{}}
+	run := newAppCrewRun()
 	backend.crewTick(run, true)
 	backend.crewRefresh(run)
 	for i := 0; i < 256; i++ {

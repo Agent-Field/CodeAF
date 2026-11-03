@@ -278,7 +278,7 @@ func reportRoom(it *factory.Item, room string) error {
 // an approve step on the job stays on, so no worker can skip a person's gate.
 // A phase the job already has keeps the state the server holds for it.
 func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
-	if change == nil {
+	if change == nil || len(change.Stages) == 0 {
 		return nil
 	}
 	for _, st := range it.Stages {
@@ -412,6 +412,26 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
+	if step.RoundCosts != nil {
+		for round, spent := range step.RoundCosts {
+			if round < 1 || math.IsNaN(spent) || math.IsInf(spent, 0) || spent < 0 {
+				return fmt.Errorf("round cost must have a positive round and finite nonnegative dollars")
+			}
+		}
+		before := ph.StepCost()
+		if ph.RoundCosts == nil {
+			ph.RoundCosts = make(map[int]float64)
+		}
+		for round, spent := range step.RoundCosts {
+			ph.RoundCosts[round] = max(ph.RoundCosts[round], spent)
+		}
+		addCost(it, max(0, ph.StepCost()-before))
+	} else if step.Result != nil && ph.RoundCosts != nil {
+		// Cost already books this legacy receipt; retain it so later tables
+		// cannot charge the same round again.
+		round := max(1, step.Round)
+		ph.RoundCosts[round] = max(ph.RoundCosts[round], step.Result.Spent)
+	}
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil
 	if step.Chat != "" {
@@ -468,7 +488,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
 
 // applyModelUses adds a report's model rows where the job's spend is. The
-// dollars themselves arrived as Cost; these rows only say which model.
+// dollars arrive through round tables and Cost; these rows identify the model.
 func applyModelUses(it *factory.Item, rows []factory.ModelUse) {
 	if it == nil {
 		return
