@@ -20,8 +20,10 @@ const workstreamReadMax = 60000
 
 const workstreamPlanChanged = "The plan changed while you were proposing; nothing was added. Read the plan and propose again."
 
+const workstreamPageChanged = "The page changed while you were writing. Read it again before writing."
+
 const workstreamPromptRules = "\n- You propose; the person keeps. Decisions, questions, jobs and go-aheads you raise with propose_decision, propose_question, propose_jobs and propose_goahead are proposals until the person keeps them.\n" +
-	"- You write only your own pages, with write_agent_page. The person's pages are theirs; you do not change them.\n" +
+	"- Write your own pages with write_agent_page; on the person's, suggest edits with suggest_page_edit.\n" +
 	"- Keep your page titled \"" + WorkstreamWhereItStandsTitle + "\" current with write_agent_page, saying what it was updated from.\n" +
 	"- You never invent numbers. Counts, costs, states and dates come from workstream_read; on a page, use a live block such as [live: jobs] instead of writing a number.\n" +
 	"- Keeping a go-ahead proposal grants it. You start nothing; the person launches jobs.\n" +
@@ -86,6 +88,9 @@ func (a *Agent) workstreamToolsAt(now func() time.Time) []bare.Tool {
 		}),
 		workstreamTool("write_agent_page", "Write only your own pages, marked as agent-written with their source and time. The person's pages are refused. Keep the page titled \""+WorkstreamWhereItStandsTitle+"\" current; the app shows it on the Overview.", workstreamPageSchema, func(ctx context.Context, ask WorkstreamPageWrite) (string, error) {
 			return workstreamWritePage(ctx, door, ask)
+		}),
+		workstreamTool("suggest_page_edit", "Suggest edits on one of the person's pages. find is plain text exactly as it reads on the page inside one paragraph, heading, list item or code block, without markdown marks or escapes; quote it uniquely. base_version is the page's version from workstream_read. Nothing changes until the person keeps an edit.", workstreamSuggestionSchema, func(ctx context.Context, ask WorkstreamSuggestionAsk) (string, error) {
+			return workstreamSuggestEdits(ctx, door, ask)
 		}),
 	}
 }
@@ -155,6 +160,8 @@ func workstreamReferenceFields(fields map[string]any, ask any) error {
 	var source *workstream.Source
 	switch ask := ask.(type) {
 	case WorkstreamReadAsk:
+		ids["page_id"] = ask.PageID
+	case WorkstreamSuggestionAsk:
 		ids["page_id"] = ask.PageID
 	case workstreamJobsAsk:
 		ids["milestone_id"] = ask.MilestoneID
@@ -515,10 +522,24 @@ func workstreamWritePage(ctx context.Context, door WorkstreamDoor, ask Workstrea
 	}
 	p, err := door.WritePage(ctx, ask)
 	if errors.Is(err, ErrWorkstreamVersion) {
-		return "", errors.New("The page changed while you were writing. Read it again before writing.")
+		return "", errors.New(workstreamPageChanged)
 	}
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("Wrote %s (%s, version %d), marked as written by the agent from %q.", p.Title, p.ID, p.Version, ask.UpdatedFrom), nil
+}
+
+func workstreamSuggestEdits(ctx context.Context, door WorkstreamDoor, ask WorkstreamSuggestionAsk) (string, error) {
+	if err := workstream.ValidateSuggestion(ask.PageID, ask.BaseVersion, ask.Why, ask.Edits); err != nil {
+		return "", &toolArgumentError{repair: err.Error()}
+	}
+	out, err := door.SuggestEdits(ctx, ask)
+	if errors.Is(err, ErrWorkstreamVersion) {
+		return "", errors.New(workstreamPageChanged)
+	}
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Suggested %d edit(s) on %s (%s). The person keeps or drops each one; the page is unchanged until then.", out.Count, out.Title, out.ID), nil
 }

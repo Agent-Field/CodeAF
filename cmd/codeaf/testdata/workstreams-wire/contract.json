@@ -29,6 +29,9 @@
     "wake.apply",
     "wake.undo",
     "wake.not_now",
+    "suggestion.list",
+    "suggestion.keep",
+    "suggestion.drop",
     "source.list",
     "source.add",
     "source.update",
@@ -121,7 +124,8 @@
       "message",
       "factory_job",
       "page",
-      "url"
+      "url",
+      "suggestion"
     ],
     "WorkstreamPlanItemKind": [
       "job",
@@ -191,6 +195,11 @@
       "undone",
       "proposed",
       "dismissed"
+    ],
+    "WorkstreamSuggestionEditState": [
+      "proposed",
+      "kept",
+      "dropped"
     ],
     "WorkstreamSourceItemKind": [
       "file",
@@ -747,6 +756,86 @@
       "ends_at": {
         "type": "string (RFC 3339)",
         "required": true
+      }
+    },
+    "WorkstreamSuggestion": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "page_id": {
+        "type": "string",
+        "required": true
+      },
+      "base_version": {
+        "type": "integer",
+        "required": true
+      },
+      "why": {
+        "type": "string",
+        "required": true
+      },
+      "by": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "source": {
+        "type": "WorkstreamSource",
+        "required": false
+      },
+      "created_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "edits": {
+        "type": "WorkstreamSuggestionEdit[]",
+        "required": true
+      }
+    },
+    "WorkstreamSuggestionEdit": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "block": {
+        "type": "integer[]",
+        "required": true
+      },
+      "offset": {
+        "type": "integer",
+        "required": true
+      },
+      "delete": {
+        "type": "string",
+        "required": true
+      },
+      "insert": {
+        "type": "string",
+        "required": true
+      },
+      "block_text": {
+        "type": "string",
+        "required": true
+      },
+      "why": {
+        "type": "string",
+        "required": true
+      },
+      "state": {
+        "type": "WorkstreamSuggestionEditState",
+        "required": true
+      },
+      "applies": {
+        "type": "boolean",
+        "required": false
+      },
+      "decided_at": {
+        "type": "string (RFC 3339)",
+        "required": false
       }
     },
     "WorkstreamChanged": {
@@ -1625,6 +1714,54 @@
     "WorkstreamWakeNotNowResult": {
       "wake": {
         "type": "WorkstreamWakeRun",
+        "required": true
+      }
+    },
+    "WorkstreamSuggestionListParams": {
+      "page_id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamSuggestionListResult": {
+      "suggestions": {
+        "type": "WorkstreamSuggestion[]",
+        "required": true
+      }
+    },
+    "WorkstreamSuggestionKeepParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "edit_id": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamSuggestionKeepResult": {
+      "page": {
+        "type": "WorkstreamPage",
+        "required": true
+      },
+      "suggestion": {
+        "type": "WorkstreamSuggestion",
+        "required": true
+      }
+    },
+    "WorkstreamSuggestionDropParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "edit_id": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamSuggestionDropResult": {
+      "suggestion": {
+        "type": "WorkstreamSuggestion",
         "required": true
       }
     },

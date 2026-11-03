@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/workstream"
 )
 
 var workstreamSourceSchema = fmt.Sprintf(`{"type":"object","properties":{"kind":{"type":"string","enum":["factory_job","page","url"]},"id":{"type":"string"},"factory":{"type":"string"},"label":{"type":"string","maxLength":%d}},"required":["kind","id"],"additionalProperties":false}`, workstreamLineMax)
@@ -21,6 +23,8 @@ var workstreamJobsSchema = fmt.Sprintf(`{"type":"object","properties":{"jobs":{"
 var workstreamGoAheadSchema = fmt.Sprintf(`{"type":"object","properties":{"scope":{"type":"string","enum":["job","wave","milestone"]},"factory":{"type":"string"},"job":{"type":"integer"},"wave":{"type":"integer"},"milestone_id":{"type":"string"},"cap_usd":{"type":"number","exclusiveMinimum":0,"maximum":%d},"ends_on":{"type":"string","description":"YYYY-MM-DD, after today in UTC and at most %d days ahead."},"why":{"type":"string","minLength":1,"maxLength":%d}},"required":["scope","cap_usd","ends_on","why"],"additionalProperties":false}`, workstreamGoAheadCapMax, workstreamGoAheadDaysMax, workstreamGoAheadWhyMax)
 
 var workstreamPageSchema = fmt.Sprintf(`{"type":"object","properties":{"page_id":{"type":"string"},"title":{"type":"string","minLength":1,"maxLength":%d},"parent_id":{"type":"string"},"markdown":{"type":"string"},"updated_from":{"type":"string","minLength":1,"maxLength":%d},"source":%s},"required":["markdown","updated_from"],"additionalProperties":false}`, workstreamLineMax, workstreamLineMax, workstreamSourceSchema)
+
+var workstreamSuggestionSchema = fmt.Sprintf(`{"type":"object","properties":{"page_id":{"type":"string","minLength":1},"base_version":{"type":"integer","minimum":1},"why":{"type":"string","minLength":1,"maxLength":%d},"edits":{"type":"array","minItems":1,"maxItems":%d,"items":{"type":"object","properties":{"find":{"type":"string","minLength":1,"maxLength":%d},"replace":{"type":"string","minLength":0,"maxLength":%d},"why":{"type":"string","minLength":1,"maxLength":%d}},"required":["find","replace","why"],"additionalProperties":false}}},"required":["page_id","base_version","why","edits"],"additionalProperties":false}`, workstream.SuggestionWhyMax, workstream.SuggestionEditsMax, workstream.SuggestionTextMax, workstream.SuggestionTextMax, workstream.SuggestionWhyMax)
 
 type workstreamArgumentSchema struct {
 	Type       string                              `json:"type"`

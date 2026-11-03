@@ -174,9 +174,9 @@ those numbers using the same reads as getting the workstream.
 Unavailable readings stay absent; a measured zero is present. Budgets and autonomy
 settings do not themselves start work.
 
-## What a workstream's agent can do: proposals and its own pages
+## What a workstream's agent can do: proposals, pages and suggested edits
 
-A workstream's own agent in the app has seven tools. Other conversations, tasks
+A workstream's own agent in the app has eight tools. Other conversations, tasks
 and errands do not receive them. `workstream_read` reads the workstream, pages,
 decisions, questions, go-ahead proposals, plan, grants and sources. Counts, costs, states and dates come
 from records. An absent number is unknown; the agent must say so and never
@@ -196,13 +196,32 @@ carries an AI mark, its written-at time and a named source; history keeps that
 attribution. New pages titled Spec or Decisions have Read by jobs on, ignoring
 case and surrounding space; other new pages have it off. Updates keep the flag.
 The agent refuses the person's pages with “That page is the person's. You write
-only your own pages; suggesting edits on theirs is not available yet.” Page
+only your own pages; suggest edits on theirs with suggest_page_edit.” Page
 documents are limited to 1 MiB. A page that changed must be read again before
 writing. Done workstreams refuse all these writes.
 
 Tool arguments refuse unknown fields and repeated object keys, including inside
 sources and draft jobs, before reading or writing the workstream. The agent keeps
 its page titled “Where it stands” current; the Overview shows it with the AI mark.
+
+## Suggested edits on your workstream pages: keep or drop
+
+`suggest_page_edit` suggests 1–50 edits on one of your pages, using its version
+from `workstream_read`. The agent quotes unique plain text from one paragraph,
+heading, list item or code block, without Markdown marks or escapes. Each find
+is 1–4,000 bytes; each replacement is at most 4,000 bytes. The suggestion and
+each edit carry a reason of 1–200 bytes on one line. Only code blocks accept
+line breaks in replacements. A workstream holds at most 5,000 suggestions,
+including decided suggestions. Page reads include open suggestions.
+
+You keep or drop one edit or all proposed edits in a suggestion. Until you keep
+an edit, the page is unchanged. Each keep makes one new page version attributed
+to you, with the suggestion as its source; keep all still makes only one version.
+Drop leaves the page and history untouched. Remaining edits in the same block
+move with kept text. An unchanged block can move in the document and still apply;
+changing its text makes its edits stale. A keep with a stale edit changes nothing.
+Done workstreams allow reading suggestions and refuse creating, keeping or dropping them.
+The suggestion source kind is written only by keeping; source parameters refuse it.
 
 ## Workstream draft size, budget and sources
 

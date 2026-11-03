@@ -523,6 +523,45 @@ func appWorkstreamSource(p *workstream.Source) *appwire.WorkstreamSource {
 	}
 	return &appwire.WorkstreamSource{Kind: p.Kind, ID: p.ID, ChatID: workstreamOptional(p.ChatID), Factory: workstreamOptional(p.Factory), Label: workstreamOptional(p.Label)}
 }
+
+func appWorkstreamSuggestion(s workstream.Suggestion) appwire.WorkstreamSuggestion {
+	out := appwire.WorkstreamSuggestion{ID: s.ID, WorkstreamID: s.WorkstreamID, PageID: s.PageID, BaseVersion: s.BaseVersion, Why: s.Why, By: s.By, Source: appWorkstreamSource(s.Source), CreatedAt: s.CreatedAt, Edits: []appwire.WorkstreamSuggestionEdit{}}
+	for _, e := range s.Edits {
+		out.Edits = append(out.Edits, appwire.WorkstreamSuggestionEdit{ID: e.ID, Block: e.Block, Offset: e.Offset, Delete: e.Delete, Insert: e.Insert, BlockText: e.BlockText, Why: e.Why, State: e.State, Applies: e.Applies, DecidedAt: e.DecidedAt})
+	}
+	return out
+}
+
+func (b *appBackend) WorkstreamSuggestionList(p appwire.WorkstreamSuggestionListParams) (appwire.WorkstreamSuggestionListResult, error) {
+	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamSuggestionListResult, workstream.Change, error) {
+		out := appwire.WorkstreamSuggestionListResult{Suggestions: []appwire.WorkstreamSuggestion{}}
+		suggestions, err := s.Suggestions(context.Background(), p.PageID)
+		for _, suggestion := range suggestions {
+			out.Suggestions = append(out.Suggestions, appWorkstreamSuggestion(suggestion))
+		}
+		return out, workstream.Change{}, err
+	})
+}
+
+func (b *appBackend) WorkstreamSuggestionKeep(p appwire.WorkstreamSuggestionKeepParams) (appwire.WorkstreamSuggestionKeepResult, error) {
+	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamSuggestionKeepResult, workstream.Change, error) {
+		page, suggestion, change, err := s.KeepSuggestion(context.Background(), p.ID, workstreamValue(p.EditID))
+		if err != nil {
+			var stale *workstream.VersionConflict
+			if errors.As(err, &stale) {
+				return appwire.WorkstreamSuggestionKeepResult{}, change, &appwire.Error{Code: appwire.CodeVersionConflict, Message: "the page changed and this edit no longer applies", Detail: appwire.WorkstreamVersionConflict{ID: stale.ID, Version: stale.Version, UpdatedAt: stale.UpdatedAt, UpdatedBy: stale.UpdatedBy}}
+			}
+		}
+		return appwire.WorkstreamSuggestionKeepResult{Page: appWorkstreamPage(page), Suggestion: appWorkstreamSuggestion(suggestion)}, change, err
+	})
+}
+
+func (b *appBackend) WorkstreamSuggestionDrop(p appwire.WorkstreamSuggestionDropParams) (appwire.WorkstreamSuggestionDropResult, error) {
+	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamSuggestionDropResult, workstream.Change, error) {
+		suggestion, change, err := s.DropSuggestion(context.Background(), p.ID, workstreamValue(p.EditID))
+		return appwire.WorkstreamSuggestionDropResult{Suggestion: appWorkstreamSuggestion(suggestion)}, change, err
+	})
+}
 func workstreamSource(p *appwire.WorkstreamSource) *workstream.Source {
 	if p == nil {
 		return nil

@@ -1,0 +1,203 @@
+{
+  "method": "suggestion.keep",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "version_conflict",
+    "conflict",
+    "too_large",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamSuggestionKeepParams",
+  "result_type": "WorkstreamSuggestionKeepResult",
+  "examples": {
+    "params": [
+      {
+        "id": "sg_7c41",
+        "edit_id": "e1"
+      },
+      {
+        "id": "sg_7c41"
+      }
+    ],
+    "result": [
+      {
+        "page": {
+          "id": "pg_31d0",
+          "workstream_id": "ws_8f2c1a",
+          "title": "Overview",
+          "owner": "you",
+          "read_by_jobs": false,
+          "position": 0,
+          "version": 4,
+          "updated_at": "2026-11-02T15:30:00Z",
+          "updated_by": "you",
+          "updated_from": {
+            "kind": "suggestion",
+            "id": "sg_7c41",
+            "label": "The meter runs hourly since api#1107"
+          },
+          "doc": {
+            "type": "doc",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Meter usage every hour."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Bill at month end."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "suggestion": {
+          "id": "sg_7c41",
+          "workstream_id": "ws_8f2c1a",
+          "page_id": "pg_31d0",
+          "base_version": 3,
+          "why": "api#1107 moved metering to hourly",
+          "by": "agent",
+          "source": {
+            "kind": "chat",
+            "id": "conv_8d22"
+          },
+          "created_at": "2026-11-02T15:20:00Z",
+          "edits": [
+            {
+              "id": "e1",
+              "block": [
+                0
+              ],
+              "offset": 12,
+              "delete": "nightly",
+              "insert": "every hour",
+              "block_text": "Meter usage nightly.",
+              "why": "The meter runs hourly since api#1107",
+              "state": "kept",
+              "decided_at": "2026-11-02T15:30:00Z"
+            },
+            {
+              "id": "e2",
+              "block": [
+                1
+              ],
+              "offset": 0,
+              "delete": "",
+              "insert": "Invoices stay monthly. ",
+              "block_text": "Bill at month end.",
+              "why": "Says what did not change",
+              "state": "proposed",
+              "applies": true
+            }
+          ]
+        }
+      },
+      {
+        "page": {
+          "id": "pg_31d0",
+          "workstream_id": "ws_8f2c1a",
+          "title": "Overview",
+          "owner": "you",
+          "read_by_jobs": false,
+          "position": 0,
+          "version": 5,
+          "updated_at": "2026-11-02T15:31:00Z",
+          "updated_by": "you",
+          "updated_from": {
+            "kind": "suggestion",
+            "id": "sg_7c41",
+            "label": "api#1107 moved metering to hourly"
+          },
+          "doc": {
+            "type": "doc",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Meter usage every hour."
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Invoices stay monthly. Bill at month end."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "suggestion": {
+          "id": "sg_7c41",
+          "workstream_id": "ws_8f2c1a",
+          "page_id": "pg_31d0",
+          "base_version": 3,
+          "why": "api#1107 moved metering to hourly",
+          "by": "agent",
+          "source": {
+            "kind": "chat",
+            "id": "conv_8d22"
+          },
+          "created_at": "2026-11-02T15:20:00Z",
+          "edits": [
+            {
+              "id": "e1",
+              "block": [
+                0
+              ],
+              "offset": 12,
+              "delete": "nightly",
+              "insert": "every hour",
+              "block_text": "Meter usage nightly.",
+              "why": "The meter runs hourly since api#1107",
+              "state": "kept",
+              "decided_at": "2026-11-02T15:30:00Z"
+            },
+            {
+              "id": "e2",
+              "block": [
+                1
+              ],
+              "offset": 0,
+              "delete": "",
+              "insert": "Invoices stay monthly. ",
+              "block_text": "Bill at month end.",
+              "why": "Says what did not change",
+              "state": "kept",
+              "decided_at": "2026-11-02T15:31:00Z"
+            }
+          ]
+        }
+      }
+    ],
+    "error": [
+      {
+        "code": "version_conflict",
+        "message": "the page changed and this edit no longer applies",
+        "detail": {
+          "id": "pg_31d0",
+          "version": 4,
+          "updated_at": "2026-11-02T15:25:00Z",
+          "updated_by": "you"
+        }
+      }
+    ]
+  }
+}

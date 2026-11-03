@@ -13,7 +13,7 @@ import (
 
 func workstreamSchemaFourFixture(t *testing.T, s *Store) {
 	t.Helper()
-	if _, err := s.db.Exec("DROP TABLE workstream_sources; PRAGMA user_version=4"); err != nil {
+	if _, err := s.db.Exec("DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions; DROP TABLE workstream_sources; PRAGMA user_version=4"); err != nil {
 		t.Fatal(err)
 	}
 	s.version = 4
@@ -103,7 +103,7 @@ INSERT INTO workstream_wake_items(id,wake_id,position,kind,state,why,item_json,u
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if userVersion(t, s) != 5 {
+	if userVersion(t, s) != 6 {
 		t.Fatal("first write did not migrate")
 	}
 	for _, table := range tables {
@@ -115,8 +115,8 @@ INSERT INTO workstream_wake_items(id,wake_id,position,kind,state,why,item_json,u
 		t.Fatal(err)
 	}
 	opened := openTestStore(t, path)
-	if userVersion(t, opened) != 5 {
-		t.Fatal("schema five did not reopen")
+	if userVersion(t, opened) != 6 {
+		t.Fatal("current schema did not reopen")
 	}
 }
 
@@ -128,7 +128,7 @@ func TestWorkstreamSourcesSchemaFiveRequiresItsTable(t *testing.T) {
 		createTestCollection(t, s, "Sources")
 		query := "DROP TABLE workstream_sources"
 		if future {
-			query = "PRAGMA user_version=6"
+			query = "PRAGMA user_version=7"
 		}
 		if _, err := s.db.Exec(query); err != nil {
 			t.Fatal(err)

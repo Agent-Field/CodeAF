@@ -98,14 +98,7 @@ func (d *workstreamAgentDoor) Read(ctx context.Context, ask session.WorkstreamRe
 	case "pages":
 		return workstreamAgentReadPages(ctx, s, w.ID)
 	case "page":
-		p, err := workstreamAgentPage(ctx, s, w.ID, ask.PageID, true)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(struct {
-			appwire.WorkstreamPageNode
-			Markdown *string `json:"markdown"`
-		}{appWorkstreamPageNode(p.PageNode), p.Markdown})
+		return workstreamAgentReadPage(ctx, s, w.ID, ask.PageID)
 	case "records":
 		return workstreamAgentReadRecords(ctx, s, w.ID, ask)
 	case "plan":
@@ -122,6 +115,26 @@ func (d *workstreamAgentDoor) Read(ctx context.Context, ask session.WorkstreamRe
 		return workstreamAgentReadSource(ctx, s, w.ID, ask.SourceID)
 	}
 	return nil, errors.New("what must name a workstream part")
+}
+
+func workstreamAgentReadPage(ctx context.Context, s *workstream.Store, id, pageID string) (json.RawMessage, error) {
+	p, err := workstreamAgentPage(ctx, s, id, pageID, true)
+	if err != nil {
+		return nil, err
+	}
+	suggestions, err := s.Suggestions(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	open := make([]appwire.WorkstreamSuggestion, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		open = append(open, appWorkstreamSuggestion(suggestion))
+	}
+	return json.Marshal(struct {
+		appwire.WorkstreamPageNode
+		Markdown    *string                        `json:"markdown"`
+		Suggestions []appwire.WorkstreamSuggestion `json:"suggestions"`
+	}{appWorkstreamPageNode(p.PageNode), p.Markdown, open})
 }
 
 func workstreamAgentReadPages(ctx context.Context, s *workstream.Store, id string) (json.RawMessage, error) {
@@ -298,6 +311,23 @@ func (d *workstreamAgentDoor) WritePage(ctx context.Context, ask session.Workstr
 	p, change, err := workstreamAgentWritePage(ctx, s, w.ID, ask, doc, workstream.Attribution{By: "agent", From: source})
 	d.backend.workstreamChanged(change)
 	return session.WorkstreamPageWritten{ID: p.ID, Title: p.Title, Version: p.Version}, workstreamAgentError(err)
+}
+
+func (d *workstreamAgentDoor) SuggestEdits(ctx context.Context, ask session.WorkstreamSuggestionAsk) (session.WorkstreamSuggested, error) {
+	s, w, err := d.workstreamOwner(ctx, true)
+	if err != nil {
+		return session.WorkstreamSuggested{}, err
+	}
+	page, err := workstreamAgentPage(ctx, s, w.ID, ask.PageID, false)
+	if err != nil {
+		return session.WorkstreamSuggested{}, err
+	}
+	suggestion, change, err := s.CreateSuggestion(ctx, workstream.SuggestionCreate{WorkstreamID: w.ID, PageID: ask.PageID, BaseVersion: ask.BaseVersion, Why: ask.Why, Edits: ask.Edits, Attribution: workstream.Attribution{By: "agent", From: &workstream.Source{Kind: "chat", ID: d.agentID}}})
+	d.backend.workstreamChanged(change)
+	if errors.Is(err, workstream.ErrTooLarge) {
+		return session.WorkstreamSuggested{}, errors.New("This workstream holds too many suggestions; nothing was suggested.")
+	}
+	return session.WorkstreamSuggested{ID: suggestion.ID, Title: page.Title, Count: len(suggestion.Edits)}, workstreamAgentError(err)
 }
 
 func workstreamAgentWritePage(ctx context.Context, s *workstream.Store, id string, ask session.WorkstreamPageWrite, doc json.RawMessage, who workstream.Attribution) (workstream.Page, workstream.Change, error) {
