@@ -86,6 +86,7 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.backend.mint = appMint
 	var created struct {
 		Agent appwire.Agent `json:"agent"`
 	}

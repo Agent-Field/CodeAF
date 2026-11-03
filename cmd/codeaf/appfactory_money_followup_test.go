@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -76,13 +77,35 @@ func TestAppFactoryFollowPRAndPostPublishMoney(t *testing.T) {
 	var turn appwire.TurnResult
 	s.must("agents.send", map[string]any{"id": chats.Agent, "text": "Explain the published repair."}, &turn)
 	deadline = time.Now().Add(5 * time.Second)
-	for calls.Load() == before {
+	for {
+		finished := func() bool {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			for _, line := range s.lines {
+				var event struct {
+					Event string           `json:"event"`
+					Data  appwire.TurnDone `json:"data"`
+				}
+				if json.Unmarshal([]byte(line), &event) == nil && event.Event == appwire.EventTurnDone && event.Data.Agent == chats.Agent && event.Data.Turn == turn.Turn {
+					if !event.Data.OK {
+						t.Fatalf("post-publish turn failed: %+v", event.Data)
+					}
+					return true
+				}
+			}
+			return false
+		}()
+		if finished {
+			break
+		}
 		if time.Now().After(deadline) {
-			t.Fatal("post-publish turn made no provider call")
+			t.Fatal("post-publish turn never finished")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	// Close drains the final paid turn before comparing all three totals.
-	s.must("agents.stop", map[string]any{"id": chats.Agent}, &struct{}{})
+	if calls.Load() != before+1 {
+		t.Fatalf("post-publish calls=%d, want %d", calls.Load(), before+1)
+	}
+
 	moneyTotals(t, s, st.Factory, it, &calls, float64(calls.Load())*.01)
 }
