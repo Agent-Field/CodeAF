@@ -96,13 +96,20 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 						if r.URL.Query().Get("state") == "open" && state != "open" {
 							continue
 						}
-						if r.URL.Query().Get("since") != "" && n <= 5000 {
+						// Each row has its own update time and closing one moves it,
+						// so since answers what GitHub would.
+						updated := at.Add(time.Duration(n-5000) * time.Second)
+						if n <= 5000 {
+							updated = at.Add(-60 * 24 * time.Hour)
+						}
+						if n == 5001 && closed {
+							updated = at.Add(time.Hour)
+						}
+						if since, err := time.Parse(time.RFC3339, r.URL.Query().Get("since")); err == nil && updated.Before(since) {
 							continue
 						}
 						item := row(n, state)
-						if n <= 5000 {
-							item["updated_at"] = at.Add(-60 * 24 * time.Hour)
-						}
+						item["updated_at"] = updated
 						rows = append(rows, item)
 					}
 					page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -164,11 +171,20 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			if len(items) != 207 {
 				t.Errorf("imported closed history: %d rows, want 207", len(items))
 			}
-			if calls != 9 || pages != 6 || details != 2 {
-				t.Errorf("first poll used calls=%d pages=%d direct_checks=%d; want 9, 6, 2", calls, pages, details)
+			if calls != 6 || pages != 3 || details != 2 {
+				t.Errorf("first poll used calls=%d pages=%d direct_checks=%d; want 6, 3, 2", calls, pages, details)
 			}
 			t.Logf("first poll: calls=%d pages=%d direct_checks=%d (includes identity)", calls, pages, details)
-			beforeCalls, beforeConditional := calls, conditional
+			// The cursor moved, so the next list is a new question with one small answer.
+			beforeCalls := calls
+			if cursor, err = source.PollOnce(ctx, src, st, cursor, time.Now); err != nil {
+				t.Fatal(err)
+			}
+			if calls-beforeCalls != 1 {
+				t.Errorf("poll after the cursor moved: %d calls, want 1", calls-beforeCalls)
+			}
+			beforeCalls = calls
+			beforeConditional := conditional
 			cursor, err = source.PollOnce(ctx, src, st, cursor, time.Now)
 			if err != nil {
 				t.Fatal(err)
