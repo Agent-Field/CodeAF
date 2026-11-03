@@ -601,7 +601,7 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 					phase = "person chat"
 				}
 			}
-			e := stopLiveEvidence{Case: phase,Started: started, Ended: ended, Status: observed.status, Finished: observed.finished, ClientClosed: req.Context().Err() != nil || observed.writeError, Cause: fmt.Sprint(context.Cause(ctx)), Purpose: stopLivePurpose(body)}
+			e := stopLiveEvidence{Case: phase, Started: started, Ended: ended, Status: observed.status, Finished: observed.finished, ClientClosed: req.Context().Err() != nil || observed.writeError, Cause: fmt.Sprint(context.Cause(ctx)), Purpose: stopLivePurpose(body)}
 			accounting.evidence = append(accounting.evidence, e)
 			if accounting.logf != nil {
 				accounting.logf("UNPRICED: request=%d evidence=%+v stop=%s start_relative=%s end_relative=%s press=%s", recorder.calls, e, stopAt.Format(time.RFC3339Nano), stopLiveRelative(started, stopAt), stopLiveRelative(ended, stopAt), pressAt.Format(time.RFC3339Nano))
@@ -638,8 +638,8 @@ func (a *stopLiveAccounting) press() {
 
 func TestStopLiveAccountingUnpricedWindows(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		stop, press, chat bool
+		name               string
+		stop, press, chat  bool
 		problems, reserved int
 	}{
 		{"before Stop", false, false, false, 0, 1},
@@ -655,8 +655,12 @@ func TestStopLiveAccountingUnpricedWindows(t *testing.T) {
 			defer recorder.server.Close()
 			accounting := &stopLiveAccounting{personChat: tc.chat, highestCost: 0.025}
 			handler := stopLiveAccountingHandler(recorder, accounting)
-			if tc.stop { accounting.stop() }
-			if tc.press { accounting.press() }
+			if tc.stop {
+				accounting.stop()
+			}
+			if tc.press {
+				accounting.press()
+			}
 			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)))
 			if len(recorder.problems) != tc.problems || accounting.cancelledRequests != tc.reserved || len(accounting.evidence) != 1 || accounting.evidence[0].Case != tc.name {
 				t.Fatalf("problems=%v reserved=%d evidence=%+v", recorder.problems, accounting.cancelledRequests, accounting.evidence)
