@@ -104,6 +104,8 @@ type receiptWork struct {
 	queued time.Time
 	usage  func(int, int, bool, bool)
 	base   string
+	// requirePrice keeps token-only receipts unknown for final-price consumers.
+	requirePrice bool
 	// attempt is the send this receipt prices, captured when the receipt was
 	// owed (attemptobserver.go). It is NOT read from the trace at arrival: by
 	// then the call may be on a later send, or over.
@@ -245,7 +247,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	if len(traces) > 0 && traces[0] != nil {
 		attemptID = traces[0].attemptID
 	}
-	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
+	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, requirePrice: finalReceiptsFrom(ctx), usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
 		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
 		AccountingSource: "provider", ReceiptID: usageReceiptID(base, result.Ref, attemptID),
@@ -362,6 +364,11 @@ func (c *Client) reconcile(work receiptWork) {
 			return
 		}
 		if found {
+			if work.requirePrice && read.financial.State != FinancialKnown {
+				work.attempt.unknown()
+				work.sink(result)
+				return
+			}
 			work.attempt.financial(last)
 			billed.Node = result.Node
 			billed.Model = result.Model
