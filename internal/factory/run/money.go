@@ -194,7 +194,7 @@ func (m *Money) CapReached(it factory.Item) bool {
 // CapQuestion is the sentence the item waits on, and its QKind.
 func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
 	spent := factory.JobLifetimeSpent(it)
-	q = "budget of " + dollars(it.Cap) + " reached · " + dollars(spent) + " job total spent · "
+	q = "budget of " + dollars(it.Cap) + " reached · job total " + dollars(spent) + " · "
 	return q + "raise it to " + dollars(factory.NextJobCap(it)) + ", or stop?", "cap"
 }
 

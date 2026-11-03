@@ -718,7 +718,7 @@ hold back an automatic write sooner. A requested retry still bypasses this guard
 ## budget reached — yes, raise the cap, next budget and stop
 
 When a job reaches its budget across all its runs, the question names its
-current budget, job total, and next absolute budget: `budget of $0.01 reached · $0.01 job total spent ·
+current budget, job total, and next absolute budget: `budget of $0.01 reached · job total $0.01 ·
 raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
 the desktop's raise button at $5 does the same. It does not add $5 to the cap.
 
