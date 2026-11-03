@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
- "github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 func staleGuardFixture(t *testing.T) (string, string, func(string)) {
@@ -245,29 +245,43 @@ func TestGuardCompoundRerunClearsMeasuredFailure(t *testing.T) {
 }
 
 func TestGuardOwedAbsoluteMeasuredCommand(t *testing.T) {
- root, file, run := staleGuardFixture(t)
- at, err := verification.SnapshotAt(root)
- if err != nil { t.Fatal(err) }
- failed := 7
- old := verification.Check{Args: []string{"/usr/local/go/bin/go", "test", "./..."}, Command: "/usr/local/go/bin/go test ./...", Cwd: root, Context: make([]string, 8), Exit: &failed, Before: at, After: at, ID: "saved", Source: "old"}
- if err := verification.Inherit(file, []verification.Check{old}); err != nil { t.Fatal(err) }
- door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
- t.Cleanup(door.closeVerification)
- err = door.Report(t.Context(), factory.StageResult{Done:true})
- if err == nil || strings.Contains(err.Error(), "/usr/local/go/bin/go") || !strings.Contains(err.Error(), "'go' 'test' './...'") { t.Fatalf("owed command must use tool name: %v", err) }
- run("go test ./other")
- if err := door.Report(t.Context(), factory.StageResult{Done:true}); err == nil { t.Fatal("different package cleared absolute failure") }
- run("go test ./...")
- if err := door.Report(t.Context(), factory.StageResult{Done:true}); err != nil { t.Fatalf("portable rerun did not clear saved absolute failure: %v", err) }
+	root, file, run := staleGuardFixture(t)
+	at, err := verification.SnapshotAt(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := 7
+	old := verification.Check{Args: []string{"/usr/local/go/bin/go", "test", "./..."}, Command: "/usr/local/go/bin/go test ./...", Cwd: root, Context: make([]string, 8), Exit: &failed, Before: at, After: at, ID: "saved", Source: "old"}
+	if err := verification.Inherit(file, []verification.Check{old}); err != nil {
+		t.Fatal(err)
+	}
+	door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+	t.Cleanup(door.closeVerification)
+	err = door.Report(t.Context(), factory.StageResult{Done: true})
+	if err == nil || strings.Contains(err.Error(), "/usr/local/go/bin/go") || !strings.Contains(err.Error(), "'go' 'test' './...'") {
+		t.Fatalf("owed command must use tool name: %v", err)
+	}
+	run("go test ./other")
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil {
+		t.Fatal("different package cleared absolute failure")
+	}
+	run("go test ./...")
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err != nil {
+		t.Fatalf("portable rerun did not clear saved absolute failure: %v", err)
+	}
 }
 
 func TestGuardOwedAbsoluteUnmeasuredCommand(t *testing.T) {
- root, file, run := staleGuardFixture(t)
- guardUnrunJournal(t, file, "/usr/local/go/bin/go test ./...", "refused")
- door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
- t.Cleanup(door.closeVerification)
- err := door.Report(t.Context(), factory.StageResult{Done:true})
- if err == nil || strings.Contains(err.Error(), "/usr/local/go/bin/go") || !strings.Contains(err.Error(), "go test ./...") { t.Fatalf("unmeasured owed command must use tool name: %v", err) }
- run("go test ./...")
- if err := door.Report(t.Context(), factory.StageResult{Done:true}); err == nil { t.Fatal("unmeasured absolute invocation became a pass") }
+	root, file, run := staleGuardFixture(t)
+	guardUnrunJournal(t, file, "/usr/local/go/bin/go test ./...", "refused")
+	door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+	t.Cleanup(door.closeVerification)
+	err := door.Report(t.Context(), factory.StageResult{Done: true})
+	if err == nil || strings.Contains(err.Error(), "/usr/local/go/bin/go") || !strings.Contains(err.Error(), "go test ./...") {
+		t.Fatalf("unmeasured owed command must use tool name: %v", err)
+	}
+	run("go test ./...")
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil {
+		t.Fatal("unmeasured absolute invocation became a pass")
+	}
 }

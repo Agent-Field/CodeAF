@@ -208,9 +208,9 @@ func CoversUnrun(command, cwd string, pass Check) bool {
 		return false
 	}
 	if len(args) == 0 || args[0] != "go" {
- return false
- }
- var context []string
+		return false
+	}
+	var context []string
 	for _, name := range checkContextNames {
 		context = append(context, os.Getenv(name))
 	}
