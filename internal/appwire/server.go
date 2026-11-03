@@ -213,6 +213,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withReplySuggestionFeature(hello, engine)
 	hello = withUnreadFeature(hello, engine)
 	hello = withErrandFeature(hello, engine)
+	hello = withAsksDrawnFeature(hello, engine)
 	hello = withTaskModelsAuxiliaryFeature(hello, engine)
 	hello = withMemorySettingsFeature(hello, engine)
 	hello = withTaskModelsInsightFeature(hello, engine)

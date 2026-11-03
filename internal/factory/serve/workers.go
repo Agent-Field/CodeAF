@@ -94,6 +94,7 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
 	h.route("/v1/workers/leases/{lease}/stop-after-step", map[string]http.HandlerFunc{http.MethodGet: h.workerStopAfterStep})
+	h.route("/v1/workers/leases/{lease}/publish-check", map[string]http.HandlerFunc{http.MethodGet: h.workerPublishCheck})
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
@@ -735,4 +736,14 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	default:
 		return h.failed(w, err)
 	}
+}
+
+func (h *Handler) workerPublishCheck(w http.ResponseWriter, r *http.Request) {
+	if !h.workerReady(w) {
+		return
+	}
+	if h.workerError(w, h.workers.desk.CheckPublish(r.PathValue("lease"), requestWorker(r).ID)) {
+		return
+	}
+	h.write(w, http.StatusOK, struct{}{})
 }

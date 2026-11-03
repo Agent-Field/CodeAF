@@ -88,9 +88,9 @@ type crewGuardRecord struct {
 
 func (a *Agent) unroutedCrewRecord() *TaskCrewRecord {
 	r := &TaskCrewRecord{Version: 1}
-	source := roles.Source(a.config.RolesSource)
-	r.Work, _ = roles.TierModel(source, roles.TierWorker)
-	r.Plan, _ = roles.TierModel(source, roles.TierMastermind)
+	reader := readerFor(a.config, a.model)
+	r.Work, _ = reader.TierModel(roles.TierWorker)
+	r.Plan, _ = reader.TierModel(roles.TierMastermind)
 	if a.config.OneModel {
 		r.OneModel = a.Model()
 		r.Work, r.Plan, r.Check = r.OneModel, r.OneModel, r.OneModel
