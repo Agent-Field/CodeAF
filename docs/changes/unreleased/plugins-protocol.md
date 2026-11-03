@@ -21,3 +21,9 @@ Ollama availability. Plugin connections now save connection and key dates in
 the existing credential store; older entries and provider dates remain absent.
 Connection questions use short catalog labels, with the fact and key supplied
 separately on the wire. The providers.list response remains unchanged.
+
+Cancelling browser sign-in returns while an account lookup is pending and prevents
+that attempt from saving credentials. Browser connections also recheck cancellation
+inside the credential commit after waiting for its lock. Plugin ask ids include
+the owning agent, so answering or stopping one agent cannot dismiss another
+agent's connection request with the same session question key.

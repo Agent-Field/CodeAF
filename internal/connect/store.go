@@ -1,6 +1,7 @@
 package connect
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -144,6 +145,8 @@ type store struct {
 	// afterLoad is a test seam for holding two independent stores between the
 	// read and replace that have to become one cross-process critical section.
 	afterLoad func()
+	// beforeCommit lets tests pause immediately before the atomic file replacement.
+	beforeCommit func()
 }
 
 // newStore names the file under profileDir, or under codeaf's state root when
@@ -192,8 +195,8 @@ func (s *store) put(id string, entry stored) error {
 }
 
 // putConnected stamps a successful connection without inventing dates for old entries.
-func (s *store) putConnected(id string, entry stored) error {
-	return s.replace(id, func(entries map[string]stored) {
+func (s *store) putConnected(ctx context.Context, id string, entry stored, commit func(func() error) error) error {
+	return s.replaceContext(ctx, id, func(entries map[string]stored) {
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		previous, exists := entries[id]
 		if exists {
@@ -205,7 +208,7 @@ func (s *store) putConnected(id string, entry stored) error {
 			entry.KeySavedAt = now
 		}
 		entries[id] = entry
-	})
+	}, commit)
 }
 
 // remove forgets one service's entry, preserving everything else in the file.
@@ -219,6 +222,10 @@ func (s *store) remove(id string) error {
 // replace is the single writer every change goes through: the read, the one
 // edit, the temporary file and the rename described on [store].
 func (s *store) replace(id string, edit func(map[string]stored)) error {
+	return s.replaceContext(context.Background(), id, edit, nil)
+}
+
+func (s *store) replaceContext(ctx context.Context, id string, edit func(map[string]stored), commit func(func() error) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -242,6 +249,9 @@ func (s *store) replace(id string, edit func(map[string]stored)) error {
 	}
 	if s.afterLoad != nil {
 		s.afterLoad()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	edit(entries)
 
@@ -271,9 +281,25 @@ func (s *store) replace(id string, edit func(map[string]stored)) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("save connection %s: %w", id, err)
 	}
-	if err := os.Rename(temporaryPath, s.path); err != nil {
-		return fmt.Errorf("save connection %s: %w", id, err)
+	if s.beforeCommit != nil {
+		s.beforeCommit()
 	}
+	write := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return os.Rename(temporaryPath, s.path)
+	}
+	var commitErr error
+	if commit != nil {
+		commitErr = commit(write)
+	} else {
+		commitErr = write()
+	}
+	if commitErr != nil {
+		return fmt.Errorf("save connection %s: %w", id, commitErr)
+	}
+
 	removeTemporary = false
 	return nil
 }

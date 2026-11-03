@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func TestAppPluginsShareStoreAndQuestionAnswer(t *testing.T) {
 	rec.mu.Lock()
 	needed := rec.data[i].(appwire.PluginsNeeded)
 	rec.mu.Unlock()
-	if needed.Plugin != "google" || needed.AskID != appAskID(q) || needed.Agent != agent.ID {
+	if needed.Plugin != "google" || needed.AskID != appAskID(agent.ID, q) || needed.Agent != agent.ID {
 		t.Fatalf("needed = %+v", needed)
 	}
 	if err := b.AnswerAsk(agent.ID, needed.AskID, "2", ""); err != nil {
@@ -102,7 +103,7 @@ func TestAppPluginsInboxAnswersConnectedKey(t *testing.T) {
 	if err != nil || result.Error != "" {
 		t.Fatalf("connect: %+v %v", result, err)
 	}
-	if _, err := b.AnswerInbox(appInboxID(agent.ID, appAskID(q)), "1", "", "", ""); err != nil {
+	if _, err := b.AnswerInbox(appInboxID(agent.ID, appAskID(agent.ID, q)), "1", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	rec.waitFor(t, 7*time.Second, appAskEvent(appwire.EventPluginsNeededDone))
@@ -127,7 +128,7 @@ func TestAppPluginsQuestionDoneWhenConversationDies(t *testing.T) {
 	i := rec.waitFor(t, 2*time.Second, appAskEvent(appwire.EventPluginsNeededDone))
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	if got := rec.data[i].(appwire.PluginsNeededDone).AskID; got != appAskID(q) {
+	if got := rec.data[i].(appwire.PluginsNeededDone).AskID; got != appAskID(agent.ID, q) {
 		t.Fatalf("%s closed %s", agent.ID, got)
 	}
 }
@@ -292,4 +293,69 @@ func TestAppPluginsOllamaRunning(t *testing.T) {
 		runtime.Gosched()
 	}
 	t.Fatal("Ollama probe never became running")
+}
+
+func TestAppPluginsAskIDsAreUniqueAcrossAgents(t *testing.T) {
+	rec := newAppRecorder()
+	work1, work2 := t.TempDir(), t.TempDir()
+	conv1, conv2 := &fakeConversation{}, &fakeConversation{}
+	conversations := map[string]*fakeConversation{work1: conv1, work2: conv2}
+	b := newFakeBackend(rec, func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conversations[ask.Workspace], Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	defer b.Close()
+	b.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	b.mint = func(work string) (string, error) { return filepath.Join(work, "transcript.jsonl"), nil }
+	first, err := mustCreate(t, b, appwire.CreateAsk{Workspace: work1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := mustCreate(t, b, appwire.CreateAsk{Workspace: work2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == second.ID {
+		t.Fatal("fixture must create distinct agents")
+	}
+	q := session.ConnectQuestion("connect-1", "Google", false, "", false)
+	q.Subject.Name = "google"
+	askIDs := make([]string, 0, 2)
+	for _, item := range []struct {
+		agent appwire.Agent
+		conv  *fakeConversation
+	}{{first, conv1}, {second, conv2}} {
+		item.conv.onAnswer = func(answer session.Answer) {
+			item.conv.raise(session.Event{Kind: session.EventQuestionAnswered, Question: &q, Answer: &answer})
+		}
+		item.conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
+		i := rec.waitFor(t, time.Second, func(event string, data any) bool {
+			needed, ok := data.(appwire.PluginsNeeded)
+			return ok && needed.Agent == item.agent.ID
+		})
+		rec.mu.Lock()
+		askIDs = append(askIDs, rec.data[i].(appwire.PluginsNeeded).AskID)
+		rec.mu.Unlock()
+	}
+	if askIDs[0] == askIDs[1] {
+		t.Errorf("two agents emitted the same ask_id: %q", askIDs[0])
+	}
+	for i, item := range []struct {
+		agent appwire.Agent
+		conv  *fakeConversation
+	}{{first, conv1}, {second, conv2}} {
+		if i == 0 {
+			if err := b.AnswerAskWith(item.agent.ID, askIDs[i], appwire.AskAnswer{Option: "2"}); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			item.conv.mu.Lock()
+			end := item.conv.endLane
+			item.conv.mu.Unlock()
+			end()
+		}
+		rec.waitFor(t, time.Second, func(event string, data any) bool {
+			done, ok := data.(appwire.PluginsNeededDone)
+			return ok && done.AskID == askIDs[i]
+		})
+	}
 }

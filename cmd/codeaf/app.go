@@ -1978,14 +1978,18 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	return view
 }
 
-// appAskID is the stable id of one ask: the engine's own question key.
-func appAskID(q session.Question) string {
-	return string(q.Kind) + ":" + q.Token()
+// appAskID scopes connection questions to their agent because plugin completion events carry only this id.
+func appAskID(agent string, q session.Question) string {
+	id := string(q.Kind) + ":" + q.Token()
+	if q.Kind == session.QuestionConnect {
+		return agent + "/" + id
+	}
+	return id
 }
 
 // appAskOf is the engine's question as the app's ask.
 func appAskOf(agent string, q session.Question) appwire.Ask {
-	ask := appwire.Ask{ID: appAskID(q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
+	ask := appwire.Ask{ID: appAskID(agent, q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
 	if q.Kind == session.QuestionConsent {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
 		ask.Irreversible = q.Stakes == session.StakesIrreversible
@@ -2143,7 +2147,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			q.ConsentScopes, q.AlwaysAsk = nil, "critical"
 		}
 	}
-	askID := appAskID(q)
+	askID := appAskID(id, q)
 	switch event.Kind {
 	case session.EventQuestion:
 		if q.Subject.Kind == session.SubjectCall {

@@ -269,7 +269,7 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 		secret, _ := entry.secret(service.Name)
 		return Status{}, keyFailure("refused", fmt.Errorf("%s did not accept that key: %w", service.Name, err), secret)
 	}
-	if err := m.store.putConnected(service.ID, entry); err != nil {
+	if err := m.store.putConnected(ctx, service.ID, entry, nil); err != nil {
 		return Status{}, fmt.Errorf("connect %s: %w", service.Name, err)
 	}
 	service.Address = address

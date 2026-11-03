@@ -67,7 +67,7 @@ func TestPluginDescriptionListsServerTools(t *testing.T) {
 
 func TestPluginCancelCannotSaveQueuedBrowserSuccess(t *testing.T) {
 	m, _ := testManager(t)
-	f := &Flow{manager: m, plug: google{}, cancel: func() {}, done: make(chan flowResult, 1)}
+	f := &Flow{ctx: context.Background(), manager: m, plug: google{}, cancel: func() {}, done: make(chan flowResult, 1)}
 	f.done <- flowResult{keys: &oauth2.Token{AccessToken: "fake", RefreshToken: "fake"}}
 	f.Cancel()
 	if _, err := f.Wait(context.Background()); err == nil {
@@ -141,7 +141,7 @@ func TestPluginCancelledIdentityProbeSavesNothing(t *testing.T) {
 	m, _ := testManager(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	f := &Flow{manager: m, plug: pluginCanceledAccount{Plug: google{}, cancel: cancel}, cancel: func() {}, done: make(chan flowResult, 1)}
+	f := &Flow{ctx: context.Background(), manager: m, plug: pluginCanceledAccount{Plug: google{}, cancel: cancel}, cancel: func() {}, done: make(chan flowResult, 1)}
 	f.done <- flowResult{keys: &oauth2.Token{AccessToken: "fake", RefreshToken: "fake"}}
 	if _, err := f.Wait(ctx); err == nil {
 		t.Fatal("cancelled identity probe saved a connection")
@@ -190,7 +190,7 @@ func TestPluginSavedDatesAndShortAsk(t *testing.T) {
 
 func TestPluginBrowserDatesAndLegacyAbsence(t *testing.T) {
 	m, _ := testManager(t)
-	f := &Flow{manager: m, plug: google{}, cancel: func() {}, done: make(chan flowResult, 1)}
+	f := &Flow{ctx: context.Background(), manager: m, plug: google{}, cancel: func() {}, done: make(chan flowResult, 1)}
 	f.done <- flowResult{keys: &oauth2.Token{AccessToken: "fake", RefreshToken: "fake"}}
 	if _, err := f.Wait(context.Background()); err != nil {
 		t.Fatal(err)
