@@ -338,7 +338,9 @@ Only a signed-in person allowed to publish this job can press Publish anyway.
 Failed, pending or unmeasured checks prevent the offer and refuse the press.
 An ordinary approval, automatic answer, Auto mode or automatic budget increase
 cannot make this decision. Skipped checks remain unmeasured and supply no proof.
-The PR lists their reasons and says who published anyway and when.
+The PR lists their reasons and says who published anyway and when. Only a plain
+login is shown as a handle; other values appear as "by a person". The saved
+decision retains the original value.
 
 The saved person decision uses the job's approval record shape and decision
 ledger. It is bound to the current head, reported change and skipped-check set;

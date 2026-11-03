@@ -150,7 +150,11 @@ func SkippedValidation(it Item) string {
 		}
 	}
 	if PublishedAnyway(it) {
-		fmt.Fprintf(&b, "- Published anyway by @%s at %s; skipped checks remain unmeasured.\n", it.PublishAnyway.DecidedBy, it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z"))
+		person := "a person"
+		if approverHandle.MatchString("@" + strings.ToLower(it.PublishAnyway.DecidedBy)) {
+			person = "@" + it.PublishAnyway.DecidedBy
+		}
+		fmt.Fprintf(&b, "- Published anyway by %s at %s; skipped checks remain unmeasured.\n", person, it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z"))
 	}
 	return b.String()
 }

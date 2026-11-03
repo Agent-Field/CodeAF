@@ -23,3 +23,7 @@ reported change and skipped-check set, survives storage and wire round-trips,
 and is cleared on rerun. Changed files or skips invalidate the earlier press.
 The PR lists skipped checks and reasons, says who published anyway and when,
 and leaves checks and proof unmeasured.
+
+PR attribution shows a handle only when it is a plain login; otherwise it says
+"by a person", preventing decision values from injecting PR lines. The stored
+decision value remains unchanged.
