@@ -330,7 +330,6 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 // acknowledges ownership of work; only a later measured check proves its result.
 func commandReceiptOutcome(content, status string, invoked, refused, started bool) (string, string) {
 	text := strings.TrimSpace(content)
-	lastLine := text[strings.LastIndex(text, "\n")+1:]
 	if refused || status == "refused" {
 		return "refused", text
 	}
@@ -344,7 +343,7 @@ func commandReceiptOutcome(content, status string, invoked, refused, started boo
 	// Older launch receipts have no process identity. Recognize the producer's
 	// launch acknowledgement conservatively, without upgrading it to a pass.
 	var job int
-	if n, _ := fmt.Sscanf(text, "job %d started; log at", &job); n == 1 && strings.Contains(text, " started; log at ") {
+	if n, _ := fmt.Sscanf(text, "job %d started; log at", &job); status == "" && n == 1 && strings.Contains(text, " started; log at ") {
 		started = true
 	}
 	switch {
@@ -353,12 +352,6 @@ func commandReceiptOutcome(content, status string, invoked, refused, started boo
 	case status == "timed out":
 		return "timed out", text
 	case status == "failed":
-		switch {
-		case lastLine == "Command aborted" || lastLine == "Command cancelled":
-			return "cancelled", lastLine
-		case strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
-			return "timed out", text
-		}
 		return "failed", ""
 	case started:
 		return "started", ""

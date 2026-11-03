@@ -69,7 +69,13 @@ func TestReviewBackgroundValidation(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &row); err != nil {
 			t.Fatal(err)
 		}
-		if row["role"] == "tool" {
+		if row["role"] == "assistant" {
+            call := row["toolCalls"].([]any)[0].(map[string]any)["function"].(map[string]any)
+            args, err := json.Marshal(map[string]any{"command": command, "background": true})
+            if err != nil { t.Fatal(err) }
+            call["arguments"] = string(args)
+        }
+        if row["role"] == "tool" {
 			row["content"] = "job 1 started; log at /tmp/job.log"
 			row["presentation"] = map[string]any{"invoked": true, "outcome": "ok"}
 		}

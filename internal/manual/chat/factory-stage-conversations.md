@@ -462,11 +462,15 @@ Later steps receive these receipts instead of rediscovering the working director
 ## Execution notes, command outcomes and background checks
 
 The journal records the tool producer’s outcome separately from command output.
+Printed launch or timeout text cannot override that outcome. Background launch
+identity comes from the tool call or its recorded process.
 A command refused for approval or policy reads `refused` with the actual reason;
 it did not run. Interrupted commands read `cancelled` or `timed out`, even if partial
 output includes PASS. These outcomes remain unresolved until a later measured
 covering pass qualifies for the completion guard. A background launch reads
 `started`, never `passed`; its measured check exit decides verification later.
+Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by a
+later measured wider pass; a refused check without covering evidence still holds.
 For older journals without producer status, printed cancellation or timeout words
 are command output and do not establish an interruption.
 Older journals without enough evidence of success retain `completed`; this is not a passing check.

@@ -5,13 +5,15 @@ pr: 2298
 surface: [engine, factory, chat]
 invalidates:
   - "A failed shell script could recreate an obligation for measured scratch checks already classified as diagnostic."
-  - "Unrun literal Go test attempts could remain owed after later measured covering passes."
+  - "Unrun literal Go test attempts, including quoted test filters, could remain owed after later measured covering passes."
   - "Execution notes previously called approval and policy refusals completed. They now say refused and retain the real refusal reason."
   - "Partial PASS output could previously label an interrupted command passed. Cancellation and timeout receipts now keep their interrupted outcome."
-  - "Printed cancellation or timeout text in legacy journals does not establish an interruption. Background launch success means started, never passed."
+  - "Printed cancellation or timeout text in legacy journals does not establish an interruption. Background launch success means started, never passed; producer status and call metadata take precedence over printed launch or timeout text."
 ---
 
-Factory execution notes read the journal's producer outcome and refusal mark, with a
+Shell producers explicitly record cancellation, timeout and deadline outcomes rather
+than asking readers to infer them from output. Factory execution notes read the
+journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
 timeouts remain unresolved until later measured covering evidence qualifies. Later
 stage briefs retain the reason instead of implying that the refused command ran. PR validation
