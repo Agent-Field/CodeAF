@@ -141,11 +141,12 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 					if err := validTitle(item.Title); err != nil {
 						return err
 					}
+					// Control characters stay invalid whatever the length.
+					if !textWithin(item.Text, len(item.Text)) {
+						return invalid("draft text allows only newline and tab control characters")
+					}
 					if len(item.Text) > PlanDraftTextMax {
 						return fmt.Errorf("%w: draft text must be at most %d bytes", ErrLimit, PlanDraftTextMax)
-					}
-					if !textWithin(item.Text, PlanDraftTextMax) {
-						return invalid("draft text allows only newline and tab control characters")
 					}
 				default:
 					return invalid("unknown plan item kind")

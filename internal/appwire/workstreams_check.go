@@ -321,11 +321,12 @@ func (p WorkstreamPlanSetParams) Check() error {
 					return err
 				}
 				if item.Text != nil {
+					// Control characters stay bad_params whatever the length.
+					if err := workstreamText(*item.Text, 0, len(*item.Text), "draft text"); err != nil {
+						return err
+					}
 					if len(*item.Text) > workstream.PlanDraftTextMax {
 						return Errorf(CodeTooLarge, "draft text must be at most %d bytes", workstream.PlanDraftTextMax)
-					}
-					if err := workstreamText(*item.Text, 0, workstream.PlanDraftTextMax, "draft text"); err != nil {
-						return err
 					}
 				}
 			default:

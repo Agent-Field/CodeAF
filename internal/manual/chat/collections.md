@@ -187,8 +187,9 @@ agent proposes; the person keeps. `propose_jobs` adds 1–20 draft jobs to the
 plan, leaving existing waves and settings intact. Drafts create no Factory
 jobs and start nothing; the person launches them. A plan conflict is retried
 once against a fresh read, then refused if it changes again.
-Draft text is at most 80,000 bytes; a workstream holds at most 5,000 pages,
-including deleted pages, and 5,000 records of every kind and state.
+Each `propose_jobs` draft's text is at most 4,000 bytes; a plan stores draft
+text up to 80,000 bytes. A workstream holds at most 5,000 pages, including
+deleted pages, and 5,000 records of every kind and state.
 
 `write_agent_page` creates or updates only the agent's own pages. Every write
 carries an AI mark, its written-at time and a named source; history keeps that
