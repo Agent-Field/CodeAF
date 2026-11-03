@@ -200,7 +200,7 @@ func skippedPolicyWait(it factory.Item) string {
 		if ph.Kind != factory.StageCheck || ph.State != factory.PhaseSkipped {
 			continue
 		}
-		reasons = append(reasons, "check " + ph.Name + " was skipped (" + strings.TrimPrefix(ph.SkipReason, "skipping "+ph.Name+": ") + ")")
+		reasons = append(reasons, "check "+ph.Name+" was skipped ("+strings.TrimPrefix(ph.SkipReason, "skipping "+ph.Name+": ")+")")
 		if len(reasons) == 1 {
 			if prev := factory.PreviousWork(it.Stream.Phases, i); prev >= 0 {
 				back = it.Stream.Phases[prev].Name
