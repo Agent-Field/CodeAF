@@ -121,6 +121,8 @@ type BriefInput struct {
 	Hold                   string                 `json:"rule_hold,omitempty"`
 	Facts                  []BriefFact            `json:"facts"`
 	Previous               *BriefVersion          `json:"previous,omitempty"`
+	// beforeWork says the writer reads only the issue, so only that moves it.
+	beforeWork bool
 }
 
 // BriefApprovalInput is consent as the writer needs it, without its timing.
@@ -202,6 +204,7 @@ func BriefVerdictBehind(it Item) bool {
 // BriefInputOf assembles the writer's input from the job.
 func BriefInputOf(it Item) BriefInput {
 	var in BriefInput
+	in.beforeWork = briefBeforeWork(it)
 	in.PersonRequests = briefPersonRequests(it)
 	in.Issue.Title, in.Issue.Body, in.Issue.Labels = it.Title, clip(it.Body, briefOutputMost), it.Labels
 	in.NeedsYou, in.Question, in.Model = JobState(it) == "needs_you", it.Question, it.Model
@@ -320,6 +323,9 @@ func clip(s string, most int) string {
 func BriefInputHash(in BriefInput) string {
 	in.Previous = nil
 	raw, _ := json.Marshal(in)
+	if in.beforeWork {
+		raw = []byte(briefFirstReadInput(in))
+	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -469,6 +475,7 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 		}
 	}
 	numberSpots(v.Blocks)
+	briefPlainQuestions(v.Blocks)
 	if fault := briefRepeatsFault(v, it); fault != "" {
 		return BriefVersion{}, drops, fault
 	}

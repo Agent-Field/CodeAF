@@ -158,3 +158,31 @@ func TestAnIssuesHiddenNoteIsNotItsWords(t *testing.T) {
 		t.Fatal("a hidden note counted as the issue's words")
 	}
 }
+
+func TestBeforeWorkOnlyTheIssueMovesTheRead(t *testing.T) {
+	it := firstReadJob()
+	was := BriefInputHash(BriefInputOf(it))
+	it.Stages = []Stage{{Name: "plan", Kind: StageChat, On: true}}
+	it.Model = "another/model"
+	if BriefInputHash(BriefInputOf(it)) != was {
+		t.Fatal("a step or model edit moved a read that only read the issue")
+	}
+	it.Body += " More words."
+	if BriefInputHash(BriefInputOf(it)) == was {
+		t.Fatal("an edited issue did not move the read")
+	}
+	if worked := firstReadWorked(); BriefInputHash(BriefInputOf(worked)) == was {
+		t.Fatal("work did not move the read")
+	}
+}
+
+func TestAnOpenQuestionHasNoMarkup(t *testing.T) {
+	ev := []BriefEvidence{{Kind: "issue", Ref: "the first send landed"}}
+	raw, _ := json.Marshal(BriefDraft{Verdict: "Make a resend harmless", VerdictEvidence: ev, Blocks: []BriefBlock{
+		{Kind: BlockOpenQuestion, Heading: "Unclear", Questions: []BriefQuestion{{Text: "Is an **error** preferred?", Evidence: ev}}},
+	}})
+	v, _, fault := CheckBriefDraft(firstReadJob(), raw)
+	if fault != "" || len(v.Blocks) != 1 || v.Blocks[0].Questions[0].Text != "Is an error preferred?" {
+		t.Fatalf("fault %q, %+v", fault, v.Blocks)
+	}
+}
