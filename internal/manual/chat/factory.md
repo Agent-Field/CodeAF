@@ -1,5 +1,37 @@
 # The factory
 
+## factory repository list refresh, saved repositories and available_read_at
+
+The factory saves the last complete GitHub repository list across a restart.
+Repository reads return that saved list and its `available_read_at` timestamp,
+the UTC time the last complete discovery finished. The timestamp is absent
+when no discovery time is known. An older desktop app can ignore the field.
+
+When the list is at least five minutes old, the next read starts one background
+discovery. Other reads reuse the saved list while discovery runs. The first
+read with no saved list waits for discovery. A failed discovery keeps the saved
+list on disk. Network, server, rate-limit and timeout failures serve that list
+with its unchanged `available_read_at`. A lost, expired, revoked or refused
+GitHub sign-in fails the read and never serves the saved list. With no saved
+list, a failed discovery still reports its error. After a failure, a read may
+start another discovery after 30 seconds; a success restores the five-minute
+refresh interval.
+
+A saved list belongs to the GitHub identity and credential that read it. A
+different connection must read its own list. The existing GitHub identity and
+caller-access checks still apply. A transient identity-lookup failure can reuse
+the saved list only with the same credential; a refused sign-in fails the read.
+Turning a repository on or off changes `watched` immediately, including a newly
+watched repository absent from the saved available list. A repository removed
+on GitHub disappears from the available list after the next successful discovery.
+
+Discovery preserves registered checkout folders and uses conditional GitHub reads.
+If every repository page answers 304 and matches the last complete discovery,
+it keeps the previous issue counts without another GraphQL count request. A
+partial failed walk cannot restore removed repositories on a retry. Open pipeline
+pull requests reuse their files for the same head SHA and base SHA in the bounded
+process cache. A change to either SHA reads the files again.
+
 ## save a job note after steps finish — who reads it and PR comments
 
 A `factory_item` note asks `save a note on the job?`. After your yes, it stays
