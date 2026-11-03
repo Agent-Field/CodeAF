@@ -367,7 +367,9 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 					t.Fatalf("paused memory count grew: %d -> %d", before, got)
 				}
 				snapshot, err := knowledge.Open(profile).Snapshot()
-				if err != nil || snapshot.Pending == 0 {
+				// A completed extraction can consume raw sources while leaving
+				// its durable claims waiting for the rest of compilation.
+				if err != nil || (snapshot.Pending == 0 && (!pauseBoundary || !snapshot.NeedsUpdate)) {
 					t.Fatalf("pause lost pending memory: %+v %v", snapshot, err)
 				}
 				t.Logf("paused memory calls=%d; ledger=%.4f header=%.4f pending=%d", before, usd, job.Cost, snapshot.Pending)
