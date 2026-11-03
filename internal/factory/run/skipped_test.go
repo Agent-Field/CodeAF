@@ -75,3 +75,38 @@ func TestSkippedStepRemovesEarlierEquivalentProofClaim(t *testing.T) {
 		t.Fatalf("skipped step retained equivalent proof claim: %+v", it.Proof)
 	}
 }
+
+func TestOptionalSkippedCheckDoesNotHideMeasuredCheckPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		state factory.PhaseState
+		exit  int
+		want  bool
+	}{
+		{"only skipped", factory.PhaseSkipped, 0, false},
+		{"passed plus skipped", factory.PhaseDone, 0, true},
+		{"failed plus passed", factory.PhaseFailed, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := factory.StageResult{Done: tc.exit == 0, Exit: tc.exit}
+			it := factory.Item{Stages: []factory.Stage{{Name: "auth", Kind: factory.StageCheck}, {Name: "unit", Kind: factory.StageCheck}}, Stream: &factory.Stream{Phases: []factory.Phase{
+				{Name: "auth", Kind: factory.StageCheck, State: factory.PhaseSkipped},
+				{Name: "unit", Kind: factory.StageCheck, State: tc.state, Result: &result},
+			}}}
+			prior := []factory.StageResult{result}
+			if tc.state == factory.PhaseFailed {
+				it.Stream.Phases[0].State = factory.PhaseDone
+				it.Stream.Phases[0].Result = &factory.StageResult{Done: true}
+				prior = append([]factory.StageResult{{Done: true}}, prior...)
+			}
+			if tc.state == factory.PhaseSkipped {
+				it.Stream.Phases[1].Result = nil
+				prior = nil
+			}
+			ok, _ := PolicyAllows([]string{"no pull request without a green check"}, it, factory.Action{Verb: "pr"}, prior)
+			if ok != tc.want {
+				t.Fatalf("green-check policy allowed=%v, want %v", ok, tc.want)
+			}
+		})
+	}
+}
