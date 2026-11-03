@@ -471,7 +471,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 // starts; starting it is the person's own start. The drop threw its work on
 // this machine away (its local branch and folder, its conversations and its
 // crew), so its next run begins on a fresh branch, from the first step, with
-// nothing spent, and makes an agent and a crew of its own.
+// its lifetime money kept, and makes an agent and a crew of its own.
 //
 // FRESH MEANS FRESH (the owner's decision of 2026-10-19): no earlier
 // conversation reaches the job again. Its agent's conversation, what the
@@ -530,7 +530,7 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 // forgetRun takes every trace of a run off the job: its state and ending, its
-// steps and what they spent, its question, failure, approval and stop, its
+// steps, its question, failure, approval and stop, its
 // proof, its change and the commits and machine it was made on, and what it
 // published; and every trace of what was said about it: its conversations
 // ([forgetChats]), the notes for its steps, and the changes made to its
@@ -540,9 +540,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	forgetChats(it)
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
-	it.Stream = nil
-	// What the job's chat spent before an earlier start goes with that run: a fresh job has spent nothing.
-	it.ChatSpent = 0
+	factory.ClearJobRun(it)
 	it.Failure = nil
 	it.Approval, it.StopUndo = nil, nil
 	it.Question, it.QKind = "", ""
@@ -915,7 +913,19 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 			return nil
 		}
 		if u := cur.StopUndo; u != nil && now.Before(u.Until) && u.By == who && cur.State == factory.StateNew {
-			cur.Stream = u.Stream
+			// Undo restores the work snapshot, but receipts may have arrived
+			// since Stop. Keep those dollars on the same run.
+			restored := u.Stream
+			if cur.Stream != nil {
+				if restored == nil {
+					cur.ChatSpent += cur.Stream.Spent
+				} else {
+					stream := *restored
+					stream.Spent = max(stream.Spent, cur.Stream.Spent)
+					restored = &stream
+				}
+			}
+			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question
 			cur.QKind = u.QKind
