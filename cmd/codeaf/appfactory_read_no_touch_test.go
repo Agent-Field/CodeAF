@@ -9,6 +9,9 @@ import (
 
 func TestFactoryJobChatsDoesNotTouchJob(t *testing.T) {
  s := newLocalSetup(t)
+ s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+  return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+ }
  st := s.start()
  floor := s.backend.local.host.floor
  it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 71, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
