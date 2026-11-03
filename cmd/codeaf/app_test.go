@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // THE COMMAND ITSELF, ON ITS OWN PIPES. The hello is the first line and names
@@ -651,43 +653,57 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	defer rec.mu.Unlock()
 	// A create with no words announces nothing (appblank.go), so the first
 	// event is the send's own agent.changed.
-	got := rec.events[:done+2]
+	// agent.changed goes straight out while the turn's events go through their
+	// ordered box, so where it lands among them is not part of the order. Each
+	// one says the agent as it stood: working from the send, the first call's live
+	// line (appliveline.go), idle under its title at the end.
+	got, data, said := []string{}, []any{}, []appwire.Agent{}
+	for i, event := range rec.events[:done+2] {
+		if c, ok := rec.data[i].(appwire.AgentChanged); ok {
+			said = append(said, c.Agent)
+			continue
+		}
+		got, data = append(got, event), append(data, rec.data[i])
+	}
+	if said[0].State != appwire.StateWorking {
+		t.Fatalf("first change = %s, want working", said[0].State)
+	}
+	firstCall := tui3.ToolTitle("read", "", "read go.mod")
+	if !slices.ContainsFunc(said, func(a appwire.Agent) bool { return a.Line == firstCall }) {
+		t.Fatalf("no change said the first call's live line %q: %+v", firstCall, said)
+	}
 	want := []string{
-		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
+		appwire.EventTurnStarted, appwire.EventEntryAdded,
 		appwire.EventTurnThinking, appwire.EventTurnThinkingDone, appwire.EventTurnDelta, appwire.EventEntryAdded,
 		appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool,
-		appwire.EventTaskChanged, appwire.EventAgentChanged, appwire.EventTurnDone, appwire.EventAgentChanged,
+		appwire.EventTaskChanged, appwire.EventTurnDone,
 	}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("events:\n got %v\nwant %v", got, want)
 	}
-	data := rec.data[:done+2]
-	if s := data[0].(appwire.AgentChanged).Agent.State; s != appwire.StateWorking {
-		t.Fatalf("first change = %s, want working", s)
-	}
-	if d := data[1].(appwire.TurnStarted); d.Turn != turn || d.Agent != agent.ID {
+	if d := data[0].(appwire.TurnStarted); d.Turn != turn || d.Agent != agent.ID {
 		t.Fatalf("turn.started = %+v", d)
 	}
-	if e := data[2].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.ID != "u0" || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
+	if e := data[1].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.ID != "u0" || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
 		t.Fatalf("the person's entry = %+v", e)
 	}
 	// The thought is said live and never kept; the words before a tool call
 	// are an update.
-	if d := data[3].(appwire.TurnThinking); d.Text != "hmm" || d.Turn != turn {
+	if d := data[2].(appwire.TurnThinking); d.Text != "hmm" || d.Turn != turn {
 		t.Fatalf("thinking = %+v", d)
 	}
-	if d := data[4].(appwire.TurnThinkingDone); d.Seconds < 1 {
+	if d := data[3].(appwire.TurnThinkingDone); d.Seconds < 1 {
 		t.Fatalf("thinking done = %+v", d)
 	}
-	if d := data[5].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
+	if d := data[4].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
 		t.Fatalf("text = %+v", d)
 	}
-	if e := data[6].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUpdate || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "" {
+	if e := data[5].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUpdate || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "" {
 		t.Fatalf("the update entry = %+v", e)
 	}
-	begin := data[7].(appwire.TurnTool)
-	end := data[8].(appwire.TurnTool)
-	failed := data[10].(appwire.TurnTool)
+	begin := data[6].(appwire.TurnTool)
+	end := data[7].(appwire.TurnTool)
+	failed := data[9].(appwire.TurnTool)
 	if begin.Phase != appwire.PhaseBegin || begin.Call != "c1" || begin.Name != "read" || begin.Title != "read go.mod" || begin.OK != nil {
 		t.Fatalf("begin = %+v", begin)
 	}
@@ -697,10 +713,10 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if failed.Phase != appwire.PhaseEnd || failed.OK == nil || *failed.OK || failed.Summary != "exit status 1" {
 		t.Fatalf("failed = %+v", failed)
 	}
-	if task := data[11].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
+	if task := data[10].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
 		t.Fatalf("task = %+v", task)
 	}
-	if d := data[13].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
+	if d := data[11].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
 		t.Fatalf("turn.done = %+v", d)
 	}
 }
