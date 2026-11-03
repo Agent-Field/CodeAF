@@ -50,7 +50,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -4696,7 +4695,7 @@ func appEngineError(err error) error {
 	}
 	// A removed computer reads the removal and its remedy, never the wire's sentinel.
 	if errors.Is(err, directory.ErrRevoked) {
-		return &appwire.Error{Code: appwire.CodeEngine, Message: chatlist.Removed}
+		return &appwire.Error{Code: appwire.CodeEngine, Message: appRemoved}
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
 }

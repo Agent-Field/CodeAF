@@ -20,6 +20,9 @@ const (
 	appPairFollowed   = "Paired. This computer now shares your current chats and keeps its saved keys."
 	appPairListUnread = "Paired. Your computers could not be listed yet. Open codeaf again in a moment."
 	appPairFailed     = "This computer could not finish pairing. Try again."
+	// appRemoved answers any call refused because this computer was removed,
+	// so it names no chat; the app's own remedy is Pair a computer.
+	appRemoved = "This computer was removed by another of your devices. To bring it back, choose Pair a computer."
 )
 
 func pairApprovalOptions() []appwire.PairOption {
