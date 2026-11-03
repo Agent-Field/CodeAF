@@ -18,7 +18,7 @@ type automaticKey struct {
 }
 
 type automaticStanding struct {
-	sync.Mutex
+	done   chan struct{}
 	closed bool
 }
 
@@ -31,23 +31,30 @@ func ClosedForAutomation(ctx context.Context, root string, it factory.Item, stan
 	if standing == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
 		return false
 	}
-	entry := &automaticStanding{}
-	if root != "" {
-		root, _ = filepath.Abs(root)
-		value, _ := automaticStandings.LoadOrStore(automaticKey{root, it.Repo, it.Kind, it.Num}, entry)
-		entry = value.(*automaticStanding)
-	}
-	entry.Lock()
-	defer entry.Unlock()
-	if entry.closed {
-		return true
-	}
+
 	ctx, cancel := context.WithTimeout(ctx, automaticStandingWait)
 	defer cancel()
-	how, err := standing(ctx, it)
-	if err != nil || ctx.Err() != nil {
-		return false
+	entry := &automaticStanding{done: make(chan struct{})}
+	var key automaticKey
+	if root != "" {
+		root, _ = filepath.Abs(root)
+		key = automaticKey{root, factory.RepoOf(it), it.Kind, it.Num}
+		value, loaded := automaticStandings.LoadOrStore(key, entry)
+		if loaded {
+			entry = value.(*automaticStanding)
+			select {
+			case <-ctx.Done():
+				return false
+			case <-entry.done:
+				return entry.closed
+			}
+		}
 	}
-	entry.closed = how == StandingClosed || how == StandingMerged
+	defer close(entry.done)
+	how, err := standing(ctx, it)
+	entry.closed = err == nil && ctx.Err() == nil && (how == StandingClosed || how == StandingMerged)
+	if !entry.closed && root != "" {
+		automaticStandings.Delete(key)
+	}
 	return entry.closed
 }

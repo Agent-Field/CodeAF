@@ -35,6 +35,11 @@ func TestAutomaticIntakeChecksClosedIssues(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				before, err = st.Get(before.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				reads, scouts, launches := 0, 0, 0
 				opts := intake.Options{Record: history, Load: func(string) (pipeline.File, error) { return f, nil }, Scout: func(context.Context, int) error { scouts++; return nil }, Launch: func(id int) error {
 					launches++

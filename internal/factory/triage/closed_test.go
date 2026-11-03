@@ -31,6 +31,11 @@ func TestArrivalReadChecksClosedIssues(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				before, err = st.Get(before.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				reads, calls := 0, 0
 				opts := triage.Options{}
 				if standing != "nil" {
