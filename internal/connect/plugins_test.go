@@ -2,11 +2,13 @@ package connect
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"golang.org/x/oauth2"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPluginBlurb(t *testing.T) {
@@ -146,5 +148,66 @@ func TestPluginCancelledIdentityProbeSavesNothing(t *testing.T) {
 	}
 	if m.Connected("google") {
 		t.Fatal("cancelled sign-in connected")
+	}
+}
+
+func TestPluginSavedDatesAndShortAsk(t *testing.T) {
+	m, _, dir := keyManager(t, http.NotFoundHandler(), func(p *keyPlug) {
+		p.blank = blank{name: "workspace", label: "Workspace"}
+		p.base += "/{{.workspace}}"
+		p.service.KeyAsk = "Give the workspace and then the key, one space between them."
+	})
+	before := time.Now().UTC().Truncate(time.Second)
+	if _, err := m.ConnectKey(context.Background(), "example", "team fake-key"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewManager(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(reopened.Plugins()[0])
+	var got map[string]any
+	_ = json.Unmarshal(raw, &got)
+	for _, field := range []string{"connected_at", "key_saved_at"} {
+		value, _ := got[field].(string)
+		at, err := time.Parse(time.RFC3339Nano, value)
+		if err != nil || at.Before(before) || at.After(time.Now()) {
+			t.Fatalf("%s = %v", field, got[field])
+		}
+	}
+	if got["ask"].(map[string]any)["label"] != "Workspace" {
+		t.Fatalf("ask = %v", got["ask"])
+	}
+	if err := reopened.Disconnect("example"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = json.Marshal(reopened.Plugins()[0])
+	_ = json.Unmarshal(raw, &got)
+	if strings.Contains(string(raw), "connected_at") || strings.Contains(string(raw), "key_saved_at") {
+		t.Fatalf("disconnected dates: %s", raw)
+	}
+}
+
+func TestPluginBrowserDatesAndLegacyAbsence(t *testing.T) {
+	m, _ := testManager(t)
+	f := &Flow{manager: m, plug: google{}, cancel: func() {}, done: make(chan flowResult, 1)}
+	f.done <- flowResult{keys: &oauth2.Token{AccessToken: "fake", RefreshToken: "fake"}}
+	if _, err := f.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range m.Plugins() {
+		if p.ID == "google" {
+			if _, err := time.Parse(time.RFC3339Nano, p.ConnectedAt); err != nil || p.KeySavedAt != "" {
+				t.Fatalf("browser dates = %+v", p)
+			}
+		}
+	}
+	if err := m.store.put("google", stored{Keys: &oauth2.Token{RefreshToken: "old"}, Scopes: wholeGrant()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range m.Plugins() {
+		if p.ID == "google" && (p.ConnectedAt != "" || p.KeySavedAt != "") {
+			t.Fatalf("invented old dates = %+v", p)
+		}
 	}
 }

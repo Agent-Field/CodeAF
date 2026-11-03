@@ -16,10 +16,24 @@ const (
 
 type PluginsResult struct {
 	Plugins       []connect.Plugin                 `json:"plugins"`
-	Providers     []Provider                       `json:"providers"`
+	Providers     []PluginProvider                 `json:"providers"`
 	Featured      []string                         `json:"featured"`
 	FeaturedWords map[string]connect.FeaturedWords `json:"featured_words"`
 }
+
+// PluginProvider extends the provider view only on the plugins page.
+type PluginProvider struct {
+	Provider
+	Account     string            `json:"account,omitempty"`
+	KeyEnv      string            `json:"key_env,omitempty"`
+	ConnectedAt string            `json:"connected_at,omitempty"`
+	Running     *bool             `json:"running,omitempty"`
+	PlanPaused  *PluginPlanPaused `json:"plan_paused,omitempty"`
+}
+type PluginPlanPaused struct {
+	ResetsAt string `json:"resets_at,omitempty"`
+}
+
 type PluginID struct {
 	ID string `json:"id"`
 }

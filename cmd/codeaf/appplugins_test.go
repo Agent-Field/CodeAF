@@ -1,10 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"net/http"
+	"net/http/httptest"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -122,4 +130,166 @@ func TestAppPluginsQuestionDoneWhenConversationDies(t *testing.T) {
 	if got := rec.data[i].(appwire.PluginsNeededDone).AskID; got != appAskID(q) {
 		t.Fatalf("%s closed %s", agent.ID, got)
 	}
+}
+
+func TestAppPluginsRoundTwoPauseFacts(t *testing.T) {
+	b := newFakeBackend(newAppRecorder(), nil)
+	defer b.Close()
+	b.profileDir = t.TempDir()
+	reset := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	b.phaseNews(session.PhaseNews{Phase: provider.PhasePlanPaused, SourceID: "z-ai", PlanReset: reset})
+	list, err := b.ListPlugins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(list)
+	if !strings.Contains(string(raw), `"plan_paused":{"resets_at":"`+reset+`"}`) {
+		t.Fatalf("missing plan pause: %s", raw)
+	}
+	b.phaseNews(session.PhaseNews{Phase: provider.PhaseWriting, SourceID: "z-ai", Door: "pay-as-you-go"})
+	list, _ = b.ListPlugins()
+	raw, _ = json.Marshal(list)
+	if !strings.Contains(string(raw), `"plan_paused"`) {
+		t.Fatal("metered overflow erased plan pause")
+	}
+	b.phaseNews(session.PhaseNews{Phase: provider.PhaseWriting, SourceID: "z-ai", Door: "coding plan"})
+	list, _ = b.ListPlugins()
+	raw, _ = json.Marshal(list)
+	if strings.Contains(string(raw), `"plan_paused"`) {
+		t.Fatalf("successful plan still paused: %s", raw)
+	}
+	b.phaseNews(session.PhaseNews{Phase: provider.PhasePlanPaused, SourceID: "z-ai", PlanReset: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)})
+	list, _ = b.ListPlugins()
+	raw, _ = json.Marshal(list)
+	if strings.Contains(string(raw), `"plan_paused"`) {
+		t.Fatal("past reset still paused")
+	}
+}
+
+func TestAppPluginsOllamaProbeDoesNotBlockList(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tags" {
+			t.Errorf("probe path = %s", r.URL.Path)
+		}
+		close(entered)
+		<-release
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer server.Close()
+	defer close(release)
+	b, _, _ := appProviderTest(t)
+	b.vendored = appStubbed("ollama", func(source *modelsource.Source) { source.Address = server.URL + "/v1" })
+	read := func() appwire.PluginProvider {
+		list, err := b.ListPlugins()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range list.Providers {
+			if p.ID == "ollama" {
+				return p
+			}
+		}
+		t.Fatal("missing Ollama")
+		return appwire.PluginProvider{}
+	}
+	view := read()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("probe did not start")
+	}
+	if view.Running != nil {
+		t.Fatal("probe blocked list or invented result")
+	}
+	deadline := time.Now().Add(time.Second)
+	for view.Running == nil && time.Now().Before(deadline) {
+		runtime.Gosched()
+		view = read()
+	}
+	if view.Running == nil || *view.Running {
+		t.Fatal("stalled Ollama did not time out as not running")
+	}
+}
+
+func TestAppPluginsProviderAccountAndKeyVariable(t *testing.T) {
+	b, _, profile := appProviderTest(t)
+	t.Setenv("PLUGIN_PLAN_KEY", "fake-plugin-provider-key")
+	if err := config.WriteSources(profile, []config.PersistedSource{{ID: "z-ai", Written: "z-ai", KeyEnv: "PLUGIN_PLAN_KEY", Door: "coding-plan"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := codexauth.Save(profile, codexauth.Tokens{Email: "person@example.test", AccessToken: "fake-access", RefreshToken: "fake-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := b.ListPlugins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, p := range list.Providers {
+		if p.ID == "z-ai" {
+			seen++
+			if p.KeyEnv != "PLUGIN_PLAN_KEY" {
+				t.Fatalf("key variable = %q", p.KeyEnv)
+			}
+		}
+		if p.ID == "codex" {
+			seen++
+			if p.Account != "person@example.test" {
+				t.Fatalf("account = %q", p.Account)
+			}
+		}
+		if p.ConnectedAt != "" {
+			t.Fatalf("invented provider date = %q", p.ConnectedAt)
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("metadata providers = %d", seen)
+	}
+	raw, _ := json.Marshal(list)
+	if strings.Contains(string(raw), "fake-plugin-provider-key") || strings.Contains(string(raw), "fake-access") {
+		t.Fatal("secret leaked in provider facts")
+	}
+}
+
+func TestAppPluginsDefaultProviderKeyVariable(t *testing.T) {
+	b, _, _ := appProviderTest(t)
+	t.Setenv("OPENAI_API_KEY", "sk-or-fake-plugin-fallback")
+	list, err := b.ListPlugins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range list.Providers {
+		if p.ID == "openrouter" {
+			if p.KeyEnv != "OPENAI_API_KEY" {
+				t.Fatalf("key_env = %q, want OPENAI_API_KEY", p.KeyEnv)
+			}
+			return
+		}
+	}
+	t.Fatal("missing OpenRouter")
+}
+
+func TestAppPluginsOllamaRunning(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"models":[]}`)) }))
+	defer server.Close()
+	b, _, _ := appProviderTest(t)
+	b.vendored = appStubbed("ollama", func(source *modelsource.Source) { source.Address = server.URL + "/v1" })
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		list, err := b.ListPlugins()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range list.Providers {
+			if p.ID == "ollama" && p.Running != nil {
+				if !*p.Running {
+					t.Fatal("Ollama answered but running=false")
+				}
+				return
+			}
+		}
+		runtime.Gosched()
+	}
+	t.Fatal("Ollama probe never became running")
 }

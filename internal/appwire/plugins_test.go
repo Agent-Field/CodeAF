@@ -40,7 +40,7 @@ type pluginsEngine struct {
 
 func (e *pluginsEngine) ListPlugins() (PluginsResult, error) {
 	e.calls = append(e.calls, "list")
-	return PluginsResult{Plugins: []connect.Plugin{}, Providers: []Provider{}, Featured: []string{"google"}, FeaturedWords: map[string]connect.FeaturedWords{"google": {What: "Gmail and Calendar", Does: "Read mail"}}}, nil
+	return PluginsResult{Plugins: []connect.Plugin{}, Providers: []PluginProvider{}, Featured: []string{"google"}, FeaturedWords: map[string]connect.FeaturedWords{"google": {What: "Gmail and Calendar", Does: "Read mail"}}}, nil
 }
 func (e *pluginsEngine) DescribePlugin(id string) (connect.PluginDescription, error) {
 	e.calls = append(e.calls, id)

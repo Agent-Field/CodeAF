@@ -298,7 +298,7 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 		f.status, f.err = Status{Service: service}, err
 		return f.status, f.err
 	}
-	if err := f.manager.store.put(service.ID, entry); err != nil {
+	if err := f.manager.store.putConnected(service.ID, entry); err != nil {
 		f.status = Status{Service: service}
 		f.err = fmt.Errorf("connect %s: %w", service.Name, err)
 		return f.status, f.err

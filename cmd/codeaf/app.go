@@ -551,12 +551,14 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	pluginAuth  map[string]*appPluginAttempt
-	chats       appChats
-	pair        appPair
-	drives      *driveBook
-	sync        appSync
-	syncPending map[string][]appSyncFact
+	pluginPauses map[string]appPluginPause
+	pluginOllama appPluginOllama
+	pluginAuth   map[string]*appPluginAttempt
+	chats        appChats
+	pair         appPair
+	drives       *driveBook
+	sync         appSync
+	syncPending  map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices

@@ -10,17 +10,19 @@ import (
 )
 
 type Plugin struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Kind      string         `json:"kind" enum:"browser,key,server"`
-	Category  string         `json:"category"`
-	Blurb     string         `json:"blurb"`
-	Connected bool           `json:"connected"`
-	Account   string         `json:"account,omitempty"`
-	KeyEnv    string         `json:"key_env,omitempty"`
-	Expired   bool           `json:"expired,omitempty"`
-	Ask       *PluginAsk     `json:"ask,omitempty"`
-	KeyHint   *PluginKeyHint `json:"key_hint,omitempty"`
+	ConnectedAt string         `json:"connected_at,omitempty"`
+	KeySavedAt  string         `json:"key_saved_at,omitempty"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Kind        string         `json:"kind" enum:"browser,key,server"`
+	Category    string         `json:"category"`
+	Blurb       string         `json:"blurb"`
+	Connected   bool           `json:"connected"`
+	Account     string         `json:"account,omitempty"`
+	KeyEnv      string         `json:"key_env,omitempty"`
+	Expired     bool           `json:"expired,omitempty"`
+	Ask         *PluginAsk     `json:"ask,omitempty"`
+	KeyHint     *PluginKeyHint `json:"key_hint,omitempty"`
 }
 type PluginAsk struct {
 	Label   string   `json:"label"`
@@ -81,14 +83,21 @@ func (m *Manager) Plugins() []Plugin {
 		if s.Blank != "" {
 			p.Ask = &PluginAsk{Label: s.Blank, Answers: s.Answers}
 		} else if s.KeyAsk != "" {
-			p.Ask = &PluginAsk{Label: s.KeyAsk}
+			if plug, err := m.plug(s.ID); err == nil {
+				if keyed, ok := plug.(*keyPlug); ok && keyed.blank.label != "" {
+					p.Ask = &PluginAsk{Label: keyed.blank.label}
+				}
+			}
 		}
 		if s.KeyHint != "" {
 			p.KeyHint = &PluginKeyHint{Words: "Where's my key?", URL: s.KeyHint}
 		}
-		if record, ok, _ := m.store.get(s.ID); ok && record.Keys != nil && !record.Keys.Valid() && record.Keys.RefreshToken == "" {
-			p.Expired = true
-			p.Connected = false
+		if record, ok, _ := m.store.get(s.ID); ok {
+			p.ConnectedAt, p.KeySavedAt = record.ConnectedAt, record.KeySavedAt
+			if record.Keys != nil && !record.Keys.Valid() && record.Keys.RefreshToken == "" {
+				p.Expired = true
+				p.Connected = false
+			}
 		}
 		out = append(out, p)
 	}

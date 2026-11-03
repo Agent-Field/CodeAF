@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -21,6 +22,8 @@ const StoreFileName = "credentials.json"
 
 // stored is one service's entry in the file.
 type stored struct {
+	ConnectedAt string `json:"connected_at,omitempty"`
+	KeySavedAt  string `json:"key_saved_at,omitempty"`
 	// Account is the address the keys belong to, absent when the service
 	// never told us. See the emptiness law on [Status].
 	Account string `json:"account,omitempty"`
@@ -184,6 +187,23 @@ func (s *store) get(id string) (stored, bool, error) {
 // put replaces one service's entry, preserving everything else in the file.
 func (s *store) put(id string, entry stored) error {
 	return s.replace(id, func(entries map[string]stored) {
+		entries[id] = entry
+	})
+}
+
+// putConnected stamps a successful connection without inventing dates for old entries.
+func (s *store) putConnected(id string, entry stored) error {
+	return s.replace(id, func(entries map[string]stored) {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		previous, exists := entries[id]
+		if exists {
+			entry.ConnectedAt = previous.ConnectedAt
+		} else {
+			entry.ConnectedAt = now
+		}
+		if entry.Auth == AuthKey {
+			entry.KeySavedAt = now
+		}
 		entries[id] = entry
 	})
 }

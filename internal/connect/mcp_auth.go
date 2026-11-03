@@ -475,7 +475,7 @@ func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, given
 		Scopes: granted(keys, found.scopes),
 		Blank:  given,
 	}
-	if err := m.store.put(service.ID, entry); err != nil {
+	if err := m.store.putConnected(service.ID, entry); err != nil {
 		return Status{}, err
 	}
 	forgetTools(service.ID)

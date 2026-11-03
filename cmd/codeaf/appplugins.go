@@ -37,8 +37,14 @@ func (b *appBackend) ListPlugins() (appwire.PluginsResult, error) {
 	if providers == nil {
 		providers = []appwire.Provider{}
 	}
+	views := make([]appwire.PluginProvider, 0, len(providers))
+	for _, provider := range providers {
+		view := appwire.PluginProvider{Provider: provider}
+		b.pluginProviderFacts(&view)
+		views = append(views, view)
+	}
 	featured, words := connect.Featured()
-	return appwire.PluginsResult{Plugins: m.Plugins(), Providers: providers, Featured: featured, FeaturedWords: words}, nil
+	return appwire.PluginsResult{Plugins: m.Plugins(), Providers: views, Featured: featured, FeaturedWords: words}, nil
 }
 func (b *appBackend) DescribePlugin(id string) (connect.PluginDescription, error) {
 	m, err := b.pluginManager()

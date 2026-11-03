@@ -14,3 +14,10 @@ rows through settings.set.
 
 Featured copy is engine data. Short blurbs derive from catalog descriptions,
 and connected tool-server lists retain the server's own titles and read flags.
+
+Round 2 exposes provider account emails, credential variable names and observed
+plan pauses with vendor reset values. A bounded background probe reports local
+Ollama availability. Plugin connections now save connection and key dates in
+the existing credential store; older entries and provider dates remain absent.
+Connection questions use short catalog labels, with the fact and key supplied
+separately on the wire. The providers.list response remains unchanged.
