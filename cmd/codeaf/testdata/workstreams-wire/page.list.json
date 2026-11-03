@@ -1,0 +1,35 @@
+{
+  "method": "page.list",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamPageListParams",
+  "result_type": "WorkstreamPageListResult",
+  "examples": {
+    "params": [
+      {
+        "workstream_id": "ws_8f2c1a"
+      }
+    ],
+    "result": [
+      {
+        "pages": [
+          {
+            "id": "pg_31d0",
+            "workstream_id": "ws_8f2c1a",
+            "title": "Overview",
+            "owner": "you",
+            "read_by_jobs": false,
+            "position": 0,
+            "version": 1,
+            "updated_at": "2026-11-02T14:05:00Z",
+            "updated_by": "you"
+          }
+        ]
+      }
+    ]
+  }
+}

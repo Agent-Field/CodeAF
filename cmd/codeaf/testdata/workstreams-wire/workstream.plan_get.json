@@ -1,0 +1,28 @@
+{
+  "method": "workstream.plan_get",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamPlanGetParams",
+  "result_type": "WorkstreamPlanGetResult",
+  "examples": {
+    "params": [
+      {
+        "id": "ws_8f2c1a"
+      }
+    ],
+    "result": [
+      {
+        "plan": {
+          "workstream_id": "ws_8f2c1a",
+          "version": 0,
+          "milestones": [],
+          "waves": []
+        }
+      }
+    ]
+  }
+}

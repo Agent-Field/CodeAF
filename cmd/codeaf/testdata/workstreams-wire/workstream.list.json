@@ -1,0 +1,48 @@
+{
+  "method": "workstream.list",
+  "errors": [
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamListParams",
+  "result_type": "WorkstreamListResult",
+  "examples": {
+    "params": [
+      {}
+    ],
+    "result": [
+      {
+        "workstreams": [
+          {
+            "id": "ws_8f2c1a",
+            "name": "Usage-based billing",
+            "stage": "building",
+            "total": 1,
+            "merged": 0,
+            "needs_you": 1,
+            "spend_usd": 2.5,
+            "budget_usd": 100.0,
+            "updated_at": "2026-11-02T14:05:00Z"
+          }
+        ]
+      },
+      {
+        "workstreams": [
+          {
+            "id": "ws_8f2c1a",
+            "name": "Usage-based billing",
+            "stage": "shaping",
+            "total": 1,
+            "updated_at": "2026-11-02T14:05:00Z"
+          }
+        ]
+      }
+    ],
+    "error": [
+      {
+        "code": "unknown_method",
+        "message": "workstreams: not implemented yet"
+      }
+    ]
+  }
+}

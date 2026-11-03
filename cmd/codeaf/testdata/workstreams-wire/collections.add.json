@@ -1,0 +1,42 @@
+{
+  "method": "collections.add",
+  "examples": {
+    "params": [
+      {
+        "id": "ws_8f2c1a",
+        "refs": [
+          {
+            "kind": "factory_job",
+            "id": "1107",
+            "factory": "f_local"
+          }
+        ]
+      }
+    ],
+    "result": [
+      {
+        "added": [
+          {
+            "kind": "factory_job",
+            "id": "1107",
+            "factory": "f_local",
+            "added_at": "2026-11-02T14:05:00Z"
+          }
+        ],
+        "already": []
+      }
+    ],
+    "error": [
+      {
+        "code": "in_other_workstream",
+        "message": "that job belongs to another workstream",
+        "detail": {
+          "factory": "f_local",
+          "job": 1107,
+          "workstream_id": "ws_92b7",
+          "workstream_name": "Account migration"
+        }
+      }
+    ]
+  }
+}

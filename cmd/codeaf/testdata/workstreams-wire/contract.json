@@ -1,0 +1,1180 @@
+{
+  "methods": [
+    "workstream.list",
+    "workstream.get",
+    "workstream.create",
+    "workstream.update",
+    "workstream.mark_done",
+    "workstream.reopen",
+    "workstream.plan_get",
+    "workstream.plan_set",
+    "page.list",
+    "page.get",
+    "page.save",
+    "page.create",
+    "page.update",
+    "page.move",
+    "page.delete",
+    "page.history",
+    "page.restore",
+    "record.list",
+    "record.propose",
+    "record.keep",
+    "record.drop",
+    "record.supersede",
+    "goahead.list",
+    "goahead.grant",
+    "goahead.revoke"
+  ],
+  "events": [
+    {
+      "event": "workstream.changed",
+      "data_type": "WorkstreamChanged"
+    }
+  ],
+  "errors": [
+    {
+      "code": "bad_params",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "not_found",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "conflict",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "in_other_workstream",
+      "desk_local": false,
+      "detail_type": "WorkstreamTaken"
+    },
+    {
+      "code": "version_conflict",
+      "desk_local": false,
+      "detail_type": "WorkstreamVersionConflict"
+    },
+    {
+      "code": "cycle",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "too_large",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "busy",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "unknown_method",
+      "desk_local": false,
+      "detail_type": null
+    },
+    {
+      "code": "unsupported",
+      "desk_local": true,
+      "detail_type": null
+    }
+  ],
+  "enums": {
+    "WorkstreamStage": [
+      "shaping",
+      "building",
+      "done"
+    ],
+    "WorkstreamAutonomy": [
+      "propose",
+      "small",
+      "off"
+    ],
+    "WorkstreamActor": [
+      "you",
+      "agent"
+    ],
+    "WorkstreamRefKind": [
+      "collection",
+      "conversation",
+      "task",
+      "artifact",
+      "crew",
+      "process",
+      "factory_job"
+    ],
+    "WorkstreamSourceKind": [
+      "chat",
+      "message",
+      "factory_job",
+      "page",
+      "url"
+    ],
+    "WorkstreamPlanItemKind": [
+      "job",
+      "draft"
+    ],
+    "WorkstreamRecordKind": [
+      "decision",
+      "question"
+    ],
+    "WorkstreamRecordState": [
+      "proposed",
+      "kept",
+      "dropped",
+      "superseded"
+    ],
+    "WorkstreamGoAheadScope": [
+      "job",
+      "wave",
+      "milestone"
+    ],
+    "WorkstreamGoAheadState": [
+      "active",
+      "ended"
+    ],
+    "WorkstreamGoAheadEndReason": [
+      "expired",
+      "revoked",
+      "workstream_done"
+    ],
+    "WorkstreamChangedPart": [
+      "workstream",
+      "plan",
+      "pages",
+      "records",
+      "goaheads",
+      "jobs"
+    ]
+  },
+  "types": {
+    "WorkstreamWake": {
+      "morning": {
+        "type": "boolean",
+        "required": true
+      },
+      "related_issues": {
+        "type": "boolean",
+        "required": true
+      }
+    },
+    "WorkstreamRef": {
+      "kind": {
+        "type": "WorkstreamRefKind",
+        "required": true
+      },
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "session_id": {
+        "type": "string",
+        "required": false
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamSource": {
+      "kind": {
+        "type": "WorkstreamSourceKind",
+        "required": true
+      },
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "chat_id": {
+        "type": "string",
+        "required": false
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "label": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamRow": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "name": {
+        "type": "string",
+        "required": true
+      },
+      "stage": {
+        "type": "WorkstreamStage",
+        "required": true
+      },
+      "total": {
+        "type": "integer",
+        "required": true
+      },
+      "merged": {
+        "type": "integer",
+        "required": false
+      },
+      "needs_you": {
+        "type": "integer",
+        "required": false
+      },
+      "spend_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "budget_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "updated_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      }
+    },
+    "Workstream": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "name": {
+        "type": "string",
+        "required": true
+      },
+      "why": {
+        "type": "string",
+        "required": true
+      },
+      "stage": {
+        "type": "WorkstreamStage",
+        "required": true
+      },
+      "agent_id": {
+        "type": "string",
+        "required": true
+      },
+      "origin_chat_id": {
+        "type": "string",
+        "required": false
+      },
+      "autonomy": {
+        "type": "WorkstreamAutonomy",
+        "required": true
+      },
+      "wake": {
+        "type": "WorkstreamWake",
+        "required": true
+      },
+      "budget_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "created_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "updated_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "started_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "done_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "how_it_went": {
+        "type": "string",
+        "required": false
+      },
+      "total": {
+        "type": "integer",
+        "required": true
+      },
+      "merged": {
+        "type": "integer",
+        "required": false
+      },
+      "needs_you": {
+        "type": "integer",
+        "required": false
+      },
+      "spend_usd": {
+        "type": "number (USD)",
+        "required": false
+      }
+    },
+    "WorkstreamPlan": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "version": {
+        "type": "integer",
+        "required": true
+      },
+      "updated_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "milestones": {
+        "type": "WorkstreamMilestone[]",
+        "required": true
+      },
+      "waves": {
+        "type": "WorkstreamWave[]",
+        "required": true
+      }
+    },
+    "WorkstreamMilestone": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamWave": {
+      "n": {
+        "type": "integer",
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "required": false
+      },
+      "milestone_id": {
+        "type": "string",
+        "required": false
+      },
+      "auto_start": {
+        "type": "boolean",
+        "required": true
+      },
+      "items": {
+        "type": "WorkstreamPlanItem[]",
+        "required": true
+      }
+    },
+    "WorkstreamPlanItem": {
+      "kind": {
+        "type": "WorkstreamPlanItemKind",
+        "required": true
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "job": {
+        "type": "integer",
+        "required": false
+      },
+      "draft_id": {
+        "type": "string",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": false
+      },
+      "repo": {
+        "type": "string",
+        "required": false
+      },
+      "text": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamPageNode": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "parent_id": {
+        "type": "string",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "owner": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": true
+      },
+      "position": {
+        "type": "integer",
+        "required": true
+      },
+      "version": {
+        "type": "integer",
+        "required": true
+      },
+      "updated_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "updated_by": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "updated_from": {
+        "type": "WorkstreamSource",
+        "required": false
+      }
+    },
+    "WorkstreamPage": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "parent_id": {
+        "type": "string",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "owner": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": true
+      },
+      "position": {
+        "type": "integer",
+        "required": true
+      },
+      "version": {
+        "type": "integer",
+        "required": true
+      },
+      "updated_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "updated_by": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "updated_from": {
+        "type": "WorkstreamSource",
+        "required": false
+      },
+      "doc": {
+        "type": "object",
+        "required": true
+      },
+      "markdown": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamPageVersion": {
+      "version": {
+        "type": "integer",
+        "required": true
+      },
+      "saved_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "saved_by": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "from": {
+        "type": "WorkstreamSource",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "bytes": {
+        "type": "integer",
+        "required": true
+      }
+    },
+    "WorkstreamRecord": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamRecordKind",
+        "required": true
+      },
+      "text": {
+        "type": "string",
+        "required": true
+      },
+      "state": {
+        "type": "WorkstreamRecordState",
+        "required": true
+      },
+      "by": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "source": {
+        "type": "WorkstreamSource",
+        "required": false
+      },
+      "created_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "decided_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      },
+      "supersedes": {
+        "type": "string",
+        "required": false
+      },
+      "superseded_by": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamGoAhead": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "scope": {
+        "type": "WorkstreamGoAheadScope",
+        "required": true
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "job": {
+        "type": "integer",
+        "required": false
+      },
+      "wave": {
+        "type": "integer",
+        "required": false
+      },
+      "milestone_id": {
+        "type": "string",
+        "required": false
+      },
+      "cap_usd": {
+        "type": "number (USD)",
+        "required": true
+      },
+      "ends_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "state": {
+        "type": "WorkstreamGoAheadState",
+        "required": true
+      },
+      "end_reason": {
+        "type": "WorkstreamGoAheadEndReason",
+        "required": false
+      },
+      "spent_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "granted_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "ended_at": {
+        "type": "string (RFC 3339)",
+        "required": false
+      }
+    },
+    "WorkstreamChanged": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "parts": {
+        "type": "WorkstreamChangedPart[]",
+        "required": false
+      }
+    },
+    "WorkstreamTaken": {
+      "factory": {
+        "type": "string",
+        "required": true
+      },
+      "job": {
+        "type": "integer",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_name": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamVersionConflict": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "version": {
+        "type": "integer",
+        "required": true
+      },
+      "updated_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "updated_by": {
+        "type": "WorkstreamActor",
+        "required": true
+      }
+    },
+    "WorkstreamPatch": {
+      "name": {
+        "type": "string",
+        "required": false
+      },
+      "why": {
+        "type": "string",
+        "required": false
+      },
+      "autonomy": {
+        "type": "WorkstreamAutonomy",
+        "required": false
+      },
+      "wake": {
+        "type": "WorkstreamWake",
+        "required": false
+      },
+      "budget_usd": {
+        "type": "number (USD)",
+        "required": false
+      }
+    },
+    "WorkstreamListParams": {},
+    "WorkstreamListResult": {
+      "workstreams": {
+        "type": "WorkstreamRow[]",
+        "required": true
+      }
+    },
+    "WorkstreamGetParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamGetResult": {
+      "workstream": {
+        "type": "Workstream",
+        "required": true
+      }
+    },
+    "WorkstreamCreateParams": {
+      "name": {
+        "type": "string",
+        "required": true
+      },
+      "why": {
+        "type": "string",
+        "required": false
+      },
+      "origin_chat_id": {
+        "type": "string",
+        "required": false
+      },
+      "refs": {
+        "type": "WorkstreamRef[]",
+        "required": false
+      },
+      "model": {
+        "type": "string",
+        "required": false
+      },
+      "client_id": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamCreateResult": {
+      "workstream": {
+        "type": "Workstream",
+        "required": true
+      }
+    },
+    "WorkstreamUpdateParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "patch": {
+        "type": "WorkstreamPatch",
+        "required": true
+      }
+    },
+    "WorkstreamUpdateResult": {
+      "workstream": {
+        "type": "Workstream",
+        "required": true
+      }
+    },
+    "WorkstreamMarkDoneParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "how_it_went": {
+        "type": "string",
+        "required": false
+      },
+      "archive_chats": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamMarkDoneResult": {
+      "workstream": {
+        "type": "Workstream",
+        "required": true
+      }
+    },
+    "WorkstreamReopenParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamReopenResult": {
+      "workstream": {
+        "type": "Workstream",
+        "required": true
+      }
+    },
+    "WorkstreamPlanGetParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamPlanGetResult": {
+      "plan": {
+        "type": "WorkstreamPlan",
+        "required": true
+      }
+    },
+    "WorkstreamPlanSetParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "base_version": {
+        "type": "integer",
+        "required": true
+      },
+      "milestones": {
+        "type": "WorkstreamMilestone[]",
+        "required": true
+      },
+      "waves": {
+        "type": "WorkstreamWave[]",
+        "required": true
+      }
+    },
+    "WorkstreamPlanSetResult": {
+      "plan": {
+        "type": "WorkstreamPlan",
+        "required": true
+      }
+    },
+    "WorkstreamPageListParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamPageListResult": {
+      "pages": {
+        "type": "WorkstreamPageNode[]",
+        "required": true
+      }
+    },
+    "WorkstreamPageGetParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "markdown": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamPageGetResult": {
+      "page": {
+        "type": "WorkstreamPage",
+        "required": true
+      }
+    },
+    "WorkstreamPageSaveParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "doc": {
+        "type": "object",
+        "required": true
+      },
+      "base_version": {
+        "type": "integer",
+        "required": true
+      }
+    },
+    "WorkstreamPageSaveResult": {
+      "page": {
+        "type": "WorkstreamPage",
+        "required": true
+      }
+    },
+    "WorkstreamPageCreateParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "parent_id": {
+        "type": "string",
+        "required": false
+      },
+      "after_id": {
+        "type": "string",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "owner": {
+        "type": "WorkstreamActor",
+        "required": false
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": false
+      },
+      "doc": {
+        "type": "object",
+        "required": false
+      }
+    },
+    "WorkstreamPageCreateResult": {
+      "page": {
+        "type": "WorkstreamPage",
+        "required": true
+      }
+    },
+    "WorkstreamPageUpdateParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "required": false
+      },
+      "owner": {
+        "type": "WorkstreamActor",
+        "required": false
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamPageUpdateResult": {
+      "page": {
+        "type": "WorkstreamPageNode",
+        "required": true
+      }
+    },
+    "WorkstreamPageMoveParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "parent_id": {
+        "type": "string",
+        "required": false
+      },
+      "after_id": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamPageMoveResult": {
+      "page": {
+        "type": "WorkstreamPageNode",
+        "required": true
+      }
+    },
+    "WorkstreamPageDeleteParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamPageDeleteResult": {
+      "deleted": {
+        "type": "string[]",
+        "required": true
+      }
+    },
+    "WorkstreamPageHistoryParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "limit": {
+        "type": "integer",
+        "required": false
+      }
+    },
+    "WorkstreamPageHistoryResult": {
+      "versions": {
+        "type": "WorkstreamPageVersion[]",
+        "required": true
+      }
+    },
+    "WorkstreamPageRestoreParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "version": {
+        "type": "integer",
+        "required": true
+      },
+      "base_version": {
+        "type": "integer",
+        "required": true
+      }
+    },
+    "WorkstreamPageRestoreResult": {
+      "page": {
+        "type": "WorkstreamPage",
+        "required": true
+      }
+    },
+    "WorkstreamRecordListParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamRecordKind",
+        "required": false
+      },
+      "state": {
+        "type": "WorkstreamRecordState",
+        "required": false
+      }
+    },
+    "WorkstreamRecordListResult": {
+      "records": {
+        "type": "WorkstreamRecord[]",
+        "required": true
+      }
+    },
+    "WorkstreamRecordProposeParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamRecordKind",
+        "required": true
+      },
+      "text": {
+        "type": "string",
+        "required": true
+      },
+      "source": {
+        "type": "WorkstreamSource",
+        "required": false
+      },
+      "kept": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamRecordProposeResult": {
+      "record": {
+        "type": "WorkstreamRecord",
+        "required": true
+      }
+    },
+    "WorkstreamRecordKeepParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamRecordKeepResult": {
+      "record": {
+        "type": "WorkstreamRecord",
+        "required": true
+      }
+    },
+    "WorkstreamRecordDropParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamRecordDropResult": {
+      "record": {
+        "type": "WorkstreamRecord",
+        "required": true
+      }
+    },
+    "WorkstreamRecordSupersedeParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "text": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamRecordKind",
+        "required": false
+      },
+      "source": {
+        "type": "WorkstreamSource",
+        "required": false
+      }
+    },
+    "WorkstreamRecordSupersedeResult": {
+      "record": {
+        "type": "WorkstreamRecord",
+        "required": true
+      },
+      "superseded": {
+        "type": "WorkstreamRecord",
+        "required": true
+      }
+    },
+    "WorkstreamGoAheadListParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "ended": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamGoAheadListResult": {
+      "goaheads": {
+        "type": "WorkstreamGoAhead[]",
+        "required": true
+      }
+    },
+    "WorkstreamGoAheadGrantParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "scope": {
+        "type": "WorkstreamGoAheadScope",
+        "required": true
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "job": {
+        "type": "integer",
+        "required": false
+      },
+      "wave": {
+        "type": "integer",
+        "required": false
+      },
+      "milestone_id": {
+        "type": "string",
+        "required": false
+      },
+      "cap_usd": {
+        "type": "number (USD)",
+        "required": true
+      },
+      "ends_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      }
+    },
+    "WorkstreamGoAheadGrantResult": {
+      "goahead": {
+        "type": "WorkstreamGoAhead",
+        "required": true
+      }
+    },
+    "WorkstreamGoAheadRevokeParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamGoAheadRevokeResult": {
+      "goahead": {
+        "type": "WorkstreamGoAhead",
+        "required": true
+      }
+    }
+  }
+}
