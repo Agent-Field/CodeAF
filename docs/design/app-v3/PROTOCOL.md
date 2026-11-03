@@ -810,6 +810,14 @@ continue to apply; no method, parameter or reply field is added.
 | `files.read` | `{agent, limit, offset, path}` | `FileReadResult` |
 | `files.stat` | `{agent, paths}` | `FilesResult` |
 
+## goahead methods
+
+| method | params | result |
+|---|---|---|
+| `goahead.grant` | `in.WorkstreamGoAheadGrantParams` | `WorkstreamGoAheadGrantResult` |
+| `goahead.list` | `in.WorkstreamGoAheadListParams` | `WorkstreamGoAheadListResult` |
+| `goahead.revoke` | `in.WorkstreamGoAheadRevokeParams` | `WorkstreamGoAheadRevokeResult` |
+
 ## harness methods
 
 | method | params | result |
@@ -942,6 +950,20 @@ $0.10 goes out as `0.1`.
 | `orders.runs` | `{id, limit}` | `RunsResult` |
 | `orders.stop` | `in.orderAt` | `OrderResult` |
 
+## page methods
+
+| method | params | result |
+|---|---|---|
+| `page.create` | `in.WorkstreamPageCreateParams` | `WorkstreamPageCreateResult` |
+| `page.delete` | `in.WorkstreamPageDeleteParams` | `WorkstreamPageDeleteResult` |
+| `page.get` | `in.WorkstreamPageGetParams` | `WorkstreamPageGetResult` |
+| `page.history` | `in.WorkstreamPageHistoryParams` | `WorkstreamPageHistoryResult` |
+| `page.list` | `in.WorkstreamPageListParams` | `WorkstreamPageListResult` |
+| `page.move` | `in.WorkstreamPageMoveParams` | `WorkstreamPageMoveResult` |
+| `page.restore` | `in.WorkstreamPageRestoreParams` | `WorkstreamPageRestoreResult` |
+| `page.save` | `in.WorkstreamPageSaveParams` | `WorkstreamPageSaveResult` |
+| `page.update` | `in.WorkstreamPageUpdateParams` | `WorkstreamPageUpdateResult` |
+
 ## ping methods
 
 | method | params | result |
@@ -1002,6 +1024,16 @@ $0.10 goes out as `0.1`.
 |---|---|---|
 | `quick.promote` | `in.IDParams` | `taskResult` |
 | `quick.undo` | `in.IDParams` | `Empty` |
+
+## record methods
+
+| method | params | result |
+|---|---|---|
+| `record.drop` | `in.WorkstreamRecordDropParams` | `WorkstreamRecordDropResult` |
+| `record.keep` | `in.WorkstreamRecordKeepParams` | `WorkstreamRecordKeepResult` |
+| `record.list` | `in.WorkstreamRecordListParams` | `WorkstreamRecordListResult` |
+| `record.propose` | `in.WorkstreamRecordProposeParams` | `WorkstreamRecordProposeResult` |
+| `record.supersede` | `in.WorkstreamRecordSupersedeParams` | `WorkstreamRecordSupersedeResult` |
 
 ## render methods
 
@@ -1207,6 +1239,19 @@ role pins and checked as the other pins are.
 |---|---|---|
 | `work.graph` | `in.GraphRequest` | `GraphResult` |
 
+## workstream methods
+
+| method | params | result |
+|---|---|---|
+| `workstream.create` | `in.WorkstreamCreateParams` | `WorkstreamCreateResult` |
+| `workstream.get` | `in.WorkstreamGetParams` | `WorkstreamGetResult` |
+| `workstream.list` | `in.WorkstreamListParams` | `WorkstreamListResult` |
+| `workstream.mark_done` | `in.WorkstreamMarkDoneParams` | `WorkstreamMarkDoneResult` |
+| `workstream.plan_get` | `in.WorkstreamPlanGetParams` | `WorkstreamPlanGetResult` |
+| `workstream.plan_set` | `in.WorkstreamPlanSetParams` | `WorkstreamPlanSetResult` |
+| `workstream.reopen` | `in.WorkstreamReopenParams` | `WorkstreamReopenResult` |
+| `workstream.update` | `in.WorkstreamUpdateParams` | `WorkstreamUpdateResult` |
+
 ## Events
 
 | event | data |
@@ -1263,6 +1308,7 @@ role pins and checked as the other pins are.
 | `turn.thinking` | `TurnThinking` |
 | `turn.thinking_done` | `TurnThinkingDone` |
 | `turn.tool` | `TurnTool` |
+| `workstream.changed` | `WorkstreamChanged` |
 
 ## Slash catalogue commands and forms
 
@@ -1444,6 +1490,16 @@ mark is read up to the moment the engine first kept unread (`unread_from` in
 the state file), so on upgrade every agent starts read, and a new agent starts
 read because it has said nothing. Engines that serve it announce
 `agents.mark_seen` in `hello.features`.
+
+## Workstreams (v0 proposal)
+
+The Workstreams plan, WP-0, registers 25 methods and `workstream.changed` with their wire types.
+The `workstreams` feature is announced only by an engine that serves them.
+This build does not announce it and answers `unknown_method` with
+`workstreams: not implemented yet`; the store lands in WP-1.
+A workstream is a collection, sharing its id, naming rules and membership methods.
+Its jobs use `factory_job` refs with `factory`; a job in another workstream is refused
+as `in_other_workstream`. Versioned page and plan writes refuse stale bases with `version_conflict`.
 
 ## Errands (`agents.errand`)
 
