@@ -692,7 +692,7 @@ var MemoryModes = []string{MemoryOff, MemoryOn}
 const DefaultMemory = MemoryOff
 
 // MemoryCostNote is the cost disclosure shared by settings surfaces.
-const MemoryCostNote = "Off by default. When on, it learns from your chats and jobs so later work can use it, and makes extra model calls on your key. In one small test job on DeepSeek V4.1 Flash, memory was 39% of the job's cost: $0.0124 of $0.0315."
+const MemoryCostNote = "Off by default. When on, it learns from your chats and jobs so later work can use it, and makes extra model calls on your key. On one small test job, memory was 39% of the cost ($0.0124 of $0.0315); it varies by job."
 
 // The prompt profile's three answers, and they are three rather than two
 // because the honest default is not a size at all: it is "work it out". A row

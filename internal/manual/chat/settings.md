@@ -100,16 +100,18 @@ when a subteam is created; it does not redistribute existing budgets.
 
 ## Memory settings — turn memory on, why isn't it learning, what does memory cost
 
-Memory is **off by default**. In Settings → Memory, set **learn from chats and jobs**
-to **on** (`memory.enabled`). This one switch covers noticing useful lines,
-learning from saved chats, and job memory. A saved on or off choice is kept.
+Memory is **off by default**. Turn it on in Settings → Memory: set **learn from
+chats and jobs** to **on** (`memory.enabled`). In the desktop app you can also do
+it from a Factory job's spend area, under Spent: "Memory is off · Turn on…". This
+one switch per home covers noticing useful lines, learning from saved chats, and
+job memory, whose calls count in the job's cost. A saved on or off choice is kept.
 Terminal **Build knowledge base** also saves on and imports saved chats.
 
 When on, memory learns from your chats and jobs so later work can use it, and
-makes extra model calls on your key. In one small live test job on DeepSeek V4.1
-Flash, memory was **39% of the job's cost: $0.0124 of $0.0315**. Earlier runs of
-that same small job measured **27%** and **38%**. These are examples, not a fixed
-rate or a cost forecast for your work. Memory requests appear in Spending.
+makes extra model calls on your key. On one small test job, memory was **39% of
+the cost ($0.0124 of $0.0315)**, measured live on DeepSeek V4.1 Flash; earlier runs
+of that same job measured **27%** and **38%**. It varies by job, so read these as
+examples and not a forecast for your work. Memory requests appear in Spending.
 
 Off stops automatic memory model calls from the next memory step, with no restart.
 A call already in flight finishes and is billed. Saved knowledge stays readable;
