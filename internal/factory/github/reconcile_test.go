@@ -2,7 +2,7 @@ package github_test
 
 import (
 	"context"
- "crypto/sha256"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,21 +24,21 @@ import (
 )
 
 type issueScript struct {
-	t        *testing.T
-	st       *store.Store
-	src      *source.Source
-	api      source.API
-	cursor   string
-	state    map[int]string
-	identity map[int]int64
-	status   map[int]int
-	redirect map[int]bool
-	lists    []map[string]any
-	reads    []int
-	during   func(int)
-	now      time.Time
- notModified int
- listCalls int
+	t           *testing.T
+	st          *store.Store
+	src         *source.Source
+	api         source.API
+	cursor      string
+	state       map[int]string
+	identity    map[int]int64
+	status      map[int]int
+	redirect    map[int]bool
+	lists       []map[string]any
+	reads       []int
+	during      func(int)
+	now         time.Time
+	notModified int
+	listCalls   int
 }
 
 func newIssueScript(t *testing.T, count int) *issueScript {
@@ -64,15 +64,15 @@ func newIssueScript(t *testing.T, count int) *issueScript {
 			fmt.Fprint(w, `{"login":"owner"}`)
 		case r.URL.Path == "/repos/acme/api/issues":
 			f.listCalls++
-            body, _ := json.Marshal(f.lists)
-            tag := fmt.Sprintf(`"%x"`, sha256.Sum256(append([]byte(r.URL.RawQuery), body...)))
-            if r.Header.Get("If-None-Match") == tag {
-                f.notModified++
-                w.WriteHeader(http.StatusNotModified)
-                return
-            }
-            w.Header().Set("ETag", tag)
-            _, _ = w.Write(body)
+			body, _ := json.Marshal(f.lists)
+			tag := fmt.Sprintf(`"%x"`, sha256.Sum256(append([]byte(r.URL.RawQuery), body...)))
+			if r.Header.Get("If-None-Match") == tag {
+				f.notModified++
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			w.Header().Set("ETag", tag)
+			_, _ = w.Write(body)
 		case strings.HasPrefix(r.URL.Path, "/repos/acme/api/issues/"):
 			n, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/repos/acme/api/issues/"))
 			f.reads = append(f.reads, n)
@@ -122,39 +122,51 @@ func (f *issueScript) list(n int, state string) {
 }
 
 func TestReopenedIssueReturnsOnNextPoll(t *testing.T) {
-    for _, waiting := range []int{0, 45} {
-        t.Run(strconv.Itoa(waiting), func(t *testing.T) {
-            f := newIssueScript(t, waiting+2)
-            reopened, personal := waiting+1, waiting+2
-            if err := f.st.Update(personal, func(it *factory.Item) error {
-                it.State, it.DoneHow = factory.StateShipped, "closed"
-                return nil
-            }); err != nil { t.Fatal(err) }
-            f.state[reopened] = "closed"
-            for n := 1; n <= waiting; n++ {
-                f.lists = append(f.lists, map[string]any{"id": f.identity[n], "number": n, "state": "open", "title": "issue", "updated_at": f.now})
-            }
-            f.lists = append(f.lists, map[string]any{"id": f.identity[reopened], "number": reopened, "state": "closed", "title": "issue", "updated_at": f.now})
-            f.poll()
-            if !f.row(reopened).SourceClosed { t.Fatal("automatic close missing") }
-            f.poll()
-            f.poll()
-            if f.notModified == 0 || f.listCalls != 3 { t.Fatal("quiet poll did not conditionally request the list") }
-            f.state[reopened] = "open"
-            f.list(reopened, "open")
-            for n := 1; n <= waiting; n++ {
-                f.lists = append(f.lists, map[string]any{"id": f.identity[n], "number": n, "state": "closed", "title": "issue", "updated_at": f.now})
-            }
-            start := len(f.reads)
-            f.poll()
-            if got := f.row(reopened); got.State != factory.StateNew || got.SourceClosed {
-                t.Fatalf("reopened issue stayed Done after next poll with %d waiting rows", waiting)
-            }
-            if len(f.reads) == start || f.reads[start] != reopened { t.Fatal("reopen was not read ahead of waiting rows") }
-            if len(f.reads)-start > 40 { t.Fatal("reopen exceeded direct-read cap") }
-            if f.row(personal).State != factory.StateShipped { t.Fatal("person's Done came back") }
-        })
-    }
+	for _, waiting := range []int{0, 45} {
+		t.Run(strconv.Itoa(waiting), func(t *testing.T) {
+			f := newIssueScript(t, waiting+2)
+			reopened, personal := waiting+1, waiting+2
+			if err := f.st.Update(personal, func(it *factory.Item) error {
+				it.State, it.DoneHow = factory.StateShipped, "closed"
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			f.state[reopened] = "closed"
+			for n := 1; n <= waiting; n++ {
+				f.lists = append(f.lists, map[string]any{"id": f.identity[n], "number": n, "state": "open", "title": "issue", "updated_at": f.now})
+			}
+			f.lists = append(f.lists, map[string]any{"id": f.identity[reopened], "number": reopened, "state": "closed", "title": "issue", "updated_at": f.now})
+			f.poll()
+			if !f.row(reopened).SourceClosed {
+				t.Fatal("automatic close missing")
+			}
+			f.poll()
+			f.poll()
+			if f.notModified == 0 || f.listCalls != 3 {
+				t.Fatal("quiet poll did not conditionally request the list")
+			}
+			f.state[reopened] = "open"
+			f.list(reopened, "open")
+			for n := 1; n <= waiting; n++ {
+				f.lists = append(f.lists, map[string]any{"id": f.identity[n], "number": n, "state": "closed", "title": "issue", "updated_at": f.now})
+			}
+			start := len(f.reads)
+			f.poll()
+			if got := f.row(reopened); got.State != factory.StateNew || got.SourceClosed {
+				t.Fatalf("reopened issue stayed Done after next poll with %d waiting rows", waiting)
+			}
+			if len(f.reads) == start || f.reads[start] != reopened {
+				t.Fatal("reopen was not read ahead of waiting rows")
+			}
+			if len(f.reads)-start > 40 {
+				t.Fatal("reopen exceeded direct-read cap")
+			}
+			if f.row(personal).State != factory.StateShipped {
+				t.Fatal("person's Done came back")
+			}
+		})
+	}
 }
 
 func TestClosedListOnlyNominates(t *testing.T) {
@@ -427,10 +439,12 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 						t.Fatalf("seed=%d step=%d edited row moved", seed, step)
 					}
 					listedOpen := false
-                    for _, listed := range f.lists {
-                        if listed["number"] == num && listed["state"] == "open" { listedOpen = true }
-                    }
-                    if (read[num] || listedOpen) && same && !f.redirect[num] && f.status[num] == 0 && f.state[num] == "open" && old.SourceClosed && factory.UntouchedIssue(old) && got.State != factory.StateNew {
+					for _, listed := range f.lists {
+						if listed["number"] == num && listed["state"] == "open" {
+							listedOpen = true
+						}
+					}
+					if (read[num] || listedOpen) && same && !f.redirect[num] && f.status[num] == 0 && f.state[num] == "open" && old.SourceClosed && factory.UntouchedIssue(old) && got.State != factory.StateNew {
 						t.Fatalf("seed=%d step=%d direct-open #%d stayed Done", seed, step, num)
 					}
 				}

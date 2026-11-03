@@ -65,15 +65,28 @@ func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []s
 			}
 		}
 	}
+	reopened := map[int]bool{}
 	rows := map[int]factory.Item{}
 	for _, it := range before {
 		rows[it.ID] = it
+		if factory.UntouchedIssue(it) && it.SourceClosed && listed[itemKey(it)] && !closed[itemKey(it)] {
+			reopened[it.ID] = true
+			// A new open listing warrants a fresh check even after a failed read.
+			c := q.pending[it.ID]
+			c.retry = time.Time{}
+			q.pending[it.ID] = c
+		}
 	}
 	ids := make([]int, 0, len(q.pending))
 	for id := range q.pending {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return q.pending[ids[i]].order < q.pending[ids[j]].order })
+	sort.Slice(ids, func(i, j int) bool {
+		if reopened[ids[i]] != reopened[ids[j]] {
+			return reopened[ids[i]]
+		}
+		return q.pending[ids[i]].order < q.pending[ids[j]].order
+	})
 	for _, repo := range repos {
 		left := closeSweepBudget
 		for _, id := range ids {
