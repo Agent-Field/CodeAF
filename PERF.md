@@ -121,8 +121,8 @@ same commit; derive repeated values from constants.
 
 ## Paired team history
 
-These sharing budgets apply only when **share teams** is on in Settings → Devices.
-Sharing is off by default on each computer; off rounds run no team carriers,
+These sharing budgets apply whenever **share teams** is on in Settings → General,
+which is the default for paired computers. Off rounds run no team carriers,
 identity discovery, mirror writes or ownership lookups and retain existing polling.
 
 `teams.TrafficSyncLines` limits each writing computer's window to 32 lines per
@@ -130,7 +130,7 @@ team, and `teams.TrafficSyncBytes` limits encoded lines to 16 KiB per team.
 `teams.TrafficSyncTextBytes` shortens text beyond 2 KiB at a rune boundary.
 `teams.TrafficSyncDeviceBytes` caps each device's encoded Traffic share at 64 KiB
 across teams, newest local activity first. `teams.TrafficSyncEvery` permits a
-publication at most once every 30 seconds; team record edits are not delayed.
+publication at most once every 2 minutes; team record edits are not delayed.
 Capture reads the bounded backward tail across the current and rotated logs. Received windows replace a
 separate display mirror and are never republished. An unchanged round on 500
 chats and 5 teams performs zero world scans and opens zero cell metadata files;
@@ -140,8 +140,11 @@ compare deterministic values, and verify quiet rounds leave the vault unchanged.
 Mirror filtering makes zero directory requests per vault round, using only an
 already-held local roster, or every other writer when none is available. A send
 shares one ownership reading across its recipients, with a 3-second timeout and
-a 5-second process cache (including failures). Cursor saves stat identity files
-but decode them only after a stamp changes. Mirror refresh never acknowledges
+a 5-second process cache (including failures). With effective sharing, cursor saves stat identity files
+but decode them only after a stamp changes. Unpaired computers retain legacy
+cursors, repairing reads and completion catalogs, with no sharing refresh clock
+or mirror reads. The first team capture preserves the original file once as
+`teams.before-sharing.json` before creating its ledger. Mirror refresh never acknowledges
 local news and each hosted window carries its own mirror version.
 
 ## Binary size

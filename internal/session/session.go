@@ -1608,6 +1608,8 @@ type Config struct {
 	// holders once for the complete recipient batch before any team Traffic is
 	// written; an unpaired home stays quiet.
 	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
+	// TeamsPaired checks the live pairing gate without importing relay setup.
+	TeamsPaired func() bool
 
 	// failures is the tally the piece of work this agent belongs to keeps of its
 	// own failures (internal/taxonomy). A worker built for a task node carries
@@ -3036,7 +3038,10 @@ type Agent struct {
 	// team this conversation manages, "" for one that manages none. It sits
 	// under mu and rides its own note at the tail, like elsewhereText, so an
 	// unchanged team lands no second note.
-	teamDigestText string
+	teamDigestText       string
+	teamDigestSharing    bool
+	teamDigestKnown      bool
+	teamDigestGeneration uint64
 	// teamRoleText is what this conversation is in its teams (team.go's
 	// [teamRoleBlock]), set at every step boundary before the request and
 	// landed in a note of its own ahead of the others.

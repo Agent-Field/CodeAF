@@ -433,6 +433,7 @@ func TestR23PersonalLearnerStopsAtEveryUse(t *testing.T) {
 // H4/H5/R26/R27/C30 drive ten virtual idle minutes on the REAL native relay
 // and real open home state rounds, then require remote and local state changes
 // to pass the normal quorum-backed read/write doors and arrive within a round.
+// F1 preserves the existing sharing fixture and history contract.
 func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 	r := newMemberRig(t)
 	a := r.home(nil)
@@ -594,6 +595,8 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 
 // H6/R23/C30 pins the hosted capability boundary and its unchanged polling
 // behavior. A relay with no control/enrollment door never opens a member store.
+// C9 pins off explicitly so team carriers cannot affect the hosted polling budget.
+// F1 preserves the existing sharing fixture and history contract.
 func TestR23C30HostedStateKeepsExistingPolling(t *testing.T) {
 	server := relay(t)
 	s, ok, e := Open(machine(t, server.URL))
@@ -601,6 +604,8 @@ func TestR23C30HostedStateKeepsExistingPolling(t *testing.T) {
 	if !ok {
 		t.Fatal("open")
 	}
+	sharing, _ := config.NewSettings(config.SettingsOptions{ProfileDir: s.Home}).Row(config.KeyTeamsShare)
+	mustNil(t, sharing.Apply("off"))
 	s.memberRound(t.Context())
 	s.memberRound(t.Context())
 	if s.member != nil || !s.memberUnsupported {

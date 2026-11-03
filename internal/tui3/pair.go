@@ -62,7 +62,7 @@ const (
 	// replaceAskLine is the question a joining side with chats of its own reads
 	// before anything is replaced — the same facts the manual states
 	// (use-this-on-another-computer.md), and no default: esc is a no.
-	replaceAskLine = "Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared. Provider keys saved on this computer stay here."
+	replaceAskLine = pair.ReplaceAskLine
 	// replaceDeclinedLine is the word when the answer was no.
 	replaceDeclinedLine = "nothing was replaced: this computer's chats stay."
 )
@@ -399,7 +399,7 @@ func joinWork(door Pairing, typed string, replace bool) func(*pairRun) {
 		// anything to lose: a home with no identity of its own is joined as if
 		// it were plain. A no — typed or by closing the panel — leaves
 		// everything exactly as it was.
-		if replace && door.HasOwnChats() && !ui.Confirm(run.ctx, replaceAskLine) {
+		if replace && (door.HasOwnChats() || pairingHasTeams(door)) && !ui.Confirm(run.ctx, replaceAskLine) {
 			run.send(pairEnded{line: replaceDeclinedLine, ok: true})
 			return
 		}
@@ -441,6 +441,9 @@ func sharedLine(label string, err error) string {
 // already gets that fact's own sentence and not a success it did not earn.
 func joinedLine(joined pair.Joined, err error) string {
 	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			return err.Error() + " " + line
+		}
 		return err.Error()
 	}
 	return joined.Sentence()
@@ -455,9 +458,12 @@ func (a *app) tookPair(msg pairMsg) tea.Cmd {
 	msg.event.apply(&a.pair)
 	a.touch()
 	if a.pair.done {
-		return nil
+		if a.pair.ok && a.pair.result != replaceDeclinedLine {
+			a.machineRead.computerRemoved = false
+		}
+		return a.refreshTeamsSharing()
 	}
-	return msg.run.wait()
+	return tea.Batch(msg.run.wait(), a.refreshTeamsSharing())
 }
 
 // pairKey is the panel's whole claim on the keyboard. While a person is asked,
@@ -525,4 +531,10 @@ func (a *app) pairLinkKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// Older pairing doors may expose chats alone; the local door also detects teams.
+func pairingHasTeams(door Pairing) bool {
+	state, ok := door.(interface{ HasTeams() bool })
+	return ok && state.HasTeams()
 }

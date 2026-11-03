@@ -198,10 +198,10 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	}
 	joined, err := adopt(j.Joining, g.Grant)
 	if err != nil {
-		return LinkJoined{}, err
+		return LinkJoined{Joined: joined}, err
 	}
 	if err := identity.Install(j.Home, g.Identity, dev); err != nil {
-		return LinkJoined{}, err
+		return LinkJoined{Joined: joined}, err
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {

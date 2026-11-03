@@ -191,7 +191,9 @@ A computer whose conversations have no submitted turns can pair directly. If it 
 this computer already has 3 chats of its own, so nothing was changed. To pair it anyway, run this again with --replace: those 3 chats stay on this computer but no longer sync; shared memories and settings are cleared
 ```
 
-Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first: `Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared. Provider keys saved on this computer stay here.` Only an explicit `y` proceeds. A no, or closing the panel with esc, leaves everything as it was.
+## Pairing with --replace: existing chats, teams and recovery
+
+Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first: `Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set aside while the other devices supply theirs. Provider keys saved on this computer stay here.` The chat and an interactive terminal ask, including when this computer has teams but no chats. Without a terminal, `--replace` proceeds without this question. With share teams on, replacement sets the team file aside and clears its sharing ledgers; the receipt names the preserved file: `This computer's teams were set aside to <path>.` Local Traffic stays here. With share teams off, its team file and sharing ledgers are preserved. At a terminal, `y` or `yes` proceeds. In the chat, choose yes. A no, or closing the panel with esc, leaves everything as it was.
 
 If the other computer already has the same chats, it says:
 

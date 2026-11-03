@@ -267,7 +267,7 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
-	log, _ := teams.ReadHistory(profile, team.ID, teamStateLook)
+	log, _ := teams.ReadHistory(profile, team.ID, teamStateLook, a.teamsSharing())
 	file, _, _, _ := a.teamSnapshot(profile)
 	states := memberStates(team, keys, time.Now(), log, &a.team.journals)
 	markShared(file, team, states)

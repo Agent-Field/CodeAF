@@ -42,7 +42,7 @@ func (a *Agent) mentionNote(text string) string {
 			continue
 		}
 		seenTeam[slug] = true
-		if block := mentionTeamBlock(profile, self, slug, now); block != "" {
+		if block := mentionTeamBlock(profile, self, slug, now, a.teamsSharing()); block != "" {
 			blocks = append(blocks, block)
 		}
 	}
@@ -59,7 +59,7 @@ func (a *Agent) mentionNote(text string) string {
 	return strings.Join(blocks, "\n\n")
 }
 
-func mentionTeamBlock(profile, self, slug string, now time.Time) string {
+func mentionTeamBlock(profile, self, slug string, now time.Time, sharing bool) string {
 	if profile == "" {
 		return ""
 	}
@@ -78,7 +78,7 @@ func mentionTeamBlock(profile, self, slug string, now time.Time) string {
 	if !found {
 		return ""
 	}
-	log, _ := teams.ReadHistory(profile, team.ID, 40)
+	log, _ := teams.ReadHistory(profile, team.ID, 40, sharing)
 	states := map[string]teams.MemberState{}
 	for _, m := range team.Members {
 		if m.Key == self || m.File == self {
