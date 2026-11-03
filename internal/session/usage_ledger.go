@@ -45,7 +45,7 @@ package session
 //     folds home silently. It folded through the auxiliary door until issue
 //     #168, and the day this file's rail reads was double on every one of them.
 //   - A FULL QUEUE DOES NOT DISCARD A CHARGE. The turn's goroutine never
-//     touches disk and never waits. Overflow is kept for one background
+//     touches disk and never waits. Overflow is kept for the ledger's one
 //     writer. Flush and shutdown include those writes under their existing
 //     ceiling. Filesystem failures remain counted by [UsageDrops].
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
@@ -550,7 +550,6 @@ type usageWriter struct {
 	overflowMu       sync.Mutex
 	overflow         map[chan struct{}]struct{}
 	overflowRows     []usageOverflowRow
-	overflowDraining bool
 }
 
 // usageDropped counts serialization and filesystem failures across all ledgers.
@@ -648,20 +647,11 @@ func (w *usageWriter) run(path string) {
 	var file *os.File
 	defer close(w.stopped)
 	defer func() {
-		for _, done := range w.pendingOverflow() {
-			<-done
-		}
-	}()
-	defer func() {
 		if file != nil {
 			_ = file.Close()
 		}
 	}()
-	for work := range w.queue {
-		if work.done != nil {
-			close(work.done)
-			continue
-		}
+	write := func(line []byte) {
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
@@ -669,14 +659,14 @@ func (w *usageWriter) run(path string) {
 			file = openUsageLedger(path)
 			if file == nil {
 				dropUsageRow()
-				continue
+				return
 			}
 		}
 		// ONE write per complete line, so O_APPEND's atomic offset covers the
 		// whole row — which is also what lets [UsageCache] trust that the bytes
 		// before the last newline are whole lines, and what keeps two processes
 		// appending to one ledger from interleaving halves of two rows.
-		if _, err := file.Write(work.line); err != nil {
+		if _, err := file.Write(line); err != nil {
 			dropUsageRow()
 			_ = file.Close()
 			file = nil
@@ -719,6 +709,16 @@ func announceUsageWritten() {
 	for _, watch := range usageWatchers.of {
 		watch()
 	}
+	for work := range w.queue {
+		if work.done != nil {
+			w.writeOverflow(write)
+			close(work.done)
+			continue
+		}
+		write(work.line)
+		w.writeOverflow(write)
+	}
+	w.writeOverflow(write)
 }
 
 // openUsageLedger opens one ledger for appending, creating its directory, and
@@ -915,7 +915,7 @@ func RecordUsage(path string, line UsageLine) {
 		dropUsageRow()
 		return
 	}
-	// Overflow is written separately, so a saturated queue never discards a
+	// Overflow is kept for the writer, so a saturated queue never discards a
 	// charge and the caller still never waits on the disk.
 	usageWritersMu.Lock()
 	writer := usageWriterForLocked(path)
@@ -926,49 +926,29 @@ func RecordUsage(path string, line UsageLine) {
 		return
 	default:
 	}
-	writer.addOverflow(path, work.line)
+	writer.addOverflow(work.line)
 	usageWritersMu.Unlock()
 }
 
-// addOverflow keeps a row the full queue couldn't take, for one background
-// writer. One goroutine, because a stalled mount would otherwise hold an OS
-// thread per row. Rows only cost their bytes while they wait.
-func (w *usageWriter) addOverflow(path string, line []byte) {
+// addOverflow keeps a row the full queue couldn't take. The queue's own writer
+// takes it next, so rows stay in order and a stalled mount holds one thread.
+// A full queue means that writer has work, so it will come round to this row.
+func (w *usageWriter) addOverflow(line []byte) {
 	done := make(chan struct{})
 	w.overflowMu.Lock()
 	defer w.overflowMu.Unlock()
 	w.overflow[done] = struct{}{}
 	w.overflowRows = append(w.overflowRows, usageOverflowRow{line: line, done: done})
-	if !w.overflowDraining {
-		w.overflowDraining = true
-		go w.drainOverflow(path)
-	}
 }
 
-// drainOverflow writes the kept rows until none are left.
-func (w *usageWriter) drainOverflow(path string) {
-	for {
-		w.overflowMu.Lock()
-		rows := w.overflowRows
-		w.overflowRows = nil
-		if len(rows) == 0 {
-			w.overflowDraining = false
-			w.overflowMu.Unlock()
-			return
-		}
-		w.overflowMu.Unlock()
-		w.writeOverflow(path, rows)
-	}
-}
-
-// writeOverflow appends rows with O_APPEND, so they can't interleave with the
-// queue's writer, and counts any it can't write as dropped.
-func (w *usageWriter) writeOverflow(path string, rows []usageOverflowRow) {
-	file := openUsageLedger(path)
-	if file != nil {
-		defer file.Close()
-	}
+// writeOverflow writes the rows kept so far.
+func (w *usageWriter) writeOverflow(write func([]byte)) {
+	w.overflowMu.Lock()
+	rows := w.overflowRows
+	w.overflowRows = nil
+	w.overflowMu.Unlock()
 	for _, row := range rows {
+<<<<<<< HEAD
 		if file == nil {
 			dropUsageRow()
 		} else if _, err := file.Write(row.line); err != nil {
@@ -976,6 +956,9 @@ func (w *usageWriter) writeOverflow(path string, rows []usageOverflowRow) {
 		} else {
 			announceUsageWritten()
 		}
+=======
+		write(row.line)
+>>>>>>> c52/spend-failed-calls
 		w.overflowMu.Lock()
 		delete(w.overflow, row.done)
 		w.overflowMu.Unlock()
