@@ -360,7 +360,8 @@ from the job's budget like the job's steps: everything done for the job spends f
   $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
   recorded spend is at most $5. The server rechecks spend while writing the new cap.
   Raising the cap above recorded spend answers a budget question and resumes the interrupted
-  step in Auto or Manual, on this computer or a leased worker. The same conversation, round
+  step in Auto or Manual, on this computer or a leased worker. Manual still asks before
+  the next step; Take over keeps the job in your hands. The same conversation, round
   and spend are kept. Chat says `budget raised to $10 · carrying on` for a $10 cap.
   An increase still at or below spend keeps the question with the current budget; no more
   paid work may begin. A decrease below spend is refused. Continue still raises the cap as
