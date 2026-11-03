@@ -238,7 +238,7 @@ func mergeText(content []any) []any {
 		}
 		if len(out) > 0 {
 			previous := object(out[len(out)-1])
-			if previous["type"] == "text" && reflect.DeepEqual(marks(previous), marks(node)) {
+			if previous["type"] == "text" && sameTextFields(previous, node) {
 				previous["text"] = previous["text"].(string) + text
 				continue
 			}
@@ -246,4 +246,30 @@ func mergeText(content []any) []any {
 		out = append(out, raw)
 	}
 	return out
+}
+
+func sameTextFields(a, b map[string]any) bool {
+	aMarks, _ := a["marks"].([]any)
+	bMarks, _ := b["marks"].([]any)
+	if !slices.EqualFunc(aMarks, bMarks, reflect.DeepEqual) {
+		return false
+	}
+	for key, value := range a {
+		if key == "text" || key == "marks" {
+			continue
+		}
+		other, exists := b[key]
+		if !exists || !reflect.DeepEqual(value, other) {
+			return false
+		}
+	}
+	for key := range b {
+		if key == "text" || key == "marks" {
+			continue
+		}
+		if _, exists := a[key]; !exists {
+			return false
+		}
+	}
+	return true
 }

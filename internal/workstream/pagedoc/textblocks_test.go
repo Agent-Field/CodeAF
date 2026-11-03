@@ -138,6 +138,81 @@ func TestSuggestionKeepMarksAndUnknownAttributes(t *testing.T) {
 	}
 }
 
+// WP-6d (g): keeping an edit preserves every field on untouched text nodes.
+func TestSuggestionKeepPreservesTextNodeFields(t *testing.T) {
+	for _, test := range []struct {
+		name, before, after string
+	}{
+		{
+			"right-only attrs",
+			`{"type":"text","text":" suffix"},{"type":"text","text":" tail","attrs":{"revision":9007199254740993}}`,
+			`{"type":"text","text":" suffix"},{"type":"text","text":" tail","attrs":{"revision":9007199254740993}}`,
+		},
+		{
+			"left-only field",
+			`{"type":"text","text":" suffix","revision":9007199254740993},{"type":"text","text":" tail"}`,
+			`{"type":"text","text":" suffix","revision":9007199254740993},{"type":"text","text":" tail"}`,
+		},
+		{
+			"different nested attrs",
+			`{"type":"text","text":" suffix","attrs":{"meta":{"revision":9007199254740992}}},{"type":"text","text":" tail","attrs":{"meta":{"revision":9007199254740993}}}`,
+			`{"type":"text","text":" suffix","attrs":{"meta":{"revision":9007199254740992}}},{"type":"text","text":" tail","attrs":{"meta":{"revision":9007199254740993}}}`,
+		},
+		{
+			"equal nested fields",
+			`{"type":"text","text":" suffix","attrs":{"revision":9007199254740993},"extra":[{"value":1}]},{"type":"text","text":" tail","extra":[{"value":1}],"attrs":{"revision":9007199254740993}}`,
+			`{"type":"text","text":" suffix tail","attrs":{"revision":9007199254740993},"extra":[{"value":1}]}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doc, err := Decode(json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Old","marks":[{"type":"code"}]},` + test.before + `]}]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := Apply(TextBlocks(doc)[0], 0, "Old", "New"); err != nil {
+				t.Fatal(err)
+			}
+			want, err := Decode(json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"New","marks":[{"type":"code"}]},` + test.after + `]}]}`))
+			if err != nil || !reflect.DeepEqual(doc, want) {
+				t.Fatalf("rewrote untouched text fields: %+v; %v", doc, err)
+			}
+			if test.name == "right-only attrs" {
+				tail := children(TextBlocks(doc)[0].Node)[2]
+				if revision, ok := object(tail["attrs"])["revision"].(json.Number); !ok || revision.String() != "9007199254740993" {
+					t.Fatalf("revision lost precision: %#v", tail["attrs"])
+				}
+			}
+		})
+	}
+}
+
+// WP-6d (g): absent and empty marks both mean no marks for keeps and insertions.
+func TestSuggestionKeepTreatsEmptyAndAbsentMarksEqually(t *testing.T) {
+	for _, test := range []struct {
+		name, before, after string
+		at                  int
+		del, ins            string
+	}{
+		{"replacement", `[{"type":"text","text":"one","marks":[]},{"type":"text","text":" two"}]`, `[{"type":"text","text":"one three","marks":[]}]`, 4, "two", "three"},
+		{"insertion", `[{"type":"text","text":"one","marks":[]},{"type":"text","text":" two"}]`, `[{"type":"text","text":"one more two","marks":[]}]`, 3, "", " more"},
+		{"reverse insertion", `[{"type":"text","text":"one"},{"type":"text","text":" two","marks":[]}]`, `[{"type":"text","text":"one more two"}]`, 3, "", " more"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doc, err := Decode(json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":` + test.before + `}]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := Apply(TextBlocks(doc)[0], test.at, test.del, test.ins); err != nil {
+				t.Fatal(err)
+			}
+			want, err := Decode(json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":` + test.after + `}]}`))
+			if err != nil || !reflect.DeepEqual(doc, want) {
+				t.Fatalf("no-mark text did not merge: %+v; %v", doc, err)
+			}
+		})
+	}
+}
+
 // WP-6d (d): path wins over duplicate text; fallback needs exactly one block,
 // and nested list paragraphs retain their full content-array path.
 func TestSuggestionLocatePathAndUniqueFallback(t *testing.T) {
