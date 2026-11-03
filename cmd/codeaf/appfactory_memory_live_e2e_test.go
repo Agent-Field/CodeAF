@@ -378,7 +378,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, r
 		t.Fatal("no stage stream recorded")
 	}
 	for _, phase := range it.Stream.Phases {
-		if phase.Kind == factory.StageGate {
+		if phase.Kind == factory.StageGate || phase.Started.IsZero() {
 			continue
 		}
 		var header struct {
