@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"log"
 	"os"
@@ -172,7 +173,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	defer func() {
 		outcome := "done"
 		if err != nil {
-			outcome = "failed"
+			outcome = fmt.Sprintf("failed reason=%q", err.Error())
 		}
 		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s total=%s outcome=%s", id,
 			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)

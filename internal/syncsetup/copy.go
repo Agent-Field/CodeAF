@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -87,6 +88,10 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		if err := s.publishLocalChat(ctx, pending.root, id); err != nil {
 			if errors.Is(err, errNoChatHead) {
 				continue
+			}
+			// The reason goes to the log once per chat and reason; the person sees one sentence.
+			if pending.err == nil || pending.err.Error() != err.Error() {
+				log.Printf("sharing chat %s: %v", id, err)
 			}
 			pending.err = err
 			if pending.backoff == 0 {
