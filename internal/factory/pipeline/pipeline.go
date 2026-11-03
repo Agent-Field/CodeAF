@@ -144,6 +144,7 @@ type Size struct {
 // conversation. No other word is read, and a file never invents one. A file
 // that says `kind: chat` reads as "", so the two spellings are one file.
 type Step struct {
+	Label  string
 	Prompt string
 	Kind   string
 	When   string
@@ -417,7 +418,7 @@ func (f File) stages(names []string) []factory.Stage {
 				continue
 			}
 			used[raw] = true
-			out = append(out, factory.Stage{Name: raw, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
+			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
 			continue
 		}
 		step, ok := f.Steps[raw]
@@ -441,7 +442,7 @@ func (f File) stages(names []string) []factory.Stage {
 		if step.holdWhy() != "" {
 			// Nothing of a step that cannot run as written reaches the runner:
 			// no prompt, no condition. A person decides whether the run goes on.
-			out = append(out, factory.Stage{Name: name, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
+			out = append(out, factory.Stage{Name: name, Label: strings.TrimSpace(step.Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
 			continue
 		}
 		word, free := mechanicalUntil(step.Until)
@@ -460,7 +461,7 @@ func (f File) stages(names []string) []factory.Stage {
 			who = step.Who
 		}
 		out = append(out, factory.Stage{
-			Name: name, Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
+			Name: name, Label: strings.TrimSpace(step.Label), Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
 			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who,
 		})
 	}

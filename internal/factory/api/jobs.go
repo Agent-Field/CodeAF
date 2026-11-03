@@ -56,6 +56,7 @@ type FollowRequest struct {
 // first. Neither touches the repository's pipeline.
 type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
+	Label    map[string]string `json:"label,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
 	// Max maps a conversation step's name to how many tries it gets, 1 to 3.
