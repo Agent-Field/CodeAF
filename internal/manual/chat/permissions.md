@@ -613,7 +613,7 @@ cannot answer these questions for you. A headless call with nobody to ask return
 an error naming the file. Once the file is readable, its rules apply again.
 Malformed JSON still fails policy construction.
 
-Factory stages, task workers, repair rounds and auditors get the same protection:
+Factory stages and every kind of work a task starts get the same protection:
 every call needs a person, and with nobody to ask it is refused. One limit remains.
 With a readable file, a default Factory stage runs on its own allow posture and
 does not apply your saved rules.
