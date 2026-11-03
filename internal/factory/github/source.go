@@ -639,7 +639,9 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 			return factory.Item{}, err
 		}
 		out := s.issueItem(ctx, owner, name, is)
-		if strings.EqualFold(is.State, "closed") {
+		// A transferred issue answers with its new number, which here would be
+		// some other issue, so only the issue asked about can read as closed.
+		if strings.EqualFold(is.State, "closed") && is.Number == it.Num {
 			out.DoneHow = StandingClosed
 		}
 		if out.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, true); err != nil {

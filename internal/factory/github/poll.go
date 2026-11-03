@@ -246,19 +246,22 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		}
 		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
+			if in.DoneHow == "" {
+				noteOpenRead(st, in)
+			}
 			// A change newer than the other side decides: a close read before a
 			// reopen does not finish it, and an open row read before a close, or
 			// a Refresh of an issue still closed, does not reopen it.
 			switch {
 			case in.DoneHow == StandingClosed:
-				if !old.ReopenedAt.After(in.Changed) {
+				if !lastOpenRead(st, old).After(in.Changed) {
 					errs = append(errs, finishClosed(st, old.ID))
 				}
 				if in.Title == "" {
 					continue
 				}
 			case closedWithoutWork(old) && in.Changed.After(old.DoneAt):
-				errs = append(errs, reopenClosed(st, old.ID, in.Changed))
+				errs = append(errs, reopenClosed(st, old.ID))
 			}
 			if !forgeChanged(old, in) {
 				continue

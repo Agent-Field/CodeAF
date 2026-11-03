@@ -26,10 +26,29 @@ type issueSweep struct {
 	Done          bool
 }
 
+// openReads holds GitHub's change time on the newest open read of each issue in
+// this process. A read on its way when the issue reopened can arrive after that
+// read, and only a process's own reads overlap, so memory is enough.
 var (
-	sweepsMu sync.Mutex
-	sweeps   = map[string]issueSweep{}
+	sweepsMu  sync.Mutex
+	sweeps    = map[string]issueSweep{}
+	openReads = map[string]time.Time{}
 )
+
+func noteOpenRead(st *store.Store, in factory.Item) {
+	sweepsMu.Lock()
+	defer sweepsMu.Unlock()
+	key := st.Root() + "|" + itemKey(in)
+	if in.Changed.After(openReads[key]) {
+		openReads[key] = in.Changed
+	}
+}
+
+func lastOpenRead(st *store.Store, it factory.Item) time.Time {
+	sweepsMu.Lock()
+	defer sweepsMu.Unlock()
+	return openReads[st.Root()+"|"+itemKey(it)]
+}
 
 // untouchedBacklog is a Backlog row that nothing has started or worked on. A
 // held start decision with no work is safe to finish just like a new row.
@@ -49,14 +68,13 @@ func closedWithoutWork(it factory.Item) bool {
 	return closableIssue(it) && it.State == factory.StateShipped && it.DoneHow == StandingClosed
 }
 
-func reopenClosed(st *store.Store, id int, changed time.Time) error {
+func reopenClosed(st *store.Store, id int) error {
 	back := false
 	err := st.Update(id, func(it *factory.Item) error {
 		if !closedWithoutWork(*it) {
 			return nil
 		}
 		it.State, it.DoneHow, it.DoneAt = factory.StateNew, "", time.Time{}
-		it.ReopenedAt = changed
 		back = true
 		return nil
 	})
@@ -124,6 +142,7 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 					break
 				}
 				left--
+				openBefore := lastOpenRead(st, it)
 				how, err := Standing(ctx, s.api, it)
 				if err != nil {
 					var apiErr *forge.APIError
@@ -137,7 +156,7 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 					errs = append(errs, err)
 					break
 				}
-				if how == StandingClosed {
+				if how == StandingClosed && lastOpenRead(st, it).Equal(openBefore) {
 					if err := finishClosed(st, it.ID); err != nil {
 						errs = append(errs, err)
 						break

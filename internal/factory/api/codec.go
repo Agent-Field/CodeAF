@@ -134,7 +134,6 @@ var Lost = map[string]string{
 	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief",
 	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
 	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
-	"Item.ReopenedAt":     "the poll's own record of a reopen, read only to decline an older close",
 	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
