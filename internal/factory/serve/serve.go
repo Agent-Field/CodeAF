@@ -502,6 +502,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
 		}
 	}
+	h.judgeProtected(r.Context(), s.Items, q.Jobs)
 	q.Reason = reason
 	if reason != "" {
 		if q.Jobs == nil {
