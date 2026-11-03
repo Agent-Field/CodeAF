@@ -2095,3 +2095,14 @@ conversation. If setup fails after the crew is made, accepting the same proposal
 continues seating its missing helpers and reuses their original starts. Repeating
 a completed acceptance returns the same crew. Proposed reporting handles are recorded on members. Team groups do not
 create nested crews yet.
+
+## Log what codeaf asks GitHub (CODEAF_GITHUB_LOG, rate limit)
+
+Set `CODEAF_GITHUB_LOG` to a file to get one JSON line for each GitHub request
+codeaf makes: when, which factory route or loop caused it (`caller`), the method,
+the endpoint with names taken out (`/repos/:owner/:repo/issues/:n`), the status,
+and the rate limit GitHub reported (`res`, `rem`, `used`). A 304 does not count
+against the limit. `"m":"GH"` is a `gh` the engine ran. It is off by default. It
+never holds a token, a query, a body, a repository name or a file path. A `gh` run
+by an agent's own shell command is not in it: a jump in `used` between two lines
+that the lines do not explain was spent somewhere else on the same account.

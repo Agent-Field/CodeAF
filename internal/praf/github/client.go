@@ -40,6 +40,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 	"github.com/Agent-Field/codeaf/internal/praf/schemas"
 )
 
@@ -104,7 +105,7 @@ func NewClient(token string) *client {
 	return &client{
 		token:      token,
 		baseURL:    defaultBaseURL,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Transport: githubcalls.Transport(nil)},
 	}
 }
 
