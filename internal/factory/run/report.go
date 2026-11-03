@@ -37,6 +37,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
             return nil
         }
         if report.Publishing.State != "opened" { return fmt.Errorf("a stopped publisher reports an opened PR receipt") }
+        candidate.Failure = nil
         if err := ShipPublished(&candidate, now); err != nil { return err }
         loopSay(&candidate, now, "said", stoppedPRWords(report.PR.URL))
         *it = candidate

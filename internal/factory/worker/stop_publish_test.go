@@ -6,6 +6,8 @@ import (
  "path/filepath"
  "strings"
  "sync"
+ "sync/atomic"
+ "runtime"
  "testing"
  "time"
 
@@ -15,31 +17,44 @@ import (
 
 type stoppedPublisher struct {
  *pullSource
- sent chan struct{}
- answer chan struct{}
+ prepare func()
+ sent func()
 }
 
 func (s *stoppedPublisher) Write(ctx context.Context,a factory.Action)(factory.Receipt,error){
+ if s.prepare!=nil{s.prepare()}
  if a.BeforeWrite!=nil {if err:=a.BeforeWrite(ctx);err!=nil{return factory.Receipt{},err}}
- close(s.sent)
- <-s.answer
+ if s.sent!=nil{s.sent()}
  return s.pullSource.Write(context.Background(),a)
 }
 
-func TestStopPublishWorkerAfterRequestSent(t *testing.T){
+func TestStopPublishWorkerBoundaries(t *testing.T){
+ for _,point:=range []string{"proof_finishing","publish_started","after_push","before_request","request_sent"}{
+  t.Run(point,func(t *testing.T){testStopPublishWorker(t,point)})
+ }
+}
+
+func testStopPublishWorker(t *testing.T,point string){
  checkout:=filepath.Join(t.TempDir(),"api")
  git(t,"","init","-q","-b","main",checkout)
  if err:=os.WriteFile(filepath.Join(checkout,"ledger.go"),[]byte("package ledger\n"),0600);err!=nil{t.Fatal(err)}
  git(t,checkout,"add","ledger.go");git(t,checkout,"commit","-qm","initial")
  dirs:=run.NewWorkdirs(filepath.Join(t.TempDir(),"work"),run.ExecGit{})
- src:=&stoppedPublisher{pullSource:&pullSource{},sent:make(chan struct{}),answer:make(chan struct{})}
+ src:=&stoppedPublisher{pullSource:&pullSource{}}
+ entered,answer:=make(chan struct{}),make(chan struct{})
+ block:=func(){close(entered);<-answer}
+ if point=="before_request"{src.prepare=block}
+ if point=="request_sent"{src.sent=block}
+ var pushes atomic.Int32
  var once sync.Once
- release:=func(){once.Do(func(){close(src.answer)})}
+ release:=func(){once.Do(func(){close(answer)})}
  defer release()
  g:=newRigWith(t,nil,func(o *run.Options){
   o.Source=func(string)factory.Source{return src}
   o.Workdir=func(it factory.Item)(string,error){return dirs.For(it,checkout)}
-  o.Push=func(string,string)error{return nil}
+  o.Push=func(string,string)error{pushes.Add(1);if point=="after_push"{block()};return nil}
+  if point=="publish_started"{o.Publisher=func(context.Context,factory.Item)(run.PublishTarget,error){block();return run.PublishTarget{Source:src,Push:o.Push},nil}}
+  if point=="proof_finishing"{checkExec:=o.Exec[factory.StageCheck];o.Exec[factory.StageCheck]=run.ExecutorFunc(func(ctx context.Context,j run.Job)(factory.StageResult,error){res,err:=checkExec.Run(ctx,j);block();return res,err})}
  })
  write:=check("printf 'package ledger\nconst fixed = true\n' > ledger.go")
  write.Name="proof"
@@ -48,9 +63,17 @@ func TestStopPublishWorkerAfterRequestSent(t *testing.T){
  opened:=make(chan factory.Item,1)
  g.st.ObserveWrites(func(before,after factory.Item){if after.PullRequest!=nil&&after.State==factory.StateShipped{select{case opened<-after:default:}}})
  if err:=g.floor.Launch(id);err!=nil{t.Fatal(err)}
- select{case <-src.sent:case <-time.After(8*time.Second):t.Fatal("automatic proof did not send PR request")}
+ select{case <-entered:case <-time.After(8*time.Second):t.Fatal("automatic proof did not send PR request")}
  if err:=g.floor.Stop(id);err!=nil{t.Fatal(err)}
  release()
+ if point!="request_sent"{
+  deadline:=time.After(8*time.Second)
+  for g.run.Running(id){select{case <-deadline:t.Fatal("stopped worker did not settle");default:runtime.Gosched()}}
+  it,_:=g.st.Get(id)
+  if it.State!=factory.StateNew||len(src.writes())!=0{t.Fatalf("Stop lost at %s: state=%s requests=%d",point,it.State,len(src.writes()))}
+  if (point=="proof_finishing"||point=="publish_started")&&pushes.Load()!=0{t.Fatalf("stopped worker pushed %d branches",pushes.Load())}
+  return
+ }
  select{
  case it:=<-opened:
   if it.PullRequest.URL!="https://github.com/acme/api/pull/7"{t.Fatalf("wrong PR: %+v",it.PullRequest)}
