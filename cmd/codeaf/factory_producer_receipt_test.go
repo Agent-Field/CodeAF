@@ -40,7 +40,7 @@ func TestReceiptSuccessfulLaunchText(t *testing.T) {
 	receiptProducerOK(t, file)
 	notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
 	for _, note := range notes {
-		if strings.HasPrefix(note, "Command receipt:") && !strings.Contains(note, `"outcome":"passed"`) {
+		if strings.HasPrefix(note, "Command receipt:") && !strings.Contains(note, `"outcome":"completed"`) {
 			t.Errorf("foreground exit=0 producer=ok misread: %s", note)
 		}
 	}
@@ -140,7 +140,7 @@ func TestReceiptCompoundCheckExits(t *testing.T) {
 		{"nil_then_zero", "cargo test --test cli first; cargo test --test cli second", "first", "completed"},
 		{"nil_then_failed", "cargo test --test cli first; CHECK_EXIT=7 cargo test --test cli second", "first", "failed"},
 		{"failed_then_nil", "CHECK_EXIT=7 cargo test --test cli first; cargo test --test cli second", "second", "failed"},
-		{"all_zero", "cargo test --test cli first; cargo test --test cli second", "", "passed"},
+		{"all_zero", "cargo test --test cli first; cargo test --test cli second", "", "completed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, file, run := repairCheckFixture(t)
@@ -184,7 +184,7 @@ func TestReceiptCompoundCheckExits(t *testing.T) {
 			}
 			door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
 			t.Cleanup(door.closeVerification)
-			if err := door.Report(t.Context(), factory.StageResult{Done: true}); (err == nil) != (tc.want == "passed") {
+			if err := door.Report(t.Context(), factory.StageResult{Done: true}); (err == nil) != (tc.name == "all_zero") {
 				t.Errorf("completion guard want %s: %v", tc.want, err)
 			}
 			if tc.name == "failed_then_passed" {
