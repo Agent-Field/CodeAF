@@ -403,11 +403,128 @@ func TestAnIssueClosedWhileTheAppWasOffLeavesBacklog(t *testing.T) {
 	if got, _ := st.Get(row.ID); got.DoneHow != "" {
 		t.Fatal("a finished sweep read the row again inside one process")
 	}
-	if err := st.ClearBusy(); err != nil {
-		t.Fatal(err)
-	}
+	source.ForgetSweeps()
 	poll()
 	if got, _ := st.Get(row.ID); got.DoneHow != "closed" {
 		t.Fatalf("issue closed while the app was off stayed: state=%s", got.State)
+	}
+}
+
+func closedTestRow(change func(*factory.Item)) factory.Item {
+	it := factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateNew}
+	if change != nil {
+		change(&it)
+	}
+	return it
+}
+
+// Finishing a row must never lose a person's work: anything a person or a paid
+// look put on it keeps it where it is, and a Done row with it stays Done.
+func TestAPersonsWorkKeepsTheRowWhereItIs(t *testing.T) {
+	for name, change := range map[string]func(*factory.Item){
+		"edited steps": func(it *factory.Item) { it.Adapted = []string{"dropped test"} },
+		"look closer":  func(it *factory.Item) { it.Scout = &factory.Scout{Plan: []string{"step one"}} },
+		"answered":     func(it *factory.Item) { it.AnsweredQuestions = []factory.Question{{}} },
+		"taken":        func(it *factory.Item) { it.Taker = "someone" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			backlog, err := st.Create(closedTestRow(change))
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker := closedTestRow(func(it *factory.Item) { it.DoneHow, it.Title, it.Changed = "closed", "", time.Now() })
+			if err := source.Merge(st, source.Name, []factory.Item{marker}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := st.Get(backlog.ID); got.DoneHow != "" || got.State != factory.StateNew {
+				t.Fatalf("close finished a row with work: state=%s how=%q", got.State, got.DoneHow)
+			}
+			st2, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			done, err := st2.Create(closedTestRow(func(it *factory.Item) {
+				change(it)
+				it.State, it.DoneHow, it.DoneAt = factory.StateShipped, "closed", time.Now().Add(-time.Hour)
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := source.Merge(st2, source.Name, []factory.Item{closedTestRow(func(it *factory.Item) { it.Changed = time.Now() })}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := st2.Get(done.ID); got.DoneHow != "closed" {
+				t.Fatalf("reopen moved a row with work back: state=%s", got.State)
+			}
+		})
+	}
+}
+
+// A close read before a reopen does not finish the reopened issue.
+func TestAStaleCloseDoesNotFinishAReopenedIssue(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	row, err := st.Create(closedTestRow(func(it *factory.Item) {
+		it.State, it.DoneHow, it.DoneAt = factory.StateShipped, "closed", now.Add(-time.Hour)
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := closedTestRow(func(it *factory.Item) { it.Changed = now })
+	if err := source.Merge(st, source.Name, []factory.Item{open}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(row.ID); got.DoneHow != "" {
+		t.Fatalf("reopen did not return the row: state=%s", got.State)
+	}
+	stale := closedTestRow(func(it *factory.Item) { it.DoneHow, it.Title, it.Changed = "closed", "", now.Add(-time.Minute) })
+	if err := source.Merge(st, source.Name, []factory.Item{stale}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(row.ID); got.DoneHow != "" {
+		t.Fatalf("a stale close finished a reopened issue: state=%s how=%q", got.State, got.DoneHow)
+	}
+}
+
+// A person's Refresh of an issue still closed on GitHub does not reopen it,
+// however new the change it read.
+func TestRefreshOfAClosedIssueKeepsItDone(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := st.Create(factory.Item{Product: "acme", Repo: "api", Num: 1, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateShipped, DoneHow: "closed", DoneAt: time.Now().Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"owner"}`)
+		case "/repos/acme/api/issues/1":
+			json.NewEncoder(w).Encode(map[string]any{"number": 1, "title": "t", "state": "closed", "updated_at": time.Now(), "user": map[string]any{"login": "a"}})
+		default:
+			fmt.Fprint(w, `[]`)
+		}
+	}))
+	defer srv.Close()
+	src := source.New(forge.NewClient("refresh-closed").WithBaseURL(srv.URL), nil, nil)
+	fresh, err := src.Refetch(ctx, row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Merge(st, source.Name, []factory.Item{fresh}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(row.ID); got.DoneHow != "closed" {
+		t.Fatalf("refresh reopened an issue closed on GitHub: state=%s", got.State)
 	}
 }
