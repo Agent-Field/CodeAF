@@ -379,3 +379,12 @@ always coordinate through it, so no build leaves it out. On linux/amd64 it adds
 3,379,200 bytes to the stripped binary (75,755,785 to 79,134,985 on the same dev
 base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
 the 56,063 bytes of headroom the base had are kept.
+
+## Factory signal acknowledgement bounds
+
+Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed
+heartbeat retains its receipts; a successful heartbeat retires sent IDs unless
+the reply still carries them. Deduplication retains only outstanding deliveries,
+not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
+drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
+requires the backlog to drain within 110 successful heartbeats.
