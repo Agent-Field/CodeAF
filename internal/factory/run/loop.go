@@ -2036,12 +2036,13 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // BOTH PATHS: the loop's own stop and a stop of a job no runner here holds
 // write exactly this.
 //
-// A PERSON'S STOP IS MARKED ONLY WHERE IT CUT A STEP. A step under way
+// A stopped-step failure is recorded only where Stop cut a step. The durable
+// person-stop record also covers queued jobs and completed proof. A step under way
 // (running or waiting) is failed with [stoppedByYou], and the job carries the
 // same stop, so it never reads as a fresh job with a step still running, and
 // running that step again carries on from it. A job stopped before any step
 // began (queued) or after the last one ended (landed) lost nothing: it is
-// simply back in the backlog with no failure, where a start picks it up.
+// stopped with no failed step; a person's Start grants execution again.
 //
 // It answers the step the stop cut, for the manager's `stopped` line: failed
 // when why is the step's own error, stopped when it is a person's; nil when it

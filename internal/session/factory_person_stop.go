@@ -1,6 +1,8 @@
 package session
 
 import (
+"context"
+"errors"
 "time"
 "github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -33,4 +35,14 @@ func (a *Agent) refuseFactoryTools(hub *eventHub, calls []ai.ToolCall, why strin
   a.recordToolResult(ai.Message{Role:"tool",ToolCallID:call.ID,Content:[]ai.ContentPart{{Type:"text",Text:why}}},toolResult{text:why,isError:true,harness:true})
   hub.send(Event{Kind:EventToolFailed,Tool:call.Function.Name,CallID:call.ID,Output:why,HarnessMade:true})
  }
+}
+
+// The marker follows only automatic work through retries and auxiliary calls.
+type factoryAutomaticTurnKey struct{}
+
+func (a *Agent) checkFactoryCall(ctx context.Context) error {
+ if automatic,_:=ctx.Value(factoryAutomaticTurnKey{}).(bool);automatic {
+  if why:=a.automaticFactoryRefusal();why!="" {return errors.New(why)}
+ }
+ return nil
 }

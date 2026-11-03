@@ -49,6 +49,7 @@ func (a *Agent) watchJobBudget() {
 
 // Check again at each model boundary, including retries and auxiliary calls.
 func (a *Agent) admitJobCall(ctx context.Context) error {
+ if err:=a.checkFactoryCall(ctx);err!=nil{return err}
 	if a.jobBudgetOf() == nil {
 		return nil
 	}
