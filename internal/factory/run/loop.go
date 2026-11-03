@@ -1011,6 +1011,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				res.Notes = append(res.Notes, verification.FailurePrefix+" final review report: "+why)
 			}
 		}
+		res = unchangedWrite(st, job, res)
 		lp.fold(c, it, st, i, res)
 		if !lp.capCheck(c, i, name) {
 			return false
@@ -1314,6 +1315,9 @@ func shortfall(res factory.StageResult) string {
 	if reason := verificationReason(res); reason != "" {
 		return "verification blocked: " + reason
 	}
+	if !res.Done && strings.HasPrefix(res.Output, sayWriteUnchanged+"\n") {
+		return sayWriteUnchanged
+	}
 	return factory.Shortfall(res)
 }
 
@@ -1502,7 +1506,10 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	if dirErr == nil && dir != "" && it.ChangeBase == "" {
-		if base := changeBase(dir, it); base != "" {
+		base, err := changeBase(dir, it)
+		if err != nil {
+			dirErr = err
+		} else if base != "" {
 			it.ChangeBase = base
 			_ = lp.write(c, func(saved *factory.Item) error { saved.ChangeBase = base; return nil })
 		}
@@ -1558,14 +1565,15 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 }
 
 // capCheck parks the item when its budget is reached after a round: yes raises
-// the budget by as much again, no stops it. It answers false when it stopped.
+// the budget to the next allowed amount above spend, no stops it.
+// It answers false when it stopped.
 func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
 	}
 	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
-	q, kind := "budget of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"
+	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
 		if reached {

@@ -606,7 +606,8 @@ type NeedsQuestion struct {
 }
 
 // SpendingLimit is the cap a continue answer would raise. next_limit comes
-// from codeaf. The app never sends it. currency is USD.
+// from codeaf: the smallest allowed budget above spend, or zero when none
+// remains. The app never sends it as an answer. currency is USD.
 type SpendingLimit struct {
 	Limit     float64 `json:"limit"`
 	Spent     float64 `json:"spent"`
