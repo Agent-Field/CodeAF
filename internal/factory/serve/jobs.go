@@ -888,7 +888,19 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 			return nil
 		}
 		if u := cur.StopUndo; u != nil && now.Before(u.Until) && u.By == who && cur.State == factory.StateNew {
-			cur.Stream = u.Stream
+			// Undo restores the work snapshot, but receipts may have arrived
+			// since Stop. Keep those dollars on the same run.
+			restored := u.Stream
+			if cur.Stream != nil {
+				if restored == nil {
+					cur.ChatSpent += cur.Stream.Spent
+				} else {
+					stream := *restored
+					stream.Spent = max(stream.Spent, cur.Stream.Spent)
+					restored = &stream
+				}
+			}
+			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question
 			cur.QKind = u.QKind
