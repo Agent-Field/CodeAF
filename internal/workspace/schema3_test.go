@@ -74,8 +74,8 @@ func TestPartASchemaTwoReadsWithoutWritingAndMigratesAllRows(t *testing.T) {
 	if err := s.Rename(ctx, "aaaa", "Products"); err != nil {
 		t.Fatal(err)
 	}
-	if userVersion(t, s) != 3 {
-		t.Fatal("first write did not migrate to 3")
+	if userVersion(t, s) != 4 {
+		t.Fatal("first write did not migrate to 4")
 	}
 	gotC, gotM := legacyRows(t, s.db)
 	wantC[0] = strings.Replace(wantC[0], "Product|", "Products|", 1)
@@ -221,6 +221,7 @@ func TestWorkstreamSchemaThreeRequiresDeletionColumns(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "obsolete.db")
 			s := openTestStore(t, path)
 			createTestCollection(t, s, "Schema three")
+			workstreamSchemaThreeFixture(t, s)
 			if userVersion(t, s) != 3 {
 				t.Fatal("fixture is not schema 3")
 			}
@@ -308,7 +309,7 @@ func TestStabEB1AnOlderWriterCannotDeleteAWorkstream(t *testing.T) {
 	older := workstreamSchemaTwoWriter(t, path)
 	s := openTestStore(t, path)
 	seedWorkstream(t, s, "protected", "Protected")
-	if userVersion(t, s) != 3 {
+	if userVersion(t, s) != 4 {
 		t.Fatal("workstream creation did not migrate schema 2")
 	}
 	// The domain store imports workspace, so this fixture uses its shared SQL
@@ -413,6 +414,7 @@ func TestStabEB1AnEarlierSchemaThreeFileGainsTheGuardOnItsNextWrite(t *testing.T
 	path := filepath.Join(t.TempDir(), "earlier.db")
 	fixture := openTestStore(t, path)
 	plain := createTestCollection(t, fixture, "Earlier")
+	workstreamSchemaThreeFixture(t, fixture)
 	if _, err := fixture.db.Exec("DROP TRIGGER IF EXISTS workstream_collection_keep"); err != nil {
 		t.Fatal(err)
 	}
