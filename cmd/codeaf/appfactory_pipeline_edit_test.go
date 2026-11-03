@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -543,7 +544,8 @@ func TestPipelinePreviewRefusalsAreTypedAndPlainlyWorded(t *testing.T) {
 			if !strings.HasSuffix(we.Message, "Nothing was written.") {
 				t.Fatal(we.Message)
 			}
-			prNoNames(t, err, "deploy", "approve")
+			we.Message += " 820"
+			prNoNames(t, errors.New(we.Message), "deploy", "approve")
 		})
 	}
 }
