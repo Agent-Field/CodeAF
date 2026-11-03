@@ -105,3 +105,32 @@ func TestNewSignalWorkerStillUsesAnOldFactory(t *testing.T) {
   it,err:=j.o.Mirror.Get(j.id);if err!=nil || it.Cap!=want{t.Fatalf("old signal without delivery ID was suppressed: cap=%v err=%v",it.Cap,err)}
  }
 }
+
+func TestRepeatedBudgetDeliveriesCannotUndoALaterRaise(t *testing.T) {
+ j,_:=deliveryJob(t,http.HandlerFunc(func(http.ResponseWriter,*http.Request){}))
+ var signals []api.WorkerSignal
+ if err:=json.Unmarshal([]byte(`[{"verb":"budget","budget":8,"delivery":"lease:a"},{"verb":"budget","budget":12,"delivery":"lease:b"}]`),&signals);err!=nil{t.Fatal(err)}
+ j.signals(t.Context(),signals)
+ it,_:=j.o.Mirror.Get(j.id);if it.Cap!=12{t.Fatalf("budget order lost: %v",it.Cap)}
+ j.signals(t.Context(),signals[:1])
+ it,_=j.o.Mirror.Get(j.id);if it.Cap!=12{t.Fatalf("replayed budget undid the later raise: %v",it.Cap)}
+}
+
+func TestReplyDeliveryRetriesFailureButNeverRepeatsAnAcceptedTurn(t *testing.T) {
+ j,_:=deliveryJob(t,http.HandlerFunc(func(http.ResponseWriter,*http.Request){}))
+ var attempts atomic.Int32
+ finished:=make(chan struct{},4)
+ j.o.Reply=func(context.Context,factory.Item,string)error{
+  defer func(){finished<-struct{}{}}()
+  if attempts.Add(1)==1{return context.DeadlineExceeded};return nil
+ }
+ var signals []api.WorkerSignal
+ if err:=json.Unmarshal([]byte(`[{"verb":"reply","id":"message","words":"chosen","delivery":"lease:a"}]`),&signals);err!=nil{t.Fatal(err)}
+ for n:=0;n<2;n++{
+  j.signals(t.Context(),signals)
+  select{case <-finished:case <-time.After(3*time.Second):t.Fatal("reply never completed")}
+  for deadline:=time.Now().Add(3*time.Second);j.replyingNow();time.Sleep(time.Millisecond){if time.Now().After(deadline){t.Fatal("reply stayed in flight")}}
+ }
+ j.signals(t.Context(),signals)
+ if attempts.Load()!=2{t.Fatalf("accepted reply ran again: %d",attempts.Load())}
+}
