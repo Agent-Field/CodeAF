@@ -154,9 +154,14 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		jobs = m.floor
 	}
 	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item, stage: spec.VerificationStage}
- if spec.Item.Stream != nil {
-  for _, ph := range spec.Item.Stream.Phases { if ph.Name == budget.stage { budget.round = max(1, ph.Round); break } }
- }
+	if spec.Item.Stream != nil {
+		for _, ph := range spec.Item.Stream.Phases {
+			if ph.Name == budget.stage {
+				budget.round = max(1, ph.Round)
+				break
+			}
+		}
+	}
 	cfg.JobBudget = budget
 	cfg.JobContext = spec.JobContext
 	cfg.JobPendingSpend = spec.PendingSpend

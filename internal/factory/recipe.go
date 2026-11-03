@@ -380,7 +380,9 @@ type StageResult struct {
 	// Edit is a plan stage's proposal to change the item's stages, applied by
 	// the runner through Adapt under the recipe's adapt word; nil otherwise.
 	Edit *PlanEdit
-	// Spent is what the round cost in dollars, 0 when nothing was priced.
+	// Spent is cumulative dollars for this logical round, including resumed
+	// work and descendants, 0 when nothing was priced. Repeated reports replace
+	// the round high-water mark; they are not additional spending.
 	Spent float64
 	// SpendRecorded means the live meter already booked each provider receipt.
 	SpendRecorded bool `json:"-"`

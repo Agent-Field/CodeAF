@@ -214,12 +214,12 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 			step.Result = &res
 		}
 		// A paid interrupted round must cross even before its final report.
-        // Existing result fields carry this provisional receipt; the final
-        // report replaces it with the round's evidence and cumulative cost.
-        if step.Result == nil && ph.CostRound == ph.Round && ph.RoundSpent > 0 && (!seen || old.CostRound != ph.CostRound || old.RoundSpent != ph.RoundSpent) {
-         step.Result = &factory.StageResult{Spent:ph.RoundSpent, Chat:ph.Chat}
-        }
-        if len(ph.Rounds) > 0 && (!seen || !reflect.DeepEqual(old.Rounds, ph.Rounds)) {
+		// Existing result fields carry this provisional receipt; the final
+		// report replaces it with the round's evidence and cumulative cost.
+		if step.Result == nil && ph.CostRound == ph.Round && ph.RoundSpent > 0 && (!seen || old.CostRound != ph.CostRound || old.RoundSpent != ph.RoundSpent) {
+			step.Result = &factory.StageResult{Spent: ph.RoundSpent, Chat: ph.Chat}
+		}
+		if len(ph.Rounds) > 0 && (!seen || !reflect.DeepEqual(old.Rounds, ph.Rounds)) {
 			step.Rounds = append([]factory.RoundLine(nil), ph.Rounds...)
 		}
 		if ph.Failure != nil && (!seen || !reflect.DeepEqual(old.Failure, ph.Failure)) {

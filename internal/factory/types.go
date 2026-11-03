@@ -283,14 +283,14 @@ const (
 type Phase struct {
 	// Cost includes every priced round. CostRound and RoundSpent retain the
 	// latest round high-water mark so resumed reports replace, rather than add.
-	Cost float64 `json:",omitempty"`
-	CostRound int `json:",omitempty"`
+	Cost       float64 `json:",omitempty"`
+	CostRound  int     `json:",omitempty"`
 	RoundSpent float64 `json:",omitempty"`
-	Name  string
-	Kind  StageKind
-	State PhaseState
-	Note  string
-	Round int
+	Name       string
+	Kind       StageKind
+	State      PhaseState
+	Note       string
+	Round      int
 	// RoundLimit is the effective limit, including explicit user extensions.
 	// Persist it before a round starts so reopening cannot revoke that grant.
 	RoundLimit   int               `json:",omitempty"`

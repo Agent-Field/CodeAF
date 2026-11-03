@@ -378,7 +378,9 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
-	if ph.CostRound == 0 && ph.Result != nil { ph.RecordRoundSpend(ph.Round, ph.Result.Spent) }
+	if ph.CostRound == 0 && ph.Result != nil {
+		ph.RecordRoundSpend(ph.Round, ph.Result.Spent)
+	}
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil
 	if step.Chat != "" {
