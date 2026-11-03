@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf step costs include every round once
-pr: 0
+pr: 2294
 surface: [engine]
 invalidates:
   - "Step cost previously showed only the last round, and resumed live meters reported only new spending while fallback chats reported their cumulative chat cost. Step reports now mean cumulative spending for one logical round; a step sums its rounds, replacing repeated reports rather than charging them again."
