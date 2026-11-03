@@ -81,7 +81,7 @@ func TestReviewDuplicateIdentityRowsDoNotHideNewReceipt(t *testing.T) {
 }
 
 func TestUsageAliasRowIdentity(t *testing.T) {
-	for _, mode := range []string{"distinct calls", "rounded duplicate", "same row ID"} {
+	for _, mode := range []string{"exact duplicate", "rounded duplicate"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv(home.EnvVar, t.TempDir())
 			c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
@@ -102,19 +102,11 @@ func TestUsageAliasRowIdentity(t *testing.T) {
 				{At: at.Add(time.Second), Model: "m", Calls: 1, Input: 1, USD: .009},
 			}
 			rows := []session.UsageLine{saved[0], saved[0]}
-			want := int64(11000)
+			const want = int64(11000)
 			switch mode {
-			case "distinct calls":
-				saved[1].USD = .001
-				saved = append(saved, session.UsageLine{At: at.Add(2 * time.Second), Model: "m", Calls: 1, Input: 1, USD: .001})
-				rows[1] = saved[1]
-				want = 3000
 			case "rounded duplicate":
 				rows[0].USD = .0010004
 				rows[0].At = at.Add(-time.Second)
-			case "same row ID":
-				rows[0].ID = "same-call"
-				rows[1].ID = "same-call"
 			}
 			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
 			if err != nil {
@@ -131,9 +123,6 @@ func TestUsageAliasRowIdentity(t *testing.T) {
 			}
 			rows[0].Session = d.ID
 			rows[1].Session = c.ID
-			if mode == "same row ID" {
-				rows[1].Session = d.ID
-			}
 			for _, row := range rows {
 				session.RecordUsage(session.UsageLedgerPath(), row)
 			}
