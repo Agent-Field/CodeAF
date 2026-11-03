@@ -79,6 +79,47 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 	for seed := int64(0); seed < 32; seed++ {
 		t.Run(fmt.Sprintf("seed_%d", seed), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(seed))
+			t.Run("mixed_worker_transitions", func(t *testing.T) {
+				it := reviewItem()
+				rows := map[int]float64{}
+				real := 0.0
+				for round := 1; round <= 60; round++ {
+					spent := float64(1+rng.Intn(20)) / 10000
+					rows[round] = spent
+					real += spent
+					legacy := rng.Intn(2) == 0
+					// Every seed covers the reproduced transition before random mixing.
+					if round <= 3 {
+						legacy = round == 2
+					}
+					r := tableReport(t, round, rows)
+					if legacy {
+						r = api.ToWorkerReport(api.WorkerReport{Cost: spent, Steps: []api.StepReport{{Name: "proof", Round: round, Result: &api.StepResult{Cost: spent}}}})
+					}
+					if err := run.ApplyReport(&it, r, time.Now()); err != nil {
+						t.Fatal(err)
+					}
+					if got := factory.JobSpent(it); math.Abs(got-real) > 1e-9 {
+						t.Fatalf("round %d legacy %v: job %.4f, real spend %.4f", round, legacy, got, real)
+					}
+					checkTableCost(t, it, real)
+					// Delayed lower receipts must preserve the larger fallback value.
+					if legacy {
+						stale := api.ToWorkerReport(api.WorkerReport{Steps: []api.StepReport{{Name: "proof", Round: round, Result: &api.StepResult{Cost: spent / 2}}}})
+						if err := run.ApplyReport(&it, stale, time.Now()); err != nil {
+							t.Fatal(err)
+						}
+						checkTableCost(t, it, real)
+					}
+					data, err := json.Marshal(it)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := json.Unmarshal(data, &it); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
 			it := reviewItem()
 			worker := reviewItem()
 			worker.State = factory.StateNew

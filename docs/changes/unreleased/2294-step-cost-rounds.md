@@ -21,5 +21,8 @@ so recovering a worker cannot charge acknowledged step spending again.
 The app still receives one step cost. Worker admission advertises round_cost_tables.
 Only admitted workers send round_costs and exclude table growth from Cost. Without that marker, workers
 send the established body with all new spending in Cost. Old saved jobs and old
-workers without a table use the last Spent fallback, including after a table-capable
-worker; there is no migration or reconstruction of missing historical rounds. Spending includes resumed work and descendants.
+workers whose step never had a table use the last Spent fallback. Once a step has
+a table, table-less results retain its rows and update their round without charging
+spending already included in Cost. Later tables charge only growth, and step.cost
+continues to sum every retained round. There is no migration or reconstruction of
+missing historical rounds. Spending includes resumed work and descendants.

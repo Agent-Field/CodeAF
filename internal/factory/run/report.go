@@ -392,9 +392,11 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 			ph.RoundCosts[round] = max(ph.RoundCosts[round], spent)
 		}
 		addCost(it, max(0, ph.StepCost()-before))
-	} else if step.Result != nil {
-		// A legacy worker reports only its last result, with spending in Cost.
-		ph.RoundCosts = nil
+	} else if step.Result != nil && ph.RoundCosts != nil {
+		// Cost already books this legacy receipt; retain it so later tables
+		// cannot charge the same round again.
+		round := max(1, step.Round)
+		ph.RoundCosts[round] = max(ph.RoundCosts[round], step.Result.Spent)
 	}
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil
