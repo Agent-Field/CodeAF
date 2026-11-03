@@ -37,6 +37,11 @@ type appProcessActor interface {
 // a second for the answer to cross back.
 const appProcessStopWait = session.ProcessStopAllWait + time.Second
 
+// appStopAllOpenWait bounds how long a stop-all waits for an open under way
+// before it answers that what is left is unknown: what its one deadline leaves
+// after the jobs' own stop, so an owner that arrives last still gets that time.
+const appStopAllOpenWait = appwire.ProcessStopAllCeiling - session.ProcessStopAllWait
+
 // appProcessStampMS is a process id's start stamp as Unix milliseconds, zero
 // for an id written without one.
 func appProcessStampMS(stamp string) (int64, bool) {
@@ -290,8 +295,10 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	defer b.locked(func() { delete(b.stoppingAll, agent) })
 	// A stop never opens an agent to manufacture an empty registry. A missing
 	// held owner cannot prove its saved jobs ended; local kept services still
-	// have their own supervisor and are stopped independently below.
-	live := b.liveOf(a)
+	// have their own supervisor and are stopped independently below. An open
+	// already under way is that owner arriving, so the jobs' side waits for it
+	// ([appBackend.liveOnceOpened]) and the services' side does not.
+	var live *appLive
 	res := &appwire.ProcessStopAllResult{
 		Agent: agent, Scope: appwire.ProcessScopeAgent,
 		NotStopped: []string{}, ServicesNotStopped: []string{}, Unsupported: []string{},
@@ -306,18 +313,20 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		jobsErr  error
 		services appStopServices
 	)
-	if live != nil {
-		wg.Add(1)
-		guard.Go("stop-all-jobs", func() {
-			defer wg.Done()
-			actor, can := live.conn.Conv.(appProcessActor)
-			if !can {
-				jobsErr = remote.ErrProcessActionsUnserved
-				return
-			}
-			jobs, jobsErr = actor.StopConversationProcesses(ctx)
-		})
-	}
+	wg.Add(1)
+	guard.Go("stop-all-jobs", func() {
+		defer wg.Done()
+		live = b.liveOnceOpened(ctx, a)
+		if live == nil {
+			return
+		}
+		actor, can := live.conn.Conv.(appProcessActor)
+		if !can {
+			jobsErr = remote.ErrProcessActionsUnserved
+			return
+		}
+		jobs, jobsErr = actor.StopConversationProcesses(ctx)
+	})
 	wg.Add(1)
 	guard.Go("stop-all-services", func() {
 		defer wg.Done()
@@ -354,6 +363,31 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	}
 	res.Partial = res.Unenumerated > 0 || res.RemainingUnknown || len(res.Unsupported) > 0
 	return res, nil
+}
+
+// liveOnceOpened is a's held conversation, waiting for an open already under way
+// for as long as appStopAllOpenWait and ctx allow. A stuck open answers nil, as an
+// agent nobody holds does, and the receipt then says what is left is unknown. The
+// waiter takes the gate only to learn the open ended, and ends when the open does.
+func (b *appBackend) liveOnceOpened(ctx context.Context, a *appAgent) *appLive {
+	opening := false
+	b.locked(func() { opening = a.opening })
+	if !opening {
+		return b.liveOf(a)
+	}
+	wait, cancel := context.WithTimeout(ctx, appStopAllOpenWait)
+	defer cancel()
+	opened := make(chan struct{})
+	guard.Go("stop-all-open", func() {
+		defer close(opened)
+		a.gate.Lock()
+		defer a.gate.Unlock()
+	})
+	select {
+	case <-opened:
+	case <-wait.Done():
+	}
+	return b.liveOf(a)
 }
 
 // appStopServices is what stopping one agent's services did.

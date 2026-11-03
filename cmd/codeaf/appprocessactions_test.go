@@ -467,3 +467,74 @@ func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
 		t.Fatalf("concurrent actions opened %d owners", got)
 	}
 }
+
+// A PERSON'S STOP-ALL DURING AN OPEN STOPS WHAT THE OWNER HOLDS. The stop waits
+// for the open that is under way, so held jobs are stopped rather than reported
+// unknown. An open that never ends costs only the wait: the receipt then says
+// what is left is unknown, and the method's own deadline still holds.
+func TestStopAllDuringAnOwnersOpen(t *testing.T) {
+	setup := func(t *testing.T) (*appBackend, string, *actorEngine, chan struct{}, chan struct{}) {
+		b, _, paths, _ := lazyBackend(t, 1)
+		b.crews()
+		job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobRunning, Started: time.UnixMilli(1700000000000)}
+		seedRecords(t, filepath.Dir(paths[0]), job)
+		engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}}
+		entered, release := make(chan struct{}), make(chan struct{})
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			close(entered)
+			<-release
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		id := appProcessID(appAgentID(paths[0]), job)
+		go func() { _, _ = b.ProcessActions(context.Background(), id) }()
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the owner was never asked to open")
+		}
+		return b, appAgentID(paths[0]), engine, entered, release
+	}
+	t.Run("the open ends", func(t *testing.T) {
+		b, agent, _, _, release := setup(t)
+		answered := make(chan *appwire.ProcessStopAllResult, 1)
+		go func() {
+			res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Errorf("stop-all: %v", err)
+			}
+			answered <- res
+		}()
+		time.Sleep(100 * time.Millisecond)
+		close(release)
+		select {
+		case res := <-answered:
+			if res == nil || res.Stopped != 1 || res.RemainingUnknown {
+				t.Fatalf("a stop-all during an open did not stop what the owner holds: %+v", res)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("stop-all never answered")
+		}
+	})
+	t.Run("the open is stuck", func(t *testing.T) {
+		b, agent, _, _, release := setup(t)
+		defer close(release)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		began := time.Now()
+		res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(began); took > 2*time.Second {
+			t.Fatalf("a stuck open held the stop past its deadline: %v", took)
+		}
+		if !res.RemainingUnknown || res.Stopped != 0 {
+			t.Fatalf("a stuck open's receipt claims too much: %+v", res)
+		}
+	})
+}
