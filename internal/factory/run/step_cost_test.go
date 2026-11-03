@@ -67,3 +67,17 @@ func TestStepCostOldSavedJobNextRound(t *testing.T) {
  if err:=run.ApplyReport(&it,factory.RunReport{Stages:[]factory.StageReport{{Name:"proof",Round:2,Result:&result}}},time.Now());err!=nil {t.Fatal(err)}
  if got:=api.FromItem(it).Steps[0].Cost;math.Abs(got-.2178)>1e-9 {t.Fatalf("old saved step cost = %.4f, want .2178",got)}
 }
+
+func TestStepCostWorkerReceiptBeforeResult(t *testing.T) {
+ it:=factory.Item{State:factory.StateRunning,Stages:[]factory.Stage{{Name:"proof",Kind:factory.StageChat,On:true}},Stream:&factory.Stream{Phases:[]factory.Phase{{Name:"proof",Kind:factory.StageChat,State:factory.PhaseRunning,Round:1,Chat:"paid-chat"}}}}
+ raw,_:=json.Marshal(it)
+ var paid factory.Item
+ if err:=json.Unmarshal(raw,&paid);err!=nil {t.Fatal(err)}
+ paid.Stream.Spent=.01
+ paid.Stream.Phases[0].RecordRoundSpend(1,.01)
+ report,ok:=run.Diff(it,paid);if !ok {t.Fatal("paid round produced no report")}
+ report=api.ToWorkerReport(api.FromRunReport(report))
+ if err:=run.ApplyReport(&it,report,time.Now());err!=nil {t.Fatal(err)}
+ resumed:=api.ToItem(api.WorkerJob(it))
+ if got:=api.FromItem(resumed).Steps[0].Cost;math.Abs(got-.01)>1e-9 {t.Fatalf("step cost before result = %.4f, want .0100",got)}
+}
