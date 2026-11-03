@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 )
 
 func TestFactoryEffortRecoverySurvivesModelAndAccountSwitch(t *testing.T) {
+	t.Run("stage", func(t *testing.T) { checkFactoryEffortSwitches(t, false) })
+	t.Run("manager", func(t *testing.T) { checkFactoryEffortSwitches(t, true) })
+}
+
+func checkFactoryEffortSwitches(t *testing.T, manager bool) {
+	t.Helper()
 	var mu sync.Mutex
 	requests := make(map[string][]bool)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +55,14 @@ func TestFactoryEffortRecoverySurvivesModelAndAccountSwitch(t *testing.T) {
 	sources := func(key string) modelsource.Set {
 		return modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(server.URL), Address: server.URL, Key: key})
 	}
-	agent, err := New(Config{Workspace: t.TempDir(), Model: "fixture/first", Sources: sources("first"), Stage: &fakeStageDoor{}, Effort: effort.High})
+	cfg := Config{Workspace: t.TempDir(), Model: "fixture/first", Sources: sources("first"), Effort: effort.High}
+	if manager {
+		cfg.DropRefusedEffort = true
+		cfg.FactoryRun = &fakeRunDoor{}
+	} else {
+		cfg.Stage = &fakeStageDoor{}
+	}
+	agent, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,5 +93,47 @@ func TestFactoryEffortRecoverySurvivesModelAndAccountSwitch(t *testing.T) {
 		if len(got) != 2 || !got[0] || got[1] {
 			t.Errorf("requests for %s = %v; want [true false]", key, got)
 		}
+	}
+}
+
+func TestOrdinaryConversationWithFactoryToolsKeepsEffortRefusal(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
+		requests.Add(1)
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if body["reasoning"] != nil || body["reasoning_effort"] != nil || body["thinking"] != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"message":"This model does not support reasoning","code":400}}`)
+			return
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+	agent, err := New(Config{Workspace: t.TempDir(), Model: "fixture/ordinary", APIKey: "test", BaseURL: server.URL, FactoryRun: &fakeRunDoor{}, Effort: effort.High})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "answer done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := false
+	for event := range events {
+		if event.Kind == EventError {
+			refused = true
+		}
+	}
+	if !refused || requests.Load() != 1 {
+		t.Fatalf("ordinary conversation: refused=%v requests=%d; want refusal on one request", refused, requests.Load())
 	}
 }

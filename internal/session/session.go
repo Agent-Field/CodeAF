@@ -2190,6 +2190,10 @@ type Config struct {
 	// piece of work, which is every conversation a person opens themselves.
 	Effort effort.Rung
 
+	// DropRefusedEffort opts a Factory manager turn into client-local effort recovery.
+	// Available Factory tools alone do not establish that this is Factory work.
+	DropRefusedEffort bool
+
 	// EffortRole is what this session is FOR, and it is the rung of last resort
 	// before the install's default: an errand asks for nothing at all, and a
 	// task worker on the bash belt starts low. THE ZERO VALUE IS NOT A ROLE and

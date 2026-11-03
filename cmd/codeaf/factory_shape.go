@@ -272,6 +272,7 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	cfg.AskConsent = false
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor, cfg.Stage = nil, nil, nil, nil, nil
 	cfg.FactoryRun = door
+	cfg.DropRefusedEffort = true
 	if cheap {
 		cfg.Effort = effort.Low
 	}
