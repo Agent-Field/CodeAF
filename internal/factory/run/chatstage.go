@@ -691,7 +691,7 @@ func stageBrief(job Job) string {
 	para(untilSays(job))
 	para(briefNoTeamPost)
 	para(briefAsk)
-	para("Evidence rules: test claims cite commands exercising that behaviour; label inspection as inspection. Preserve real command exits, including through pipes; a printed exit marker is not a receipt. Numeric totals come from command receipts. Your output is the handover later steps and the person read: what changed, each command run with its actual result, what was not run and why, and what remains open.")
+	para("Evidence rules: report a check as run only when its tool output shows execution; label refusals and skipped commands as unrun. Label inspection as inspection. Preserve real command exits, including through pipes; a printed exit marker is not a receipt. Numeric totals come from command receipts. Your output is the handover later steps and the person read: what changed, each command run with its actual result, what was not run and why, and what remains open.")
 	if factory.IsProofStage(job.Stage) || factory.IsCIRepairStage(job.Stage) {
 		para("Supply publish_summary: up to three complete PR-ready bullets describing the final implementation including review fixes, with accurate names and no personal names.")
 	}
@@ -707,7 +707,7 @@ func stageBrief(job Job) string {
 //	the refund is counted twice in Export
 //	1 finding still open
 //	not shown: refunds count once
-//	Fix what it left in the checkout first, run the tests, then review again and report only what is still wrong.
+//	Use current passing evidence. Correct the unresolved check or changed code, then review only the affected behaviour and report what remains open.
 //
 // A stage that runs until done is told it did not finish and to carry on from
 // what is in the checkout instead. "" on round 1 and when nothing came back.
@@ -735,7 +735,7 @@ func fixThenCheck(job Job) string {
 	}
 	switch strings.TrimSpace(job.Stage.Until) {
 	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
-		return head + "\nFix what it left in the checkout first, run the tests, then " + name + " again and report only what is still wrong."
+		return head + "\nUse current passing evidence. Correct the unresolved check or changed code, then " + name + " only the affected behaviour and report what remains open."
 	}
 	return head + "\nIt did not finish. Carry on from what it left in the checkout, and report done once the ask is carried out."
 }

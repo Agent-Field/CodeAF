@@ -462,7 +462,7 @@ func TestASecondRoundOfReviewIsToldWhatTheFirstFound(t *testing.T) {
 		t.Fatalf("round 1 was told of a round before it:\n%s", convs[0].Spec.Brief)
 	}
 	want := "round 2 of review. The last round reported:\nthe refund is counted twice in Export\n1 finding still open\nnot shown: refunds count once\n" +
-		"Fix what it left in the checkout first, run the tests, then review again and report only what is still wrong."
+		"Use current passing evidence. Correct the unresolved check or changed code, then review only the affected behaviour and report what remains open."
 	if !strings.Contains(convs[1].Spec.Brief, want) {
 		t.Fatalf("round 2's brief lacks the findings:\n%s", convs[1].Spec.Brief)
 	}
@@ -481,7 +481,7 @@ func TestEveryLaterRoundReadsTheLastRoundsReport(t *testing.T) {
 		Notes:  []string{"keep the public API"}}
 	got := fixThenCheck(job)
 	if want := "round 2 of review. The last round reported:\nExport adds refunds twice\nImport drops the sign\n2 findings still open\n" +
-		"not shown: refunds count once (go test ./ledger fails TestRefund)\nFix what it left"; !strings.HasPrefix(got, want) {
+		"not shown: refunds count once (go test ./ledger fails TestRefund)\nUse current passing evidence."; !strings.HasPrefix(got, want) {
 		t.Fatalf("the carry = %q, want it to open %q", got, want)
 	}
 	// A claim it did show is not a shortfall, and its notes already open the

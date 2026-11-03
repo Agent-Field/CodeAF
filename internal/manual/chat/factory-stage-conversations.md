@@ -46,7 +46,8 @@ It is given two tools that no other conversation has:
 After the stage placement and before repository rules, an unchanged shipped chat
 step receives a short engineering method. It describes the goal, handover,
 completion and when to ask. Plan follows relevant code and tests without edits;
-write implements slices with a failing test first; test diagnoses failures;
+write implements slices with a failing test first; test reuses passing evidence
+for unchanged code, runs missing coverage once and diagnoses failures;
 review checks scope and standards and repairs substantive findings. Security
 traces attack paths; proof challenges promises with current observations; read
 inspects without edits; checks runs claim-specific checks; bisect narrows the
@@ -56,6 +57,10 @@ The method is selected only when both the name and ask match the shipped step.
 A person's own ask carries only their words for the method; the common brief,
 repository rules and reporting contract still apply. Resuming the same chat does
 not repeat the method already in its history. The editable ask stays short.
+
+Later rounds correct unresolved checks or changed code and check the affected
+behaviour using current passing evidence. A check is reported as run from its
+tool output; refused and skipped commands are reported as unrun.
 
 Every step hands over what changed, each command actually run and its result,
 unrun checks and why, and open work. Only proof and Follow PR are asked for

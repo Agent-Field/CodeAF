@@ -19,3 +19,7 @@ does not push or force-push.
 Fresh and resumed Follow PR rounds retain repair rules without an active
 follow-up record or a PR snapshot. Normal repair and readiness briefs keep
 their existing wording.
+
+Test reuses passing evidence for unchanged code and runs missing coverage once.
+Later rounds focus on unresolved checks or changed code. Reports distinguish
+checks with execution output from refused or skipped commands.
