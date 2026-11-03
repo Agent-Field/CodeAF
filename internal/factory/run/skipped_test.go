@@ -57,3 +57,21 @@ func TestSkippedCheckNeverVerifiesAJob(t *testing.T) {
 		t.Fatalf("job cannot finish with visible skip: %+v", before)
 	}
 }
+
+func TestSkippedStepRemovesEarlierEquivalentProofClaim(t *testing.T) {
+	it := factory.Item{State: factory.StateRunning, Stages: []factory.Stage{{Name: "proof", Kind: factory.StageCheck, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageCheck, State: factory.PhaseRunning}}}}
+	for _, claim := range []factory.Claim{{Text: "Tests pass.", OK: true, Evidence: "measured receipt"}, {Text: "tests pass", OK: true}} {
+		if err := ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", State: factory.PhaseDone, Result: &factory.StageResult{Done: true, Claims: []factory.Claim{claim}}}}}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(it.Proof) != 1 || !it.Proof[0].OK {
+		t.Fatal("fixture did not retain the measured claim")
+	}
+	if err := ApplyReport(&it, factory.RunReport{Stages: []factory.StageReport{{Name: "proof", State: factory.PhaseSkipped, SkipReason: "no matching files"}}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(it.Proof) != 0 {
+		t.Fatalf("skipped step retained equivalent proof claim: %+v", it.Proof)
+	}
+}
