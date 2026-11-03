@@ -40,10 +40,10 @@ const Schema = 1
 // it has been written, and the item. The revision lives here rather than on
 // [factory.Item] because it is a fact about the document, not about the work.
 type doc struct {
-	Schema   int          `json:"schema"`
-	Revision int          `json:"revision"`
-	BudgetRevision int `json:"budget_revision"`
-	Item     factory.Item `json:"item"`
+	Schema         int          `json:"schema"`
+	Revision       int          `json:"revision"`
+	BudgetRevision int          `json:"budget_revision"`
+	Item           factory.Item `json:"item"`
 }
 
 // ErrNotFound is the answer for an id that is not here.
@@ -411,7 +411,7 @@ type writeMode struct{ stamp, bump, budget bool }
 
 var (
 	writeWork       = writeMode{stamp: true, bump: true}
-	writeBudget = writeMode{stamp: true, bump: true, budget: true}
+	writeBudget     = writeMode{stamp: true, bump: true, budget: true}
 	writeAnnotation = writeMode{stamp: false, bump: true}
 	writePersonal   = writeMode{stamp: false, bump: false}
 )

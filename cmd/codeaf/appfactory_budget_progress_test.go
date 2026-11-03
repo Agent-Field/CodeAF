@@ -68,17 +68,17 @@ func TestAppFactoryBudgetProgress(t *testing.T) {
 						it.State = factory.StateDismissed
 					}
 					return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-		s.mustFail("factory.job_set_budget", params, appwire.CodeConflict)
-		return
-	}
-	var raised appwire.FactoryJobActed
-	s.must("factory.job_set_budget", params, &raised)
-	if raised.Current == nil || raised.Current.Budget != 10 || raised.Current.Cost != .25 {
-		t.Fatalf("raise lost budget or report: %+v", raised.Current)
-	}
+				}); err != nil {
+					t.Fatal(err)
+				}
+				s.mustFail("factory.job_set_budget", params, appwire.CodeConflict)
+				return
+			}
+			var raised appwire.FactoryJobActed
+			s.must("factory.job_set_budget", params, &raised)
+			if raised.Current == nil || raised.Current.Budget != 10 || raised.Current.Cost != .25 {
+				t.Fatalf("raise lost budget or report: %+v", raised.Current)
+			}
 		})
 	}
 }
