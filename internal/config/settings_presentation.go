@@ -76,7 +76,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Category, p.Label = "Privacy", "share anonymous usage reports"
 	case KeyModelPool:
 		p.Category, p.Label = "Privacy", "shared model recommendations"
-		p.Description = "Use and contribute receives model recommendations and shares text-free performance measurements. Use only sends nothing. Off does neither. Code, prompts and file paths are never included."
+		p.Description = "Off by default. Use and contribute receives model recommendations and shares text-free performance measurements. Use only sends nothing. Off does neither. Code, prompts and file paths are never included."
 	case KeyModelPoolPublicKey:
 		p.Category, p.Label, p.Advanced = "Privacy", "model pool signing key", true
 	case KeyToolApprovalMode:
