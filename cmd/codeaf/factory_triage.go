@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
@@ -76,7 +77,10 @@ func runFactoryTriage(ctx context.Context, st *store.Store, newIntake func(*stor
 	// surface owns it in a window and stdout is the protocol in an
 	// engine. An item that could not be read simply has no read.
 	in := newIntake(st)
-	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
+	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{Standing: factorygithub.Rechecker(func(ctx context.Context) string {
+		token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+		return token
+	}),
 		AskFirst: in.AskFirst, AfterTick: in.Once,
 		Off: func() bool { return !factoryReadsOnArrival(st) },
 	})

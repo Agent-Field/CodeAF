@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/estimate"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -19,8 +20,10 @@ import (
 
 // Options injects repository policy and the existing launch door; tests need no model.
 type Options struct {
-	Refresh func(context.Context) error
-	Load    func(string) (pipeline.File, error)
+	// Standing reads GitHub before an automatic start or ask. Nil keeps the existing policy.
+	Standing func(context.Context, factory.Item) (string, error)
+	Refresh  func(context.Context) error
+	Load     func(string) (pipeline.File, error)
 	// LoadJob reads ONE JOB'S OWN FILE (pipeline.JobFile): the one it was
 	// decided on ([factory.Item.DecidePipeline]), else its repository's as
 	// Load reads it. Nil reads Load. Intake decides a job's file when it
@@ -129,6 +132,9 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 		return err
 	}
 	decision := f.DecideJob(it, Job(it).Paths, Cost(book, it))
+	if (decision.Start || decision.Ask) && factorygithub.ClosedForAutomation(ctx, in.st.Root(), it, in.opts.Standing) {
+		return nil
+	}
 	if decision.Start {
 		if looked, ok := in.lookFirst(ctx, it); ok {
 			it = looked

@@ -30,6 +30,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 )
 
 // BodyMost is how much of an item's text the prompt carries. The poll already
@@ -426,6 +427,8 @@ const CallTries = 3
 // that another window read meanwhile, or that a person dismissed.
 // Options connects policy reading and intake without giving triage launch authority.
 type Options struct {
+	// Standing reads GitHub before paying for an issue read. Nil leaves reads unchanged.
+	Standing  func(context.Context, factory.Item) (string, error)
 	AskFirst  func(factory.Item) []string
 	AfterTick func(context.Context) error
 	// Off is "Read new issues as they arrive" turned off: a tick reads
@@ -521,7 +524,7 @@ func (w *worker) once(ctx context.Context) tick {
 	var it factory.Item
 	found := false
 	for _, x := range items {
-		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) {
+		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) && !w.closed(ctx, x) {
 			it, found = x, true
 			break
 		}
@@ -530,6 +533,15 @@ func (w *worker) once(ctx context.Context) tick {
 		return tickIdle
 	}
 	return w.read(ctx, it, CallTries)
+}
+
+// closed shares the process cache with intake when the store has a root.
+func (w *worker) closed(ctx context.Context, it factory.Item) bool {
+	root := ""
+	if st, ok := w.st.(interface{ Root() string }); ok {
+		root = st.Root()
+	}
+	return factorygithub.ClosedForAutomation(ctx, root, it, w.opts.Standing)
 }
 
 // read reads one item, marked in flight. A call that fails is stamped (read,
@@ -615,7 +627,7 @@ func ReadThese(ctx context.Context, st Store, call Call, ids []int, opts Options
 	}
 	for _, id := range ids {
 		it, ok := byID[id]
-		if !ok || !factory.IsIssueJob(it) || !Wants(it) || len(out.Read)+len(out.Failed) >= ClickMost || ctx.Err() != nil {
+		if !ok || !factory.IsIssueJob(it) || !Wants(it) || len(out.Read)+len(out.Failed) >= ClickMost || ctx.Err() != nil || w.closed(ctx, it) {
 			out.Skipped = append(out.Skipped, id)
 			continue
 		}

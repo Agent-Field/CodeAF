@@ -516,6 +516,8 @@ Off by default: the factory's AI runs only when you click. With it off, new issu
 
 Turned on, each new issue gets the arrival read (its complexity and judging), and a job that Pick up issues would start gets a look closer just before it starts, so it starts on the better read; a failed look never stops the start.
 
+Before an arrival read, a chosen issue read, or a start rule that would start or ask, the factory checks GitHub. A closed or merged issue gets no read, look, start or approval ask; its Backlog row stays unchanged. Closed answers are remembered until this process restarts, so reopening the issue takes a restart to reconsider it. The check waits at most five seconds; missing access, errors or a timeout let work continue as usual.
+
 Reading never makes a job start on its own: size labels and the start rules decide. A read's complexity only places the job among similar finished jobs, so a measured cost over `max_cost` asks first. Only the factory's operator can change this setting.
 
 ## which model runs factory jobs — Task models and one model
