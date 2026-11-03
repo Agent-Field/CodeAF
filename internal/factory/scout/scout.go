@@ -91,10 +91,10 @@ func Run(ctx context.Context, it factory.Item, look Look, chat Chat, b Budget) (
 	final := false
 	for {
 		reply, err := chat(ctx, msgs)
+		r.out.USD += reply.USD
 		if err != nil {
 			return r.out, err
 		}
-		r.out.USD += reply.USD
 		if reply.Model != "" {
 			r.out.Model = reply.Model
 		}
