@@ -64,6 +64,7 @@ func workerSetupAs(t *testing.T, login string) *workerFixture {
  f.handler = serve.New(seam, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)
+	t.Cleanup(f.handler.Close)
 	return f
 }
 

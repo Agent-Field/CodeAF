@@ -1311,7 +1311,7 @@ func TestReviewOpenStartKeepsFirstIdentity(t *testing.T) {
 }
 
 func (f *v2Jobs) restart(t *testing.T) {
- t.Helper()
- f.h.Close()
- f.h = serve.New(f.seam, f.cfg)
+	t.Helper()
+	f.h.Close()
+	f.h = serve.New(f.seam, f.cfg)
 }

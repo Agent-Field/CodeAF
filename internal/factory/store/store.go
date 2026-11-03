@@ -211,10 +211,7 @@ func (st *Store) Get(id int) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
-	d, err = st.migrateRepository(d, ids)
-	if err != nil {
-		return factory.Item{}, err
-	}
+	ids.canonicalItem(&d.Item)
 	st.retainOutput(&d.Item)
 	return d.Item, nil
 }
@@ -255,10 +252,7 @@ func (st *Store) List() ([]factory.Item, error) {
 			}
 			loadedIDs = true
 		}
-		d, err = st.migrateRepository(d, ids)
-		if err != nil {
-			return nil, err
-		}
+		ids.canonicalItem(&d.Item)
 		st.retainOutput(&d.Item)
 		items = append(items, d.Item)
 	}

@@ -2375,7 +2375,9 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	if !handled {
 		turn, err = b.startLocked(a, text, clientID, shown)
 	}
-	if err != nil { return turn, err }
+	if err != nil {
+		return turn, err
+	}
 	if err := b.touchJobConversation(a.transcript); err != nil {
 		return turn, &appUnsureSend{err: appEngineError(err)}
 	}

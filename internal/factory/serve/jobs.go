@@ -1123,8 +1123,12 @@ func (h *Handler) scheduleJobTimer() {
 		if holds, err := h.workers.desk.Snapshot(); err == nil {
 			for _, held := range holds {
 				at := held.ExpiresAt
-				if held.Asleep { at = held.HeartbeatAt.Add(lease.AsleepCeiling) }
-				if next.IsZero() || at.Before(next) { next = at }
+				if held.Asleep {
+					at = held.HeartbeatAt.Add(lease.AsleepCeiling)
+				}
+				if next.IsZero() || at.Before(next) {
+					next = at
+				}
 			}
 		}
 	}
@@ -1200,7 +1204,9 @@ func (h *Handler) runJobTimer() {
 	h.jobsBusy.Add(1)
 	h.jobsMu.Unlock()
 	defer h.jobsBusy.Done()
-	if h.workers != nil && h.workers.desk != nil { _, _ = h.workers.desk.Live() }
+	if h.workers != nil && h.workers.desk != nil {
+		_, _ = h.workers.desk.Live()
+	}
 	h.settleJobs()
 	h.scheduleJobTimer()
 }

@@ -245,7 +245,7 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 	var clock atomic.Int64
 	clock.Store(time.Now().UnixNano())
 	cfg := serve.Config{Store: g.st, Record: g.record, Now: func() time.Time { return time.Unix(0, clock.Load()) }}
- handler := serve.New(seam, cfg)
+	handler := serve.New(seam, cfg)
 	defer handler.Close()
 	request := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(id)+"/approve", strings.NewReader(`{"commit":"`+landed.HeadCommit+`"}`))
 	request.RemoteAddr = "127.0.0.1:1234"

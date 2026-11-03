@@ -118,7 +118,7 @@ func TestAutoLeavesCriticalProblemsAndManualJobsWaiting(t *testing.T) {
 			in := autoProof()
 			change(&in)
 			it := f.create(t, in)
-	f.restart(t)
+			f.restart(t)
 			f.restart(t)
 			j := f.read(t, it)
 			if factory.Automatic(in) && j.AutonomyWhy == "" {

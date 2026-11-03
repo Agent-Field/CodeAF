@@ -132,35 +132,49 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 	return nil, ErrNoLease
 }
 
-// CheckPublish reads the current job under its row lock and the worker's lease.
+// CheckPublish reads the current job while holding the worker's lease lock.
 // A worker must check again at each push and immediately before its PR request.
 func (d *Desk) CheckPublish(id, worker string) error {
- return d.locked(func(doc *document, now time.Time) error {
-  held, err := identified(doc, id, worker)
-  if err != nil { return err }
-  if !held.HeartbeatAt.IsZero() { held.ExpiresAt = held.HeartbeatAt.Add(d.TTL()) }
-  if !held.live(now) { return ErrNoLease }
-  it, err := d.store.Get(held.Job)
-  if err != nil { return err }
-  if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
-   return fmt.Errorf("publication stopped; no write is permitted")
-  }
-  return nil
- })
+	return d.locked(func(doc *document, now time.Time) error {
+		held, err := identified(doc, id, worker)
+		if err != nil {
+			return err
+		}
+		if !held.HeartbeatAt.IsZero() {
+			held.ExpiresAt = held.HeartbeatAt.Add(d.TTL())
+		}
+		if !held.live(now) {
+			return ErrNoLease
+		}
+		it, err := d.store.Get(held.Job)
+		if err != nil {
+			return err
+		}
+		if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
+			return fmt.Errorf("publication stopped; no write is permitted")
+		}
+		return nil
+	})
 }
 
 // ReadLease observes an identified hold without renewing it or recovering jobs.
 func (d *Desk) ReadLease(id, worker string) (Lease, error) {
- var out Lease
- err := d.locked(func(doc *document, now time.Time) error {
-  held, err := receiptIdentity(doc, id, worker, now)
-  if err != nil { return err }
-  out = *held
-  if !out.HeartbeatAt.IsZero() { out.ExpiresAt = out.HeartbeatAt.Add(d.TTL()) }
-  if !out.live(now) { return ErrNoLease }
-  return nil
- })
- return out, err
+	var out Lease
+	err := d.locked(func(doc *document, now time.Time) error {
+		held, err := receiptIdentity(doc, id, worker, now)
+		if err != nil {
+			return err
+		}
+		out = *held
+		if !out.HeartbeatAt.IsZero() {
+			out.ExpiresAt = out.HeartbeatAt.Add(d.TTL())
+		}
+		if !out.live(now) {
+			return ErrNoLease
+		}
+		return nil
+	})
+	return out, err
 }
 
 func receiptIdentity(doc *document, id, worker string, now time.Time) (*Lease, error) {

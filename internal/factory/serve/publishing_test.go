@@ -46,6 +46,7 @@ func publishingSetup(t *testing.T) (*workerFixture, *record.Record, factory.Item
 	}
 	cfg := config
 	cfg.Store, cfg.Record, cfg.PullWait, cfg.LeaseOptions = st, rec, time.Millisecond, lease.Options{Now: clock}
+	f.cfg, f.seam = cfg, s
 	f.handler = serve.New(s, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)
