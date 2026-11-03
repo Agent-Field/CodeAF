@@ -28,7 +28,7 @@ func TestPublishAnywayPersonDecisionReachesHeldWorker(t *testing.T) {
  })
  id:=g.add(t,factory.Stage{Name:"write",Kind:factory.StageChat,On:true},factory.Stage{Name:"inspect",Kind:factory.StageCheck,Ask:"true",When:"touches auth",On:true},factory.Stage{Name:"post",Kind:factory.StagePost,Ask:"pr",On:true})
  if err:=g.st.Update(id,func(it *factory.Item)error{it.Assignee="me";return nil});err!=nil {t.Fatal(err)}
- if err:=g.floor.Launch(id);err!=nil {t.Fatal(err)}
+ if err:=g.doors.Launch(id);err!=nil {t.Fatal(err)}
  waiting:=g.waitFor(t,id,factory.StateNeedsYou)
  if !factory.OffersPublishAnyway(waiting) {t.Fatalf("worker did not offer choice: %+v",waiting)}
  if err:=g.st.Update(id,func(it *factory.Item)error{return factory.DecidePublishAnyway(it,"me",time.Now())});err!=nil {t.Fatal(err)}
