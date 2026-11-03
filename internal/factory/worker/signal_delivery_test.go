@@ -99,7 +99,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 			}
 			entered := make(chan struct{})
 			finished := make(chan struct{})
-   steered:=make(chan string,4)
+			steered := make(chan string, 4)
 			var writes, checks atomic.Int32
 			runner := run.New(run.Options{Publisher: func(context.Context, factory.Item) (run.PublishTarget, error) {
 				writes.Add(1)
@@ -110,7 +110,14 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 				}
 				close(entered)
 				defer close(finished)
-				for{select{case word:= <-job.Steer:steered<-word;case <-ctx.Done():return factory.StageResult{},ctx.Err()}}
+				for {
+					select {
+					case word := <-job.Steer:
+						steered <- word
+					case <-ctx.Done():
+						return factory.StageResult{}, ctx.Err()
+					}
+				}
 
 			})}})
 			if err := runner.Launch(it.ID); err != nil {
@@ -238,7 +245,16 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 					}
 				}
 			}
-   if verb=="steer"{select{case word:= <-steered:if word!="chosen"{t.Fatal("wrong steering words",word)};case <-time.After(3*time.Second):t.Fatal("steering did not reach the round")}}
+			if verb == "steer" {
+				select {
+				case word := <-steered:
+					if word != "chosen" {
+						t.Fatal("wrong steering words", word)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("steering did not reach the round")
+				}
+			}
 			before, _ := mirror.Get(it.ID)
 			// A replay must not overwrite a later choice or repeat a manager turn/note.
 			if err := mirror.Update(it.ID, func(it *factory.Item) error { it.Cap = 19; it.Model = "later"; it.Autonomy = "later"; return nil }); err != nil {
@@ -276,8 +292,10 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 				if before.Autonomy != "chosen" {
 					t.Fatal("autonomy was not applied")
 				}
-   case "steer":
-    if signalLogCount(before,"steer: chosen")!=1 || signalLogCount(after,"steer: chosen")!=1{t.Fatal("steering was not recorded exactly once")}
+			case "steer":
+				if signalLogCount(before, "steer: chosen") != 1 || signalLogCount(after, "steer: chosen") != 1 {
+					t.Fatal("steering was not recorded exactly once")
+				}
 			case "answer":
 				if len(before.Notes) != 1 {
 					t.Fatalf("expected one note, got %v", before.Notes)
@@ -426,8 +444,45 @@ func waitSignalRunner(t *testing.T, r *run.Runner, id int) {
 	}
 }
 
-func signalLogCount(it factory.Item,text string)int{
- n:=0
- if it.Stream!=nil{for _,line:=range it.Stream.Log{if line.Text==text{n++}}}
- return n
+func signalLogCount(it factory.Item, text string) int {
+	n := 0
+	if it.Stream != nil {
+		for _, line := range it.Stream.Log {
+			if line.Text == text {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+func TestReconcileDeliveryWaitsForRunnerCleanupBeforeAcknowledging(t *testing.T) {
+ var attempts atomic.Int32
+ j,_:=deliveryJob(t,http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if strings.HasPrefix(r.URL.Path,"/v1/workers/recover/"){attempts.Add(1);w.WriteHeader(422);return}
+  var report api.WorkerReport
+  _=json.NewDecoder(r.Body).Decode(&report)
+  if report.Question!=nil{w.WriteHeader(200);return}
+  w.WriteHeader(422)
+ }))
+ entered:=make(chan struct{})
+ release:=make(chan struct{})
+ if err:=j.o.Mirror.Update(j.id,func(it *factory.Item)error{it.State=factory.StateNew;it.Stages=[]factory.Stage{{Name:"check",Kind:factory.StageCheck,On:true,Ask:"true"}};return nil});err!=nil{t.Fatal(err)}
+ dir:=t.TempDir()
+ j.o.Runner=run.New(run.Options{Store:j.o.Mirror,RepoDir:func(string)string{return dir},Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context,_ run.Job)(factory.StageResult,error){close(entered);<-ctx.Done();<-release;return factory.StageResult{},ctx.Err()})}})
+ defer func(){select{case <-release:default:close(release)};_=j.o.Runner.Stop(j.id);waitSignalRunner(t,j.o.Runner,j.id)}()
+ if err:=j.o.Runner.Launch(j.id);err!=nil{t.Fatal(err)}
+ select{case <-entered:case <-time.After(3*time.Second):t.Fatal("runner did not start")}
+ setDeliverySpend(t,j,.25)
+ j.flush(t.Context())
+ if j.blocked=="" || j.pending==nil || !j.o.Runner.Running(j.id){t.Fatal("fixture did not block with cleanup still running")}
+ var signals []api.WorkerSignal
+ if err:=json.Unmarshal([]byte(`[{"verb":"reconcile_results","delivery":"lease:cleanup"}]`),&signals);err!=nil{t.Fatal(err)}
+ j.signals(t.Context(),signals)
+ if attempts.Load()!=0{t.Fatal("reconciliation ran during cleanup")}
+ close(release)
+ waitSignalRunner(t,j.o.Runner,j.id)
+ j.signals(t.Context(),signals)
+ j.signals(t.Context(),signals)
+ if attempts.Load()!=1{t.Fatalf("reconcile delivery was lost during cleanup or repeated: attempts=%d",attempts.Load())}
 }
