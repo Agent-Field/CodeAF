@@ -24,6 +24,8 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 		{"cancelled", "PASS\n\nCommand aborted", "cancelled", false, true},
 		{"timed out", "PASS\n\nCommand timed out after 1 seconds", "timed out", false, true},
 		{"deadline", "cut after 1s; output so far:\nPASS\n", "timed out", false, true},
+		{"printed cancellation is output", "PASS\n\nCommand aborted", "passed", false, true},
+		{"printed timeout is output", "cut after 1s; output so far:\nPASS\n", "passed", false, true},
 		{"printed refusal is output", "needs approval but no resolver is attached: example\nPASS\n", "passed", false, true},
 	}
 	for _, tc := range cases {
@@ -34,6 +36,9 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 				t.Fatal(err)
 			}
 			enc := json.NewEncoder(f)
+			status := "failed"
+			if tc.outcome == "passed" { status = "ok" }
+			if tc.refused { status = "refused" }
 			command := "go test ./..."
 			if tc.name == "approval without resolver" {
 				command = "set -e\nrm -rf /tmp/ledger-race-check\ncp -r /checkout /tmp/ledger-race-check\ncd /tmp/ledger-race-check\ngo test -race -run TestConcurrentAddProbe ./... 2>&1 | head -40\ngo test ./... 2>&1 | tail -5"
@@ -41,7 +46,7 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 			args, _ := json.Marshal(map[string]string{"command": command})
 			for _, row := range []any{
 				map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": "probe", "function": map[string]string{"name": "bash", "arguments": string(args)}}}},
-				map[string]any{"role": "tool", "toolCallId": "probe", "content": tc.output, "presentation": map[string]any{"audience": "tool", "refused": tc.refused, "invoked": tc.invoked}},
+				map[string]any{"role": "tool", "toolCallId": "probe", "content": tc.output, "presentation": map[string]any{"audience": "tool", "refused": tc.refused, "invoked": tc.invoked, "outcome": status}},
 			} {
 				if err := enc.Encode(row); err != nil {
 					t.Fatal(err)
