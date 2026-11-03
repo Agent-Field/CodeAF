@@ -39,6 +39,9 @@ type scheduling struct {
 	cancelled uint64
 	sleeping  bool
 	wake      bool
+	// restart: an operation woke the group since the last look. s.now is that
+	// look's time, possibly long past, so the idle window restarts at the next.
+	restart bool
 }
 
 // wakeScheduling invalidates the observed sleep generation before processing
@@ -51,6 +54,7 @@ func (c *Core) wakeScheduling() {
 	s.active = s.now
 	s.next = s.now + clusterstate.TickEveryMillis
 	s.wake = true
+	s.restart = true
 	c.quorumIndex, c.quorumTerm = 0, 0
 }
 
@@ -77,6 +81,10 @@ func (c *Core) Schedule(in ScheduleInput) (SchedulePlan, error) {
 	}
 	// A backward host sample cannot move a deadline into the past.
 	s.now = max(s.now, in.Now)
+	if s.restart {
+		s.active = s.now
+		s.restart = false
+	}
 	conf := Configuration(c.store.conf)
 	voters := slices.Clone(conf.Voters)
 	for _, id := range conf.Outgoing {
@@ -107,6 +115,7 @@ func (c *Core) Schedule(in ScheduleInput) (SchedulePlan, error) {
 		c.wakeScheduling()
 		p.Wake = voters
 		s.wake = false
+		s.restart = false
 	}
 	if !busy && valid && m.Index > s.cancelled {
 		complete := len(in.Acks) == len(voters)
