@@ -161,7 +161,7 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
 	if real, ok := src.(*Source); ok && readErr == nil && mergeErr == nil {
-		mergeErr = real.sweepClosed(ctx, st, repos, before, items)
+		mergeErr = real.reconcileClosed(ctx, st, repos, before, items)
 	}
 	at := now()
 	meta, _ := st.SourceMeta(src.Name())
@@ -246,22 +246,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		}
 		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
-			if in.DoneHow == "" {
-				noteOpenRead(st, in)
-			}
-			// A change newer than the other side decides: a close read before a
-			// reopen does not finish it, and an open row read before a close, or
-			// a Refresh of an issue still closed, does not reopen it.
-			switch {
-			case in.DoneHow == StandingClosed:
-				if !lastOpenRead(st, old).After(in.Changed) {
-					errs = append(errs, finishClosed(st, old.ID))
-				}
-				if in.Title == "" {
-					continue
-				}
-			case closedWithoutWork(old) && in.Changed.After(old.DoneAt):
-				errs = append(errs, reopenClosed(st, old.ID))
+			if in.DoneHow == StandingClosed {
+				continue
 			}
 			if !forgeChanged(old, in) {
 				continue

@@ -1,11 +1,8 @@
 package github
 
-import "time"
-
-// ForgetSweeps stands in for a new process, which has swept nothing yet.
+// ForgetSweeps stands in for a restart, discarding only nomination scheduling.
 func ForgetSweeps() {
-	sweepsMu.Lock()
-	defer sweepsMu.Unlock()
-	sweeps = map[string]issueSweep{}
-	openReads = map[string]time.Time{}
+ checksMu.Lock()
+ defer checksMu.Unlock()
+ checks = map[string]*closeChecks{}
 }

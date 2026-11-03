@@ -52,6 +52,8 @@ const listPages = 10
 // the issues list that are pull requests, which the source skips there and
 // reads from the pulls list instead.
 type Issue struct {
+ ID int64
+ Redirected bool
 	Number  int
 	Title   string
 	Body    string
@@ -162,6 +164,7 @@ type labelJSON struct {
 }
 
 type issueJSON struct {
+ ID int64 `json:"id"`
 	Number      int         `json:"number"`
 	Title       string      `json:"title"`
 	Body        *string     `json:"body"`
