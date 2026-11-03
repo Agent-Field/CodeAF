@@ -74,6 +74,14 @@ the `stage_result` it reported, and only a report that says done can pass:
 - `until green`: done, and a check step's command exited 0. A conversation step has no exit
   code of its own, so for it green is the same as done: it reports done once the tests pass.
 
+A `write` step's done also needs a change in the job's checkout. With none, the round reads
+`the checkout has no change from where the run began` and does not pass, so later steps never
+run on an untouched tree. The comparison uses the job's original base: a rerun, **Try again**,
+or restarting a stopped step counts the change already on its branch, including committed
+work. Each attempt does not need a new edit. A branch with no change still cannot pass Write,
+even on a rerun. If the original base cannot be preserved, the round fails before editing;
+try again after the repository becomes writable. Other steps may finish with no change.
+
 A step that falls short of its until goes round again while it has rounds left (see a second
 round).
 
@@ -135,6 +143,8 @@ round ran for two hours (or an idle Plan could not finish reporting within its t
   codeaf could not make the report;
 - `write ran out of time without reporting · …`
 - `plan did not finish: <what it said> · …` when it reported that it could not;
+- `write did not finish: the checkout has no change from where the run began · …` when write
+  reported done but changed nothing;
 - `test is not proven: 1 of 2 claims shown · …` for a step that runs once;
 - `review is not clean after 3 rounds: 1 finding · …` only for a step that loops.
 

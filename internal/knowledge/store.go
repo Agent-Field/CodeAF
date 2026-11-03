@@ -68,23 +68,33 @@ func (v *Vault) captureConsentView() *consentView {
 // It answers whether a tick has anything to look at; a tick that finds sources
 // to admit asks [Vault.ConfirmConsent] before it admits them or moves past them.
 func (v *Vault) CaptureConsent() (enabled bool, since time.Time) {
-	return v.consent(false)
+	return v.consent(consentRecheck)
+}
+
+// CaptureConsentWithin is CaptureConsent for a look that has a reason to be
+// prompt, such as a chat that has just written: the shared answer is used only
+// while it is younger than maxAge. The view is shared, so however many chats
+// write, this opens the database at most once per maxAge.
+func (v *Vault) CaptureConsentWithin(maxAge time.Duration) (enabled bool, since time.Time) {
+	return v.consent(min(maxAge, consentRecheck))
 }
 
 // ConfirmConsent reads consent now and shares the answer with the other
 // tickers. Admission uses it, so a source is judged against the database's own
 // opt-in time, never a remembered one.
 func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
-	return v.consent(true)
+	return v.consent(0)
 }
 
-func (v *Vault) consent(fresh bool) (enabled bool, since time.Time) {
+// consent answers from the shared view while it is younger than maxAge and no
+// consent write of this process came after it; maxAge 0 always reads.
+func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
 	view := v.captureConsentView()
 	view.mu.Lock()
 	defer view.mu.Unlock()
 	now := consentNow()
 	generation := view.generation.Load()
-	if !fresh && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < consentRecheck {
+	if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
 		return view.enabled, view.since
 	}
 	// Keep the lock across the read so simultaneous tickers share failures too.
