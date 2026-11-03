@@ -289,3 +289,19 @@ func TestMemoryStoreFailureNamesItsReasonNotOff(t *testing.T) {
 		t.Fatalf("memoryOf error = %v", err)
 	}
 }
+
+// With no key at launch the memory list speaks to the person who has to add
+// one, and names where. The variable name is for a developer's terminal.
+func TestMemoryStoreWithNoKeySaysWhereToAddOne(t *testing.T) {
+	for _, cause := range []error{
+		config.ErrNoAPIKey,
+		fmt.Errorf("open memory: %w", config.ErrNoAPIKey),
+		errors.New(config.ErrNoAPIKey.Error()),
+	} {
+		b := &appBackend{memoryStore: func() (*store.Store, error) { return nil, cause }}
+		_, err := b.memoryOf()
+		if err == nil || strings.Contains(err.Error(), config.APIKeyEnv) || !strings.Contains(err.Error(), "Settings › Accounts › Providers") {
+			t.Fatalf("memoryOf(%v) = %v", cause, err)
+		}
+	}
+}
