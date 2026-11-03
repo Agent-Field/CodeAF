@@ -498,6 +498,16 @@ func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 // daemon's socket appearing shows the daemon, and not the spawn, served them.
 func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
 	r := newDriveRig(t)
+	if runtime.GOOS != "windows" {
+		// The rig has not opened an engine transport yet. A short home keeps
+		// its socket inside the home even with macOS's small address limit.
+		short, err := os.MkdirTemp("/tmp", "cds")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(short) })
+		t.Setenv(home.EnvVar, short)
+	}
 	t.Setenv("CODEAF_ENGINE_DAEMON", "")
 	r.engine.Transport = nil
 	t.Cleanup(func() { stopDaemons(t) })

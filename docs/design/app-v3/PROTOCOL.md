@@ -247,6 +247,7 @@ decides which combinations are accepted.
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
 | `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -1522,6 +1523,22 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Mark a job pull request ready
+
+Hello feature `factory.job_pr_ready` advertises the optional method of the same
+name. Params are `{factory, job, expect}`; `expect.version` is required as for
+Merge. It sends one `POST /v1/jobs/{id}/pr-ready` with `{expect}` and returns
+`FactoryJobActed` with `action: "pr_ready"`, the record event and the current job.
+Job reads offer `can.pr_ready` to a signed-in person allowed to merge this job
+while its published PR is open and draft. The job's own GitHub repository and
+the caller's credential are used, with no model call or automatic retry.
+
+A confirmed mutation stores `pr.draft: false` immediately; no follow read is
+needed. Merge still applies every other gate. Another person is `forbidden`,
+a changed expected version is `stale`, and no PR or an already ready PR is
+`conflict`. An unconfirmed outcome is `uncertain`: read the job before deciding
+whether to try again. Ready has no Undo window and never merges the PR.
 
 ### Job note receipts and pull request comments
 
