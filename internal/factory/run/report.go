@@ -468,7 +468,9 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	}
 	ph.RecordRoundSpend(ph.Round, res.Spent)
 	// A delayed retry cannot lower the baseline a resumed worker receives.
-	if ph.CostRound == ph.Round { kept.Spent = ph.RoundSpent }
+	if ph.CostRound == ph.Round {
+		kept.Spent = ph.RoundSpent
+	}
 	ph.Result = &kept
 	round := ph.Round
 	if round < 1 {
