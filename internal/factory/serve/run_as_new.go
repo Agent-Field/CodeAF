@@ -87,7 +87,7 @@ func (h *Handler) runAsNew(w http.ResponseWriter, r *http.Request, source factor
 		return
 	}
 	answer := &replayWriter{header: make(http.Header)}
-	started := h.launchJob(answer, start, next, nil)
+	started := h.launchJob(answer, start, next, "", nil)
 	if !started {
 		if h.failed(w, h.config.Store.ForgetUnstartedCopy(next.ID)) {
 			return
