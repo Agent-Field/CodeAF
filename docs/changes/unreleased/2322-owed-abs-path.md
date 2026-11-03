@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Owed verification commands use portable tool names
-pr: 0
+pr: 2322
 surface: [factory, chat]
 invalidates:
   - "Saved absolute check paths previously appeared in owed commands and prevented equivalent named measured reruns from resolving them."
