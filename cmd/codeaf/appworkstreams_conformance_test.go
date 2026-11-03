@@ -1294,10 +1294,33 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 	}
 }
 
-// Hold a writer on a separate handle to the same real store. The backend must
-// exhaust the normal busy timeout and translate that refusal on the wire.
+// Hold a real writer on a second handle to the same store. Shorten only the
+// backend's lock wait to 200 ms on its single connection so the case proves the
+// real SQLITE_BUSY -> ErrBusy -> wire "busy" path without waiting ten seconds.
+// Production keeps internal/workspace's 10-second wait. The refusal still says
+// "(waited 10s)" because storeError uses that constant; conformance checks the
+// code and a non-empty message, not that text.
 func workstreamWireHoldWriter(t *testing.T, backend *appBackend) func() {
 	t.Helper()
+	if backend.collections == nil {
+		t.Fatal("busy fixture must seed the backend's collections store before holding a writer")
+	}
+	const workstreamBusyTimeoutMS = 200
+	if err := backend.collections.Write(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", workstreamBusyTimeoutMS))
+		return err
+	}); err != nil {
+		t.Fatalf("set backend busy timeout: %v", err)
+	}
+	var ms int
+	if err := backend.collections.Read(context.Background(), func(tx *sql.Tx, _ int) error {
+		return tx.QueryRow("PRAGMA busy_timeout").Scan(&ms)
+	}); err != nil {
+		t.Fatalf("read backend busy timeout: %v", err)
+	}
+	if ms != workstreamBusyTimeoutMS {
+		t.Fatalf("backend busy timeout = %d ms, want %d ms", ms, workstreamBusyTimeoutMS)
+	}
 	other, err := workspace.Open(backend.collectionsPath)
 	if err != nil {
 		t.Fatal(err)
