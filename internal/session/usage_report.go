@@ -36,13 +36,15 @@ package session
 //
 // THE TOTALS ARE ADDED UP BY THE SAME CHECKED HELPER as the ledger's
 // ([UsageLedgerTotals.count]): a negative count or a sum past what a number
-// holds refuses with [ErrUsageLedgerFigures]. The cells' figures are parts of
-// those totals, so they cannot overflow where the totals did not.
+// holds refuses with [ErrUsageLedgerFigures]. Money is summed within each
+// cell in ledger order, then across cells in report order in both paths.
+// The final money sums are checked too, since grouping changes rounding.
 
 import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -190,12 +192,19 @@ func scanUsageReport(path string, q UsageQuery, loc *time.Location, budget Usage
 		return UsageReport{}, err
 	}
 	b.report.Stats = report.Stats
-	return b.finish(), nil
+	return b.finish()
+}
+
+// Run membership is not part of a report's cell identity, but its money
+// subtotals must follow the same cell order as the visible total.
+type usageReportCell struct {
+	UsageReportCell
+	runUSD, unknownRunUSD float64
 }
 
 type usageReportBuilder struct {
 	report       UsageReport
-	cells        map[usageReportKey]*UsageReportCell
+	cells        map[usageReportKey]*usageReportCell
 	weight       int64
 	lastDay      string
 	lastDayValid bool
@@ -204,7 +213,7 @@ type usageReportBuilder struct {
 }
 
 func newUsageReportBuilder(loc *time.Location, budget UsageReportBudget) *usageReportBuilder {
-	return &usageReportBuilder{cells: map[usageReportKey]*UsageReportCell{}, loc: loc, budget: budget}
+	return &usageReportBuilder{cells: map[usageReportKey]*usageReportCell{}, loc: loc, budget: budget}
 }
 
 func (b *usageReportBuilder) add(line UsageLine) error {
@@ -238,7 +247,7 @@ func (b *usageReportBuilder) add(line UsageLine) error {
 		// Only now are the strings copied, so a line's large id is never
 		// retained by a map it was refused from.
 		key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent)}
-		cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent}
+		cell = &usageReportCell{UsageReportCell: UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent}}
 		b.cells[key] = cell
 		b.weight += cost
 	}
@@ -248,6 +257,11 @@ func (b *usageReportBuilder) add(line UsageLine) error {
 	cell.Output += int64(line.Output)
 	if line.USD > 0 {
 		cell.USD += line.USD
+		if line.Run != "" {
+			cell.runUSD += line.USD
+		} else {
+			cell.unknownRunUSD += line.USD
+		}
 	} else {
 		cell.Unpriced++
 	}
@@ -257,11 +271,11 @@ func (b *usageReportBuilder) add(line UsageLine) error {
 	return nil
 }
 
-func (b *usageReportBuilder) finish() UsageReport {
+func (b *usageReportBuilder) finish() (UsageReport, error) {
 	b.report.Cells = make([]UsageReportCell, 0, len(b.cells))
 	seen := map[string]struct{}{}
 	for _, cell := range b.cells {
-		b.report.Cells = append(b.report.Cells, *cell)
+		b.report.Cells = append(b.report.Cells, cell.UsageReportCell)
 		if cell.Model != "" {
 			if _, ok := seen[cell.Model]; !ok {
 				seen[cell.Model] = struct{}{}
@@ -273,6 +287,19 @@ func (b *usageReportBuilder) finish() UsageReport {
 		return cmp.Or(strings.Compare(a.Day, b.Day), strings.Compare(a.Model, b.Model), strings.Compare(a.Kind, b.Kind),
 			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session), strings.Compare(a.Agent, b.Agent))
 	})
+	// Each cell sums its lines in ledger order. Both scan and rollup sum
+	// money in this fixed report order, so decimal costs agree exactly.
+	t := &b.report.Totals
+	t.USD, t.RunUSD, t.UnknownRunUSD = 0, 0, 0
+	for _, cell := range b.report.Cells {
+		key := usageReportKey{cell.Day, cell.Model, cell.Kind, cell.Subject, cell.Root, cell.Session, cell.Agent}
+		t.USD += cell.USD
+		t.RunUSD += b.cells[key].runUSD
+		t.UnknownRunUSD += b.cells[key].unknownRunUSD
+		if math.IsInf(t.USD, 0) || math.IsInf(t.RunUSD, 0) || math.IsInf(t.UnknownRunUSD, 0) {
+			return UsageReport{}, ErrUsageLedgerFigures
+		}
+	}
 	slices.Sort(b.report.Models)
-	return b.report
+	return b.report, nil
 }

@@ -39,7 +39,7 @@ func appendReportBytes(t *testing.T, path string, data []byte) {
 func TestReportRollupEqualityAcrossLedgerChanges(t *testing.T) {
 	var lines []UsageLine
 	for i := range 2400 {
-		l := reportLine(1+i%28, i%24, fmt.Sprintf("m%d", i%7), float64(i%5)/1024)
+		l := reportLine(1+i%28, i%24, fmt.Sprintf("m%d", i%7), float64(1+i%5)*0.001537)
 		l.Session = fmt.Sprintf("s%d", i%11)
 		switch i % 4 {
 		case 0:
@@ -56,6 +56,9 @@ func TestReportRollupEqualityAcrossLedgerChanges(t *testing.T) {
 		if i%11 == 0 {
 			l.Day = ""
 		}
+		if i%17 == 0 {
+			l.USD = 0
+		}
 		if i%19 == 0 {
 			l.Unbilled = true
 			l.USD = 0
@@ -64,6 +67,23 @@ func TestReportRollupEqualityAcrossLedgerChanges(t *testing.T) {
 	}
 	path := writeLedger(t, lines, []string{"not json", strings.Repeat("x", usageLineBytes+1)}, "")
 	check := func() {
+		// Scan equality alone could silently exercise the fallback twice.
+		q := reportQuery(t, "2026-10-01", "2026-10-28")
+		before := usageBytesScanned.Load()
+		r, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if read := usageBytesScanned.Load() - before; read > r.Stats.Bytes {
+			t.Fatalf("initial report scanned %d bytes, prefix is %d: fallback used", read, r.Stats.Bytes)
+		}
+		before = usageBytesScanned.Load()
+		if _, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{}); err != nil {
+			t.Fatal(err)
+		}
+		if read := usageBytesScanned.Load() - before; read != 0 {
+			t.Fatalf("unchanged report scanned %d bytes: fallback used", read)
+		}
 		for _, span := range [][2]string{{"2026-10-01", "2026-10-28"}, {"2026-10-03", "2026-10-07"}, {"2026-10-28", "2026-10-28"}, {"2026-11-01", "2026-11-02"}} {
 			q := reportQuery(t, span[0], span[1])
 			equalRollupScan(t, path, q, reportZone, UsageReportBudget{})
@@ -73,7 +93,7 @@ func TestReportRollupEqualityAcrossLedgerChanges(t *testing.T) {
 	}
 	check()
 	// A receipt appended last retains its original instant and stored day.
-	late := reportLine(3, 10, "late", .125)
+	late := reportLine(3, 10, "late", .001537)
 	raw, e := json.Marshal(late)
 	if e != nil {
 		t.Fatal(e)
@@ -147,7 +167,6 @@ func TestReportRollupFallbackEquality(t *testing.T) {
 	q := reportQuery(t, "2026-10-14", "2026-10-15")
 	for _, change := range []func(*UsageLine){
 		func(l *UsageLine) { l.Day = "2026-10-15" },
-		func(l *UsageLine) { l.USD = .01 },
 		func(l *UsageLine) { l.Input = -1 },
 	} {
 		l := reportLine(14, 10, "m", .125)
@@ -196,40 +215,94 @@ func TestReportRollupConcurrentReports(t *testing.T) {
 	}
 }
 
-func BenchmarkUsageReportScanAndSecond100k(b *testing.B) {
+func BenchmarkUsageReportDecimal100k(b *testing.B) {
 	path := reportRows(b, 100000)
-	q := reportQuery(b, "2026-10-01", "2026-10-31")
-	want, e := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
-	if e != nil {
-		b.Fatal(e)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		b.Fatal(err)
 	}
-	for _, mode := range []string{"scan", "second"} {
+	raw = []byte(strings.ReplaceAll(string(raw), "0.0009765625", "0.001537"))
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		b.Fatal(err)
+	}
+	q := reportQuery(b, "2026-10-01", "2026-10-31")
+	line, err := json.Marshal(reportLine(3, 10, "m/00", .001537))
+	if err != nil {
+		b.Fatal(err)
+	}
+	line = append(line, '\n')
+	for _, mode := range []string{"first", "second", "append"} {
 		b.Run(mode, func(b *testing.B) {
-			b.ReportAllocs()
-			var got UsageReport
-			var e error
-			for range b.N {
-				if mode == "scan" {
-					got, e = scanUsageReport(path, q, reportZone, UsageReportBudget{})
-				} else {
-					got, e = QueryUsageReport(path, q, reportZone, UsageReportBudget{})
-				}
-				if e != nil {
-					b.Fatal(e)
-				}
-			}
 			b.StopTimer()
-			if !reflect.DeepEqual(want, got) {
-				b.Fatal("incorrect report")
+			b.ReportAllocs()
+			for range b.N {
+				if err := os.WriteFile(path, raw, 0600); err != nil {
+					b.Fatal(err)
+				}
+				usageReports.Lock()
+				usageReports.cache = nil
+				usageReports.Unlock()
+				readWant := int64(len(raw))
+				if mode != "first" {
+					if _, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{}); err != nil {
+						b.Fatal(err)
+					}
+					readWant = 0
+				}
+				if mode == "append" {
+					f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+					if err != nil {
+						b.Fatal(err)
+					}
+					_, err = f.Write(line)
+					closeErr := f.Close()
+					if err != nil || closeErr != nil {
+						b.Fatalf("append: %v, close: %v", err, closeErr)
+					}
+					readWant = int64(len(line))
+				}
+				want, err := scanUsageReport(path, q, reportZone, UsageReportBudget{})
+				if err != nil {
+					b.Fatal(err)
+				}
+				before := usageBytesScanned.Load()
+				b.StartTimer()
+				got, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
+				b.StopTimer()
+				if err != nil || !reflect.DeepEqual(want, got) {
+					b.Fatalf("incorrect report: %v", err)
+				}
+				if read := usageBytesScanned.Load() - before; read != readWant {
+					b.Fatalf("read %d bytes, want %d", read, readWant)
+				}
 			}
 		})
 	}
 }
 
 func TestReportRollupPreservesRoundingAtPrecisionLimit(t *testing.T) {
-	lines := []UsageLine{reportLine(14, 10, "a", 1<<53), reportLine(15, 10, "a", 1), reportLine(15, 11, "a", 1)}
-	path := writeLedger(t, lines, nil, "")
-	equalRollupScan(t, path, reportQuery(t, "2026-10-14", "2026-10-15"), reportZone, UsageReportBudget{})
+	for _, run := range []string{"", "run"} {
+		lines := []UsageLine{reportLine(14, 10, "a", 1<<53), reportLine(15, 10, "a", 1), reportLine(15, 11, "a", 1), reportLine(14, 11, "a", 1)}
+		for i := range lines {
+			lines[i].Run = run
+		}
+		path := writeLedger(t, lines, nil, "")
+		q := reportQuery(t, "2026-10-14", "2026-10-15")
+		equalRollupScan(t, path, q, reportZone, UsageReportBudget{})
+		r, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The first cell rounds away its last dollar; the next cell retains
+		// both dollars before the report adds it to the first cell.
+		if r.Totals.USD != 9007199254740994 || r.Cells[0].USD != 9007199254740992 || r.Cells[1].USD != 2 {
+			t.Fatalf("money did not follow cell order: %+v", r)
+		}
+		if run == "" && (r.Totals.UnknownRunUSD != r.Totals.USD || r.Totals.RunUSD != 0) ||
+			run != "" && (r.Totals.RunUSD != r.Totals.USD || r.Totals.UnknownRunUSD != 0) {
+			t.Fatalf("run subtotals did not follow cell order: %+v", r.Totals)
+		}
+	}
 }
 
 func TestReportRollupCacheBudgetFallsBackWithoutRefusingNarrowRange(t *testing.T) {

@@ -4568,6 +4568,11 @@ range ends are required, covering at most 366 days. Reports refuse more than
 8,192 groups or an estimated 4 MiB of cells rather than dropping groups.
 Unpriced calls and missing receipts remain visible as gaps.
 
+Each cell sums its lines in ledger order. Money totals, including subtotals for
+lines with and without a run, sum cells in report order: day, model, kind,
+subject, root, session and agent. The scan and rollup use this same order,
+including for ordinary decimal costs.
+
 A date-only report can reuse daily totals in memory. The first read builds them;
 later reads add complete appended lines, including receipts for earlier days.
 A last line without a newline waits until it is complete. No rollup file is
@@ -4578,9 +4583,8 @@ the already-read prefix's first or last 4,096 bytes also trigger a rebuild;
 rewrites confined to the middle of that prefix are not detected.
 
 Reports with additional filters, partial days, a changed time zone, disagreement
-between a stored day and its instant, or costs whose floating-point addition
-cannot be regrouped exactly use a full scan. Ordinary decimal costs can require
-that scan too. Exceeding the rollup's total storage budget or encountering invalid
+between a stored day and its instant use a full scan.
+Exceeding the rollup's total storage budget or encountering invalid
 figures also uses the scan, preserving each range's existing limits and refusals.
 The retained rollup is limited to one ledger, 8,192 groups and an estimated
 4 MiB of cells; it grows with distinct daily groups, not call count.

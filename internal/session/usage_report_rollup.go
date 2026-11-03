@@ -3,8 +3,6 @@ package session
 import (
 	"fmt"
 	"io"
-	"math"
-	"math/bits"
 	"os"
 	"sync"
 	"time"
@@ -22,17 +20,16 @@ var usageReports struct {
 }
 
 type usageReportRollup struct {
-	info    os.FileInfo
-	size    int64
-	stats   UsageScanStats
-	ends    string
-	loc     *time.Location
-	days    map[string]*usageReportBuilder
-	totals  UsageLedgerTotals
-	cells   int
-	weight  int64
-	unsafe  bool
-	quantum int
+	info   os.FileInfo
+	size   int64
+	stats  UsageScanStats
+	ends   string
+	loc    *time.Location
+	days   map[string]*usageReportBuilder
+	totals UsageLedgerTotals
+	cells  int
+	weight int64
+	unsafe bool
 }
 
 // QueryUsageReport answers bounded reports, incrementally for date-only queries
@@ -65,9 +62,8 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 		return UsageReport{}, nil
 	}
 	// A different zone can move derived days and instant/day membership.
-	// Invalid figures, excessive retained groups, inconsistent stored days, or
-	// inexact floating-point regrouping also require the scan's addition order
-	// and range-local errors rather than an approximate daily answer.
+	// Invalid figures, excessive retained groups, or inconsistent stored days
+	// require the scan to preserve range-local errors and membership.
 	if c.loc != loc || c.unsafe {
 		return scanUsageReport(path, q, loc, budget)
 	}
@@ -94,7 +90,7 @@ func readUsageReportRollup(path string, loc *time.Location) (*usageReportRollup,
 		return nil, err
 	}
 	if !reuse {
-		c = &usageReportRollup{loc: loc, days: map[string]*usageReportBuilder{}, quantum: 1024}
+		c = &usageReportRollup{loc: loc, days: map[string]*usageReportBuilder{}}
 		usageReports.path, usageReports.cache = path, c
 	}
 	if c.loc != loc {
@@ -150,7 +146,7 @@ func (c *usageReportRollup) add(line UsageLine) {
 		c.unsafe = true
 		return
 	}
-	if !c.exactCost(line.USD) || c.totals.count(line) != nil {
+	if c.totals.count(line) != nil {
 		c.unsafe = true
 		return
 	}
@@ -169,29 +165,6 @@ func (c *usageReportRollup) add(line UsageLine) {
 	}
 	c.cells += len(b.cells) - before
 	c.weight += b.weight - weight
-}
-
-// Positive binary floats are integer multiples of a power of two. If the
-// entire ledger's sum in its smallest such unit fits 53 bits, every subset and
-// every addition order is exact. Otherwise retain the scan's rounding order.
-func (c *usageReportRollup) exactCost(usd float64) bool {
-	if usd < 0 || math.IsNaN(usd) || math.IsInf(usd, 0) {
-		return false
-	}
-	if usd == 0 {
-		return true
-	}
-	raw := math.Float64bits(usd)
-	mantissa := raw & ((1 << 52) - 1)
-	exponent := int(raw>>52) - 1023 - 52
-	if raw>>52 != 0 {
-		mantissa |= 1 << 52
-	} else {
-		exponent = -1074
-	}
-	exponent += bits.TrailingZeros64(mantissa)
-	c.quantum = min(c.quantum, exponent)
-	return math.Ldexp(usd, -c.quantum) <= (1<<53)-math.Ldexp(c.totals.USD, -c.quantum)
 }
 
 func (c *usageReportRollup) report(q UsageQuery, budget UsageReportBudget) (UsageReport, error) {
@@ -215,15 +188,12 @@ func (c *usageReportRollup) report(q UsageQuery, budget UsageReportBudget) (Usag
 		t.Calls += s.Calls
 		t.Input += s.Input
 		t.Output += s.Output
-		t.USD += s.USD
-		t.RunUSD += s.RunUSD
-		t.UnknownRunUSD += s.UnknownRunUSD
 		t.UnknownRunRecords += s.UnknownRunRecords
 		t.Unpriced += s.Unpriced
 		t.Unbilled += s.Unbilled
 		b.report.DaysDerived += d.report.DaysDerived
 	}
-	return b.finish(), nil
+	return b.finish()
 }
 
 func reportCellWeight(key usageReportKey) int64 {
