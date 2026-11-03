@@ -401,9 +401,10 @@ To go on from a step that was cut instead, keeping the steps before it and the m
 Stop still works when the job has moved on since you opened its page. Stopping
 the current running step follows the same rule; a step that already ended
 cannot stop the next one, and Step Stop refuses during publishing. Job Stop
-also stops a job that is publishing: its worker loses permission to report and
-is asked to cancel when it next contacts the factory. Publishing can still finish before the worker learns of Stop; Stop does not
-undo a push or pull request.
+also stops a job that is publishing: Stop prevents a push that has not begun
+and wins until the PR request is sent, including automatic publication after proof.
+If that request was already sent, the job reports the opened PR with its link
+and tells you it was not closed; review it on GitHub. Nothing is closed automatically.
 
 ## drop a job — Drop, delete a job's branch, uncommitted work, throw away a job's work and its conversations
 

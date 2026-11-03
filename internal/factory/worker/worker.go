@@ -342,6 +342,12 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		})
 		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
 	}
+    o.Runner.SetPublishCheck(it.ID, func(ctx context.Context) error {
+        readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+        defer cancel()
+        return w.CheckPublish(readCtx, pulled.Lease.ID)
+    })
+    defer o.Runner.SetPublishCheck(it.ID, nil)
 	// Establish an accounting acknowledgment before the first paid call.
 	key, err := deliveryKey()
 	if err != nil {
@@ -468,6 +474,8 @@ func (j *job) flush(ctx context.Context) bool {
 	if err != nil {
 		return true
 	}
+    // An already sent PR request still owes its forge receipt after Stop.
+    if cur.State == factory.StateNew && j.o.Runner.Running(j.id) { return true }
 	report, ok := run.Diff(j.sent, cur)
 	var messages []factory.Message
 	for _, m := range factorythread.Read(cur.Talk) {
@@ -591,7 +599,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)
-			return false
+            return r.Running(j.id)
 		}
 	}
 	return true

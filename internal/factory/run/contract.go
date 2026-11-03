@@ -283,6 +283,7 @@ type Runner struct {
 	loopOnce    sync.Once
 	floor       *floorLoop
 	stopReaders sync.Map
+ publishChecks sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.
