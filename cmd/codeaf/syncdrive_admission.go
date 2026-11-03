@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -51,9 +52,13 @@ func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive 
 }
 
 func (w *workAdmission) admit(d *syncsetup.Drive) error {
-	ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
-	defer cancel()
 	released := d.BeginWork()
+	within := driveWorkWithin
+	if released {
+		within = executor.TakeBackWithin
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), within)
+	defer cancel()
 	if err := d.Gate(); err != nil && !released {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -303,9 +304,16 @@ func (b *appBackend) refreshWorkRefusal(a *appAgent) error {
 		return refusal
 	}
 	drive := live.started()
-	ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+	within := driveWorkWithin
+	if drive.IdleReleased() {
+		within = executor.TakeBackWithin
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), within)
 	defer cancel()
 	if _, err := drive.ConfirmWork(ctx); err != nil {
+		if current := drive.Gate(); current != nil && drive.IdleReleased() {
+			return appEngineError(current)
+		}
 		return refusal
 	}
 	if err := drive.Gate(); err != nil {

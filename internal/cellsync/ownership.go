@@ -2,6 +2,7 @@ package cellsync
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -38,10 +39,27 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	if b.isClosing() || pending != 0 || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires > seen.Now {
 		return false, nil
 	}
+	wasUncertain := false
+	if idle {
+		wasUncertain = func() bool {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			before := b.acquireUncertain
+			b.acquireUncertain = true
+			return before
+		}()
+	}
 	v, err := b.Publisher.Dir.Acquire(ctx, d.ID(), directory.AcquireOpts{
 		RequireConditional: true,
 		Expect:             &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence},
 	})
+	if idle && (err == nil && v.Cell.Head != d.Head || errors.Is(err, directory.ErrConditionalTake) || !wasUncertain && (errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale))) {
+		func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			b.acquireUncertain = false
+		}()
+	}
 	if err != nil {
 		return false, err
 	}
@@ -52,6 +70,11 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	b.mu.Lock()
 	*b.Driving = d
 	b.stale, b.released, b.renewalEnded = false, false, false
+	if idle {
+		// Ownership readers must see the confirmed fence before uncertainty
+		// clears, so an in-flight reading cannot revive an older fence.
+		b.acquireUncertain = false
+	}
 	b.renewalSince = time.Time{}
 	b.mu.Unlock()
 	b.renewalChanged()
@@ -128,4 +151,12 @@ func lockOwnership(ctx context.Context, mu *sync.Mutex) error {
 		case <-timer.C:
 		}
 	}
+}
+
+// AcquireUncertain says an idle take-back may have committed without a reply.
+// A later own-device fence is not evidence that this window acquired it.
+func (b *Batcher) AcquireUncertain() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.acquireUncertain
 }

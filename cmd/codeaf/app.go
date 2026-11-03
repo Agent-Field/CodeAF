@@ -4718,6 +4718,9 @@ func appEngineError(err error) error {
 	}
 	var refusal *executor.WorkRefusal
 	if errors.As(err, &refusal) {
+		if refusal.Retryable {
+			return &appwire.Error{Code: appwire.CodeUnreachable, Message: refusal.Line}
+		}
 		location := &appwire.Location{Here: false, Line: refusal.Line}
 		if refusal.HolderID != "" {
 			location.Holder = &appwire.LocationHolder{ID: refusal.HolderID, Name: refusal.HolderName}

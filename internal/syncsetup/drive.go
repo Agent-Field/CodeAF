@@ -631,6 +631,10 @@ func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
 // directory that cannot be asked answers true, because a drive side that cannot
 // tell must not be thrown away for it.
 func (d *Drive) HoldsLease(ctx context.Context) bool {
+	if d.released.Load() && d.batcher != nil && d.batcher.AcquireUncertain() {
+		// Retain the open reader, not authority to write or renew.
+		return true
+	}
 	if line, viewer := d.Viewer(); viewer && line != chatlist.Available || d.batcher == nil {
 		return false
 	}
@@ -666,6 +670,11 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	}
 	id, fence := d.batcher.Lease()
 	v, err := d.sync.Dir.Cell(ctx, d.directoryID)
+	if err == nil && d.released.Load() && d.batcher.AcquireUncertain() {
+		// Even an own-device observation cannot attribute a timed-out write
+		// to this window. ConfirmWork retries only after the lease lapses.
+		return nil
+	}
 	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
 		return nil
 	}
@@ -763,6 +772,9 @@ func (d *Drive) Gate() error {
 	d.mu.Unlock()
 	if stopped {
 		return cellstore.ErrReadOnly
+	}
+	if d.released.Load() && d.batcher != nil && d.batcher.AcquireUncertain() {
+		return &executor.WorkRefusal{Line: executor.TakeBackRetryLine, Retryable: true}
 	}
 	if viewer.Line != "" {
 		return &executor.WorkRefusal{Line: viewer.Line, HolderID: viewer.ID, HolderName: viewer.Name}

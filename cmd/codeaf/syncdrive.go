@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -279,8 +280,8 @@ func driveSettingsGate(d *liveDrive) func() error {
 		return nil
 	}
 	return func() error {
-		if started := d.started(); started != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+		if started := d.published.Load(); started != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), executor.TakeBackWithin)
 			defer cancel()
 			return started.ConfirmSettingsWork(ctx)
 		}
@@ -294,7 +295,11 @@ func drivePreparedGate(d *liveDrive) func() error {
 	}
 	return func() error {
 		if started := d.started(); started != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
+			within := driveWorkWithin
+			if started.IdleReleased() {
+				within = executor.TakeBackWithin
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), within)
 			defer cancel()
 			return started.ConfirmPreparedWork(ctx)
 		}

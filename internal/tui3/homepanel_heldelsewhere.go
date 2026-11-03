@@ -46,6 +46,7 @@ func (a *app) heldElsewhere() (chatlist.Row, bool) {
 // tray identify what was waiting, so an answer cannot send words the person
 // changed or move a message into a different conversation.
 type ownershipReadMsg struct {
+	retryIdle    bool
 	admissionErr error
 	file, draft  string
 	host         string
@@ -68,6 +69,8 @@ type ownershipReadMsg struct {
 }
 
 type sendHold struct {
+	// retryIdle belongs only to an uncertain take-back by this open window.
+	retryIdle bool
 	// awaitingWriter belongs only to this window's successful move, never to a listing receipt.
 	awaitingWriter bool
 	// A listing or notice wakes every send waiting for this window's writer.
@@ -120,6 +123,16 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		a.machineRead.sendHolds[filepath.Base(session.DirOf(file))] = hold
 	}
 	host := a.relayHost()
+	for _, row := range a.machineRead.rows {
+		if row.Cell == filepath.Base(session.DirOf(file)) && (hold.retryIdle || row.AutoOpen && row.Mine && row.Released) {
+			waiting := a.machineRead
+			waiting.checking, waiting.host = true, host
+			if line := waiting.waitWord(); line != "" {
+				a.note(line)
+			}
+			break
+		}
+	}
 	chips := slices.Clone(a.chips)
 	pastes := slices.Clone(a.pastes)
 	var first *composerState
@@ -173,7 +186,7 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		} else {
 			rows, version, err = chatlist.RowsForSend(ctx, src)
 		}
-		msg := ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, notHeld: notHeld, reading: homeMachinesMsg{rows: rows, version: version, err: err, readWithin: readWithin}, host: host, pastes: pastes, writerWaitFailed: writerWaitFailed, writerStopped: writerStopped, writerDisplaced: writerDisplaced}
+		msg := ownershipReadMsg{retryIdle: hold.retryIdle, file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, notHeld: notHeld, reading: homeMachinesMsg{rows: rows, version: version, err: err, readWithin: readWithin}, host: host, pastes: pastes, writerWaitFailed: writerWaitFailed, writerStopped: writerStopped, writerDisplaced: writerDisplaced}
 		id := filepath.Base(session.DirOf(file))
 		if local, ok := src.(sendLeaseSource); ok {
 			msg.proof = true
@@ -188,7 +201,7 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 			remote = msg.leaseCell
 		}
 		for _, row := range rows {
-			if row.Cell == remote && (row.Status == chatlist.Idle || row.Status == chatlist.Off) {
+			if row.Cell == remote && (row.Status == chatlist.Idle || row.Status == chatlist.Off || hold.retryIdle && row.Mine) {
 				if head, _ := cellstore.Head(cell.Cell{ID: id, Root: session.DirOf(file)}); head != nil {
 					msg.head = head.Turn.ID
 				}
@@ -304,6 +317,10 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if row.Status == chatlist.Here && row.Fence == fence && !(msg.notHeld && (held.awaitingWriter || msg.writerStopped) && !msg.local) && (!held.blocked || held.seen && row.Mine && !held.failed) {
 			if held.blocked {
 				held.blocked, held.seen = false, false
+				a.machineRead.sendHolds[id] = held
+			}
+			if held.retryIdle {
+				held.retryIdle = false
 				a.machineRead.sendHolds[id] = held
 			}
 			return msg.resume()
@@ -449,7 +466,10 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 
 // awaitSendWriter waits only for an uninstalled writer. Displacement ends the
 // wait even when the writer's renewal facts are indistinguishable from startup.
-func awaitSendWriter(ctx context.Context, writer renewalReader, displaced <-chan struct{}) (bool, error) {
+func awaitSendWriter(ctx context.Context, writer renewalReader, displaced <-chan struct{}, retaking ...bool) (bool, error) {
+	// A stopped writer still ends an ordinary startup wait. Only a previously
+	// uncertain take-back waits for its successful admission's cached status.
+	pendingTakeBack := len(retaking) > 0 && retaking[0]
 	var poll *time.Ticker
 	defer func() {
 		if poll != nil {
@@ -472,7 +492,7 @@ func awaitSendWriter(ctx context.Context, writer renewalReader, displaced <-chan
 			changed = source.RenewalChanges()
 		}
 		_, period, holding := writer.RenewalStatus()
-		if holding || period > 0 {
+		if holding || period > 0 && !pendingTakeBack {
 			return holding, nil
 		}
 		if changed == nil {

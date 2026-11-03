@@ -62,6 +62,9 @@ type Batcher struct {
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
 	closing   bool       // The closing caller owns subsequent publishes and release.
 	released  bool       // An idle reader must reacquire before publishing or renewing.
+	// acquireUncertain keeps this released window read-only until a fresh
+	// conditional acquisition returns. Device identity cannot prove a window.
+	acquireUncertain bool
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once

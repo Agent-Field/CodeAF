@@ -205,7 +205,9 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	peer.waitFor(t, 10*time.Second, func(_ string, data any) bool {
 		changed, ok := data.(appwire.ChatChanged)
-		return ok && changed.Chat.Cell == agent.ID && changed.Chat.Seen == row.Seen && changed.Chat.Online != nil && *changed.Chat.Online
+		// Release preserves head and fence. Wait for its idle status too,
+		// rather than matching an earlier live row with the same receipt.
+		return ok && changed.Chat.Cell == agent.ID && changed.Chat.Seen == row.Seen && changed.Chat.Status == row.Status && changed.Chat.Online != nil && *changed.Chat.Online
 	})
 	peer.mu.Lock()
 	cursor := len(peer.events)
@@ -288,6 +290,7 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	changes := 0
 	for _, data := range peer.data[cursor:] {
 		if changed, ok := data.(appwire.ChatChanged); ok && changed.Chat.Cell == agent.ID {
+			t.Logf("I2 row changed during quiet measurement: %+v", changed.Chat)
 			changes++
 		}
 	}

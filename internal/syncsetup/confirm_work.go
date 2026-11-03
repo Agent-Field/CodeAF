@@ -109,6 +109,11 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if idleAdmission && d.batcher.AcquireUncertain() && v.Cell.Lease.Expires > v.Now {
+		// A newer own-device fence cannot identify this window. Do not renew
+		// or adopt it; a retry can conditionally acquire once it lapses.
+		return false, d.Gate()
+	}
 	v, err = d.renewIdleLease(ctx, v, fence)
 	if err != nil {
 		return false, err
@@ -141,26 +146,21 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 			if readErr != nil {
 				return false, readErr
 			}
+			if d.batcher.AcquireUncertain() {
+				return false, d.Gate()
+			}
 			if fresh.Cell.Lease.Expires > fresh.Now {
 				d.confirmHolder(ctx, fresh.Cell.Lease)
 			}
 			return false, nil
 		}
 		if err != nil || !resumed {
+			if idleAdmission && d.batcher.AcquireUncertain() {
+				d.uncertainAcquire(ctx)
+			}
 			return false, err
 		}
-		d.mu.Lock()
-		d.viewer, d.lost = Viewer{}, false
-		version := d.noticeVersion.Add(1)
-		d.mu.Unlock()
-		if err := d.confirmSendLease(ctx); err != nil {
-			d.availableAfterWithin(ctx, sendLease{}, directory.Lease{})
-			return false, err
-		}
-		d.released.Store(false)
-		d.releaseDone.Store(false)
-		d.ownershipNotice(ctx, version, Viewer{})
-		return true, nil
+		return d.finishIdleAcquire(ctx)
 	}
 	if lease.Device == d.sync.Device.ID() && lease.Fence == fence {
 		wasReleased := d.released.Load()
@@ -286,6 +286,9 @@ func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 }
 
 func (d *Drive) availableAfterWithin(ctx context.Context, held sendLease, reading directory.Lease) {
+	if d.released.Load() && d.batcher != nil && d.batcher.AcquireUncertain() {
+		return
+	}
 	viewer := Viewer{Line: chatlist.Available}
 	d.mu.Lock()
 	// A zero receipt belongs to the released viewer. Reacquisition clears
@@ -322,4 +325,34 @@ func (d *Drive) confirmSendLease(ctx context.Context) error {
 		return d.recordSendLeaseWithin(ctx)
 	}
 	return d.recordSendLease()
+}
+
+func (d *Drive) uncertainAcquire(ctx context.Context) {
+	viewer := Viewer{Line: executor.TakeBackRetryLine}
+	version := func() uint64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.viewer = viewer
+		return d.noticeVersion.Add(1)
+	}()
+	d.ownershipNotice(ctx, version, viewer)
+}
+
+// finishIdleAcquire records authority before opening the work door. The caller
+// holds workMu on the idle path; ordinary lapsed writers retain their old path.
+func (d *Drive) finishIdleAcquire(ctx context.Context) (bool, error) {
+	version := func() uint64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.viewer, d.lost = Viewer{}, false
+		return d.noticeVersion.Add(1)
+	}()
+	if err := d.confirmSendLease(ctx); err != nil {
+		d.availableAfterWithin(ctx, sendLease{}, directory.Lease{})
+		return false, err
+	}
+	d.released.Store(false)
+	d.releaseDone.Store(false)
+	d.ownershipNotice(ctx, version, Viewer{})
+	return true, nil
 }

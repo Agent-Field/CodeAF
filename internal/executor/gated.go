@@ -1,10 +1,21 @@
 package executor
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// TakeBackWithin bounds a released window's ownership write on a slow relay.
+const TakeBackWithin = 15 * time.Second
+
+// TakeBackRetryLine keeps an unknown ownership write distinct from displacement.
+const TakeBackRetryLine = "couldn't confirm taking this chat back from the sync service; try again"
 
 // WorkRefusal retains the drive's sentence and the device that continued the
 // chat. Surfaces may dress the facts without classifying the sentence.
 type WorkRefusal struct {
+	// Retryable keeps an uncertain take-back out of the displacement card.
+	Retryable  bool   `json:"retryable,omitempty"`
 	Line       string `json:"line"`
 	HolderID   string `json:"holder_id,omitempty"`
 	HolderName string `json:"holder_name,omitempty"`
