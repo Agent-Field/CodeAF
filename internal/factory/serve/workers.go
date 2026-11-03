@@ -562,6 +562,7 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
 	h.applyWorker(w, r, false, func(it *factory.Item) error {
 		before := failureKey(it.Failure)
+		spentBefore := factory.JobSpent(*it)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
 			return err
 		}
@@ -570,7 +571,7 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			// can then name cumulative spend despite an ambiguous later response.
 			for i := range it.ReportReceipts {
 				if it.ReportReceipts[i].Lease == r.PathValue("lease") {
-					it.ReportReceipts[i].AdditionalCost += report.Cost
+					it.ReportReceipts[i].AdditionalCost += factory.JobSpent(*it) - spentBefore
 				}
 			}
 			// Only the initial empty report creates a settlement anchor. Later

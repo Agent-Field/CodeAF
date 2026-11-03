@@ -648,7 +648,7 @@ func (d *unreadDisk) proposeTo(at time.Time) {
 	}); err != nil {
 		d.t.Fatal(err)
 	}
-	d.backend.reopenProposals(&appCrewRun{asks: map[string]appwire.Ask{}})
+	d.backend.reopenProposals(newAppCrewRun())
 }
 
 // A CREW PROPOSAL THE PERSON SAW STAYS READ AFTER A RESTART: asked again at
@@ -662,7 +662,7 @@ func TestAProposalThePersonSawStaysReadAfterARestart(t *testing.T) {
 	}
 	d.start()
 	d.listed()
-	d.backend.reopenProposals(&appCrewRun{asks: map[string]appwire.Ask{}})
+	d.backend.reopenProposals(newAppCrewRun())
 	if d.listed().Unread {
 		t.Fatal("a proposal the person saw reads unread again after a restart")
 	}
@@ -689,7 +689,8 @@ func TestACrewDecisionKeepsTheTimeItWasRaised(t *testing.T) {
 	d := newUnreadDisk(t)
 	d.listed()
 	raised := time.Now().Add(-time.Minute)
-	run := &appCrewRun{asks: map[string]appwire.Ask{}, packets: map[string]teamstore.Packet{"k1": {ID: "k1", Raised: raised}}}
+	run := newAppCrewRun()
+	run.packets["k1"] = teamstore.Packet{ID: "k1", Raised: raised}
 	d.backend.locked(func() { d.backend.crewRun = run })
 	ask := appwire.Ask{ID: appCrewAskPrefix + "k1", Agent: d.id, Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewDecision, Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewDecision, Ref: "k1"}}
 	d.backend.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})

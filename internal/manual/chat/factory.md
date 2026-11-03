@@ -254,7 +254,11 @@ An issue keeps the PR it opens, its checks, reviews and merge status. One final 
 
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
+A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job removes chips and their leftover comma, semicolon and colon separators from its ask, preserving periods, question marks and exclamation marks. With no chips, only surrounding whitespace is trimmed. Its short title still removes stray punctuation.
+
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
+
+An added conversation, check or approval step may say `when: touches auth` to run only on jobs in auth, billing or crypto; the other conditions are `always`, `thin`, `large` and `has ui`. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 
 Once a job has landed, a nonempty step edit is refused with `the job has landed, so the steps can no longer be edited`, whether or not it had a proof step. Landed jobs do not offer step editing.
 
@@ -369,6 +373,8 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 round. The job reads **Paused**, with no question to answer. Its work, step
 conversation and spending stay. No further model round starts while it is
 paused; costs already incurred by the cancelled call still count.
+Spending after a resume adds to that same round, including when another worker
+continues the job. Repeated spending reports count once and cannot lower a round's cost.
 
 **Resume** continues the step and round where they paused, in the same
 conversation when it can be reopened. It takes a free Jobs at once slot, or

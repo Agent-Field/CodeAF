@@ -880,6 +880,10 @@ func plannedCheck(add Stage, place string) (Stage, string, error) {
 const CheckRoundsMost = 9
 
 func plannedStage(add Stage) (st Stage, when string, bad error) {
+	add.When = strings.ToLower(strings.TrimSpace(add.When))
+	if add.When != "" && !oneOf(add.When, WhenWords) {
+		return Stage{}, "", fmt.Errorf("when is one of %s", strings.Join(WhenWords, ", "))
+	}
 	// AN APPROVE STEP IS ADDED BY ITS NAME OR ITS KIND, and has no ask: the
 	// person is the step. Its place is the ask's time word or the edit's
 	// after, as any stage's is.
@@ -889,9 +893,7 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 	rest = strings.TrimSuffix(rest, " step")
 	if add.Kind == StageGate || ApproveWord(strings.ToLower(strings.TrimSpace(add.Name))) || ApproveWord(rest) {
 		a := Approve(nil)
-		if w := strings.ToLower(strings.TrimSpace(add.When)); w != "" && oneOf(w, WhenWords) {
-			a.When = w
-		}
+		a.When = add.When
 		a.Why, a.By = add.Why, add.By
 		return a, place, nil
 	}
