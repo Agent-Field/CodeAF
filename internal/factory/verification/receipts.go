@@ -193,7 +193,9 @@ func PrepareCallIn(transcript, ownerDir, command, callID string) (string, error)
 	// The Unix shell resolver also permits sh without Bash. That shell keeps
 	// its original execution path and journal evidence; export -f is Bash-only.
 	var contextFields []string
-	for _, name := range checkContextNames { contextFields = append(contextFields, `"${`+name+`-}"`) }
+	for _, name := range checkContextNames {
+		contextFields = append(contextFields, `"${`+name+`-}"`)
+	}
 	prefix := observerShellGuard + "\n" + shell.CargoPathSetup() + worktreeStateFunction + `
 _codeaf_check() {
  local _codeaf_file _codeaf_status _codeaf_cwd _codeaf_root _codeaf_scope
@@ -339,7 +341,7 @@ func Read(transcript string) ([]Check, error) {
 					}
 				} else {
 					c.Cwd = fields[0]
-					c.Context = fields[1:1+len(checkContextNames)]
+					c.Context = fields[1 : 1+len(checkContextNames)]
 					c.Args = fields[1+len(checkContextNames) : len(fields)-1]
 				}
 			}

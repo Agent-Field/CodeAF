@@ -2,7 +2,7 @@ package verification
 
 import (
 	"encoding/json"
- "os"
+	"os"
 	"path"
 	"slices"
 	"sort"
@@ -189,11 +189,17 @@ func goRequirement(c Check) (goScope, bool) {
 // by a measured pass. Shell setup, substitutions and unknown contexts cannot
 // establish the identity of a check that never ran.
 func CoversUnrun(command, cwd string, pass Check) bool {
- if strings.ContainsAny(command, "\"'`$;&|<>\\\n()") { return false }
- var context []string
- for _, name := range checkContextNames { context = append(context, os.Getenv(name)) }
- old, ok := goRequirement(Check{Args:strings.Fields(command), Cwd:cwd, Context:context})
- if !ok || pass.Cwd != cwd || pass.Diagnostic || pass.Problem != "" || pass.Exit == nil || *pass.Exit != 0 || pass.Before.Head == "" || pass.Before != pass.After { return false }
- next, ok := goRequirement(pass)
- return ok && next.covers(old)
+	if strings.ContainsAny(command, "\"'`$;&|<>\\\n()") {
+		return false
+	}
+	var context []string
+	for _, name := range checkContextNames {
+		context = append(context, os.Getenv(name))
+	}
+	old, ok := goRequirement(Check{Args: strings.Fields(command), Cwd: cwd, Context: context})
+	if !ok || pass.Cwd != cwd || pass.Diagnostic || pass.Problem != "" || pass.Exit == nil || *pass.Exit != 0 || pass.Before.Head == "" || pass.Before != pass.After {
+		return false
+	}
+	next, ok := goRequirement(pass)
+	return ok && next.covers(old)
 }
