@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Process action checks respect a crew conversation still opening
-pr: 0
+pr: 2264
 surface: [engine]
 invalidates:
   - "Was assumed by the concurrent action check: every read of an idle crew member already has a live conversation. Is true: reads during opening can answer from saved history; the conversation announces readiness with agent.changed."
