@@ -1992,6 +1992,7 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // when why is the step's own error, stopped when it is a person's; nil when it
 // cut none, and the line is then about the job.
 func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.StepProgress {
+    opened := why == nil && it.State == factory.StateShipped && it.PublishStatus != nil && it.PublishStatus.State == "opened"
 	event := factory.ProgressStopped
 	if why != nil {
 		event = factory.ProgressFailed
@@ -2032,7 +2033,7 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	s.Ended = now
 	s.Paused = false
-    if it.PullRequest != nil {
+    if opened && it.PullRequest != nil {
         it.State = factory.StateShipped
         it.MarkPublishing("opened", "", "", now)
         loopSay(it, now, "said", stoppedPRWords(it.PullRequest.URL))
