@@ -456,8 +456,13 @@ func (connection *workstreamWireConnection) read(t *testing.T) map[string]any {
 
 func (connection *workstreamWireConnection) call(t *testing.T, method string, params any) map[string]any {
 	t.Helper()
+	raw := workstreamWireEncode(t, map[string]any{"id": connection.Next + 1, "method": method, "params": params})
+	return connection.callRaw(t, raw)
+}
+
+func (connection *workstreamWireConnection) callRaw(t *testing.T, raw []byte) map[string]any {
+	t.Helper()
 	connection.Next++
-	raw := workstreamWireEncode(t, map[string]any{"id": connection.Next, "method": method, "params": params})
 	writeErr := make(chan error, 1)
 	connection.Writes.Add(1)
 	go func() {
@@ -519,6 +524,7 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 		Backend: backend, Recorder: recorder, Now: now,
 		IDs: map[string]string{"conv_5b9e": origin.ID, "ms_usage": "conformance-milestone", "draft_418c": "conformance-draft"},
 	}
+	fixture.IDs["/Users/ada/billing/usage-pricing.md"] = workstreamSourcesFile(t)
 	if name == "workstream.create" {
 		// An unobserved member job keeps all optional numbers unknown on create.
 		return fixture
@@ -629,6 +635,9 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 		if name != "goahead.grant" {
 			fixture.grant(t)
 		}
+	}
+	if name == "source.list" || name == "source.update" || name == "source.remove" {
+		fixture.sources(t)
 	}
 	return fixture
 }
@@ -832,7 +841,7 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		"page.list", "page.get", "page.save", "page.create", "page.update", "page.move",
 		"page.delete", "page.history", "page.restore", "record.list", "record.propose",
 		"record.keep", "record.drop", "record.supersede", "goahead.list", "goahead.grant",
-		"goahead.revoke", "collections.add", "workstream.changed",
+		"goahead.revoke", "source.list", "source.add", "source.update", "source.remove", "collections.add", "workstream.changed",
 	}
 	errorCases := []workstreamWireErrorCase{
 		{Name: "bad_params", Method: "workstream.get", Code: "bad_params"},
@@ -854,6 +863,19 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		{Name: "records_too_large", Method: "record.propose", Code: "too_large"},
 		{Name: "unknown_method", Method: "workstream.list", Code: "unknown_method", Example: "workstream.list"},
 		{Name: "busy", Method: "workstream.update", Code: "busy"},
+		// WP-12 (b), (h): each sources door exercises its own refusals.
+		{Name: "source_list_bad", Method: "source.list", Code: "bad_params"},
+		{Name: "source_list_missing", Method: "source.list", Code: "not_found"},
+		{Name: "source_add_bad", Method: "source.add", Code: "bad_params"},
+		{Name: "source_add_missing", Method: "source.add", Code: "not_found"},
+		{Name: "source_add_done", Method: "source.add", Code: "conflict"},
+		{Name: "source_add_limit", Method: "source.add", Code: "too_large"},
+		{Name: "source_update_bad", Method: "source.update", Code: "bad_params"},
+		{Name: "source_update_missing", Method: "source.update", Code: "not_found"},
+		{Name: "source_update_done", Method: "source.update", Code: "conflict"},
+		{Name: "source_remove_bad", Method: "source.remove", Code: "bad_params"},
+		{Name: "source_remove_missing", Method: "source.remove", Code: "not_found"},
+		{Name: "source_remove_done", Method: "source.remove", Code: "conflict"},
 	}
 	comparison := &workstreamWireComparison{Questions: make(map[string]string), Differed: make(map[string]bool)}
 	for _, question := range workstreamWireDocQuestions {
@@ -1254,6 +1276,9 @@ func workstreamWireEvent(t *testing.T, contract *workstreamWireContract, example
 func workstreamWireError(t *testing.T, contract *workstreamWireContract, files map[string]workstreamWireExamples, errorCase workstreamWireErrorCase) {
 	t.Helper()
 	fixture := workstreamWireSeed(t, "workstream.get", 0)
+	if errorCase.Method == "source.update" || errorCase.Method == "source.remove" {
+		fixture.sources(t)
+	}
 	backend := fixture.Backend
 	examples := files[errorCase.Method]
 	params := fixture.prepare(t, examples.Examples.Params[errorCase.ParamsExample])
@@ -1315,7 +1340,10 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 	case "busy":
 		release = workstreamWireHoldWriter(t, backend)
 	default:
-		t.Fatalf("unimplemented error case %s", errorCase.Name)
+		if !workstreamWireSourceError(t, fixture, errorCase, params) {
+			t.Fatalf("unimplemented error case %s", errorCase.Name)
+		}
+		changedShape = strings.HasSuffix(errorCase.Name, "_bad")
 	}
 	if !changedShape {
 		comparison := &workstreamWireComparison{}

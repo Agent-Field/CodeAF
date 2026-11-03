@@ -118,6 +118,19 @@ func (f *fakeWorkstreamer) WorkstreamGoAheadRevoke(WorkstreamGoAheadRevokeParams
 	return WorkstreamGoAheadRevokeResult{}, ErrWorkstreamsNotYet
 }
 
+func (f *fakeWorkstreamer) WorkstreamSourceList(WorkstreamSourceListParams) (WorkstreamSourceListResult, error) {
+	return WorkstreamSourceListResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamSourceAdd(WorkstreamSourceAddParams) (WorkstreamSourceAddResult, error) {
+	return WorkstreamSourceAddResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamSourceUpdate(WorkstreamSourceUpdateParams) (WorkstreamSourceUpdateResult, error) {
+	return WorkstreamSourceUpdateResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamSourceRemove(WorkstreamSourceRemoveParams) (WorkstreamSourceRemoveResult, error) {
+	return WorkstreamSourceRemoveResult{}, ErrWorkstreamsNotYet
+}
+
 func workstreamHelloHasFeature(hello map[string]any) bool {
 	for _, feature := range features(hello) {
 		if feature == FeatureWorkstreams {
@@ -127,10 +140,10 @@ func workstreamHelloHasFeature(hello map[string]any) bool {
 	return false
 }
 
-// V1: the contract index and dispatch table name exactly the same 25 methods.
+// V1, WP-12: the contract index and dispatch table name the same 29 methods.
 func TestEveryWorkstreamMethodIsRegistered(t *testing.T) {
-	if len(WorkstreamMethods) != 25 {
-		t.Fatalf("contract has %d methods, want 25", len(WorkstreamMethods))
+	if len(WorkstreamMethods) != 29 {
+		t.Fatalf("contract has %d methods, want 29", len(WorkstreamMethods))
 	}
 	known := make(map[string]bool, len(WorkstreamMethods))
 	served := Methods()
@@ -144,7 +157,7 @@ func TestEveryWorkstreamMethodIsRegistered(t *testing.T) {
 		}
 	}
 	for _, name := range served {
-		for _, prefix := range []string{"workstream.", "page.", "record.", "goahead."} {
+		for _, prefix := range []string{"workstream.", "page.", "record.", "goahead.", "source."} {
 			if strings.HasPrefix(name, prefix) && !known[name] {
 				t.Errorf("registered method not in contract: %s", name)
 			}
@@ -205,8 +218,8 @@ func TestWorkstreamsFeatureFollowsTheEngine(t *testing.T) {
 	}
 	hello := withWorkstreamsFeature(Hello{}, fake)
 	hello = withWorkstreamsFeature(hello, fake)
-	if len(hello.Features) != 1 || hello.Features[0] != FeatureWorkstreams {
-		t.Fatal("feature hook must add workstreams exactly once")
+	if len(hello.Features) != 2 || hello.Features[0] != FeatureWorkstreams || hello.Features[1] != FeatureWorkstreamSources {
+		t.Fatal("feature hook must add workstreams and sources exactly once")
 	}
 }
 

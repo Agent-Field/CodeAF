@@ -24,7 +24,19 @@
           }
         ],
         "model": "openai/gpt-5.2",
-        "client_id": "create_684a"
+        "client_id": "create_684a",
+        "sources": [
+          {
+            "kind": "repo",
+            "repo": "acme/billing",
+            "read_by_jobs": true
+          },
+          {
+            "kind": "file",
+            "path": "/Users/ada/billing/usage-pricing.md",
+            "read_by_jobs": true
+          }
+        ]
       }
     ],
     "result": [

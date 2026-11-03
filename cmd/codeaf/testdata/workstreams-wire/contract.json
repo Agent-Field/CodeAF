@@ -24,7 +24,11 @@
     "record.supersede",
     "goahead.list",
     "goahead.grant",
-    "goahead.revoke"
+    "goahead.revoke",
+    "source.list",
+    "source.add",
+    "source.update",
+    "source.remove"
   ],
   "events": [
     {
@@ -155,7 +159,21 @@
       "pages",
       "records",
       "goaheads",
-      "jobs"
+      "jobs",
+      "sources"
+    ],
+    "WorkstreamSourceItemKind": [
+      "file",
+      "repo",
+      "issue",
+      "link",
+      "kept"
+    ],
+    "WorkstreamKeptKind": [
+      "record",
+      "page",
+      "message",
+      "factory_job"
     ]
   },
   "types": {
@@ -769,6 +787,120 @@
         "required": false
       }
     },
+    "WorkstreamKeptRef": {
+      "kind": {
+        "type": "WorkstreamKeptKind",
+        "required": true
+      },
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "chat_id": {
+        "type": "string",
+        "required": false
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "WorkstreamSourceAdd": {
+      "kind": {
+        "type": "WorkstreamSourceItemKind",
+        "required": true
+      },
+      "path": {
+        "type": "string",
+        "required": false
+      },
+      "repo": {
+        "type": "string",
+        "required": false
+      },
+      "number": {
+        "type": "integer",
+        "required": false
+      },
+      "url": {
+        "type": "string",
+        "required": false
+      },
+      "ref": {
+        "type": "WorkstreamKeptRef",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": false
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamSourceItem": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamSourceItemKind",
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "path": {
+        "type": "string",
+        "required": false
+      },
+      "repo": {
+        "type": "string",
+        "required": false
+      },
+      "number": {
+        "type": "integer",
+        "required": false
+      },
+      "url": {
+        "type": "string",
+        "required": false
+      },
+      "ref": {
+        "type": "WorkstreamKeptRef",
+        "required": false
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": true
+      },
+      "proposed": {
+        "type": "boolean",
+        "required": true
+      },
+      "why": {
+        "type": "string",
+        "required": false
+      },
+      "added_by": {
+        "type": "WorkstreamActor",
+        "required": true
+      },
+      "added_at": {
+        "type": "string (RFC 3339)",
+        "required": true
+      },
+      "gone": {
+        "type": "boolean",
+        "required": false
+      }
+    },
     "WorkstreamListParams": {},
     "WorkstreamListResult": {
       "workstreams": {
@@ -811,6 +943,10 @@
       },
       "client_id": {
         "type": "string",
+        "required": false
+      },
+      "sources": {
+        "type": "WorkstreamSourceAdd[]",
         "required": false
       }
     },
@@ -1273,6 +1409,102 @@
     "WorkstreamGoAheadRevokeResult": {
       "goahead": {
         "type": "WorkstreamGoAhead",
+        "required": true
+      }
+    },
+    "WorkstreamSourceListParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamSourceListResult": {
+      "sources": {
+        "type": "WorkstreamSourceItem[]",
+        "required": true
+      }
+    },
+    "WorkstreamSourceAddParams": {
+      "workstream_id": {
+        "type": "string",
+        "required": true
+      },
+      "kind": {
+        "type": "WorkstreamSourceItemKind",
+        "required": true
+      },
+      "path": {
+        "type": "string",
+        "required": false
+      },
+      "repo": {
+        "type": "string",
+        "required": false
+      },
+      "number": {
+        "type": "integer",
+        "required": false
+      },
+      "url": {
+        "type": "string",
+        "required": false
+      },
+      "ref": {
+        "type": "WorkstreamKeptRef",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "required": false
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamSourceAddResult": {
+      "source": {
+        "type": "WorkstreamSourceItem",
+        "required": true
+      },
+      "already": {
+        "type": "boolean",
+        "required": true
+      }
+    },
+    "WorkstreamSourceUpdateParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "required": false
+      },
+      "read_by_jobs": {
+        "type": "boolean",
+        "required": false
+      },
+      "keep": {
+        "type": "boolean",
+        "required": false
+      }
+    },
+    "WorkstreamSourceUpdateResult": {
+      "source": {
+        "type": "WorkstreamSourceItem",
+        "required": true
+      }
+    },
+    "WorkstreamSourceRemoveParams": {
+      "id": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "WorkstreamSourceRemoveResult": {
+      "source": {
+        "type": "WorkstreamSourceItem",
         "required": true
       }
     }

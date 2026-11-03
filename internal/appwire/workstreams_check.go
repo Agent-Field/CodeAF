@@ -235,6 +235,9 @@ func (p WorkstreamCreateParams) Check() error {
 			return err
 		}
 	}
+	if len(p.Sources) > workstream.CreateSourcesMax {
+		return Errorf(CodeBadParams, "create takes at most %d sources", workstream.CreateSourcesMax)
+	}
 	return nil
 }
 
