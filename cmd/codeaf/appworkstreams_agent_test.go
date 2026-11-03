@@ -308,7 +308,9 @@ func TestWorkstreamAgentGoAheadTargetsAreValidatedWithoutGranting(t *testing.T) 
 		func(a *session.WorkstreamGoAheadAsk) { a.Job = 8 },
 		func(a *session.WorkstreamGoAheadAsk) { a.Factory = "another" },
 		func(a *session.WorkstreamGoAheadAsk) { a.Scope, a.Factory, a.Job, a.Wave = "wave", "", 0, 9 },
-		func(a *session.WorkstreamGoAheadAsk) { a.Scope, a.Factory, a.Job, a.MilestoneID = "milestone", "", 0, "missing" },
+		func(a *session.WorkstreamGoAheadAsk) {
+			a.Scope, a.Factory, a.Job, a.MilestoneID = "milestone", "", 0, "missing"
+		},
 		func(a *session.WorkstreamGoAheadAsk) { a.CapUSD = 0 },
 		func(a *session.WorkstreamGoAheadAsk) { a.EndsOn = "2026-11-03" },
 		func(a *session.WorkstreamGoAheadAsk) { a.Wave = 1 },
