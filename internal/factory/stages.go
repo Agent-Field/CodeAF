@@ -1,6 +1,9 @@
 package factory
 
-import "strings"
+import (
+ "path"
+ "strings"
+)
 
 // Fits says whether a stage's [Stage.When] fits an item, which is how a
 // banked recipe adapts to the item in front of it without anybody touching the
@@ -10,11 +13,10 @@ import "strings"
 // with its reason rather than leaving it out, so a person can see what the
 // recipe would have done.
 //
-// THE CONDITIONS ARE READ OFF THE ITEM'S OWN TRIAGE AND NOTHING ELSE, so a
-// frame can answer the question from a snapshot without touching disk. An
-// empty condition and `always` fit everything. A condition this function does
-// not know fits too: A STAGE IS NEVER SKIPPED ON A WORD NOBODY TAUGHT IT, because
-// a silent skip is a stage that quietly never runs.
+// Conditions read the item's snapshot without touching disk. File conditions
+// use the measured change, then forge files, then an explicit triage area.
+// Unknown files and area fit conservatively; the runner decides file conditions
+// when their step comes up. Empty, always and unrecognized conditions fit too.
 func Fits(st Stage, it Item) bool {
 	return whenFits(st.When, it)
 }
@@ -30,9 +32,9 @@ func whenFits(cond string, it Item) bool {
 		shown, _ := ShownSize(it)
 		return shown == "L"
 	case "touches auth":
-		return areaIn(it.Triage.Area, "auth", "billing", "crypto")
+		return filesIn(it, "auth", "billing", "crypto")
 	case "has ui":
-		return areaIn(it.Triage.Area, "tui", "pages", "render")
+		return filesIn(it, "tui", "pages", "render", "ui")
 	}
 	return true
 }
@@ -45,4 +47,39 @@ func areaIn(area string, names ...string) bool {
 		}
 	}
 	return false
+}
+
+// FileCondition says whether a stage waits for the files known at its turn.
+// These phases stay in the pending tail even if today's snapshot does not fit.
+func FileCondition(st Stage) bool {
+ switch strings.ToLower(strings.TrimSpace(st.When)) {
+ case "touches auth", "has ui":
+  return true
+ }
+ return false
+}
+
+func filesIn(it Item, names ...string) bool {
+ if it.Change != nil && len(it.Change.Files) > 0 {
+  for _, f := range it.Change.Files {
+   if pathIn(f.Path, names...) { return true }
+  }
+  return false
+ }
+ if len(it.Files) > 0 {
+  for _, f := range it.Files {
+   if pathIn(f.Path, names...) { return true }
+  }
+  return false
+ }
+ return strings.TrimSpace(it.Triage.Area) == "" || areaIn(it.Triage.Area, names...)
+}
+
+func pathIn(file string, names ...string) bool {
+ for _, segment := range strings.Split(strings.ToLower(file), "/") {
+  if areaIn(segment, names...) || areaIn(strings.TrimSuffix(segment, path.Ext(segment)), names...) {
+   return true
+  }
+ }
+ return false
 }

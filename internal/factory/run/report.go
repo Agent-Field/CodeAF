@@ -378,7 +378,7 @@ func ensureStream(it *factory.Item, now time.Time) {
 		return
 	}
 	for _, st := range it.Stages {
-		if st.On && factory.Fits(st, *it) {
+		if st.On && (factory.FileCondition(st) || factory.Fits(st, *it)) {
 			it.Stream.Phases = append(it.Stream.Phases, factory.Phase{Name: st.Name, Kind: kindOf(st), State: factory.PhasePending, Note: st.Ask})
 		}
 	}

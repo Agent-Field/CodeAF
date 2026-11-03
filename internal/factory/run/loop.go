@@ -313,7 +313,7 @@ func loopPhases(it factory.Item) []factory.Phase {
 // the plan's approve step turned off while the rules the job started under
 // guard paths ([forcedGate]).
 func runsIn(it factory.Item, s factory.Stage) bool {
-	return (s.On || forcedGate(it, s)) && factory.Fits(s, it)
+	return (s.On || forcedGate(it, s)) && (factory.FileCondition(s) || factory.Fits(s, it))
 }
 
 // forcedGate says whether s is the plan's approve step ([factory.PlanGateStage])
@@ -856,6 +856,24 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	}
 	st, index := lp.stageAt(it, i)
 	name := st.Name
+
+ // File conditions are decided only at the step, after earlier rounds have
+ // recorded their change. A skipped phase is finished and keeps its reason.
+ if factory.FileCondition(st) && !factory.Fits(st, it) {
+  reason := "skipping " + name + ": when " + st.When + " does not match the change files"
+  if it.Change == nil || len(it.Change.Files) == 0 {
+   if len(it.Files) == 0 { reason = "skipping " + name + ": when " + st.When + " does not match the triage area" }
+  }
+  now := lp.r.now()
+  return lp.write(c, func(it *factory.Item) error {
+   ph := &it.Stream.Phases[i]
+   setPhaseState(ph, factory.PhaseDone, now)
+   ph.Note = reason
+   it.Stream.Cur = i
+   loopSay(it, now, "said", reason)
+   return nil
+  }) == nil
+ }
 
 	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
