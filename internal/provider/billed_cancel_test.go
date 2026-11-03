@@ -35,7 +35,7 @@ func TestBilledCancellation(t *testing.T) {
    client := receiptTestClient(t, server)
    results := make(chan Reconciled, 3)
    ctx = WithCallTag(WithReconcile(ctx, func(r Reconciled) { results <- r }), "caption")
-   ctx = WithStreamObserver(ctx, func(e StreamEvent) { if e.Kind == StreamText { cancel() } })
+   ctx = WithStreamObserver(ctx, func(e StreamEvent) { if e.Kind == StreamDelta { cancel() } })
    _, err := client.CompleteWithMessages(ctx, []ai.Message{{Role:"user", Content:[]ai.ContentPart{{Type:"text", Text:"hello"}}}})
    if err == nil { t.Fatal("cancelled completion succeeded") }
    select {
