@@ -45,6 +45,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
@@ -402,6 +403,11 @@ loop:
 			// one that is idle with nothing reported is asked again (stagereport.go)
 			// until there is nothing left to ask. A spending limit is never asked
 			// past: the turn it would start is refused before it begins.
+			var refused *approval.ProfileReadFailure
+			if errors.As(waitErr, &refused) {
+				idleFailure = &factory.StageResult{Exit: 1, Output: refused.Error()}
+				break loop
+			}
 			if _, stopped := spendStopOf(waitErr); stopped {
 				break loop
 			}

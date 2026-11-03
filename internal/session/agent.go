@@ -116,6 +116,7 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	child.approvalReadParent = a
 	child.managedClient = managed
 	child.clientAccount = account
 	child.clientPool = pool

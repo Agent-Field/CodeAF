@@ -3212,7 +3212,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// that writes. AskConsent is off and InTask is on for the node's own
 		// reason — there is nobody in a worktree to ask.
 		// An unreadable profile still requires a person, just as it does for a worker.
-		ApprovalPolicy: a.taskApprovalPolicy(),
+		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
 		// AND ITS CALLS ARE A JUDGE'S, NOT A WORKER'S. InTask above is about

@@ -25,16 +25,6 @@ package session
 
 import "github.com/Agent-Field/codeaf/internal/approval"
 
-// taskApprovalPolicy preserves the failed-read signal while keeping the task's
-// own allowance. Unknown saved denials still require a person in every child.
-func (a *Agent) taskApprovalPolicy() *approval.Policy {
-	policy := &approval.Policy{Default: approval.ActionAllow}
-	if parent := a.approvalGate(); parent != nil {
-		policy.ProfileReadError = parent.ProfileReadError
-	}
-	return policy
-}
-
 // SetApprovalPolicy replaces the standing gate for the rest of this session.
 //
 // A NIL NEVER REPLACES ANYTHING. Nil is the configured-nothing case and it
@@ -72,6 +62,12 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 // [Agent.SetApprovalPolicy] existed, a single unguarded read became a race the
 // detector finds in a second and a person would never reproduce.
 func (a *Agent) approvalGate() *approval.Policy {
+	if a.approvalReadParent != nil {
+		if parent := a.approvalReadParent.approvalGate(); parent != nil && parent.ProfileReadError != "" {
+			return &approval.Policy{ProfileReadError: parent.ProfileReadError}
+		}
+	}
+
 	if source, ok := a.jobBudgetOf().(interface{ FactoryAuto() bool }); ok && source.FactoryAuto() {
 		return automaticJobPolicy(a.baseApprovalGate())
 	}

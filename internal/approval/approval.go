@@ -450,3 +450,9 @@ func toList(value any) ([]any, bool) {
 		return nil, false
 	}
 }
+
+// ProfileReadFailure is an unattended call refused because the saved rules
+// could not be read. Runners retain this reason ahead of report recovery.
+type ProfileReadFailure struct{ Reason string }
+
+func (e *ProfileReadFailure) Error() string { return e.Reason }

@@ -3206,6 +3206,7 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 // ── tools ───────────────────────────────────────────────────────────────────
 
 type toolResult struct {
+	err          error
 	text         string
 	isError      bool
 	interruption string
@@ -3670,6 +3671,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		if results[index].isError {
 			a.sendBeltStep(ctx, hub, Event{
 				Kind:   EventToolFailed,
+				Err:    results[index].err,
 				Tool:   call.Function.Name,
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],

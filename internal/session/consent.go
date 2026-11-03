@@ -281,14 +281,14 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// worker with no colleague in the room is that this one needed a person and
 	// there is not one.
 	if a.config.InTask {
-		return refusal("refused in a task: " + decision.Rule + " — nobody to ask"), false
+		return approvalRefusal("refused in a task: "+decision.Rule+" — nobody to ask", decision), false
 	}
 
 	// Nobody is watching. Denying is the only honest answer: blocking would
 	// hang a headless run forever on a question with no reader, and allowing
 	// would make "prompt" mean "allow" wherever the surface is not a terminal.
 	if !a.config.AskConsent || hub == nil {
-		return refusal("needs approval but no resolver is attached: " + decision.Rule), false
+		return approvalRefusal("needs approval but no resolver is attached: "+decision.Rule, decision), false
 	}
 
 	allowed, err := a.ask(ctx, hub, call, decision)
@@ -536,6 +536,14 @@ func (a *Agent) PendingConsent() []uint64 {
 		}
 	}
 	return ids
+}
+
+func approvalRefusal(reason string, decision approval.Decision) toolResult {
+	result := refusal(reason)
+	if decision.ProfileReadError != "" {
+		result.err = &approval.ProfileReadFailure{Reason: reason}
+	}
+	return result
 }
 
 // refusal is one refused call as the model sees it: an error result, with the
