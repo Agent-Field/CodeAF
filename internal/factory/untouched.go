@@ -5,11 +5,17 @@ import "reflect"
 // UntouchedIssue is the reconciliation gate, checked on the row under its lock.
 func UntouchedIssue(it Item) bool {
 	if len(it.Stages) > 0 {
-  stages := CopyStages(it.Stages)
-  for i := range stages { if stages[i].By == ByRecipe { stages[i].By = "" } }
-  if !reflect.DeepEqual(stages, DefaultRecipe().For(it.Kind)) { return false }
- }
- for _, stage := range it.Stages {
+		stages := CopyStages(it.Stages)
+		for i := range stages {
+			if stages[i].By == ByRecipe {
+				stages[i].By = ""
+			}
+		}
+		if !reflect.DeepEqual(stages, DefaultRecipe().For(it.Kind)) {
+			return false
+		}
+	}
+	for _, stage := range it.Stages {
 		if stage.By != "" && stage.By != ByRecipe {
 			return false
 		}

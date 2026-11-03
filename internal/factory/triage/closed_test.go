@@ -89,7 +89,9 @@ func TestAPersonsReadPressReadsAClosedIssue(t *testing.T) {
 	}
 	calls := 0
 	call := func(context.Context, string) (string, error) { calls++; return `{"read":"Fix the issue"}`, nil }
-	opts := triage.Options{Standing: func(context.Context, factory.Item) (factory.SourceStanding, error) { return factory.SourceStanding{How: "closed"}, nil }}
+	opts := triage.Options{Standing: func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		return factory.SourceStanding{How: "closed"}, nil
+	}}
 	got := triage.ReadThese(context.Background(), st, call, []int{row.ID}, opts)
 	if calls != 1 || len(got.Read) != 1 {
 		t.Fatalf("press on a closed issue: calls=%d result=%+v", calls, got)

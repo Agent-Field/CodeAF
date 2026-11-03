@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+	"net/http"
 	"net/http/httptest"
-"net/http"
-forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"slices"
 	"strings"
 	"sync"
@@ -1233,17 +1233,22 @@ func TestClosedStartReportsConcurrentRowState(t *testing.T) {
 }
 
 func TestReviewStartRejectsChangedIdentity(t *testing.T) {
- f := newV2Jobs(t)
- f.h.Close()
- it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", GitHubIssueID: 1001})
- srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"id":9001,"number":12,"state":"closed"}`) }))
- defer srv.Close()
- client := forge.NewClient("fixture").WithBaseURL(srv.URL)
- f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
-  return github.Standing(ctx, client, row)
- }
- f.h = serve.New(f.seam, f.cfg)
- f.post(t, it, "start_now", "", 409)
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", GitHubIssueID: 1001})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":9001,"number":12,"state":"closed"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+ if !strings.Contains(w.Body.String(), "now identifies a different GitHub issue") { t.Fatalf("untrue mismatch refusal: %s", w.Body) }
  got, _ := f.st.Get(it.ID)
- if got.State != factory.StateNew { t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State) }
+ if got.State != factory.StateNew {
+		t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State)
+	}
 }

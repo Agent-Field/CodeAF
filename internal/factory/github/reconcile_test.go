@@ -264,7 +264,10 @@ func TestClosedPollNeverStopsRunningOrQueuedJobs(t *testing.T) {
 		t.Fatal("poll interfered with work")
 	}
 	calls := 0
-	if !factory.ClosedForAutomation(context.Background(), f.st.Root(), f.row(1), func(context.Context, factory.Item) (factory.SourceStanding, error) { calls++; return factory.SourceStanding{How: "closed"}, nil }) || calls != 1 {
+	if !factory.ClosedForAutomation(context.Background(), f.st.Root(), f.row(1), func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		calls++
+		return factory.SourceStanding{How: "closed"}, nil
+	}) || calls != 1 {
 		t.Fatal("separate spend guard missing")
 	}
 }
@@ -277,7 +280,7 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 			rng := rand.New(rand.NewSource(seed))
 			for step := 0; step < 120; step++ {
 				n := 1 + rng.Intn(6)
-				switch rng.Intn(9) {
+				switch rng.Intn(12) {
 				case 0:
 					f.state[n] = "closed"
 				case 1:
@@ -302,7 +305,21 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 				case 7:
 					f.status[n] = 404
 				case 8:
-					f.status[n] = 0
+     f.status[n] = 0
+    case 9:
+     row := f.row(n)
+     fresh, err := f.src.Refetch(context.Background(), row)
+     if err == nil {
+      if err := source.Merge(f.st, source.Name, []factory.Item{fresh}); err != nil { t.Fatal(err) }
+      if f.row(n).GitHubIssueID != f.identity[n] { t.Fatalf("seed=%d step=%d direct read identity lost", seed, step) }
+     }
+    case 10:
+     if err := f.st.Update(n, func(it *factory.Item) error { it.Stages = factory.DefaultRecipe().Stages; it.Stages[0].On = false; return nil }); err != nil { t.Fatal(err) }
+     if err := f.st.Update(n, func(it *factory.Item) error { it.PersonTouched = false; return nil }); err != nil { t.Fatal(err) }
+    case 11:
+     row := f.row(n)
+     closed := factory.ClosedForAutomation(context.Background(), "", row, func(ctx context.Context, it factory.Item) (factory.SourceStanding, error) { return source.Standing(ctx, f.api, it) })
+     if row.GitHubIssueID != 0 && row.GitHubIssueID != f.identity[n] && closed { t.Fatalf("seed=%d step=%d replacement blocked automation", seed, step) }
 				}
 				// Lists deliberately disagree with direct reads, and arrive reordered.
 				f.lists = nil
@@ -314,7 +331,7 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 					if rng.Intn(2) == 0 {
 						state = "closed"
 					}
-					f.lists = append(f.lists, map[string]any{"id": f.identity[i+1], "number": i + 1, "title": "issue", "state": state, "updated_at": f.now})
+					f.lists = append(f.lists, map[string]any{"id": f.identity[i+1], "number": i + 1, "title": fmt.Sprintf("issue %d", step), "state": state, "updated_at": f.now})
 				}
 				before := make([]factory.Item, 6)
 				for i := range before {
@@ -339,7 +356,9 @@ func TestClosedIssueRandomSequences(t *testing.T) {
 						t.Fatalf("seed=%d step=%d failed read changed #%d", seed, step, num)
 					}
 					same := old.GitHubIssueID == 0 || old.GitHubIssueID == f.identity[num]
-					if read[num] && same && !f.redirect[num] && f.status[num] == 0 && f.state[num] == "open" && old.SourceClosed && !old.PersonTouched && factory.JobUnworked(old) && got.State != factory.StateNew {
+     if !same && (got.Title != old.Title || got.GitHubIssueID != old.GitHubIssueID) { t.Fatalf("seed=%d step=%d replacement changed pinned row", seed, step) }
+     if !factory.UntouchedIssue(old) && got.State != old.State { t.Fatalf("seed=%d step=%d edited row moved", seed, step) }
+					if read[num] && same && !f.redirect[num] && f.status[num] == 0 && f.state[num] == "open" && old.SourceClosed && factory.UntouchedIssue(old) && got.State != factory.StateNew {
 						t.Fatalf("seed=%d step=%d direct-open #%d stayed Done", seed, step, num)
 					}
 				}

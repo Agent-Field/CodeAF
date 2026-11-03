@@ -6,7 +6,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-"github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 // THE WORKER THAT TAKES A JOB ON IS HANDED EVERY EARLIER STEP'S WHOLE REPORT,
@@ -63,20 +63,30 @@ func TestThePullCarriesEachStepsWholeReportAndAReaderNone(t *testing.T) {
 }
 
 func TestWorkerRoundTripKeepsFloorReconciliationFields(t *testing.T) {
- f := workerSetup(t)
- job := f.add(t, "sam")
- if err := f.st.Update(job.ID, func(it *factory.Item) error { it.GitHubIssueID = 1001; factory.TouchIssue(it); return nil }); err != nil { t.Fatal(err) }
- worker := f.attach(t, "sam")
- pulled := f.pull(t, worker)
- before, local := api.ToItem(pulled.Job), api.ToItem(pulled.Job)
- // These service-owned fields are deliberately absent from the worker's copy.
- if local.GitHubIssueID != 0 || local.SourceClosed || local.PersonTouched { t.Fatal("worker unexpectedly owns reconciliation fields") }
- local.Stream.Spent += .01
- report, moved := run.Diff(before, local)
- if !moved { t.Fatal("worker spending did not produce a report") }
- endpoint := "/v1/workers/leases/" + pulled.Lease.ID + "/report"
- f.request(t, "POST", endpoint, worker.Credential, api.FromRunReport(report), 200, nil)
- floor, err := f.st.Get(job.ID)
- if err != nil { t.Fatal(err) }
- if floor.GitHubIssueID != 1001 || !floor.PersonTouched || floor.SourceClosed { t.Fatalf("worker round trip changed floor reconciliation fields: id=%d touched=%t closed=%t", floor.GitHubIssueID, floor.PersonTouched, floor.SourceClosed) }
+	f := workerSetup(t)
+	job := f.add(t, "sam")
+	if err := f.st.Update(job.ID, func(it *factory.Item) error { it.GitHubIssueID = 1001; factory.TouchIssue(it); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	worker := f.attach(t, "sam")
+	pulled := f.pull(t, worker)
+	before, local := api.ToItem(pulled.Job), api.ToItem(pulled.Job)
+	// These service-owned fields are deliberately absent from the worker's copy.
+	if local.GitHubIssueID != 0 || local.SourceClosed || local.PersonTouched {
+		t.Fatal("worker unexpectedly owns reconciliation fields")
+	}
+	local.Notes = append(local.Notes, "worker note")
+	report, moved := run.Diff(before, local)
+	if !moved {
+		t.Fatal("worker note did not produce a report")
+	}
+	endpoint := "/v1/workers/leases/" + pulled.Lease.ID + "/report"
+	f.request(t, "POST", endpoint, worker.Credential, api.FromRunReport(report), 200, nil)
+	floor, err := f.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if floor.GitHubIssueID != 1001 || !floor.PersonTouched || floor.SourceClosed {
+		t.Fatalf("worker round trip changed floor reconciliation fields: id=%d touched=%t closed=%t", floor.GitHubIssueID, floor.PersonTouched, floor.SourceClosed)
+	}
 }

@@ -52,12 +52,15 @@ func Standing(ctx context.Context, api API, it factory.Item) (factory.SourceStan
 	if err != nil {
 		return factory.SourceStanding{}, err
 	}
+	if is.ID == 0 { return factory.SourceStanding{}, errors.New("GitHub issue identity missing") }
 	answer := factory.SourceStanding{IssueID: is.ID}
- if is.Redirected || is.Number != it.Num || !answer.Matches(it) {
-  return answer, factory.ErrSourceIdentityChanged
- }
- if strings.EqualFold(is.State, "closed") { answer.How = StandingClosed }
- return answer, nil
+	if is.Redirected || is.Number != it.Num || !answer.Matches(it) {
+		return answer, factory.ErrSourceIdentityChanged
+	}
+	if strings.EqualFold(is.State, "closed") {
+		answer.How = StandingClosed
+	}
+	return answer, nil
 }
 
 // Rechecker is [Standing] over the token at the moment of asking, for the

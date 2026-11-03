@@ -2,7 +2,7 @@ package factory
 
 import (
 	"context"
-"errors"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -11,13 +11,13 @@ import (
 
 // SourceStanding carries the permanent identity with the fresh source answer.
 type SourceStanding struct {
- How string
- IssueID int64
+	How     string
+	IssueID int64
 }
 
 // Matches rejects a replacement issue even when the repository and number agree.
 func (s SourceStanding) Matches(it Item) bool {
- return it.GitHubIssueID == 0 || it.GitHubIssueID == s.IssueID
+	return it.GitHubIssueID == 0 || it.GitHubIssueID == s.IssueID
 }
 
 var ErrSourceIdentityChanged = errors.New("GitHub issue identity changed or redirected")
@@ -57,7 +57,7 @@ func ClosedForAutomation(ctx context.Context, root string, it Item, standing fun
 	var key automaticKey
 	if root != "" {
 		root, _ = filepath.Abs(root)
-		key = automaticKey{root, fmt.Sprintf("%s/%s/%s#%d", it.Origin, it.Product, it.Repo, it.Num) + fmt.Sprintf("/%d", it.GitHubIssueID)}
+		key = automaticKey{root, fmt.Sprintf("%s/%s/%s#%d/%d", it.Origin, it.Product, it.Repo, it.Num, it.GitHubIssueID)}
 		value, loaded := automaticStandings.LoadOrStore(key, entry)
 		if loaded {
 			held := value.(*automaticStanding)

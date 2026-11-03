@@ -150,7 +150,10 @@ func TestClosedIssueCacheSharedByAutomaticPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	reads := 0
-	standing := func(context.Context, factory.Item) (factory.SourceStanding, error) { reads++; return factory.SourceStanding{How: "closed"}, nil }
+	standing := func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		reads++
+		return factory.SourceStanding{How: "closed"}, nil
+	}
 	opts := intake.Options{Standing: standing, Record: history, Load: func(string) (pipeline.File, error) { return pipeline.Parse("start:\n  labels: [ready]\n") }, Launch: func(int) error { t.Error("closed issue launched"); return nil }}
 	if err := intake.New(st, opts).Once(ctx); err != nil {
 		t.Fatal(err)
